@@ -378,6 +378,10 @@ export function scrollToPosition(scrollBox: ScrollBoxRenderable, target: number,
 
 export function scrollToBottom(scrollBox: ScrollBoxRenderable | null, preferPixels = false) {
   if (!scrollBox) return;
+  if (preferPixels && scrollBox.scrollToEnd) {
+    scrollBox.scrollToEnd();
+    return;
+  }
   const exactPixels = preferPixels && hasPixelScrollMetrics(scrollBox);
   scrollToPosition(
     scrollBox,
@@ -494,6 +498,16 @@ export function readScrollPlace(
   const view = scrollBox?.getBoundingClientRect?.();
   if (!scrollBox || !view || !hasPixelScrollMetrics(scrollBox)) return null;
   if (isScrolledToBottom(scrollBox, true)) return { atBottom: true, anchorId: null, anchorOffsetPx: 0 };
+  // Only mounted rows have geometry in a windowed list. Their insertion order
+  // can differ after scrolling, so pick the highest row that intersects the view.
+  if (scrollBox.scrollToItem) {
+    let found: { id: string; y: number } | null = null;
+    for (const [id, node] of elements) {
+      const rect = messageRect(node);
+      if (rect && rect.y + rect.height > view.y + 1 && (!found || rect.y < found.y)) found = { id, y: rect.y };
+    }
+    return found ? { atBottom: false, anchorId: found.id, anchorOffsetPx: found.y - view.y } : null;
+  }
   // Rows run down the page in order, so the first with any part in view is found by halving.
   let low = 0;
   let high = messages.length - 1;
@@ -518,6 +532,7 @@ export function restoreScrollPlace(
   place: ScrollPlace,
   elements: Map<string, unknown>,
 ) {
+  if (!place.atBottom && place.anchorId && scrollBox?.scrollToItem?.(place.anchorId, { align: "start", offset: place.anchorOffsetPx })) return;
   const view = scrollBox?.getBoundingClientRect?.();
   const rect = place.anchorId ? messageRect(elements.get(place.anchorId)) : null;
   if (!scrollBox || !view || place.atBottom || !rect || typeof scrollBox.scrollTopPx !== "number") {

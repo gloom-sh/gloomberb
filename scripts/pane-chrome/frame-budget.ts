@@ -148,19 +148,6 @@ const dividerRightOf = (paneId: string) => `(() => {
 const TOP_DIVIDER = dividerRightOf("news:dock");
 const CHAT_DIVIDER = dividerRightOf("chat:a");
 const CHAT_ROWS = "document.querySelectorAll('[data-gloom-role=chat-message]').length";
-const CHAT_LIST = "document.querySelector('[data-gloom-role=chat-message]').parentElement";
-
-/** Scrolls the chat to its top until the channel has nothing older, as a reader who paged far back did, then to its newest message. */
-async function loadWholeChat(cdp: Cdp): Promise<void> {
-  for (let page = 0; page < 30; page += 1) {
-    const rows = await evaluate<number>(cdp, CHAT_ROWS);
-    await evaluate(cdp, `${CHAT_LIST}.scrollTop = 0`);
-    if (!await waitFor(cdp, `${CHAT_ROWS} > ${rows}`, 3_000)) break;
-    await frames(cdp, 2);
-  }
-  await evaluate(cdp, `(() => { const list = ${CHAT_LIST}; list.scrollTop = list.scrollHeight; })()`);
-  await frames(cdp, 10);
-}
 
 /** The chat beside a plain pane: its messages wrap their text to the width the divider gives it. */
 const chatDividerDrag = (name: string, fixture: string, prepare?: (cdp: Cdp) => Promise<void>): Scenario => ({
@@ -301,7 +288,7 @@ const SCENARIOS: Scenario[] = [
   },
   chatDividerDrag("chat divider drag", "chat"),
   // A reader who paged far back: every page stays in the list.
-  chatDividerDrag("chat divider drag, 500 messages", "chat&count=500&latency=0", loadWholeChat),
+  chatDividerDrag("chat divider drag, 500 messages", "chat&count=500&loaded=500&latency=0"),
   desDividerDrag("DES divider drag", "des"),
   // Three times the accounts and the description.
   desDividerDrag("DES divider drag, 3x", "des&positions=9&scale=3"),

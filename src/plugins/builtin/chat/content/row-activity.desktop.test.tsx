@@ -38,7 +38,8 @@ function Pane({ controller, targetMessageId, focus }: {
   return (
     <AppContext value={createStaticAppStore(state)}>
       <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
-        <UiHostProvider ui={createDomUiHost()} renderer={noopRendererHost}>
+        {/* This DOM has no layout. Real measured windowing is covered by the pointer checks. */}
+        <UiHostProvider ui={{ ...createDomUiHost(), WindowedList: undefined }} renderer={noopRendererHost}>
           <WebInputHostProvider>
             <ChatContent controller={controller} width={80} height={24} focused={focused} targetMessageId={targetMessageId} />
           </WebInputHostProvider>

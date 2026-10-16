@@ -4,6 +4,7 @@ import type { UiHost } from "../../ui/host";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../theme/font-scale";
 import { detectPlatform } from "../../utils/platform";
 import { WebDataTable } from "./data-table";
+import { WebWindowedList } from "./windowed-list";
 import {
   WebButton,
   WebCheckbox,
@@ -92,6 +93,7 @@ export function createDomUiHost(
     DialogHints: WebDialogHints,
     PageStackView: WebPageStackView,
     DataTable: WebDataTable,
+    WindowedList: WebWindowedList,
     Tabs: WebTabs,
     ChartSurface: WebChartSurface,
     Surface3D: WebSurface3D,

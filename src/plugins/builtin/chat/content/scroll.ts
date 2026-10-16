@@ -212,6 +212,7 @@ export function useChatScrollRuntime({
     setFollowMessages(false);
     prependAnchorRef.current = null;
     runAfterLayout(() => {
+      if (nativePaneChrome && scrollRef.current?.scrollToItem?.(messageId, { align: "center" })) return;
       if (nativePaneChrome && scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(messageId), { center: true })) return;
       const scrollBox = scrollRef.current;
       if (!scrollBox) return;
@@ -337,7 +338,10 @@ export function useChatScrollRuntime({
   useEffect(() => {
     if (!nativePaneChrome || !selectedMessageId) return;
     if (prependAnchorRef.current) return;
-    runAfterLayout(() => scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(selectedMessageId)));
+    runAfterLayout(() => {
+      if (scrollRef.current?.scrollToItem?.(selectedMessageId)) return;
+      scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(selectedMessageId));
+    });
   }, [messageElementsRef, nativePaneChrome, prependAnchorRef, scrollRef, selectedMessageId]);
 
   useEffect(() => {

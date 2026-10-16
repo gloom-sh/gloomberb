@@ -187,6 +187,9 @@ export interface ScrollBoxRenderable {
   verticalScrollBar?: ScrollBarRenderable;
   scrollTo(target: number | { x?: number; y?: number }, y?: number): void;
   scrollToPixels?(target: number | { x?: number; y?: number }, y?: number): void;
+  /** A windowed list mounts and measures the target before finishing the scroll. */
+  scrollToItem?(key: string, options?: { align?: "auto" | "start" | "center" | "end"; offset?: number }): boolean;
+  scrollToEnd?(): void;
   /** Terminal only: the scrolled content, whose descendants carry their screen rows as laid out last. */
   content?: { findDescendantById?(id: string): { y: number; height: number } | undefined };
 }
@@ -648,6 +651,8 @@ export interface UiHost {
   SelectField?: ComponentType<any>;
   QueryBar?: ComponentType<HostQueryBarProps>;
   DataTable?: ComponentType<any>;
+  /** Props are WindowedListProps from components/ui/windowed-list. */
+  WindowedList?: ComponentType<any>;
   createSyntaxStyle?(): SyntaxStyleLike;
   colorFromHex?(hex: string): unknown;
 }

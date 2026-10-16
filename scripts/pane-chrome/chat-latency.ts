@@ -7,7 +7,8 @@ import { serveFixturePage } from "./page";
  * Real keyboard and pointer input, local-only Cloud sync, and the desktop's
  * disabled capability handlers versus the web profile. Paint measurements are
  * rAF + task estimates, not GPU presentation timestamps. Only structural work
- * is gated: unchanged message rows must not render for draft/upload updates.
+ * is gated: opening mounts a bounded window, and unchanged message rows must
+ * not render for draft/upload updates.
  * --lifecycle checks visibility after mount, channel and asynchronous transitions.
  * --multiple adds two more panes; --large-workspace adds saved layouts and drafts.
  * --open-only skips the typing/upload phase, retaining the opening profile.
@@ -22,11 +23,13 @@ const root = resolve(import.meta.dir, "../..");
 const workspace = args.includes("--large-workspace") ? "large" : "small";
 const PROBES = `
 window.__latency = { commits: 0, rows: 0, changed: {}, keys: [], long: [] };
+window.__peakMountedRows = 0;
 window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
  supportsFiber:true, isDisabled:false, renderers:new Map(), inject(){return 1},
  onScheduleFiberRoot(){},onCommitFiberUnmount(){},onPostCommitFiberRoot(){},checkDCE(){},
  onCommitFiberRoot(id,root){
   __latency.commits++;
+  window.__peakMountedRows = Math.max(window.__peakMountedRows, document.querySelectorAll('[data-gloom-pane-id="chat:a"] [data-gloom-role=chat-message]').length);
   const visit=f=>{if(!f)return;
    if((f.flags&1) && f.memoizedProps?.msg && f.memoizedProps?.registerMessageElement){
     __latency.rows++;
@@ -79,6 +82,7 @@ async function channelPaint(cdp: Cdp, channel: string) {
   const prefix = channel === "everyone" ? "m" : `${channel}:m`;
   await evaluate(cdp, `void(window.__channelPaint=new Promise(done=>document.addEventListener('pointerdown',()=>{
     const start=performance.now(), startRows=__latency.rows;
+    window.__peakMountedRows=0;
     const last=__chatFake.messages.at(-1).id;
     const target='${channel}'==='everyone'?last:'${channel}:'+last;
     let firstVisibleMs=null;
@@ -88,12 +92,12 @@ async function channelPaint(cdp: Cdp, channel: string) {
       if(inChannel && firstVisibleMs===null)firstVisibleMs=performance.now()-start;
       if(view.visible.includes(target)) {
         const latestVisibleMs=performance.now()-start, renderedRows=__latency.rows-startRows;
-        requestAnimationFrame(()=>setTimeout(()=>done({ms:performance.now()-start,firstVisibleMs,latestVisibleMs,renderedRows,...view}),0));
+        requestAnimationFrame(()=>setTimeout(()=>done({ms:performance.now()-start,firstVisibleMs,latestVisibleMs,renderedRows,peakMountedRows:window.__peakMountedRows,...view}),0));
       } else if(performance.now()-start>10000)done(null);else requestAnimationFrame(tick);
     };requestAnimationFrame(tick);
   },{once:true,capture:true})))`);
   await clickSelector(cdp, `[...document.querySelectorAll('[data-gloom-pane-id="chat:a"] [data-gloom-role="pane-sidebar-item"]')].find(el=>el.textContent.includes('${channel}'))`);
-  const result = await evaluate<{ ms: number; firstVisibleMs: number; latestVisibleMs: number; renderedRows: number; rows: number; visible: string[] } | null>(cdp, "__channelPaint", 15000);
+  const result = await evaluate<{ ms: number; firstVisibleMs: number; latestVisibleMs: number; renderedRows: number; peakMountedRows: number; rows: number; visible: string[] } | null>(cdp, "__channelPaint", 15000);
   if (result === null) throw new Error(`No visible message in ${channel}`);
   return result;
 }
@@ -180,6 +184,16 @@ try {
     const cold = await channelPaint(cdp, "macro");
     const warm = await channelPaint(cdp, "everyone");
     const switches = [await channelPaint(cdp, "macro"), await channelPaint(cdp, "everyone")];
+    // Fixed viewport, fixed minimum row size: independent of the loaded history.
+    // Check every commit, not just the settled DOM, so mounting everything then
+    // hiding it cannot pass. Timing remains diagnostic on a shared runner.
+    const maxMountedRows = 80;
+    for (const opened of [cold, warm, ...switches]) {
+      if (opened.peakMountedRows > maxMountedRows || opened.rows === 0) {
+        failures++;
+        console.error(`${host}/${count}: mounted ${opened.peakMountedRows} rows, budget ${maxMountedRows}`);
+      }
+    }
     const opening = await cdp.send("Profiler.stop");
     await Bun.write(join(out, `${host}-${count}-opening.cpuprofile`), JSON.stringify(opening.profile));
     if (args.includes("--open-only")) {

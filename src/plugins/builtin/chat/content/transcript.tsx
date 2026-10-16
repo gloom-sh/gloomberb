@@ -1,5 +1,6 @@
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
-import { useLayoutEffect, type Dispatch, type SetStateAction } from "react";
+import { useLayoutEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import { WindowedList } from "../../../../components";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
@@ -17,6 +18,7 @@ interface MutableRef<T> {
 }
 
 interface ChatTranscriptProps {
+  channelId: string;
   beginReplyTo: (index: number, options?: { deferFocus?: boolean }) => void;
   beginEditMessage: (index: number, options?: { deferFocus?: boolean }) => boolean;
   canSend: boolean;
@@ -84,6 +86,7 @@ interface ChatTranscriptProps {
 }
 
 export function ChatTranscript({
+  channelId,
   beginReplyTo,
   beginEditMessage,
   canSend,
@@ -146,6 +149,39 @@ export function ChatTranscript({
     toggleReaction,
     openReactionPicker,
   };
+  const itemKeys = useMemo(() => messages.map((message) => message.id), [messages]);
+  const renderDesktopMessage = (index: number) => {
+    const msg = messages[index]!;
+    return <DesktopChatMessage
+      key={msg.id}
+      msg={msg}
+      index={index}
+      messages={messages}
+      selectedIdx={selectedIdx}
+      hoveredIdx={hoveredIdx === index ? index : null}
+      highlighted={msg.id === highlightedMessageId}
+      canSend={canSend}
+      contentWidth={desktopChatMessageWidth(msg, contentWidth)}
+      catalog={catalog}
+      userByUsername={userByUsername}
+      openTicker={openTicker}
+      openPaneLink={openPaneLink}
+      onUserHover={showProfilePopover}
+      onUserHoverEnd={scheduleProfilePopoverClose}
+      onUserActivate={toggleProfilePopover}
+      onUserContextMenu={onUserContextMenu}
+      beginReplyTo={beginReplyTo}
+      beginEditMessage={beginEditMessage}
+      jumpToMessage={jumpToMessage}
+      latestEditableMessageId={latestEditableMessageId}
+      retryMessage={retryMessage}
+      onImageLoadError={onImageLoadError}
+      registerMessageElement={registerMessageElement}
+      {...reactionProps}
+      reactionPickerMessageId={reactionPickerMessageId}
+      closeReactionPicker={closeReactionPicker}
+    />;
+  };
   return (
     <>
       <Box
@@ -154,7 +190,16 @@ export function ChatTranscript({
         flexGrow={nativePaneChrome ? 1 : undefined}
         style={nativePaneChrome ? { minHeight: 0 } : undefined}
       >
-        <ScrollBox
+        {nativePaneChrome && messages.length > 0 ? <WindowedList
+          key={channelId}
+          itemKeys={itemKeys}
+          renderItem={renderDesktopMessage}
+          scrollRef={scrollRef}
+          onScrollActivity={handleTranscriptScrollActivity}
+          onPinChange={onStickyPinChange}
+          onPointerMove={onPointerMove}
+          role="chat-transcript"
+        /> : <ScrollBox
           ref={scrollRef}
           height={nativePaneChrome ? undefined : messageAreaHeight}
           flexGrow={nativePaneChrome ? 1 : undefined}
@@ -170,8 +215,6 @@ export function ChatTranscript({
             onMouseMove: onPointerMove,
             onStickyPinChange,
           } : {})}
-          // Messages stack as blocks on the desktop: through a resize, the rows out
-          // of view keep their width (resize-rows.ts) and cost no layout at all.
           style={nativePaneChrome ? { minHeight: 0, ...(messages.length > 0 ? { display: "block" } : {}) } : undefined}
         >
           {!nativePaneChrome && loadingOlderMessages && (
@@ -194,37 +237,6 @@ export function ChatTranscript({
             </Box>
           )}
           {messages.map((msg, index) => (
-            nativePaneChrome ? (
-              <DesktopChatMessage
-                key={msg.id}
-                msg={msg}
-                index={index}
-                messages={messages}
-                selectedIdx={selectedIdx}
-                hoveredIdx={hoveredIdx === index ? index : null}
-                highlighted={msg.id === highlightedMessageId}
-                canSend={canSend}
-                contentWidth={desktopChatMessageWidth(msg, contentWidth)}
-                catalog={catalog}
-                userByUsername={userByUsername}
-                openTicker={openTicker}
-                openPaneLink={openPaneLink}
-                onUserHover={showProfilePopover}
-                onUserHoverEnd={scheduleProfilePopoverClose}
-                onUserActivate={toggleProfilePopover}
-                onUserContextMenu={onUserContextMenu}
-                beginReplyTo={beginReplyTo}
-                beginEditMessage={beginEditMessage}
-                jumpToMessage={jumpToMessage}
-                latestEditableMessageId={latestEditableMessageId}
-                retryMessage={retryMessage}
-                onImageLoadError={onImageLoadError}
-                registerMessageElement={registerMessageElement}
-                {...reactionProps}
-                reactionPickerMessageId={reactionPickerMessageId}
-                closeReactionPicker={closeReactionPicker}
-              />
-            ) : (
               <TerminalChatMessage
                 key={msg.id}
                 msg={msg}
@@ -252,9 +264,8 @@ export function ChatTranscript({
                 setHoveredIdx={setHoveredIdx}
                 {...reactionProps}
               />
-            )
           ))}
-        </ScrollBox>
+        </ScrollBox>}
         {/* Over the list, not in it: a row in the list would push the messages down as it came and went. */}
         {nativePaneChrome && loadingOlderMessages && (
           <Box position="absolute" top={0} left={0} right={0} alignItems="center" style={{ pointerEvents: "none" }}>

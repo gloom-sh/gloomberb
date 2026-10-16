@@ -133,7 +133,7 @@ export {
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
-  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
+  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch, WindowedList,
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice, ColumnGridCell,
@@ -148,6 +148,6 @@ export type {
   QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
   QueryBarToggleFilter, QueryBarView, RangeTrackProps, RatioBarProps, SectionHeadingProps, SectionProps, SegmentedControlProps,
   SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, StatusRetry, TabsProps,
-  TextFieldProps, TextPromptDialogProps,
+  TextFieldProps, TextPromptDialogProps, WindowedListProps,
 } from "./ui";
 export { usePaneTicker } from "../state/app/context";

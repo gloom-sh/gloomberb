@@ -1062,6 +1062,7 @@ export function ChatContent({
       )}
 
       <ChatTranscript
+        channelId={channelId}
         beginReplyTo={beginReplyTo}
         beginEditMessage={beginEditMessage}
         canSend={canSend}

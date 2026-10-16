@@ -26,7 +26,7 @@ const CHAT_HELPERS = `
 window.__chat = {
   scroller() {
     const row = document.querySelector('[data-gloom-role=chat-message]');
-    return row ? row.parentElement : null;
+    return row?.closest('[data-gloom-role=chat-transcript]') ?? null;
   },
   rows() { return [...(this.scroller()?.querySelectorAll('[data-gloom-role=chat-message]') ?? [])]; },
   state() {
@@ -408,7 +408,96 @@ async function oneChip(cdp: Cdp, id: string): Promise<Chip> {
   return found[0]!;
 }
 
+const pointFor = (cdp: Cdp, selector: string) => evaluate<Point>(cdp, `(() => {
+  const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw Error('Missing pointer target');
+  const r = el.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};
+})()`);
+
 export const chatSteps: ChatStep[] = [
+  {
+    name: "chat window: an offscreen notification target mounts, highlights and copies, and keyboard navigation crosses windows",
+    scenario: "chat&count=500&loaded=500&target=m120",
+    async run(cdp) {
+      await ready(cdp);
+      expectMarked(await marked(cdp), ["m120"], "notification target");
+      if (await evaluate<number>(cdp, "__chat.rows().length") > 80) fail("opening mounted the history");
+      const body = '[data-gloom-chat-message-id="m120"] [data-gloom-role=chat-message-body]';
+      const at = await pointFor(cdp, body);
+      await evaluate(cdp, "document.addEventListener('copy',e=>{window.__copied=e.clipboardData.getData('text/plain')||getSelection().toString()},{once:true})");
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...at, button: "left", clickCount: 3 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at, button: "left", clickCount: 3 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      if (!await waitFor(cdp, "window.__copied?.trim()==='Morning all.'")) fail("visible message copy did not retain its text");
+      await click(cdp, await listCentre(cdp));
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      for (let i = 0; i < 35; i++) await pressKey(cdp, "ArrowUp", "ArrowUp");
+      const chosen = await selected(cdp);
+      if (chosen[0] !== "m464") fail("keyboard did not cross the mounted window", chosen);
+      const view = await evaluate(cdp, "(()=>{const r=__chat.rowRect('m464'),s=__chat.scroller().getBoundingClientRect();return r&&r.y>=s.top&&r.y+r.height<=s.bottom})()");
+      if (!view) fail("keyboard target was not brought into view");
+      for (const delta of [-50000, 700, 1400, 50000]) {
+        await wheel(cdp, await listCentre(cdp), delta);
+        await frames(cdp, 6);
+        if (await evaluate<number>(cdp, "__chat.rows().length") > 80 || !await anchor(cdp)) fail("scrolling lost the bounded visible window");
+      }
+    },
+  },
+  {
+    name: "chat window: a pending send, failed-send retry, reply and reaction survive window changes",
+    scenario: "chat&count=500&loaded=500&reactions=1&latency=0",
+    async run(cdp) {
+      await ready(cdp);
+      await wheel(cdp, await listCentre(cdp), -1800);
+      await evaluate(cdp, "__chatFake.holdSends()");
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await cdp.send("Input.insertText", { text: "Windowed send check" });
+      await pressKey(cdp, "Enter", "Enter");
+      if (!await waitFor(cdp, "__chatFake.sent.length===1 && __chat.rows().some(r=>r.textContent.includes('Windowed send check'))")) fail("pending send is not mounted");
+      if ((await state(cdp)).fromBottom > 4) fail("pending send did not go to the bottom");
+      await evaluate(cdp, "__chatFake.finishSend(true)");
+      const retry = '[data-gloom-role=chat-message-retry-action] button';
+      if (!await waitFor(cdp, `document.querySelector('${retry}')`)) fail("failed send has no retry");
+      await click(cdp, await pointFor(cdp, retry));
+      if (!await waitFor(cdp, "__chatFake.sent.length===2 && __chat.rowRect('m500') && !document.querySelector('[data-gloom-role=chat-message-retry-action]')")) fail("retry did not replace the pending message");
+      await click(cdp, await listCentre(cdp));
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "Enter", "Enter");
+      await cdp.send("Input.insertText", { text: "Reply across windows" });
+      await pressKey(cdp, "Enter", "Enter");
+      if (!await waitFor(cdp, "__chatFake.messages.at(-1).replyToId==='m499'")) fail("keyboard reply lost its target");
+      const reaction = '[data-gloom-chat-message-id="m499"] [data-gloom-role=chat-message-reactions] button';
+      await click(cdp, await pointFor(cdp, reaction));
+      if (!await waitFor(cdp, "__chatFake.messages.find(m=>m.id==='m499').reactions[0].me")) fail("reaction did not toggle");
+      await wheel(cdp, await listCentre(cdp), -50000);
+      await wheel(cdp, await listCentre(cdp), 50000);
+      if (!await waitFor(cdp, "__chat.rowText('m499').includes('2') && __chat.rowText('m501').includes('Reply across windows')")) fail("reply or reaction disappeared after remount");
+    },
+  },
+  {
+    name: "chat window: an image reserves its measured space before decoding",
+    scenario: "chat&count=500&loaded=500",
+    async run(cdp) {
+      await ready(cdp);
+      await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*held-chat-image*" }] });
+      try {
+        const paused = cdp.once<{ requestId: string }>("Fetch.requestPaused");
+        await evaluate(cdp, `(()=>{const m=__chatFake.deliver('Image that arrives later.',{attachment:true});__chatFake.update(m.id,m=>({...m,attachments:m.attachments.map(a=>({...a,url:location.origin+'/held-chat-image.svg'}))}))})()`);
+        const request = await paused;
+        await frames(cdp, 8);
+        const before = await anchor(cdp);
+        const rect = await evaluate(cdp, "__chat.rowRect('m500')");
+        if (rect.height < 180) fail("image did not reserve its height", rect);
+        await cdp.send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "image/svg+xml" }], body: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#456"/></svg>').toString("base64") });
+        if (!await waitFor(cdp, "document.querySelector('[data-gloom-chat-message-id=m500] img')?.complete")) fail("image never decoded");
+        await frames(cdp, 8);
+        const after = await evaluate(cdp, "__chat.rowRect('m500')");
+        if (Math.abs(rect.height - after.height) > 1) fail("decoding changed the image row's height", { rect, after });
+        expectPlace(before, await anchor(cdp), "image decoding");
+      } finally { await cdp.send("Fetch.disable"); }
+    },
+  },
   {
     name: "chat people: a bot's name has its own colour and its icon always, a person's icons wait for the pointer",
     scenario: "chat",
@@ -745,9 +834,9 @@ export const chatSteps: ChatStep[] = [
       // Reading on while the page is on its way.
       await wheel(cdp, await listCentre(cdp), 130);
       const before = await anchor(cdp);
-      const rowsBefore = await evaluate<number>(cdp, "__chat.rows().length");
+      const heightBefore = (await state(cdp)).height;
       await evaluate(cdp, "window.__chatFake.release()");
-      if (!await waitFor(cdp, `__chat.rows().length > ${rowsBefore}`, 3_000)) fail("the older messages never arrived");
+      if (!await waitFor(cdp, `__chat.state().height > ${heightBefore}`, 3_000)) fail("the older messages never arrived");
       await frames(cdp, 6);
       expectPlace(before, await anchor(cdp), "older messages arriving");
     },
@@ -761,7 +850,7 @@ export const chatSteps: ChatStep[] = [
       await ready(cdp);
       await wheel(cdp, await listCentre(cdp), -5_000);
       if (!await waitFor(cdp, "window.__chatFake.historyRequests >= 1", 2_000)) fail("reaching the top did not ask for older messages", await state(cdp));
-      if (!await waitFor(cdp, "__chat.rows().length > 50", 3_000)) fail("the older messages never arrived");
+      if (!await waitFor(cdp, "__chat.state().top > 500", 3_000)) fail("the older messages never arrived above the reader");
       await pause(cdp, 300);
       const chosen = await selected(cdp);
       if (chosen.length > 0) fail("older messages arriving selected a message nobody selected", chosen);
@@ -890,7 +979,8 @@ export const chatSteps: ChatStep[] = [
     async run(cdp) {
       await ready(cdp);
       const rest = await evaluate<Edges>(cdp, "__chat.edges()");
-      if (await evaluate<number>(cdp, "__chat.rows().length") < 500) fail("the list did not load 500 messages");
+      if (await evaluate<number>(cdp, "__chatFake.messages.length") !== 500) fail("the fixture did not load 500 messages");
+      if (!await evaluate(cdp, "__chat.rowRect('m499')")) fail("the latest message is not mounted");
       const divider = await dividerPoint(cdp) ?? fail("no divider");
       const result = await resizeChat(cdp, divider, (t) => ({ x: divider.x - Math.sin(t * Math.PI * 0.8) * 230, y: divider.y }));
       expectFollowed(rest, result, "a divider drag over 500 messages");
