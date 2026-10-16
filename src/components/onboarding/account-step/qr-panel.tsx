@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { AuthUser } from "../../../api-client";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut } from "../../../react/input";
 import {
@@ -8,6 +8,7 @@ import {
   isDeviceSignInRetryKey,
   useDeviceSignIn,
 } from "../../../account/device-signin-dialog";
+import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 
 /**
  * QR device sign-in inside the onboarding account step. The controller starts
@@ -21,6 +22,7 @@ export function AccountQrPanel({
   height: number;
 }) {
   useAppLanguage();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const advance = useCallback(
     (user: AuthUser) => onApproved(user.email?.trim() || user.username?.trim() || ""),
     [onApproved],
@@ -37,7 +39,8 @@ export function AccountQrPanel({
   }, { scope: "onboarding:qr", phase: "before" });
 
   return (
-    <Box flexDirection="column" paddingX={2}>
+    // On the desktop it sits below the title as the account form does.
+    <Box flexDirection="column" paddingX={2} style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader } : undefined}>
       <DeviceSignInPanel snapshot={snapshot} height={height} />
     </Box>
   );
