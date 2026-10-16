@@ -4,7 +4,7 @@ import type {
   PaneTemplateCreateOptions,
   PaneTemplateDef,
 } from "../../../../types/plugin";
-import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
+import { isManualPortfolio } from "../../../../portfolio/mutations";
 import { normalizeTickerInput } from "../../../../tickers/search";
 import {
   getCollectionCommandAction,

@@ -5,7 +5,7 @@ import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { blendHex, colors } from "../../../theme/colors";
 import { buildPortfolioSummaryNotices, buildPortfolioSummarySegments } from "./summary";
-import { adoptHeldPortfolioCurrencies } from "./mutations";
+import { adoptHeldPortfolioCurrencies } from "../../../portfolio/mutations";
 import {
   calculatePortfolioSummaryTotals,
   getColumnValue,

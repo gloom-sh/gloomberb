@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
+import { createDefaultConfig } from "../types/config";
+import type { TickerRecord } from "../types/ticker";
 import {
   adoptFirstPositionCurrency,
   createManualPortfolio,
@@ -11,7 +11,7 @@ import {
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
 } from "./mutations";
-import { createTestTicker } from "../../../test-support/ticker";
+import { createTestTicker } from "../test-support/ticker";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 

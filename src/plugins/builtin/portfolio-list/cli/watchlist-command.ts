@@ -20,7 +20,7 @@ import {
   addTickerToWatchlist,
   deleteWatchlist as deleteWatchlistConfig,
   removeTickerFromWatchlist as removeWatchlistMembership,
-} from "../mutations";
+} from "../../../../portfolio/mutations";
 import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";

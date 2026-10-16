@@ -29,7 +29,7 @@ import {
   normalizeBuiltinPluginStateMap,
 } from "../plugins/ownership";
 import { isRecord } from "../utils/guards";
-import { withoutMissingWatchlists } from "../plugins/builtin/portfolio-list/mutations";
+import { withoutMissingWatchlists } from "../portfolio/mutations";
 
 /**
  * What a saved layout mirrors from the live session rather than from the

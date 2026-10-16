@@ -7,7 +7,7 @@ import {
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
-} from "../../plugins/builtin/portfolio-list/mutations";
+} from "../../portfolio/mutations";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerSearch } from "../../tickers/search";

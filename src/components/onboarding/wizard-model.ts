@@ -4,7 +4,7 @@ import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
-import { getManualPortfolioPosition } from "../../plugins/builtin/portfolio-list/mutations";
+import { getManualPortfolioPosition } from "../../portfolio/mutations";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 
 /**

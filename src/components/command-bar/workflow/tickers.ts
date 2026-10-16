@@ -2,7 +2,7 @@ import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
-import { isManualPortfolio } from "../../../plugins/builtin/portfolio-list/mutations";
+import { isManualPortfolio } from "../../../portfolio/mutations";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";

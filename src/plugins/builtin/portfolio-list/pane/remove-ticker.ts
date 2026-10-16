@@ -3,7 +3,7 @@ import { formatMarketCost, formatMarketQuantity } from "../../../../market-data/
 import type { AppConfig } from "../../../../types/config";
 import type { TickerRecord } from "../../../../types/ticker";
 import { parseCollectionRef } from "../../../../team/collections";
-import { isManualPortfolio, removeTickerFromPortfolio, removeTickerFromWatchlist } from "../mutations";
+import { isManualPortfolio, removeTickerFromPortfolio, removeTickerFromWatchlist } from "../../../../portfolio/mutations";
 
 export interface RemovableCollection {
   kind: "portfolio" | "watchlist";

@@ -5,7 +5,7 @@ import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { headlineQuoteDisplay } from "../column-values";
-import { isManualPortfolio } from "../mutations";
+import { isManualPortfolio } from "../../../../portfolio/mutations";
 import type { AllocationHolding } from "../allocation";
 import { getPortfolioValuationDisplay, type PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
 import {

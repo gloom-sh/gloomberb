@@ -67,7 +67,7 @@ import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
 import { getSharedRegistry } from "../../../registry";
 import { usePluginAppActions } from "../../../runtime";
-import { isManualPortfolio } from "../mutations";
+import { isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   cursorAfterRemoval,
   removableCollection,

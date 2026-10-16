@@ -8,7 +8,7 @@ import {
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
-import { adoptHeldPortfolioCurrencies } from "../../plugins/builtin/portfolio-list/mutations";
+import { adoptHeldPortfolioCurrencies } from "../../portfolio/mutations";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { AppConfig } from "../../types/config";

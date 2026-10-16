@@ -1,6 +1,6 @@
 import type { AppState } from "../../../../state/app/context";
 import type { TickerRecord } from "../../../../types/ticker";
-import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
+import { isManualPortfolio } from "../../../../portfolio/mutations";
 import type { Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
 import { canRestartToApply } from "../../../../updater";

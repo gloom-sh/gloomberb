@@ -15,7 +15,7 @@ import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPrice } from "../../../../market-data/market/format";
 import { listingChoiceQuery, upsertTickerFromSearchResult } from "../../../../tickers/search";
 import type { TickerRecord } from "../../../../types/ticker";
-import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
+import { addTickerToPortfolio, addTickerToWatchlist } from "../../../../portfolio/mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
 import { tickerChangeLine } from "../../../../tickers/ticker-changes";

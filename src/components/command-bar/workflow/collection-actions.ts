@@ -23,7 +23,7 @@ import {
   isManualPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
-} from "../../../plugins/builtin/portfolio-list/mutations";
+} from "../../../portfolio/mutations";
 import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
 import { coerceFieldString } from "../helpers";

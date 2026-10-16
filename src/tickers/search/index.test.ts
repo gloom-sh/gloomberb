@@ -16,7 +16,7 @@ import {
   upsertTickerFromSearchResult,
 } from "./index";
 import { createTestTicker } from "../../test-support/ticker";
-import { resolveManualPositionCurrency } from "../../plugins/builtin/portfolio-list/mutations";
+import { resolveManualPositionCurrency } from "../../portfolio/mutations";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 
 function makeSearchResult(

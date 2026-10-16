@@ -28,7 +28,7 @@ import {
   setManualPortfolioPosition,
   setPortfolioCash,
   setPortfolioTargetWeight,
-} from "../mutations";
+} from "../../../../portfolio/mutations";
 import { listingLabel, renderCollectionOverview, showCollection } from "./render";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {

@@ -14,7 +14,7 @@ import {
 import { clampFontSize, MIN_FONT_SIZE_PX } from "../../../../theme/font-scale";
 import type { AppAction, AppState } from "../../../../state/app/context";
 import { openBrokerAddFlow } from "../../../../plugins/builtin/broker-manager/add-request";
-import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
+import { isManualPortfolio } from "../../../../portfolio/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
 import type { AppConfig, BrokerInstanceConfig } from "../../../../types/config";

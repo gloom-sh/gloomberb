@@ -1,7 +1,7 @@
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "../../../components/command-bar/workflow/types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
-import { getManualPortfolioPosition, isManualPortfolio, resolveManualPositionCurrency } from "./mutations";
+import { getManualPortfolioPosition, isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];
