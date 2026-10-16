@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import {
   DataTableView,
+  loadingText,
   PaneStatusBody,
   QueryBar,
   usePaneStatusFooter,
@@ -19,24 +20,24 @@ import { Box, TextAttributes } from "../../../ui";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
-import { fetchCorporateBonds, type CorporateBond } from "./client";
+import { fetchBondTape, noPrintsText, type CorporateBond } from "./client";
 import {
   DEFAULT_BOND_SORT,
   TRACE_BONDS_PANE_ID,
   bondChangeColor,
   buildBondColumns,
-  filterBondsByIssuer,
   firstBondSortDirection,
   formatBondChange,
   formatBondDecimal,
   isBondColumnId,
-  latestTradeDate,
   sortBonds,
   type BondColumn,
   type BondSort,
 } from "./model";
 
 const NO_BONDS: CorporateBond[] = [];
+/** The tape is asked again for what was typed, once typing pauses. */
+const SEARCH_DEBOUNCE_MS = 350;
 
 function dash(value: string | null): string {
   return value ?? "—";
@@ -44,10 +45,12 @@ function dash(value: string | null): string {
 
 export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const presetIssuer = usePaneInstance()?.params?.issuer ?? "";
-  const request = useCallback(() => fetchCorporateBonds(), []);
-  const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request);
-  const bonds = data ?? NO_BONDS;
   const [query, setQuery] = usePluginPaneState("issuer", presetIssuer);
+  const needle = query.trim();
+  // An issuer, symbol or CUSIP is asked of the tape itself, not looked for in the latest page.
+  const request = useCallback(() => fetchBondTape(needle), [needle]);
+  const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, { keepPreviousData: true });
+  const bonds = data?.bonds ?? NO_BONDS;
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [sort, setSort] = usePluginPaneState<BondSort>("sort", DEFAULT_BOND_SORT);
   const { active: searchActive, focus: focusSearch, searchProps } = useQueryBarSearch();
@@ -55,12 +58,9 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(updatedAt, load);
   usePaneRefreshKey(() => void reload(), { focused, enabled: !searchActive });
 
-  const rows = useMemo(
-    () => sortBonds(filterBondsByIssuer(bonds, query), sort),
-    [bonds, query, sort],
-  );
+  const rows = useMemo(() => sortBonds(bonds, sort), [bonds, sort]);
   const columns = useMemo(() => buildBondColumns(width), [width]);
-  const tradeDate = latestTradeDate(bonds);
+  const tradeDate = data?.tradeDate ?? null;
   const footerInfo = useMemo(
     () => (tradeDate ? [{ id: "trade-date", parts: [{ text: tradeDate }] }] : []),
     [tradeDate],
@@ -103,6 +103,8 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
           color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };
+      case "cusip":
+        return { text: dash(row.cusip), value: row.cusip, color: colors.textMuted };
       case "coupon":
         return { text: formatBondDecimal(row.couponRate, 3), value: row.couponRate, color: colors.text };
       case "maturity":
@@ -132,7 +134,8 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     info: footerInfo,
   });
 
-  if (loading && bonds.length === 0) {
+  // Only the first load replaces the table: a new query keeps the search field and the last answer.
+  if (loading && !data) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <PaneStatusBody loading align="center" />
@@ -140,7 +143,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  if (error && bonds.length === 0) {
+  if (error && !data) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <PaneStatusBody error={error} subject="Bond tape" />
@@ -148,7 +151,8 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  const needle = query.trim();
+  // Rows still on screen from the last query wait for this one's answer.
+  const answered = data != null && (data.query?.text ?? "") === needle.replace(/\s+/g, " ");
   return (
     <DataTableView
       focused={focused && !searchActive}
@@ -160,8 +164,10 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
           search={{
             value: query,
             onChange: setQuery,
-            placeholder: "issuer",
+            placeholder: "issuer, symbol or CUSIP",
             focused,
+            debounceMs: SEARCH_DEBOUNCE_MS,
+            normalizeValue: (value) => value.trim(),
             ...searchProps,
           }}
         />
@@ -185,7 +191,8 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => row.id}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={needle ? "No matching issuers." : "No recent sales."}
+      emptyStateTitle={loading && !answered ? loadingText("bond sales")
+        : data?.query ? noPrintsText(data.query, tradeDate) : "No recent sales."}
     />
   );
 }

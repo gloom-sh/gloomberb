@@ -8,6 +8,7 @@ export const TRACE_BONDS_PANE_ID = "trace-bonds";
 
 export type BondColumnId =
   | "issuer"
+  | "cusip"
   | "coupon"
   | "maturity"
   | "price"
@@ -20,7 +21,7 @@ export type BondColumn = DataTableColumn & { id: BondColumnId };
 export type BondSort = SortPreference<BondColumnId>;
 
 const BOND_COLUMN_IDS: readonly BondColumnId[] = [
-  "issuer", "coupon", "maturity", "price", "yield", "change", "traded", "grade",
+  "issuer", "cusip", "coupon", "maturity", "price", "yield", "change", "traded", "grade",
 ];
 
 export function isBondColumnId(value: string): value is BondColumnId {
@@ -31,7 +32,7 @@ export function isBondColumnId(value: string): value is BondColumnId {
 export const DEFAULT_BOND_SORT: BondSort = { columnId: "traded", direction: "desc" };
 
 export function firstBondSortDirection(columnId: BondColumnId): "asc" | "desc" {
-  return columnId === "issuer" || columnId === "maturity" || columnId === "grade" ? "asc" : "desc";
+  return columnId === "issuer" || columnId === "cusip" || columnId === "maturity" || columnId === "grade" ? "asc" : "desc";
 }
 
 export function formatBondDecimal(value: number | null, digits: number): string {
@@ -52,24 +53,12 @@ export function bondChangeColor(value: number | null): string {
   return value > 0 ? colors.positive : colors.negative;
 }
 
-export function filterBondsByIssuer(bonds: readonly CorporateBond[], query: string): CorporateBond[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [...bonds];
-  return bonds.filter((bond) => bond.issuerName.toLowerCase().includes(needle));
-}
-
-export function latestTradeDate(bonds: readonly CorporateBond[]): string | null {
-  let latest: string | null = null;
-  for (const bond of bonds) {
-    if (bond.lastTradeDate && (latest == null || bond.lastTradeDate > latest)) latest = bond.lastTradeDate;
-  }
-  return latest;
-}
-
 function sortValue(columnId: BondColumnId, bond: CorporateBond): string | number | null {
   switch (columnId) {
     case "issuer":
       return bond.issuerName;
+    case "cusip":
+      return bond.cusip;
     case "coupon":
       return bond.couponRate;
     case "maturity":
@@ -98,18 +87,30 @@ export function sortBonds(bonds: readonly CorporateBond[], sort: BondSort): Corp
 
 const BOND_COLUMNS: readonly BondColumn[] = [
   { id: "issuer", label: "Issuer", width: 18, align: "left", flexGrow: 1 },
-  { id: "coupon", label: "Coupon", width: 8, align: "right" },
-  { id: "maturity", label: "Maturity", width: 12, align: "left" },
-  { id: "price", label: "Price", width: 10, align: "right" },
-  { id: "yield", label: "Yield", width: 9, align: "right" },
+  { id: "cusip", label: "CUSIP", width: 10, align: "left" },
+  { id: "coupon", label: "Coupon", width: 7, align: "right" },
+  { id: "maturity", label: "Maturity", width: 11, align: "left" },
+  { id: "price", label: "Price", width: 9, align: "right" },
+  { id: "yield", label: "Yield", width: 8, align: "right" },
   { id: "change", label: "Chg", width: 8, align: "right" },
-  { id: "traded", label: "Traded", width: 12, align: "left" },
-  { id: "grade", label: "Grade", width: 7, align: "left" },
+  { id: "traded", label: "Traded", width: 11, align: "left" },
+  { id: "grade", label: "Grade", width: 6, align: "left" },
 ];
 
-/** Grade, then the change and yield, give way before the issuer, price, and trade date. */
-const NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "yield", "coupon", "maturity"];
+/**
+ * What a narrow tape gives up first. The issuer, coupon and maturity name a
+ * bond, so two of one issuer's issues stay told apart, and its price is
+ * what was printed; they never go. The headless report moves its columns
+ * under the rows in the same order (`BOND_STACK_PRIORITY`).
+ */
+const BOND_NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "traded", "cusip", "yield"];
+
+/** `stackPriority` of each column in the text report: the higher, the sooner it moves under its row. */
+export function bondStackPriority(columnId: BondColumnId): number {
+  const index = BOND_NARROW_DROP_ORDER.indexOf(columnId);
+  return index < 0 ? 0 : BOND_NARROW_DROP_ORDER.length - index;
+}
 
 export function buildBondColumns(width: number): BondColumn[] {
-  return fitChartTableColumns(BOND_COLUMNS, width, NARROW_DROP_ORDER);
+  return fitChartTableColumns(BOND_COLUMNS, width, BOND_NARROW_DROP_ORDER);
 }
