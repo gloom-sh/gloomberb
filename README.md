@@ -5,3 +5,4 @@ Review pictures for Linear GLO-906 (connecting a broker without a code, and the 
 - `terminal/` and `terminal.png`: the same surfaces in the terminal renderer, main beside this branch, drawn from captured frames (text and colours).
 - `connect-page/`: gloom.sh/connect/<ticket> in every state, main then this branch, Chromium and WebKit, 1440 and 390 px, against a local stub API with test accounts.
 - `audit/`: the all-pane UI audit sheets for main and this branch.
+- `connect-page/review/`: after the review fixes. The Continue screen naming the account the broker gets linked to, and a ticket answered by a server from before code-free sign-ins (no `code` field), which still gets the code box.
