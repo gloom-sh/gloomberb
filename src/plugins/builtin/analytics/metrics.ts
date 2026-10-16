@@ -1,6 +1,7 @@
 import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
+import { isDepositaryReceiptCategory, normalizeAssetCategory } from "../../../utils/asset-category";
 import { getPricePointTimestamp } from "../../../utils/price-history";
 import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 
@@ -26,6 +27,9 @@ export function syntheticAccountUnsupportedReason(account?: BrokerAccount | null
   return null;
 }
 
+/** Normalised categories the equity basket takes besides depositary receipts; no category at all counts as an equity. */
+const EQUITY_CATEGORIES: ReadonlySet<string> = new Set(["", "STK", "STOCK", "COMMONSTOCK", "EQUITY", "ETF", "ETN", "FUND", "REIT"]);
+
 export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCurrency: string, portfolioId?: string): string | null {
   const positions = ticker.metadata.positions.filter((position) => (
     (!portfolioId || position.portfolio === portfolioId) && position.shares !== 0
@@ -33,15 +37,15 @@ export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCu
   if (positions.some((position) => position.side === "short" || position.shares < 0)) {
     return "Short positions: signed exposure history required";
   }
-  const category = (ticker.metadata.assetCategory ?? "").toUpperCase();
+  const category = normalizeAssetCategory(ticker.metadata.assetCategory);
   // Crypto trades every day at another close, so its daily returns do not pair with the equity factor proxies.
   if (category.startsWith("CRYPTO") || /-[A-Z]{3,4}$/.test(ticker.metadata.ticker)) {
     return "Crypto is not covered by the equity basket";
   }
   // "Common Stock" is the category provider search hands a ticker added from
-  // the command bar, so a plain equity must not read as unsupported.
-  const equityCategories = new Set(["", "STK", "STOCK", "COMMON STOCK", "EQUITY", "ETF", "ETN", "FUND", "ADR", "REIT"]);
-  if (!equityCategories.has(category)
+  // the command bar, so a plain equity must not read as unsupported; a
+  // depositary receipt is the equity of its home market, whatever it is called.
+  if (!(EQUITY_CATEGORIES.has(category) || isDepositaryReceiptCategory(category))
     || positions.some((position) => position.multiplier != null && position.multiplier !== 1)
     || /=[A-Z]+$|\d{6}[CP]\d{8}$/.test(ticker.metadata.ticker)) {
     return "Asset type is not covered by the equity basket";

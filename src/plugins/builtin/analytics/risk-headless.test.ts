@@ -101,10 +101,17 @@ test("the report and its compact form state what the basket covers and why each 
     expect(full.notes).toContain("TWD1 (4.0% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.");
     // Every risk row is a number, not a dash.
     expect(full.sections.find((section) => section.title === "risk")!.rows!.every((row) => row.value !== "--")).toBe(true);
+    // The tail losses in money say what the basket they are taken on leaves out; the other rows do not.
+    const riskRows = full.sections.find((section) => section.title === "risk")!.rows!;
+    expect(riskRows.filter((row) => String(row.detail).includes("excludes")).map((row) => [row.label, row.detail])).toEqual([
+      ["1D VaR 95% (60D)", expect.stringMatching(/; of 365,500 USD basket; excludes EUR2, TWD1 \+7 more, 22% of value$/)],
+      ["1D expected shortfall (60D)", expect.stringMatching(/; of 365,500 USD basket; excludes EUR2, TWD1 \+7 more, 22% of value$/)],
+    ]);
 
     const compact = portfolioRiskHeadless.compact!(full, args);
     expect(compact.notes).toEqual(["Basket covers 78% of market value \u00b7 9 holdings left out; metadata.coverage lists each with its reason."]);
     expect(compact.errors).toBeUndefined();
+    expect(compact.sections[0]!.rows!.find((row) => String(row.label).startsWith("1D VaR"))?.detail).toContain("; excludes EUR2, TWD1 +7 more, 22% of value");
     const coverage = compact.metadata?.coverage as { share: number; leftOut: Array<{ symbol: string; reason: string; share: number }> };
     expect(coverage.share).toBeCloseTo(365_500 / 468_560, 10);
     expect(coverage.leftOut[0]).toMatchObject({ symbol: "EUR2", reason: "Foreign holdings: daily FX closes unavailable" });

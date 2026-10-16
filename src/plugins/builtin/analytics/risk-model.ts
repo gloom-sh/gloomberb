@@ -267,22 +267,52 @@ function outsideValue(
   const value = resolvePortfolioMarketValue(metrics, unit != null && Number.isFinite(unit) ? unit : null)?.gross;
   return value != null && Number.isFinite(value) ? value : null;
 }
-const coveragePercent = (share: number) => Math.floor(share * 100);
+// The epsilon keeps 29 of 100 at 29%, not the 28 that 0.29 * 100 rounds down to.
+const coveragePercent = (share: number) => Math.floor(share * 100 + 1e-9);
 const holdingCount = (count: number) => `${count} holding${count === 1 ? "" : "s"}`;
 const shareText = (share: number) =>
   share < 0.001 ? "under 0.1%" : `${(share * 100).toFixed(1)}%`;
+const convertedText = (coverage: RiskCoverage) =>
+  coverage.converted ? `${holdingCount(coverage.converted)} converted from local currency` : null;
 /**
  * "covers 78% of market value · 9 holdings left out · 2 converted from local
  * currency", or null when every holding is in the basket in its own USD listing.
+ * The compact result for Ask Gloom reads this form; the report and the pane
+ * name what is left out with `riskCoverageHeadline`.
  */
 export function riskCoverageText(coverage: RiskCoverage | undefined): string | null {
   if (!coverage) return null;
-  const converted = coverage.converted ? `${holdingCount(coverage.converted)} converted from local currency` : null;
+  const converted = convertedText(coverage);
   if (!coverage.leftOut.length) return converted;
   const covers = coverage.share == null
     ? "covers an unknown share of market value"
     : `covers ${coverage.unvalued ? "at most " : ""}${coveragePercent(coverage.share)}% of market value`;
   return [covers, `${holdingCount(coverage.leftOut.length)} left out`, ...(converted ? [converted] : [])].join(" · ");
+}
+/** Holdings named before "+N more" in the exclusion text. */
+const NAMED_EXCLUSIONS = 2;
+/**
+ * What the basket leaves out, by name and combined share, from the same
+ * covered share every other line reads: "excludes SQM, 12% of value" or
+ * "excludes SQM, ALB +1 more, 41% of value". The share is the complement of the
+ * covered percent, so the two always add to 100; it reads "at least" while a
+ * holding has no value, and a holding nothing values is named with "value
+ * unknown". Null when every holding is in the basket.
+ */
+export function riskExclusionText(coverage: RiskCoverage | undefined): string | null {
+  if (!coverage?.leftOut.length) return null;
+  const named = coverage.leftOut.slice(0, NAMED_EXCLUSIONS).map((row) => row.symbol).join(", ");
+  const more = coverage.leftOut.length - NAMED_EXCLUSIONS;
+  const names = more > 0 ? `${named} +${more} more` : named;
+  if (coverage.share == null || !coverage.leftOut.some((row) => (row.share ?? 0) > 0))
+    return `excludes ${names}, value unknown`;
+  const percent = 100 - coveragePercent(coverage.share);
+  return `excludes ${names}, ${coverage.unvalued ? "at least " : ""}${percent > 0 ? `${percent}%` : "under 1%"} of value`;
+}
+/** The line that leads what the basket views cover: what is left out, then what converted from local currency. */
+export function riskCoverageHeadline(coverage: RiskCoverage | undefined): string | null {
+  if (!coverage) return null;
+  return [riskExclusionText(coverage), convertedText(coverage)].filter(Boolean).join(" · ") || null;
 }
 /** A reason reads as the tail of a sentence, so its first word loses its capital unless it is an acronym ("FX", "USD"). */
 const lowerFirst = (text: string) => (/^[A-Z][a-z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text);
@@ -477,10 +507,14 @@ export function buildPortfolioRisk(
   };
   // Weights renormalize over the covered basket; nothing outside it is approximated into it.
   const members = sufficient ? qualifying : [];
-  const book = members.length ? concentration(members) : null;
+  const basketWeights = members.length ? concentration(members) : null;
   for (const holding of members)
     holding.weight =
-      book?.rows.find((row) => row.id === holding.id)?.weight ?? null;
+      basketWeights?.rows.find((row) => row.id === holding.id)?.weight ?? null;
+  // Concentration needs a value, not a return history: it reads every holding that has one, left out of the basket or not.
+  const book = concentration(
+    valued.filter((row) => row.marketValue! > 0).map((row) => ({ id: row.id, value: row.marketValue })),
+  );
   const closeMarked = members.filter((row) => row.markSource === "close").length;
   const converted = members.filter((row) => row.convertedFrom != null).length;
   const held = new Set(holdings.map((row) => row.id));
@@ -779,19 +813,19 @@ export function buildPortfolioRisk(
         id: "top",
         label: "Largest holding",
         value: book.top * 100,
-        unit: "% basket",
+        unit: "% value",
         percentile: null,
         asOf: market.fetchedAt,
-        detail: "Current value in the covered basket",
+        detail: "Current value of every priced holding",
       },
       {
         id: "top-five",
         label: "Largest five",
         value: book.topFive * 100,
-        unit: "% basket",
+        unit: "% value",
         percentile: null,
         asOf: market.fetchedAt,
-        detail: "Current value in the covered basket",
+        detail: "Current value of every priced holding",
       },
       {
         id: "hhi",

@@ -5,8 +5,10 @@ import {
   resolveDatedReturns,
   computeSharpeRatio,
   computeWeightedPortfolioReturns,
+  syntheticPositionUnsupportedReason,
   type DatedReturn,
 } from "./metrics";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function datedReturns(values: number[], startDay = 1): DatedReturn[] {
   return values.map((value, index) => ({
@@ -104,5 +106,31 @@ describe("computeBeta", () => {
     expect(recovered.returns.map((entry) => entry.value)).toEqual([0.01, 9 / 101]);
     expect(bad.high).toBe(102);
     expect(rejected.integrity?.sourcePoints[0]?.high).toBe(102);
+  });
+});
+
+describe("syntheticPositionUnsupportedReason", () => {
+  const reason = (assetCategory: string) => syntheticPositionUnsupportedReason(
+    createTestTicker("SQM", "SQM", { assetCategory, positions: [{ portfolio: "p", shares: 10, broker: "manual" }] }),
+    "USD",
+    "p",
+  );
+
+  test("depositary receipts are equities whatever spelling the asset type arrives in", () => {
+    for (const category of [
+      "American Depositary Receipt", "American Depositary Receipts", "American Depositary Share", "American Depositary Shares",
+      "american-depositary_receipt", "ADR", "adr", "ADS", "Global Depositary Receipt", "GDR", "Depositary Receipt",
+    ]) expect([category, reason(category)]).toEqual([category, null]);
+  });
+
+  test("the equity categories it took before still count, in any case or spacing", () => {
+    for (const category of ["", "STK", "Stock", "Common Stock", "COMMON_STOCK", "common-stock", "Equity", "ETF", "ETN", "Fund", "REIT"])
+      expect([category, reason(category)]).toEqual([category, null]);
+  });
+
+  test("crypto and contracts stay outside the basket", () => {
+    expect(reason("Cryptocurrency")).toBe("Crypto is not covered by the equity basket");
+    for (const category of ["OPT", "Future", "Bond", "Depositary Bank"])
+      expect([category, reason(category)]).toEqual([category, "Asset type is not covered by the equity basket"]);
   });
 });

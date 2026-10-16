@@ -11,6 +11,7 @@ import {
   riskCoverageNotices,
   riskCoverageShortfall,
   riskCoverageText,
+  riskExclusionText,
   RISK_VIEWS,
   riskEvidence,
   riskPercentile,
@@ -48,14 +49,18 @@ const COMPACT_ROW_LIMIT = 100;
 /** The correlation view is every pair of holdings; the compact result keeps the strongest. */
 const COMPACT_PAIR_LIMIT = 25;
 
-/** Formatted like the pane; metadata.model keeps full precision. */
-function displayRow(row: RiskDisplayRow) {
+/**
+ * Formatted like the pane; metadata.model keeps full precision. A tail loss in
+ * money is of the covered basket, so its evidence names what the basket leaves
+ * out, as the pane's footer does beside the same figure.
+ */
+function displayRow(row: RiskDisplayRow, exclusion: string | null) {
   return {
     label: row.label,
     value: riskValue(row),
     percentile: riskPercentile(row),
     asOf: row.asOf?.slice(0, 10) ?? null,
-    detail: riskEvidence(row),
+    detail: exclusion && row.amount != null ? `${riskEvidence(row)}; ${exclusion}` : riskEvidence(row),
     ...(row.amount != null ? { amount: row.amount, currency: row.amountCurrency ?? null } : {}),
   };
 }
@@ -276,6 +281,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
                 : model.complete;
     // A basket view with too little covered shows no estimate, and the report says why rather than leaving dashes.
     const shortfall = BASKET_VIEWS.has(view as RiskView) ? coverageLine(model.coverage).error : undefined;
+    const exclusion = riskExclusionText(model.coverage);
     return {
       complete,
       errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
@@ -283,7 +289,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({
         title: view,
         columns: RISK_COLUMNS,
-        rows: model.rows[view].map(displayRow),
+        rows: model.rows[view].map((row) => displayRow(row, exclusion)),
       })),
       metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window, notices },
     };
@@ -296,6 +302,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Each left-out holding is in metadata.coverage; the notes keep one line for all of them.
     const perHolding = new Set(riskCoverageNotices(model.coverage));
     const basketView = BASKET_VIEWS.has(view);
+    const exclusion = riskExclusionText(model.coverage);
     const coverage = basketView ? coverageLine(model.coverage) : {};
     const errors = [...new Set([...(coverage.error ? [coverage.error] : []), ...(result.errors ?? [])])];
     const notes = [...(coverage.note ? [coverage.note] : []), ...(result.notes ?? []).filter((note) => !perHolding.has(note))];
@@ -303,7 +310,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: result.complete,
       ...(errors.length ? { errors } : {}),
       ...(notes.length ? { notes } : {}),
-      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map(displayRow) }],
+      sections: [{ title: view, columns: RISK_COLUMNS, rows: rows.map((row) => displayRow(row, exclusion)) }],
       metadata: {
         portfolio: {
           id: model.portfolio.id,

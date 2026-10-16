@@ -52,9 +52,9 @@ import {
   HOLDINGS_SUMMARY_ROW_IDS,
   portfolioRiskRequests,
   portfolioRiskTickers,
+  riskCoverageHeadline,
   riskCoverageNotices,
   riskCoverageShortfall,
-  riskCoverageText,
   riskPercentile,
   riskAmountBase,
   riskEvidence,
@@ -115,9 +115,9 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
   return rows.map((row) => ({
     id: row.id,
     label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
-    value: row.value == null ? "--" : row.unit === "% basket" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
-    // The same method note sits on both weights.
-    detail: row.unit === "% basket" ? "of basket" : row.detail,
+    value: row.value == null ? "--" : row.unit === "% value" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
+    // The same note sits on both shares.
+    detail: row.unit === "% value" ? "of market value" : row.detail,
   }));
 }
 /**
@@ -458,8 +458,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
-  // What the basket views cover, unless the body already says why they show nothing.
-  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageText(model.coverage) : null;
+  // What the basket views leave out, unless the body already says why they show nothing.
+  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageHeadline(model.coverage) : null;
   const asOfDate = model?.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
   // Dated evidence only when a row has a date; a missing date is not a claim about history.
   const asOfText = !model
