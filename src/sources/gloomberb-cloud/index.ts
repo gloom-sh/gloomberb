@@ -57,6 +57,7 @@ import {
 import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
   formatCloudDateTime,
+  formatCloudHistoryEnd,
   isEmptyCloudStatus,
   mapBatchError,
   NOT_FOUND_REASON,
@@ -736,7 +737,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
-        endDate: formatCloudDateTime(endDate, includeTime, exchange),
+        endDate: formatCloudHistoryEnd(endDate, includeTime, exchange),
         ...(session ? { session } : {}),
       }), _context),
       `Cloud chart data is unavailable for ${ticker}`,
