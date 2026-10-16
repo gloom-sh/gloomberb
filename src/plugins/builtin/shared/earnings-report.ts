@@ -1,4 +1,5 @@
-import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import type { CorporateActionsData, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import { formatNumber } from "../../../utils/format";
 
 /**
  * How every earnings surface (ERN, EE, the corporate-actions events and
@@ -43,6 +44,43 @@ export function showsEpsBasis(row: { epsActual: number | null | undefined; epsBa
 /** The basis in a table cell or a detail line. */
 export function epsBasisShort(basis: EarningsEpsBasis | null): string {
   return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adj" : "?";
+}
+
+/** The basis as every earnings table names it: GAAP, adj, basis unknown. */
+const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "basis unknown" };
+
+type EarningsRecord = CorporateActionsData["earnings"][number];
+
+/**
+ * What follows an earnings row's EPS, one phrase per part. A reported row
+ * names its basis and its beat; a pending one whether its date is announced,
+ * its analysts and an adjusted estimate's basis.
+ */
+export function earningsDetailParts(earning: EarningsRecord): string[] {
+  if (earning.epsActual == null) {
+    const status = earningsDateStatus(earning.dateStatus);
+    return [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
+      earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
+  }
+  return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))],
+    earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
+    .filter((part): part is string => !!part);
+}
+
+/** A reported row names its basis and beat; a pending one whether its date is announced, its analysts and an adjusted estimate's basis. */
+export function earningsDetail(earning: EarningsRecord): string {
+  const detail = earningsDetailParts(earning).join(", ");
+  if (earning.epsActual == null) return detail || "Pending";
+  return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The quarter by the month it ends in, e.g. "Jun 2026", from a date or a YYYY-MM period; "-" when it is neither. */
+export function quarterLabel(date: string | undefined): string {
+  const match = /^(\d{4})-(\d{2})/.exec(date ?? "");
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  return match && month ? `${month} ${match[1]}` : "-";
 }
 
 /** Actual over estimate minus one, against the estimate's size so a negative estimate reads the right way. */

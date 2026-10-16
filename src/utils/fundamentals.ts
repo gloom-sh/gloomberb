@@ -72,12 +72,17 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}.`;
 }
 
+/** What names the currency of the trailing figures: the fundamentals' own labels, else the statements'. */
+type FundamentalsCurrencies = Pick<TickerFinancials, "financialCurrency"> & {
+  fundamentals?: Pick<Fundamentals, "financialCurrency" | "epsCurrency"> | null;
+};
+
 /**
  * The currency of the trailing EPS, revenue, income and cash flows: the one the fundamentals declare, else the
  * one the statements report in. Never the quote's, which a depositary receipt can differ from (USD quote, TWD books).
  */
 export function fundamentalsCurrency(
-  financials: Pick<TickerFinancials, "fundamentals" | "financialCurrency"> | null | undefined,
+  financials: FundamentalsCurrencies | null | undefined,
 ): string | undefined {
   return financials?.fundamentals?.financialCurrency?.trim() || financials?.financialCurrency?.trim() || undefined;
 }
@@ -87,7 +92,7 @@ export function fundamentalsCurrency(
  * to the listing's currency beside revenue left in the reporting one), else the block's.
  */
 export function fundamentalsEpsCurrency(
-  financials: Pick<TickerFinancials, "fundamentals" | "financialCurrency"> | null | undefined,
+  financials: FundamentalsCurrencies | null | undefined,
 ): string | undefined {
   return financials?.fundamentals?.epsCurrency?.trim() || fundamentalsCurrency(financials);
 }

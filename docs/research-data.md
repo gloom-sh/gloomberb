@@ -20,6 +20,8 @@ A quote needs a finite, positive observation timestamp that is no later than the
 
 Earnings estimates, corporate actions, analyst research and historical prices retain the last successful response when a refresh fails, with the failure shown in the footer. A failed refresh does not advance the retrieval time. Changing the ticker, venue or request range clears the previous response; explicit account or access rejection clears denied research. A successful empty response also replaces old data.
 
+The TTM row of `EE` and `fn events` shows the trailing diluted EPS that `ticker` prints as EPS (TTM), labelled GAAP diluted, so the two agree for a symbol. It is never the sum of the reported quarter rows above it, which can mix GAAP and adjusted figures: only when all four quarters are adjusted does its detail add their sum (`adj sum`). When no trailing figure is served, the row is the four statement quarters' diluted EPS summed, labelled as statements. That sum can sit a cent from the served figure, because a quarter's EPS is over that quarter's weighted share count and the quarters need not add up to the year (PLTR's four quarters add to 1.17, the trailing figure is 1.16). `gloomberb events <symbol>` names each earnings row's EPS basis and fiscal quarter with the words `EE` uses, and shows an upcoming estimate to the cent with its date status and analyst count.
+
 ## Charts, comparisons, and correlations
 
 See [chart history, retention and cadence](data-quality/chart-history.md) for source limits, calculation lookback, interval fallbacks and snapshot replay.

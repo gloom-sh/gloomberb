@@ -45,6 +45,7 @@ import {
   buildEventRows,
   eventSourceNotice,
   formatEventMetric,
+  type EventFinancials,
   type EventRow,
   type EventStatus,
 } from "./event-model";
@@ -423,13 +424,20 @@ export function CorporateActionsView({
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
   useCompanyDisclosureLinks(symbol);
   // The shared ticker snapshot already subscribes to financials for this pane.
-  // Only the statements are read, so the rows do not rebuild on price ticks.
+  // Only the statements and the trailing EPS are read, so the rows do not rebuild on price ticks.
   const { financials: tickerFinancials } = usePaneTicker();
   const quarterlyStatements = tickerFinancials?.quarterlyStatements;
   const financialCurrency = tickerFinancials?.financialCurrency;
-  const financialsData = useMemo(
-    () => (quarterlyStatements || financialCurrency ? { quarterlyStatements: quarterlyStatements ?? [], financialCurrency } : null),
-    [financialCurrency, quarterlyStatements],
+  const trailingEps = tickerFinancials?.fundamentals?.eps;
+  const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
+  const fundamentalsCurrency = tickerFinancials?.fundamentals?.financialCurrency;
+  const financialsData = useMemo<EventFinancials | null>(
+    () => (quarterlyStatements || financialCurrency || trailingEps != null ? {
+      quarterlyStatements: quarterlyStatements ?? [],
+      financialCurrency,
+      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency },
+    } : null),
+    [financialCurrency, fundamentalsCurrency, quarterlyStatements, trailingEps, trailingEpsCurrency],
   );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");

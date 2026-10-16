@@ -15,12 +15,15 @@ import {
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { declaredDividends } from "../../../utils/declared-dividends";
+import { fundamentalsEpsCurrency } from "../../../utils/fundamentals";
 import {
   earningsDateStatus,
+  earningsDetail,
   earningsEpsBasis,
   epsBasisName,
   epsSurprise,
   inFiscalMonth,
+  quarterLabel,
   showsEpsBasis,
   type EpsBasisName,
 } from "../shared/earnings-report";
@@ -48,7 +51,7 @@ export interface EventRow {
   epsEstimate?: number;
   epsDifference?: number;
   surprisePercent?: number;
-  /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. */
+  /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
   /** Analysts behind `epsEstimate`, when known. */
   epsAnalysts?: number;
@@ -94,15 +97,6 @@ function sortedQuarterlyStatements(
   return [...(financials?.quarterlyStatements ?? [])]
     .filter((statement) => statement.date)
     .sort((left, right) => left.date.localeCompare(right.date));
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** The quarter by the month it ends in, e.g. "Jun 2026", from a date or a YYYY-MM period. */
-function quarterLabel(date: string | undefined): string {
-  const match = /^(\d{4})-(\d{2})/.exec(date ?? "");
-  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
-  return match && month ? `${month} ${match[1]}` : "-";
 }
 
 function statementForEarningsDate(
@@ -174,71 +168,65 @@ function estimateValue(pair: EstimatePair): string {
 }
 
 /**
- * The TTM row sits under the reported quarters, so its EPS sums those rows'
- * EPS (often adjusted) rather than statement GAAP EPS whenever the four
- * statement quarters each have a reported row. Quarters with nothing to
- * adjust read GAAP, so any adjusted quarter makes the sum adjusted.
+ * What the TTM row reads: the statements for its four quarters and revenue, and the trailing EPS Gloom Cloud serves
+ * with the fundamentals, the figure `ticker` prints as EPS (TTM).
  */
-function reportedTtmEps(
+export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
+  fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency"> | null;
+};
+
+/**
+ * The four reported rows behind the latest four statement quarters, summed, only when every one is on the adjusted
+ * basis and in one currency. Quarters of different or unknown bases never add up to anything.
+ */
+function adjustedQuarterSum(
   latestFour: readonly FinancialStatement[],
   earnings: CorporateActionsData["earnings"],
-): { eps: number; currency?: string; basis: EpsBasisName } | null {
+): number | null {
   if (latestFour.length < 4) return null;
   const reported = earnings.filter((earning) => earning.epsActual != null);
   const quarters = latestFour.map((statement) => {
     const matches = reported.filter((earning) => statementForEarningsDate([statement], earning) === statement);
     return matches.length === 1 ? matches[0]! : null;
   });
-  if (quarters.some((earning) => earning == null)) return null;
-  const currencies = new Set(quarters.map((earning) => earning!.currency));
-  if (currencies.size !== 1) return null;
-  const bases = quarters.map((earning) => epsBasisName(earningsEpsBasis(earning!.epsBasis)));
-  const basis = bases.includes("unknown") ? "unknown" : bases.includes("adjusted") ? "adjusted" : "GAAP";
-  return { eps: quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0), currency: quarters[0]!.currency, basis };
+  if (quarters.some((earning) => earning == null || earningsEpsBasis(earning.epsBasis) !== "adjusted")) return null;
+  if (new Set(quarters.map((earning) => earning!.currency)).size !== 1) return null;
+  return quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0);
 }
 
-const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "basis unknown" };
-
+/**
+ * The TTM row's EPS is the GAAP diluted trailing figure, the one `ticker` prints as EPS (TTM). Without it, the four
+ * statement quarters' diluted EPS summed. The reported rows above it are often adjusted, so they are never added to
+ * it: only when all four are adjusted does the detail also give their sum.
+ */
 function ttmRow(
   quarterlyStatements: readonly FinancialStatement[],
   earnings: CorporateActionsData["earnings"],
-  financialCurrency?: string,
+  financials: EventFinancials | null,
 ): EventRow | null {
   const latestFour = quarterlyStatements.slice(-4);
   const ttm = computeTTM([...quarterlyStatements]);
   if (!ttm || (ttm.totalRevenue == null && ttm.eps == null)) return null;
   const latest = latestFour.at(-1);
-  const reportedEps = reportedTtmEps(latestFour, earnings);
+  const trailingEps = financials?.fundamentals?.eps;
+  const served = typeof trailingEps === "number" && Number.isFinite(trailingEps);
+  const eps = served ? trailingEps : ttm.eps;
+  const adjusted = eps == null ? null : adjustedQuarterSum(latestFour, earnings);
   return {
     id: `ttm:${latest?.date ?? ""}`,
     date: latest?.date ?? "",
     status: "TTM",
     period: "4 qtrs",
-    // Statement EPS is not the sum of the (often adjusted) rows above it.
-    detail: !reportedEps && ttm.eps != null ? "statement EPS"
-      : reportedEps && reportedEps.basis !== "unknown" ? `${BASIS_TEXT[reportedEps.basis]} sum` : "sum",
-    epsCurrency: reportedEps ? reportedEps.currency : ttm.currency ?? financialCurrency,
-    revenueCurrency: ttm.currency ?? financialCurrency,
-    annualEps: reportedEps ? reportedEps.eps : ttm.eps,
+    detail: [eps == null ? "statement sum" : served ? "GAAP diluted" : "GAAP diluted (statements)",
+      adjusted == null ? null : `adj sum ${formatNumber(adjusted, 2)}`].filter(Boolean).join(", "),
+    epsCurrency: served ? fundamentalsEpsCurrency(financials) : ttm.currency ?? financials?.financialCurrency,
+    revenueCurrency: ttm.currency ?? financials?.financialCurrency,
+    epsBasis: eps == null ? undefined : "GAAP",
+    annualEps: eps,
     annualRevenue: ttm.totalRevenue,
     value: "-",
     tone: "muted",
   };
-}
-
-/** A reported row names its basis and beat; a pending one whether its date is announced, its analysts and an adjusted estimate's basis. */
-function earningsDetail(earning: CorporateActionsData["earnings"][number]): string {
-  if (earning.epsActual == null) {
-    const status = earningsDateStatus(earning.dateStatus);
-    const parts = [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
-      earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null];
-    return parts.filter(Boolean).join(", ") || "Pending";
-  }
-  const basis = BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))];
-  const detail = earning.difference == null
-    ? basis
-    : `${basis}, ${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`;
-  return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
 }
 
 function earningsRowIds(earnings: CorporateActionsData["earnings"]): string[] {
@@ -307,13 +295,13 @@ function eventSortRank(status: EventStatus): number {
 export function buildEventRows(
   data: CorporateActionsData | null,
   estimates: AnalystResearchData | null,
-  financials: Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> | null,
+  financials: EventFinancials | null,
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
   const quarterlyStatements = sortedQuarterlyStatements(financials);
   const earnings = data?.earnings ?? [];
-  const ttm = ttmRow(quarterlyStatements, earnings, financials?.financialCurrency);
+  const ttm = ttmRow(quarterlyStatements, earnings, financials);
   if (ttm) rows.push(ttm);
 
   const earningsIds = earningsRowIds(earnings);

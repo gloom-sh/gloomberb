@@ -19,7 +19,7 @@ import {
   quoteSessionLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
-import { formatCompact, formatDistributionAmount, formatPercent, formatPercentRaw } from "../../utils/format";
+import { formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent, formatPercentRaw } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
@@ -115,6 +115,14 @@ import {
   REPORTED_DATA,
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
+import {
+  earningsDateStatus,
+  earningsDetailParts,
+  earningsEpsBasis,
+  epsBasisName,
+  quarterLabel,
+  showsEpsBasis,
+} from "../../plugins/builtin/shared/earnings-report";
 import {
   tradingBoardNote,
   EXCHANGE_OPTION,
@@ -488,19 +496,31 @@ function corporateActionRows(data: CorporateActionsData) {
   // An upcoming estimate carries no unit of its own; it shares the one every reported quarter states.
   const reportedCurrencies = new Set(data.earnings.map((event) => event.currency?.trim()).filter(Boolean));
   const earningsCurrency = reportedCurrencies.size === 1 ? [...reportedCurrencies][0] : undefined;
+  // To the cent, as ERN and EE show it; a consensus average carries more digits.
   const eps = (value: number | undefined, unit: string | undefined) => (
-    value == null || !unit ? cleanDecimal(value)
-      : /^[A-Z]{3}$/.test(unit) ? formatDistributionAmount(value, unit) : `${cleanDecimal(value)} ${unit}`
+    value == null || !Number.isFinite(value) ? "-"
+      : !unit ? formatNumber(value, 2)
+        : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
   return [
     ...data.earnings.map((event) => {
       const unit = event.currency?.trim() || earningsCurrency;
+      const quarter = quarterLabel(event.fiscalPeriod);
+      const basis = earningsEpsBasis(event.epsBasis);
+      // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
+      const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === "-" ? null : quarter].filter(Boolean).join(", ");
       return {
         type: "earnings",
         date: event.date,
-        // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
-        detail: (event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`)
-          + (event.dateType === "fiscal-period-end" ? " (period end)" : ""),
+        // The basis, beat, date status and analysts are the words EE uses for the same row.
+        detail: [event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`,
+          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : ""),
+        epsActual: event.epsActual,
+        epsEstimate: event.epsEstimate,
+        epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
+        epsAnalysts: event.epsAnalysts,
+        dateStatus: earningsDateStatus(event.dateStatus) ?? undefined,
+        fiscalPeriod: event.fiscalPeriod,
       };
     }),
     ...data.dividends.map((event) => ({
