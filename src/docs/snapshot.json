@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-15",
+ "updatedAt": "2026-10-16",
  "categories": [
   {
    "id": "research",
@@ -268,7 +268,7 @@
    "code": "OPX",
    "name": "Options positioning",
    "description": "Open interest, max pain, gamma",
-   "detail": "Open interest by strike with max pain, each expiry's put/call ratio, and dealer gamma by strike with its flip level. Open interest is about two sessions old; the footer names its date. GEX and MAXPAIN open it too.",
+   "detail": "Open interest by strike with max pain, each expiry's put/call ratio and net dealer gamma, and dealer gamma by strike with its flip level and call and put walls. Open interest is about two sessions old; the footer names its date. GEX and MAXPAIN open it too.",
    "category": "research",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/OPX.png",
@@ -4419,6 +4419,216 @@
     {
      "type": "paragraph",
      "text": "MCP `power.board`, `power.summary`, `power.history`, `power.project`, `power.coverage`. Related: [GPU rental prices](/docs/gpu-rental-prices), [`SPLC`](/docs/functions#splc)."
+    }
+   ]
+  },
+  {
+   "slug": "options-positioning",
+   "title": "Options positioning and GEX",
+   "lead": "OPX shows where open interest sits on a US option underlying; GEX estimates the gamma dealers carry against it",
+   "category": "Understand the data",
+   "tags": [
+    "GEX",
+    "OPX",
+    "MAXPAIN",
+    "gamma",
+    "open interest",
+    "max pain",
+    "call wall",
+    "put wall"
+   ],
+   "updatedAt": "2026-10-16",
+   "blocks": [
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Open it"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Command",
+      "Opens"
+     ],
+     "rows": [
+      [
+       "`GEX SPY`",
+       "Dealer gamma by strike, every expiry summed"
+      ],
+      [
+       "`OPX SPY`",
+       "Open interest by strike for one expiry, with max pain"
+      ],
+      [
+       "`OPX SPX`",
+       "The S&P 500 index with its SPX and SPXW options"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "NDX and RUT options are not covered; QQQ and IWM follow the same indexes."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "What you see"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Tab",
+      "Shows"
+     ],
+     "rows": [
+      [
+       "Strikes",
+       "Call and put open interest by strike for one expiry, max pain and spot"
+      ],
+      [
+       "Expiries",
+       "Each expiry's open interest, put/call ratio, max pain and net GEX"
+      ],
+      [
+       "GEX",
+       "Net GEX by strike, the flip, call and put walls and the dealer range"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`[` and `]` step through expiries. On GEX, `All` sums every expiry."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "How GEX is estimated"
+    },
+    {
+     "type": "paragraph",
+     "text": "Nobody publishes who holds which option. GEX assumes customers sell calls and buy puts, so **dealers are long every call and short every put**. Net GEX is call gamma minus put gamma."
+    },
+    {
+     "type": "paragraph",
+     "text": "Positive means dealers hedge against a move: they sell rallies and buy dips. Negative means they hedge with it."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Figure",
+      "Means"
+     ],
+     "rows": [
+      [
+       "Unit",
+       "Dollars of dealer delta per 1% move in the underlying"
+      ],
+      [
+       "Flip",
+       "The spot level, within 15% of spot, where net GEX changes sign"
+      ],
+      [
+       "Call wall",
+       "The strike with the most call gamma, in one expiry or all"
+      ],
+      [
+       "Put wall",
+       "The strike with the most put gamma, in one expiry or all"
+      ],
+      [
+       "Dealer range",
+       "Net GEX if dealers held only 25% to 75% of each side"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "The Expiries tab's net GEX uses the same strikes and volatilities as `All`, so its rows add up to it."
+    },
+    {
+     "type": "details",
+     "summary": "How each figure is computed",
+     "blocks": [
+      {
+       "type": "list",
+       "items": [
+        "Gamma per contract is Black-Scholes gamma with the forward at spot, times the 100-share multiplier. Time runs to 16:00 New York on the expiry date, at least one hour.",
+        "Each strike's volatility comes from its expiry's out-of-the-money quotes, linear between quoted strikes and flat beyond. An expiry without usable quotes is left out and named.",
+        "GEX at a strike is gamma × 100 × spot × 1% of spot × open interest.",
+        "The flip reprices net GEX from 15% below to 15% above spot in 0.25% steps, each strike keeping its volatility, and takes the sign change nearest spot.",
+        "A tie for a wall goes to the lowest strike. Walls mark where hedging is heaviest, not levels the price has to respect."
+       ]
+      }
+     ]
+    },
+    {
+     "type": "details",
+     "summary": "Dealer range and box spreads",
+     "blocks": [
+      {
+       "type": "list",
+       "items": [
+        "The range sets the dealer share anywhere from 25% to 75% of the calls and, separately, of the puts. The low end is 25% of call gamma minus 75% of put gamma, the high end the reverse.",
+        "The headline figure counts all of the open interest, so it can sit outside the range. When the range spans zero, the sign of net GEX depends on who holds which side.",
+        "On SPX and XSP, matched call and put open interest at paired round strikes far from spot is read as box spreads and taken out of both sides. Net GEX and the flip stay the same; the range narrows and says `boxes out`."
+       ]
+      }
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "How fresh it is"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Input",
+      "As of"
+     ],
+     "rows": [
+      [
+       "Open interest",
+       "About two sessions old. The footer names its date."
+      ],
+      [
+       "Spot and option quotes",
+       "15 minutes behind on Free and signed out, live on Pro"
+      ],
+      [
+       "GEX",
+       "Repriced at the current spot every minute while the pane is open"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "During a session, GEX applies today's spot and volatilities to open interest from about two sessions back."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Exports"
+    },
+    {
+     "type": "paragraph",
+     "text": "`gloomberb fn GEX SPY --csv` opens with a summary: spot and quote times, the open interest session, the unit, net GEX, the dealer range, the flip and both walls. Puts export negative, so call and put GEX add up to net. `--json` has the same under `metadata.gamma`."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Keep in mind"
+    },
+    {
+     "type": "list",
+     "items": [
+      "GEX is a model on open interest, not measured dealer positions. On single stocks the customer side can be the reverse.",
+      "VIX options settle on VIX futures, so VIX has no GEX tab."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Learn the idea in the Academy: [Dealer gamma](/academy/options-and-volatility/positioning-and-flow/dealer-gamma). Related: [`OPX`](/docs/functions#opx), [CLI](/docs/cli-functions)."
     }
    ]
   },
