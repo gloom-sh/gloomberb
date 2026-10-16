@@ -4,13 +4,11 @@ import {
   remoteOperationDescription,
   remoteOperationToolName,
 } from "../../../../remote/schema";
-import type { PaneDef, PaneTemplateDef } from "../../../../types/plugin";
 import type {
   RemoteJsonSchema,
   RemoteSideEffectLevel,
   RemoteWriteTier,
 } from "../../../../remote/types";
-import { getLoadablePlugins } from "../../../catalog";
 import { getSharedRegistry } from "../../../registry";
 import { describeViewSources, type ViewSourceCatalog } from "../../custom-view/sources";
 import {
@@ -221,29 +219,16 @@ const TOOLS = buildTools();
 const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 /**
- * The functions of the plugins that ship with the app, for a caller with no
- * running registry (the snapshot Gloom Cloud keeps for before a terminal
- * connects). Every built-in function declares its pane and template up front.
- */
-function builtinViewSourceCatalog(): ViewSourceCatalog {
-  const panes = new Map<string, PaneDef>();
-  const paneTemplates = new Map<string, PaneTemplateDef>();
-  for (const plugin of getLoadablePlugins()) {
-    for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
-    for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
-  }
-  return { panes, paneTemplates };
-}
-
-/**
  * What the app announces to Gloom Cloud. The tool that creates a view names
- * the functions it can read, from `catalog`: the running registry, which has
- * the installed plugins' too, unless a caller passes one.
+ * the functions it can read from the running registry, installed plugins
+ * included. The snapshot Gloom Cloud keeps for before a terminal connects is
+ * made with no registry, so it carries the rule and not the list: a view can
+ * only be created from an open terminal, which announces its own.
  */
 export function terminalRelayToolDescriptors(
-  catalog: ViewSourceCatalog = getSharedRegistry() ?? builtinViewSourceCatalog(),
+  catalog: ViewSourceCatalog | undefined = getSharedRegistry(),
 ): TerminalRelayToolDescriptor[] {
-  return buildTools(describeViewSources(catalog)).map(({ binding: _binding, ...descriptor }) => descriptor);
+  return buildTools(catalog ? describeViewSources(catalog) : "").map(({ binding: _binding, ...descriptor }) => descriptor);
 }
 
 /** The app's own table: a name it did not generate is never run. */

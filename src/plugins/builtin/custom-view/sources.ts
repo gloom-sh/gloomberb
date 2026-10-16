@@ -85,14 +85,12 @@ function describeViewSourceGroups(sources: readonly ViewSourceInfo[]): string {
 
 /**
  * What the assistant's view tools say about their sources: the codes by the
- * argument each takes, and how options are written. An empty catalog says
- * nothing, so a host with no functions never advertises any.
+ * argument each takes. An empty catalog says nothing, so a host with no
+ * functions never advertises any.
  */
 export function describeViewSources(catalog: ViewSourceCatalog): string {
   const sources = listViewSources(catalog);
-  if (sources.length === 0) return "";
-  return `source.pane is one of these function codes, never an invented name, by what each takes as argument (always one string, several tickers separated by spaces: "CME AAPL"): ${describeViewSourceGroups(sources)}. `
-    + "options sets the function's own flags as { flag: value }; a wrong flag or value is answered with the ones it takes.";
+  return sources.length === 0 ? "" : `Valid function codes, by what each takes as argument: ${describeViewSourceGroups(sources)}.`;
 }
 
 function nameWords(text: string): string[] {
