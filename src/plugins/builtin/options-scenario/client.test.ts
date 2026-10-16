@@ -262,9 +262,11 @@ describe("scenario headless inputs", () => {
     // --shares 0 values the options alone; a what-if spot leaves the shares bought at the market.
     expect(scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", shares: "0" }, market)!.underlying).toBeUndefined();
     expect(scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", spot: "104" }, market)!.underlying!.price).toBe(collar.spot);
-    // Any typed position can hold shares too.
-    expect(scenarioPositionFromSettings({ symbol: "AAPL", legs: "put,90,2026-12-18,2,3,25", shares: "200" }, market)!.underlying)
-      .toEqual({ quantity: 200, price: 100 });
+    // Typed legs buy their shares at the position's spot: a typed one whether or not the market loaded, else the market's.
+    const typed = { symbol: "AAPL", legs: "put,90,2026-12-18,2,3,25", shares: "200" };
+    expect(scenarioPositionFromSettings(typed, market)!.underlying).toEqual({ quantity: 200, price: 100 });
+    expect(scenarioPositionFromSettings({ ...typed, spot: "96" }, market)!.underlying!.price).toBe(96);
+    expect(scenarioPositionFromSettings({ ...typed, spot: "96", rate: "4", dividendYield: "0" })!.underlying!.price).toBe(96);
     for (const [settings, error] of [[{ putStrike: "110", callStrike: "90" }, "put strike must be below its call strike"],
       [{ strike: "100" }, "use --put-strike and --call-strike"], [{ putStrike: "92" }, "nearest quoted strikes: 85, 90, 95, 100"],
       [{ shares: "1.5" }, "shares must be a whole number"]] as const) {

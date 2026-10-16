@@ -111,10 +111,10 @@ export function loadUnderlyingFinancials(
 
 /**
  * Spot and dividend yield for IV and delta, read from the underlying the way the
- * options pane does; missing ones stay missing. The dividend yield is the one OSA
- * values the underlying at (`loadModelDividendYield`): stated, or 0 for a
- * history with no dividend paid. `financials` shares one read of them with a
- * caller that needs more of them.
+ * options pane does; missing ones stay missing. The dividend yield is any the
+ * fundamentals state, stale or not, else, as OSA reads it
+ * (`loadModelDividendYield`), 0 for a history with no dividend paid.
+ * `financials` shares one read of them with a caller that needs more of them.
  */
 export async function loadOptionModelInputs(
   dataProvider: Pick<DataProvider, "getTickerFinancials" | "getCorporateActions">,
@@ -127,7 +127,7 @@ export async function loadOptionModelInputs(
   const current = [await quote, financials?.quote]
     .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
   const { symbol, exchange } = listing.request;
-  const dividend = await loadModelDividendYield(financials, symbol,
+  const dividend = await loadModelDividendYield(financials?.fundamentals?.dividendYield, symbol,
     dataProvider.getCorporateActions ? () => dataProvider.getCorporateActions!(symbol, exchange) : null);
   return {
     ...(current ? { spot: current.price, quote: current } : {}),

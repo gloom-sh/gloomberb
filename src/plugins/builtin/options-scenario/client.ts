@@ -106,9 +106,16 @@ export async function loadScenarioMarket(
   const financialsEntry = entry(financialsResult, "Dividend yield");
   const financials = financialsEntry ? resolveEntryValue(financialsEntry) : null;
   const financialsSymbol = financials?.quote?.symbol ?? financials?.quoteMetadata?.symbol;
-  // The options chain reads the same yield: the stated one, else 0 for a history with no dividend paid.
-  const dividend = await abortable(loadModelDividendYield(financialsEntry?.error ? null : financials, symbol,
-    dependencies.loadCorporateActions ? () => dependencies.loadCorporateActions!(request.instrument) : null, now), request.signal, CANCELLED);
+  const fundamentals = financials?.fundamentals;
+  // Only a current yield stated for this symbol; else, as the options chain, 0 for a history with no dividend paid.
+  const stated = symbolMatches(financialsSymbol, symbol) && !fundamentals?.stale && !financialsEntry?.error
+    ? fundamentals?.dividendYield : null;
+  const dividend = await loadModelDividendYield(stated, symbol,
+    dependencies.loadCorporateActions ? () => dependencies.loadCorporateActions!(request.instrument) : null,
+    { now, signal: request.signal }).catch((error: unknown) => {
+    if (request.signal?.aborted) throw abortError(CANCELLED);
+    throw error;
+  });
   if (request.signal?.aborted) throw abortError(CANCELLED);
   if (!dividend) warnings.push("Dividend yield unavailable; supply an explicit assumption");
   let chainEntry = entry(chainResult, "Options chain");
@@ -250,8 +257,9 @@ export function scenarioPositionFromSettings(
     throw new Error("A collar's put strike must be below its call strike");
   }
   const shares = sharesSetting(settings);
-  // The spot shares are bought at: where the market is, before any what-if.
-  let shareEntry = market?.spot ?? spot;
+  // Typed legs buy the shares at the position's spot, a typed --spot when given. A seed buys them where its
+  // quotes put the spot, else at the market's, and a typed --spot stays a what-if from there.
+  let shareEntry: number | null | undefined;
   if (!legs.length && supplied(settings.strategy)) {
     if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle, put, csp or collar");
     if (!market?.chain || market.warnings.includes("Options chain is stale")) {
@@ -262,6 +270,7 @@ export function scenarioPositionFromSettings(
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
     const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes);
     legs = seeded.legs;
+    shareEntry = market.spot;
     // Mids priced off the parity forward are worth their cost only at the spot
     // that forward implies on the scenario's own rate and dividend yield. The
     // last print can sit away from it when the quotes are older (the close's
