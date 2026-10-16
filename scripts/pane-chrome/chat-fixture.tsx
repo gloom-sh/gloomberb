@@ -54,7 +54,7 @@ export interface ChatFake {
   /** Whether the view has its live connection to the channel. */
   connected(): boolean;
   /** Another member writes: the message arrives over the socket. */
-  deliver(content: string, options?: { user?: string; attachment?: boolean }): ChatMessage;
+  deliver(content: string, options?: { user?: string; attachment?: boolean; imageUrl?: string; replyToId?: string }): ChatMessage;
   /** The server changes a message (an edit, a reaction count): a fresh copy arrives. */
   update(id: string, change: (message: ChatMessage) => ChatMessage): void;
   /** Holds history pages until `release()`, instead of `latency` ms. */
@@ -113,9 +113,13 @@ function invented(index: number, extra: Partial<ChatMessage> = {}): ChatMessage 
     // Two minutes apart, so a run by one author groups and a change of author does not.
     createdAt: new Date(BASE_TIME + index * 120_000).toISOString(),
     user: MEMBERS[author]!,
-    ...(params.get("reactions") === "1" ? { reactions: [{ emoji: "👍", count: 1, me: false, users: [{ id: "u1", username: "quill" }] }] } : {}),
+    ...(params.get("reactions") === "1" ? { reactions: [{ emoji: "👍", count: 1, me: false, users: [MEMBERS.quill!] }] } : {}),
     ...extra,
   };
+}
+
+function quoteOf(message: ChatMessage | undefined): ChatMessage["replyTo"] {
+  return message ? { content: message.content, user: { id: message.user.id, username: message.user.username ?? "" }, attachmentCount: message.attachments?.length } : null;
 }
 
 const count = Number(params.get("count") ?? 90);
@@ -173,8 +177,10 @@ const fake: ChatFake = {
       ...invented(index),
       content,
       user: MEMBERS[options.user ?? "quill"]!,
+      replyToId: options.replyToId ?? null,
+      replyTo: quoteOf(fake.messages.find((message) => message.id === options.replyToId)),
       createdAt: new Date(BASE_TIME + index * 120_000).toISOString(),
-      ...(options.attachment ? { attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }] } : {}),
+      ...(options.attachment ? { attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: options.imageUrl ?? IMAGE }] } : {}),
     };
     fake.messages.push(message);
     for (const onMessage of sockets.get(message.channelId) ?? []) onMessage(message);
@@ -306,7 +312,7 @@ apiClient.connectChannel = ((channelId: string, onMessage: (message: ChatMessage
       fake.sent.push(content);
       if (heldSend) await heldSend.promise;
       const index = fake.messages.length;
-      const message: ChatMessage = { ...invented(index), content, replyToId: replyToId ?? null, replyTo: fake.messages.find((message) => message.id === replyToId) ?? null, user: MEMBERS.ada! };
+      const message: ChatMessage = { ...invented(index), content, replyToId: replyToId ?? null, replyTo: quoteOf(fake.messages.find((message) => message.id === replyToId)), user: MEMBERS.ada! };
       fake.messages.push(message);
       return message;
     },

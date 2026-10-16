@@ -457,7 +457,7 @@ export const chatSteps: ChatStep[] = [
       if ((await state(cdp)).fromBottom > 4) fail("pending send did not go to the bottom");
       await evaluate(cdp, "__chatFake.finishSend(true)");
       const retry = '[data-gloom-role=chat-message-retry-action] button';
-      if (!await waitFor(cdp, `document.querySelector('${retry}')`)) fail("failed send has no retry");
+      if (!await waitFor(cdp, `!!document.querySelector('${retry}')`)) fail("failed send has no retry");
       await click(cdp, await pointFor(cdp, retry));
       if (!await waitFor(cdp, "__chatFake.sent.length===2 && __chat.rowRect('m500') && !document.querySelector('[data-gloom-role=chat-message-retry-action]')")) fail("retry did not replace the pending message");
       await click(cdp, await listCentre(cdp));
@@ -473,6 +473,10 @@ export const chatSteps: ChatStep[] = [
       await wheel(cdp, await listCentre(cdp), -50000);
       await wheel(cdp, await listCentre(cdp), 50000);
       if (!await waitFor(cdp, "__chat.rowText('m499').includes('2') && __chat.rowText('m501').includes('Reply across windows')")) fail("reply or reaction disappeared after remount");
+      await evaluate(cdp, "void __chatFake.deliver('A reference to an older message.',{replyToId:'m120'})");
+      await frames(cdp, 6);
+      await click(cdp, await pointFor(cdp, '[data-gloom-chat-message-id="m502"] [data-gloom-role=chat-message-row]'));
+      expectMarked(await marked(cdp), ["m120"], "quoted offscreen target");
     },
   },
   {
@@ -483,8 +487,8 @@ export const chatSteps: ChatStep[] = [
       await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*held-chat-image*" }] });
       try {
         const paused = cdp.once<{ requestId: string }>("Fetch.requestPaused");
-        await evaluate(cdp, `(()=>{const m=__chatFake.deliver('Image that arrives later.',{attachment:true});__chatFake.update(m.id,m=>({...m,attachments:m.attachments.map(a=>({...a,url:location.origin+'/held-chat-image.svg'}))}))})()`);
-        const request = await paused;
+        await evaluate(cdp, `void __chatFake.deliver('Image that arrives later.',{attachment:true,imageUrl:location.origin+'/held-chat-image.svg'})`);
+        const request = await Promise.race([paused, new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Held image request did not start")), 8_000))]);
         await frames(cdp, 8);
         const before = await anchor(cdp);
         const rect = await evaluate(cdp, "__chat.rowRect('m500')");
