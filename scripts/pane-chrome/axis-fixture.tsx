@@ -40,7 +40,7 @@ function data(kind: string): { series: ResolvedSeries[]; panels: ChartPanelSpec[
     panels.push({ id: "volume", scale: "linear", height: 1 }, { id: "rsi", scale: "linear", height: 1 });
     series.push(
       createTestResolvedSeries({ id: "volume", label: "Volume", panelId: "volume", color: colors[3]!, style: "columns", unit: "shares", unitGroup: "volume", points: points([1200, 3600, 5600, 2300, 4800, 6400, 4900, 3100, 4200]) }),
-      createTestResolvedSeries({ id: "rsi", label: "RSI", panelId: "rsi", color: colors[4]!, unit: "", unitGroup: "ratio", points: points([22, 39, 55, 60, 80, 85, 67, 59, 43]) }),
+      createTestResolvedSeries({ id: "rsi", label: "RSI", panelId: "rsi", color: colors[4]!, unit: "index", unitGroup: "index", points: points([22, 39, 55, 60, 80, 85, 67, 59, 43]) }),
     );
   }
   return { series, panels };
@@ -70,5 +70,5 @@ export function AxisFixturePane({ width, height, focused }: PaneProps) {
       })),
     };
   };
-  return <CompositeChart series={series} panels={panels} width={width} height={height} focused={focused} onCursorDateChange={inspect} />;
+  return <CompositeChart series={series} panels={panels} width={width} height={height} focused={focused} navigable={kind !== "dense"} onCursorDateChange={inspect} />;
 }

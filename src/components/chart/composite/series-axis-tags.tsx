@@ -55,7 +55,8 @@ export function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
           position: "absolute", [edge]: `calc(${inset} + .5em)`, top: percent(tag.centerY), transform: "translateY(-50%)",
           width: `calc(${100 / lanes}% - .5em)`, height: "1.5em", lineHeight: "1.5em",
           alignItems: left ? "flex-end" : "flex-start", justifyContent: "center",
-          color: tag.color, backgroundColor: background, whiteSpace: "nowrap",
+          // Every badge paints above every leader, including another lane's.
+          zIndex: 2, color: tag.color, backgroundColor: background, whiteSpace: "nowrap",
           borderBlockEnd: tag.carried ? `1px dashed ${tag.color}` : undefined,
         }}
       >

@@ -8,6 +8,7 @@ import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-s
 import { applyCompositeChartCursor, buildCompositeChartScene, projectCompositeValue } from "./scene";
 import { resolveSeriesAxisTags, type SeriesAxisTag } from "./panel-labels";
 import { placeSeriesAxisTags } from "./series-axis-tags";
+import { formatCompositeCursorValue } from "./format";
 
 const point = createTestSeriesPoint;
 
@@ -31,7 +32,9 @@ describe("series axis observations", () => {
       const base = buildCompositeChartScene([resolved], [{ id: "main", scale: "linear" }], { width: 80, height: 20 })!;
       const scene = applyCompositeChartCursor(base, new Date("2025-01-01"));
       expect(calls).toEqual(["fixture.resolve"]);
-      expect(resolveSeriesAxisTags(scene.panels[0]!, scene)).toMatchObject([{ value: 3, side: "right", label: "3%", carried: false }]);
+      expect(resolveSeriesAxisTags(scene.panels[0]!, scene)).toMatchObject([{
+        value: 3, side: "right", label: formatCompositeCursorValue(3, scene.panels[0]!.axes.right!), carried: false,
+      }]);
     } finally {
       registry.destroy();
       persistence.close();
