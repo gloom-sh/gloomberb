@@ -1,6 +1,7 @@
 import { type LayoutConfig, type PaneBinding, type PaneInstanceConfig } from "../../../types/config";
 import type { PaneSettingField, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateInstanceConfig, PaneTemplateDef } from "../../../types/plugin";
 import { getFocusedCollectionId, getFocusedTickerSymbol } from "../../../state/app/context";
+import { commandPromptTicker } from "../../../layout/selected-ticker";
 import { resolveInstrumentForPane, resolveListingForPane } from "../../../core/state/app/instrument";
 import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tickers/open-target";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -100,13 +101,20 @@ async function resolvePaneTemplateOptions(
   resolvedOptions: PaneTemplateCreateOptions | undefined;
 }> {
   const state = deps.getState();
+  const focusedSymbol = getFocusedTickerSymbol(state);
+  // A required ticker follows the prompt, including a linked desk the focused
+  // pane does not hold. An optional ticker stays unbound unless one was named.
+  const requiresTicker = (template.shortcut?.argPlaceholder === "ticker" || template.shortcut?.argKind === "ticker")
+    && !template.shortcut?.argOptional;
+  const prompt = requiresTicker ? commandPromptTicker(state) : null;
+  const tickerRootId = prompt?.rootInstanceId ?? state.focusedPaneId;
   const baseContext: PaneTemplateContext = {
     config: state.config,
     layout: state.config.layout,
     focusedPaneId: state.focusedPaneId,
-    activeTicker: getFocusedTickerSymbol(state),
-    activeInstrument: state.focusedPaneId ? resolveInstrumentForPane(state, state.focusedPaneId)?.instrument : undefined,
-    activeListing: state.focusedPaneId ? resolveListingForPane(state, state.focusedPaneId) : undefined,
+    activeTicker: prompt?.symbol ?? focusedSymbol,
+    activeInstrument: tickerRootId ? resolveInstrumentForPane(state, tickerRootId)?.instrument : undefined,
+    activeListing: tickerRootId ? resolveListingForPane(state, tickerRootId) : undefined,
     activeCollectionId: getFocusedCollectionId(state),
   };
 

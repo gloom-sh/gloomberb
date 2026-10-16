@@ -6,6 +6,7 @@ import type {
   PaneTemplateDef,
 } from "../../../types/plugin";
 import { normalizeTickerInput } from "../../../tickers/search";
+import { commandPromptTicker } from "../../../layout/selected-ticker";
 import { debugLog } from "../../../utils/debug-log";
 import {
   isCollectionCommand,
@@ -126,13 +127,18 @@ export function useCommandBarPaneTemplateActions({
   ) => {
     const trimmedArg = rawArg?.trim() || "";
     const argKind = template.shortcut?.argKind ?? template.shortcut?.argPlaceholder;
+    // Required ticker panes use the instrument already in the command prompt
+    // when nothing was typed. Optional panes stay unbound.
+    const promptSymbol = template.shortcut?.argOptional
+      ? null
+      : commandPromptTicker(buildWorkflowDeps().getState())?.symbol ?? null;
     if (argKind === "ticker") {
       if (!trimmedArg && template.shortcut?.argOptional) {
         await openPaneTemplateDirect(template);
         return;
       }
       const resolvedTicker = await resolveTickerInput(
-        trimmedArg || undefined,
+        trimmedArg || promptSymbol || undefined,
         activeTickerSymbol,
         activeCollectionId,
         buildWorkflowDeps(),

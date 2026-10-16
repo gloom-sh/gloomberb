@@ -7,6 +7,7 @@ import {
   getFocusedTickerSymbol,
   type AppState,
 } from "../../state/app/context";
+import { commandPromptTicker } from "../../layout/selected-ticker";
 import type { CommandDef, PaneTemplateCreateOptions } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
 import { buildPaneTemplateWorkflowRoute } from "../command-bar/pane-templates/workflow-route";
@@ -127,8 +128,10 @@ export function buildPaneTemplateFormRoute(
 ): FormRouteResult {
   const template = pluginRegistry.paneTemplates.get(templateId);
   if (!template) return { kind: "none" };
+  const requiresTicker = (template.shortcut?.argPlaceholder === "ticker" || template.shortcut?.argKind === "ticker")
+    && !template.shortcut?.argOptional;
   const route = buildPaneTemplateWorkflowRoute({
-    activeTicker: getFocusedTickerSymbol(state),
+    activeTicker: (requiresTicker ? commandPromptTicker(state)?.symbol : null) ?? getFocusedTickerSymbol(state),
     arg,
     template,
   });
