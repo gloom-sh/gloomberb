@@ -3,7 +3,7 @@ import { CUSTOM_VIEW_PANE_ID, CUSTOM_VIEW_SPEC_SETTING, CustomViewPane } from ".
 import { parseViewSpec, serializeViewSpec, type ViewSpec } from "./view-spec";
 
 export { CUSTOM_VIEW_PANE_ID } from "./pane";
-export { setViewRefResolver } from "./loader";
+export { setViewRefResolver, trialLoadViewSource } from "./loader";
 export * from "./view-spec";
 
 export const CUSTOM_VIEW_TEMPLATE_ID = "custom-view-pane";

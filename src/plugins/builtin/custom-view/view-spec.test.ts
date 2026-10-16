@@ -54,6 +54,19 @@ describe("view spec parsing", () => {
     expect(() => serializeViewSpec(normalizeViewSpec({ ...good, version: 9 }))).toThrow();
   });
 
+  test("an argument is one string: a list of words joins with spaces, any other shape is refused, not dropped", () => {
+    const withArgument = (argument: unknown) => ({ ...good, source: { ...good.source, argument } });
+    expect(normalizeViewSpec(withArgument(["CME", " AAPL", 7])).source).toMatchObject({ argument: "CME AAPL 7" });
+    expect(normalizeViewSpec(withArgument(" CME AAPL ")).source).toMatchObject({ argument: "CME AAPL" });
+    expect(normalizeViewSpec(withArgument([])).source).not.toHaveProperty("argument");
+    for (const argument of [{ symbols: ["CME"] }, true, [["CME"], "AAPL"], [null]]) {
+      const refused = parseViewSpecOr(withArgument(argument));
+      expect("error" in refused ? refused.error : "").toContain('source.argument must be one string, such as "CME AAPL"');
+      expect(parseViewSpec(withArgument(argument))).toBeNull();
+    }
+    expect(parseViewSpec(withArgument(["CME", "AAPL"]))?.source).toMatchObject({ argument: "CME AAPL" });
+  });
+
   test("ref sources need an id and carry the team", () => {
     const spec = normalizeViewSpec({ source: { kind: "ref", viewId: "v1", teamId: "org-1" } });
     expect(spec.source).toEqual({ kind: "ref", viewId: "v1", teamId: "org-1" });

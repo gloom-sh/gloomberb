@@ -125,6 +125,39 @@ function normalizeFilter(value: unknown): ViewFilter | null {
   return filter;
 }
 
+/**
+ * `source.argument` as the one string a function takes after its code. A list
+ * of strings and numbers reads as the words typed after the code, so
+ * `["CME", "AAPL"]` is `CME AAPL`. `undefined` when none is given; `null` for a
+ * shape that is not an argument at all.
+ */
+function argumentText(value: unknown): string | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : null;
+  if (!Array.isArray(value)) return null;
+  const words: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "number" && Number.isFinite(entry)) words.push(String(entry));
+    else if (typeof entry === "string") words.push(entry.trim());
+    else return null;
+  }
+  return words.filter(Boolean).join(" ");
+}
+
+function describeShape(value: unknown): string {
+  if (Array.isArray(value)) return "a list holding more than strings and numbers";
+  if (value !== null && typeof value === "object") return "an object";
+  return `a ${typeof value}`;
+}
+
+/** Why the raw spec's `source.argument` cannot be read, or null. Normalizing drops a shape it cannot read; this says so. */
+function sourceArgumentProblem(raw: unknown): string | null {
+  if (!isRecord(raw) || !isRecord(raw.source) || raw.source.kind === "ref") return null;
+  if (argumentText(raw.source.argument) !== null) return null;
+  return `source.argument must be one string, such as "CME AAPL", not ${describeShape(raw.source.argument)}.`;
+}
+
 function normalizeSource(value: unknown): ViewSource | null {
   if (!isRecord(value)) return null;
   if (value.kind === "ref") {
@@ -138,7 +171,7 @@ function normalizeSource(value: unknown): ViewSource | null {
   if (value.kind !== "inline" && value.kind !== undefined) return null;
   if (typeof value.pane !== "string") return null;
   const source: ViewSource = { kind: "inline", pane: value.pane.trim() };
-  const argument = cleanString(value.argument, 500);
+  const argument = cleanString(argumentText(value.argument) ?? undefined, 500);
   if (argument) source.argument = argument;
   if (isRecord(value.options)) {
     const options: Record<string, string | number | boolean> = {};
@@ -240,6 +273,7 @@ export function parseViewSpec(value: unknown): ViewSpec | null {
       return null;
     }
   }
+  if (sourceArgumentProblem(decoded)) return null;
   const spec = normalizeViewSpec(decoded);
   return validateViewSpec(spec).valid ? spec : null;
 }
@@ -254,6 +288,8 @@ export function parseViewSpecOr(value: unknown): { spec: ViewSpec; result: ViewS
       return { error: `Spec is not valid JSON: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
+  const problem = sourceArgumentProblem(decoded);
+  if (problem) return { error: problem };
   const spec = normalizeViewSpec(decoded);
   const result = validateViewSpec(spec);
   if (!result.valid) return { error: result.errors.map((entry) => `${entry.path}: ${entry.message}`).join(" ") };

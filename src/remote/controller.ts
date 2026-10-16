@@ -16,6 +16,8 @@ import {
   customViewCreateOptions,
   customViewInstanceSettings,
   parseViewSpecOr,
+  trialLoadViewSource,
+  type ViewSpec,
 } from "../plugins/builtin/custom-view";
 import { findPaneInstance, getPlacedPaneInstanceIds, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
 import type { DesktopWindowBridge } from "../types/desktop-window";
@@ -399,10 +401,24 @@ export function createAppRemoteController({
   const call = (operation: string, rawInput: unknown, dryRun: boolean | undefined, context: RemoteCallContext): Promise<unknown> => (
     PLANNED_OPERATIONS.has(operation)
       ? changeWatchlist(operation, asRecord(rawInput), dryRun, context)
-      : runAutomated(() => callOperation(operation, rawInput, dryRun))
+      : runAutomated(() => callOperation(operation, rawInput, dryRun, context))
   );
 
-  const callOperation = async (operation: string, rawInput: unknown, dryRun?: boolean): Promise<unknown> => {
+  /**
+   * A view's source loads once before the view is kept, so a function that
+   * does not exist or cannot read answers with its own error instead of
+   * leaving a pane that never fills. What the load noted comes back as warnings.
+   */
+  const checkViewSource = async (spec: ViewSpec, action: "create" | "update", signal?: AbortSignal): Promise<string[]> => {
+    try {
+      return await trialLoadViewSource(spec, getState().config, { registry: pluginRegistry, signal });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`The view's source did not load, so ${action === "create" ? "no view was created" : "the view was left as it was"}. ${reason}`);
+    }
+  };
+
+  const callOperation = async (operation: string, rawInput: unknown, dryRun?: boolean, context: RemoteCallContext = {}): Promise<unknown> => {
     const input = asRecord(rawInput);
     const dryRunResult = () => ({ operation, input, dryRun: true });
     if (dryRun) return dryRunResult();
@@ -452,13 +468,13 @@ export function createAppRemoteController({
         // ASKG and the local agent both land here, so one validator decides.
         const parsed = parseViewSpecOr(input.spec);
         if ("error" in parsed) throw new Error(parsed.error);
+        const loadWarnings = await checkViewSource(parsed.spec, "create", context.signal);
         await pluginRegistry.createPaneFromTemplateAsync(
           CUSTOM_VIEW_TEMPLATE_ID,
           customViewCreateOptions(parsed.spec, optionalString(input, "name")),
         );
-        return getAfterMutationSummary({
-          ...(parsed.result.warnings.length ? { warnings: parsed.result.warnings.map((entry) => entry.message) } : {}),
-        });
+        const warnings = [...parsed.result.warnings.map((entry) => entry.message), ...loadWarnings];
+        return getAfterMutationSummary(warnings.length ? { warnings } : undefined);
       }
       case "view.update": {
         const paneId = stringInput(input, "paneId");
@@ -468,14 +484,18 @@ export function createAppRemoteController({
         const instance = findPaneInstance(getState().config.layout, instanceId);
         if (!instance) throw new Error(`No pane instance "${paneId}".`);
         if (instance.paneId !== CUSTOM_VIEW_PANE_ID) throw new Error(`Pane "${paneId}" is not a custom view.`);
+        const loadWarnings = await checkViewSource(parsed.spec, "update", context.signal);
+        // The load took time; write onto the view as it is now, if it is still there.
+        const current = findPaneInstance(getState().config.layout, instanceId);
+        if (!current) throw new Error(`The view "${paneId}" was closed while its source loaded.`);
         let layout = setPaneSettings(getState().config.layout, instanceId, {
-          ...instance.settings,
+          ...current.settings,
           ...customViewInstanceSettings(parsed.spec),
         });
         const name = optionalString(input, "name");
         if (name) layout = updatePaneInstance(layout, instanceId, (entry: PaneInstanceConfig) => ({ ...entry, title: name }));
         pluginRegistry.updateLayout(layout);
-        return getAfterMutationSummary({ affectedPaneIds: [instanceId] });
+        return getAfterMutationSummary({ affectedPaneIds: [instanceId], ...(loadWarnings.length ? { warnings: loadWarnings } : {}) });
       }
       case "pane.setState":
         dispatch({

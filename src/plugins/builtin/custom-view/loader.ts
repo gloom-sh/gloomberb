@@ -1,9 +1,10 @@
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { loadResolvedHeadlessPaneModel, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
-import { resolvePaneFunction } from "../../../cli/pane-functions/resolver";
+import { resolvePaneFunction, UnknownPaneFunctionError } from "../../../cli/pane-functions/resolver";
 import type { AppConfig } from "../../../types/config";
-import { getSharedRegistry } from "../../registry";
+import { getSharedRegistry, type PluginRegistry } from "../../registry";
 import { marketContextFromRegistry } from "../cloud/askg/host";
+import { notViewSourceMessage, unknownViewSourceMessage } from "./sources";
 import type { ViewRow, ViewSource, ViewSpec } from "./view-spec";
 
 export interface LoadedView {
@@ -66,6 +67,7 @@ export async function loadViewSource(
   spec: ViewSpec,
   config: AppConfig,
   signal: AbortSignal,
+  registry: PluginRegistry | undefined = getSharedRegistry(),
   depth = 0,
 ): Promise<LoadedView> {
   if (spec.source.kind === "ref") {
@@ -73,17 +75,17 @@ export async function loadViewSource(
     if (!refResolver) throw new Error("Team views are not available right now.");
     const resolved = await refResolver(spec.source);
     if (!resolved) throw new Error("The referenced team view no longer exists.");
-    return loadViewSource(resolved, config, signal, depth + 1);
+    return loadViewSource(resolved, config, signal, registry, depth + 1);
   }
-  const registry = getSharedRegistry();
   if (!registry) throw new Error("The plugin registry is not available.");
+  const { pane } = spec.source;
   const options: Record<string, string | true> = {};
   for (const [key, value] of Object.entries(spec.source.options ?? {})) {
     options[key] = value === true ? true : String(value);
   }
   const context = marketContextFromRegistry(registry, config);
   const resolved = await resolvePaneFunction(registry, context, {
-    target: spec.source.pane,
+    target: pane,
     arg: spec.source.argument ?? "",
     options,
     outputPath: null,
@@ -93,8 +95,11 @@ export async function loadViewSource(
     scale: 1,
     watermark: null,
     requireBotSafe: false,
-  }, { strictHeadlessOptions: true });
-  if (!resolved.headless) throw new Error(`${resolved.label} has no data function to build a view from.`);
+  }, { strictHeadlessOptions: true }).catch((error: unknown) => {
+    // The catalog search the resolver points at is a command line tool; say which sources a view takes.
+    throw error instanceof UnknownPaneFunctionError ? new Error(unknownViewSourceMessage(registry, pane)) : error;
+  });
+  if (!resolved.headless) throw new Error(notViewSourceMessage(registry, resolved.label));
   const loaded = await loadResolvedHeadlessPaneModel(resolved, context, spec.source.argument ?? "", signal);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   const { rows, columns } = rowsFromResult(serialized);
@@ -104,4 +109,49 @@ export async function loadViewSource(
     errors: [...(loaded.result.errors ?? []), ...(loaded.result.notes ?? [])].filter(Boolean),
     sourceLabel: resolved.label,
   };
+}
+
+/** How long a trial load waits; under the 10 s a remote tool call is given. */
+const VIEW_TRIAL_TIMEOUT_MS = 8_000;
+
+/**
+ * Loads the spec's source once through `loadViewSource`, the path its pane
+ * takes, before the spec is kept. Throws what the source throws (an unknown
+ * function with the valid ones, a usage or option error, a failed read), so
+ * nothing broken is saved. Resolves with what to tell the person: notes the
+ * source carried, an empty result, or that it had not answered in time, which
+ * is not a failure: a slow source still opens.
+ */
+export async function trialLoadViewSource(
+  spec: ViewSpec,
+  config: AppConfig,
+  options: { registry?: PluginRegistry; signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<string[]> {
+  const { registry = getSharedRegistry(), signal, timeoutMs = VIEW_TRIAL_TIMEOUT_MS } = options;
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => {
+      resolve("timeout");
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    const loading = loadViewSource(spec, config, controller.signal, registry);
+    // A load that outlives the wait has nobody left to tell.
+    loading.catch(() => {});
+    const outcome = await Promise.race([loading, timedOut]);
+    if (outcome === "timeout") {
+      return [`The source had not answered after ${Math.max(1, Math.round(timeoutMs / 1_000))} s, so it was not checked. The view opens and keeps loading.`];
+    }
+    return outcome.rows.length === 0
+      ? ["The source loaded no rows.", ...outcome.errors.slice(0, 2)]
+      : outcome.errors.slice(0, 2);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
 }

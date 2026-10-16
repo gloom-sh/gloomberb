@@ -165,14 +165,15 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op(
     "view.create",
     "Create a custom view pane: a table from a data function with columns, a filter, and a sort. "
-      + "spec = { source: { pane: <tool name or pane id>, argument?, options? }, projection: { columns?: [{ key, label?, transform? }], filters?: [{ key, op, value }], sort?: { by, direction }, limit? }, presentation?: { title?, symbolKey? } }.",
+      + "The source loads once first; if it cannot, no pane opens and the answer is its error. "
+      + "spec = { source: { pane: <function code>, argument?: <one string>, options?: { <flag>: <value> } }, projection: { columns?: [{ key, label?, transform? }], filters?: [{ key, op, value }], sort?: { by, direction }, limit? }, presentation?: { title?, symbolKey? } }.",
     "{ name?: string, spec: object }",
     "local-write",
     objectSchema({ name: stringSchema, spec: openObjectSchema }, ["spec"]),
   ),
   op(
     "view.update",
-    "Replace the spec of an existing custom view pane. Same spec shape as view.create.",
+    "Replace the spec of an existing custom view pane. Same spec and sources as view.create; a source that cannot load leaves the view as it was.",
     "{ paneId: string, spec: object, name?: string }",
     "local-write",
     objectSchema({ paneId: requiredStringSchema, spec: openObjectSchema, name: stringSchema }, ["paneId", "spec"]),
@@ -478,13 +479,25 @@ export function writeTierForSideEffectLevel(
   }
 }
 
-export function remoteOperationDescriptors(): RemoteOperationDescriptor[] {
-  return REMOTE_OPERATIONS.map(({ id, title, description, writeTier, inputSchema }) => ({
-    name: remoteOperationToolName(id),
-    title,
-    description,
-    writeTier,
-    inputSchema,
+/**
+ * An operation's description with what only the running app knows. `viewSources`
+ * is the list of functions a custom view can read (`describeViewSources`), said
+ * once, in the operation that creates a view.
+ */
+export function remoteOperationDescription(
+  { id, description }: Pick<RemoteOperationSchema, "id" | "description">,
+  viewSources = "",
+): string {
+  return id === "view.create" && viewSources ? `${description} ${viewSources}` : description;
+}
+
+export function remoteOperationDescriptors(viewSources = ""): RemoteOperationDescriptor[] {
+  return REMOTE_OPERATIONS.map((operation) => ({
+    name: remoteOperationToolName(operation.id),
+    title: operation.title,
+    description: remoteOperationDescription(operation, viewSources),
+    writeTier: operation.writeTier,
+    inputSchema: operation.inputSchema,
   }));
 }
 

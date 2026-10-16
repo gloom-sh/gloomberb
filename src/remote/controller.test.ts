@@ -4,10 +4,54 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import type { PluginRegistry } from "../plugins/registry";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
+import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../types/plugin";
 import { createAppRemoteController } from "./controller";
 import type { CapturePane, PaneScreenshotRequest } from "./pane-screenshot";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
+
+/** What custom views can read here: MOST (a list, no argument) and QQ (tickers, no flags). */
+function createViewSources() {
+  const loaded: Array<{ source: string; symbols: string[]; options: unknown }> = [];
+  const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
+  const template = (prefix: string, label: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
+    id: `${prefix.toLowerCase()}-pane`,
+    paneId: prefix.toLowerCase(),
+    label,
+    description: label,
+    shortcut: { prefix, argPlaceholder: "", argKind: "ticker" },
+    headless,
+  });
+  const most = template("MOST", "Market Movers", {
+    shape: "rows",
+    argument: { kind: "none" },
+    options: [{
+      key: "list",
+      description: "Which list",
+      type: "enum",
+      values: [{ value: "gainers" }, { value: "losers" }],
+      defaultValue: "gainers",
+    }],
+    load: async (args) => {
+      loaded.push({ source: "MOST", symbols: args.symbols, options: args.options });
+      return { rows: [{ symbol: "NVDA", change: 0.04 }] };
+    },
+  });
+  const quotes = template("QQ", "Quote Monitor", {
+    shape: "rows",
+    argument: { kind: "tickers" },
+    options: [],
+    load: async (args) => {
+      loaded.push({ source: "QQ", symbols: args.symbols, options: args.options });
+      return { rows: args.symbols.map((symbol) => ({ symbol, price: 1 })) };
+    },
+  });
+  return {
+    loaded,
+    panes: new Map([most, quotes].map((entry) => [entry.paneId, pane(entry.paneId)])),
+    paneTemplates: new Map([most, quotes].map((entry) => [entry.id, entry])),
+  };
+}
 
 function createRegistryHarness(options: {
   withFloatingPane?: boolean;
@@ -27,7 +71,7 @@ function createRegistryHarness(options: {
         instanceId: "custom-view:test",
         paneId: "custom-view",
         binding: { kind: "none" as const },
-        settings: { spec: JSON.stringify({ version: 1, source: { pane: "SCR" }, projection: {} }) },
+        settings: { spec: JSON.stringify({ version: 1, source: { pane: "MOST" }, projection: {} }) },
       }],
       floating: [...config.layout.floating, { instanceId: "custom-view:test", x: 1, y: 1, width: 60, height: 20 }],
     };
@@ -45,6 +89,7 @@ function createRegistryHarness(options: {
     };
   }
   const createdFromTemplate: Array<{ templateId: string; options: unknown }> = [];
+  const viewSources = createViewSources();
   let state = createInitialState(config);
   const actions: AppAction[] = [];
   const dispatch: Dispatch<AppAction> = (action) => {
@@ -54,8 +99,8 @@ function createRegistryHarness(options: {
   const invokedCapabilities: Array<{ capabilityId: string; operationId: string; payload: unknown }> = [];
   const marketDataQueries: Array<{ operation: string; input: unknown }> = [];
   const registry = {
-    panes: new Map(),
-    paneTemplates: new Map(),
+    panes: viewSources.panes,
+    paneTemplates: viewSources.paneTemplates,
     commands: new Map(),
     capabilities: {
       manifests: () => [],
@@ -134,6 +179,7 @@ function createRegistryHarness(options: {
     invokedCapabilities,
     invokedUiActions,
     marketDataQueries,
+    viewLoads: viewSources.loaded,
     setUiNodes: (nodes: RemoteUiNodeSnapshot[]) => {
       uiNodes = nodes;
     },
@@ -650,22 +696,23 @@ describe("createAppRemoteController", () => {
 
 describe("view operations", () => {
   const spec = {
-    source: { pane: "SCR", argument: "sp500" },
+    source: { pane: "MOST", options: { list: "gainers" } },
     projection: { columns: ["symbol", { key: "change", transform: "percent" }], sort: { by: "change", direction: "desc" } },
     presentation: { title: "Movers" },
   };
 
-  test("view.create validates the spec and opens the custom view template", async () => {
-    const { controller, createdFromTemplate } = createRegistryHarness();
+  test("view.create loads the source, then opens the custom view template", async () => {
+    const { controller, createdFromTemplate, viewLoads } = createRegistryHarness();
     const result = await controller.handle({ type: "call", operation: "view.create", input: { name: "Top movers", spec } });
     expect(result.ok).toBe(true);
+    expect(viewLoads).toEqual([{ source: "MOST", symbols: [], options: { list: "gainers" } }]);
     expect(createdFromTemplate).toHaveLength(1);
     expect(createdFromTemplate[0]?.templateId).toBe("custom-view-pane");
     const options = createdFromTemplate[0]?.options as { values: { spec: string; title: string } };
     expect(options.values.title).toBe("Top movers");
     expect(JSON.parse(options.values.spec)).toMatchObject({
       version: 1,
-      source: { kind: "inline", pane: "SCR", argument: "sp500" },
+      source: { kind: "inline", pane: "MOST", options: { list: "gainers" } },
       projection: { columns: [{ key: "symbol" }, { key: "change", transform: "percent" }] },
     });
 
@@ -673,6 +720,49 @@ describe("view operations", () => {
     expect(invalid.ok).toBe(false);
     if (!invalid.ok) expect(invalid.error.message).toContain("source.pane");
     expect(createdFromTemplate).toHaveLength(1);
+  });
+
+  test("view.create answers a source that is not a function with the valid ones and opens nothing", async () => {
+    const { controller, createdFromTemplate } = createRegistryHarness();
+    const result = await controller.handle({
+      type: "call",
+      operation: "view.create",
+      input: { spec: { source: { pane: "market_screener" }, projection: {} } },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('Unknown source "market_screener"');
+      expect(result.error.message).toContain("Closest: MOST (Market Movers)");
+      expect(result.error.message).toContain("no argument: MOST; tickers: QQ");
+    }
+    expect(createdFromTemplate).toHaveLength(0);
+  });
+
+  test("view.create gives the source its own usage error, or an option's allowed values, and opens nothing", async () => {
+    const { controller, createdFromTemplate } = createRegistryHarness();
+    const create = (source: object) => controller.handle({ type: "call", operation: "view.create", input: { spec: { source, projection: {} } } });
+
+    const noArgument = await create({ pane: "QQ" });
+    expect(noArgument.ok).toBe(false);
+    if (!noArgument.ok) expect(noArgument.error.message).toContain("Usage: gloomberb fn QQ <symbol>");
+
+    const badOption = await create({ pane: "MOST", options: { list: "stale" } });
+    expect(badOption.ok).toBe(false);
+    if (!badOption.ok) expect(badOption.error.message).toContain("Use one of: gainers, losers.");
+    expect(createdFromTemplate).toHaveLength(0);
+  });
+
+  test("a list argument reaches the function as the words typed after its code", async () => {
+    const { controller, createdFromTemplate, viewLoads } = createRegistryHarness();
+    const result = await controller.handle({
+      type: "call",
+      operation: "view.create",
+      input: { spec: { source: { pane: "QQ", argument: ["CME", "AAPL"] }, projection: {} } },
+    });
+    expect(result.ok).toBe(true);
+    expect(viewLoads).toEqual([{ source: "QQ", symbols: ["CME", "AAPL"], options: {} }]);
+    const options = createdFromTemplate[0]?.options as { values: { spec: string } };
+    expect(JSON.parse(options.values.spec).source.argument).toBe("CME AAPL");
   });
 
   test("view.update rewrites the spec of an existing custom view only", async () => {
@@ -694,5 +784,20 @@ describe("view operations", () => {
     });
     expect(notAView.ok).toBe(false);
     if (!notAView.ok) expect(notAView.error.message).toContain("not a custom view");
+  });
+
+  test("view.update with a source that cannot load leaves the working spec as it was", async () => {
+    const { controller, getState } = createRegistryHarness({ withCustomView: true });
+    const before = getState().config.layout.instances.find((entry) => entry.instanceId === "custom-view:test")?.settings?.spec;
+    const result = await controller.handle({
+      type: "call",
+      operation: "view.update",
+      input: { paneId: "custom-view:test", spec: { source: { pane: "market_screener" }, projection: {} }, name: "Broken" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('Unknown source "market_screener"');
+    const after = getState().config.layout.instances.find((entry) => entry.instanceId === "custom-view:test");
+    expect(after?.settings?.spec).toBe(before);
+    expect(after?.title).toBeUndefined();
   });
 });

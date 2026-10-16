@@ -1,5 +1,6 @@
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
 import { stableStringify } from "../../../../utils/hash";
+import { describeViewSources } from "../../custom-view/sources";
 import {
   REMOTE_OPERATIONS,
   REMOTE_RESOURCES,
@@ -175,11 +176,11 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
 /** Ask Gloom's tool results are text, so an operation that answers with a PNG is not offered there. */
 const ASKG_REMOTE_OPERATIONS = REMOTE_OPERATIONS.filter((operation) => !operation.returnsImage);
 
-function remoteCandidates(): ManifestCandidate[] {
+function remoteCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] {
   const operationsByName = new Map(
     ASKG_REMOTE_OPERATIONS.map((operation) => [remoteOperationToolName(operation.id), operation]),
   );
-  const descriptors = remoteOperationDescriptors().filter((descriptor) => operationsByName.has(descriptor.name));
+  const descriptors = remoteOperationDescriptors(describeViewSources(registry)).filter((descriptor) => operationsByName.has(descriptor.name));
   const candidates = descriptors.map((descriptor): ManifestCandidate => ({
     token: descriptor.name,
     identity: `operation:${operationsByName.get(descriptor.name)?.id ?? descriptor.name}`,
@@ -309,7 +310,7 @@ export function buildASKGToolManifests(registry: PaneFunctionCatalog): {
 } {
   return filterCandidates([
     ...headlessCandidates(registry),
-    ...remoteCandidates(),
+    ...remoteCandidates(registry),
   ]);
 }
 
