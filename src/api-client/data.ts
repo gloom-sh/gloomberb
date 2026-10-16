@@ -145,6 +145,7 @@ import type {
   CloudMarketResponse,
   CloudMarketScreenerCategory,
   CloudMarketScreenerPayload,
+  CloudMoverSession,
   CloudNewsListResponse,
   CloudNewsPayload,
   CloudSavedSearch,
@@ -285,8 +286,10 @@ export class CloudDataApi {
     return this.request(`/news/article-summary?${new URLSearchParams({ url })}`);
   }
 
-  getMarketMovers(category: "day_gainers" | "day_losers" | "most_actives", count = 25, refresh = false): Promise<CloudMarketResponse<MarketMoversPayload>> {
+  /** `session` is what Gainers and Losers are ranked by (see CloudMoverSession). */
+  getMarketMovers(category: "day_gainers" | "day_losers" | "most_actives", count = 25, refresh = false, session?: CloudMoverSession): Promise<CloudMarketResponse<MarketMoversPayload>> {
     const params = new URLSearchParams({ category, count: String(count), mode: refresh ? "refresh" : "cache-first" });
+    if (session && category !== "most_actives") params.set("session", session);
     return this.request(`/market/movers?${params}`);
   }
 
@@ -302,12 +305,17 @@ export class CloudDataApi {
     return this.requestMarketSymbol("/market/dividends", symbol, exchange);
   }
 
-  /** Gainers, losers and most active, or the pre-market, after-hours and gap lists with a `side`. */
+  /**
+   * Gainers, losers and most active, or the pre-market, after-hours and gap
+   * lists with a `side`. `session` is what Gainers and Losers are ranked by
+   * (see CloudMoverSession).
+   */
   async getCloudMarketScreener<Category extends CloudMarketScreenerCategory | CloudSessionMoversCategory>(
     category: Category,
     count = 25,
     mode: "cache-first" | "refresh" = "cache-first",
     side?: CloudSessionMoversSide,
+    session?: CloudMoverSession,
   ): Promise<CloudMarketResponse<Category extends CloudSessionMoversCategory ? CloudSessionMoversPayload : CloudMarketScreenerPayload>> {
     const requestedCount = Number.isFinite(count) ? Math.round(count) : 25;
     const params = new URLSearchParams({
@@ -316,6 +324,7 @@ export class CloudDataApi {
       mode,
     });
     if (side && isSessionMoversCategory(category)) params.set("side", side);
+    if (session && (category === "gainers" || category === "losers")) params.set("session", session);
     return this.request(`/market/screener?${params.toString()}`);
   }
 

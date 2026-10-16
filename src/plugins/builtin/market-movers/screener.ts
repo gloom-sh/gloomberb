@@ -8,6 +8,7 @@ import type {
   CloudMarketScreenerCategory,
   CloudMarketScreenerItem,
   CloudMarketScreenerPayload,
+  CloudMoverSession,
   CloudMoverSessionFields,
 } from "../../../api-client/types";
 import type { MarketState } from "../../../types/financials";
@@ -33,7 +34,12 @@ export interface FetchCacheOptions {
   forceRefresh?: boolean;
 }
 
-export interface PreferredMoversOptions extends FetchCacheOptions {
+export interface ScreenerFetchOptions extends FetchCacheOptions {
+  /** What the server selects and ranks Gainers and Losers by; Most Active has none. */
+  session?: CloudMoverSession;
+}
+
+export interface PreferredMoversOptions extends ScreenerFetchOptions {
   /**
    * How long a Cloud list waits for the backend's average volumes and market
    * caps, which it borrows by symbol: without them every row has no ratio.
@@ -144,11 +150,12 @@ export interface PreferredMarketMoverSources {
     category: CloudMarketScreenerCategory,
     count: number,
     mode: "cache-first" | "refresh",
+    session?: CloudMoverSession,
   ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>>;
   fetchMarket(
     category: ScreenerCategory,
     count: number,
-    options?: FetchCacheOptions,
+    options?: ScreenerFetchOptions,
   ): Promise<CachedResult<ScreenerQuote[]>>;
 }
 
@@ -239,22 +246,24 @@ export async function fetchScreenerResult(
   category: ScreenerCategory,
   count = 25,
   api: MarketScreenerApi = screenerApi,
-  options?: FetchCacheOptions,
+  options?: ScreenerFetchOptions,
 ): Promise<CachedResult<ScreenerQuote[]>> {
+  // Each session is its own list, cached apart.
+  const session = category === "most_actives" ? undefined : options?.session;
   const load = async () => {
-    const response = await api.getMarketMovers(category, count, options?.forceRefresh);
+    const response = await api.getMarketMovers(category, count, options?.forceRefresh, session);
     if (!response.data) throw new Error("Invalid market movers response");
     return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true };
   };
   if (!shouldUseCache(api, options)) return load();
-  return loadCached(`screener:${category}:count=${count}`, load, options);
+  return loadCached(`screener:${category}:count=${count}${session ? `:session=${session}` : ""}`, load, options);
 }
 
 export async function fetchScreener(
   category: ScreenerCategory,
   count = 25,
   api: MarketScreenerApi = screenerApi,
-  options?: FetchCacheOptions,
+  options?: ScreenerFetchOptions,
 ): Promise<ScreenerQuote[]> {
   return (await fetchScreenerResult(category, count, api, options)).data;
 }
@@ -272,7 +281,7 @@ function isCloudScreenerEligible(): boolean {
 
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
   isCloudEligible: isCloudScreenerEligible,
-  fetchCloud: (category, count, mode) => apiClient.getCloudMarketScreener(category, count, mode),
+  fetchCloud: (category, count, mode, session) => apiClient.getCloudMarketScreener(category, count, mode, undefined, session),
   fetchMarket: (category, count, options) => fetchScreenerResult(category, count, undefined, options),
 };
 
@@ -366,6 +375,7 @@ export async function fetchPreferredMarketMovers(
       cloudScreenerCategory(category),
       count,
       options?.forceRefresh ? "refresh" : "cache-first",
+      options.session,
     );
     if (
       (response.status === "success" || response.status === "partial")

@@ -2,6 +2,7 @@ import { afterEach, expect, jest, spyOn, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { apiClient } from "../../../api-client";
+import { CloudDataApi } from "../../../api-client/data";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { applyViewProjection, normalizeViewSpec } from "../custom-view/view-spec";
 import { createMarketMoversHeadless } from "./headless";
@@ -56,6 +57,44 @@ test("malformed refresh retains cache with failure until valid recovery; empty a
   expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual({ data: [], stale: false });
   answer = { error: "must not refetch a fresh recovered cache" };
   expect(await fetchScreenerResult("day_gainers", 25, api, { cache: true })).toEqual({ data: [], stale: false });
+});
+
+test("Gainers and Losers ask the server for the session they rank by and cache each apart; Most Active asks for none", async () => {
+  const paths: string[] = [];
+  const cloud = new CloudDataApi(async (path) => { paths.push(path); return { status: "success", data: payload([]) } as never; });
+  await cloud.getMarketMovers("day_gainers", 50, false, "regular");
+  await cloud.getMarketMovers("most_actives", 25, false, "regular");
+  await cloud.getMarketMovers("day_losers", 50);
+  await cloud.getCloudMarketScreener("gainers", 50, "cache-first", undefined, "extended");
+  await cloud.getCloudMarketScreener("most-active", 25, "cache-first", undefined, "extended");
+  expect(paths.map((path) => new URLSearchParams(path.split("?")[1]).get("session"))).toEqual(["regular", null, null, "extended", null]);
+
+  // An older server ignores the session; the two lists still never serve each other from the cache.
+  attachMarketMoversPersistence(new MemoryPluginPersistence());
+  const asked: unknown[] = [];
+  const api = { getMarketMovers: async (_category: string, _count: number, _refresh?: boolean, session?: string) => {
+    asked.push(session);
+    return { status: "success", data: payload([raw(session === "extended" ? "LATEST" : "CLOSED")]) } as any;
+  } };
+  const symbols = async (session: "regular" | "extended") =>
+    (await fetchScreenerResult("day_gainers", 50, api, { cache: true, session })).data.map((row) => row.symbol);
+  expect(await symbols("regular")).toEqual(["CLOSED"]);
+  expect(await symbols("extended")).toEqual(["LATEST"]);
+  expect(await symbols("regular")).toEqual(["CLOSED"]);
+  expect(asked).toEqual(["regular", "extended"]);
+
+  // The pane and MOST rank by the regular session unless asked, and ask the server for the same.
+  const sessions: unknown[] = [];
+  const dependencies = {
+    fetchPreferred: async (_category: string, _count: number, options?: { session?: string }) => {
+      sessions.push(options?.session);
+      return { quotes: [], source: "cloud" as const, stale: false };
+    },
+    fetchTrending: async () => [],
+  };
+  await loadMarketMoverTab("gainers", null, undefined, dependencies);
+  await loadMarketMoverTab("losers", null, { basis: "extended" }, dependencies);
+  expect(sessions).toEqual(["regular", "extended"]);
 });
 
 test("old persisted fabricated zeros are discarded; newly validated hydrated rows remain readable", async () => {
