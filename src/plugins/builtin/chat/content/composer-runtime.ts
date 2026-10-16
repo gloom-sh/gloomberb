@@ -10,7 +10,7 @@ import { t, tf } from "../../../../i18n";
 import type { ChatContentController } from "./types";
 import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-cursor";
 import { insertedText, pastedImagePaths } from "../attachments/transfer";
-import { composerMessage, joinComposerDraft, splitComposerDraft, takePastedShareLinks, type ComposerShareLink } from "../pane-links/composer";
+import { composerMessage, joinComposerDraft, pastedShareChips, splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
 import { chatTextWithImages } from "../attachments/model";
 import { isManagedBot } from "../ghost-user";
 import { CHAT_PERSON_ICON_WIDTH } from "../people";
@@ -341,14 +341,14 @@ export function useChatComposerRuntime({
   const commitLocalDraft = useCallback((draft: string) => {
     if (applyingExternalDraftRef.current) return;
     const previousDraft = inputValueRef.current;
-    // A pasted share link leaves the field for a chip above it, the one the
-    // sent message shows; the cursor stays where the paste ended.
+    // A share link pasted at the end of the draft leaves the field for a chip
+    // above it, the one the sent message shows; the cursor stays where it was.
     const inserted = insertedText(previousDraft, draft);
-    const taken = inserted && inserted.text.length > 4 ? takePastedShareLinks(inserted.text, draftLinksRef.current) : null;
-    if (inserted && taken) {
-      setDraftLinks([...draftLinksRef.current, ...taken.links]);
-      const end = inserted.start + taken.text.length;
-      replaceComposerDraft(`${draft.slice(0, inserted.start)}${taken.text}${draft.slice(inserted.start + inserted.text.length)}`, end);
+    const textAfter = inserted ? draft.slice(inserted.start + inserted.text.length) : "";
+    const chips = inserted && inserted.text.length > 4 ? pastedShareChips(inserted.text, textAfter, draftLinksRef.current) : null;
+    if (inserted && chips) {
+      setDraftLinks([...draftLinksRef.current, ...chips]);
+      replaceComposerDraft(`${draft.slice(0, inserted.start)}${textAfter}`, inserted.start);
       return;
     }
     inputValueRef.current = draft;

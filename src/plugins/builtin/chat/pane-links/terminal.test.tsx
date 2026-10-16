@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import type { ChatMessage } from "../../../../api-client";
 import { registerShareOpener } from "../../../../shares/open";
+import { ONE_SHOT_COOLDOWN_MS } from "../../../../utils/one-shot";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { createChatTestHarness, createController, makeMessage } from "../test-harness";
 import { attachChatPaneLinkPanes } from "./previews";
@@ -50,6 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   globalThis.fetch = originalFetch;
   for (const undo of detach) undo();
 });
@@ -106,7 +108,7 @@ test("a news post that still ends in the publisher's address draws the story chi
   expect(opened).toEqual(["template:news-story-pane:story-1", "template:news-story-pane:story-1"]);
 });
 
-test("a share link pasted into the composer is its chip above the field; Enter sends the text then the link, and Backspace in an empty field takes the chip back", async () => {
+test("a share link pasted into the composer is its chip above the field; Enter sends the text then the link, and each new Backspace in an empty field takes one chip back", async () => {
   const link = `https://term.gloom.sh/api/shares/${SHARE}/open`;
   const controller = createController({ messages: [makeMessage(1)], sessionToken: "token-123" });
   const sent: string[] = [];
@@ -127,9 +129,44 @@ test("a share link pasted into the composer is its chip above the field; Enter s
   await tui.emitKeypress({ name: "return" });
   expect(sent).toEqual([`Chain\n\n${link}`]);
 
-  await act(async () => { await tui.setup().mockInput.pasteBracketedText(link); });
+  // A share the service does not know is a chip titled with its address.
+  const other = `https://term.gloom.sh/api/shares/${"0".repeat(32)}/open`;
+  await act(async () => {
+    await tui.setup().mockInput.pasteBracketedText(link);
+    await tui.setup().mockInput.pasteBracketedText(other);
+  });
   await tui.waitForFrameToContain("DES SAMPL Options · Research");
+  await tui.waitForFrameToContain("0".repeat(16));
+  setSystemTime(new Date("2026-10-12T00:00:00Z"));
+  await tui.emitKeypress({ name: "backspace" });
+  await tui.waitForFrameToExclude("0".repeat(16));
+  // Held on: marked as repeats, or as fresh presses where the terminal cannot tell.
+  await tui.emitKeypress({ name: "backspace", repeated: true });
+  await tui.emitKeypress({ name: "backspace" });
+  await tui.emitKeypress({ name: "backspace", repeated: true });
+  await tui.flushFrame();
+  expect(tui.frame()).toContain("DES SAMPL Options · Research");
+  setSystemTime(new Date(Date.parse("2026-10-12T00:00:00Z") + ONE_SHOT_COOLDOWN_MS + 1));
   await tui.emitKeypress({ name: "backspace" });
   await tui.waitForFrameToExclude("DES SAMPL Options");
   expect(tui.frame()).toContain("Type a message...");
+});
+
+test("a share link typed into the field, not pasted, stays text while the chat updates around it", async () => {
+  const link = `https://term.gloom.sh/api/shares/${SHARE}/open`;
+  const controller = createController({ messages: [makeMessage(1)], sessionToken: "token-123" });
+  const sent: string[] = [];
+  (controller as any).send = (content: string) => { sent.push(content); return true; };
+  await tui.mountChat(controller, { width: 72, height: 14 });
+
+  await tui.clickFrameText("Type a message...");
+  // Key by key, as a terminal with no paste markers can deliver a paste.
+  await act(async () => { await tui.setup().mockInput.typeText(link, 1); });
+  // A message arriving hands the view the chat's state, the draft just typed included.
+  await act(async () => { (controller as any).emit("everyone"); });
+  await tui.flushFrame();
+  expect(tui.frame()).not.toContain("DES SAMPL Options");
+  await act(async () => { await tui.setup().mockInput.typeText(" ok"); });
+  await tui.emitKeypress({ name: "return" });
+  expect(sent).toEqual([`${link} ok`]);
 });

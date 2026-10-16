@@ -63,7 +63,8 @@ interface ChatComposerAreaProps {
   /** Share links pasted into the field, waiting as the chips the message will show. */
   draftLinks: readonly ComposerShareLink[];
   onOpenDraftLink: (link: ChatMessagePaneLink) => void;
-  onRemoveDraftLink: (id: string) => void;
+  /** Takes out the chip at this place in `draftLinks`. */
+  onRemoveDraftLink: (index: number) => void;
   /** Filled by the desktop attach button, so the pane menu can open its picker. */
   attachPickerRef: { current: (() => void) | null };
 }

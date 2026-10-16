@@ -215,7 +215,11 @@ export function DesktopChatPaneChip({
     <IconButton key="remove" icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />);
 }
 
-/** The share links waiting in the composer, above the field: the chips the message will show, each with its x. */
+/**
+ * The share links waiting in the composer, above the field: the chips the
+ * message will show, each with its x. A draft from an older app can hold the
+ * same link twice, so a chip is known by its place: its x takes out that one.
+ */
 export function DesktopComposerPaneChips({
   links,
   onOpen,
@@ -223,13 +227,14 @@ export function DesktopComposerPaneChips({
 }: {
   links: readonly ComposerShareLink[];
   onOpen: (link: ChatMessagePaneLink) => void;
-  onRemove: (id: string) => void;
+  /** Takes out the chip at this place in `links`. */
+  onRemove: (index: number) => void;
 }) {
   if (links.length === 0) return null;
   return (
     <Box flexDirection="column" data-gloom-role="chat-draft-links" style={DESKTOP_DRAFT_STRIP_STYLE}>
-      {links.map((link) => (
-        <DesktopChatPaneChip key={link.id} link={link} dimmed={false} onOpen={onOpen} onRemove={() => onRemove(link.id)} />
+      {links.map((link, index) => (
+        <DesktopChatPaneChip key={`${index}:${link.id}`} link={link} dimmed={false} onOpen={onOpen} onRemove={() => onRemove(index)} />
       ))}
     </Box>
   );
@@ -245,15 +250,16 @@ export function TerminalComposerPaneChips({
   links: readonly ComposerShareLink[];
   width: number;
   onOpen: (link: ChatMessagePaneLink) => void;
-  onRemove: (id: string) => void;
+  /** Takes out the chip at this place in `links`, as on the desktop. */
+  onRemove: (index: number) => void;
 }) {
   // Lined up with the field's text after its prompt, as a message's chips line up with its text.
   const inset = 3;
   const removeWidth = 3;
   return (
     <>
-      {links.map((link) => (
-        <Box key={link.id} width={width} height={1} flexDirection="row">
+      {links.map((link, index) => (
+        <Box key={`${index}:${link.id}`} width={width} height={1} flexDirection="row">
           <Box width={inset} />
           <TerminalChatPaneChip
             link={link}
@@ -263,16 +269,16 @@ export function TerminalComposerPaneChips({
             onOpen={onOpen}
           />
           <Box flexGrow={1} />
-          <TerminalComposerChipRemove link={link} onRemove={onRemove} />
+          <TerminalComposerChipRemove link={link} onRemove={() => onRemove(index)} />
         </Box>
       ))}
     </>
   );
 }
 
-function TerminalComposerChipRemove({ link, onRemove }: { link: ComposerShareLink; onRemove: (id: string) => void }) {
+function TerminalComposerChipRemove({ link, onRemove }: { link: ComposerShareLink; onRemove: () => void }) {
   const content = useChatPaneChipContent(link);
-  return <IconButton icon="close" label={tf("Remove {name}", { name: content.title })} onPress={() => onRemove(link.id)} />;
+  return <IconButton icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />;
 }
 
 /** One row in the terminal: the pane's letter, the title and the pane, cut to the line. */

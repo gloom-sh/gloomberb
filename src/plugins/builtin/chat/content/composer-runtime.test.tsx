@@ -260,7 +260,7 @@ describe("useChatComposerRuntime", () => {
       expect(sent).toEqual([{ channelId: "everyone", content: "hello after sign-in", replyToId: undefined }]);
     });
 
-    test("a pasted share link leaves the field for a chip, and goes out after the text as a link", async () => {
+    test("a share link pasted at the end leaves the field for a chip and goes out after the text; one pasted inside the text stays", async () => {
       const sent: SentMessage[] = [];
       const drafts: string[] = [];
       const { Harness, view } = renderComposer(sent, drafts);
@@ -291,6 +291,15 @@ describe("useChatComposerRuntime", () => {
         await tui.setup().renderOnce();
       });
       expect(sent).toEqual([{ channelId: "everyone", content: `Chain for the week h\n\n${link}`, replyToId: undefined }]);
+      expect(view.links()).toEqual([]);
+
+      // Pasted inside a sentence, it stays text exactly where it was put.
+      await act(async () => {
+        composer.type("see  for the chain");
+        composer.type(`see ${link} for the chain`);
+        await tui.setup().renderOnce();
+      });
+      expect(composer.text()).toBe(`see ${link} for the chain`);
       expect(view.links()).toEqual([]);
     });
 

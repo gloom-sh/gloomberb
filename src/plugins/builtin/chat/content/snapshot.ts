@@ -3,7 +3,7 @@ import type { TextareaRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import type { ChatContentController } from "./types";
 import type { ChatPrependAnchor } from "./scroll";
-import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
+import { composerViewOfDraft, type ComposerShareLink } from "../pane-links/composer";
 
 type ChatSnapshot = ReturnType<ChatContentController["getSnapshot"]>;
 
@@ -54,7 +54,9 @@ function syncDraftFromSnapshot({
   snapshot: ChatSnapshot;
   updateComposerRows: (draft: string) => void;
 }) {
-  const { text, links } = splitComposerDraft(snapshot.draft);
+  // Every snapshot carries the draft, this composer's own included: only one
+  // that changed elsewhere is read afresh, never what is being typed.
+  const { text, links } = composerViewOfDraft(snapshot.draft, { text: inputValueRef.current, links: draftLinksRef.current });
   if (!sameLinks(draftLinksRef.current, links)) onDraftLinksChange(links);
   if (inputValueRef.current !== text) {
     inputValueRef.current = text;

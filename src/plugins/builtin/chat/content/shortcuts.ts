@@ -1,9 +1,10 @@
-import type { MutableRefObject } from "react";
+import { useState, type MutableRefObject } from "react";
 import { useShortcut } from "../../../../react/input";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import { countEscapeTowardClose } from "../../../../utils/double-escape-close";
 import { isPlainKey } from "../../../../utils/keyboard";
+import { createOneShot } from "../../../../utils/one-shot";
 import { scrollToBottom } from "../layout";
 import type { ChatSidebarRow } from "../sidebar-rows";
 import type { ComposerShareLink } from "../pane-links/composer";
@@ -106,6 +107,10 @@ export function useChatContentShortcuts({
   sidebarCursorRow: ChatSidebarRow | null;
   sidebarFocusedRef: MutableRefObject<boolean>;
 }) {
+  // A terminal says a key is held only where its keyboard protocol can;
+  // elsewhere a held Backspace is a stream of presses, told apart by the gaps.
+  const [backspaceShot] = useState(createOneShot);
+
   useShortcut((event) => {
     if (!focused || commandBarOpen || !inputFocused || !mentionMenuOpen) return;
     if (
@@ -215,15 +220,21 @@ export function useChatContentShortcuts({
 
       // A pasted link is one chip, and the terminal's image rows have no
       // focus of their own: Backspace in an empty composer takes the nearest
-      // one back out, the links right above the field first.
-      if (
-        isPlainKey(event, "backspace")
-        && inputValueRef.current.length === 0
-        && (removeLastDraftLink() || (!nativePaneChrome && removeLastDraftAttachment()))
-      ) {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        return;
+      // one back out, the links right above the field first. One for each
+      // new press: a Backspace held to clear the text, or held on after one
+      // went, takes out nothing more. Every press counts toward the gap.
+      if (isPlainKey(event, "backspace")) {
+        const freshPress = nativePaneChrome ? event.repeat !== true : !backspaceShot.refuses({ repeat: event.repeat });
+        if (freshPress && !nativePaneChrome) backspaceShot.end();
+        if (
+          freshPress
+          && inputValueRef.current.length === 0
+          && (removeLastDraftLink() || (!nativePaneChrome && removeLastDraftAttachment()))
+        ) {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          return;
+        }
       }
 
       const verticalDirection = event.name === "up" || event.name === "down" ? event.name : null;

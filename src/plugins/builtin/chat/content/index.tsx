@@ -669,8 +669,8 @@ export function ChatContent({
     onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
-  const removeDraftLink = useCallback((id: string) => {
-    replaceDraftLinks(draftLinksRef.current.filter((link) => link.id !== id));
+  const removeDraftLink = useCallback((index: number) => {
+    replaceDraftLinks(draftLinksRef.current.filter((_, at) => at !== index));
   }, [replaceDraftLinks]);
   // A pasted link is one chip: Backspace in an empty field takes it back out.
   const removeLastDraftLink = useCallback(() => {

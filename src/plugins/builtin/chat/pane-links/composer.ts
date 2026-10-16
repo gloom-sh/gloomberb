@@ -1,6 +1,5 @@
 import { paneShareIdFromUrl } from "../../../../shares/location";
-import { tokenizeInlineLinks } from "../../../../utils/link-tokenizer";
-import { MAX_SHARE_CHIPS, withoutLinks, type ChatMessagePaneLink } from "./model";
+import { MAX_SHARE_CHIPS, type ChatMessagePaneLink } from "./model";
 
 /** A share link waiting in the composer, drawn as the chip the sent message will show. */
 export type ComposerShareLink = Extract<ChatMessagePaneLink, { kind: "share" }>;
@@ -49,6 +48,16 @@ export function joinComposerDraft(text: string, links: readonly ComposerShareLin
 }
 
 /**
+ * The composer's view of a draft the chat hands it: the view on screen when
+ * the draft is the one that view saves (its own draft coming back with an
+ * arriving message, say), else the draft read afresh. Text the person typed
+ * that ends in a share link stays text in the field while they write.
+ */
+export function composerViewOfDraft(draft: string, current: ComposerDraftView): ComposerDraftView {
+  return draft === joinComposerDraft(current.text, current.links) ? current : splitComposerDraft(draft);
+}
+
+/**
  * The message a draft sends, in the form every app reads: the text, then each
  * link after a blank line, which apps that draw chips turn back into chips
  * and older ones show as the link.
@@ -58,28 +67,21 @@ export function composerMessage(text: string, links: readonly ComposerShareLink[
 }
 
 /**
- * The share links pasted text brings, taken out of it to be chips, and the
- * text left to paste; null when it brings none. A share that already has a
- * chip is not added twice, and past the chips a message draws, a link stays
- * in the text.
+ * The chips a paste becomes, or null when it stays text exactly as pasted.
+ * Only one share link and nothing else, landing at the end of the draft or in
+ * an empty field, becomes a chip; a link pasted inside a sentence or with
+ * words of its own stays where it was put, so the message reads as written.
+ * A share that already has a chip adds none, and past the chips a message
+ * draws, the link stays text.
  */
-export function takePastedShareLinks(pasted: string, existing: readonly ComposerShareLink[]): ComposerDraftView | null {
-  if (!pasted.includes("gloom.sh")) return null;
-  const seen = new Set(existing.map((link) => link.id));
-  const links: ComposerShareLink[] = [];
-  const drop = new Set<number>();
-  tokenizeInlineLinks(pasted).forEach((token, index) => {
-    if (token.kind !== "link") return;
-    const id = paneShareIdFromUrl(token.url);
-    if (!id) return;
-    if (seen.has(id)) {
-      drop.add(index);
-      return;
-    }
-    if (existing.length + links.length >= MAX_SHARE_CHIPS) return;
-    seen.add(id);
-    drop.add(index);
-    links.push({ kind: "share", id, url: token.url });
-  });
-  return drop.size > 0 ? { text: withoutLinks(pasted, drop), links } : null;
+export function pastedShareChips(
+  pasted: string,
+  textAfter: string,
+  existing: readonly ComposerShareLink[],
+): ComposerShareLink[] | null {
+  if (textAfter.trim()) return null;
+  const link = shareLinkSegment(pasted.trim());
+  if (!link) return null;
+  if (existing.some((chip) => chip.id === link.id)) return [];
+  return existing.length < MAX_SHARE_CHIPS ? [link] : null;
 }

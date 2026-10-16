@@ -27,11 +27,10 @@ const NONE: ChatMessagePaneLinks = { links: [], content: "" };
 const memo = new WeakMap<object, ChatMessagePaneLinks>();
 
 /**
- * The text without the given link tokens (their indexes in
- * `tokenizeInlineLinks`). A line that held nothing but such links goes with
- * them, and so does a blank line left doubled where it stood.
+ * The text without the given link tokens. A line that held nothing but such
+ * links goes with them, and so does a blank line left doubled where it stood.
  */
-export function withoutLinks(content: string, drop: ReadonlySet<number>): string {
+function withoutLinks(content: string, drop: ReadonlySet<number>): string {
   const lines: Array<{ text: string; removed: boolean }> = [{ text: "", removed: false }];
   let dropped = false;
   tokenizeInlineLinks(content).forEach((token, index) => {
