@@ -20,6 +20,14 @@ There were four changed frames above a 16-channel pixel threshold: GE and CMP lo
 
 The neighbour sheets put the synthetic chart next to the real shared article reader, synthetic table, Options Calculator form, and the bundled Polls plugin populated with invented polls. The plugin's static trend chart remains static because that caller explicitly disables interaction. Reader body type and chart/metadata type retain their existing role distinction; controls, spacing and chrome are unchanged. The new labels inherit the shared axis typography and each plotted series colour.
 
+## Follow-up: no level line on ordinary hover (desktop and web)
+
+Product head: 77c546a71a61ac5fa8dfeb9ac60a74d6e5854685. The four `after/axis-*.png` and `after/stacked-640-paper.png` are re-shot from it: one vertical crosshair, the series markers and each series' tag on its own axis, with no horizontal level line or centre marker at pointer height. `follow-up-hover-before-1280-white.png` and `follow-up-hover-after-1280-white.png` are the previous head and this one at the same pointer position; the only differing pixels are the dashed line and its marker (a band 8 px tall).
+
+While a drawing or measure tool is armed, or a drag or keyboard placement is under way, the horizontal line and its pointer-height value on the axis show as before. The terminal chart is unchanged.
+
+No other visual change: `other-chart-before-1280-white.png` and `other-chart-after-1280-white.png` are the chart composer on invented bars at rest, before and after; they are identical pixel for pixel (0 differing pixels, also at 640 px in the paper theme).
+
 ## Limits
 
 Not checked: native macOS app/WebKit chart rendering, signed-in/Pro data states, populated live data across every function, or registry-only/native extensions. No production data, accounts or subscriptions were changed. The PR stays draft until checks are green.
