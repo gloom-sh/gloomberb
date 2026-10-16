@@ -116,6 +116,11 @@ jobs:
       - name: Bound opening mounts and keep draft and upload work off message rows
         run: bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
 
+      - name: Complete mentions from cached channel members
+        run: |
+          mkdir -p ~/.cache
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun run check:chat-mentions
+
       - name: Show chat after mount and asynchronous channel transitions
         run: bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle
 

@@ -71,6 +71,7 @@ import { ChatControllerChannels } from "./channels";
 import { ChatControllerUnreadPeople } from "./unread-people";
 import { ChatControllerView } from "./view";
 import { ChatControllerMessageLoading } from "./message-loading";
+import { ChatMentionCandidates } from "./mention-candidates";
 import { ChatControllerStorage } from "./storage";
 import { listUnreadInboxItems } from "../unread-inbox";
 import type { ChatConversationList } from "../conversations";
@@ -130,6 +131,14 @@ export class ChatController {
     emit: (channelId) => this.emit(channelId),
     getUser: () => this.session.user,
   });
+  private readonly mentionCandidates = new ChatMentionCandidates({
+    userId: () => this.session.user?.emailVerified ? this.session.user.id : null,
+    activeChannels: () => [...this.storage.channelStates]
+      .filter(([, state]) => state.openViewCount > 0)
+      .map(([id]) => id),
+    fetch: (id) => apiClient.getChatMentionCandidates(id),
+    emit: (id) => this.emit(id),
+  });
   private readonly channelCatalog = new ChatControllerChannels({
     canLoadPrivateState: () => !!this.session.user?.emailVerified,
     ensureChannelState: (channelId) => this.ensureChannelState(channelId),
@@ -184,6 +193,7 @@ export class ChatController {
     getSafetyRefreshChannelIds: () => getChannelIdsForSafetyRefresh(this.storage.channelStates),
     runSafetyRefresh: (channelId) => this.messageLoading.runMessagesRefresh(channelId, { showLoading: false }),
     resyncChannels: () => this.resyncConnectedChannels(),
+    invalidateMentionCandidates: () => this.mentionCandidates.invalidate(),
   });
 
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
@@ -252,7 +262,8 @@ export class ChatController {
   }
 
   getSnapshot(channelId = DEFAULT_CHAT_CHANNEL_ID): ChatControllerSnapshot {
-    return this.view.getSnapshot(channelId);
+    const snapshot = this.view.getSnapshot(channelId);
+    return { ...snapshot, mentionCandidates: this.mentionCandidates.get(snapshot.channelId) };
   }
 
   /**
@@ -358,6 +369,7 @@ export class ChatController {
   private sessionRefreshGeneration = 0;
 
   private invalidateSessionRefresh(): void {
+    this.mentionCandidates.clear();
     this.sessionRefreshGeneration += 1;
     this.sessionRefreshPromise = null;
   }
@@ -463,6 +475,7 @@ export class ChatController {
   attachChannelView(channelId: string, focused = true): () => void {
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
+    void this.mentionCandidates.load(normalizedChannelId);
     return attachChatChannelView({
       channel,
       channelId: normalizedChannelId,
@@ -838,6 +851,7 @@ export class ChatController {
 
   /** Each channel read live reads its latest page in full, after any read already out. */
   private resyncConnectedChannels(): void {
+    this.mentionCandidates.invalidate();
     for (const channelId of markConnectedChannelsForBackfill(this.storage.channelStates)) {
       const inFlight = this.ensureChannelState(channelId).refreshMessagesPromise ?? Promise.resolve();
       void inFlight
@@ -848,6 +862,9 @@ export class ChatController {
   }
 
   private ensureOpenChannelConnections(): void {
+    for (const [id, state] of this.storage.channelStates) {
+      if (state.openViewCount > 0) void this.mentionCandidates.load(id);
+    }
     const channelIds = getOpenConnectionChannelIds(this.storage.channelStates);
     closeInactiveChannelConnections(this.storage.channelStates, channelIds);
     for (const channelId of channelIds) {
@@ -877,6 +894,15 @@ export class ChatController {
       markViewed: (persist) => this.markViewedThroughLatestMessage(channelId, persist),
     });
     this.storage.persistTranscript(channelId);
+    const conversation = this.channelCatalog.getChannels().find((entry) => entry.id === channelId);
+    if (conversation?.kind === "direct") {
+      const latest = channel.messages.at(-1)?.createdAt;
+      if (latest) this.mentionCandidates.recordConversation(
+        [conversation.dmUser?.id, ...(conversation.members ?? []).map((member) => member.id)]
+          .filter((id): id is string => !!id && id !== this.session.user?.id),
+        latest,
+      );
+    }
     this.emit(channelId);
   }
 

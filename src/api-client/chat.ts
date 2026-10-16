@@ -12,6 +12,7 @@ import type {
   ChatAttachment,
   ChatChannel,
   ChatChannelState,
+  ChatMentionCandidate,
   ChatDiscordLink,
   ChatMessage,
   ChatNotification,
@@ -116,6 +117,14 @@ export class CloudChatApi {
     if (this.restAttachmentSupport || !carriesAttachments(messages)) return;
     this.restAttachmentSupport = true;
     this.emitAttachmentSupport();
+  }
+
+  getMentionCandidates(channelId: string): Promise<ChatMentionCandidate[]> {
+    return this.request(`/chat/channels/${encodeURIComponent(channelId)}/mention-candidates`);
+  }
+
+  subscribeMentionCandidatesChanged(listener: () => void): () => void {
+    return this.options.socket.subscribeChatMentionCandidatesChanged(listener);
   }
 
   async getChannels(): Promise<ChatChannel[]> {

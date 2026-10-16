@@ -60,6 +60,37 @@ describe("chat mention suggestions", () => {
     })).toEqual([]);
   });
 
+  test("filters the full member set before the cap, matching display names and ranking activity", () => {
+    const candidates = Array.from({ length: 12 }, (_, index) => ({
+      id: `u-member${index}`, username: `member${index}`, displayName: `Quiet Person${index}`,
+      channelActivityAt: null as string | null, conversationActivityAt: null as string | null,
+    }));
+    candidates[8]!.conversationActivityAt = "2026-06-29T00:00:00Z";
+    candidates[9]!.conversationActivityAt = "2026-06-30T00:00:00Z";
+    candidates[7]!.channelActivityAt = "2026-06-28T00:00:00Z";
+    const suggestions = buildRecentMentionSuggestions({
+      activeChannel: { id: "everyone", name: "everyone", kind: "group", created_at: "" },
+      currentUserId: "u-me", candidates,
+      messages: [message("1", "member2"), message("2", "outsider"), message("3", "member2")],
+    });
+    expect(filterMentionSuggestions(suggestions, "").map(row => row.username))
+      .toEqual(["member2", "member7", "member9", "member8", "member0"]);
+    expect(filterMentionSuggestions(suggestions, "member11").map(row => row.username)).toEqual(["member11"]);
+    expect(filterMentionSuggestions(suggestions, "PERSON11").map(row => row.username)).toEqual(["member11"]);
+    expect(suggestions.some(row => row.username === "outsider")).toBe(false);
+    expect(suggestions.filter(row => row.username === "member2")).toHaveLength(1);
+    expect(filterMentionSuggestions(suggestions, "", 99)).toHaveLength(5);
+    expect(buildRecentMentionSuggestions({ activeChannel: undefined, currentUserId: "u-me", candidates, messages: [] })).toHaveLength(12);
+  });
+
+  test("cold cache uses all loaded authors, then an authoritative empty set removes them", () => {
+    const messages = Array.from({ length: 9 }, (_, index) => message(String(index), `person${index}`));
+    const options = { activeChannel: undefined, currentUserId: "u-me", messages };
+    expect(filterMentionSuggestions(buildRecentMentionSuggestions(options), "person0")).toHaveLength(1);
+    expect(buildRecentMentionSuggestions({ ...options, candidates: [] })).toEqual([]);
+    expect(detectChatMentionTrigger("@Élo", 4)?.query).toBe("Élo");
+  });
+
   test("replaces only the active mention fragment", () => {
     const trigger = detectChatMentionTrigger("check @al", "check @al".length);
     expect(trigger).not.toBeNull();

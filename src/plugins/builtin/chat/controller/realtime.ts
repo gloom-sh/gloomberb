@@ -24,6 +24,7 @@ interface ChatControllerRealtimeOptions {
   runSafetyRefresh: (channelId: string) => Promise<void>;
   /** The socket came back after a drop: the channels read live read their latest page in full. */
   resyncChannels: () => void;
+  invalidateMentionCandidates: () => void;
 }
 
 export class ChatControllerRealtime {
@@ -34,6 +35,7 @@ export class ChatControllerRealtime {
   private chatNotificationUnsubscribe: (() => void) | null = null;
   private chatPresenceUnsubscribe: (() => void) | null = null;
   private chatReactionsUnsubscribe: (() => void) | null = null;
+  private mentionCandidatesUnsubscribe: (() => void) | null = null;
   private channelStateUnsubscribe: (() => void) | null = null;
 
   constructor(private readonly options: ChatControllerRealtimeOptions) {}
@@ -72,6 +74,11 @@ export class ChatControllerRealtime {
   }
 
   ensureRealtimeSubscriptions(): void {
+    if (!this.mentionCandidatesUnsubscribe) {
+      this.mentionCandidatesUnsubscribe = apiClient.subscribeChatMentionCandidatesChanged(
+        this.options.invalidateMentionCandidates,
+      );
+    }
     if (!this.chatNotificationUnsubscribe) {
       this.chatNotificationUnsubscribe = apiClient.subscribeChatNotifications((notification) => {
         this.options.handleNotification(notification);
@@ -113,6 +120,8 @@ export class ChatControllerRealtime {
   }
 
   stopRealtimeSubscriptions(): void {
+    this.mentionCandidatesUnsubscribe?.();
+    this.mentionCandidatesUnsubscribe = null;
     this.socketConnectionUnsubscribe?.();
     this.socketConnectionUnsubscribe = null;
     this.chatNotificationUnsubscribe?.();

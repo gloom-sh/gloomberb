@@ -2,6 +2,7 @@ import type {
   ChatChannel,
   ChatChannelState,
   ChatMessage,
+  ChatMentionCandidate,
   PersistedAuthUser,
 } from "../../../../api-client";
 import { createClientMessageId, getLatestMessageId } from "./utils";
@@ -66,6 +67,8 @@ export interface ChatControllerSnapshot {
   onlineCount: number;
   user: { id: string; username: string; emailVerified: boolean } | null;
   messages: ChatMessage[];
+  /** Undefined until the first scoped read, then authoritative even when empty. */
+  mentionCandidates?: ChatMentionCandidate[];
   draft: string;
   /** Images waiting in the composer for the next message. */
   draftAttachments: ChatDraftAttachment[];

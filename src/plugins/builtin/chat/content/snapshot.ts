@@ -75,6 +75,10 @@ export function useChatSnapshotState({
   updateComposerRows,
   useDefaultControllerChannel,
 }: ChatSnapshotStateArgs) {
+  const [mentionState, setMentionState] = useState({
+    channelId: initialSnapshot.channelId,
+    candidates: initialSnapshot.mentionCandidates,
+  });
   const [channels, setChannels] = useState(initialSnapshot.channels);
   const [channelsLoading, setChannelsLoading] = useState(initialSnapshot.channelsLoading);
   const [messages, setMessages] = useState<ChatMessage[]>(initialSnapshot.messages);
@@ -107,6 +111,9 @@ export function useChatSnapshotState({
 
     const applySnapshot = (snapshot: ChatSnapshot) => {
       setMessages(snapshot.messages);
+      setMentionState((current) => current.channelId === snapshot.channelId && current.candidates === snapshot.mentionCandidates
+        ? current
+        : { channelId: snapshot.channelId, candidates: snapshot.mentionCandidates });
       setChannels(snapshot.channels);
       setChannelStates(snapshot.channelStates);
       setChannelsLoading(snapshot.channelsLoading);
@@ -161,6 +168,7 @@ export function useChatSnapshotState({
     loadingOlderMessages,
     messages,
     messagesError,
+    mentionCandidates: mentionState.channelId === channelId ? mentionState.candidates : undefined,
     replyTo,
     setReplyTo,
     user,

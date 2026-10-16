@@ -645,6 +645,8 @@ class GloomApiClient {
   getChannels = this.chat.getChannels.bind(this.chat);
   getChatPresence = this.chat.getPresence.bind(this.chat);
   getChatState = this.chat.getState.bind(this.chat);
+  getChatMentionCandidates = this.chat.getMentionCandidates.bind(this.chat);
+  subscribeChatMentionCandidatesChanged = this.chat.subscribeMentionCandidatesChanged.bind(this.chat);
   updateChatChannelState = this.chat.updateChannelState.bind(this.chat);
   markChatNotificationsDelivered = this.chat.markNotificationsDelivered.bind(this.chat);
   getUnseenChatNotificationIds = this.chat.getUnseenNotificationIds.bind(this.chat);
