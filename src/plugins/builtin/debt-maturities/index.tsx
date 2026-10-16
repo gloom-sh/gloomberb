@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { fixedIncomeShortcut } from "../fixed-income/shortcut";
+import { SEC_FILINGS_VIEW } from "../shared/report-freshness";
 import { debtMaturitiesCache } from "./client";
 import { debtMaturitiesHeadless } from "./headless";
 import { DEBT_MATURITY_SERIES } from "./series";
@@ -20,6 +21,7 @@ export const debtMaturitiesModule: PluginModule = {
         publicShare: true,
       }),
       headless: debtMaturitiesHeadless,
+      reportFreshness: SEC_FILINGS_VIEW,
     }, "issuer-debt", "maturities"),
   ],
   setup(ctx) {

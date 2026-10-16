@@ -14,6 +14,7 @@ import {
   shotExpectedText,
   shotSemanticRowCount,
   shotUnavailableSymbols,
+  shotFreshness,
   shownReportTab,
   stripDesktopShotCredentials,
   type PaneScreenshotExpectedChartEvidence,
@@ -40,6 +41,9 @@ import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calcula
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
+import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
+import { deriveHeadlessFreshness } from "./freshness";
 import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
 import { loadPeriodEndHistory } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
@@ -1165,4 +1169,22 @@ describe("portfolio screenshot members", () => {
       },
     }, [unmarked, ...MARGIN_TICKERS.slice(1)])).rejects.toThrow("unavailable for AAA");
   });
+});
+
+test("an Issuer Debt capture is dated by its SEC filings, never by the issuer's stock session", () => {
+  const NOW = Date.parse("2026-10-16T20:12:00Z");
+  const template = debtMaturitiesModule.paneTemplates![0]!;
+  // Fixed Income hosts the view and declares nothing of its own; WHR's delayed quote is on the page.
+  const pane = { reportFreshness: undefined } as ResolvedPaneFunction["pane"];
+  const quote = createTestQuote({ symbol: "WHR", dataSource: "delayed", delayMinutes: 15, lastUpdated: NOW - 60_000,
+    sessionExchange: "NYSE", marketState: "POST" } as never);
+  const payload = { financials: [["WHR", createTestFinancials({ quote })]] } as unknown as Pick<DesktopPaneShotPayload, "financials">;
+  const render = { semanticUi: [], footerText: "", rows: [] };
+  const report = deriveHeadlessFreshness(debtMaturitiesHeadless, { sections: [], freshness: { asOf: "2026-06-30" } }, NOW);
+  const line = shotFreshness({ pane, template }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
+  expect(line.variants[0]).toBe("Source: SEC EDGAR · Tue 30 Jun 2026 · not a live feed (filed data)");
+  expect(line.dates).toBe("data");
+  // A view that does not declare its source is still dated by the quote it shows.
+  const quoted = shotFreshness({ pane, template: { ...template, reportFreshness: undefined } }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
+  expect(quoted.dates).toBe("quotes");
 });

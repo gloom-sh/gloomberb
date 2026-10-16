@@ -1,6 +1,19 @@
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import type { HeadlessFreshnessStatus, HeadlessPaneFreshness } from "../../types/headless";
+import type { PaneDef, PaneTemplateDef } from "../../types/plugin";
 import { isFiniteNumber, isRecord } from "../../utils/guards";
+
+/**
+ * What a function declares its view's data to be: its pane's
+ * `reportFreshness`, or its template's, which names the one view it opens
+ * when the pane hosts several (DDIS in Fixed Income).
+ */
+export function declaredReportFreshness(resolved: {
+  pane: Pick<PaneDef, "reportFreshness">;
+  template?: Pick<PaneTemplateDef, "reportFreshness">;
+}): NonNullable<PaneDef["reportFreshness"]> {
+  return { ...resolved.pane.reportFreshness, ...resolved.template?.reportFreshness };
+}
 
 export interface RenderedReportNotices {
   /** Lines a report prints under its title, such as "21 of 145 strikes". */

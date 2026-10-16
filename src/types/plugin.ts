@@ -460,6 +460,14 @@ export interface PaneTemplateDef {
   shortcut?: PaneTemplateShortcut;
   /** Template-specific headless model. Takes precedence over the pane-level model. */
   headless?: HeadlessPaneDefinition;
+  /**
+   * Source and status of the view this template opens, for a template that
+   * opens one view of a pane hosting several (Fixed Income's Issuer Debt).
+   * Captures and rendered-view reports cite it in place of the pane's own
+   * `reportFreshness`, so they date the filings on screen, not the issuer's
+   * stock quote.
+   */
+  reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
   wizard?: WizardStep[];
   canCreate?: (context: PaneTemplateContext, options?: PaneTemplateCreateOptions) => boolean;
   createInstance?: (

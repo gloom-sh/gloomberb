@@ -44,6 +44,17 @@ export function barResolutionFromDates(dates: readonly (string | number | Date)[
 /** Company filings read from EDGAR. Old filings are not stale; there is no schedule to miss. */
 export const SEC_FILINGS: HeadlessPaneFreshness = { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data", oldest: null };
 
+/**
+ * What a filings view opened inside a pane that hosts others (Issuer Debt in
+ * Fixed Income) declares as its template's `reportFreshness`, so a capture
+ * dates the filings rather than the issuer's stock quote.
+ */
+export const SEC_FILINGS_VIEW: Pick<HeadlessPaneFreshness, "source" | "status" | "basis"> = {
+  source: "SEC EDGAR",
+  status: "not-a-feed",
+  basis: "filed data",
+};
+
 /** Places and listings that change only when someone edits them: venues, ports, pipelines. */
 export const REFERENCE_DATA: HeadlessPaneFreshness = { status: "not-a-feed", basis: "reference data", oldest: null };
 

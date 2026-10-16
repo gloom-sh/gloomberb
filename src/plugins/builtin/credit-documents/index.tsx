@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { fixedIncomeShortcut } from "../fixed-income/shortcut";
+import { SEC_FILINGS_VIEW } from "../shared/report-freshness";
 import { creditCache } from "./client";
 import { creditHeadless, covenantsHeadless } from "./headless";
 
@@ -18,6 +19,7 @@ export const creditDocumentsModule: PluginModule = {
         shortcut: "CRDOC",
       }),
       headless: creditHeadless,
+      reportFreshness: SEC_FILINGS_VIEW,
     }, "issuer-debt", "documents"),
     fixedIncomeShortcut({
       ...createTickerSurfacePaneTemplate({
@@ -31,6 +33,7 @@ export const creditDocumentsModule: PluginModule = {
         settings: () => ({ tab: "covenants" }),
       }),
       headless: covenantsHeadless,
+      reportFreshness: SEC_FILINGS_VIEW,
     }, "issuer-debt", "documents"),
   ],
 };

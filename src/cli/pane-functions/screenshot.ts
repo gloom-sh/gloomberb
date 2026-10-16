@@ -97,7 +97,7 @@ import {
   withShotReturnHistory,
   withShotSeasonalityHistory,
 } from "./data";
-import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { declaredReportFreshness, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 import { captureStatusLine, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureStatusLine, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
@@ -772,10 +772,13 @@ function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPa
  * view itself (the news wire's delay, FXC's rates) is taken at its word, and a
  * pane that declares a status is never dated by the quotes it shows; otherwise
  * those quotes date it, with their delay and where their markets stand. Then
- * the pane's report, as `fn` ends; then what the rendered view carries.
+ * the pane's report, as `fn` ends; then what the rendered view carries. A
+ * function that opens one view of a pane hosting several declares it on its
+ * template (DDIS in Fixed Income), so its filings, not the issuer's stock
+ * quote, date the capture.
  */
-function shotFreshness(
-  resolved: Pick<ResolvedPaneFunction, "pane">,
+export function shotFreshness(
+  resolved: Pick<ResolvedPaneFunction, "pane" | "template">,
   payload: Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">,
   render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "footerText" | "rows">,
   bridgedQuotes: readonly Quote[],
@@ -783,7 +786,7 @@ function shotFreshness(
   now = Date.now(),
 ): CaptureStatusLine {
   const published = renderedReportFreshness(render.semanticUi ?? []);
-  const declared = { ...resolved.pane.reportFreshness, ...published };
+  const declared = { ...declaredReportFreshness(resolved), ...published };
   const quotes = [
     ...payload.financials.map(([, financials]) => financials.quote),
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
