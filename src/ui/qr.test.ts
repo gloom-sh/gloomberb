@@ -38,9 +38,10 @@ describe("renderQrLines", () => {
 
   test("merges dark runs into rects that cover exactly the dark modules", () => {
     const svg = decodeURIComponent(
-      renderQrSvgDataUri(SMALL_INPUT).slice('url("data:image/svg+xml,'.length, -2),
+      renderQrSvgDataUri(SMALL_INPUT).image.slice('url("data:image/svg+xml,'.length, -2),
     );
     expect(svg).toContain(`viewBox="0 0 ${SMALL_SIZE} ${SMALL_SIZE}"`);
+    expect(renderQrSvgDataUri(SMALL_INPUT).modules).toBe(SMALL_SIZE);
 
     // The half-block lines carry the same grid, so counting dark halves there is
     // an independent check that run merging did not drop or widen a module.

@@ -1,7 +1,5 @@
 import { type ComponentType, type ReactNode } from "react";
-import { Box, Text, useUiHost } from "../../ui";
-import { t } from "../../i18n";
-import { useThemeColors } from "../../theme/theme-context";
+import { Box, useUiHost } from "../../ui";
 import type { DialogDesktopFooter, DialogKeyHint } from "./frame";
 
 export interface DialogActionsProps {
@@ -43,22 +41,4 @@ export function DialogActions({ children, alignEnd = false, wrap = false, hints 
 export interface DialogHintsProps {
   keys?: DialogKeyHint[];
   note?: string;
-}
-
-/**
- * Keys and a note for a dialog that has no button to put them on, such as a
- * sign-in code waiting for a phone: keycaps on the desktop and the web, one
- * muted line in the terminal.
- */
-export function DialogHints({ keys = [], note }: DialogHintsProps) {
-  const colors = useThemeColors();
-  const HostDialogHints = useUiHost().DialogHints as ComponentType<DialogHintsProps> | undefined;
-  if (HostDialogHints) return <HostDialogHints keys={keys} note={note} />;
-  const parts = [...keys.map((hint) => `${hint.key} ${t(hint.label)}`), ...(note ? [t(note)] : [])];
-  if (parts.length === 0) return null;
-  return (
-    <Box height={1}>
-      <Text fg={colors.textMuted}>{parts.join(" · ")}</Text>
-    </Box>
-  );
 }

@@ -12,7 +12,9 @@ import { useAppLanguage } from "../i18n/react";
 import { useViewport } from "../react/input";
 import { colors } from "../theme/colors";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../ui";
-import { DialogHints } from "../components/ui/dialog-actions";
+import { Button } from "../components/ui/button";
+import { DialogActions } from "../components/ui/dialog-actions";
+import { FORM_DIALOG_WIDTH, DialogFrame } from "../components/ui/frame";
 import { SignInCodePanel } from "../components/sign-in-code-panel";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../ui/dialog";
 import { isPlainKey, type KeyboardModifierEventLike } from "../utils/keyboard";
@@ -100,6 +102,14 @@ export function DeviceSignInPanel({
   );
 }
 
+/**
+ * Rows the dialog's own lines take around the panel: the terminal's margins,
+ * border and padding (7), title, subtitle and key line with the blank rows
+ * between them, and the desktop's frame, title block and Cancel.
+ */
+const TERMINAL_DIALOG_ROWS = 12;
+const DESKTOP_DIALOG_ROWS = 10;
+
 export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser | undefined>) {
   useAppLanguage();
   const { nativePaneChrome } = useUiCapabilities();
@@ -118,24 +128,39 @@ export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser 
     }
   });
 
+  const title = t("Sign in to Gloom");
+  const subtitle = t("Continue in your browser or scan the code.");
+
+  // Framed as the broker connect dialog is: as wide, Cancel and the key beside it.
+  if (nativePaneChrome) {
+    return (
+      <Box width={FORM_DIALOG_WIDTH} maxWidth="calc(100vw - 72px)" flexDirection="column">
+        <DialogFrame title={title} subtitle={subtitle} onClose={dismiss} desktopFooter={null}>
+          <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - DESKTOP_DIALOG_ROWS)} />
+          <Box style={{ marginTop: 14 }}>
+            <DialogActions alignEnd hints={{ keys: [{ key: "r", label: "new code" }] }}>
+              <Button label="Cancel" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
+            </DialogActions>
+          </Box>
+        </DialogFrame>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" alignItems="center">
       <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {t("Sign in through your browser or scan the code")}
-        </Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
+      </Box>
+      <Box height={1}>
+        <Text fg={colors.textDim}>{subtitle}</Text>
       </Box>
       <Box height={1} />
-      {/* Border, padding, title, and footer take about ten rows around the panel. */}
-      <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - 10)} />
+      <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - TERMINAL_DIALOG_ROWS)} />
       <Box height={1} />
-      {nativePaneChrome ? (
-        <DialogHints keys={[{ key: "r", label: "new code" }, { key: "Esc", label: "cancel" }]} />
-      ) : (
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{t("r to refresh the code · esc to cancel")}</Text>
-        </Box>
-      )}
+      <Box height={1}>
+        <Text fg={colors.textMuted}>{t("r to refresh the code · esc to cancel")}</Text>
+      </Box>
     </Box>
   );
 }

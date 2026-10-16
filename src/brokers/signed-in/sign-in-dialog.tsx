@@ -9,14 +9,18 @@
 import { useEffect, useRef, useState } from "react";
 import { apiClient, type AuthUser } from "../../api-client";
 import { SignInCodePanel } from "../../components/sign-in-code-panel";
+import { Button } from "../../components/ui/button";
+import { DialogActions } from "../../components/ui/dialog-actions";
+import { FORM_DIALOG_WIDTH, DialogFrame } from "../../components/ui/frame";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useViewport } from "../../react/input";
 import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
-import { DialogHints } from "../../components/ui/dialog-actions";
 import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
+import { wrapTextLines } from "../../utils/text-wrap";
 import { DeviceSignInDialog } from "../../account/device-signin-dialog";
 import type { SignedInBroker } from "./client";
 import {
@@ -43,7 +47,13 @@ export function brokerSignInStatus(snapshot: BrokerSignInSnapshot, broker: Signe
   }
 }
 
-/** Under the code: the broker's own note, or what connecting a single-connection broker does to other apps. */
+/** What every connect surface says under its title: the browser does the rest. */
+export const BROKER_CONNECT_SUBTITLE = "Continue in your browser.";
+
+/** The key every connect surface takes for a fresh link, as the desktop shows it. */
+export const BROKER_CONNECT_NEW_LINK = { key: "r", label: "new link" };
+
+/** Under the panel: the broker's own note, or what connecting a single-connection broker does to other apps. */
 export function brokerSignInNote(broker: SignedInBroker): string | null {
   return broker.capabilities.signupNote
     ?? (broker.capabilities.singleConnection
@@ -108,6 +118,18 @@ export async function promptGloomSignIn(dialog: DialogApi): Promise<boolean> {
   });
 }
 
+/**
+ * Rows the dialog's own lines take around the connect view: the terminal's
+ * margins, border and padding (7), title, subtitle and key line with the
+ * blank rows between them, and the desktop's frame, title block and Cancel.
+ */
+const TERMINAL_DIALOG_ROWS = 12;
+const DESKTOP_DIALOG_ROWS = 10;
+/** Columns the terminal's full dialog takes from the window: margins, border and padding. */
+const TERMINAL_DIALOG_INSET = 8;
+/** Cells the desktop dialog's padding takes from its width. */
+const DESKTOP_DIALOG_INSET = 4;
+
 function BrokerSignInDialog({
   resolve,
   dismiss,
@@ -117,7 +139,7 @@ function BrokerSignInDialog({
 }: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean; renew: boolean }) {
   useAppLanguage();
   const { nativePaneChrome } = useUiCapabilities();
-  const { height: termHeight } = useViewport();
+  const { width: termWidth, height: termHeight } = useViewport();
   // Close after a beat so "Connected" is visible; enter skips the wait. Signed
   // out closes at once, for the host to sign in to Gloom.
   const { snapshot, restart, finish } = useBrokerSignInAttempt(broker, write, resolve, { renew });
@@ -133,44 +155,116 @@ function BrokerSignInDialog({
     }
   });
 
-  const note = brokerSignInNote(broker);
-  // Title, spacing, note, and footer take about eleven rows around the panel.
-  const panelHeight = Math.max(4, termHeight - (note ? 12 : 10));
+  const title = tf("Connect {broker}", { broker: broker.name });
+  const subtitle = t(BROKER_CONNECT_SUBTITLE);
+
+  // The desktop frames it as New Portfolio frames its connect step: as wide,
+  // with Cancel at the foot and the key for a new link beside it.
+  if (nativePaneChrome) {
+    return (
+      <Box width={FORM_DIALOG_WIDTH} maxWidth="calc(100vw - 72px)" flexDirection="column">
+        <DialogFrame title={title} subtitle={subtitle} onClose={dismiss} desktopFooter={null}>
+          <BrokerConnectView
+            broker={broker}
+            snapshot={snapshot}
+            height={Math.max(4, termHeight - DESKTOP_DIALOG_ROWS)}
+            width={FORM_DIALOG_WIDTH - DESKTOP_DIALOG_INSET}
+          />
+          <Box style={{ marginTop: 14 }}>
+            <DialogActions alignEnd hints={{ keys: [BROKER_CONNECT_NEW_LINK] }}>
+              <Button label="Cancel" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
+            </DialogActions>
+          </Box>
+        </DialogFrame>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" alignItems="center">
       <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {tf("Connect {broker}", { broker: broker.name })}
-        </Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
       </Box>
       <Box height={1}>
-        <Text fg={colors.textDim}>{t("Open the link and enter the code there.")}</Text>
+        <Text fg={colors.textDim}>{subtitle}</Text>
       </Box>
       <Box height={1} />
+      <BrokerConnectView
+        broker={broker}
+        snapshot={snapshot}
+        height={Math.max(4, termHeight - TERMINAL_DIALOG_ROWS)}
+        width={Math.max(10, termWidth - TERMINAL_DIALOG_INSET)}
+      />
+      <Box height={1} />
+      <Box height={1}>
+        <Text fg={colors.textMuted}>{t("r for a new link · esc to cancel")}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * On the desktop a connect's note, under the panel, is set to a reading
+ * measure rather than the width of the dialog or pane. The terminal wraps it
+ * to the width it has, since every row it takes is one the QR code may need.
+ */
+const NOTE_MEASURE = 56;
+
+/**
+ * One attempt at connecting a signed-in broker as the user sees it: the link,
+ * QR code and status, with the broker's note wrapped under them. The connect
+ * dialog, Add Broker's step in the Brokers pane and New Portfolio's show it.
+ */
+export function BrokerConnectView({
+  broker,
+  snapshot,
+  height,
+  width,
+  browserKey = true,
+}: {
+  broker: SignedInBroker;
+  snapshot: BrokerSignInSnapshot;
+  /** Terminal rows for the panel and the note. */
+  height: number;
+  /** Terminal columns the note wraps to. */
+  width: number;
+  /** Whether `b` opens the link now. */
+  browserKey?: boolean;
+}) {
+  useAppLanguage();
+  const colors = useThemeColors();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const note = brokerSignInNote(broker);
+  const noteLines = note ? wrapTextLines(note, Math.max(10, desktop ? Math.min(width, NOTE_MEASURE) : width)) : [];
+  // The note goes under the panel, which gets the rows left.
+  const noteRows = note ? 1 + noteLines.length : 0;
+
+  return (
+    <Box flexDirection="column" alignItems="center">
       <SignInCodePanel
         url={snapshot.connectUrl}
         code={snapshot.code}
         status={brokerSignInStatus(snapshot, broker)}
-        height={panelHeight}
+        height={Math.max(4, height - noteRows)}
         shortcutScope="broker-signin:browser"
+        browserKey={browserKey}
       />
-      {note && (
-        <>
-          <Box height={1} />
-          <Box height={1}>
-            <Text fg={colors.textMuted}>{note}</Text>
+      {note && (desktop
+        ? (
+          <Box marginTop={1} maxWidth={NOTE_MEASURE}>
+            <Text fg={colors.textMuted} wrapText style={{ textAlign: "center" }}>{note}</Text>
           </Box>
-        </>
-      )}
-      <Box height={1} />
-      {nativePaneChrome ? (
-        <DialogHints keys={[{ key: "r", label: "new code" }, { key: "Esc", label: "cancel" }]} />
-      ) : (
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{t("r for a new code · esc to cancel")}</Text>
-        </Box>
-      )}
+        )
+        : (
+          <>
+            <Box height={1} />
+            {noteLines.map((line, index) => (
+              <Box key={index} height={1}>
+                <Text fg={colors.textMuted}>{line}</Text>
+              </Box>
+            ))}
+          </>
+        ))}
     </Box>
   );
 }

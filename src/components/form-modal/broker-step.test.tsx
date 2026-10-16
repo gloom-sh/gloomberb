@@ -154,7 +154,7 @@ describe("broker connect step", () => {
     await waitForFrameToContain("Connect");
     // The pick moved on to the button, where Enter sends.
     await press(ENTER);
-    await waitForFrameToContain("Sign in through your browser or scan the code");
+    await waitForFrameToContain("Continue in your browser or scan the code.");
     await press(ESC);
     await settle();
     expect(frame()).toContain("Portfolio Source");

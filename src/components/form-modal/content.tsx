@@ -49,6 +49,7 @@ import { wrapTextLines } from "../../utils/text-wrap";
 import type { PaneSettingField } from "../../types/plugin";
 import { Button } from "../ui/button";
 import { ChoiceDialog } from "../ui/choice-dialog";
+import { DialogActions } from "../ui/dialog-actions";
 import { DialogFrame } from "../ui/frame";
 import { Spinner } from "../ui/loading";
 import { revealInScrollBox } from "../ui/reveal-in-scroll-box";
@@ -567,7 +568,11 @@ export function FormModalContent({
         <Box width={width} maxWidth="calc(100vw - 72px)" maxHeight={DESKTOP_MODAL_MAX_HEIGHT} flexDirection="column">
           <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss} shrinkable>
             <ScrollBox scrollY style={{ overflowX: "hidden" }}>{stepBody}</ScrollBox>
-            <Box style={{ marginTop: 14 }}>{cancel}</Box>
+            <Box style={{ marginTop: 14 }}>
+              <DialogActions alignEnd hints={step.hints ? { keys: step.hints } : undefined}>
+                <Button label={t("Cancel")} desktopShortcut="Esc" variant="secondary" onPress={dismiss} />
+              </DialogActions>
+            </Box>
           </DialogFrame>
         </Box>
       );

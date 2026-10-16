@@ -52,11 +52,16 @@ export function fetchSignedInBrokerConnection(brokerId: string): Promise<SignedI
   return apiClient.brokerRequest(brokerId, "");
 }
 
+/**
+ * Opens a connect ticket. This app shows no code: it asks for a ticket that
+ * only the account's own Gloom session in the browser can continue. A Cloud
+ * that predates that still answers with a code, which the dialog then shows.
+ */
 export function startSignedInBrokerConnect(
   brokerId: string,
   write: boolean,
-): Promise<{ connectUrl: string; code: string; expiresAt: string }> {
-  return apiClient.brokerRequest(brokerId, "/connect", { method: "POST", body: { write } });
+): Promise<{ connectUrl: string; code?: string | null; expiresAt: string }> {
+  return apiClient.brokerRequest(brokerId, "/connect", { method: "POST", body: { write, code: false } });
 }
 
 export function disconnectSignedInBroker(brokerId: string): Promise<{ disconnected: boolean }> {

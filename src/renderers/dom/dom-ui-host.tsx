@@ -15,7 +15,7 @@ import {
   WebSegmentedControl,
   WebTextField,
 } from "./desktop/controls";
-import { WebDialogActions, WebDialogHints } from "./desktop/dialog-actions";
+import { WebDialogActions } from "./desktop/dialog-actions";
 import { WebPopover } from "./desktop/popover";
 import { WebQueryBar } from "./desktop/query-bar";
 import { WebMenu } from "./desktop/menu";
@@ -90,7 +90,6 @@ export function createDomUiHost(
     SegmentedControl: WebSegmentedControl,
     DialogFrame: WebDialogFrame,
     DialogActions: WebDialogActions,
-    DialogHints: WebDialogHints,
     PageStackView: WebPageStackView,
     DataTable: WebDataTable,
     WindowedList: WebWindowedList,

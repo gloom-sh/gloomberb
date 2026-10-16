@@ -28,14 +28,17 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
     async load(args, ctx) {
       if (typeof args.options.event === "string" && args.options.event) {
         const data = await fetchCatalystDetail(args.options.event, ctx.apiClient, undefined, { offset: Math.max(0, Number(args.options.offset) || 0), limit: Math.min(200, Math.max(1, Number(args.options.limit) || 100)) });
-        return { sections: [{ title: "Event evidence", entries: Object.entries(data.event).map(([label, value]) => ({ label, value: typeof value === "object" ? JSON.stringify(value) : String(value ?? "") })) },
+        const lockedHistory = data.access?.pro === false && data.historyTruncated === true;
+        return { ...(lockedHistory ? { complete: false, errors: ["Older revisions need Gloom Pro"] } : {}), sections: [{ title: "Event evidence", entries: Object.entries(data.event).map(([label, value]) => ({ label, value: typeof value === "object" ? JSON.stringify(value) : String(value ?? "") })) },
           { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changeSummary", header: "Changes" }], rows: data.history.map((event) => ({ ...event, changeSummary: event.changes.map(catalystChangeText).join("; ") || "First observed" })) }],
           metadata: { asOf: data.asOf, access: data.access, historyTotal: data.historyTotal, historyOffset: data.historyOffset, historyHasMore: data.historyHasMore, historyTruncated: data.historyTruncated, complete: data.access?.pro !== false && !data.historyTruncated } };
       }
       const symbol = Array.isArray(args.argument) ? args.argument[0] : args.argument;
       const query = catalystQuery(args.options, symbol ?? undefined, litigation);
       const data = await fetchCatalysts({ ...query, limit: Math.max(1, Math.min(500, Number(args.options.limit) || 100)), offset: Math.max(0, Number(args.options.offset) || 0) }, ctx.apiClient);
-      return { sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
+      // The free preview's held-back rows are a Pro line, so a report never reads as everything there is.
+      const lockedRows = data.access?.pro === false ? data.access.lockedRows : 0;
+      return { ...(lockedRows > 0 ? { complete: false, errors: [`${lockedRows.toLocaleString("en-US")} more ${litigation ? "case" : "event"}${lockedRows === 1 ? " needs" : "s need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
         { key: "date", header: "Date" }, { key: "tickers", header: "Tickers" }, { key: "title", header: "Event" }, { key: "type", header: "Type" },
         ...(args.options.tab === "changes" ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status" }]),
         { key: "agency", header: "Agency" }, { key: "country", header: "Country" }, { key: "sourceUrl", header: "Primary source" },

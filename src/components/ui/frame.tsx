@@ -52,6 +52,13 @@ export interface DialogDesktopFooter {
 }
 
 /**
+ * A form dialog's width, in cells: pane settings and New Portfolio, whose
+ * broker connect step fits in it (its QR code, the link, the note wrapped),
+ * and the browser sign-in dialogs, which match that step.
+ */
+export const FORM_DIALOG_WIDTH = 68;
+
+/**
  * Desktop and web: the width of a dialog body laid out `columns` cells wide,
  * narrowed to fit a phone, where the fixed width would run past the edge.
  */

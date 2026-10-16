@@ -131,11 +131,6 @@ export function WebKeyHints({ keys = [], note, style }: DialogHintsProps & { sty
   );
 }
 
-/** Hints for a dialog with no buttons to carry them, centred under its content. */
-export function WebDialogHints({ keys, note }: DialogHintsProps) {
-  return <WebKeyHints keys={keys} note={note} style={{ justifyContent: "center" }} />;
-}
-
 /**
  * The buttons, then the hints across from them on the same row. A row too
  * narrow for both moves the hints under the buttons.
