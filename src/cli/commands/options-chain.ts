@@ -72,7 +72,7 @@ export const OPTION_VOLATILITY_FIELDS = {
   iv: "Annualized volatility (decimal) solved from the quote midpoint, one per strike from its out-of-the-money side, at the "
     + "spot, valuation time and rate in metadata.model. Delta here and dealer gamma (GEX) are valued with it.",
   impliedVolatility: "The data provider's own reported implied volatility, passed through unchanged. Delta does not use it; "
-    + "GEX falls back to it only for a contract without a two-sided quote.",
+    + "GEX falls back to it only at a strike with no two-sided quote on either side.",
 } as const;
 
 /**
