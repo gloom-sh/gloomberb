@@ -297,6 +297,13 @@ interface PaneSettingFieldBase {
   storage?: "pane" | "plugin";
   /** Keys in the same storage scope that should be reset when this value changes. */
   clearOnChange?: string[];
+  /**
+   * The control edits a different shape than the stored value. `present` runs
+   * when a dialog reads it. `store` runs when the dialog writes it, with the
+   * previous stored value as the second argument.
+   */
+  present?: (stored: unknown) => unknown;
+  store?: (edited: unknown, stored: unknown) => unknown;
 }
 
 interface PaneSettingToggleField extends PaneSettingFieldBase {

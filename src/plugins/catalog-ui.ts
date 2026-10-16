@@ -6,6 +6,7 @@ import { customViewPlugin } from "./builtin/custom-view";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
 import { alertsPlugin } from "./builtin/alerts";
 import { researchSearchPlugin } from "./builtin/research-search";
+import { dailyBriefPlugin } from "./builtin/daily-brief";
 import { marketHeatmapPlugin } from "./builtin/market-heatmap";
 import { marketHaltsPlugin } from "./builtin/market-halts";
 import { fearGreedPlugin } from "./builtin/fear-greed";
@@ -64,6 +65,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   earningsPlugin,
   alertsPlugin,
   researchSearchPlugin,
+  dailyBriefPlugin,
 ];
 
 /**

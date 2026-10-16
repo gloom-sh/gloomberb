@@ -328,9 +328,12 @@ export async function applyPaneSettingFieldValue(
     if (!descriptor.pluginId) {
       throw new Error("This pane setting is not owned by a plugin.");
     }
+    const previous = field.store
+      ? deps.pluginRegistry.getConfigState(descriptor.pluginId, field.key)
+      : undefined;
     await deps.pluginRegistry.setConfigStates(descriptor.pluginId, {
       ...clearOnChange,
-      [field.key]: value,
+      [field.key]: field.store ? field.store(value, previous) : value,
     });
     return;
   }
