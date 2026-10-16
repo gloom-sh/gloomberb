@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { AppPersistence } from "../../../data/app-persistence";
+import { TickerRepository } from "../../../data/ticker-repository";
+import { PluginRegistry } from "../../../plugins/registry";
+import { createChartSeriesResolver } from "../../../capabilities";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import { applyCompositeChartCursor, buildCompositeChartScene, projectCompositeValue } from "./scene";
 import { resolveSeriesAxisTags, type SeriesAxisTag } from "./panel-labels";
@@ -7,6 +12,32 @@ import { placeSeriesAxisTags } from "./series-axis-tags";
 const point = createTestSeriesPoint;
 
 describe("series axis observations", () => {
+  test("desktop capability resolution with local handlers disabled reaches the same scene readout", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const calls: string[] = [];
+    const remote = createTestResolvedSeries({ id: "remote", unit: "%", unitGroup: "percent", axis: "right", points: [point("2025-01-01", 3), point("2025-01-02", 4)] });
+    const registry = new PluginRegistry(createTestDataProvider(), new TickerRepository(persistence.tickers), persistence, {
+      enableCapabilityHandlers: false,
+      remoteCapabilityInvoke: async <T,>(id: string, operation: string) => {
+        calls.push(`${id}.${operation}`);
+        return remote as T;
+      },
+    });
+    try {
+      const source = { kind: "capability", capabilityId: "fixture", seriesId: "remote" } as const;
+      const resolved = await createChartSeriesResolver(registry)(source, { range: "1Y", resolution: "auto" }, {
+        id: "remote", source, style: "line", transform: "raw", axis: "right", panelId: "main", interpolation: "none",
+      });
+      const base = buildCompositeChartScene([resolved], [{ id: "main", scale: "linear" }], { width: 80, height: 20 })!;
+      const scene = applyCompositeChartCursor(base, new Date("2025-01-01"));
+      expect(calls).toEqual(["fixture.resolve"]);
+      expect(resolveSeriesAxisTags(scene.panels[0]!, scene)).toMatchObject([{ value: 3, side: "right", label: "3%", carried: false }]);
+    } finally {
+      registry.destroy();
+      persistence.close();
+    }
+  });
+
   test("keeps axis ownership, carried dates and explicit gaps without substituting the pointer or last price", () => {
     const series = [
       createTestResolvedSeries({ id: "price", points: [point("2025-01-01", 80), point("2025-01-02", 120), point("2025-01-03", 90)] }),

@@ -23,6 +23,8 @@ async function checkReadout(cdp: Cdp): Promise<void> {
       const y = p.y + Math.max(p.height - 1, 0) * entry.ratio;
       if (Math.abs(a.y - y) > 1) failures.push(entry.id + ': anchor ' + a.y + ' != projected ' + y);
       if (t.y < p.y - 1 || t.bottom > p.bottom + 1) failures.push(entry.id + ': tag outside panel');
+      const isolated = expected.every(other => other.id === entry.id || other.panel !== entry.panel || other.side !== entry.side || Math.abs(other.ratio - entry.ratio) * (p.height - 1) >= t.height);
+      if (isolated && y >= p.y + t.height/2 && y <= p.bottom - t.height/2 && Math.abs(t.y + t.height/2 - y) > 1) failures.push(entry.id + ': unobstructed tag is not at its projected height');
       if (entry.side === 'left' ? t.right > p.x + 1 : t.left < p.right - 1) failures.push(entry.id + ': tag on plot, not axis');
       if (tag.scrollWidth > tag.clientWidth + 1) failures.push(entry.id + ': clipped value');
       const probe = document.createElement('span'); probe.style.color = entry.color; document.body.append(probe);
@@ -46,11 +48,11 @@ async function plots(cdp: Cdp): Promise<Rect[]> {
   return evaluate(cdp, `[...document.querySelectorAll('[data-gloom-role=composite-chart-panel]')].map(node => { const r = node.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })`);
 }
 
-export const axisSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((width) => ["white", "paper"].flatMap((theme) => [false, true].flatMap((floating) => ["two", "three", "percent", "mixed", "missing", "stacked"].map((kind) => ({
+export const axisSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((width) => ["white", "paper"].flatMap((theme) => [false, true].flatMap((floating) => ["two", "three", "percent", "mixed", "missing", "stacked", "dense"].map((kind) => ({
   name: `series axis tags: ${host} ${width} ${theme} ${floating ? "floating" : "docked"} ${kind}`,
-  scenario: `axis&axis=${kind}&host=${host}&theme=${theme}&float=${Number(floating)}`,
+  scenario: `axis&axis=${kind}&host=${host}&theme=${theme}&float=${Number(floating)}&short=${Number(kind === "dense")}`,
   async run(cdp: Cdp) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: kind === "dense" ? 140 : 800, deviceScaleFactor: 1, mobile: false });
     await frames(cdp, 8);
     // A floating frame was created at the suite's initial viewport. Resize it
     // through its saved layout on the next load, rather than clipping it.

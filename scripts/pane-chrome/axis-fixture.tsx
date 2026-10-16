@@ -20,7 +20,13 @@ function data(kind: string): { series: ResolvedSeries[]; panels: ChartPanelSpec[
     createTestResolvedSeries({ id: "chrl", label: "CHRL", color: colors[2]!, points: points([10, 27, 40, 60.2, 80.2, 98, 60.2, 22, 12]) }),
   ];
   const panels: ChartPanelSpec[] = [{ id: "main", scale: "linear", height: 3 }];
-  if (kind === "two") series.pop();
+  if (kind === "two") {
+    series.pop();
+    series[1]!.points = points([75, 85, 65, 35, 30, 45, 85, 65, 35]);
+  }
+  if (kind === "dense") {
+    for (let index = 3; index < 6; index++) series.push({ ...series[0]!, id: `line-${index}`, label: `Line ${index}`, color: colors[index]! });
+  }
   if (kind === "percent") for (const entry of series) { entry.unit = "%"; entry.unitGroup = "percent"; }
   if (kind === "missing") {
     series[1]!.points = series[1]!.points.filter((_, index) => index !== 3 && index !== 4);

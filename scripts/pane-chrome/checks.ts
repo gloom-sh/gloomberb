@@ -1174,30 +1174,33 @@ const steps: Step[] = [
         const entries = [...document.querySelectorAll("[data-gloom-role=composite-chart-legend-series]")];
         return { entries: entries.length, carried: entries.filter((entry) => entry.dataset.carried === "true").length,
           text: ${legendText},
+          tags: document.querySelectorAll("[data-gloom-role=chart-series-axis-tag]").length,
+          pointerTags: document.querySelectorAll("[data-gloom-role=chart-price-axis-cursor]").length,
           markers: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker]").length,
           hollow: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker][data-hollow=true]").length,
           timeTag: document.querySelector("[data-gloom-role=chart-time-axis]")?.getAttribute("data-gloom-cursor") ?? null,
           floating: ${FLOATING_PLOT_TEXT("document")} };
       })()`;
-      type Readout = { entries: number; carried: number; text: string; markers: number; hollow: number; timeTag: string | null; floating: string[] };
+      type Readout = { entries: number; carried: number; text: string; tags: number; pointerTags: number; markers: number; hollow: number; timeTag: string | null; floating: string[] };
       const byKey = await waitFor<Readout | null>(cdp, `(() => { const r = ${readout}; return r.entries === 6 && r.carried >= 1 && r.text !== ${JSON.stringify(latest)} ? r : null; })()`);
       if (!byKey) fail("the arrow key's crosshair did not read out all six series in the legend with the German close carried", await evaluate(cdp, readout));
       // Price, two closes, the average and the RSI each get a marker; volume is read off its bars.
       if (byKey.markers !== 5 || byKey.hollow < 1) fail("the crosshair did not mark every line, the carried one hollow", byKey);
       if (byKey.floating.length) fail("text floats over the plot", byKey.floating);
       if (!byKey.timeTag) fail("the time axis has no tag under the crosshair", byKey);
-      // Pointer in the price panel, then in the RSI panel: each gets its own horizontal line and price tag.
+      if (byKey.tags !== 6 || byKey.pointerTags !== 0) fail("the keyboard cursor did not read every series on its axis", byKey);
+      // Only the hovered panel has a horizontal pointer line. Every series,
+      // including volume, reads its observation on its own axis in all panels.
       const panels = await evaluate<Rect[]>(cdp, `[...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map(__check.rect)`);
       for (const [index, panel] of [[0, panels[0]!], [panels.length - 1, panels.at(-1)!]] as const) {
         const at = { x: panel.x + panel.width * 0.3, y: panel.y + panel.height * 0.4 };
         await mouse(cdp, "mouseMoved", at.x, at.y, false);
         const lines = `(() => {
           const ys = [...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map((plot) => !!plot.querySelector("[data-gloom-role=chart-crosshair-y]"));
-          const tag = [...document.querySelectorAll("[data-gloom-role=chart-price-axis-cursor]")].some((tag) => { const r = tag.getBoundingClientRect(); return Math.abs(r.y + r.height / 2 - ${at.y}) <= 3; });
-          return { ys, tag, ...${readout} };
+          return { ys, ...${readout} };
         })()`;
-        const state = await waitFor<(Readout & { ys: boolean[]; tag: boolean }) | null>(cdp, `(() => { const r = ${lines}; return r.entries === 6 && r.markers === 5 && r.ys.filter(Boolean).length === 1 && r.ys[${index}] && r.tag ? r : null; })()`);
-        if (!state) fail(`the pointer in panel ${index} did not draw one horizontal line there with its price tag on the axis, and read out every series`, await evaluate(cdp, lines));
+        const state = await waitFor<(Readout & { ys: boolean[] }) | null>(cdp, `(() => { const r = ${lines}; return r.entries === 6 && r.markers === 5 && r.tags === 6 && r.pointerTags === 0 && r.ys.filter(Boolean).length === 1 && r.ys[${index}] ? r : null; })()`);
+        if (!state) fail(`the pointer in panel ${index} did not read every series on its axis without a pointer-height value`, await evaluate(cdp, lines));
         if (state.floating.length) fail("text floats over the plot", state.floating);
         if (!state.timeTag) fail(`panel ${index}: the time axis has no tag under the crosshair`, state);
       }

@@ -1259,7 +1259,7 @@ function axisLayout(): LayoutConfig {
   return {
     dockRoot: floating ? leaf("plain:back") : leaf("axis:a"),
     instances: [instance("axis:a"), ...(floating ? [instance("plain:back")] : [])],
-    floating: floating ? [{ instanceId: "axis:a", x: 2, y: 2, width: Math.max(30, window.innerWidth / WEB_CELL_WIDTH - 4), height: 34, zIndex: 60 }] : [],
+    floating: floating ? [{ instanceId: "axis:a", x: 2, y: params.get("short") === "1" ? 0 : 2, width: Math.max(30, window.innerWidth / WEB_CELL_WIDTH - 4), height: params.get("short") === "1" ? 6 : 34, zIndex: 60 }] : [],
     detached: [],
   };
 }

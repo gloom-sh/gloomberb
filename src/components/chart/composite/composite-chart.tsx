@@ -294,13 +294,14 @@ function ThemedCompositeChart({
   }, [fractionalViewport, lineCues, panels, plotHeight, projectedScene]);
   // Static overview charts also pin the latest price with cursor precision.
   const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
+  const includeSeriesTags = isDesktopWeb && (interactive || cursorDate !== undefined);
   const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
       ...(layoutPanels ?? []).flatMap((panel) => (["left", "right"] as const).map((side) => {
         const width = compositeAxisLabelWidth(panel.axes[side], formatAxisValue, includeCursorLabels);
-        if (!isDesktopWeb || !includeCursorLabels || !width) return includeCursorLabels ? width : Math.min(width, maximumAxisWidth);
+        if (!includeSeriesTags || !width) return includeCursorLabels ? width : Math.min(width, maximumAxisWidth);
         const count = panel.series.filter(({ source }) => source.axis === side && !source.hidden).length;
         const lanes = Math.max(1, Math.ceil(count / Math.max(1, Math.floor(panel.height))));
         // Reserve the observation leaders and dense-panel lanes before hover,
@@ -308,7 +309,7 @@ function ThemedCompositeChart({
         return (width + 1) * lanes;
       })),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, isDesktopWeb, layoutPanels, maximumAxisWidth]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, includeSeriesTags, layoutPanels, maximumAxisWidth]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
