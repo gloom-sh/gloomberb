@@ -101,6 +101,49 @@ test("a coin's partial and filled days say so, its volume is labelled in its quo
   }
 });
 
+test("history shows today's session from the quote in every range, partial, whether the source's copy has a snapshot of it or none", async () => {
+  // Fri 16 Oct 2026, 15:14 in New York. Gloom Cloud's 3M copy holds a snapshot of the opening minutes; its 1M copy has no bar for today.
+  setSystemTime(new Date("2026-10-16T19:14:30Z"));
+  try {
+    const finished = [
+      { date: new Date("2026-10-14"), open: 344.61, high: 347.09, low: 341.72, close: 342.96, volume: 50_061_100 },
+      { date: new Date("2026-10-15"), open: 346.95, high: 347.85, low: 341.6, close: 342, volume: 39_678_300 },
+    ];
+    const snapshot = { date: new Date("2026-10-16"), open: 346.085, high: 347.8, low: 341.12, close: 341.995, volume: 1_096_219 };
+    const run = async (points: typeof finished, quote = {}) => {
+      const cli = createTestCliContext({
+        config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+        dataProvider: createTestDataProvider({
+          getQuote: async () => createTestQuote({
+            symbol: "AAPL", price: 340.91, previousClose: 342, open: 346.085, high: 347.82, low: 340.46, volume: 39_269_651, marketState: "REGULAR",
+            changeSessionDate: "2026-10-16", listingExchangeName: "NASDAQ", instrumentType: "Common Stock", lastUpdated: Date.now() - 15 * 60_000, ...quote,
+          }),
+          getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points }),
+        }),
+      });
+      await history.execute(["AAPL", "--range", "3M"], cli.context);
+      const [{ result, options }] = cli.printed;
+      return { result, text: serializeCliResult(result, DEFAULT_CLI_OPTIONS, options).split("\n") };
+    };
+    for (const points of [[...finished, snapshot], finished]) {
+      const { result, text } = await run(points);
+      expect(result.data.at(-1)).toMatchObject({ date: "2026-10-16", open: 346.085, high: 347.82, low: 340.46, close: 340.91, volume: 39_269_651, partial: true });
+      expect(result.data.slice(0, -1).some((row: Record<string, unknown>) => row.partial)).toBe(false);
+      expect(result.warnings).toContain("2026-10-16 is still forming (partial)");
+      expect(text.find((line) => line.startsWith("2026-10-16"))).toMatch(/partial$/);
+      expect(text.find((line) => line.startsWith("Source:"))).toContain("(daily bars) \u00b7 the newest bar is today so far");
+      expect(result.freshness).toMatchObject({ basis: "daily bars", asOf: "2026-10-16T18:59:30.000Z" });
+    }
+    // Without a current quote the snapshot is not today's row, and a source with no bar for today shows none.
+    for (const points of [[...finished, snapshot], finished]) {
+      const { result } = await run(points, { stale: true });
+      expect(result.data.map((row: Record<string, unknown>) => row.date)).toEqual(["2026-10-14", "2026-10-15"]);
+    }
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a stock's history keeps its export columns, with no volume unit it cannot vouch for", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),

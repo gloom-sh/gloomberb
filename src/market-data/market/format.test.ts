@@ -219,6 +219,18 @@ test("contract price precision does not change units, signed/zero/missing semant
   expect(formatMarketChangeWithCurrency(.001, "USD", { assetCategory: "BOND" })).toBe("—");
 });
 
+test("a negative zero reads as zero, and only it: a move a cell rounded to nothing is never signed", () => {
+  // A table that pre-rounds its change (Number(x.toFixed(2))) hands over -0 for -0.004.
+  expect(formatPriceObservation(Number((-0.004).toFixed(2)), { minimumFractionDigits: 2 })).toBe("0.00");
+  expect(formatPriceObservation(-0, { minimumFractionDigits: 2, maxWidth: 6 })).toBe("0.00");
+  expect(formatMarketPrice(-0, { assetCategory: "STK" })).toBe(formatMarketPrice(0, { assetCategory: "STK" }));
+  // Real moves keep their sign and digits.
+  expect(formatPriceObservation(-0.004, { minimumFractionDigits: 2 })).toBe("-0.004");
+  expect(formatPriceObservation(-0.01, { minimumFractionDigits: 2 })).toBe("-0.01");
+  expect(formatPriceObservation(0.01, { minimumFractionDigits: 2 })).toBe("0.01");
+  expect(formatMarketPrice(-37.63, { assetCategory: "STK" })).toBe("-37.63");
+});
+
 test("untyped observations retain source decimals with bounded widths and missing/zero distinctions", () => {
   expect(formatPriceObservation(-37.63001)).toBe("-37.63001");
   expect(formatPriceObservation(0, { minimumFractionDigits: 2 })).toBe("0.00");

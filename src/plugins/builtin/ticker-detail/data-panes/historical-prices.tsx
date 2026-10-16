@@ -30,6 +30,7 @@ import {
 import { usePaneTicker } from "../../../../state/app/context";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
+import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../../time-series/session-bar";
 import {
   formingHistoryBar,
   formingHistoryBarText,
@@ -48,12 +49,14 @@ type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 export type HistoricalPriceRow = {
   key: string;
   point: ReturnType<typeof pricePointValues>;
-  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running. */
+  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running, `2026-10-16 DTD` for today's session. */
   date: string;
   /** What a CSV export writes for the date: the bar's own date, whatever the table says of its period. */
   exportDate: string;
   /** The bar carries a time of day, so the table dates it with one. */
   timed: boolean;
+  /** The bar's period had not ended: a week or month still running, or the day's session still trading. */
+  partial: boolean;
   change: number | null;
   changePercent: number | null;
 };
@@ -113,6 +116,8 @@ interface HistoricalPriceTable {
   size: HistoryBarSize;
   /** The newest bar's week or month had not ended, and how far into it the bar runs. */
   forming: ReturnType<typeof formingHistoryBar>;
+  /** The newest bar is a day whose session is still trading. */
+  dayToDate: boolean;
   /** The newest bar's day, `YYYY-MM-DD`. */
   newestDate: string | undefined;
 }
@@ -121,29 +126,33 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
-      return date ? [{ point: pricePointValues(point), date, sourceIndex }] : [];
+      return date ? [{ point: pricePointValues(point), date, sourceIndex, partial: point.partial === true }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   const size = historyBarSize(sorted.map((entry) => entry.date.getTime()));
   const newestDate = sorted.at(-1)?.date.toISOString().slice(0, 10);
   const forming = formingHistoryBar(size, newestDate, venue, now);
+  const dayToDate = size === "1d" && sorted.at(-1)?.partial === true;
   const rows = sorted.map((entry, index) => {
     const previous = sorted[index - 1]?.point;
     const { point, date, sourceIndex } = entry;
+    const newest = index === sorted.length - 1;
+    const partial = newest && (!!forming || dayToDate);
     const change = previous?.close != null && point.close != null ? point.close - previous.close : null;
     const shown = formatDateTime(date);
     const timed = shown.length > 10;
     return {
       key: `${date.toISOString()}:${sourceIndex}`,
       point,
-      date: timed ? shown : historyBarDate(shown, size, !!forming && index === sorted.length - 1),
+      date: timed ? shown : historyBarDate(shown, size, partial),
       exportDate: shown,
       timed,
+      partial,
       change,
       changePercent: previous?.close && change !== null ? change / previous.close : null,
     };
   }).reverse();
-  return { rows, size, forming, newestDate };
+  return { rows, size, forming, dayToDate, newestDate };
 }
 
 const HISTORY_PRICE_WIDTH = 10;
@@ -215,9 +224,16 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // whose sessions say whether a week or month is still running.
   const { financials } = usePaneTicker();
   const venue = exchange || financials?.quote?.listingExchangeName || financials?.quote?.exchangeName || undefined;
-  const { rows, size, forming, newestDate } = useMemo(
-    () => buildHistoricalPriceRows(data ?? [], venue, Date.now()),
-    [data, venue],
+  // While the session trades the day's bar is the quote's: the history keeps a
+  // snapshot of it from whenever it was last fetched (withSessionBar).
+  const quote = financials?.quote;
+  const points = useMemo(
+    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue }),
+    [data, quote, venue],
+  );
+  const { rows, size, forming, dayToDate, newestDate } = useMemo(
+    () => buildHistoricalPriceRows(points, venue, Date.now()),
+    [points, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
   // Daily and longer bars are dates; only intraday bars carry a time.
@@ -284,7 +300,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const barInfo = useMemo<PaneFooterSegment[]>(() => [
     ...rows.length > 0 ? [{ id: "bars", parts: [{ text: historyBarSizeText(size), tone: "muted" as const }] }] : [],
     ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
-  ], [forming, newestDate, rows.length, size]);
+    ...dayToDate ? [{ id: "forming", parts: [{ text: DAY_SO_FAR_TEXT, tone: "muted" as const }] }] : [],
+  ], [dayToDate, forming, newestDate, rows.length, size]);
   usePaneStatusFooter({ registrationId: "historical-prices", loading, error, info: barInfo });
 
   usePaneNoticeFooter({
@@ -331,6 +348,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         ...(rows.length > 0 ? [["Bar size", historyBarSizeWord(size)]] : []),
         ["Time zone", "UTC"],
         ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
+        ...(dayToDate && newestDate ? [["Partial bar", `${newestDate}, ${DAY_SO_FAR_TEXT}`]] : []),
         ["Price units", "As served in the history; currency and price-basis metadata are unavailable"],
         ["Status", error ? (rows.length ? "Retained after refresh failure" : "Unavailable")
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],

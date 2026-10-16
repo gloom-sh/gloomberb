@@ -106,6 +106,7 @@ import { bareFuturesCode } from "../../market-data/futures-board";
 import { newsEmptyMessage } from "./news-hints";
 import { newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, searchNewsStories } from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
+import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
@@ -875,7 +876,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         .catch((error) => failHistory(error, listing.key, ctx)),
       quoted,
     ]);
-    const { points, resolution } = loaded;
+    const { resolution } = loaded;
+    // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
+    const points = withSessionBar(loaded.points, quote, { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined });
+    const fromQuote = points !== loaded.points;
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
@@ -897,13 +901,16 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
     const intraday = data.some((row) => row.date.length > 10);
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
+    // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
+    const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
     const freshness = rowsFreshness(data, {
       ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
       observedKey: "date",
       oldest: null,
       cadenceExchange: venue,
       ...(forming ? { periodToDate: forming.periodToDate } : {}),
-      ...(volume ? { note: historyVolumeText(volume, interval) } : {}),
+      ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
+      ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
     });
     const gaps = historyGapNote(data, traded);
     const notes = [

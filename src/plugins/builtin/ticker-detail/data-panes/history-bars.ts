@@ -77,13 +77,13 @@ export function formingHistoryBar(
 
 /**
  * A bar's day as its table dates it: a month's bar as the month (`2026-10`),
- * a week's by the day it starts, and `MTD` or `WTD` after one whose period had
- * not ended, so it never reads as a complete bar dated on its first day.
- * `day` is `YYYY-MM-DD`.
+ * a week's by the day it starts, and `MTD`, `WTD` or `DTD` after one whose
+ * period had not ended, so it never reads as a complete bar dated on its
+ * first day. `day` is `YYYY-MM-DD`.
  */
 export function historyBarDate(day: string, size: HistoryBarSize, partial = false): string {
   const text = size === "1mo" ? day.slice(0, 7) : day;
-  return partial ? `${text} ${size === "1mo" ? "MTD" : "WTD"}` : text;
+  return partial ? `${text} ${size === "1mo" ? "MTD" : size === "1wk" ? "WTD" : "DTD"}` : text;
 }
 
 /** What the newest bar covers so far: `month to date, through Fri 16 Oct 2026`. */

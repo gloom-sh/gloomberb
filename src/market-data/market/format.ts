@@ -120,6 +120,8 @@ function formatVariableNumber(
   maxWidth: number | undefined,
   minimumFractionDigits = 0,
 ): string {
+  // Intl signs a negative zero (-0.00): a move rounded to nothing, as a cell that pre-rounds leaves it, is unsigned.
+  if (value === 0) value = 0;
   const groupedModes = [true, false];
 
   for (const useGrouping of groupedModes) {

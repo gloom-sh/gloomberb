@@ -223,6 +223,49 @@ test("historical prices open on 3M daily bars and date an intraday bar by its ti
   expect(text).toContain("2026-10-09 14:30");
 });
 
+test("historical prices take today's bar from the quote while the session trades, as a partial day, or leave it out with none", async () => {
+  // Fri 16 Oct 2026, 15:14 in New York. The source's copy of today's bar is a snapshot of the opening minutes.
+  setSystemTime(new Date("2026-10-16T19:14:30Z"));
+  try {
+    const served = [
+      { date: new Date("2026-10-14"), open: 344.61, high: 347.09, low: 341.72, close: 342.96, volume: 50_061_100 },
+      { date: new Date("2026-10-15"), open: 346.95, high: 347.85, low: 341.6, close: 342, volume: 39_678_300 },
+      { date: new Date("2026-10-16"), open: 346.085, high: 347.8, low: 341.12, close: 341.995, volume: 1_096_219 },
+    ];
+    const quote = (overrides: object = {}) => ({
+      symbol: "AAPL", price: 340.91, change: -1.09, changePercent: -0.32, currency: "USD", previousClose: 342, open: 346.085, high: 347.82,
+      low: 340.46, volume: 39_269_651, listingExchangeName: "NASDAQ", instrumentType: "Common Stock", marketState: "REGULAR" as const,
+      changeSessionDate: "2026-10-16", lastUpdated: Date.now() - 15 * 60_000, ...overrides,
+    });
+    const load = (getQuote: () => Promise<ReturnType<typeof quote>>, history = served) => historicalPricesHeadless.load(args(["AAPL"]), createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "AAPL", exchange: "" }),
+      marketData: createTestDataProvider({ getPriceHistory: async () => history, getQuote }),
+    }));
+
+    const result = await load(async () => quote());
+    expect(result.rows.at(-1)).toMatchObject({ date: "2026-10-16T00:00:00.000Z", open: 346.085, high: 347.82, low: 340.46, close: 340.91, volume: 39_269_651, partial: true });
+    expect(result.rows.slice(0, -1).some((row) => row.partial)).toBe(false);
+    expect(result.columns!.map((column) => column.key)).toContain("partial");
+    // Dated by the quote it was read from, and the line says the newest bar is not a close.
+    expect(result.freshness).toMatchObject({ basis: "daily bars", asOf: "2026-10-16T18:59:30.000Z", note: "the newest bar is today so far" });
+    const text = renderHeadlessPaneText(historicalPricesHeadless, result, args(["AAPL"]), "HP AAPL");
+    expect(text).toContain("2026-10-16 DTD");
+    expect(text).toContain("today so far");
+    expect(text).not.toContain("341.995");
+
+    // A range cut before the session opened gains the day.
+    expect((await load(async () => quote(), served.slice(0, 2))).rows.map((row) => [row.date, row.partial === true]))
+      .toEqual([["2026-10-14T00:00:00.000Z", false], ["2026-10-15T00:00:00.000Z", false], ["2026-10-16T00:00:00.000Z", true]]);
+    // No current quote: the snapshot is not today's row.
+    const stale = await load(async () => quote({ stale: true }));
+    expect(stale.rows.map((row) => String(row.date).slice(0, 10))).toEqual(["2026-10-14", "2026-10-15"]);
+    expect(stale.freshness).toMatchObject({ basis: "daily closes" });
+    expect(stale.freshness).not.toHaveProperty("note");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("historical prices read daily bars across a holiday as daily, not as a week still forming", async () => {
   // Golden Week closed Shanghai from 1 to 7 Oct 2026. On Thu 8 Oct, while it trades, the last two daily bars are 8 days apart.
   setSystemTime(new Date("2026-10-08T03:00:00Z"));
