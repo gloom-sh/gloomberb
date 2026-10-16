@@ -121,11 +121,10 @@ const HOVER_TEXT_MIN_CONTRAST = 4.5;
 
 /**
  * Text on a control under the pointer: the theme's bright text, which hovered
- * buttons, tabs and table actions light up to, pushed toward black or white
- * only as far as `surface` needs for it to stay readable. A chip tinted with
- * its own tone (a ticker's day move, a mention) is the case that needs it: a
- * phosphor theme's bright text is its own hue, and red on a green chip is not
- * readable.
+ * buttons and table actions light up to, pushed toward black or white only as
+ * far as `surface` needs for it to stay readable. A chip tinted with its own
+ * tone (a ticker's day move, a mention) is the case that needs it: a phosphor
+ * theme's bright text is its own hue, and red on a green chip is not readable.
  */
 export function hoverText(surface: string, palette: ThemeColors = colors): string {
   return blendForContrast(
