@@ -480,6 +480,18 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    name: "chat window: clicking a quote loads older pages and mounts its highlighted target",
+    scenario: "chat&count=500&latency=0",
+    async run(cdp) {
+      await ready(cdp);
+      await evaluate(cdp, "void __chatFake.deliver('A quote outside the loaded history.',{replyToId:'m10'})");
+      await frames(cdp, 6);
+      await click(cdp, await pointFor(cdp, '[data-gloom-chat-message-id="m500"] [data-gloom-role=chat-message-row]'));
+      if (!await waitFor(cdp, "__chat.marked().includes('m10') && __chat.rowRect('m10')", 10000)) fail("the older quote target did not mount and highlight");
+      if (await evaluate<number>(cdp, "__chat.rows().length") > 80) fail("history pagination mounted every row");
+    },
+  },
+  {
     name: "chat window: an image reserves its measured space before decoding",
     scenario: "chat&count=500&loaded=500",
     async run(cdp) {

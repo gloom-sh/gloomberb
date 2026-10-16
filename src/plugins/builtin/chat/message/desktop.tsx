@@ -139,8 +139,11 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           flexDirection="row"
           height={1}
           paddingLeft={2}
-          onMouseDown={() => {
-            if (msg.replyToId) jumpToMessage(msg.replyToId);
+          onMouseDown={(event: { stopPropagation?: () => void }) => {
+            if (!msg.replyToId) return;
+            // Do not let the thread's background click clear the new highlight.
+            event.stopPropagation?.();
+            jumpToMessage(msg.replyToId);
           }}
           style={{ minWidth: 0, alignItems: "flex-start", cursor: "pointer", overflow: "hidden" }}
         >

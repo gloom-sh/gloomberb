@@ -113,7 +113,7 @@ jobs:
       - name: Move panes with real pointer input
         run: bun run check:pane-chrome
 
-      - name: Keep draft and upload work independent of transcript length
+      - name: Bound opening mounts and keep draft and upload work off message rows
         run: bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
 
       - name: Show chat after mount and asynchronous channel transitions

@@ -70,9 +70,18 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
   const keysRef = useRef(itemKeys);
   keysRef.current = itemKeys;
   const restoreFrame = useRef<number | null>(null);
+  const cancelRestore = useCallback(() => {
+    if (restoreFrame.current !== null) cancelAnimationFrame(restoreFrame.current);
+    restoreFrame.current = null;
+  }, []);
+  const handleScrollActivity = useCallback<NonNullable<WindowedListProps["onScrollActivity"]>>((event) => {
+    if (event?.scroll) cancelRestore();
+    onScrollActivity?.(event);
+  }, [cancelRestore, onScrollActivity]);
   const setScrollRef = useCallback((handle: ScrollBoxRenderable | null) => {
     if (handle) {
       handle.scrollToEnd = () => {
+        cancelRestore();
         pinnedRef.current = true;
         list.scrollToEnd();
         onPinRef.current?.(true);
@@ -80,10 +89,16 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
       handle.scrollToItem = (key, { align = "auto", offset = 0 } = {}) => {
         const index = keysRef.current.indexOf(key);
         if (index < 0) return false;
+        cancelRestore();
+        if (align === "center") {
+          const row = list.elementsCache.get(key)?.getBoundingClientRect();
+          const view = list.scrollElement?.getBoundingClientRect();
+          // A link to an already visible row marks it without moving the reader.
+          if (row && view && view.height > 0 && row.top >= view.top && row.bottom <= view.bottom) return true;
+        }
         pinnedRef.current = false;
         onPinRef.current?.(false);
         list.scrollToIndex(index, { align });
-        if (restoreFrame.current !== null) cancelAnimationFrame(restoreFrame.current);
         if (align === "start") {
           // The target must be mounted and measured before restoring a partial
           // row at the viewport's top. Cancel on disposal or a subsequent jump.
@@ -100,18 +115,16 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
       };
     }
     scrollRef.current = handle;
-  }, [list, scrollRef]);
+  }, [cancelRestore, list, scrollRef]);
   useLayoutEffect(() => {
     list.scrollToEnd();
-    return () => {
-      if (restoreFrame.current !== null) cancelAnimationFrame(restoreFrame.current);
-    };
-  }, [list]);
+    return cancelRestore;
+  }, [cancelRestore, list]);
   const setContent = useCallback((node: HTMLDivElement | null) => {
     contentRef.current = node;
   }, []);
   return <WebScrollBox ref={setScrollRef} flexGrow={1} scrollY focusable={false}
-    data-gloom-role={role} onMouseScroll={onScrollActivity} onMouseMove={onPointerMove}
+    data-gloom-role={role} onMouseScroll={handleScrollActivity} onMouseMove={onPointerMove}
     style={{ minHeight: 0, display: "block", overflowAnchor: "none" }}>
     <div ref={setContent} style={{ position: "relative", width: "100%", height: list.getTotalSize() }}>
       {rows.map((row) => <div key={row.key} data-index={row.index} ref={list.measureElement}
