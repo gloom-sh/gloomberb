@@ -15,7 +15,7 @@ import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
 import { debugLog } from "../../utils/debug-log";
-import { ambiguousNumberMessage, parseTypedAmount } from "../../utils/decimal-comma";
+import { ambiguousNumberMessage, parseTypedNumber } from "../../utils/decimal-comma";
 import {
   getOnboardingPortfolioId,
   listOnboardingPositions,
@@ -53,16 +53,16 @@ function isSymbolQuery(query: string): boolean {
   return query.length > 0 && query.length <= 32 && SYMBOL_QUERY.test(query);
 }
 
-/** A typed amount as positions read everywhere (18,50 is 18.5, 1.234,5 is 1234.5): null when empty, NaN when it is no number. */
+/** A typed share count or cost as positions read everywhere (18,50 is 18.5, 1.234,5 is 1234.5, 123.456 as written): null when empty, NaN when it is no number. */
 function parseAmount(value: string): number | null {
   if (!value.trim()) return null;
-  const read = parseTypedAmount(value);
+  const read = parseTypedNumber(value);
   return read.kind === "number" ? read.value : Number.NaN;
 }
 
 /** The error for an amount that reads two ways (1,234), naming both readings; null for any other. */
 function ambiguousAmount(value: string, label: string): string | null {
-  const read = parseTypedAmount(value);
+  const read = parseTypedNumber(value);
   return read.kind === "ambiguous" ? `${label} ${ambiguousNumberMessage(value, read)}.` : null;
 }
 

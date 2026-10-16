@@ -16,8 +16,10 @@ test("an amount in front converts from the first currency to the second, read wi
   expect(parseFxArgs(["1.234,5", "EUR/USD"], "GBP")).toEqual({ request: eurUsd, amount: 1234.5 });
   // One currency after an amount converts to USD, not the base currency, and says so.
   expect(parseFxArgs(["1234.5", "EUR"], "GBP")).toEqual({ request: eurUsd, amount: 1234.5, toUsdByDefault: true });
-  expect(parseFxArgs(["1,234", "EUR/USD"], "USD")).toEqual({
-    error: "The amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.",
+  // The amount is in the currency converted from: thousands in euros, either reading in dinars.
+  expect(parseFxArgs(["1.234", "EUR/USD"], "USD")).toEqual({ request: eurUsd, amount: 1234 });
+  expect(parseFxArgs(["1,234", "KWD", "USD"], "USD")).toEqual({
+    error: "The amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma), and KWD has 3 decimals; type 1234 or 1.2340.",
   });
   expect(parseFxArgs(["EUR/USD", "100"], "USD")).toEqual({ error: "Put the amount first: fx 100 EUR/USD." });
   // Two codes are never two answers; the error writes them as one pair, with the amount form beside it.

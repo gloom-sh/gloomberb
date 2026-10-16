@@ -22,7 +22,7 @@ const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
 });
 const quote = { symbol: "AAPL", price: 90, currency: "USD", change: -5, changePercent: -5.26, previousClose: 95, lastUpdated: Date.now() };
 
-test("CLI rejects a blank or ambiguous acquisition cost and bare CASH before resolving or writing a ticker, and accepts explicit zero and a decimal comma", async () => {
+test("CLI rejects a blank or ambiguous acquisition cost and bare CASH before resolving or writing a ticker, and accepts explicit zero, a decimal comma and a three-decimal cost", async () => {
   const config = createDefaultConfig("/unused-cost-parser");
   let reads = 0;
   const saved: TickerRecord[] = [];
@@ -45,8 +45,10 @@ test("CLI rejects a blank or ambiguous acquisition cost and bare CASH before res
   try {
     await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "0"], ctx);
     await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "18,50"], ctx);
+    // A cost per share is a price, not an amount of its currency: a lone dot is a decimal point.
+    await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "123.456"], ctx);
   } finally { logger.mockRestore(); }
-  expect(saved.map((record) => record.metadata.positions[0]?.avgCost)).toEqual([0, 18.5]);
+  expect(saved.map((record) => record.metadata.positions[0]?.avgCost)).toEqual([0, 18.5, 123.456]);
 });
 
 test("ticker and collection CLI reconcile short P&L and withhold totals for a missing holding", async () => {

@@ -1,5 +1,5 @@
 import { currencyMinorDigits } from "../market-data/market/format";
-import { ambiguousNumberMessage, parseTypedAmount } from "../utils/decimal-comma";
+import { parseTypedNumber, readCurrencyAmount } from "../utils/decimal-comma";
 
 /**
  * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
@@ -60,17 +60,18 @@ export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/
 /**
  * `fx` arguments: a currency or a pair (`EUR`, `USD/NGN`), or an amount and
  * what to convert it from and to (`1234.5 EUR/USD`, `1234,5 EUR USD`). The
- * amount reads as `parseTypedAmount` reads cash: `1.234,5` and `1,234.5` are
- * 1234.5, and `1,234` or `1.234`, which read two ways, are refused naming both.
- * An amount and one currency converts to USD (`toUsdByDefault`). The error
- * sentence otherwise.
+ * amount is an amount of the first currency and reads as cash does
+ * (`readCurrencyAmount`): `1.234,5` and `1,234.5` are 1234.5, and `1,234` or
+ * `1.234` are thousands unless that currency has three decimals, where they are
+ * refused naming both readings. An amount and one currency converts to USD
+ * (`toUsdByDefault`). The error sentence otherwise.
  */
 export function parseFxArgs(args: readonly string[], baseCurrency: string): FxArgs | { error: string } {
   if (args.length === 1) {
     const request = parseFxRequest(args[0]!, baseCurrency);
     if (!("error" in request)) return { request };
     // A lone number is an amount with nothing to convert it from.
-    return parseTypedAmount(args[0]).kind === "invalid"
+    return parseTypedNumber(args[0]).kind === "invalid"
       ? request
       : { error: `fx ${args[0]!.trim()} names no currency; convert an amount as fx ${args[0]!.trim()} EUR/USD.` };
   }
@@ -79,11 +80,9 @@ export function parseFxArgs(args: readonly string[], baseCurrency: string): FxAr
   }
   const typed = args.map((arg) => arg.trim());
   const [first, ...codes] = typed;
-  const amount = parseTypedAmount(first);
-  if (amount.kind === "ambiguous") return { error: `The amount ${ambiguousNumberMessage(first!, amount)}.` };
-  if (amount.kind === "invalid") {
+  if (parseTypedNumber(first).kind === "invalid") {
     // The amount typed after the pair (fx EUR/USD 100) belongs in front.
-    if (parseTypedAmount(typed.at(-1)).kind === "number") {
+    if (parseTypedNumber(typed.at(-1)).kind === "number") {
       return { error: `Put the amount first: fx ${[typed.at(-1), ...typed.slice(0, -1)].join(" ")}.` };
     }
     // Two codes are one pair (fx NGN ZAR is NGN/ZAR), never two answers.
@@ -93,7 +92,14 @@ export function parseFxArgs(args: readonly string[], baseCurrency: string): FxAr
   const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/");
   const request = parseFxRequest(codes.join("/"), "USD");
   if ("error" in request) return request;
-  return { request, amount: amount.value, ...(toUsdByDefault ? { toUsdByDefault } : {}) };
+  // The amount is in the currency converted from, so its units say what 1,234 means.
+  let amount: number;
+  try {
+    amount = readCurrencyAmount(first, "The amount", request.currency);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  return { request, amount, ...(toUsdByDefault ? { toUsdByDefault } : {}) };
 }
 
 /**

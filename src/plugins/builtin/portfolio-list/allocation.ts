@@ -2,7 +2,7 @@ import type { Portfolio, PortfolioCash } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
 import { currencyMinorDigits, getCurrencySymbol, resolveAssetDisplayKind } from "../../../market-data/market/format";
 import { formatNumber } from "../../../utils/format";
-import { parseTypedAmount } from "../../../utils/decimal-comma";
+import { parseTypedNumber } from "../../../utils/decimal-comma";
 
 /**
  * Weights, targets and the trades that would rebalance a portfolio. `PF`, its
@@ -182,7 +182,7 @@ export function resolvePortfolioCash(
  * `1.234` take their decimal reading.
  */
 export function parseTargetWeight(raw: string | undefined): number {
-  const read = parseTypedAmount(raw?.trim().replace(/%$/, "") ?? "");
+  const read = parseTypedNumber(raw?.trim().replace(/%$/, "") ?? "");
   const value = read.kind === "number" ? read.value : read.kind === "ambiguous" ? read.decimal : Number.NaN;
   if (!Number.isFinite(value)) throw new Error(`Target weight must be a percent, such as 12.5, 12,5 or 12.5%.`);
   if (value < 0 || value > 100) throw new Error("Target weight must be between 0% and 100%.");

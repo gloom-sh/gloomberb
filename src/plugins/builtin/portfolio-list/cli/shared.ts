@@ -4,7 +4,7 @@ import { parseListingArg } from "../../../../cli/listing-arg";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
-import { readTypedAmount, TYPED_AMOUNT_FORMAT } from "../../../../utils/decimal-comma";
+import { readCurrencyAmount, readTypedNumber, TYPED_AMOUNT_FORMAT } from "../../../../utils/decimal-comma";
 
 export { listingFields } from "../../../../cli/listing-arg";
 
@@ -93,12 +93,15 @@ export function misplacedSymbolList(
 }
 
 /**
- * An amount argument (cash, shares, a cost) as `parseTypedAmount` reads it:
- * `1.234,5` and `1,234.5` are 1234.5, `18,50` is 18.5. One that reads two ways
- * (`1,234`, `1.234`) fails naming both, rather than storing either.
+ * A number argument: `1.234,5` and `1,234.5` are 1234.5, `18,50` is 18.5. With
+ * a currency it is an amount of it (cash), where `1,234` and `1.234` are
+ * thousands unless the currency has three decimals (`readCurrencyAmount`);
+ * without one it is a price per share or a share count, where a lone dot is a
+ * decimal point (`readTypedNumber`). One that reads two ways fails naming
+ * both, rather than storing either.
  */
-export function parseAmountArg(rawValue: string | undefined, label: string): number {
-  const value = readTypedAmount(rawValue, label);
+export function parseAmountArg(rawValue: string | undefined, label: string, currency?: string): number {
+  const value = currency ? readCurrencyAmount(rawValue, label, currency) : readTypedNumber(rawValue, label);
   if (Number.isFinite(value)) return value;
   const typed = rawValue?.trim();
   throw new Error(`${label} must be a number such as ${TYPED_AMOUNT_FORMAT}${typed ? `; got "${typed}"` : ""}.`);

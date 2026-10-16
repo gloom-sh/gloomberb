@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parsePastedNumber, parseTypedAmount, readTypedAmount, thousandsDotReadings } from "./decimal-comma";
+import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parseCurrencyAmount, parsePastedNumber, parseTypedNumber, readCurrencyAmount, readTypedNumber, thousandsDotReadings } from "./decimal-comma";
 
 test("a digits-comma-digits value reads as the dotted number, and nothing else does", () => {
   expect(dottedDecimal("4,5")).toBe("4.5");
@@ -85,26 +85,35 @@ test("a dot and three digits reads as thousands only when the number as written 
   expect(meant("81.000", 0)).toBe(false);
 });
 
-test("an amount typed with nothing to compare it with reads either decimal mark, and refuses a comma or a dot that could be thousands", () => {
+test("a price or share count reads a lone dot as a decimal point and refuses a lone comma before three digits", () => {
   const read: Array<[string, number]> = [
+    ["123.456", 123.456],
+    ["1.234", 1.234],
+    ["18,50", 18.5],
     ["1.234,5", 1234.5],
     ["1234,5", 1234.5],
     ["1,234.5", 1234.5],
-    ["18,50", 18.5],
-    ["500_000", 500000],
-    ["1.234.567", 1234567],
-    ["0.500", 0.5],
-    ["1234.567", 1234.567],
-    // The decimal reading as an ambiguity message spells it, so it can be typed back.
-    ["1.2340", 1.234],
+    ["1_000", 1000],
   ];
-  expect(read.map(([text]) => parseTypedAmount(text))).toEqual(read.map(([, value]) => ({ kind: "number", value })));
-  expect(parseTypedAmount("1,234")).toEqual({ kind: "ambiguous", thousands: 1234, decimal: 1.234 });
-  expect(parseTypedAmount("-1.234")).toEqual({ kind: "ambiguous", thousands: -1234, decimal: -1.234 });
-  expect(parseTypedAmount("_500")).toEqual({ kind: "invalid" });
-  expect(() => readTypedAmount("1,234", "Cash amount"))
-    .toThrow("Cash amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.");
-  expect(() => readTypedAmount("1.234", "Shares"))
-    .toThrow("Shares 1.234 could be 1234 (thousands) or 1.234 (decimal point); type 1234 or 1.2340.");
-  expect(readTypedAmount("abc", "Shares")).toBeNaN();
+  expect(read.map(([text]) => parseTypedNumber(text))).toEqual(read.map(([, value]) => ({ kind: "number", value })));
+  expect(() => readTypedNumber("1,234", "Shares"))
+    .toThrow("Shares 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.234.");
+  expect(readTypedNumber("abc", "Shares")).toBeNaN();
+});
+
+test("an amount of a currency reads a mark before three digits as thousands unless the currency has three decimals", () => {
+  const amount = (text: string, currency: string) => parseCurrencyAmount(text, currency);
+  // A third decimal is below a cent (or a yen), so these are thousands.
+  expect(amount("1.234", "EUR")).toEqual({ kind: "number", value: 1234 });
+  expect(amount("500,000", "USD")).toEqual({ kind: "number", value: 500000 });
+  expect(amount("1,234", "JPY")).toEqual({ kind: "number", value: 1234 });
+  expect(amount("-1.234", "EUR")).toEqual({ kind: "number", value: -1234 });
+  // Other shapes read as they do anywhere.
+  expect(amount("1.234,5", "EUR")).toEqual({ kind: "number", value: 1234.5 });
+  expect(amount("1234.567", "USD")).toEqual({ kind: "number", value: 1234.567 });
+  expect(amount("12.5", "EUR")).toEqual({ kind: "number", value: 12.5 });
+  // A dinar has 1000 fils, so 1,234 KWD is a real amount either way.
+  expect(amount("1.234", "KWD")).toEqual({ kind: "ambiguous", thousands: 1234, decimal: 1.234 });
+  expect(() => readCurrencyAmount("1,234", "Cash amount", "kwd"))
+    .toThrow("Cash amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma), and KWD has 3 decimals; type 1234 or 1.2340.");
 });

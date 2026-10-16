@@ -28,7 +28,7 @@ import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
 import { coerceFieldString } from "../helpers";
 import { slugifyName } from "../../../utils/slugify";
-import { readTypedAmount } from "../../../utils/decimal-comma";
+import { readTypedNumber } from "../../../utils/decimal-comma";
 import { resolveTickerInputOrThrow } from "./ops";
 import { resolveCollectionTicker } from "./collection-ticker";
 
@@ -233,13 +233,13 @@ export function createCommandBarCollectionWorkflowActions(options: {
         throw new Error("Choose a manual portfolio.");
       }
 
-      // 18,50 and 1.234,5 read as typed; 1,234 could be either reading and fails naming both.
-      const shares = readTypedAmount(coerceFieldString(values.shares), "Shares");
+      // 18,50, 1.234,5 and 123.456 read as typed; 1,234 could be either reading and fails naming both.
+      const shares = readTypedNumber(coerceFieldString(values.shares), "Shares");
       if (!Number.isFinite(shares) || shares <= 0) {
         throw new Error("Shares must be greater than 0.");
       }
 
-      const avgCost = readTypedAmount(coerceFieldString(values.avgCost), "Avg Cost");
+      const avgCost = readTypedNumber(coerceFieldString(values.avgCost), "Avg Cost");
       if (!Number.isFinite(avgCost)) {
         throw new Error("Avg Cost must be a valid number.");
       }
