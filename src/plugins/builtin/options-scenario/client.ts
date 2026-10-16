@@ -3,7 +3,7 @@ import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValu
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
-import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
+import type { CorporateActionsData, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { expiryIsoDate, findListedExpiry, missingExpiryText } from "../../../utils/option-expiry";
@@ -11,6 +11,7 @@ import { surfaceTreasuryRate } from "../vol-surface/model";
 import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
+import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
@@ -25,6 +26,8 @@ export interface ScenarioMarketSnapshot {
   expirationDates: number[];
   rate: number | null;
   dividendYield: number | null;
+  /** Where `dividendYield` is from: the fundamentals, or a distribution history with none paid. Absent from older snapshots. */
+  dividendYieldBasis?: ModelDividendYield["basis"] | null;
   source: string | null;
   underlyingQuote: Quote | null;
   rateAsOf: string[];
@@ -38,6 +41,8 @@ export interface ScenarioLoaderDependencies {
   loadSnapshot(instrument: InstrumentRef, options?: { forceRefresh?: boolean }): Promise<QueryEntry<TickerFinancials>>;
   loadOptions(request: OptionsRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<OptionsChain>>;
   loadYieldCurve(): Promise<YieldPoint[]>;
+  /** The distribution history, read only when the fundamentals state no dividend yield. */
+  loadCorporateActions?(instrument: InstrumentRef): Promise<CorporateActionsData | null>;
   now?: () => number;
 }
 
@@ -52,6 +57,7 @@ export function createScenarioDependencies(
     loadSnapshot: (instrument, options) => coordinator?.loadSnapshot(instrument, options) ?? unavailable(),
     loadOptions: (request, options) => coordinator?.loadOptions(request, options) ?? unavailable(),
     loadYieldCurve: () => cloudApi.getCloudYieldCurve(),
+    loadCorporateActions: (instrument) => coordinator?.loadCorporateActions(instrument) ?? unavailable(),
   };
 }
 
@@ -99,11 +105,12 @@ export async function loadScenarioMarket(
   else if (!quoteCurrent) warnings.push("Current underlying quote unavailable");
   const financialsEntry = entry(financialsResult, "Dividend yield");
   const financials = financialsEntry ? resolveEntryValue(financialsEntry) : null;
-  const fundamentals = financials?.fundamentals;
   const financialsSymbol = financials?.quote?.symbol ?? financials?.quoteMetadata?.symbol;
-  const validDividend = symbolMatches(financialsSymbol, symbol) && !fundamentals?.stale && !financialsEntry?.error
-    && typeof fundamentals?.dividendYield === "number" && Number.isFinite(fundamentals.dividendYield) && fundamentals.dividendYield >= 0;
-  if (!validDividend) warnings.push("Dividend yield unavailable; supply an explicit assumption");
+  // The options chain reads the same yield: the stated one, else 0 for a history with no dividend paid.
+  const dividend = await abortable(loadModelDividendYield(financialsEntry?.error ? null : financials, symbol,
+    dependencies.loadCorporateActions ? () => dependencies.loadCorporateActions!(request.instrument) : null, now), request.signal, CANCELLED);
+  if (request.signal?.aborted) throw abortError(CANCELLED);
+  if (!dividend) warnings.push("Dividend yield unavailable; supply an explicit assumption");
   let chainEntry = entry(chainResult, "Options chain");
   let chain = chainEntry ? resolveEntryValue(chainEntry) : null;
   if (chain && !symbolMatches(chain.underlyingSymbol, symbol)) {
@@ -145,7 +152,7 @@ export async function loadScenarioMarket(
   return {
     symbol, exchange: request.instrument.exchange, spot: quoteCurrent ? quote!.price : null, currency,
     asOf: quoteCurrent && positive(quote!.lastUpdated) ? quote!.lastUpdated : now,
-    chain, expirationDates, rate: rate.rate, dividendYield: validDividend ? fundamentals!.dividendYield! : null,
+    chain, expirationDates, rate: rate.rate, dividendYield: dividend?.value ?? null, dividendYieldBasis: dividend?.basis ?? null,
     source: quoteCurrent ? quoteEntry?.source ?? quote!.providerId ?? null : null,
     underlyingQuote: quoteCurrent ? quote : null, rateAsOf: rate.asOf, warnings: [...new Set(warnings)],
     ...(missingExpiry ? { missingExpiry } : {}),
@@ -231,33 +238,54 @@ export function scenarioPositionFromSettings(
   const strike = numericSetting(settings, "strike");
   if (strike != null && !(strike > 0)) throw new Error("strike must be positive");
   if (strike != null && !supplied(settings.strategy)) throw new Error("strike picks the strike of --strategy; add --strategy put, csp, vertical or straddle");
+  const collarStrikes = { put: numericSetting(settings, "putStrike"), call: numericSetting(settings, "callStrike") };
+  if ((collarStrikes.put != null || collarStrikes.call != null) && settings.strategy !== "collar") {
+    throw new Error("put-strike and call-strike pick a collar's strikes; add --strategy collar");
+  }
+  if (settings.strategy === "collar" && strike != null) throw new Error("A collar has two strikes; use --put-strike and --call-strike");
+  for (const [side, value] of Object.entries(collarStrikes)) {
+    if (value != null && !(value > 0)) throw new Error(`${side}-strike must be positive`);
+  }
+  if (collarStrikes.put != null && collarStrikes.call != null && collarStrikes.put >= collarStrikes.call) {
+    throw new Error("A collar's put strike must be below its call strike");
+  }
+  const shares = sharesSetting(settings);
+  // The spot shares are bought at: where the market is, before any what-if.
+  let shareEntry = market?.spot ?? spot;
   if (!legs.length && supplied(settings.strategy)) {
-    if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle, put or csp");
+    if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle, put, csp or collar");
     if (!market?.chain || market.warnings.includes("Options chain is stale")) {
       throw new Error(market?.missingExpiry ?? "A current options chain is required to seed a strategy");
     }
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
     const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
-    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike);
+    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes);
     legs = seeded.legs;
     // Mids priced off the parity forward are worth their cost only at the spot
     // that forward implies on the scenario's own rate and dividend yield. The
     // last print can sit away from it when the quotes are older (the close's
     // chain against an after-hours print), so the origin starts there and the
     // print is a what-if from it. A typed spot is a what-if and is kept.
-    if (whatIfSpot == null && seeded.parity && rate != null && dividendYield != null) {
-      spot = seeded.parity.forward * Math.exp(-(rate - dividendYield) * seeded.parity.daysToExpiry / 365);
+    if (seeded.parity && rate != null && dividendYield != null) {
+      const implied = seeded.parity.forward * Math.exp(-(rate - dividendYield) * seeded.parity.daysToExpiry / 365);
+      shareEntry = implied;
+      if (whatIfSpot == null) spot = implied;
     }
   }
   if (!legs.length) return null;
   if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
   if (rate == null) throw new Error("Treasury rate unavailable; supply --rate as an annual percentage");
   if (dividendYield == null) throw new Error("Dividend yield unavailable; supply --dividend-yield as an annual percentage");
+  // A collar holds the shares its contracts cover unless --shares says otherwise; 0 drops them.
+  const heldShares = shares ?? (settings.strategy === "collar"
+    ? Math.max(0, ...legs.filter((leg) => leg.side === "put" && leg.quantity > 0).map((leg) => leg.quantity * leg.multiplier)) : 0);
+  if (!Number.isSafeInteger(heldShares)) throw new Error("shares must be a whole number of shares");
   const position: ScenarioPosition = {
     symbol, exchange: exchange ?? market?.exchange,
     currency: scenarioCurrency(settings.currency, market?.currency, exchange ?? market?.exchange),
     spot, rate, dividendYield, asOf: dateSetting(settings, "asOf") ?? market?.asOf ?? Date.now(), legs,
+    ...(heldShares ? { underlying: { quantity: heldShares, price: shareEntry ?? spot } } : {}),
   };
   const error = validatePosition(position);
   if (error) throw new Error(error);
@@ -268,8 +296,23 @@ export function scenarioPositionFromSettings(
   return position;
 }
 
-/** The seeds `--strategy` builds: a call vertical, a straddle, one long put, or one short put (a cash-secured put). */
-export const SCENARIO_STRATEGIES = ["vertical", "straddle", "put", "csp"] as const;
+/** `--shares`: a signed whole number of shares of the underlying, or undefined when not set. */
+function sharesSetting(settings: Record<string, unknown>): number | undefined {
+  const value = settings.shares;
+  if (!supplied(value)) return undefined;
+  const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim().replaceAll(",", "") : "";
+  if (!/^[+-]?\d+$/.test(text) || !Number.isSafeInteger(Number(text))) {
+    throw new Error(`shares must be a whole number of shares, such as 100, or 0 for none; got "${String(value)}"`);
+  }
+  return Number(text);
+}
+
+/**
+ * The seeds `--strategy` builds: a call vertical, a straddle, one long put, one
+ * short put (a cash-secured put), or a collar (a long put and a short call on
+ * one expiry, with the shares they cover).
+ */
+export const SCENARIO_STRATEGIES = ["vertical", "straddle", "put", "csp", "collar"] as const;
 type ScenarioStrategy = typeof SCENARIO_STRATEGIES[number];
 const isScenarioStrategy = (value: unknown): value is ScenarioStrategy => SCENARIO_STRATEGIES.includes(value as ScenarioStrategy);
 
@@ -297,10 +340,13 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * Each strategy is anchored at the strike nearest spot, or at `strike` when
  * one is given: a long put (a protective put), a short put (a cash-secured
  * put, sold at the midpoint like every seed), a call vertical from the anchor
- * to the next listed strike up, or a straddle at the anchor.
+ * to the next listed strike up, or a straddle at the anchor. A collar buys
+ * the put at `collar.put` and sells the call at `collar.call` on the put's
+ * expiry, each the quoted strike nearest 10% out of the money when omitted.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: ScenarioStrategy, pricing: StrategyPricing | null, strike?: number,
+  collar: { put?: number; call?: number } = {},
 ): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
   const parity = new Map<number, StrategyParity | null>();
   const parityFor = (expiration: number) => {
@@ -329,13 +375,14 @@ function scenarioStrategyLegs(
   const anchored = ({ contract }: { contract: { strike: number } }) => strike == null || Math.abs(contract.strike - strike) < 1e-9;
   const calls = quoted(chain.calls, "call").sort(nearest);
   const puts = quoted(chain.puts, "put").sort(nearest);
-  const missing = (candidates: { contract: { strike: number } }[]) => {
-    if (strike == null) return new Error("The selected chain has no complete quoted strategy with usable IV");
+  const missing = (candidates: { contract: { strike: number } }[], at = strike, what: string = strategy === "csp" ? "put to sell" : strategy) => {
+    if (at == null) return new Error("The selected chain has no complete quoted strategy with usable IV");
     const listed = [...new Set(candidates.map(({ contract }) => contract.strike))]
-      .sort((a, b) => Math.abs(a - strike) - Math.abs(b - strike)).slice(0, 4).sort((a, b) => a - b);
-    return new Error(`The selected chain has no complete quoted ${strategy === "csp" ? "put to sell" : strategy} at strike ${strike} with usable IV`
+      .sort((a, b) => Math.abs(a - at) - Math.abs(b - at)).slice(0, 4).sort((a, b) => a - b);
+    return new Error(`The selected chain has no complete quoted ${what} at strike ${at} with usable IV`
       + (listed.length ? `; nearest quoted strikes: ${listed.join(", ")}` : ""));
   };
+  if (strategy === "collar") return collarLegs(calls, puts, spot, collar, missing, parityFor);
   if (strategy === "put" || strategy === "csp") {
     const put = puts.find(anchored);
     if (!put) throw missing(puts);
@@ -360,6 +407,39 @@ function scenarioStrategyLegs(
     ...(solved ? { volatilitySource: "mid" as const } : {}),
   }));
   return { legs, parity: first.solved || second.solved ? parityFor(first.contract.expiration) : null };
+}
+
+interface QuotedContract { contract: OptionsChain["calls"][number]; mid: number; volatility: number; solved: boolean }
+
+/** How far out of the money a collar's put and call sit when their strikes are not given. */
+const COLLAR_DEFAULT_DISTANCE = 0.1;
+
+/** A collar: one long put and one short call on the put's expiry, each at its quote midpoint. */
+function collarLegs(
+  calls: QuotedContract[], puts: QuotedContract[], spot: number, strikes: { put?: number; call?: number },
+  missing: (candidates: QuotedContract[], at: number | undefined, what: string) => Error,
+  parityFor: (expiration: number) => StrategyParity | null,
+): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
+  const closest = (candidates: QuotedContract[], target: number) => candidates.toSorted((a, b) =>
+    Math.abs(a.contract.strike - target) - Math.abs(b.contract.strike - target) || a.contract.strike - b.contract.strike);
+  const at = (candidates: QuotedContract[], value: number) => candidates.filter(({ contract }) => Math.abs(contract.strike - value) < 1e-9);
+  const put = strikes.put != null ? at(puts, strikes.put)[0]
+    : closest(puts.filter(({ contract }) => strikes.call == null || contract.strike < strikes.call), spot * (1 - COLLAR_DEFAULT_DISTANCE))[0];
+  if (!put) throw strikes.put != null ? missing(puts, strikes.put, "put to buy") : new Error("The selected chain has no complete quoted put to buy with usable IV");
+  const sameExpiry = calls.filter(({ contract }) => contract.expiration === put.contract.expiration);
+  const call = strikes.call != null ? at(sameExpiry, strikes.call)[0]
+    : closest(sameExpiry.filter(({ contract }) => contract.strike > put.contract.strike), spot * (1 + COLLAR_DEFAULT_DISTANCE))[0];
+  if (!call) throw strikes.call != null ? missing(sameExpiry, strikes.call, "call to sell") : new Error("The selected chain has no complete quoted call to sell above the put with usable IV");
+  if (call.contract.strike <= put.contract.strike) throw new Error("A collar's put strike must be below its call strike");
+  if (put.contract.currency !== call.contract.currency) throw new Error("Strategy quote currencies differ");
+  const legs = [[put, "put", 1], [call, "call", -1]] as const;
+  return {
+    legs: legs.map(([{ contract, mid, volatility, solved }, side, quantity]): ScenarioLeg => ({
+      id: contract.contractSymbol, side, quantity, strike: contract.strike, expiration: contract.expiration, price: mid,
+      priceSource: "mid", volatility, multiplier: 100, ...(solved ? { volatilitySource: "mid" as const } : {}),
+    })),
+    parity: put.solved || call.solved ? parityFor(put.contract.expiration) : null,
+  };
 }
 
 export function scenarioControlsFromSettings(settings: Record<string, unknown>, position: ScenarioPosition): ScenarioControls {

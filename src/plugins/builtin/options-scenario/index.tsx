@@ -3,7 +3,7 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { OptionsScenarioPane } from "./pane";
 import { optionsScenarioHeadless } from "./headless";
 
-const scenarioSettingKeys = ["legs", "strategy", "strike", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
+const scenarioSettingKeys = ["legs", "strategy", "strike", "putStrike", "callStrike", "shares", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
   "spotRange", "seedLeg", "nav", "budgetBps", "sleeve"];
 
 export const optionsScenarioModule: PluginModule = {

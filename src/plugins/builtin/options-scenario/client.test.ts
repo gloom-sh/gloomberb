@@ -164,6 +164,12 @@ describe("scenario headless inputs", () => {
       const typed = await run({ dividendYield: "0" });
       expect(typed.errors).not.toContain("Dividend yield unavailable; supply an explicit assumption");
       expect(typed.sections.find((section) => section.title === "Inputs")?.entries?.find((item) => item.key === "dividendYield")?.formatted).toBe("0.00%");
+      // A fund whose distribution history has no dividend is valued at the 0% the options chain uses, without asking.
+      const fund = await optionsScenarioHeadless.load({ symbols: ["AAPL"], rawArgument: "AAPL", argument: "AAPL", options: { legs } }, {
+        marketData: { ...provider, getCorporateActions: async () => ({ symbol: "AAPL", coverage: { dividends: "available" }, dividends: [],
+          splits: [], earnings: [] }) }, signal: new AbortController().signal,
+        apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
+      expect(fund.metadata).toMatchObject({ position: { dividendYield: 0 }, market: { dividendYieldBasis: "none-paid" } });
     } finally { setSystemTime(); }
   });
 
@@ -233,6 +239,38 @@ describe("scenario headless inputs", () => {
     const fallback = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "straddle", spot: "80" }, await below(0.28))!;
     expect(fallback.legs.map((leg) => [leg.strike, leg.volatilitySource])).toEqual([[80, undefined], [80, "mid"]]);
     expect(fallback.legs[0]!.volatility).toBe(0.28);
+  });
+
+  test("a collar buys the put and sells the call nearest 10% out of the money on one expiry, with the shares they cover", async () => {
+    const priced = (side: "call" | "put", strike: number) => {
+      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: (optionExpirationClose(expiration) - now) / 86_400_000,
+        rate: 0.045, dividendYield: 0.005, volatility: 0.3 });
+      return { contractSymbol: `AAPL${side}${strike}`, strike, bid: price - 0.05, ask: price + 0.05, currency: "USD", expiration,
+        impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: now / 1000 };
+    };
+    const strikes = [85, 90, 95, 100, 105, 110, 115];
+    const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" } }, dependencies({ loadOptions: async () => ready({ ...chain,
+      calls: strikes.map((strike) => priced("call", strike)), puts: strikes.map((strike) => priced("put", strike)) }) }));
+    const collar = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar" }, market)!;
+    expect(collar.legs.map((leg) => [leg.side, leg.strike, leg.quantity, leg.volatilitySource])).toEqual([["put", 90, 1, "mid"], ["call", 110, -1, "mid"]]);
+    // The shares are bought where the quotes put the spot, so the hedged position starts at zero P&L with a bounded loss.
+    expect(collar.underlying).toEqual({ quantity: 100, price: collar.spot });
+    expect(Math.abs(buildScenario(collar).valuation.pnl)).toBeLessThan(1e-4);
+    expect(buildScenario(collar).expiryRisk).toMatchObject({ unlimitedLoss: false, unlimitedProfit: false });
+    const chosen = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", putStrike: "95", callStrike: "105", shares: "300" }, market)!;
+    expect([chosen.legs.map((leg) => leg.strike), chosen.underlying?.quantity]).toEqual([[95, 105], 300]);
+    // --shares 0 values the options alone; a what-if spot leaves the shares bought at the market.
+    expect(scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", shares: "0" }, market)!.underlying).toBeUndefined();
+    expect(scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", spot: "104" }, market)!.underlying!.price).toBe(collar.spot);
+    // Any typed position can hold shares too.
+    expect(scenarioPositionFromSettings({ symbol: "AAPL", legs: "put,90,2026-12-18,2,3,25", shares: "200" }, market)!.underlying)
+      .toEqual({ quantity: 200, price: 100 });
+    for (const [settings, error] of [[{ putStrike: "110", callStrike: "90" }, "put strike must be below its call strike"],
+      [{ strike: "100" }, "use --put-strike and --call-strike"], [{ putStrike: "92" }, "nearest quoted strikes: 85, 90, 95, 100"],
+      [{ shares: "1.5" }, "shares must be a whole number"]] as const) {
+      expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "collar", ...settings }, market)).toThrow(error);
+    }
+    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "put", callStrike: "110" }, market)).toThrow("add --strategy collar");
   });
 
   test("a same-day IV solved when the chain was served still seeds a straddle at zero P&L", async () => {

@@ -1,5 +1,5 @@
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
-import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/history-result";
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } from "../request-types";
 import { QueryStore, type QueryStoreRetention } from "../query-store";
@@ -316,6 +316,15 @@ export class MarketDataCoordinator {
     if (!listing) return NO_FATE;
     const quote = this.loadQuote(instrument).then(resolveEntryData, () => null);
     return loadListingFate(listing, this.dataProvider, { quote, changes: this.lookupTickerChanges(instrument) });
+  }
+
+  /**
+   * The instrument's dividends, splits and earnings dates from this coordinator's source,
+   * which caches them; null from a source that has none.
+   */
+  async loadCorporateActions(instrument: InstrumentRef): Promise<CorporateActionsData | null> {
+    if (!this.dataProvider.getCorporateActions) return null;
+    return this.dataProvider.getCorporateActions(instrument.symbol, instrument.exchange ?? "");
   }
 
   primeCachedFinancials(entries: Array<{ instrument: InstrumentRef; financials: TickerFinancials }>): void {

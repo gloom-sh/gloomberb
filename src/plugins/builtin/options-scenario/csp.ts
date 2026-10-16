@@ -79,7 +79,7 @@ export function cashSecuredPut(
   position: ScenarioPosition, spotBasis: string, earningsDate: string | null | undefined,
 ): CashSecuredPut | null {
   const [leg] = position.legs;
-  if (position.legs.length !== 1 || !leg || leg.side !== "put" || leg.quantity >= 0) return null;
+  if (position.legs.length !== 1 || !leg || leg.side !== "put" || leg.quantity >= 0 || position.underlying) return null;
   const contracts = -leg.quantity;
   const expiry = new Date(leg.expiration * 1000).toISOString().slice(0, 10);
   const valuationDate = newYorkCalendarDate(position.asOf);

@@ -25,6 +25,7 @@ import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromS
   type ScenarioMarketSnapshot } from "./client";
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspStatItems, loadNextEarningsDate } from "./csp";
+import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
 import { extendedSession, formatSpotTime } from "../options/model-spot";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -160,6 +161,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const csp = useMemo(() => cspStrategy && scenario && !earnings.loading
     ? cashSecuredPut(scenario.position, live?.basis ?? spotBasis ?? "last price", earningsDate) : null,
   [cspStrategy, scenario, earnings.loading, earningsDate, live?.basis, spotBasis]);
+  // A collar seeded, or one typed with the shares it hedges, as the report reads it.
+  const collarStrategy = settings.strategy === "collar";
+  const collar = useMemo(() => scenario && (collarStrategy || scenario.position.underlying)
+    ? scenarioCollar(scenario.position, live?.basis ?? spotBasis ?? "last price") : null, [collarStrategy, scenario, live?.basis, spotBasis]);
   // A report or capture of the pane is dated as `fn OSA` dates the same position: by the underlying's quote, its delay and where its market stands.
   const inputsOnly = suppliedScenarioInputs(settings);
   useRemoteUiNode(scenario && (market || inputsOnly) ? { role: "report-freshness", label: "Scenario freshness",
@@ -310,9 +315,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   ] : [];
   const hedgeItems = hedge.value ? hedgeStatItems(hedge.value) : [];
   const cspItems = csp ? cspStatItems(csp) : [];
+  const collarItems = collar ? collarStatItems(collar) : [];
   // The query bar and the stat band sit above the content only once a scenario prices.
   const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0)
-    - (hedgeItems.length ? statGridRows(hedgeItems, width) : 0) - (cspItems.length ? statGridRows(cspItems, width) : 0));
+    - (hedgeItems.length ? statGridRows(hedgeItems, width) : 0) - (cspItems.length ? statGridRows(cspItems, width) : 0)
+    - (collarItems.length ? statGridRows(collarItems, width) : 0));
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
@@ -369,6 +376,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       <StatGrid items={stats} width={width} />
       {hedgeItems.length > 0 && <StatGrid items={hedgeItems} width={width} />}
       {cspItems.length > 0 && <StatGrid items={cspItems} width={width} />}
+      {collarItems.length > 0 && <StatGrid items={collarItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
       <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>

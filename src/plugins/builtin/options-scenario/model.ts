@@ -29,6 +29,17 @@ export interface ScenarioLeg {
   multiplier: number;
 }
 
+/**
+ * Shares of the underlying held with the option legs: a collar's or a protective
+ * put's stock. Valued at spot, with no dividends, financing or fees.
+ */
+interface ScenarioUnderlying {
+  /** Signed shares: positive holds, negative is short. */
+  quantity: number;
+  /** Entry price per share. */
+  price: number;
+}
+
 export interface ScenarioPosition {
   symbol: string;
   /** Listing identity when a symbol has multiple venues. */
@@ -40,6 +51,8 @@ export interface ScenarioPosition {
   /** Valuation origin in Unix milliseconds. */
   asOf: number;
   legs: ScenarioLeg[];
+  /** Shares held with the legs; absent for an options-only position. */
+  underlying?: ScenarioUnderlying;
 }
 
 export interface ScenarioControls {
@@ -122,6 +135,14 @@ export function validateScenarioInputs(position: ScenarioPosition): string | nul
   if (!validDate(position.asOf)) return "As-of date is invalid.";
   if (!Array.isArray(position.legs)) return "Option legs must be an array.";
   if (position.legs.length > MAX_SCENARIO_LEGS) return `A position supports up to ${MAX_SCENARIO_LEGS} legs.`;
+  const underlying = position.underlying;
+  if (underlying !== undefined) {
+    if (!underlying || typeof underlying !== "object" || !Number.isSafeInteger(underlying.quantity) || underlying.quantity === 0) {
+      return "Shares must be a nonzero whole number.";
+    }
+    if (!isFiniteNumber(underlying.price) || underlying.price < 0) return "Share entry price must be nonnegative.";
+    if (!Number.isFinite(underlying.price * underlying.quantity)) return "Shares exceed model precision.";
+  }
   const ids = new Set<string>();
   for (const [index, leg] of position.legs.entries()) {
     const problem = legProblem(leg);
@@ -157,9 +178,11 @@ export function scenarioCurrency(typed: unknown, quoted: string | null | undefin
  * for: they add every contract times its multiplier, while entry prices and
  * spot are per share. One contract reads `per contract`.
  */
-export function scenarioValueUnit(position: Pick<ScenarioPosition, "legs">): string {
+export function scenarioValueUnit(position: Pick<ScenarioPosition, "legs" | "underlying">): string {
   const contracts = position.legs.reduce((sum, leg) => sum + Math.abs(leg.quantity), 0);
-  return contracts === 1 ? "per contract" : `for ${contracts.toLocaleString("en-US")} contracts`;
+  const shares = Math.abs(position.underlying?.quantity ?? 0);
+  if (!shares) return contracts === 1 ? "per contract" : `for ${contracts.toLocaleString("en-US")} contracts`;
+  return `for ${contracts.toLocaleString("en-US")} ${contracts === 1 ? "contract" : "contracts"} and ${shares.toLocaleString("en-US")} ${shares === 1 ? "share" : "shares"}`;
 }
 
 /**
@@ -168,13 +191,15 @@ export function scenarioValueUnit(position: Pick<ScenarioPosition, "legs">): str
  * it; legs on several each carry theirs in the pane's own date form
  * (`Long 1 SPY 770 call · 2027-01-15`).
  */
-export function scenarioLegsText(position: Pick<ScenarioPosition, "symbol" | "legs">): string {
+export function scenarioLegsText(position: Pick<ScenarioPosition, "symbol" | "legs" | "underlying">): string {
   const shared = new Set(position.legs.map((leg) => leg.expiration)).size === 1;
-  return position.legs.map((leg) => {
+  const shares = position.underlying ? [`${position.underlying.quantity < 0 ? "Short" : "Long"} `
+    + `${Math.abs(position.underlying.quantity).toLocaleString("en-US")} ${position.symbol} ${Math.abs(position.underlying.quantity) === 1 ? "share" : "shares"}`] : [];
+  return [...shares, ...position.legs.map((leg) => {
     const quantity = Number(Math.abs(leg.quantity).toFixed(4));
     const name = `${leg.quantity < 0 ? "Short" : "Long"} ${quantity} ${position.symbol} ${Number(leg.strike.toFixed(4))} ${leg.side}`;
     return shared ? name : `${name} · ${new Date(leg.expiration * 1000).toISOString().slice(0, 10)}`;
-  }).join(", ");
+  })].join(", ");
 }
 
 /** Also validates restored persistence values at the model boundary. */
@@ -242,6 +267,12 @@ function aggregate(prepared: PreparedPosition, spot: number, date: number, volSh
     // Entry cash flow remains nominal: no financing, fees, or stock assignment.
     result.pnl += (value.price - leg.price) * units;
   }
+  // Shares are worth spot, one delta each; dividends they collect are not counted.
+  if (position.underlying) {
+    result.price += spot * position.underlying.quantity;
+    result.delta += position.underlying.quantity;
+    result.pnl += (spot - position.underlying.price) * position.underlying.quantity;
+  }
   if (!Object.values(result).every(Number.isFinite)) throw new Error("Scenario inputs exceed model precision.");
   return result;
 }
@@ -258,8 +289,9 @@ export function scenarioValue(position: ScenarioPosition, spot: number, date: nu
 }
 
 function terminalPnl(position: ScenarioPosition, spot: number): number {
+  const shares = position.underlying ? (spot - position.underlying.price) * position.underlying.quantity : 0;
   return position.legs.reduce((sum, leg) => sum + (Math.max(0, leg.side === "call"
-    ? spot - leg.strike : leg.strike - spot) - leg.price) * leg.quantity * leg.multiplier, 0);
+    ? spot - leg.strike : leg.strike - spot) - leg.price) * leg.quantity * leg.multiplier, shares);
 }
 
 function unavailableRisk(reason: string): ScenarioExpiryRisk {
@@ -276,7 +308,8 @@ export function expiryRisk(position: ScenarioPosition): ScenarioExpiryRisk {
   const values = knots.map((spot) => terminalPnl(position, spot));
   if (!values.every(Number.isFinite)) return unavailableRisk("Position exceeds model precision.");
   const scale = Math.max(1, ...position.legs.flatMap((leg) => [leg.strike, leg.price]
-    .map((value) => value * Math.abs(leg.quantity * leg.multiplier))));
+    .map((value) => value * Math.abs(leg.quantity * leg.multiplier))),
+  ...(position.underlying ? [position.underlying.price * Math.abs(position.underlying.quantity)] : []));
   const tolerance = scale * Number.EPSILON * 32;
   const roots: number[] = [];
   for (const [index, spot] of knots.entries()) {
@@ -288,7 +321,9 @@ export function expiryRisk(position: ScenarioPosition): ScenarioExpiryRisk {
       roots.push(knots[index - 1]! + (spot - knots[index - 1]!) * -leftValue / (value - leftValue));
     }
   }
-  const tailUnits = position.legs.filter((leg) => leg.side === "call").map((leg) => leg.quantity * leg.multiplier);
+  // Above the last strike the P&L moves with the calls and the shares, one unit each.
+  const tailUnits = [...position.legs.filter((leg) => leg.side === "call").map((leg) => leg.quantity * leg.multiplier),
+    ...(position.underlying ? [position.underlying.quantity] : [])];
   const sum = tailUnits.reduce((total, units) => total + units, 0);
   if (!Number.isFinite(sum)) return unavailableRisk("Position exceeds model precision.");
   // Adjusted contracts can have fractional multipliers. Floating cancellation

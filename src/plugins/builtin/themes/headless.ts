@@ -1,4 +1,4 @@
-import { THEME_PERIODS, type ThemeMembersPayload, type ThemesPayload } from "../../../api-client/themes";
+import { THEME_PERIODS, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
 import { formatRelativeAge } from "../../../utils/datetime-format";
@@ -55,6 +55,19 @@ function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Da
   return { metadata: { asOf: payload.asOf, ...snapshot }, freshness: { maxAgeMinutes: 30 } };
 }
 
+/**
+ * The report title names the basket shown, and the word that matched it when
+ * that is not the basket's own name: `Thematic baskets | Critical minerals
+ * (matched lithium)`, since there is no lithium basket.
+ */
+function themeReportTitle(query: string | undefined, theme: Pick<ThemeSummary, "id" | "name"> | undefined): string {
+  const typed = query?.trim();
+  if (!typed) return "Thematic baskets";
+  if (!theme) return `Thematic baskets | ${typed}`;
+  const named = [theme.id, theme.name].some((label) => label.toLowerCase() === typed.toLowerCase());
+  return `Thematic baskets | ${theme.name}${named ? "" : ` (matched ${typed})`}`;
+}
+
 export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   // The pane's stored snapshot: 15-minute delayed prices, refreshed every 15 minutes. As in the pane,
@@ -66,7 +79,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: { aliases: ["THEM"], dataRequirements: ["Gloom Cloud stored equity snapshot"],
     limitations: ["Updated every 15 minutes for Free and Pro.", "Equal-weight price returns; missing observations reduce coverage.", "Below half coverage a period is unavailable.",
       "Outside the regular session Price, 1D and the returns end at the last regular close; a pre-market or after-hours print is shown beside it and never enters them."] },
-  describe: (args) => args.rawArgument ? `Thematic baskets | ${args.rawArgument}` : "Thematic baskets",
+  describe: (args, result) => themeReportTitle(args.rawArgument, (result?.metadata as { theme?: ThemeSummary } | undefined)?.theme),
   async load(args, context) {
     const board = await fetchThemes(context.apiClient);
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;

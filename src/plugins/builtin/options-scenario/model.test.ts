@@ -4,6 +4,7 @@ import {
   buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioLegsText, scenarioValue, validatePosition,
   type ScenarioLeg, type ScenarioPosition,
 } from "./model";
+import { scenarioCollar } from "./collar";
 
 const DAY_MS = 86_400_000;
 const AS_OF = Date.UTC(2026, 8, 22, 16);
@@ -105,6 +106,25 @@ describe("exact terminal risk", () => {
       leg({ id: "high", strike: 110, price: 5 })]);
     expect(expiryRisk(butterfly)).toMatchObject({ breakevens: [100], maxProfit: 0, maxLoss: 1000 });
     expect(expiryRisk(position([leg({ price: 0 })]))).toMatchObject({ breakevens: [0, 100], maxLoss: 0, unlimitedProfit: true });
+  });
+
+  test("a collar's shares cap its loss at the floor and its profit at the cap; the options alone lose without limit", () => {
+    // 100 shares bought at 100, the 90 put bought at 2 and the 110 call sold at 3: a 1.00 credit.
+    const options = [leg({ id: "put", side: "put", strike: 90, price: 2 }), leg({ id: "call", strike: 110, quantity: -1, price: 3 })];
+    const collar = position(options, { underlying: { quantity: 100, price: 100 } });
+    expect(expiryRisk(collar)).toEqual({ breakevens: [99], maxProfit: 1100, maxLoss: 900,
+      unlimitedProfit: false, unlimitedLoss: false, reason: null });
+    expect(scenarioCollar(collar, "typed")).toMatchObject({ netPremium: 1, netPremiumTotal: 100, floor: 91, cap: 111 });
+    // Shares count at spot: one delta each, their move in P&L, nothing in the option Greeks.
+    const shares = scenarioValue(collar, 104, AS_OF), alone = scenarioValue(position(options), 104, AS_OF);
+    for (const [key, value] of [["price", 10_400], ["pnl", 400], ["delta", 100], ["gamma", 0], ["vegaPerPoint", 0]] as const) {
+      expect(shares[key] - alone[key]).toBeCloseTo(value, 8);
+    }
+    const uncovered = position(options);
+    expect(expiryRisk(uncovered)).toMatchObject({ maxLoss: null, unlimitedLoss: true, breakevens: [111] });
+    expect(scenarioCollar(uncovered, "typed")).toMatchObject({ floor: null, cap: null, shares: 0 });
+    // Short shares against the same options add to the call's tail.
+    expect(expiryRisk(position(options, { underlying: { quantity: -100, price: 100 } })).unlimitedLoss).toBe(true);
   });
 
   test("fractional multiplier cancellation does not manufacture an infinite tail", () => {

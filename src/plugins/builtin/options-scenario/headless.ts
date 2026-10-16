@@ -13,6 +13,8 @@ import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
 import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
+import { collarReportEntries, scenarioCollar } from "./collar";
+import { NO_DIVIDEND_PAID } from "../../../market-data/model-dividend-yield";
 
 // Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
 const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
@@ -37,17 +39,26 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   description: "A typed or chain-seeded options position valued across spot, date and volatility: its legs, value and Greeks, expiry risk and a "
     + "scenario P&L grid. With --nav and --budget-bps, how many contracts a hedge budget buys, the premium spent, the notional protected and "
     + "coverage of an equity sleeve. --strategy csp sells a cash-secured put: cash secured, premium, yield on cash, annualised yield, "
-    + "distance out of the money, break-even, days to expiry and whether earnings fall before expiry.",
+    + "distance out of the money, break-even, days to expiry and whether earnings fall before expiry. --strategy collar buys a put and sells "
+    + "a call against the shares they cover: net premium, floor, cap and breakevens of the hedged position.",
   discovery: { screenshotReadiness: "ready", limitations: ["European scenario values do not model early assignment or exercise."] },
   options: [
     { key: "tab", type: "enum", values: ["payoff", "grid", "legs"].map((value) => ({ value })), defaultValue: "payoff",
       description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
     { key: "legs", type: "string", description: "Semicolon-separated side,strike,YYYY-MM-DD,signed quantity,entry price per share,IV percent[,multiplier]" },
     { key: "strategy", type: "enum", values: SCENARIO_STRATEGIES.map((value) => ({ value })),
-      example: "--strategy csp --strike 85 --expiration 2026-11-20",
+      example: "--strategy collar --put-strike 345 --call-strike 420 --expiration 2027-09-30",
       description: "Build a position from current two-sided chain quotes: a call vertical, a straddle, one long put (a protective put), "
-        + "or csp, one short put sold at its midpoint with the cash to buy the shares set aside (a cash-secured put)" },
+        + "csp, one short put sold at its midpoint with the cash to buy the shares set aside (a cash-secured put), "
+        + "or collar, one long put and one short call on the same expiry with the shares they cover" },
     { key: "strike", type: "string", description: "The --strategy strike: the put, the vertical's long call or the straddle. Nearest the money when omitted" },
+    { key: "putStrike", aliases: ["put-strike"], type: "string",
+      description: "The --strategy collar put bought. The quoted strike nearest 10% below spot when omitted" },
+    { key: "callStrike", aliases: ["call-strike"], type: "string",
+      description: "The --strategy collar call sold, on the put's expiry. The quoted strike nearest 10% above spot when omitted" },
+    { key: "shares", type: "string", example: "--strategy collar --shares 0",
+      description: "Shares of the underlying held with the options, bought at the scenario's spot; negative for short. "
+        + "A collar holds the shares its contracts cover (100 per contract); 0 values the options alone" },
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
       description: `Chain expiry for --strategy, as ${OPTION_EXPIRATION_FORMAT}`, normalize: (value) => expirationOptionSeconds(value) },
     { key: "spot", type: "string", description: "Underlying price override, per share" },
@@ -100,6 +111,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       ? market.spot : null;
     const spotBasis = position ? scenarioSpotBasis(settings, position, market) : null;
     const csp = position && settings.strategy === "csp" ? cashSecuredPut(position, spotBasis!, earningsDate) : null;
+    // A collar seeded, or one typed with the shares it hedges.
+    const collar = position && (settings.strategy === "collar" || position.underlying) ? scenarioCollar(position, spotBasis!) : null;
     const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
       ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
     const currency = position ? currencyLabel(position.currency) : null;
@@ -122,13 +135,18 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
             formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${spotBasis})` : ""}` },
           ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint,
             formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${lastSession})` : ""}` }] : []),
+          ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity,
+            formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
           { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
           { key: "rate", label: "Rate", value: position!.rate, formatted: percent(position!.rate) },
-          { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield) },
+          // A yield read as 0 because no dividend was paid says so; a stated or typed one is the figure alone.
+          { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield)
+            + (!supplied(settings.dividendYield) && market.dividendYieldBasis === "none-paid" ? ` (${NO_DIVIDEND_PAID})` : "") },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },
         ...(hedge ? [{ title: "Hedge budget", entries: hedgeReportEntries(hedge) }] : []),
         ...(csp ? [{ title: "Cash-secured put", entries: cspReportEntries(csp) }] : []),
+        ...(collar ? [{ title: "Collar", entries: collarReportEntries(collar) }] : []),
         { title: `Valuation (${per})`, entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key,
           label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value) })) },
         { title: `Expiry risk (${per})`, entries: [
@@ -147,7 +165,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       ] : [],
       complete: scenario != null && errors.length === 0,
       unavailableSymbols: scenario ? [] : [symbol], errors,
-      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}),
+      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}), ...(collar ? { collar } : {}),
         ...(position ? { spot: { price: position.spot, basis: spotBasis, valuedAt: new Date(position.asOf).toISOString() } } : {}),
         inputSource: suppliedInputs ? "user" : "market",
         unit: position?.currency || "currency unspecified",

@@ -56,3 +56,14 @@ test("a snapshot over 30 minutes old, a trading session and an older server date
   expect((await load({ session: "REGULAR", regularSessionDate: null, regularSessionClosedAt: null }, [member("LMT", 512)])).line)
     .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · 15 min delayed");
 });
+
+test("the title names the basket shown, and the word that matched it when that is not the basket's name", async () => {
+  const title = async (argument: string) => {
+    const { result } = await load({}, [member("LMT", 510)], argument);
+    const args = { symbols: [], argument: [argument], rawArgument: argument, options: {} } as unknown as HeadlessPaneLoadArgs;
+    return typeof themesHeadless.describe === "function" ? themesHeadless.describe(args, result) : themesHeadless.describe;
+  };
+  expect(await title("defense")).toBe("Thematic baskets | Defense & aerospace");
+  // "lithium" opens Critical minerals: the title says so rather than claim a lithium basket.
+  expect(await title("aerospace")).toBe("Thematic baskets | Defense & aerospace (matched aerospace)");
+});

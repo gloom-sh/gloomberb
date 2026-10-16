@@ -252,6 +252,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
           : null,
         explicitIntentScore,
         themeFund: themeWord != null && isThemeFund(item, themeWord) ? 1 : 0,
+        themeCompany: themeWord != null && isThemeCompany(item, themeWord) ? 1 : 0,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
         symbolMatchRank: scoreSymbolMatchRank(intent, item),
         nameOnly: companyMatchRank > 0 && labelScore + aliasScore <= 0
@@ -269,6 +270,14 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
     const symbol = normalizeTickerSymbol(entry.item.symbol || entry.item.label);
     if (!namedCompany && leadingFunds.size < LEADING_THEME_FUNDS) leadingFunds.add(symbol);
     if (!leadingFunds.has(symbol)) entry.themeFund = 0;
+  }
+  // The companies the server sent with the theme (Albemarle, SQM and PLS for "lithium") follow those funds, in its
+  // order, ahead of the smaller companies whose names carry the word, so the leaders are on the first screen.
+  const leadingCompanies = new Set<string>();
+  for (const entry of ranked.filter(({ themeCompany }) => themeCompany).sort(byProviderRank)) {
+    const key = getTickerSearchListingKey(entry.item);
+    if (!namedCompany && leadingCompanies.size < LEADING_THEME_COMPANIES) leadingCompanies.add(key);
+    if (!leadingCompanies.has(key)) entry.themeCompany = 0;
   }
 
   // A saved symbol replaces its own source listing, not every exchange using it.
@@ -374,7 +383,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
 
   filtered.sort((a, b) => {
     // Precedence is exact symbol, explicit query hints, a sector word's funds
-    // in the server's order, whole-word company relevance, issuer relevance, provider order within that issuer, partial
+    // and then the companies sent with it, each in the server's order, whole-word company relevance, issuer relevance, provider order within that issuer, partial
     // symbol, saved relevance, then stable source order.
     const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
     const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
@@ -383,7 +392,8 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       return b.explicitIntentScore - a.explicitIntentScore;
     }
     if (b.themeFund !== a.themeFund) return b.themeFund - a.themeFund;
-    if (a.themeFund) {
+    if (b.themeCompany !== a.themeCompany) return b.themeCompany - a.themeCompany;
+    if (a.themeFund || a.themeCompany) {
       const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
@@ -589,6 +599,13 @@ export function themeQueryWord(
 
 /** How many sector funds lead a sector word's list: the rest of the list is the companies named for it. */
 const LEADING_THEME_FUNDS = 5;
+/** How many companies sent with a sector word follow its funds, before the companies named for it. */
+const LEADING_THEME_COMPANIES = 5;
+
+/** A company the server sent with the theme: a sector's leader whose name need not say it (Albemarle for "lithium"). */
+function isThemeCompany(item: Partial<TickerSearchRankableItem>, word: string): boolean {
+  return item.instrumentClass === "equity" && !!item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === word);
+}
 
 /**
  * A fund that tracks the theme (sent with it, or named for it) on a US exchange, where the large sector funds

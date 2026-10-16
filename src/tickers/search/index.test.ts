@@ -876,9 +876,9 @@ describe("ticker-search utilities", () => {
       makeSearchResult("COPX", "Global X Copper Miners ETF", { exchange: "ARCA", type: "ETF" }),
     ];
 
-    test("a company sent with a theme answers to it after the names, as related; older servers' rows are dropped", () => {
+    test("the companies sent with a theme follow its funds, as related, before the names; older servers' rows are dropped", () => {
       expect(build("lithium", rows)).toEqual([
-        "LIT:Funds & Derivatives", "LAC:Primary Listing", "ALB:Related", "SQM:Related",
+        "LIT:Funds & Derivatives", "ALB:Related", "SQM:Related", "LAC:Primary Listing",
       ]);
       expect(build("lithium etf", rows)).toEqual(["LIT:Funds & Derivatives"]);
       expect(build("lithium", rows.map(({ searchKeywords: _keywords, ...row }) => row))).toEqual([
@@ -908,15 +908,33 @@ describe("ticker-search utilities", () => {
         search: async (query) => { calls.push(query); return query === "defense" ? names : query === "defense ETF" ? funds : []; },
       });
       const listed = await searchTickerCandidates({ query: "defense", tickers: new Map(), dataProvider, totalLimit: 10 });
-      // Five US-listed funds in the server's order lead; the sixth and other venues' lines follow the names.
-      expect(listed.slice(0, 7).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual([
-        "ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA", "DEFN:TSXV", "DTII:OTC",
+      // Five US-listed funds in the server's order lead, then the companies sent with the word; the sixth fund and other
+      // venues' lines follow the names.
+      expect(listed.slice(0, 8).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual([
+        "ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA", "LMT:NYSE", "DEFN:TSXV", "DTII:OTC",
       ]);
       expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
       // A word no row is tagged with is a name: no second search.
       calls.length = 0;
       await searchTickerCandidates({ query: "kratos", tickers: new Map(), dataProvider, totalLimit: 10 });
       expect(calls.some((call) => call.endsWith(" ETF"))).toBe(false);
+    });
+
+    test("a sector's leaders the server tags make the first ten past the juniors named for it", async () => {
+      // /market/search?q=lithium and q=lithium ETF, recorded 2026-10-16: the names first, the tagged rows last.
+      const named = [["LAC", "Lithium Americas Corp.", "NYSE"], ["LAR", "Lithium Argentina AG", "NYSE"], ["LAC", "Lithium Americas Corp.", "TSX"],
+        ["SLI", "Standard Lithium Ltd.", "AMEX"], ["ATLX", "Atlas Lithium Corporation", "NASDAQ"], ["SGML", "Sigma Lithium Corporation", "NASDAQ"]]
+        .map(([symbol, name, exchange]) => makeSearchResult(symbol!, name!, { exchange, type: "EQUITY" }));
+      const tagged = [["LIT", "Global X Lithium & Battery Tech ETF", "ARCA", "ETF"], ["BATT", "Amplify Lithium & Battery Technology ETF", "ARCA", "ETF"],
+        ["ALB", "Albemarle Corporation", "NYSE", "EQUITY"], ["SQM", "Sociedad Química y Minera de Chile S.A.", "NYSE", "EQUITY"],
+        ["PLS", "PLS Group Limited", "ASX", "EQUITY"], ["LTR", "Liontown Limited", "ASX", "EQUITY"]]
+        .map(([symbol, name, exchange, type]) => makeSearchResult(symbol!, name!, { exchange, type, searchKeywords: ["lithium"] }));
+      const future = makeSearchResult("LTH=F", "Lithium Hydroxide CIF CJK (Fast", { exchange: "CMX", type: "FUTURE" });
+      const funds = ["ASX", "CXA"].map((exchange) => makeSearchResult("ACDC", "Global X Battery Tech & Lithium ETF", { exchange, type: "ETF" }));
+      const dataProvider = createTestDataProvider({ id: "test", search: async (query) =>
+        query === "lithium" ? [...named.slice(0, 3), future, ...named.slice(3), ...tagged] : query === "lithium ETF" ? [...funds, ...tagged.slice(0, 2)] : [] });
+      const listed = await searchTickerCandidates({ query: "lithium", tickers: new Map(), dataProvider, totalLimit: 10 });
+      expect(listed.slice(0, 6).map((item) => item.symbol)).toEqual(["LIT", "BATT", "ALB", "SQM", "PLS", "LTR"]);
     });
 
     test("an exact name or symbol still leads a sector word's funds", () => {

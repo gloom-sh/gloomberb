@@ -13,6 +13,7 @@ import {
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
 import { expiryIsoDate, parseOptionExpiration } from "../../utils/option-expiry";
+import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
 
 export const OPTIONS_USAGE = "options <symbol> [--expiration <YYYY-MM-DD|unix>]";
 
@@ -110,11 +111,13 @@ export function loadUnderlyingFinancials(
 
 /**
  * Spot and dividend yield for IV and delta, read from the underlying the way the
- * options pane does; missing ones stay missing. `financials` shares one read of
- * them with a caller that needs more of them.
+ * options pane does; missing ones stay missing. The dividend yield is the one OSA
+ * values the underlying at (`loadModelDividendYield`): stated, or 0 for a
+ * history with no dividend paid. `financials` shares one read of them with a
+ * caller that needs more of them.
  */
 export async function loadOptionModelInputs(
-  dataProvider: Pick<DataProvider, "getTickerFinancials">,
+  dataProvider: Pick<DataProvider, "getTickerFinancials" | "getCorporateActions">,
   listing: CliListing,
   quote: Promise<Quote | null>,
   refresh: boolean,
@@ -123,10 +126,12 @@ export async function loadOptionModelInputs(
   const financials = await underlying;
   const current = [await quote, financials?.quote]
     .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
-  const dividendYield = financials?.fundamentals?.dividendYield;
+  const { symbol, exchange } = listing.request;
+  const dividend = await loadModelDividendYield(financials, symbol,
+    dataProvider.getCorporateActions ? () => dataProvider.getCorporateActions!(symbol, exchange) : null);
   return {
     ...(current ? { spot: current.price, quote: current } : {}),
-    ...(isFiniteNumber(dividendYield) && dividendYield >= 0 ? { dividendYield } : {}),
+    ...(dividend ? { dividendYield: dividend.value } : {}),
   };
 }
 
@@ -180,7 +185,8 @@ export function optionsBasisFootnote(basis: OptionsChainBasis): string {
   const parts: string[] = [];
   if (basis.spot) {
     parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
-      + `dividend yield ${basis.dividendYield == null ? "0%" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
+      // An unknown yield is valued as none, and says so rather than read as a stated 0%.
+      + `dividend yield ${basis.dividendYield == null ? "unknown (valued at 0%)" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
       + `rate ${Number((OPTION_MODEL_RATE * 100).toFixed(2))}%`);
   }
   const oi = basis.openInterest;
