@@ -161,7 +161,37 @@ window.__chat = {
     const rows = this.rows();
     const inView = rows.filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > view.top && b.top < view.bottom; });
     const gap = (el) => pane.right - el.getBoundingClientRect().right;
+    // Measure text fragments, not just their containers. Ellipsized quotes may
+    // extend in layout, but no part that survives ancestor clipping may escape.
+    const glyphOverflow = [];
+    for (const row of inView) {
+      for (const root of row.querySelectorAll('[data-gloom-role=chat-message-body], [style*="text-overflow: ellipsis"]')) {
+        const track = root.getBoundingClientRect();
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (!node.textContent.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) {
+            if (rect.bottom <= view.top || rect.top >= view.bottom) continue;
+            let left = rect.left, right = rect.right;
+            for (let el = node.parentElement; el; el = el.parentElement) {
+              if (getComputedStyle(el).overflowX !== 'visible') {
+                const clip = el.getBoundingClientRect();
+                left = Math.max(left, clip.left);
+                right = Math.min(right, clip.right);
+              }
+            }
+            if (right <= left) continue;
+            const px = Math.max(track.left - left, right - Math.min(track.right, pane.right));
+            if (px > 0.5) glyphOverflow.push({ id: row.getAttribute('data-gloom-chat-message-id'), text: node.textContent.slice(0, 40), px });
+          }
+        }
+      }
+    }
     return {
+      glyphOverflow,
       rows: inView.map(gap),
       bodies: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-body]')].map(gap)),
       quotes: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-row] [style*="text-overflow: ellipsis"]')].map(gap)),
@@ -270,7 +300,7 @@ async function backspace(cdp: Cdp, times: number): Promise<void> {
   await frames(cdp, 3);
 }
 
-interface Edges { rows: number[]; bodies: number[]; quotes: number[]; widths: number[]; fromBottom: number }
+interface Edges { rows: number[]; bodies: number[]; quotes: number[]; widths: number[]; fromBottom: number; glyphOverflow: Array<{ id: string; text: string; px: number }> }
 
 /** Each kind's single distance from the pane's right edge, or a failure when its rows do not share one. */
 function restGaps(edges: Edges, what: string): Record<"rows" | "bodies" | "quotes", number> {
@@ -319,6 +349,9 @@ async function resizeChat(cdp: Cdp, from: Point, path: (t: number) => Point, mov
 /** Every row in view, its text and its quote end where they did at rest, on every frame of the drag and after the release. */
 function expectFollowed(rest: Edges, result: { during: Edges[]; held: Edges; released: Edges }, what: string): void {
   const expected = restGaps(rest, `${what} at rest`);
+  [rest, ...result.during, result.held, result.released].forEach((edges, frame) => {
+    if (edges.glyphOverflow.length) fail(`${what}: text escaped its track on frame ${frame}`, edges.glyphOverflow.slice(0, 4));
+  });
   let worst = { px: 0, kind: "", frame: -1 };
   result.during.forEach((edges, frame) => {
     for (const kind of ["rows", "bodies", "quotes"] as const) {
