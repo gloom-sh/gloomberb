@@ -1,11 +1,15 @@
+import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { TickerFinancials } from "../../../types/financials";
-import { reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueReconciliationNote, enterpriseValueWithdrawn,
+  reportedEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
 export const TERMINAL_GROWTH = 0.025;
 export const DISCOUNT_RATES = [0.07, 0.08, 0.09, 0.1, 0.11, 0.12];
 export const TERMINAL_GROWTHS = [0.02, 0.025, 0.03];
+/** The free cash flow margin the implied year-ten revenue assumes unless told otherwise. */
+export const DEFAULT_FCF_MARGIN = 0.3;
 /** The growth range searched; a price outside it reads as below or above. */
 const MIN_GROWTH = -0.5, MAX_GROWTH = 1;
 
@@ -15,11 +19,22 @@ export type ImpliedGrowth = { kind: "rate"; value: number } | { kind: "below" } 
 export interface ReverseDcfModel {
   symbol: string;
   currency: string | null;
+  discountRate: number;
+  terminalGrowth: number;
+  /** The enterprise value `valuation` shows: at the regular session price, the provider's even where it is labelled. */
   enterpriseValue: number | null;
+  /** More than 5% from market cap + total debt - cash: the computed figure beside the provider's. */
+  computedEnterpriseValue: number | null;
+  /** The line `valuation` prints under a labelled EV. */
+  enterpriseValueNote: string | null;
   /** Free cash flow over the last twelve months. */
   freeCashFlow: number | null;
   fcfYield: number | null;
   implied: ImpliedGrowth | null;
+  /** The margin `impliedRevenue` assumes. */
+  fcfMargin: number;
+  /** Year-ten revenue at `fcfMargin`: trailing free cash flow grown at the implied rate for ten years, over the margin. */
+  impliedRevenue: number | null;
   /** Annual FCF growth between the latest annual statement and one up to five years earlier, when both are positive. */
   pastGrowth: { rate: number; years: number } | null;
   /** Implied growth for each discount rate (rows) at each terminal growth (columns). */
@@ -63,25 +78,44 @@ function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowt
   return years > 0 ? { rate: (last.freeCashFlow! / first.freeCashFlow!) ** (1 / years) - 1, years } : null;
 }
 
-export function projectReverseDcf(financials: TickerFinancials | null, options: { symbol: string; discountRate: number }): ReverseDcfModel {
-  const fundamentals = financials?.fundamentals;
+/** Revenue in the last forecast year: the free cash flow grown at `growth` over the margin it is taken to be. */
+function impliedYearTenRevenue(fcf: number, growth: number, fcfMargin: number): number | null {
+  return fcf > 0 && fcfMargin > 0 && fcfMargin <= 1 ? fcf * (1 + growth) ** FORECAST_YEARS / fcfMargin : null;
+}
+
+export function projectReverseDcf(
+  financials: TickerFinancials | null,
+  options: { symbol: string; discountRate: number; fcfMargin?: number },
+): ReverseDcfModel {
+  // The enterprise value at the regular session price, as `valuation` measures it: after the close, the close's.
+  const fundamentals = financials ? atRegularSessionPrice(financials).fundamentals : undefined;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
   const enterpriseValue = reportedEnterpriseValue(fundamentals) ?? null;
+  const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
   const freeCashFlow = fundamentals?.freeCashFlow ?? null;
-  const empty: ReverseDcfModel = { symbol: options.symbol, currency, enterpriseValue, freeCashFlow, fcfYield: null, implied: null,
+  const fcfMargin = options.fcfMargin ?? DEFAULT_FCF_MARGIN;
+  const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
+    enterpriseValue, computedEnterpriseValue: check?.computed ?? null, enterpriseValueNote: check ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
+    freeCashFlow, fcfYield: null, implied: null, fcfMargin, impliedRevenue: null,
     pastGrowth: financials ? pastFcfGrowth(financials) : null, sensitivity: [], error: null };
   const valueCurrency = fundamentals?.marketCapCurrency;
   // ADRs and cross-listings can report cash flows in one currency and trade in another.
   if (currency && valueCurrency && currency !== valueCurrency) {
     return { ...empty, error: `Cash flows are in ${currency} and the market value in ${valueCurrency}.` };
   }
+  // A withdrawn EV is unavailable here as in `valuation`, which says why.
+  if (enterpriseValueWithdrawn(fundamentals)) {
+    return { ...empty, error: enterpriseValueReconciliationNote(fundamentals) ?? "Enterprise value unavailable." };
+  }
   if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: "Enterprise value unavailable." };
   if (freeCashFlow == null) return { ...empty, error: "Free cash flow unavailable." };
   if (!(freeCashFlow > 0)) return { ...empty, error: "Free cash flow over the last twelve months is negative, so no growth rate prices it." };
+  const implied = solveImpliedGrowth(enterpriseValue, freeCashFlow, options.discountRate, TERMINAL_GROWTH);
   return {
     ...empty,
     fcfYield: freeCashFlow / enterpriseValue,
-    implied: solveImpliedGrowth(enterpriseValue, freeCashFlow, options.discountRate, TERMINAL_GROWTH),
+    implied,
+    impliedRevenue: implied?.kind === "rate" ? impliedYearTenRevenue(freeCashFlow, implied.value, fcfMargin) : null,
     sensitivity: DISCOUNT_RATES.map((discountRate) => ({ discountRate,
       implied: TERMINAL_GROWTHS.map((terminal) => solveImpliedGrowth(enterpriseValue, freeCashFlow, discountRate, terminal)) })),
   };

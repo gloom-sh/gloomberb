@@ -1,9 +1,9 @@
-import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
-import { atRegularSessionPrice, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
-import { hasLikelyQuoteUnitMismatch } from "../../../utils/currency-units";
-import { priceEarningsEps } from "../../../utils/fundamentals";
-import { selectMarketCapitalization, type MarketCapitalization } from "../../../utils/market-capitalization";
-import { priceEarningsOnEarnings, type PriceEarnings } from "../../../utils/price-earnings";
+import type { AnalystResearchData, Fundamentals, Quote } from "../../types/financials";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
+import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
+import { priceEarningsEps } from "../../utils/fundamentals";
+import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
+import { priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
 
 /**
  * Price-derived statistics repriced at the quote's regular session price

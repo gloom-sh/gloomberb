@@ -1,7 +1,6 @@
 import type { Quote } from "../types/financials";
-import { latestRegularSessionClose } from "../market-data/market/freshness";
 import { getCompletedRegularSessionDisplay, type ActiveQuoteDisplay } from "../market-data/market/status";
-import { quoteTradingDay } from "../market-data/quotes/day-range";
+import { regularSessionValuationTime } from "../market-data/quotes/regular-session-valuation";
 import type { ReportTime } from "../utils/utc-time";
 import { getPortfolioQuoteDisplay, type PortfolioPositionMetrics } from "./position-metrics";
 
@@ -41,22 +40,9 @@ export function getPortfolioValuationDisplay(
 }
 
 /**
- * When the completed regular session the quote reports closed: the venue's
- * close on that day from its calendar, or the day alone when the calendar does
- * not give the hour.
- */
-function regularCloseTime(quote: Quote): ReportTime | null {
-  const date = quote.regularCloseSessionDate ?? quoteTradingDay(quote);
-  const exchange = quote.listingExchangeName || quote.exchangeName;
-  const close = exchange && Number.isFinite(quote.lastUpdated) ? latestRegularSessionClose(exchange, quote.lastUpdated) : null;
-  if (close && (!date || close.date === date)) return { time: close.close, dateOnly: false };
-  const day = date ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
-  return Number.isFinite(day) ? { time: day, dateOnly: true } : null;
-}
-
-/**
  * When the price a position is valued at on `basis` is from: the quote's time
- * for a print, the session's close for a regular close. Null without a dated quote.
+ * for a print, the session's close for a regular close
+ * (regularSessionValuationTime). Null without a dated quote.
  */
 export function getPortfolioValuationTime(
   quote: Quote | null | undefined,
@@ -64,10 +50,7 @@ export function getPortfolioValuationTime(
   metrics: Pick<PortfolioPositionMetrics, "valuesAtMark"> | null = null,
 ): ReportTime | null {
   if (!quote) return null;
-  if (valuesAtClose(metrics, basis) && getCompletedRegularSessionDisplay(quote)) {
-    const close = regularCloseTime(quote);
-    if (close) return close;
-  }
+  if (valuesAtClose(metrics, basis)) return regularSessionValuationTime(quote);
   return Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? { time: quote.lastUpdated, dateOnly: false } : null;
 }
 

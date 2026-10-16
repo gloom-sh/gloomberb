@@ -45,7 +45,7 @@ import { perpetualListing } from "../../../../tickers/perpetual-listing";
 import { loadPerpetualMarket } from "../../../../sources/gloomberb-cloud/perpetuals";
 import { listedMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
 import { chunked, mapWithConcurrency } from "../../../../utils/concurrency";
-import { liveMarketCapitalization } from "../live-valuation";
+import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
 import { cliFreshnessFooter } from "../../../../cli/result";

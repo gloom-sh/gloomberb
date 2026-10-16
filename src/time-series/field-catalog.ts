@@ -226,7 +226,8 @@ const FIELDS = [
     transforms: FUNDAMENTAL_TRANSFORMS,
   }),
   ...([
-    ["trailingPE", "Trailing P/E", "P/E"],
+    // Trailing twelve-month EPS over the regular close, as `valuation` measures it, never an extended print.
+    ["trailingPE", "Trailing P/E", "P/E", "P/E (TTM, regular close)"],
     ["forwardPE", "Forward P/E", "Forward P/E"],
     ["realizedNtmPE", "Realized NTM P/E", "Realized P/E"],
     ["pegRatio", "PEG Ratio", "PEG"],
@@ -234,10 +235,11 @@ const FIELDS = [
     ["evSales", "EV / Sales", "EV/S"],
     ["evEbitda", "EV / EBITDA", "EV/EBITDA"],
     ["priceFcf", "Price / Free Cash Flow", "P/FCF"],
-  ] as const).map(([id, label, shortLabel]) => field({
+  ] as const).map(([id, label, shortLabel, seriesLabel]: readonly [string, string, string, string?]) => field({
     id: `valuation.${id}`,
     label,
     shortLabel,
+    ...(seriesLabel ? { seriesLabel } : {}),
     sourceKind: "security" as const,
     dataShape: "scalar" as const,
     unit: "x",

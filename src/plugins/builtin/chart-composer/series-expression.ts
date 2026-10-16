@@ -209,5 +209,5 @@ export function chartSeriesLabel(series: ChartSeriesSpec): string {
     series.source.instrument.exchange,
   );
   const field = getTimeSeriesField(series.source.fieldId);
-  return `${instrument} ${field?.shortLabel ?? series.source.fieldId.split(".").at(-1) ?? "Series"}`;
+  return `${instrument} ${field?.seriesLabel ?? field?.shortLabel ?? series.source.fieldId.split(".").at(-1) ?? "Series"}`;
 }

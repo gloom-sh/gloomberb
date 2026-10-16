@@ -8,11 +8,14 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { formatCompactCurrency } from "../../../utils/format";
+import { formatCompact, formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
-import { DISCOUNT_RATES, FORECAST_YEARS, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth, type ReverseDcfModel } from "./model";
+import { DEFAULT_FCF_MARGIN, DISCOUNT_RATES, FORECAST_YEARS, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth,
+  type ReverseDcfModel } from "./model";
 
 export const DISCOUNT_OPTIONS = DISCOUNT_RATES.map((rate) => ({ value: String(Math.round(rate * 100)), label: `${Math.round(rate * 100)}%` }));
+/** 5% to 60% in steps of 5, the range `--margin` takes. */
+export const MARGIN_OPTIONS = Array.from({ length: 12 }, (_, index) => ({ value: String((index + 1) * 5), label: `${(index + 1) * 5}%` }));
 
 function pct(value: number | null | undefined, signed = true): string {
   if (value == null) return "--";
@@ -43,6 +46,7 @@ function renderCell(row: Row, column: DataTableColumn): DataTableCell {
 export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const { symbol, ticker, error: identityError } = usePaneTicker();
   const [discount, setDiscount] = usePaneSettingValue("discountRate", "9");
+  const [margin] = usePaneSettingValue("margin", String(Math.round(DEFAULT_FCF_MARGIN * 100)));
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
   const controller = useRef<AbortController | null>(null);
@@ -59,11 +63,13 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   usePaneRefreshKey(() => { void inputs.reload(); }, { focused });
 
   const discountRate = (Number(discount) || 9) / 100;
-  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate }) : null,
-    [inputs.data, discountRate, symbol]);
+  const fcfMargin = (Number(margin) || DEFAULT_FCF_MARGIN * 100) / 100;
+  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate, fcfMargin }) : null,
+    [inputs.data, discountRate, fcfMargin, symbol]);
 
   usePaneNoticeFooter({ registrationId: "reverse-dcf-notices", focused,
-    notices: [...new Set([identityError, inputs.error, inputs.data?.error].filter((value): value is string => !!value))] });
+    notices: [...new Set([identityError, inputs.error, inputs.data?.error, model?.enterpriseValueNote]
+      .filter((value): value is string => !!value))] });
   usePaneFooter("reverse-dcf", () => ({ info: [
     ...(inputs.loading ? [{ id: "loading", parts: [{ text: "loading fundamentals", tone: "muted" as const }] }] : []),
     ...(inputs.data?.stale ? [{ id: "stale", parts: [{ text: "stale fundamentals", tone: "warning" as const }] }] : []),
@@ -79,10 +85,14 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
       { id: "implied", label: "Priced-in growth", value: impliedText(model.implied),
         tone: implied == null || !past ? undefined : implied > past.rate ? "negative" : "positive",
         detail: `a year for ${FORECAST_YEARS}y, then ${pct(TERMINAL_GROWTH, false)}` },
+      { id: "revenue", label: `Revenue, yr ${FORECAST_YEARS}`, value: formatCompactCurrency(model.impliedRevenue ?? undefined, currency),
+        detail: `at ${Number((model.fcfMargin * 100).toFixed(2))}% FCF margin` },
       { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : "--", detail: past ? `per year over ${past.years}y` : undefined },
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency) },
-      { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency) },
+      { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency),
+        // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
+        detail: model.computedEnterpriseValue != null ? `provider vs ${formatCompact(model.computedEnterpriseValue)}` : undefined },
     ];
   }, [model]);
 

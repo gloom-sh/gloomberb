@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
+import type { AnalystResearchData, Fundamentals, Quote } from "../../types/financials";
 import {
   liveDividendYield,
   liveFiftyTwoWeekRange,
@@ -8,7 +8,7 @@ import {
   liveTrailingPE,
   targetReferencePrice,
 } from "./live-valuation";
-import { NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { NOT_MEANINGFUL } from "../../utils/price-earnings";
 
 function quote(overrides: Partial<Quote> = {}): Quote {
   return {

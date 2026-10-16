@@ -6,7 +6,7 @@ import type {
   TickerFinancials,
 } from "../types/financials";
 import type { ValuationCurrencyContext } from "./valuation-currency";
-import { valuationPriceAtOrBefore } from "./valuation-price";
+import { currentValuationPrice, valuationPriceAtOrBefore } from "./valuation-price";
 import type { TimeSeriesPoint } from "./types";
 import { isFiniteNumber } from "../utils/guards";
 
@@ -188,22 +188,25 @@ function currentConsensusPoint(
   const quoteTime = quote?.lastUpdated;
   const quoteDate = validDate(isFiniteNumber(quoteTime) && quoteTime > 0 ? new Date(quoteTime).toISOString() : undefined);
   if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
+  // The regular session's price and time: after the close, the close, never an extended print.
+  const current = currentValuationPrice(quote);
+  if (!current) return null;
   const periods = consensusByPeriod(history.consensus);
   const currentYear = periods.get("current year");
   const nextYear = periods.get("next year");
   const eps = blendedNextTwelveMonthsEps(
-    quoteDate.toISOString(),
+    current.date.toISOString(),
     currentYear ? { periodEnd: currentYear.date, eps: currentYear.average } : undefined,
     nextYear ? { eps: nextYear.average } : undefined,
   );
   if (eps === null) return null;
-  const basis = { date: quoteDate.toISOString(), currency: history.currency ?? financials.financialCurrency } as FinancialStatement;
-  const price = currencies.priceInStatementUnits(basis, quote.price);
+  const basis = { date: current.date.toISOString(), currency: history.currency ?? financials.financialCurrency } as FinancialStatement;
+  const price = currencies.priceInStatementUnits(basis, current.price);
   if (price === null || price <= 0) return null;
   return {
-    date: quoteDate,
-    observedAt: quoteDate,
-    availableAt: quoteDate,
+    date: current.date,
+    observedAt: current.date,
+    availableAt: current.date,
     value: price / eps,
     periodLabel: "Current",
     provenance: { providerId: quote.providerId, quality: "estimated" },
