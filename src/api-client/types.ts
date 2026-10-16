@@ -1518,6 +1518,15 @@ export interface CloudMarketBatchPayload<T> {
 export type CloudMarketScreenerCategory = "gainers" | "losers" | "most-active";
 
 /**
+ * What Gloom Cloud selects and ranks Gainers and Losers by: `regular` the last
+ * completed regular session's move, the Chg% a row shows; `extended` the
+ * latest print, after-hours or pre-market included. While the regular session
+ * trades the two are one list. A server that predates the choice ignores it
+ * and ranks by the latest print.
+ */
+export type CloudMoverSession = "regular" | "extended";
+
+/**
  * A movers row's quote sessions, under the quote's field names and meaning:
  * the session it was read in, the day its change is dated to, the last
  * completed regular session's close and move, and an open pre-market or

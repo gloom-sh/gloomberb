@@ -198,7 +198,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // After the close a price list keeps only the rows moving its way on the basis
   // asked for, so it reads more candidates than it shows.
   const count = category === "most_actives" ? limit : Math.min(MOVER_REQUEST_CAP, Math.max(limit, MOVER_CANDIDATES));
-  const screener = await fetchScreenerResult(category, count, undefined, { forceRefresh: ctx.cliOptions.refresh });
+  const screener = await fetchScreenerResult(category, count, undefined, { forceRefresh: ctx.cliOptions.refresh, session: basis });
   // Last and Chg% are the regular session, as `ticker` reads it, and a
   // pre-market or after-hours print is its own column. The list is ranked by
   // the regular session's move (its close's after the close), or with

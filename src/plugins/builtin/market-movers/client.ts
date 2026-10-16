@@ -100,7 +100,11 @@ export async function loadMarketMoverTab(
     };
   }
   const category = CATEGORY_MAP[tab];
-  const result = await dependencies.fetchPreferred(category, category === "most_actives" ? LIST_ROWS : MOVER_CANDIDATES, fetchOptions);
+  // The server picks the candidates on the basis the list ranks by, so after the close they are the session's movers.
+  const result = await dependencies.fetchPreferred(category, category === "most_actives" ? LIST_ROWS : MOVER_CANDIDATES, {
+    ...fetchOptions,
+    session: basis ?? "regular",
+  });
   // Each row read as `ticker` reads it, then ranked by the move its Chg% shows.
   const { quotes, rankedBy } = rankMoverQuotes(category, result.quotes.map(moverRegularSession), basis);
   return { ...result, quotes: quotes.slice(0, LIST_ROWS), rankedBy, tab };
