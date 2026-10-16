@@ -74,6 +74,19 @@ const DAY_MS = 86_400_000;
 interface HistorySlots {
   edges?: boolean;
 }
+/**
+ * The fiscal year a filing's period closes: SEC's `fy` when the server sends
+ * it, else the year the period ends in. A 52- or 53-week year that ends in
+ * the first week of January belongs to the year before: one ending
+ * 2026-01-03 is fiscal 2025, so a retailer's years are not labelled one late
+ * or twice.
+ */
+export function fiscalYearOf(point: Pick<DebtHistoryPoint, "asOf" | "fy">): number {
+  if (typeof point.fy === "number" && Number.isInteger(point.fy)) return point.fy;
+  const year = Number(point.asOf.slice(0, 4));
+  return point.asOf.slice(5, 7) === "01" && Number(point.asOf.slice(8, 10)) <= 7 ? year - 1 : year;
+}
+
 /** The filings' points in their slots; `historyAxis` with the same slots labels them. */
 export function historyChartPoints(
   bars: readonly DebtHistoryPoint[],
@@ -96,7 +109,7 @@ export function historyAxis(bars: readonly DebtHistoryPoint[], { edges = true }:
   // Slots from the first point to the last.
   const span = bars.length - 1 + 2 * offset;
   return {
-    ticks: bars.map((row, index) => ({ label: row.asOf.slice(0, 4), ratio: span > 0 ? (index + offset) / span : 0.5 })),
+    ticks: bars.map((row, index) => ({ label: String(fiscalYearOf(row)), ratio: span > 0 ? (index + offset) / span : 0.5 })),
     formatCursor: (ratio: number) =>
       bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * span) - offset))]?.asOf ?? "",
   };

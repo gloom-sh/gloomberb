@@ -154,8 +154,23 @@ function validQuarter(
   );
 }
 
-/** Reject mixed filing/currency cohorts and preserve absent principal as null. */
+/**
+ * Reject mixed filing/currency cohorts and preserve absent principal as null.
+ * The latest 10-Q is optional and additive: one that does not hold up, or
+ * comes with no annual schedule, is dropped and the schedule stands. The
+ * payload keeps the field only when it carries a 10-Q.
+ */
 export function validateDebtMaturities(
+  data: DebtMaturitiesPayload,
+  symbol: string,
+): DebtMaturitiesPayload {
+  if (!data || typeof data !== "object" || !("latestQuarter" in data)) return validateSchedule(data, symbol);
+  const { latestQuarter, ...schedule } = data;
+  const valid = validateSchedule(schedule, symbol);
+  return latestQuarter != null && valid.latest && validQuarter(latestQuarter, valid.latest) ? data : valid;
+}
+
+function validateSchedule(
   data: DebtMaturitiesPayload,
   symbol: string,
 ): DebtMaturitiesPayload {
@@ -190,8 +205,7 @@ export function validateDebtMaturities(
     if (
       data.asOf !== null ||
       data.status !== "unavailable" ||
-      data.history.length ||
-      data.latestQuarter != null
+      data.history.length
     )
       return invalid();
     return data;
@@ -357,8 +371,6 @@ export function validateDebtMaturities(
     )
       return invalid();
   }
-  if (data.latestQuarter != null && !validQuarter(data.latestQuarter, latest))
-    return invalid();
   const last = data.history.at(-1);
   if (
     !last ||

@@ -9,7 +9,7 @@ import type {
 } from "../../../api-client/debt-maturities";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -29,6 +29,7 @@ import {
   datedBucketScale,
   historyAxis,
   historyBars,
+  fiscalYearOf,
   historyChartPoints,
   newerQuarter,
   sortedBuckets,
@@ -410,12 +411,14 @@ function quarterOf(data: DebtMaturitiesPayload): DebtQuarter {
   };
 }
 
-test("a newer 10-Q is read with its own filing's facts; an older server's payload has none", () => {
+test("a newer 10-Q is read with its own filing's facts; one that does not hold up is dropped and the schedule stands", () => {
   const data = fixture();
-  // Servers before the 10-Q was added send no field at all.
+  // Servers before the 10-Q was added send no field at all, and later ones send null: neither leaves a key.
   expect(newerQuarter(validateDebtMaturities(data, "TEST"))).toBeNull();
+  expect("latestQuarter" in validateDebtMaturities({ ...data, latestQuarter: null }, "TEST")).toBe(false);
   data.latestQuarter = quarterOf(data);
   expect(newerQuarter(validateDebtMaturities(data, "TEST"))?.current?.value).toBe(21_000_000);
+  const { latestQuarter: _, ...schedule } = data;
   for (const change of [
     (q: DebtQuarter) => { q.asOf = "2025-06-30"; },
     (q: DebtQuarter) => { q.currency = "USD"; },
@@ -426,8 +429,13 @@ test("a newer 10-Q is read with its own filing's facts; an older server's payloa
   ]) {
     const copy = structuredClone(data);
     change(copy.latestQuarter!);
-    expect(() => validateDebtMaturities(copy, "TEST")).toThrow("invalid debt maturity");
+    expect(validateDebtMaturities(copy, "TEST")).toEqual(schedule);
   }
+  // A 10-Q beside no annual schedule is dropped; the unavailable answer stands.
+  const unavailable: DebtMaturitiesPayload = { ...schedule, status: "unavailable", asOf: null, latest: null, history: [] };
+  expect(validateDebtMaturities({ ...unavailable, latestQuarter: quarterOf(data) }, "TEST")).toEqual(unavailable);
+  // A schedule that does not hold up still fails whole.
+  expect(() => validateDebtMaturities({ ...structuredClone(data), symbol: "OTHER" }, "TEST")).toThrow("invalid debt maturity");
 });
 
 test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an annual-only issuer prints as before", async () => {
@@ -441,6 +449,13 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   const annual = await load(fixture());
   expect(annual.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Annual filing history"]);
   expect(annual.line).toBe("Source: SEC EDGAR · Mon 30 Jun 2025 · not a live feed (filed data)");
+  // A server that sends `latestQuarter: null`, or a 10-Q that does not hold up, prints the JSON one without the field did.
+  const json = (result: typeof annual.result) => JSON.stringify(serializeHeadlessPaneResult(debtMaturitiesHeadless, result));
+  const stale = fixture();
+  stale.latestQuarter = { ...quarterOf(stale), asOf: "2025-06-30" };
+  for (const payload of [{ ...fixture(), latestQuarter: null }, stale]) {
+    expect(json((await load(payload)).result)).toBe(json(annual.result));
+  }
 
   const data = fixture();
   data.latestQuarter = quarterOf(data);
@@ -449,6 +464,17 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   const row = quarterly.text.split("\n").find((line) => line.startsWith("2025-12-31"));
   for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "2026-02-10"]) expect(row).toContain(cell);
   expect(quarterly.line).toBe("Source: SEC EDGAR · Wed 31 Dec 2025 · not a live feed (filed data)");
+});
+
+test("a 52- or 53-week year that ends in January's first week is labelled the year before", () => {
+  const point = fixture().history[0]!;
+  const ends = ["2021-01-02", "2022-01-01", "2022-12-31", "2023-12-30", "2024-12-28", "2026-01-03", "2027-01-02"];
+  const bars = ends.map((asOf) => ({ ...point, asOf }));
+  // By the year each period ends in, 2022 would show twice and the last two a year late.
+  expect(historyAxis(bars).ticks.map((tick) => tick.label)).toEqual(["2020", "2021", "2022", "2023", "2024", "2025", "2026"]);
+  // SEC's own fiscal year wins when the server sends it.
+  expect(fiscalYearOf({ asOf: "2026-01-31", fy: 2025 })).toBe(2025);
+  expect(fiscalYearOf({ asOf: "2026-01-31" })).toBe(2026);
 });
 
 test("each fiscal year labels its own point on both history charts, a December year end included", () => {

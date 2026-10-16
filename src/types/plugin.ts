@@ -463,9 +463,9 @@ export interface PaneTemplateDef {
   /**
    * Source and status of the view this template opens, for a template that
    * opens one view of a pane hosting several (Fixed Income's Issuer Debt).
-   * Captures and rendered-view reports cite it in place of the pane's own
-   * `reportFreshness`, so they date the filings on screen, not the issuer's
-   * stock quote.
+   * Captures and rendered-view reports merge it over the pane's own
+   * `reportFreshness`: each field set here wins, the rest are the pane's. So
+   * they date the filings on screen, not the issuer's stock quote.
    */
   reportFreshness?: Pick<HeadlessPaneFreshness, "source" | "status" | "basis">;
   wizard?: WizardStep[];

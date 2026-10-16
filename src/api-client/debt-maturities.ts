@@ -51,6 +51,8 @@ export interface DebtHistoryPoint {
   borrowingCostPercent: number | null;
   interestExpenseTag: string | null;
   borrowingCostDebtTags: string | null;
+  /** SEC's fiscal year for the period, when the server sends it. */
+  fy?: number | null;
 }
 /**
  * The debt a 10-Q filed after the annual schedule reports on its balance
