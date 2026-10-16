@@ -32,6 +32,25 @@ function validDate(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+/**
+ * A request that never got an answer, in the words of whichever fetch made
+ * it: a browser's ("Failed to fetch", Safari's "Load failed", Firefox's
+ * "NetworkError ..."), Bun's ("Unable to connect ...", which the desktop
+ * relays from its Bun process as a plain message), or a timeout.
+ */
+const NETWORK_FAILURE = /failed to fetch|load failed|networkerror|network connection was lost|appears to be offline|fetch failed|unable to connect|socket connection was closed|typo in the url or port|timed out/i;
+
+function isNetworkFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  return name === "AbortError" || name === "TimeoutError" || (typeof message === "string" && NETWORK_FAILURE.test(message));
+}
+
+/** Anything else that stops a share, a bug included: no detail the person could act on. */
+function shareFailed(cause: unknown): Error {
+  return new Error("Could not create share.", { cause });
+}
+
 async function readJson(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { throw new Error("The share service returned an invalid response."); }
 }
@@ -54,17 +73,17 @@ export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch)
     }
     body = await readJson(response);
   } else {
+    // Public share pages only read/delete through fetch. Load the signed-in
+    // client when an interactive app creates a share, not on every public view.
+    const { apiClient } = await import("../api-client").catch((error: unknown) => { throw shareFailed(error); });
     try {
-      // Public share pages only read/delete through fetch. Load the signed-in
-      // client when an interactive app creates a share, not on every public view.
-      const { apiClient } = await import("../api-client");
       body = await apiClient.createTerminalShare(validated);
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
       if (error instanceof ApiRequestError && error.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
       if (error instanceof ApiRequestError) throw error;
-      // The request never got an answer: "Failed to fetch", "Unable to connect", a timeout.
-      throw new Error("Couldn't reach Gloom Cloud. Check your connection and try again.");
+      if (isNetworkFailure(error)) throw new Error("Couldn't reach Gloom Cloud. Check your connection and try again.", { cause: error });
+      throw shareFailed(error);
     }
   }
   if (!body || typeof body !== "object") throw new Error("The share service returned an invalid response.");

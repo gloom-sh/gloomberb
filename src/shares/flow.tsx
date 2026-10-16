@@ -43,6 +43,29 @@ async function confirmPersonalLink(host: PaneShareHost, kind: PanePersonalData):
 }
 
 /**
+ * A browser can refuse to copy once the press that asked for it is past: Safari
+ * after the wait for the link, any browser when Share carries on by itself
+ * after a sign-in. The link stays on a toast until it is copied or dismissed,
+ * and its Copy link is a fresh press, which the browser lets copy.
+ */
+function offerLinkCopy(host: PaneShareHost, url: string, refused = false): void {
+  host.notify({
+    body: refused ? "Couldn't copy the link." : "Link ready",
+    type: refused ? "error" : "info",
+    persistent: true,
+    action: {
+      label: "Copy link",
+      onClick: () => {
+        void host.copyText(url).then(
+          () => host.notify({ body: "Link copied", type: "success" }),
+          () => offerLinkCopy(host, url, true),
+        );
+      },
+    },
+  });
+}
+
+/**
  * Share: copies the pane's public link and says so in a toast, with no dialog
  * in between. A pane that shows the person's own data asks once first. No
  * link is made when the pane has no public view, the account cannot share
@@ -58,7 +81,13 @@ export async function sharePaneLink(host: PaneShareHost, paneId: string): Promis
     if (!view.sharePayload) throw new Error("A public link is unavailable for this pane.");
     if (view.personalData && !await confirmPersonalLink(host, view.personalData)) return;
     const { id } = await createShare(view.sharePayload);
-    await host.copyText(openLiveShareUrl(id));
+    const url = openLiveShareUrl(id);
+    try {
+      await host.copyText(url);
+    } catch {
+      offerLinkCopy(host, url);
+      return;
+    }
     host.notify({ body: "Link copied", type: "success" });
   } catch (error) {
     host.notify({ body: error instanceof Error && error.message ? error.message : "Could not share this pane.", type: "error" });
