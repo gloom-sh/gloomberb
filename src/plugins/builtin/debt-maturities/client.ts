@@ -3,6 +3,7 @@ import type {
   DebtFact,
   DebtMaturitiesPayload,
   DebtMetric,
+  DebtQuarter,
 } from "../../../api-client/debt-maturities";
 import { ApiRequestError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
@@ -116,6 +117,43 @@ function validMetric(
   );
 }
 
+/**
+ * A 10-Q newer than the schedule, in its currency, whose amounts are facts of
+ * that filing on its own balance-sheet date. Servers before it was added send
+ * no field, which reads as no newer 10-Q.
+ */
+function validQuarter(
+  quarter: DebtQuarter,
+  latest: NonNullable<DebtMaturitiesPayload["latest"]>,
+): boolean {
+  const fact = (value: DebtFact | null) =>
+    value === null ||
+    (!!value &&
+      number(value.value) &&
+      typeof value.tag === "string" &&
+      !!value.tag &&
+      value.unit === quarter.currency &&
+      value.start === null &&
+      value.end === quarter.asOf &&
+      value.accession === quarter.accession &&
+      value.filed === quarter.filed &&
+      value.form === quarter.form);
+  return (
+    !!quarter &&
+    day(quarter.asOf) &&
+    day(quarter.filed) &&
+    quarter.asOf <= quarter.filed &&
+    quarter.asOf > latest.asOf &&
+    accession(quarter.accession) &&
+    /^10-Q(\/A)?$/.test(quarter.form) &&
+    quarter.currency === latest.currency &&
+    sourceUrl(quarter.filingUrl) &&
+    fact(quarter.current) &&
+    fact(quarter.noncurrent) &&
+    (quarter.current !== null || quarter.noncurrent !== null)
+  );
+}
+
 /** Reject mixed filing/currency cohorts and preserve absent principal as null. */
 export function validateDebtMaturities(
   data: DebtMaturitiesPayload,
@@ -152,7 +190,8 @@ export function validateDebtMaturities(
     if (
       data.asOf !== null ||
       data.status !== "unavailable" ||
-      data.history.length
+      data.history.length ||
+      data.latestQuarter != null
     )
       return invalid();
     return data;
@@ -318,6 +357,8 @@ export function validateDebtMaturities(
     )
       return invalid();
   }
+  if (data.latestQuarter != null && !validQuarter(data.latestQuarter, latest))
+    return invalid();
   const last = data.history.at(-1);
   if (
     !last ||

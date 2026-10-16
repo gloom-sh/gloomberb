@@ -2,6 +2,7 @@ import type {
   DebtHistoryPoint,
   DebtMaturitiesPayload,
   DebtMetric,
+  DebtQuarter,
 } from "../../../api-client/debt-maturities";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
@@ -65,25 +66,39 @@ export function historyBars(data: DebtMaturitiesPayload): DebtHistoryPoint[] {
 }
 const DAY_MS = 86_400_000;
 /**
- * One slot per filing, with an empty slot at each end so the outer bars sit
- * inside the plot. The filings are a year apart, so slots read as calendar.
+ * Where a filing chart puts its filings: one slot each, the filings a year
+ * apart so the slots read as calendar. `edges` adds an empty slot at each end
+ * so the outer bars of a column chart sit inside the plot; a line chart goes
+ * edge to edge, so its idle legend reads the newest filing, not an empty slot.
  */
-export function historyChartPoints(bars: readonly DebtHistoryPoint[]): TimeSeriesPoint[] {
-  if (!bars.length) return [];
-  const first = Date.parse(bars[0]!.asOf), last = Date.parse(bars.at(-1)!.asOf);
-  return [
-    scalarPoint(new Date(first - DAY_MS), null),
-    ...bars.map((row) => scalarPoint(new Date(row.asOf), row.totalPrincipal)),
-    scalarPoint(new Date(last + DAY_MS), null),
-  ];
+interface HistorySlots {
+  edges?: boolean;
 }
-/** Each filing's year under its own bar; fiscal years end in any month, so calendar ticks would fall between bars. */
-export function historyAxis(bars: readonly DebtHistoryPoint[]) {
-  const slots = bars.length + 1;
+/** The filings' points in their slots; `historyAxis` with the same slots labels them. */
+export function historyChartPoints(
+  bars: readonly DebtHistoryPoint[],
+  value: (row: DebtHistoryPoint) => number | null = (row) => row.totalPrincipal,
+  { edges = true }: HistorySlots = {},
+): TimeSeriesPoint[] {
+  if (!bars.length) return [];
+  const points = bars.map((row) => scalarPoint(new Date(row.asOf), value(row)));
+  if (!edges) return points;
+  const first = Date.parse(bars[0]!.asOf), last = Date.parse(bars.at(-1)!.asOf);
+  return [scalarPoint(new Date(first - DAY_MS), null), ...points, scalarPoint(new Date(last + DAY_MS), null)];
+}
+/**
+ * Each filing's year under its own slot of `historyChartPoints`. Fiscal years
+ * end in any month, so calendar ticks would fall beside the points: a
+ * December year end sits next to the next year's January tick, one filing off.
+ */
+export function historyAxis(bars: readonly DebtHistoryPoint[], { edges = true }: HistorySlots = {}) {
+  const offset = edges ? 1 : 0;
+  // Slots from the first point to the last.
+  const span = bars.length - 1 + 2 * offset;
   return {
-    ticks: bars.map((row, index) => ({ label: row.asOf.slice(0, 4), ratio: (index + 1) / slots })),
+    ticks: bars.map((row, index) => ({ label: row.asOf.slice(0, 4), ratio: span > 0 ? (index + offset) / span : 0.5 })),
     formatCursor: (ratio: number) =>
-      bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * slots) - 1))]?.asOf ?? "",
+      bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * span) - offset))]?.asOf ?? "",
   };
 }
 export type BucketColumnId = "label" | "value" | "share" | "wall";
@@ -181,6 +196,23 @@ export function debtNotices(data: DebtMaturitiesPayload): string[] {
         "Maturity amounts are reported principal obligations",
       ) && !warning.startsWith("Thereafter is open ended"),
   );
+}
+/**
+ * The latest 10-Q when it is newer than the annual schedule, as the server
+ * sends it; null for an issuer whose last filing is its annual one, and for
+ * an older server or cached payload that has no field for it.
+ */
+export function newerQuarter(data: DebtMaturitiesPayload): DebtQuarter | null {
+  const quarter = data.latestQuarter ?? null;
+  return quarter && data.latest && quarter.asOf > data.latest.asOf ? quarter : null;
+}
+/** The newest balance date the payload reports: the 10-Q's when it is newer, else the schedule's. */
+export function debtNewestAsOf(data: DebtMaturitiesPayload): string | null {
+  return newerQuarter(data)?.asOf ?? data.latest?.asOf ?? null;
+}
+/** The 10-Q's debt in one line, `Current 212.00M · Non-current 6.84B USD`. */
+export function quarterDebtText(quarter: DebtQuarter): string {
+  return `Current ${debtAmount(quarter.current?.value ?? null)} · Non-current ${debtAmount(quarter.noncurrent?.value ?? null)} ${quarter.currency}`;
 }
 export const debtFilingUrl = (cik: string, accession: string) =>
   `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession}-index.htm`;

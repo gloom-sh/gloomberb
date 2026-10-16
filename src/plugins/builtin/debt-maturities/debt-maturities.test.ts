@@ -1,11 +1,17 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type {
+  DebtFact,
+  DebtHistoryPoint,
   DebtMaturitiesPayload,
   DebtMetric,
+  DebtQuarter,
 } from "../../../api-client/debt-maturities";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   BUCKET_IDS,
@@ -15,6 +21,7 @@ import {
   loadDebtMaturities,
   validateDebtMaturities,
 } from "./client";
+import { debtMaturitiesHeadless } from "./headless";
 import {
   bucketBar,
   bucketColumns,
@@ -23,6 +30,7 @@ import {
   historyAxis,
   historyBars,
   historyChartPoints,
+  newerQuarter,
   sortedBuckets,
   sortedDebtHistory,
 } from "./model";
@@ -388,3 +396,83 @@ test("each filing's bar sits in its own slot with its year under it", () => {
   expect(axis.formatCursor(1)).toBe(bars.at(-1)!.asOf);
 });
 
+
+/** A 10-Q filed after the fixture's annual filing, with both debt facts. */
+function quarterOf(data: DebtMaturitiesPayload): DebtQuarter {
+  const accession = "0000000001-25-000009", asOf = "2025-12-31", filed = "2026-02-10", form = "10-Q";
+  const fact = (tag: string, value: number): DebtFact => ({
+    value, tag, unit: data.latest!.currency, start: null, end: asOf, accession, filed, form,
+  });
+  return {
+    asOf, filed, accession, form, currency: data.latest!.currency,
+    filingUrl: "https://www.sec.gov/Archives/edgar/data/1/0000000001-25-000009-index.htm",
+    current: fact("LongTermDebtCurrent", 21_000_000), noncurrent: fact("LongTermDebtNoncurrent", 684_000_000),
+  };
+}
+
+test("a newer 10-Q is read with its own filing's facts; an older server's payload has none", () => {
+  const data = fixture();
+  // Servers before the 10-Q was added send no field at all.
+  expect(newerQuarter(validateDebtMaturities(data, "TEST"))).toBeNull();
+  data.latestQuarter = quarterOf(data);
+  expect(newerQuarter(validateDebtMaturities(data, "TEST"))?.current?.value).toBe(21_000_000);
+  for (const change of [
+    (q: DebtQuarter) => { q.asOf = "2025-06-30"; },
+    (q: DebtQuarter) => { q.currency = "USD"; },
+    (q: DebtQuarter) => { q.form = "10-K"; },
+    (q: DebtQuarter) => { q.current!.accession = "0000000001-25-000001"; },
+    (q: DebtQuarter) => { q.noncurrent!.end = "2025-06-30"; },
+    (q: DebtQuarter) => { q.current = null; q.noncurrent = null; },
+  ]) {
+    const copy = structuredClone(data);
+    change(copy.latestQuarter!);
+    expect(() => validateDebtMaturities(copy, "TEST")).toThrow("invalid debt maturity");
+  }
+});
+
+test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an annual-only issuer prints as before", async () => {
+  const load = async (data: DebtMaturitiesPayload) => {
+    const args = createTestHeadlessArgs({ symbols: ["TEST"], argument: "TEST", rawArgument: "TEST" });
+    const ctx = createTestHeadlessContext({ apiClient: { getCloudDebtMaturities: async () => data } as never });
+    const result = await debtMaturitiesHeadless.load(args, ctx);
+    const freshness = deriveHeadlessFreshness(debtMaturitiesHeadless, result, Date.parse("2026-03-01T12:00:00Z"));
+    return { result, text: renderHeadlessPaneText(debtMaturitiesHeadless, result, args, "DDIS", freshness), line: formatFreshnessLine(freshness) };
+  };
+  const annual = await load(fixture());
+  expect(annual.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Annual filing history"]);
+  expect(annual.line).toBe("Source: SEC EDGAR · Mon 30 Jun 2025 · not a live feed (filed data)");
+
+  const data = fixture();
+  data.latestQuarter = quarterOf(data);
+  const quarterly = await load(data);
+  expect(quarterly.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Latest 10-Q", "Annual filing history"]);
+  const row = quarterly.text.split("\n").find((line) => line.startsWith("2025-12-31"));
+  for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "2026-02-10"]) expect(row).toContain(cell);
+  expect(quarterly.line).toBe("Source: SEC EDGAR · Wed 31 Dec 2025 · not a live feed (filed data)");
+});
+
+test("each fiscal year labels its own point on both history charts, a December year end included", () => {
+  const data = fixture();
+  const point = data.history[0]!;
+  const bars: DebtHistoryPoint[] = Array.from({ length: 11 }, (_, index) => ({
+    ...point, asOf: `${2015 + index}-12-31`, next12MonthsShare: index === 9 ? 28 : 10,
+  }));
+  // Columns sit inside the plot with an empty slot at each end; lines run edge to edge.
+  for (const edges of [true, false]) {
+    const axis = historyAxis(bars, { edges });
+    const points = historyChartPoints(bars, (row) => row.next12MonthsShare, { edges });
+    expect(points).toHaveLength(edges ? 13 : 11);
+    // One slot per point: a tick's ratio is its point's place along the axis.
+    for (const [index, tick] of axis.ticks.entries()) {
+      const slot = Math.round(tick.ratio * (points.length - 1));
+      expect(points[slot]!.date.toISOString().slice(0, 4)).toBe(tick.label);
+      expect(points[slot]!.value).toBe(bars[index]!.next12MonthsShare);
+      expect(axis.formatCursor(tick.ratio)).toBe(bars[index]!.asOf);
+    }
+    // The 2024 filing's spike sits over the 2024 label, not the next year's.
+    const spike = axis.ticks.find((tick) => tick.label === "2024")!;
+    expect(points[Math.round(spike.ratio * (points.length - 1))]!.value).toBe(28);
+  }
+  // The newest filing ends the lines, so the idle legend reads its value.
+  expect(historyChartPoints(bars, (row) => row.next12MonthsShare, { edges: false }).at(-1)!.value).toBe(10);
+});

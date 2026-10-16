@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtNotices, debtPercent } from "./model";
+import { bucketShare, debtAmount, debtNewestAsOf, debtNotices, debtPercent, newerQuarter } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
@@ -45,6 +45,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
     const data = await fetchDebtMaturities(symbol, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
+    const quarter = newerQuarter(data);
     return {
       complete: data.status === "available",
       errors: debtNotices(data),
@@ -68,6 +69,29 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
               filed: data.latest!.filed,
             })) ?? [],
         },
+        // A 10-Q filed after the schedule: the balance-sheet debt it reports since.
+        ...(quarter ? [{
+          title: "Latest 10-Q",
+          columns: [
+            { key: "asOf", header: "As of" },
+            { key: "form", header: "Form" },
+            { key: "current", header: "Current debt", align: "right" as const, textFormat: amount },
+            { key: "noncurrent", header: "Non-current debt", align: "right" as const, textFormat: amount },
+            { key: "currency", header: "Currency" },
+            { key: "filed", header: "Filed" },
+          ],
+          rows: [{
+            asOf: quarter.asOf,
+            form: quarter.form,
+            current: quarter.current?.value ?? null,
+            noncurrent: quarter.noncurrent?.value ?? null,
+            currency: quarter.currency,
+            filed: quarter.filed,
+            currentConcept: quarter.current?.tag ?? null,
+            noncurrentConcept: quarter.noncurrent?.tag ?? null,
+            accession: quarter.accession,
+          }],
+        }] : []),
         {
           title: "Annual filing history",
           columns: [
@@ -94,8 +118,8 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         },
       ],
       metadata: { ...data },
-      // The latest filing dates the report; the history rows are past years, not stale data.
-      freshness: { asOf: data.latest?.asOf ?? null },
+      // The latest filing dates the report (a newer 10-Q's balance date); the history rows are past years, not stale data.
+      freshness: { asOf: debtNewestAsOf(data) },
     };
   },
 };

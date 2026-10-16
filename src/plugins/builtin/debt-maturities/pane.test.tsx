@@ -6,7 +6,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { BUCKET_IDS } from "./client";
+import { BUCKET_IDS, debtMaturitiesCache } from "./client";
 import { DebtMaturitiesPane } from "./pane";
 
 const asOf = "2025-06-30", filed = "2025-07-25", accession = "0000000001-25-000001", currency = "USD";
@@ -126,4 +126,26 @@ test("a short history pane keeps the filings and shrinks the chart to a strip", 
   for (const date of ["2025-06-30", "2024-06-30", "2023-06-30", "2022-06-30"]) {
     expect(lines.some((line) => line.includes(date))).toBe(true);
   }
+});
+
+test("a newer 10-Q is a dated figure row of its own, and every filing's year labels the near-term chart", async () => {
+  const quarter = { asOf: "2025-12-31", filed: "2026-02-10", accession: "0000000001-26-000003", form: "10-Q" };
+  const fact = (tag: string, value: number) => ({ value, tag, unit: currency, start: null, end: quarter.asOf, accession: quarter.accession, filed: quarter.filed, form: quarter.form });
+  spy = spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async () => ({
+    ...payload(),
+    latestQuarter: { ...quarter, currency, filingUrl: "https://www.sec.gov/two",
+      current: fact("LongTermDebtCurrent", 212_000_000), noncurrent: fact("LongTermDebtNoncurrent", 6_840_000_000) },
+  }));
+  // Earlier tests left this issuer's annual-only answer in the cache.
+  debtMaturitiesCache.reset();
+  const lines = await render(94, 30);
+  const row = lines.find((line) => line.includes("Latest 10-Q"));
+  expect(row).toContain("Current 212.00M · Non-current 6.84B USD");
+  expect(row).toContain("2025-12-31 · filed 2026-02-10");
+  // The schedule's own date is still said once, apart from the 10-Q's.
+  expect(lines.find((line) => line.includes("As of"))).toContain("2025-06-30");
+  // The idle legend reads the newest filing, and each fiscal year sits under the chart once, in order.
+  expect(lines.find((line) => line.includes("Due next 12 months"))).toContain("4.8%");
+  const axis = lines.find((line) => /^\s*2022\s/.test(line))!;
+  expect(axis.trim().split(/\s+/)).toEqual(["2022", "2023", "2024", "2025"]);
 });

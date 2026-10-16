@@ -52,6 +52,20 @@ export interface DebtHistoryPoint {
   interestExpenseTag: string | null;
   borrowingCostDebtTags: string | null;
 }
+/**
+ * The debt a 10-Q filed after the annual schedule reports on its balance
+ * sheet date: what is due within a year and what is due later.
+ */
+export interface DebtQuarter {
+  asOf: string;
+  filed: string;
+  accession: string;
+  form: string;
+  currency: string;
+  filingUrl: string;
+  current: DebtFact | null;
+  noncurrent: DebtFact | null;
+}
 export interface DebtMaturitiesPayload {
   version: 1;
   symbol: string;
@@ -88,5 +102,7 @@ export interface DebtMaturitiesPayload {
     borrowingCostEvidence: DebtBorrowingCost | null;
   };
   history: DebtHistoryPoint[];
+  /** The latest 10-Q when it is newer than `latest`. Older servers and cached payloads leave it out. */
+  latestQuarter?: DebtQuarter | null;
   warnings: string[];
 }

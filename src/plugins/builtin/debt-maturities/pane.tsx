@@ -17,7 +17,6 @@ import {
   formatPercentAxis,
   KeyValueRow,
   PaneStatusBody,
-  scalarPoint,
   useChartTableSelection,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
@@ -30,6 +29,7 @@ import type {
   DebtFact,
   DebtHistoryPoint,
   DebtMetric,
+  DebtQuarter,
 } from "../../../api-client/debt-maturities";
 import { isAccessDenied } from "../../../api-client/errors";
 import { formatCompactAxis } from "../../../components/chart-table";
@@ -58,6 +58,8 @@ import {
   historyAxis,
   historyBars,
   historyChartPoints,
+  newerQuarter,
+  quarterDebtText,
   sortedBuckets,
   sortedDebtHistory,
   type BucketColumn,
@@ -77,6 +79,8 @@ const TABS = [
   { value: "history", label: "History" },
   { value: "filing", label: "Filing" },
 ];
+/** The near-term lines run edge to edge, one filing a slot. */
+const LINE_SLOTS = { edges: false };
 /** Legend, four plot rows and the year axis. */
 const HISTORY_CHART_MIN_ROWS = 6;
 const historyDate = (row: DebtHistoryPoint) => new Date(row.asOf);
@@ -146,12 +150,25 @@ function FactDetail({
     </DetailScroll>
   );
 }
+/** A 10-Q amount with the concept it was filed under. */
+function QuarterFactRow({ label, fact }: { label: string; fact: DebtFact | null }) {
+  return (
+    <KeyValueRow
+      labelWidth={20}
+      label={label}
+      value={fact ? `${fact.value.toLocaleString("en-US")} ${fact.unit}` : "Not reported"}
+      detail={fact?.tag}
+    />
+  );
+}
 function FilingDetail({
   latest,
+  quarter,
   width,
   height,
 }: {
   latest: DebtLatest;
+  quarter: DebtQuarter | null;
   width: number;
   height: number;
 }) {
@@ -213,6 +230,19 @@ function FilingDetail({
         value={String(latest.totalPrincipal.percentile.sampleCount)}
         detail={`${latest.totalPrincipal.percentile.historyStart ?? "--"} to ${latest.totalPrincipal.percentile.historyEnd ?? "--"}`}
       />
+      {quarter ? (
+        <>
+          <KeyValueRow
+            labelWidth={20}
+            label="Latest 10-Q"
+            value={quarter.asOf}
+            detail={`filed ${quarter.filed}`}
+          />
+          <KeyValueRow labelWidth={20} label="10-Q accession" value={quarter.accession} />
+          <QuarterFactRow label="Current debt" fact={quarter.current} />
+          <QuarterFactRow label="Non-current debt" fact={quarter.noncurrent} />
+        </>
+      ) : null}
     </DetailScroll>
   );
 }
@@ -313,6 +343,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   );
   const data = resource.data?.payload,
     latest = data?.latest;
+  const quarter = data ? newerQuarter(data) : null;
   const bucketKey = (bucket: DebtBucket) =>
     `${symbol}:${latest?.accession}:${latest?.asOf}:${bucket.id}`;
   const historyKey = useCallback(
@@ -350,14 +381,17 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const barAxis = useMemo(() => historyAxis(bars), [bars]);
   // The table shows where the wall stands now; the chart shows how its near
   // end moved across filings, the history behind the figures' percentiles.
+  // One slot per filing, labelled by its fiscal year as the history chart is;
+  // lines run edge to edge, so the idle legend reads the newest filing.
   const nearTermSeries = useMemo(() => bars.length < 2 ? [] : [
-    staticSeries(bars.map((row) => scalarPoint(new Date(row.asOf), row.next12MonthsShare)), {
-      id: "due-12m", label: "Due next 12 months", color: colors.warning, calendarSpaced: true,
+    staticSeries(historyChartPoints(bars, (row) => row.next12MonthsShare, LINE_SLOTS), {
+      id: "due-12m", label: "Due next 12 months", color: colors.warning,
     }),
-    staticSeries(bars.map((row) => scalarPoint(new Date(row.asOf), row.next3YearsShare)), {
-      id: "due-3y", label: "Due next 3 years", color: colors.borderFocused, calendarSpaced: true,
+    staticSeries(historyChartPoints(bars, (row) => row.next3YearsShare, LINE_SLOTS), {
+      id: "due-3y", label: "Due next 3 years", color: colors.borderFocused,
     }),
   ], [bars]);
+  const nearTermAxis = useMemo(() => historyAxis(bars, LINE_SLOTS), [bars]);
   const historyLink = useChartTableSelection({
     rows: history,
     getId: historyKey,
@@ -396,8 +430,13 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       metric("next12", "Due next 12 months", latest.next12MonthsShare),
       metric("next3", "Due next 3 years", latest.next3YearsShare),
       { id: "as-of", label: "As of", value: latest.asOf },
+      // A 10-Q filed since: its own row, dated, so it never reads as the schedule's.
+      ...(quarter ? [{
+        id: "latest-10q", label: "Latest 10-Q", value: quarterDebtText(quarter),
+        detail: `${quarter.asOf} · filed ${quarter.filed}`, wide: true,
+      }] : []),
     ];
-  }, [latest]);
+  }, [latest, quarter]);
   const historyStrip = useMemo(() => {
     const values = bars.flatMap((row) => row.totalPrincipal === null ? [] : [row.totalPrincipal]);
     const last = values.at(-1);
@@ -505,7 +544,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
           <>
             {tabStrip}
             {tab === "filing" ? (
-              <FilingDetail latest={latest} width={width} height={bodyHeight} />
+              <FilingDetail latest={latest} quarter={quarter} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (
               <DataTableStackView<DebtBucket, BucketColumn>
                 emptyStateTitle="No maturity buckets available."
@@ -524,6 +563,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                       series: nearTermSeries,
                       formatValue: debtPercent,
                       formatAxisValue: formatPercentAxis,
+                      xAxis: nearTermAxis,
                       remoteKind: "debt-near-term-share",
                     } : null}
                   />
