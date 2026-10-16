@@ -436,6 +436,14 @@ export const chatSteps: ChatStep[] = [
       if (chosen[0] !== "m464") fail("keyboard did not cross the mounted window", chosen);
       const view = await evaluate(cdp, "(()=>{const r=__chat.rowRect('m464'),s=__chat.scroller().getBoundingClientRect();return r&&r.y>=s.top&&r.y+r.height<=s.bottom})()");
       if (!view) fail("keyboard target was not brought into view");
+      await pressKey(cdp, "Home", "Home");
+      if (!await waitFor(cdp, "__chat.scroller().scrollTop < 1 && __chat.rowRect('m0')")) fail("Home did not mount the start of the history");
+      await pressKey(cdp, "PageDown", "PageDown");
+      if (!await waitFor(cdp, "__chat.scroller().scrollTop > 100")) fail("PageDown did not move the transcript");
+      await pressKey(cdp, "End", "End");
+      if (!await waitFor(cdp, "__chat.scroller().scrollHeight - __chat.scroller().clientHeight - __chat.scroller().scrollTop < 2 && __chat.rowRect('m499')")) fail("End did not mount the latest message");
+      await pressKey(cdp, "PageUp", "PageUp");
+      if (!await waitFor(cdp, "__chat.scroller().scrollHeight - __chat.scroller().clientHeight - __chat.scroller().scrollTop > 100")) fail("PageUp did not move the transcript");
       for (const delta of [-50000, 700, 1400, 50000]) {
         await wheel(cdp, await listCentre(cdp), delta);
         await frames(cdp, 6);

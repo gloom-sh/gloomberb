@@ -4,7 +4,7 @@ import { observeElementRect, observeElementOffset, elementScroll } from "@tansta
 import type { WindowedListProps } from "../../components/ui/windowed-list";
 import type { ScrollBoxRenderable } from "../../ui/host";
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../ui/sticky-scroll";
-import { WebScrollBox } from "./host/scroll-box";
+import { ScrollBox } from "../../ui";
 import { useWindowedRows } from "./windowed-rows";
 
 /** Uses the table's windowing engine, with measured rows and end anchoring. */
@@ -126,7 +126,7 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
   const setContent = useCallback((node: HTMLDivElement | null) => {
     contentRef.current = node;
   }, []);
-  return <WebScrollBox ref={setScrollRef} flexGrow={1} scrollY focusable={false}
+  return <ScrollBox ref={setScrollRef} flexGrow={1} scrollY focusable={false}
     data-gloom-role={role} onMouseScroll={handleScrollActivity} onMouseMove={onPointerMove}
     style={{ minHeight: 0, display: "block", overflowAnchor: "none" }}>
     <div ref={setContent} style={{ position: "relative", width: "100%", height: list.getTotalSize() }}>
@@ -135,5 +135,5 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
         {renderItem(row.index)}
       </div>)}
     </div>
-  </WebScrollBox>;
+  </ScrollBox>;
 }
