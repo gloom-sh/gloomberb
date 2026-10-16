@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import {
   DataTableView,
   PaneStatusBody,
+  usePaneNoticeFooter,
   usePaneStatusFooter,
   usePaneTabs,
   type DataTableCell,
@@ -97,8 +98,10 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
     registrationId: PANE_ID,
     loading,
     error: data ? error : null,
+    stale: !!data?.stale,
     info,
   });
+  usePaneNoticeFooter({ registrationId: `${PANE_ID}:notices`, focused, notices: data?.gaps ?? [] });
 
   useEffect(() => {
     if (balanceRows.length === 0) return;

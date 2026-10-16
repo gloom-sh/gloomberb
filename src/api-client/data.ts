@@ -40,6 +40,7 @@ import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange 
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { DoeBoardPayload, DoePricesPayload } from "./doe";
+import type { JodiBoardPayload, PsdBoardPayload } from "./commodity-balances";
 import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageHistory, GasStorageSeasonal } from "./europe-energy";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { CpiBoardPayload } from "./cpi";
@@ -599,6 +600,14 @@ export class CloudDataApi {
 
   async getCloudDoePrices(): Promise<DoePricesPayload> {
     return this.request<DoePricesPayload>("/cloud/doe/prices");
+  }
+
+  getCloudJodiBoard(signal?: AbortSignal): Promise<JodiBoardPayload> {
+    return this.request<JodiBoardPayload>("/cloud/jodi/board", { signal });
+  }
+
+  getCloudPsdBoard(signal?: AbortSignal): Promise<PsdBoardPayload> {
+    return this.request<PsdBoardPayload>("/cloud/psd/board", { signal });
   }
 
   async getCloudAttention(window: AttentionWindow = "now", symbol?: string): Promise<AttentionPayload> {

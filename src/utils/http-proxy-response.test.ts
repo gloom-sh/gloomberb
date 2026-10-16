@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readZipTexts } from "../plugins/builtin/shared/zip-text";
 import {
   createProxyResponse,
   decodeBase64,
@@ -34,7 +33,7 @@ async function acrossTheProxy(response: Response): Promise<HttpProxyResponseEnve
 }
 
 describe("proxied response bodies", () => {
-  test("a zip archive arrives byte for byte and still opens", async () => {
+  test("a zip archive arrives byte for byte", async () => {
     // Latin-1 text, so the archive is not UTF-8 even before compression.
     const csv = Uint8Array.from("Côte d'Ivoire,12\n", (char) => char.charCodeAt(0));
     const zip = await zipOf("balances.csv", csv);
@@ -44,7 +43,6 @@ describe("proxied response bodies", () => {
 
     expect(envelope.body).toBe("");
     expect(bytes).toEqual(zip);
-    expect(await readZipTexts(bytes)).toEqual([{ name: "balances.csv", text: "Côte d'Ivoire,12\n" }]);
   });
 
   test("UTF-8 text stays text, and a byte-order mark is not lost", async () => {

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import {
   DataTableView,
   PaneStatusBody,
+  usePaneNoticeFooter,
   usePaneStatusFooter,
   usePaneTabs,
   type DataTableCell,
@@ -70,8 +71,10 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     registrationId: JODI_PANE_ID,
     loading: resource.loading,
     error: resource.error,
+    stale: !!balances?.stale,
     info,
   });
+  usePaneNoticeFooter({ registrationId: `${JODI_PANE_ID}:notices`, focused, notices: balances?.gaps ?? [] });
 
   const renderCell = useCallback((row: BalanceRow, column: { id: string }): DataTableCell => {
     const number = (value: number | null): DataTableCell => ({
@@ -82,6 +85,8 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "country":
         return { text: row.country, color: colors.textBright, attributes: TextAttributes.BOLD };
+      case "month":
+        return { text: row.month ? formatBalanceMonth(row.month) : "—", value: row.month, color: colors.textMuted };
       case "production":
         return number(row.production);
       case "demand":

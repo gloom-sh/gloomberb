@@ -99,7 +99,6 @@ export const futuresCommoditiesPluginMeta = {
   name: "Commodities & Energy",
   version: "1.0.0",
   description: "Futures markets, curves, CFTC positioning, EIA inventories, and crop and oil and gas balances.",
-  hosts: ["apps.fas.usda.gov", "www.ers.usda.gov", "www.jodidata.org", "api.publisher.jodidata.org"],
   toggleable: true,
 };
 

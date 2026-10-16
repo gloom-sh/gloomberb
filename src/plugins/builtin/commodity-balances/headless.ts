@@ -11,7 +11,7 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [],
   discovery: {
     aliases: ["PSD"],
-    dataRequirements: ["World crop balance archive", "Season-average price forecast file"],
+    dataRequirements: ["World crop balances", "Season-average price forecasts"],
     limitations: [
       "Latest market year only",
       "Largest producers, and the world total when the file has one",
@@ -19,7 +19,7 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
   },
   describe: "Wheat, corn, soybean and cotton balances",
-  freshness: { source: "USDA", status: "not-a-feed", basis: "monthly supply and demand estimates" },
+  freshness: { source: "USDA", status: "not-a-feed", basis: "monthly supply and demand estimates", periodicity: "monthly" },
   async load(_args, ctx) {
     const data = await fetchCommodityBalances(ctx.signal);
     return {
@@ -60,7 +60,14 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
           })),
         }]),
       ],
-      metadata: { marketYear: data.marketYear, priced: data.prices.length > 0 },
+      metadata: {
+        // The estimates' month; without it the report could only say when it was fetched.
+        ...(data.month ? { asOf: `${data.month}-01`, month: data.month } : {}),
+        marketYear: data.marketYear,
+        priced: data.prices.length > 0,
+        stale: data.stale,
+      },
+      ...(data.gaps.length ? { notes: data.gaps } : {}),
     };
   },
 };

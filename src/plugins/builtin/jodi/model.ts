@@ -1,43 +1,13 @@
+import type { JodiBalanceBoard, JodiBalanceRow } from "../../../api-client/commodity-balances";
 import type { DataTableColumn } from "../../../components";
 import { formatNumber } from "../../../utils/format";
 
 export const JODI_PANE_ID = "jodi";
 
-/** Crude flows are thousand barrels a day; closing stocks are thousand barrels. */
-export const OIL_UNIT = "kb/d, kbbl";
-/** Natural gas flows and closing stocks, million cubic metres. */
-export const GAS_UNIT = "million m3";
-
-export const BALANCE_COUNTRIES: readonly { code: string; country: string }[] = [
-  { code: "US", country: "United States" },
-  { code: "CN", country: "China" },
-  { code: "SA", country: "Saudi Arabia" },
-  { code: "RU", country: "Russia" },
-  { code: "IN", country: "India" },
-  { code: "JP", country: "Japan" },
-  { code: "DE", country: "Germany" },
-  { code: "GB", country: "United Kingdom" },
-  { code: "BR", country: "Brazil" },
-  { code: "KR", country: "Korea" },
-];
-
-export type BalanceCommodity = "oil" | "gas";
-
-export interface BalanceRow {
-  country: string;
-  production: number | null;
-  demand: number | null;
-  imports: number | null;
-  exports: number | null;
-  stocks: number | null;
-  unit: string;
-}
-
-export interface Board {
-  month: string;
-  commodity: BalanceCommodity;
-  rows: BalanceRow[];
-}
+export type BalanceCommodity = JodiBalanceBoard["commodity"];
+/** A country's balance for its own latest reported month, which `month` names. */
+export type BalanceRow = JodiBalanceRow;
+export type Board = JodiBalanceBoard;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -60,16 +30,21 @@ export function balanceTitle(board: Board): string {
   return `${name}, ${formatBalanceMonth(board.month)}`;
 }
 
-/** Crude has no demand flow in the primary table, so its balance has no Demand column. */
+/**
+ * Crude has no demand flow in the primary table, so its balance has no Demand
+ * column. Countries report on their own schedules, so each row says its month;
+ * narrower columns keep crude within the width it had.
+ */
 export function balanceColumns(commodity: BalanceCommodity): DataTableColumn[] {
   const columns: DataTableColumn[] = [
-    { id: "country", label: "Country", width: 18, align: "left" },
-    { id: "production", label: "Production", width: 12, align: "right" },
-    { id: "demand", label: "Demand", width: 12, align: "right" },
-    { id: "imports", label: "Imports", width: 12, align: "right" },
-    { id: "exports", label: "Exports", width: 12, align: "right" },
-    { id: "stocks", label: "Stocks", width: 14, align: "right" },
-    { id: "unit", label: "Unit", width: commodity === "oil" ? 14 : 12, align: "left" },
+    { id: "country", label: "Country", width: 15, align: "left" },
+    { id: "month", label: "Month", width: 9, align: "left" },
+    { id: "production", label: "Production", width: 11, align: "right" },
+    { id: "demand", label: "Demand", width: 11, align: "right" },
+    { id: "imports", label: "Imports", width: 11, align: "right" },
+    { id: "exports", label: "Exports", width: 11, align: "right" },
+    { id: "stocks", label: "Stocks", width: 11, align: "right" },
+    { id: "unit", label: "Unit", width: 11, align: "left" },
   ];
   return commodity === "oil" ? columns.filter((column) => column.id !== "demand") : columns;
 }
