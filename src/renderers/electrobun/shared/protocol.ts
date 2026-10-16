@@ -85,7 +85,7 @@ export interface DesktopHttpStreamOpenRequest extends HttpProxyRequestEnvelope {
 }
 
 /** The response head. Its body follows as `http.stream.chunk` messages. */
-export type DesktopHttpStreamOpenResponse = Omit<HttpProxyResponseEnvelope, "body">;
+export type DesktopHttpStreamOpenResponse = Omit<HttpProxyResponseEnvelope, "body" | "bodyBase64">;
 
 /**
  * One slice of a streamed body. Exactly one terminal message ends a stream:
@@ -94,6 +94,8 @@ export type DesktopHttpStreamOpenResponse = Omit<HttpProxyResponseEnvelope, "bod
 interface DesktopHttpStreamChunkMessage {
   streamId: string;
   chunk?: string;
+  /** A slice of a body whose content type is not text, which `chunk` would mangle. */
+  chunkBase64?: string;
   done?: boolean;
   error?: string;
 }

@@ -12,6 +12,11 @@
  * and the browser strips the header anyway. Callers that read cookies, like a
  * plugin completing a login, need `get("set-cookie")` and `getSetCookie()` to
  * work, so `createProxyResponse` restores them.
+ *
+ * JSON only holds text, so a body that is not UTF-8 (a zip archive, an image,
+ * a CSV in another charset) travels as base64 in `bodyBase64`. Decoding those
+ * bytes as text would replace every invalid sequence and leave the plugin a
+ * corrupt file.
  */
 interface HttpProxyRequestInit {
   method?: string;
@@ -33,7 +38,10 @@ export interface HttpProxyResponseEnvelope {
   statusText: string;
   headers: Record<string, string>;
   setCookie?: string[];
+  /** The body when it is UTF-8 text; empty when `bodyBase64` carries it. */
   body: string;
+  /** Any other body, byte for byte. */
+  bodyBase64?: string;
 }
 
 function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
@@ -52,18 +60,29 @@ function headersToRecord(headers: HeadersInit | undefined): Record<string, strin
   return { ...headers };
 }
 
-const BASE64_CHUNK_BYTES = 0x8000;
+/** A multiple of 3, so every slice encodes without padding and the parts join into one string. */
+const BASE64_CHUNK_BYTES = 3 * 0x2000;
 
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = "";
+/**
+ * The native codec where the runtime has one, over ten times faster on a 20 MB
+ * archive. Older webviews still need the fallback.
+ */
+export function encodeBase64(bytes: Uint8Array, native = typeof bytes.toBase64 === "function"): string {
+  if (native) return bytes.toBase64();
+  const parts: string[] = [];
   for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_BYTES) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES));
+    parts.push(btoa(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_BYTES))));
   }
-  return btoa(binary);
+  return parts.join("");
 }
 
-function decodeBase64(value: string): Uint8Array<ArrayBuffer> | undefined {
+/** Undefined when `value` is not base64. */
+export function decodeBase64(
+  value: string,
+  native = typeof Uint8Array.fromBase64 === "function",
+): Uint8Array<ArrayBuffer> | undefined {
   try {
+    if (native) return Uint8Array.fromBase64(value);
     const binary = atob(value);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
@@ -153,7 +172,7 @@ export function readRequestInit(raw: unknown): ProxiedRequestInit {
  * `headers` and listed in `setCookie`, so a web proxy never emits a third
  * party's cookie on its own origin.
  */
-export function toResponseHead(response: Response): Omit<HttpProxyResponseEnvelope, "body"> & { setCookie: string[] } {
+export function toResponseHead(response: Response): Omit<HttpProxyResponseEnvelope, "body" | "bodyBase64"> & { setCookie: string[] } {
   const headers: Record<string, string> = {};
   response.headers.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") return;
@@ -165,9 +184,43 @@ export function toResponseHead(response: Response): Omit<HttpProxyResponseEnvelo
   return { status: response.status, statusText: response.statusText, headers, setCookie };
 }
 
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+/**
+ * Server half: a buffered body as envelope fields. UTF-8 text stays in `body`,
+ * so text responses read exactly as before; anything else goes as base64.
+ */
+export function encodeResponseBody(bytes: Uint8Array): Pick<HttpProxyResponseEnvelope, "body" | "bodyBase64"> {
+  // Decoding drops a leading byte-order mark, so a body that starts with one
+  // would lose those three bytes if it went as text.
+  const hasByteOrderMark = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  if (!hasByteOrderMark) {
+    try {
+      return { body: STRICT_UTF8.decode(bytes) };
+    } catch {
+      // Not UTF-8, so it goes as base64.
+    }
+  }
+  return { body: "", bodyBase64: encodeBase64(bytes) };
+}
+
 /** Server half: the whole response as JSON, body buffered. */
 export async function toResponseEnvelope(response: Response): Promise<HttpProxyResponseEnvelope & { setCookie: string[] }> {
-  return { ...toResponseHead(response), body: await response.text() };
+  return { ...toResponseHead(response), ...encodeResponseBody(new Uint8Array(await response.arrayBuffer())) };
+}
+
+/** Client half: the body as `Response` reads it. A corrupt one throws rather than reading as empty. */
+function readEnvelopeBody(envelope: HttpProxyResponseEnvelope): string | Uint8Array<ArrayBuffer> {
+  if (typeof envelope.bodyBase64 !== "string") return envelope.body;
+  const bytes = decodeBase64(envelope.bodyBase64);
+  if (!bytes) throw new Error("The proxied response body is not valid base64.");
+  return bytes;
+}
+
+/** Client half: the body as text, the way `Response.text()` would read it. */
+export function readProxyResponseText(envelope: HttpProxyResponseEnvelope): string {
+  const body = readEnvelopeBody(envelope);
+  return typeof body === "string" ? body : new TextDecoder().decode(body);
 }
 
 export function createProxyResponseHeaders(
@@ -185,10 +238,14 @@ export function createProxyResponseHeaders(
   return responseHeaders;
 }
 
+/** Statuses a browser refuses to construct with any body, even an empty one. */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 /** Client half: rebuilds a `Response` from a proxied envelope. */
 export function createProxyResponse(envelope: HttpProxyResponseEnvelope): Response {
   const headers = createProxyResponseHeaders(envelope.headers, envelope.setCookie ?? []);
-  const response = new Response(envelope.body, {
+  const body = NULL_BODY_STATUSES.has(envelope.status) ? null : readEnvelopeBody(envelope);
+  const response = new Response(body, {
     status: envelope.status,
     statusText: envelope.statusText,
     headers,

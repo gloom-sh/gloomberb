@@ -2,6 +2,8 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import {
   createProxyResponse,
   createProxyResponseHeaders,
+  decodeBase64,
+  readProxyResponseText,
   toRequestEnvelope,
   type HttpProxyResponseEnvelope,
 } from "../../../utils/http-proxy-response";
@@ -69,7 +71,7 @@ async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise
     status: response.status,
     statusText: response.statusText,
     headers: createProxyResponseHeaders(response.headers, response.setCookie),
-    text: async () => response.body,
+    text: async () => readProxyResponseText(response),
   } as Response;
 }
 
@@ -144,6 +146,15 @@ async function electrobunCloudApiStreamFetch(url: string, init?: RequestInit): P
     if (settled) return;
     if (typeof message.chunk === "string" && message.chunk) {
       controller.enqueue(encoder.encode(message.chunk));
+    }
+    if (typeof message.chunkBase64 === "string" && message.chunkBase64) {
+      const bytes = decodeBase64(message.chunkBase64);
+      if (!bytes) {
+        cancelUpstream();
+        controller.error(new Error("The streamed response body is not valid base64."));
+        return;
+      }
+      controller.enqueue(bytes);
     }
     if (message.error) {
       releaseListeners();
