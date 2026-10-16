@@ -1,0 +1,50 @@
+  > Search or run a command  Ctrl+P                                                                                                                          Help ? PRE-MKT · 20m SPY 772.99 +0.16% USD
+:: Main Portfolio                                        ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                                                           ⚡
+  Main Portfolio  Li  Mix  Mix3  Watchlist                             No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP     P/E   FWD P/E
+
+  No tickers.
+  Click + ticker to add one, or press a.
+
+  + ticker Enter
+
+                                                            ┌─:: Portfolio Analytics─────────────────────────────────────────── ?  ...  x ─┐
+                                                              Risk  Factors  Holdings  Correlation  Stress  Performance  Attribution  Greek
+                                                              Portfolio Mix3
+                                                              • 60D basket return -10.52% + 60D benchmark return (SPY) 3.26%
+
+                                                             ·  ·  ·  ·  ·  ·  ·  ·  ·••·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 15%
+                                                                                      • • ••••
+                                                                                ••  ••  ••    ••
+                                                             ·  ·  ·  ·  · •••••  •• ·  ·  ·  · •·• ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  · 10%
+                                                                          •                      • •
+                                                             ·  ·  ·  ·  •  ·  ·  ·  ·  ·  ·  ·  ·  •• ·  ·  ·  ·  ·  ·  +  ++++  ·  · 5%
+                                                                       +++++++++++++++++++++++++++++  +   + +++++++++++++ ++    ++
+                                                             +• ·  ·•++  ·  ·  ·  ·  ·  ·  ·  ·  ·  ++ +++•+ ·• ·  ·  ·  ·  ·  ·  ·  · 0%
+                                                              +++++++                                   • •••• •
+                                                                 •••                                     •      ••••     •
+                                                             ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·•••••·•••  ·  ·  · -5%
+                                                                                                                             ••
+  + ticker                                                   ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  •••·  · -10%
+
+                                                             Jul 22 2026      Aug 17        31      Sep 14       28       Oct 15 2026
+:: #everyone                                                  METRIC                                     VALUE    PCTL 1Y
+ ← Back                                                       60D basket return                         -10.52%        25
+    what version is at the bottom right of the window? If it  60D benchmark return (SPY)                  3.26%        45
+    isn't v0.17.0, the update is probably downloaded but not  60D active return                         -13.78%        29
+    applied yet. Press Update ready → Restart in the header,  60D annualized volatility                  28.63%         0
+    U.                                                        60D max drawdown                          -23.20%        27
+  lucas 2d ago                                                1D VaR 95% (60D)                 2.84% ($334,578)         1
+    ah works                                                  1D expected shortfall (60D)      2.97% ($350,168)         1
+  vekim77564 19h ago                                          60D tracking error                         25.82%         1
+    smsn analizza gdr london                                └⚠[!  covers 55% of market value · 4 holdings    [i]mport evidence [p]ortfolio─◢
+   reply vekim77564: smsn analizza gdr london                          Sign in to view research attention.
+  gloombot ⍠ 19h ago
+    in gloom la quotazione del gdr SMSN:LSE è ferma a luglio            Log in  Enter  Sign up free
+    2022, l'ho segnalato (GLO-841). per samsung usa la linea
+    principale 005930:KRX: aprila con ctrl+p.                     ▄
+ ----------------------------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +                                                                                                                                           v0.17.5 ☁ Log in Feedback
