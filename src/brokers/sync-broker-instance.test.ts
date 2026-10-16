@@ -794,6 +794,19 @@ describe("a signed-in import over rows other portfolios hold", () => {
     expect(result.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", signedInId, demoId]);
   });
 
+  test("keeps a position entered by hand in the account's portfolio, and what a disabled profile holds", async () => {
+    const handEntered = { portfolio: signedInId, shares: 2, avgCost: 30, currency: "USD", broker: "manual" };
+    const withDisabledDemo = { ...config(), brokerInstances: [signedIn, { ...createBrokerInstanceWithId("demo-work"), enabled: false }] };
+    const tickerRepository = new JsonTickerRepository(undefined, [
+      createTestTicker("AAA", "AAA", { portfolios: [signedInId, demoId], positions: [handEntered, demoPosition] }),
+    ]);
+
+    // The account no longer reports AAA.
+    await syncBrokerInstance({ config: withDisabledDemo, instanceId: "signed-in-ibkr", brokers: signedInBrokers([{ ticker: "BBB", shares: 3 }]), tickerRepository });
+
+    expect((await tickerRepository.loadTicker("AAA"))!.metadata).toMatchObject({ portfolios: [signedInId, demoId], positions: [handEntered, demoPosition] });
+  });
+
   test("commits onto the tickers as they are by then, keeping what changed while the broker answered", async () => {
     const before = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [demoId], positions: [demoPosition] })]]);
     const tickerRepository = new JsonTickerRepository(undefined, [...before.values()]);
@@ -808,7 +821,8 @@ describe("a signed-in import over rows other portfolios hold", () => {
     });
     // Meanwhile a pull brought a position in the manual portfolio.
     const live = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [demoId, "main"], positions: [demoPosition, mainPosition] })]]);
-    await result.commit({ tickers: live, config: config() });
+    result.rebase({ tickers: live, config: config() });
+    await result.commit();
 
     const expected = [demoPosition, mainPosition, expect.objectContaining({ portfolio: signedInId, shares: 12 })];
     expect(result.tickers.get("AAA")?.metadata.positions).toEqual(expected);

@@ -1299,9 +1299,14 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     const state = getState();
     const pulledConfig = recordOrNull(snapshot?.contributors[CORE_CONFIG_CONTRIBUTOR_ID]?.payload);
     const pulledPortfolios = Array.isArray(payload.portfolios) ? payload.portfolios : pulledConfig?.portfolios;
+    // A copy without its ticker list says nothing of what any portfolio holds:
+    // a later sync stamp there must not take this device's broker positions.
+    const pulledTickers = Array.isArray(payload.tickers) ? payload.tickers : null;
     const merge: PulledTickersMerge = {
       lastSyncedTickers: lastSyncedTickersById(baselinePayload),
-      brokerPortfolios: latestBrokerPortfolioSyncs(baselineState.config, state.config, pulledPortfolios),
+      brokerPortfolios: pulledTickers
+        ? latestBrokerPortfolioSyncs(baselineState.config, state.config, pulledPortfolios)
+        : new Map(),
       // A broker portfolio the pull still lists may only exist on another device: it stays.
       known: knownBrokerHoldings(state.config, {
         portfolios: [pulledPortfolios, pulledConfig?.portfolios].flatMap(idEntries),
@@ -1318,7 +1323,7 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     const nextTickers = new Map(state.tickers);
     const changed: TickerRecord[] = [];
     const pulledSymbols = new Set<string>();
-    for (const rawTicker of Array.isArray(payload.tickers) ? payload.tickers : []) {
+    for (const rawTicker of pulledTickers ?? []) {
       if (!isRecord(rawTicker) || typeof rawTicker.ticker !== "string") continue;
       pulledSymbols.add(rawTicker.ticker);
       const current = state.tickers.get(rawTicker.ticker);
@@ -1337,7 +1342,13 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     }
     if (changed.length === 0) return;
     dispatch({ type: "SET_TICKERS", tickers: nextTickers });
-    for (const record of changed) await tickerRepository.saveTicker(record);
+    // Written one at a time, so an edit or a broker sync can replace a row
+    // before its turn. That copy is newer and its writer saves it; this one
+    // written over it would come back at launch as an edit and be pushed.
+    for (const record of changed) {
+      if (getState().tickers.get(record.metadata.ticker) !== record) continue;
+      await tickerRepository.saveTicker(record);
+    }
   },
 };
 

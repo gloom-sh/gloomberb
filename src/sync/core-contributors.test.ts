@@ -538,21 +538,46 @@ describe("core sync contributors", () => {
       return config;
     }
 
-    async function pull(state: ReturnType<typeof createInitialState>, pulled: unknown, baselinePayload: unknown) {
-      let current = state;
-      const saved: string[] = [];
-      await coreCollectionsSyncContributor.apply?.(pulled, {
-        baselinePayload,
-        baselineState: state,
-        state,
-        getState: () => current,
-        isCurrent: () => true,
-        dispatch: (action: { type: string; tickers?: typeof state.tickers }) => {
-          if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
-        },
-        tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record.metadata.ticker); } },
-      } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
-      return { state: current, saved };
+    type AppState = ReturnType<typeof createInitialState>;
+    type ApplyContext = Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1];
+
+    /** The app's store as the sync controller sees it, with what each pull and edit writes to disk. */
+    function deviceStore(state: AppState) {
+      const store = {
+        current: state,
+        disk: new Map<string, TickerRecord>(),
+        saved: [] as string[],
+        /** Runs while the pull writes its first row, as an edit landing then would. */
+        duringFirstSave: undefined as (() => void) | undefined,
+        context: (baselinePayload: unknown, snapshot?: unknown) => ({
+          snapshot,
+          baselinePayload,
+          baselineState: state,
+          state: store.current,
+          getState: () => store.current,
+          isCurrent: () => true,
+          dispatch: (action: { type: string; config?: AppState["config"]; tickers?: AppState["tickers"] }) => {
+            if (action.type === "SET_CONFIG") store.current = { ...store.current, config: action.config! };
+            if (action.type === "SET_TICKERS") store.current = { ...store.current, tickers: action.tickers! };
+          },
+          tickerRepository: {
+            saveTicker: async (record: TickerRecord) => {
+              store.saved.push(record.metadata.ticker);
+              store.disk.set(record.metadata.ticker, record);
+              const edit = store.duringFirstSave;
+              store.duringFirstSave = undefined;
+              edit?.();
+            },
+          },
+        }) as unknown as ApplyContext,
+      };
+      return store;
+    }
+
+    async function pull(state: AppState, pulled: unknown, baselinePayload: unknown) {
+      const store = deviceStore(state);
+      await coreCollectionsSyncContributor.apply?.(pulled, store.context(baselinePayload));
+      return { state: store.current, saved: store.saved };
     }
 
     // The device that holds the signed-in account pulls what a device that was
@@ -623,6 +648,144 @@ describe("core sync contributors", () => {
         positions: [signedInPosition(3), demoPosition(7), mainPosition],
       });
       expect(after.tickers.get("CCC")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+    });
+
+    test("a row edited while the pull writes its rows keeps the edit on disk", async () => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: ["main"], positions: [mainPosition] })],
+        ["BBB", createTestTicker("BBB", "BBB", { portfolios: ["main"], positions: [mainPosition] })],
+      ]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      const elsewhere = createInitialState(config);
+      elsewhere.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: ["main"], positions: [{ ...mainPosition, shares: 5 }] })],
+        ["BBB", createTestTicker("BBB", "BBB", { portfolios: ["main"], positions: [{ ...mainPosition, shares: 6 }] })],
+      ]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const store = deviceStore(state);
+      const edited = createTestTicker("BBB", "BBB", { portfolios: ["main"], positions: [{ ...mainPosition, shares: 9 }] });
+      store.duringFirstSave = () => {
+        store.current = { ...store.current, tickers: new Map(store.current.tickers).set("BBB", edited) };
+        store.disk.set("BBB", edited);
+      };
+      await coreCollectionsSyncContributor.apply?.(pulled, store.context(pushed));
+
+      expect(store.disk.get("AAA")?.metadata.positions).toMatchObject([{ shares: 5 }]);
+      expect(store.disk.get("BBB")).toBe(edited);
+      expect(store.current.tickers.get("BBB")).toBe(edited);
+    });
+
+    test("a pulled copy without its ticker list keeps this device's broker positions", async () => {
+      const state = createInitialState(deviceConfig(200));
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [signedInId], positions: [signedInPosition(10)] })]]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      const { tickers: _tickers, ...withoutTickers } = await coreCollectionsSyncContributor.collect({ state: createInitialState(deviceConfig(300)) }) as Record<string, unknown>;
+
+      const { state: after, saved } = await pull(state, withoutTickers, pushed);
+
+      expect(after.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: [signedInId], positions: [signedInPosition(10)] });
+      expect(saved).toEqual([]);
+    });
+
+    // A holding changed on both sides since the last sync keeps this device's
+    // copy, as whole rows did before (it is pushed next); a holding only the
+    // other side changed comes in, where the whole pulled row used to be dropped.
+    test("a position edited here and elsewhere keeps this device's edit, and takes what only the other side changed", async () => {
+      const config = deviceConfig(200);
+      config.portfolios = [...config.portfolios, { id: "growth", name: "Growth", currency: "USD" }];
+      const growthPosition = { portfolio: "growth", shares: 1, avgCost: 70, currency: "USD", broker: "manual" };
+      const synced = createInitialState(config);
+      synced.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: ["main", "growth"], positions: [mainPosition, growthPosition] })]]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state: synced });
+      const elsewhere = createInitialState(config);
+      elsewhere.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: ["main", "growth"],
+        positions: [{ ...mainPosition, shares: 6 }, { ...growthPosition, shares: 3 }],
+      })]]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const state = createInitialState(config);
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: ["main", "growth"], positions: [{ ...mainPosition, shares: 5 }, growthPosition] })]]);
+      const { state: after } = await pull(state, pulled, pushed);
+
+      expect(after.tickers.get("AAA")?.metadata.positions).toMatchObject([{ portfolio: "main", shares: 5 }, { portfolio: "growth", shares: 3 }]);
+    });
+
+    test("an older pulled copy leaves what a disabled profile holds here", async () => {
+      const config = deviceConfig(200);
+      config.brokerInstances = [signedIn, { ...demo, enabled: false }];
+      const state = createInitialState(config);
+      state.tickers = new Map([["BBB", createTestTicker("BBB", "BBB", { portfolios: [demoId, "main"], positions: [demoPosition(7), mainPosition] })]]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      const elsewhere = createInitialState({
+        ...config,
+        portfolios: config.portfolios.map((portfolio) => portfolio.id === demoId ? { ...portfolio, lastSyncedAt: 50 } : portfolio),
+      });
+      elsewhere.tickers = new Map([["BBB", createTestTicker("BBB", "BBB", { portfolios: ["main"], positions: [mainPosition] })]]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const { state: after } = await pull(state, pulled, pushed);
+
+      expect(after.tickers.get("BBB")?.metadata).toMatchObject({ portfolios: [demoId, "main"], positions: [demoPosition(7), mainPosition] });
+    });
+
+    test("a full pull keeps the positions of a broker portfolio its config brings from elsewhere", async () => {
+      const schwab = { id: "schwab-1", brokerType: "schwab", label: "Schwab", config: {} };
+      const schwabId = "broker:schwab-1:S1";
+      const local = deviceConfig(200);
+      const elsewhereConfig = {
+        ...local,
+        brokerInstances: [...local.brokerInstances, schwab],
+        portfolios: [...local.portfolios, { id: schwabId, name: "S1", currency: "USD", brokerId: "schwab", brokerInstanceId: "schwab-1", brokerAccountId: "S1", lastSyncedAt: 300 }],
+      };
+      const elsewhere = createInitialState(elsewhereConfig);
+      elsewhere.tickers = new Map([["SSS", createTestTicker("SSS", "SSS", {
+        portfolios: [schwabId],
+        positions: [{ portfolio: schwabId, shares: 4, broker: "schwab", brokerInstanceId: "schwab-1", brokerAccountId: "S1" }],
+      })]]);
+      const pulledConfig = __syncContributorInternalsForTests.collectCoreConfigPayload(elsewhereConfig);
+      const pulledCollections = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+      const snapshot = {
+        contributors: {
+          [coreConfigSyncContributor.id]: { schemaVersion: 1, updatedAt: "2026-10-01T00:00:00.000Z", payload: pulledConfig },
+          [coreCollectionsSyncContributor.id]: { schemaVersion: 1, updatedAt: "2026-10-01T00:00:00.000Z", payload: pulledCollections },
+        },
+      };
+
+      const state = createInitialState(local);
+      const store = deviceStore(state);
+      const lastSynced = __syncContributorInternalsForTests.collectCoreConfigPayload(local);
+      await coreConfigSyncContributor.apply?.(pulledConfig, store.context(lastSynced, snapshot));
+      await coreCollectionsSyncContributor.apply?.(pulledCollections, store.context(await coreCollectionsSyncContributor.collect({ state }), snapshot));
+
+      expect(store.current.config.portfolios.map((portfolio) => portfolio.id)).toContain(schwabId);
+      expect(store.current.tickers.get("SSS")?.metadata).toMatchObject({ portfolios: [schwabId], positions: [{ portfolio: schwabId, shares: 4 }] });
+      expect(store.saved).toEqual(["SSS"]);
+    });
+
+    test("a portfolio without a sync stamp on one side merges as one never synced there", async () => {
+      const config = deviceConfig(200);
+      // Synced here but not stamped in the pull; stamped in the pull but never synced here.
+      config.portfolios = config.portfolios.map((portfolio) => portfolio.id === demoId ? { ...portfolio, lastSyncedAt: undefined } : portfolio);
+      const state = createInitialState(config);
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [signedInId, demoId], positions: [signedInPosition(10), demoPosition(7)] })]]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      const elsewhere = createInitialState({
+        ...config,
+        portfolios: config.portfolios.map((portfolio) => ({ ...portfolio, lastSyncedAt: portfolio.id === demoId ? 300 : undefined })),
+      });
+      elsewhere.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [signedInId, demoId], positions: [signedInPosition(1), demoPosition(2)] })]]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const { state: after } = await pull(state, pulled, pushed);
+
+      expect(after.tickers.get("AAA")?.metadata.positions).toMatchObject([
+        { portfolio: signedInId, shares: 10 },
+        { portfolio: demoId, shares: 2 },
+      ]);
     });
   });
 
@@ -798,13 +961,16 @@ describe("core sync contributors", () => {
 
     const saved: TickerRecord[] = [];
     const sanitizedTickerPayload = { tickers: (payload as any).tickers };
+    let current = state;
     await coreCollectionsSyncContributor.apply?.(sanitizedTickerPayload, {
       baselinePayload: sanitizedTickerPayload,
       baselineState: state,
       state,
-      getState: () => state,
+      getState: () => current,
       isCurrent: () => true,
-      dispatch: () => {},
+      dispatch: (action: { type: string; tickers?: typeof state.tickers }) => {
+        if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+      },
       tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record); } },
     } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
 

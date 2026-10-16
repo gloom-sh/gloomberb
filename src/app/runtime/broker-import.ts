@@ -18,6 +18,7 @@ import { getBrokerInstance } from "../../utils/broker-instances";
 export interface AppBrokerImportRuntime {
   importBrokerPositions: (
     instanceId: string,
+    /** What the sync reads. It lands on the app's tickers as they are when it commits, whatever was passed. */
     tickerMap?: Map<string, TickerRecord>,
     options?: BrokerImportOptions,
   ) => Promise<SyncBrokerInstanceResult>;
@@ -52,6 +53,13 @@ export function useBrokerImportRuntime({
   stateRef: { current: AppState };
   tickerRepository: AppTickerRepositoryPort;
 }): AppBrokerImportRuntime {
+  /**
+   * Commits a sync: carried onto the app as it is now (a pull or an edit while
+   * the broker answered stays) and handed to the app before anything is
+   * written. With a wait in between, a pull landing in it would be overwritten
+   * by this older copy and pushed from here as an edit. The writes start in
+   * the same tick, so the copy of anyone writing after lands on disk after it.
+   */
   const applyBrokerImportResult = useCallback(async (
     instanceId: string,
     result: SyncBrokerInstanceResult,
@@ -62,31 +70,27 @@ export function useBrokerImportRuntime({
     },
   ) => {
     throwIfBrokerImportCancelled(options?.signal);
-    dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts: result.brokerAccounts });
-
-    const liveConfig = stateRef.current.config;
+    const live = stateRef.current;
+    result.rebase(live);
     const nextConfig = options?.callerOwnsConfig
-      ? (result.config !== baseConfig ? result.config : liveConfig)
-      : rebaseBrokerSyncConfig(liveConfig, baseConfig, result.config, instanceId);
-    if (nextConfig !== liveConfig) {
-      throwIfBrokerImportCancelled(options?.signal);
-      dispatch({ type: "SET_CONFIG", config: nextConfig });
-      await saveConfigImmediately(nextConfig);
-      throwIfBrokerImportCancelled(options?.signal);
-      pluginRegistry.events.emit("config:changed", { config: nextConfig });
-    }
+      ? (result.config !== baseConfig ? result.config : live.config)
+      : rebaseBrokerSyncConfig(live.config, baseConfig, result.config, instanceId);
+    const configChanged = nextConfig !== live.config;
 
-    for (const ticker of result.addedTickers) {
-      throwIfBrokerImportCancelled(options?.signal);
-      pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
-    }
+    dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts: result.brokerAccounts });
+    if (configChanged) dispatch({ type: "SET_CONFIG", config: nextConfig });
     for (const ticker of [...result.addedTickers, ...result.updatedTickers]) {
-      throwIfBrokerImportCancelled(options?.signal);
-      dispatch({ type: "UPDATE_TICKER", ticker: { ...ticker } });
+      dispatch({ type: "UPDATE_TICKER", ticker });
+    }
+    await Promise.all([result.commit(), configChanged ? saveConfigImmediately(nextConfig) : undefined]);
+
+    if (configChanged) pluginRegistry.events.emit("config:changed", { config: nextConfig });
+    for (const ticker of result.addedTickers) {
+      pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
     }
 
     for (const position of result.positions) {
-      throwIfBrokerImportCancelled(options?.signal);
+      if (options?.signal?.aborted) break;
       // Skip market data for broker option symbols; position marks are already available.
       // Position data (markPrice, marketValue, unrealizedPnl) is used directly.
       if (options?.refreshImportedTickers !== false && position.assetCategory !== "OPT") {
@@ -120,9 +124,6 @@ export function useBrokerImportRuntime({
       throwIfBrokerImportCancelled(options?.signal);
       options?.onCommitStart?.();
       commitStarted = true;
-      // Onto the tickers as they are now: a pull or an edit while the broker answered stays.
-      await result.commit(tickerMap ? undefined : stateRef.current);
-      throwIfBrokerImportCancelled(options?.signal);
       await applyBrokerImportResult(instanceId, result, baseConfig, {
         ...options,
         callerOwnsConfig: options?.config !== undefined,
@@ -156,8 +157,7 @@ export function useBrokerImportRuntime({
       deferPersistence: true,
       onResult: async (result, instance, previousConfig) => {
         if (!getBrokerInstance(stateRef.current.config.brokerInstances, instance.id)) return;
-        // Startup syncs run beside the first pull, so they commit onto what it left.
-        await result.commit(stateRef.current);
+        // Startup syncs run beside the first pull: each lands on what it left.
         await applyBrokerImportResult(instance.id, result, previousConfig, {
           refreshImportedTickers: false,
         });

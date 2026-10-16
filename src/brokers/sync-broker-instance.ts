@@ -50,12 +50,15 @@ export interface SyncBrokerInstanceResult {
   addedTickers: TickerRecord[];
   updatedTickers: TickerRecord[];
   /**
-   * Writes the sync. Given the app as it is by then, the sync is first carried
-   * onto its tickers, so what changed while the broker answered (a pull from
+   * Carries the sync onto the app as it is now, which may be seconds after the
+   * sync read it, so what changed while the broker answered (a pull from
    * another device, an edit) stays; `tickers`, `addedTickers` and
-   * `updatedTickers` then say what was written.
+   * `updatedTickers` then hold the sync over it. Hand them to the app before
+   * anything waits: a pull landing in a wait would be overwritten in turn.
    */
-  commit(onto?: BrokerSyncCommitTarget): Promise<void>;
+  rebase(onto: BrokerSyncCommitTarget): void;
+  /** Writes the sync's tickers and broker accounts. */
+  commit(): Promise<void>;
 }
 
 export interface SyncBrokerInstancesArgs {
@@ -386,10 +389,12 @@ export async function syncBrokerInstance({
 
   let written = writeTickers(tickers);
   let committed = false;
-  const commit = async (onto?: BrokerSyncCommitTarget) => {
+  const rebase = (onto: BrokerSyncCommitTarget) => {
+    if (!committed) written = writeTickers(onto.tickers, onto.config);
+  };
+  const commit = async () => {
     if (committed) return;
     throwIfBrokerImportCancelled(signal);
-    if (onto) written = writeTickers(onto.tickers, onto.config);
     if (resources) {
       persistBrokerAccounts(resources, instance, broker, brokerAccounts);
     }
@@ -411,6 +416,7 @@ export async function syncBrokerInstance({
     portfolioIds,
     get addedTickers() { return written.addedTickers; },
     get updatedTickers() { return written.updatedTickers; },
+    rebase,
     commit,
   };
 }

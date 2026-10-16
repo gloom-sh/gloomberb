@@ -183,14 +183,15 @@ export function clearBrokerInstanceTickerData(
   takenOverPortfolioIds: ReadonlySet<string> = new Set(),
   /**
    * Portfolios this sync writes. A position there without a profile came from
-   * another device's sync of the same account, so this one replaces it too.
+   * another device's sync of the same account, so this one replaces it too;
+   * one entered by hand stays.
    */
   syncedPortfolioIds: ReadonlySet<string> = new Set(),
 ): TickerRecord | null {
   const positions = ticker.metadata.positions.filter((position) =>
     position.brokerInstanceId !== instanceId
     && !(takenOverPortfolioIds.has(position.portfolio) && position.brokerInstanceId)
-    && !(syncedPortfolioIds.has(position.portfolio) && !position.brokerInstanceId)
+    && !(syncedPortfolioIds.has(position.portfolio) && !position.brokerInstanceId && position.broker !== "manual")
   );
   const remainingPositionPortfolios = new Set(positions.map((position) => position.portfolio));
   const portfolios = ticker.metadata.portfolios.filter((portfolioId) =>
