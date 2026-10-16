@@ -10,8 +10,9 @@ import { useWindowedRows } from "./windowed-rows";
 /** Uses the table's windowing engine, with measured rows and end anchoring. */
 export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize = 64, overscan = 8, onScrollActivity, onPinChange, onPointerMove, role }: WindowedListProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
-  // Only the reader moves this: a scroll to a position the list did not set
-  // itself. Sizes and arrivals keep it, as the DOM scroll box's sticky scroll does.
+  // Only the reader (a scroll to a position the list did not set) or a jump
+  // unpins. Sizes and arrivals keep it, as the DOM scroll box's sticky scroll
+  // does, and being at the end pins.
   const pinnedRef = useRef(true);
   // On a hidden initial mount, rows can be measured on reveal before the
   // viewport observer runs. Keep the initial pin until that first real rect.
@@ -108,12 +109,17 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
     onChange: (instance) => {
       const element = instance.scrollElement;
       if (resizingViewport.current || hiddenRef.current || !element?.clientHeight) return;
-      if (readerScrolled(element) || navigating.current || !pinnedRef.current) return;
+      if (readerScrolled(element) || navigating.current) return;
+      const end = element.scrollHeight - element.clientHeight;
+      const atEnd = end - element.scrollTop <= STICKY_BOTTOM_THRESHOLD_PX;
+      if (!pinnedRef.current) {
+        if (atEnd) reportPin(true);
+        return;
+      }
       // Rows can report new heights before the viewport reports its own in the
       // same frame, and a row that grows in view keeps its top. Neither is the
       // reader leaving the end: keep it, by the DOM's extent, not the engine's.
-      const end = element.scrollHeight - element.clientHeight;
-      if (end - element.scrollTop > STICKY_BOTTOM_THRESHOLD_PX) instance.scrollToOffset(end);
+      if (!atEnd) instance.scrollToOffset(end);
     },
   });
   // Preserve the top of the first visible row, including a partially read row.
