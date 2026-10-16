@@ -167,7 +167,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
     "Create a custom view pane: a table from a data function with columns, a filter, and a sort. "
       + "The source loads once first; if it cannot, no pane opens and the answer is its error. "
       + "spec = { source: { pane: <function code>, argument?: <one string>, options?: { <flag>: <value> } }, projection: { columns?: [{ key, label?, transform? }], filters?: [{ key, op, value }], sort?: { by, direction }, limit? }, presentation?: { title?, symbolKey? } }. "
-      + "pane is a function code, never an invented name; an unknown one is answered with the closest codes and the valid ones. "
+      + "pane is a function code (app://pane-templates says what each does), never an invented name; an unknown one is answered with the closest codes and the valid ones. "
       + "argument is always one string, several tickers separated by spaces: \"CME AAPL\". "
       + "options sets the function's own flags; a wrong flag or value is answered with the ones it takes.",
     "{ name?: string, spec: object }",
