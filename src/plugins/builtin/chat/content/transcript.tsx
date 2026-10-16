@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import { useLayoutEffect, useMemo, type Dispatch, type SetStateAction } from "react";
-import { WindowedList } from "../../../../components";
+import { WindowedList } from "../../../../components/ui/windowed-list";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";

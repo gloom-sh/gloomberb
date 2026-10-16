@@ -1,6 +1,5 @@
 
 export { ListView } from "./list-view";
-export { WindowedList, type WindowedListProps } from "./windowed-list";
 export type { ListViewItem, ListViewProps, ListRowState } from "./list-view";
 
 export { DataTable } from "./data-table";

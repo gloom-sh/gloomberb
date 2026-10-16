@@ -119,7 +119,6 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "TickerBadgeList",
     "TickerBadgeText",
     "TickerListTableView",
-    "WindowedList",
     "activeStackIndex",
     "buildMetricTreemapNavigationTiles",
     "buildSectionedRows",

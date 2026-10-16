@@ -1048,10 +1048,11 @@ export function ChatContent({
       flexGrow={nativePaneChrome ? 1 : undefined}
       backgroundColor={chatContentBg}
       position="relative"
-      onMouseDown={() => {
-        clearHighlight();
-        focusChatContent();
-      }}
+      {...(nativePaneChrome ? {
+        onMouseDownCapture: () => { clearHighlight(); focusChatContent(); },
+      } : {
+        onMouseDown: () => { clearHighlight(); focusChatContent(); },
+      })}
       style={nativePaneChrome ? { minHeight: 0, minWidth: 0, ...(stackedNav ? {} : { flexBasis: 0 }) } : undefined}
     >
       {/* In the stack, the Back row above takes the place of the top rule. */}

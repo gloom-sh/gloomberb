@@ -15,6 +15,11 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
   const syncOffset = useRef<((offset: number, scrolling: boolean) => void) | null>(null);
   const onPinRef = useRef(onPinChange);
   onPinRef.current = onPinChange;
+  const reportPin = useCallback((pinned: boolean) => {
+    if (pinnedRef.current === pinned) return;
+    pinnedRef.current = pinned;
+    onPinRef.current?.(pinned);
+  }, []);
   const getItemKey = useCallback((index: number) => itemKeys[index]!, [itemKeys]);
   const { list, rows } = useWindowedRows(contentRef, {
     count: itemKeys.length,
@@ -23,14 +28,21 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
     estimateSize: () => estimateSize,
     // Images can end at fractional pixels. Rounding rows accumulates gaps or
     // overlaps, and a remounted row may have a different wrapping width.
-    measureElement: (node, entry) => entry?.borderBoxSize?.[0]?.blockSize ?? node.getBoundingClientRect().height,
+    measureElement: (node, entry, instance) => {
+      // display:none reports zero for every row. Those are not new message
+      // heights: retain the measured history until its tab is visible again.
+      if (!instance.scrollElement?.clientHeight) return instance.measurementsCache[Number(node.dataset.index)]?.size ?? estimateSize;
+      return entry?.borderBoxSize?.[0]?.blockSize ?? node.getBoundingClientRect().height;
+    },
     overscan,
     // Start with the tail, never a first render of the entire channel. The
     // actual viewport and row sizes replace these estimates before paint.
     initialRect: { width: 0, height: 1 },
     initialOffset: () => itemKeys.length * estimateSize,
     anchorTo: "end",
-    followOnAppend: true,
+    // A hidden scrollport reports no extent, which otherwise looks like its
+    // end to the windowing engine when a message arrives in an inactive tab.
+    followOnAppend: pinnedRef.current,
     scrollEndThreshold: STICKY_BOTTOM_THRESHOLD_PX,
     scrollToFn: (offset, options, instance) => {
       // Grow the scroll extent before scrolling to it. Otherwise the browser
@@ -43,28 +55,33 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
     },
     observeElementOffset: (instance, callback) => {
       syncOffset.current = callback;
-      const dispose = observeElementOffset(instance, callback);
+      const dispose = observeElementOffset(instance, (offset, scrolling) => {
+        if (instance.scrollElement?.clientHeight) callback(offset, scrolling);
+      });
       return () => { syncOffset.current = null; dispose?.(); };
     },
     observeElementRect: (instance, callback) => {
       let height: number | undefined;
+      let hidden = false;
       return observeElementRect(instance, (rect) => {
+        if (rect.height === 0) { hidden = true; return; }
         // Width belongs to CSS. A live horizontal resize need not render React.
-        if (height === rect.height) return;
+        if (height === rect.height && !hidden) return;
+        const restore = hidden;
+        hidden = false;
         height = rect.height;
         const follow = pinnedRef.current;
+        const offset = instance.scrollOffset;
         resizingViewport.current = true;
         callback({ width: 0, height: rect.height });
         if (follow) instance.scrollToEnd();
+        else if (restore && offset !== null) instance.scrollToOffset(offset);
         resizingViewport.current = false;
       });
     },
     onChange: (instance) => {
       if (resizingViewport.current || !instance.scrollElement?.clientHeight) return;
-      const pinned = instance.isAtEnd(STICKY_BOTTOM_THRESHOLD_PX);
-      if (pinnedRef.current === pinned) return;
-      pinnedRef.current = pinned;
-      onPinRef.current?.(pinned);
+      reportPin(instance.isAtEnd(STICKY_BOTTOM_THRESHOLD_PX));
     },
   });
   // Preserve the top of the first visible row, including a partially read row.
@@ -99,9 +116,10 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
           // A link to an already visible row marks it without moving the reader.
           if (row && view && view.height > 0 && row.top >= view.top && row.bottom <= view.bottom) return true;
         }
-        pinnedRef.current = false;
-        onPinRef.current?.(false);
         list.scrollToIndex(index, { align });
+        // Selection calls this even when the row is already in view. A no-op
+        // must not unpin a reader at the bottom before the composer resizes.
+        if (list.scrollElement?.clientHeight) reportPin(list.isAtEnd(STICKY_BOTTOM_THRESHOLD_PX));
         if (align === "start") {
           // The target must be mounted and measured before restoring a partial
           // row at the viewport's top. Cancel on disposal or a subsequent jump.
@@ -118,7 +136,7 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
       };
     }
     scrollRef.current = handle;
-  }, [cancelRestore, list, scrollRef]);
+  }, [cancelRestore, list, reportPin, scrollRef]);
   useLayoutEffect(() => {
     list.scrollToEnd();
     return cancelRestore;

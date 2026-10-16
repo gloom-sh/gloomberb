@@ -455,6 +455,145 @@ const pointFor = (cdp: Cdp, selector: string) => evaluate<Point>(cdp, `(() => {
 })()`);
 
 export const chatSteps: ChatStep[] = [
+  ...(["keyboard", "click"] as const).map((input): ChatStep => ({
+    name: `chat window review: ${input} reply at the bottom stays pinned as the composer grows`,
+    scenario: "chat&count=500&loaded=500",
+    async run(cdp) {
+      await ready(cdp);
+      // Observe every DOM change too: a transient jump control is a failure.
+      await evaluate(cdp, `(() => {
+        window.__jumpFlashed = false;
+        new MutationObserver(() => { if (__chat.jump()) window.__jumpFlashed = true; })
+          .observe(document.body, { childList: true, subtree: true });
+      })()`);
+      if (input === "keyboard") {
+        await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+        await pressKey(cdp, "ArrowUp", "ArrowUp");
+        expectMarked(await selected(cdp), ["m499"], "latest selected by keyboard");
+        await pressKey(cdp, "Enter", "Enter");
+      } else {
+        await hoverRow(cdp, "m499");
+        await click(cdp, await pointFor(cdp, '[data-gloom-chat-message-id="m499"] [data-gloom-role=chat-message-reply-action] button'));
+      }
+      if (!await evaluate(cdp, "document.body.textContent.includes('replying to')")) fail("no reply banner");
+      await cdp.send("Input.insertText", { text: "one\ntwo\nthree\nfour\nfive" });
+      await frames(cdp, 8);
+      const after = await state(cdp);
+      const visible = await evaluate(cdp, "(()=>{const r=__chat.rowRect('m499'),s=__chat.scroller().getBoundingClientRect();return r&&r.y>=s.top&&r.y+r.height<=s.bottom+1})()");
+      if (after.fromBottom > 1 || !visible || await evaluate(cdp, "window.__jumpFlashed")) {
+        fail("reply or composer growth lost the pinned latest message", { after, visible, flashed: await evaluate(cdp, "window.__jumpFlashed") });
+      }
+    },
+  })),
+  {
+    name: "chat window review: copy with an unmounted selection edge uses the browser selection",
+    scenario: "chat&count=500&loaded=500",
+    async run(cdp) {
+      await ready(cdp);
+      await wheel(cdp, await listCentre(cdp), -10000);
+      await frames(cdp, 8);
+      const startId = await visibleRow(cdp, 0);
+      const at = await evaluate<Point>(cdp, `(() => {const r=document.querySelector('[data-gloom-chat-message-id="${startId}"] [data-gloom-role=chat-message-body]').getBoundingClientRect();return {x:r.left+0.25,y:r.top+4};})()`);
+      // Drag from one message, wheel it out while holding the pointer, then
+      // extend into another window. No Range is synthesized.
+      await mouse(cdp, "mouseMoved", at.x, at.y, false);
+      await mouse(cdp, "mousePressed", at.x, at.y, true);
+      await mouse(cdp, "mouseMoved", at.x + 50, at.y, true);
+      if (!await evaluate(cdp, "!!getSelection()?.toString().trim()")) fail("pointer did not select text");
+      await turnWheel(cdp, at, 3000);
+      await frames(cdp, 8);
+      if (await evaluate(cdp, `!!__chat.rowRect('${startId}')`)) fail("selection anchor row did not unmount");
+      const endId = await visibleRow(cdp, 100);
+      const to = await evaluate<Point>(cdp, `(() => { const body=document.querySelector('[data-gloom-chat-message-id="${endId}"] [data-gloom-role=chat-message-body]'); const w=document.createTreeWalker(body,4);let last,n;while(n=w.nextNode())if(n.textContent.trim())last=n;const range=document.createRange();range.setStart(last,last.textContent.trimEnd().length-1);range.setEnd(last,last.textContent.trimEnd().length);const r=range.getBoundingClientRect();return {x:r.right-0.25,y:r.top+r.height/2}; })()`);
+      await mouse(cdp, "mouseMoved", to.x, to.y, true);
+      await mouse(cdp, "mouseReleased", to.x, to.y, false);
+      await evaluate(cdp, `document.addEventListener('copy', e => {
+        window.__copyResult = { prevented: e.defaultPrevented, text: e.clipboardData.getData('text/plain'), browser: getSelection().toString() };
+      }, {once:true})`);
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      const result = await evaluate<{ prevented: boolean; text: string; browser: string }>(cdp, "window.__copyResult");
+      if (!result?.browser.trim()) fail("no extended browser selection to copy", result);
+      if (result.prevented) fail("copy replaced a range with an unmounted edge", result);
+      if (await evaluate<number>(cdp, "__chat.rows().length") > 80) fail("selection retained the history");
+      // Starting a fresh selection restores whole-message copy, including marks
+      // that are not visible in the rendered text, rather than disabling it.
+      const freshId = await visibleRow(cdp);
+      await evaluate(cdp, `__chatFake.update('${freshId}', m => ({...m,content:'**Complete message**'}))`);
+      await frames(cdp, 4);
+      const fresh = await pointFor(cdp, `[data-gloom-chat-message-id="${freshId}"] [data-gloom-role=chat-message-body]`);
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", ...fresh, button: "left", clickCount: 3 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...fresh, button: "left", clickCount: 3 });
+      await evaluate(cdp, "document.addEventListener('copy',e=>{window.__freshCopy=e.clipboardData.getData('text/plain')},{once:true})");
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", windowsVirtualKeyCode: 67 });
+      if (!await waitFor(cdp, "window.__freshCopy === '**Complete message**'")) fail("a fresh whole-message selection did not copy its original marks");
+    },
+  },
+  {
+    name: "chat window review: profile shortcut works after the selected row unmounts",
+    scenario: "chat&count=500&loaded=500",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      expectMarked(await selected(cdp), ["m499"], "latest selected");
+      await wheel(cdp, await listCentre(cdp), -3000);
+      await parkPointer(cdp);
+      if (await evaluate(cdp, "!!__chat.rowRect('m499')")) fail("selected row did not unmount");
+      await pressKey(cdp, "p", "KeyP");
+      if (!await waitFor(cdp, "(__chat.card() ?? '').includes('marlow')")) fail("profile shortcut did not open the unmounted row's author");
+      const inside = await evaluate(cdp, `(() => {
+        const c=__chat.cardElement().getBoundingClientRect(), p=document.querySelector('[data-gloom-pane-id="chat:a"]').getBoundingClientRect();
+        return c.width>0 && c.height>0 && c.left>=p.left && c.right<=p.right && c.top>=p.top && c.bottom<=p.bottom;
+      })()`);
+      if (!inside) fail("profile card is not visibly anchored inside its pane");
+    },
+  },
+  {
+    name: "chat window review: a hidden tab preserves the scrolled-back reader and visible rows",
+    scenario: "chat&count=500&loaded=500&lifecycle=1",
+    async run(cdp) {
+      await ready(cdp);
+      await wheel(cdp, await listCentre(cdp), -3000);
+      await frames(cdp, 8);
+      const before = await anchor(cdp);
+      const tab = async (label: string) => {
+        const at = await evaluate<Point>(cdp, `(() => { const el=[...document.querySelectorAll('[data-gloom-pane-id="chat:a"] [data-gloom-role=tab-button]')].find(el=>el.textContent==='${label}');const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+        await click(cdp, at);
+        await frames(cdp, 8);
+      };
+      await tab("inactive");
+      await tab("chat");
+      expectPlace(before, await anchor(cdp), "revealing a hidden history reader without a new message");
+      await tab("inactive");
+      if (await evaluate(cdp, "__chat.scroller().clientHeight > 0")) fail("tab did not hide the transcript");
+      await evaluate(cdp, "void __chatFake.deliver('Arrived while the history reader was hidden.')");
+      await frames(cdp, 6);
+      await tab("chat");
+      const after = await anchor(cdp);
+      if (!after) fail("returning to the tab left a blank viewport");
+      expectPlace(before, after, "revealing a hidden history reader");
+      const visible = await evaluate(cdp, `(() => {const r=__chat.rowRect('${before.id}'),s=__chat.scroller().getBoundingClientRect();return r&&r.y+r.height>s.top&&r.y<s.bottom;})()`);
+      if (!visible) fail("restored history row is not actually visible");
+    },
+  },
+  {
+    name: "chat window review: a quote click focuses a detached pane and keeps the jump highlight",
+    scenario: "chat&count=500&loaded=500&detached=1",
+    async run(cdp) {
+      await ready(cdp);
+      await evaluate(cdp, "void __chatFake.deliver('Quoted history.',{replyToId:'m120'})");
+      await frames(cdp, 6);
+      // The shell's host focus notification, followed by real pointer/keyboard input.
+      await evaluate(cdp, "window.dispatchEvent(new Event('blur'))");
+      await frames(cdp, 3);
+      await click(cdp, await pointFor(cdp, '[data-gloom-chat-message-id="m500"] [data-gloom-role=chat-message-row]'));
+      expectMarked(await marked(cdp), ["m120"], "quoted target");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      expectMarked(await selected(cdp), ["m500"], "keyboard after quote focus");
+    },
+  },
   {
     name: "chat window: an offscreen notification target mounts, highlights and copies, and keyboard navigation crosses windows",
     scenario: "chat&count=500&loaded=500&target=m120",

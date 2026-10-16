@@ -144,7 +144,7 @@ declare global {
 const params = new URLSearchParams(window.location.search);
 const scenario = params.get("scenario") ?? "docked";
 const platform = params.get("platform") ?? "darwin";
-const detached = scenario === "detached" || scenario === "theme-detached";
+const detached = scenario === "detached" || scenario === "theme-detached" || (scenario === "chat" && params.get("detached") === "1");
 
 function PlainPane({ paneId }: PaneProps) {
   return <Text>{`Body of ${paneId}`}</Text>;
@@ -1281,7 +1281,7 @@ function config() {
 const paneRegistry = registry();
 const detachedBridge: DesktopWindowBridge & { kind: "detached"; paneId: string } = {
   kind: "detached",
-  paneId: scenario === "theme-detached" ? "chart:theme" : "tabs:a",
+  paneId: scenario === "theme-detached" ? "chart:theme" : scenario === "chat" ? "chat:a" : "tabs:a",
   subscribeState: () => () => {},
   closeDetachedPane: async () => { window.__paneChrome.detachedCloses += 1; },
 };

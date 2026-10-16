@@ -4,6 +4,11 @@ import type { ChatMessage } from "../../../../api-client";
 const BODY_SELECTOR = "[data-gloom-role=chat-message-body]";
 const MESSAGE_ID_ATTRIBUTE = "data-gloom-chat-message-id";
 
+function edgeMessage(node: Node | null): Element | null {
+  return (node?.nodeType === 1 ? node as Element : node?.parentElement)
+    ?.closest(`[${MESSAGE_ID_ATTRIBUTE}]`) ?? null;
+}
+
 /** Whether the selection takes in every character the body draws, first to last. */
 function coversBody(range: Range, body: Element): boolean {
   const walker = body.ownerDocument.createTreeWalker(body, 4 /* NodeFilter.SHOW_TEXT */);
@@ -33,6 +38,12 @@ function coversBody(range: Range, body: Element): boolean {
 function wholeMessagesText(doc: Document, messages: readonly ChatMessage[]): string | null {
   const selection = doc.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  // Removing a windowed row retargets a range edge to its former parent.
+  // Intersecting the remaining bodies alone would silently copy only a suffix.
+  // Let the browser own that selection rather than guessing its missing edge.
+  const anchor = edgeMessage(selection.anchorNode);
+  const focus = edgeMessage(selection.focusNode);
+  if (!anchor || !focus || anchor.closest("[data-gloom-role=chat-transcript]") !== focus.closest("[data-gloom-role=chat-transcript]")) return null;
   const range = selection.getRangeAt(0);
   const bodies = Array.from(doc.querySelectorAll(BODY_SELECTOR)).filter((body) => range.intersectsNode(body));
   if (bodies.length === 0) return null;
@@ -57,14 +68,45 @@ export function useWholeMessageCopy(enabled: boolean, messages: readonly ChatMes
   useEffect(() => {
     const doc = (globalThis as { document?: Document }).document;
     if (!enabled || !doc) return;
+    let edges: Element[] = [];
+    let lostEdge = false;
+    const checkEdges = () => {
+      lostEdge ||= edges.some((edge) => !edge.isConnected);
+    };
+    const onSelectionChange = () => {
+      checkEdges();
+      const selection = doc.getSelection();
+      if (!selection || selection.isCollapsed) return;
+      // A browser can normalize a removed endpoint onto another mounted row
+      // as the pointer continues dragging. Remember that it lost the original
+      // edge even if both of its new endpoints now look like whole messages.
+      edges = [edgeMessage(selection.anchorNode), edgeMessage(selection.focusNode)]
+        .filter((edge): edge is Element => edge !== null);
+    };
+    const resetSelection = () => { edges = []; lostEdge = false; };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button === 0 && !event.shiftKey) resetSelection();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") resetSelection();
+    };
     const onCopy = (event: ClipboardEvent) => {
-      if (event.defaultPrevented || !event.clipboardData) return;
+      checkEdges();
+      if (lostEdge || event.defaultPrevented || !event.clipboardData) return;
       const text = wholeMessagesText(doc, messagesRef.current);
       if (text === null) return;
       event.clipboardData.setData("text/plain", text);
       event.preventDefault();
     };
     doc.addEventListener("copy", onCopy);
-    return () => doc.removeEventListener("copy", onCopy);
+    doc.addEventListener("selectionchange", onSelectionChange);
+    doc.addEventListener("pointerdown", onPointerDown, true);
+    doc.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      doc.removeEventListener("copy", onCopy);
+      doc.removeEventListener("selectionchange", onSelectionChange);
+      doc.removeEventListener("pointerdown", onPointerDown, true);
+      doc.removeEventListener("keydown", onKeyDown, true);
+    };
   }, [enabled]);
 }
