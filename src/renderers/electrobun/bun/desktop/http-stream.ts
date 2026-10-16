@@ -3,7 +3,7 @@ import type {
   DesktopHttpStreamOpenResponse,
   DesktopHttpStreamRequest,
 } from "../../shared/protocol";
-import { readRequestInit, toResponseHead } from "../../../../utils/http-proxy-response";
+import { encodeBase64, readRequestInit, toResponseHead } from "../../../../utils/http-proxy-response";
 import { reportCloudRequest, requireProxyableUrl } from "./http-fetch";
 
 interface DesktopHttpStreamRpc {
@@ -11,10 +11,23 @@ interface DesktopHttpStreamRpc {
     "http.stream.chunk": (payload: {
       streamId: string;
       chunk?: string;
+      chunkBase64?: string;
       done?: boolean;
       error?: string;
     }) => void;
   };
+}
+
+type StreamChunkPayload = { chunk?: string; chunkBase64?: string; done?: boolean; error?: string };
+
+/**
+ * Whether a streamed body is forwarded as text. A slice of it cannot be checked
+ * for valid UTF-8 the way a whole body can, so the content type decides. One
+ * that is missing is text, as every stream was before binary ones were carried.
+ */
+function streamsAsText(contentType: string | null): boolean {
+  const type = contentType?.split(";")[0]?.trim().toLowerCase();
+  return !type || type.startsWith("text/") || /(json|xml|javascript|x-www-form-urlencoded)$/.test(type);
 }
 
 interface DesktopHttpStreamBridgeOptions<Rpc extends DesktopHttpStreamRpc> {
@@ -125,7 +138,7 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
     response: Response,
     controller: AbortController,
   ): Promise<void> {
-    const send = (payload: { chunk?: string; done?: boolean; error?: string }) => {
+    const send = (payload: StreamChunkPayload) => {
       if (this.streams.get(scopedId) !== controller) return false;
       try {
         rpc.send["http.stream.chunk"]({ streamId, ...payload });
@@ -145,16 +158,18 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
       return;
     }
 
-    const decoder = new TextDecoder();
+    const decoder = streamsAsText(response.headers.get("content-type")) ? new TextDecoder() : null;
     const reader = body.getReader();
     try {
       for (;;) {
         const chunk = await reader.read();
         if (chunk.done) break;
-        const text = decoder.decode(chunk.value, { stream: true });
-        if (text && !send({ chunk: text })) return;
+        const slice: StreamChunkPayload = decoder
+          ? { chunk: decoder.decode(chunk.value, { stream: true }) }
+          : { chunkBase64: encodeBase64(chunk.value) };
+        if ((slice.chunk || slice.chunkBase64) && !send(slice)) return;
       }
-      const tail = decoder.decode();
+      const tail = decoder?.decode();
       if (tail) send({ chunk: tail });
       send({ done: true });
     } catch (error) {

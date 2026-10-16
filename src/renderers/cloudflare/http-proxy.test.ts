@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createProxyResponse, type HttpProxyResponseEnvelope } from "../../utils/http-proxy-response";
 import { handleHttpProxy, validateProxyTarget } from "./http-proxy";
 import { createProxySessionGate, type ProxySessionGateOptions } from "./proxy-session";
 
@@ -573,5 +574,15 @@ describe("proxy response size", () => {
     const envelope = await (await proxy.send(proxyRequest({ url: "https://substack.com/x" }))).json() as { body: string };
 
     expect(envelope.body).toBe("€uro");
+  });
+
+  test("carries a binary body byte for byte", async () => {
+    const zip = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0xff, 0xfe, 0x00, 0xc3]);
+    const proxy = harness({
+      upstream: () => new Response(zip, { headers: { "content-type": "application/x-zip-compressed" } }),
+    });
+    const envelope = await (await proxy.send(proxyRequest({ url: "https://substack.com/a.zip" }))).json();
+
+    expect(new Uint8Array(await createProxyResponse(envelope as HttpProxyResponseEnvelope).arrayBuffer())).toEqual(zip);
   });
 });

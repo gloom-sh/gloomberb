@@ -4,6 +4,7 @@ import { DesktopHttpStreamBridge } from "./http-stream";
 interface ChunkMessage {
   streamId: string;
   chunk?: string;
+  chunkBase64?: string;
   done?: boolean;
   error?: string;
 }
@@ -117,6 +118,23 @@ test("a refused stream is delivered rather than thrown, so the view reads the re
   expect(head.headers["retry-after"]).toBe("30");
   expect(client.sent).toEqual([
     { streamId: "stream-1", chunk: "over the cap" },
+    { streamId: "stream-1", done: true },
+  ]);
+});
+
+test("a binary body streams as base64, so its bytes are not decoded as text", async () => {
+  const bytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0xc3]);
+  const bridge = bridgeWith(async () => new Response(bytes, { headers: { "content-type": "application/zip" } }));
+  const client = rpc("window-a");
+
+  await bridge.handle(client, {
+    method: "http.stream.open",
+    payload: { streamId: "stream-1", url: "https://example.com/a.zip" },
+  });
+  await settle();
+
+  expect(client.sent).toEqual([
+    { streamId: "stream-1", chunkBase64: bytes.toBase64() },
     { streamId: "stream-1", done: true },
   ]);
 });

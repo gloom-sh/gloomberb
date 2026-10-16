@@ -15,6 +15,7 @@
  * keep that from happening.
  */
 import {
+  encodeResponseBody,
   readRequestInit,
   toResponseHead,
   type HttpProxyResponseEnvelope,
@@ -106,15 +107,14 @@ function proxyError(message: string, status: number, headers: Record<string, str
 }
 
 /**
- * Reads a body as text, giving up once it passes `maxBytes`. Returns null when
- * it was too large, after cancelling the stream so the rest is never pulled.
+ * Reads a body, giving up once it passes `maxBytes`. Returns null when it was
+ * too large, after cancelling the stream so the rest is never pulled.
  */
-async function readTextWithin(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<string | null> {
-  if (!body) return "";
+async function readBytesWithin(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Uint8Array | null> {
+  if (!body) return new Uint8Array(0);
   const reader = body.getReader();
-  const decoder = new TextDecoder();
+  const chunks: Uint8Array[] = [];
   let size = 0;
-  let text = "";
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -123,9 +123,15 @@ async function readTextWithin(body: ReadableStream<Uint8Array> | null, maxBytes:
       await reader.cancel().catch(() => {});
       return null;
     }
-    text += decoder.decode(value, { stream: true });
+    chunks.push(value);
   }
-  return text + decoder.decode();
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 type UpstreamResult = { response: Response } | { error: string; status: number };
@@ -227,13 +233,13 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
   }
 
   const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  const raw = declaredLength > MAX_REQUEST_BYTES ? null : await readTextWithin(request.body, MAX_REQUEST_BYTES);
+  const raw = declaredLength > MAX_REQUEST_BYTES ? null : await readBytesWithin(request.body, MAX_REQUEST_BYTES);
   if (raw === null) {
     return proxyError("The plugin request is too large.", 413);
   }
   let payload: { url?: unknown; init?: unknown };
   try {
-    payload = JSON.parse(raw) as { url?: unknown; init?: unknown };
+    payload = JSON.parse(new TextDecoder().decode(raw)) as { url?: unknown; init?: unknown };
   } catch {
     return proxyError("The request body is not valid JSON.", 400);
   }
@@ -261,14 +267,16 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
 
   // Refused before reading when the upstream says up front it is too big. The
   // streamed cap below still applies, since the header can be absent or wrong.
+  // A binary body costs a third more as base64, and the envelope is built in
+  // memory, so the cap also keeps one response well inside an isolate's memory.
   const tooLarge = `The upstream response is larger than ${MAX_BODY_BYTES / (1024 * 1024)} MB.`;
   if (init.method !== "HEAD" && Number(response.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
     await response.body?.cancel().catch(() => {});
     return proxyError(tooLarge, 502);
   }
-  let body: string | null;
+  let body: Uint8Array | null;
   try {
-    body = await readTextWithin(response.body, MAX_BODY_BYTES);
+    body = await readBytesWithin(response.body, MAX_BODY_BYTES);
   } catch (error) {
     return upstreamFailure(error);
   }
@@ -276,6 +284,6 @@ export async function handleHttpProxy(request: Request, options: HttpProxyOption
 
   // `set-cookie` comes back in `setCookie`, never as a header, so a third party
   // cannot set cookies on the Gloomberb origin.
-  const envelope: HttpProxyResponseEnvelope = { ...toResponseHead(response), body };
+  const envelope: HttpProxyResponseEnvelope = { ...toResponseHead(response), ...encodeResponseBody(body) };
   return Response.json(envelope, { headers: { "cache-control": "no-store" } });
 }
