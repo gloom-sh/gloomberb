@@ -70,7 +70,7 @@ async function harness(options: { watchlists?: Array<{ id: string; name: string 
 
 test("a pasted list adds every symbol it can, and names each it could not with the reason", async () => {
   const h = await harness();
-  await h.add("NVDA, PLTR; ZZZZ\t2222\namd\npltr");
+  await h.add("NVDA, PLTR; ZZZZ\t2222 amd pltr");
 
   expect(await h.watchlistOf("PLTR")).toEqual(["watchlist"]);
   expect(await h.watchlistOf("AMD")).toEqual(["watchlist"]);

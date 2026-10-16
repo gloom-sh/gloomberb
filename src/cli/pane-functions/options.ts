@@ -10,7 +10,7 @@ import {
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { CliListing } from "../listing-arg";
-import { splitSymbolArgs } from "../symbol-args";
+import { splitSymbolWords } from "../symbol-args";
 import { numberErrorMessage } from "../../utils/decimal-comma";
 
 const DEFAULT_SHOT_WIDTH = 1280;
@@ -299,7 +299,7 @@ export function buildCreateOptions(
       createOptions.symbols = parseTickerListInput(raw);
     } catch {
       // Past the list limit, every symbol stays: a pasted list splits as `quote` splits it.
-      createOptions.symbols = splitSymbolArgs([raw]).map(cleanTickerInput);
+      createOptions.symbols = splitSymbolWords([raw]).map(cleanTickerInput);
     }
   }
 

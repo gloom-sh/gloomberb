@@ -1,5 +1,5 @@
 import { notATickerSymbol } from "../sources/provider-errors";
-import { splitSymbolArgs } from "./symbol-args";
+import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
 // One that already names what to try (a search, a FRED series, the pair search offered) is left alone.
@@ -16,7 +16,7 @@ function typedSymbol(symbol: string, args: readonly string[]): string {
     const whole = arg.trim().replace(/^\$/, "");
     if (/\s/.test(whole) && whole.toUpperCase() === wanted) return whole;
   }
-  for (const part of splitSymbolArgs(args)) {
+  for (const part of [...splitSymbolArgs(args), ...splitSymbolWords(args)]) {
     const typed = part.replace(/^\$/, "");
     if (typed.toUpperCase() === wanted) return typed;
   }

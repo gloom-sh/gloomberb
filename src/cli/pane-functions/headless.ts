@@ -38,7 +38,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
-import { splitSymbolArgs } from "../symbol-args";
+import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
@@ -76,7 +76,8 @@ function normalizeSymbol(value: string): string {
 function normalizeSymbolList(value: string): string[] {
   const symbols: string[] = [];
   const seen = new Set<string>();
-  for (const part of splitSymbolArgs([value])) {
+  // Read after applyListingArgument, which has resolved a company's name to its listing key.
+  for (const part of splitSymbolWords([value])) {
     const symbol = normalizeSymbol(part);
     if (!symbol || seen.has(symbol)) continue;
     seen.add(symbol);

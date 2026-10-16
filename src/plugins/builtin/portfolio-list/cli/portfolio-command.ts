@@ -59,6 +59,7 @@ import {
   takeCollectionName,
 } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { readNameEntries } from "../../../../cli/name-entries";
 
 const ADD_USAGE = "Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]";
 const REMOVE_USAGE = "Usage: gloomberb portfolio remove <portfolio> <symbols...> [--file <path>]";
@@ -194,7 +195,7 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
-    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE);
+    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
       await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
       return;

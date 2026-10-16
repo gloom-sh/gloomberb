@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
-import { splitSymbolArgs, stripStrayEdges, uniqueSymbols } from "./symbol-args";
+import { splitSymbolArgs, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -117,6 +117,12 @@ export interface SymbolListSource {
   readStdin?: () => Promise<string>;
   /** Whether standard input was piped in, so a command given no symbols reads it. */
   stdinPiped?: boolean;
+  /**
+   * Reads the typed entries (`splitSymbolArgs`) as symbols, such as
+   * `readNameEntries`, which keeps a company's name whole. Without it every
+   * entry is its words, each a symbol.
+   */
+  readEntries?: (entries: string[]) => Promise<string[]>;
 }
 
 export class SymbolListError extends Error {
@@ -137,7 +143,7 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   const readStdin = source.readStdin ?? (() => Bun.stdin.text());
   const wantsStdin = source.args.includes("-") || source.file === "-";
   const typedArgs = source.args.filter((arg) => arg !== "-");
-  const typed = splitSymbolArgs(typedArgs);
+  const typed = source.readEntries ? await source.readEntries(splitSymbolArgs(typedArgs)) : splitSymbolWords(typedArgs);
   const collected = [...typed];
   // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);

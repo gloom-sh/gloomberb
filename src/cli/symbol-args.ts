@@ -6,13 +6,15 @@ const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
 const LIST_SEPARATOR = /[,;\t\r\n]/;
 
 /**
- * Symbols given as command arguments, each of which may hold several (a pasted
+ * The entries of command arguments, each of which may hold several (a pasted
  * list), with the blanks dropped, the quote marks around each entry removed
  * and the typed case kept. An argument with commas, semicolons, tabs or lines
- * in it is split on those alone, so an entry can be a company's name (`WHR,
- * Whirlpool Corporation, BRK.B`); one without them is split on spaces (`JNK
- * EMB BRK.B`). Every command that takes a symbol list splits its
- * arguments here, and `not-a-ticker` reads the typed spelling back from them.
+ * in it is split on those, so an entry may be a company's name (`WHR,
+ * Whirlpool Corporation, BRK.B`) or several symbols with spaces between them
+ * (`brk.b bf-b` on a pasted line); one without them is split on spaces (`JNK
+ * EMB BRK.B`). Which an entry with a space is takes a search: a command that
+ * resolves its symbols reads them with `readNameEntries`, and a parser that
+ * looks nothing up takes `splitSymbolWords`.
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
   return args
@@ -21,6 +23,19 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
       return LIST_SEPARATOR.test(text) ? text.split(LIST_SEPARATOR) : text.split(/\s+/);
     })
     .map((entry) => entry.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+/**
+ * Symbols given as command arguments, split on commas, semicolons, spaces,
+ * tabs and lines in any mix, each without its quote marks and in its typed
+ * case: `"GME", 'AMC'\nBF.B brk.b` is GME, AMC, BF.B and brk.b. The split of
+ * a parser that looks nothing up, and of an entry search finds no company for.
+ */
+export function splitSymbolWords(args: readonly string[]): string[] {
+  return splitSymbolArgs(args)
+    .flatMap((entry) => entry.split(" "))
+    .map((word) => word.replace(QUOTE_EDGES, ""))
     .filter(Boolean);
 }
 
@@ -41,7 +56,7 @@ export function stripStrayEdges(text: string): { text: string; notes: string[] }
   const rest = text.slice(leading.length);
   const trailing = rest.match(new RegExp(`${junk}+$`))?.[0] ?? "";
   const inner = rest.slice(0, rest.length - trailing.length);
-  const entries = splitSymbolArgs([inner]);
+  const entries = splitSymbolWords([inner]);
   const [first, last] = [entries[0], entries.at(-1)];
   const before = separatorsIn(leading);
   const after = separatorsIn(trailing);
