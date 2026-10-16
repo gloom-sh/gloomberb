@@ -16,6 +16,7 @@ import {
 } from "../../../../updater/github-releases";
 import { stagedUpdateFitsChannel } from "../../../../updater/channel";
 import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
+import { VERSION } from "../../../../version";
 
 type ElectrobunUpdater = typeof Electrobun.Updater;
 
@@ -50,8 +51,14 @@ async function listGitHubReleases(): Promise<GitHubReleaseListing[]> {
 export interface ElectrobunDesktopUpdater {
   /** `channel` defaults to stable, which reads the release version.json names exactly as before channels. */
   check(currentVersion: string, channel?: UpdateChannel): Promise<UpdateCheckResult>;
-  /** Downloads and stages the update, ending in `ready`. It never relaunches the app. */
-  download(currentVersion: string, onProgress: (progress: UpdateProgress) => void, channel?: UpdateChannel): Promise<void>;
+  /**
+   * Downloads and stages `release`, the update a check offered, ending in
+   * `ready`. It never relaunches the app. It checks again first, on the
+   * release's channel and as the installed build, which is the question that
+   * check answered: asked as the release's own version, the nightly check
+   * finds nothing newer than it.
+   */
+  download(release: Pick<ReleaseInfo, "channel">, onProgress: (progress: UpdateProgress) => void): Promise<void>;
   /**
    * Installs the staged update, which quits the app and relaunches it. Only the
    * user's Restart gets here. A repeat request while one is running, or after it
@@ -125,7 +132,14 @@ function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null
 
 export function createElectrobunDesktopUpdater(
   updater: ElectrobunUpdaterApi,
-  { listReleases = listGitHubReleases }: { listReleases?: ListReleases } = {},
+  {
+    listReleases = listGitHubReleases,
+    runningVersion = VERSION,
+  }: {
+    listReleases?: ListReleases;
+    /** The version of the installed app, which a download checks as. */
+    runningVersion?: string;
+  } = {},
 ): ElectrobunDesktopUpdater {
   let downloadInProgress = false;
   /**
@@ -241,10 +255,11 @@ export function createElectrobunDesktopUpdater(
   }
 
   async function download(
-    currentVersion: string,
+    release: Pick<ReleaseInfo, "channel">,
     onProgress: (progress: UpdateProgress) => void,
-    updateChannel: UpdateChannel = "stable",
   ): Promise<void> {
+    // The download comes from the release the check found, on its channel.
+    const updateChannel: UpdateChannel = release.channel === "nightly" ? "nightly" : "stable";
     if (downloadInProgress) {
       onProgress({
         phase: "error",
@@ -270,7 +285,7 @@ export function createElectrobunDesktopUpdater(
 
     try {
       onProgress({ phase: "downloading", percent: 0 });
-      const result = await check(currentVersion, updateChannel);
+      const result = await check(runningVersion, updateChannel);
       if (result.kind === "error") {
         onProgress({ phase: "error", error: result.error });
         return;

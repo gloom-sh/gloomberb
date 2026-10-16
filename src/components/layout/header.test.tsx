@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, jest, test } from "bun:test";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
-import { AppContext, createInitialState } from "../../state/app/context";
+import { AppContext, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
@@ -191,4 +191,41 @@ test("shows a short failed update whole, on one line", async () => {
   );
   await tui.setup().renderOnce();
   expect(tui.frame()).toContain("Update failed: Checksum mismatch");
+});
+
+/**
+ * A download that found nothing to take ends as a notice, which goes after
+ * its time like any other. An install that is restarting keeps its line: the
+ * app quits under it.
+ */
+test("lets a passing update notice go, and keeps an install that is restarting", async () => {
+  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const actions: AppAction[] = [];
+  const renderWith = async (state: Partial<AppState>) => {
+    await tui.render(
+      <AppContext value={createStaticAppStore({ ...createInitialState(config), ...state }, (action) => actions.push(action))}>
+        <Header />
+      </AppContext>,
+      { width: 120, height: 1 },
+    );
+    await tui.setup().renderOnce();
+  };
+  jest.useFakeTimers();
+  try {
+    await renderWith({ updateNotice: "Already on the latest version" });
+    expect(tui.frame()).toContain("Already on the latest version");
+    jest.advanceTimersByTime(4_999);
+    expect(actions).toEqual([]);
+    jest.advanceTimersByTime(1);
+    expect(actions).toEqual([{ type: "SET_UPDATE_NOTICE", notice: null }]);
+
+    actions.length = 0;
+    await renderWith({ updateProgress: { phase: "done", message: "Update installed, restarting..." } });
+    jest.advanceTimersByTime(60_000);
+    await tui.setup().renderOnce();
+    expect(actions).toEqual([]);
+    expect(tui.frame()).toContain("Update installed, restarting...");
+  } finally {
+    jest.useRealTimers();
+  }
 });

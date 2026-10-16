@@ -39,7 +39,9 @@ export interface UpdateProgress {
    * `ready`: the new version is downloaded and waiting. The terminal binary is
    * already swapped and runs on the next launch; the desktop app applies it
    * when `canRestart` is set and the user asks. Nothing restarts by itself.
-   * `done` is for a finished action that has nothing left to wait for.
+   * `done` is for a finished action that has nothing left to wait for: an
+   * install relaunching the app, or a download that found nothing to take,
+   * which the app shows as a passing notice.
    */
   phase: "downloading" | "ready" | "replacing" | "done" | "error";
   percent?: number;

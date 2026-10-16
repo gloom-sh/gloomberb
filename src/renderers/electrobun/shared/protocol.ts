@@ -220,7 +220,7 @@ interface DesktopBackendRequestMap {
   /** `channel` absent (an older view) means stable. */
   "update.check": { request: { currentVersion: string; channel?: UpdateChannel }; response: UpdateCheckResult };
   /** Downloads and stages the update. It ends in `ready` and never relaunches the app. */
-  "update.start": { request: { release: ReleaseInfo; currentVersion?: string }; response: null };
+  "update.start": { request: { release: ReleaseInfo }; response: null };
   /** Installs the staged update and relaunches. Sent only when the user presses Restart. */
   "update.apply": { request: null; response: null };
   "ticker.loadAll": { request: null; response: TickerRecord[] };

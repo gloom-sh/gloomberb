@@ -139,6 +139,42 @@ test("a failed apply shows the error and can be tried again", async () => {
   expect(host.applies).toBe(2);
 });
 
+/**
+ * The check offers a release and its download then finds nothing to take: how
+ * a nightly update ended before the download checked as the installed build.
+ */
+test("a download that finds nothing to take passes as a notice and is not offered again hourly", async () => {
+  const host = { checks: 0, downloads: 0 };
+  setUpdateHost({
+    async checkForUpdateDetailed() {
+      host.checks += 1;
+      return { kind: "available", release };
+    },
+    async performUpdate(_release, onProgress) {
+      host.downloads += 1;
+      onProgress({ phase: "downloading", percent: 0 });
+      onProgress({ phase: "done", message: "Already on the latest version" });
+    },
+  });
+  const app = await mountRuntime();
+
+  // A notice, which the header clears after its time like any other, and no
+  // release left for the download to start from again.
+  expect(app.state()).toMatchObject({ updateProgress: null, updateAvailable: null, updateNotice: "Already on the latest version" });
+  expect(host).toEqual({ checks: 1, downloads: 1 });
+
+  await act(async () => { await app.runtime().runUpdateCheck(false); });
+  await app.settle();
+  expect(host).toEqual({ checks: 2, downloads: 1 });
+  expect(app.state().updateAvailable).toBeNull();
+
+  // Asked by hand, it tries once more and answers the same.
+  await act(async () => { await app.runtime().runUpdateCheck(true); });
+  await app.settle();
+  expect(host).toEqual({ checks: 3, downloads: 2 });
+  expect(app.state()).toMatchObject({ updateProgress: null, updateAvailable: null, updateNotice: "Already on the latest version" });
+});
+
 test("a popped-out window neither checks nor restarts", async () => {
   const host = installFakeHost();
   const app = await mountRuntime({

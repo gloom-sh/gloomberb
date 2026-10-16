@@ -46,16 +46,9 @@ export async function handleDesktopBackendRequest(
         typeof request.payload.currentVersion === "string" ? request.payload.currentVersion : "",
         request.payload.channel === "nightly" ? "nightly" : "stable",
       );
-    case "update.start": {
-      const { release, currentVersion } = request.payload;
-      void desktopUpdater.download(
-        typeof currentVersion === "string" ? currentVersion : release.version,
-        (progress) => sendUpdateProgress(rpc, progress),
-        // The download comes from the release the check found, on its channel.
-        release.channel === "nightly" ? "nightly" : "stable",
-      );
+    case "update.start":
+      void desktopUpdater.download(request.payload.release, (progress) => sendUpdateProgress(rpc, progress));
       return null;
-    }
     case "update.apply":
       // Only the main window offers Restart; a popped-out window never relaunches the app.
       if (paneIdFromDetachedRpcKey(backend.rpcs.getRpcWindowKey(rpc))) return null;

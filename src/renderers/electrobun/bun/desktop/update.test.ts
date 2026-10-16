@@ -68,6 +68,9 @@ const RELAUNCH = [
   status({ status: "complete" }),
 ];
 
+/** A release the stable check found, which carries no channel. */
+const STABLE = {};
+
 function collect() {
   const progress: UpdateProgress[] = [];
   return { progress, onProgress: (next: UpdateProgress) => { progress.push(next); } };
@@ -76,10 +79,10 @@ function collect() {
 describe("desktop update flow", () => {
   test("a finished download stops at ready and never applies on its own", async () => {
     const { updater, calls } = createFakeUpdater({ applyStatuses: RELAUNCH });
-    const desktop = createElectrobunDesktopUpdater(updater);
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
     const { progress, onProgress } = collect();
 
-    await desktop.download("0.17.0", onProgress);
+    await desktop.download(STABLE, onProgress);
 
     expect(calls).toEqual(["check", "download"]);
     expect(progress).toEqual([
@@ -91,8 +94,8 @@ describe("desktop update flow", () => {
 
   test("applies only on the explicit request, and a second request is harmless", async () => {
     const { updater, calls } = createFakeUpdater({ applyStatuses: RELAUNCH });
-    const desktop = createElectrobunDesktopUpdater(updater);
-    await desktop.download("0.17.0", () => {});
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    await desktop.download(STABLE, () => {});
     const { progress, onProgress } = collect();
 
     await Promise.all([desktop.apply(onProgress), desktop.apply(onProgress)]);
@@ -110,13 +113,13 @@ describe("desktop update flow", () => {
 
   test("an update check while one is ready neither asks Electrobun nor drops the ready state", async () => {
     const { updater, calls } = createFakeUpdater({ applyStatuses: RELAUNCH });
-    const desktop = createElectrobunDesktopUpdater(updater);
-    await desktop.download("0.17.0", () => {});
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    await desktop.download(STABLE, () => {});
     calls.length = 0;
 
     const hourly = await desktop.check("0.17.0");
     const reopened = collect();
-    await desktop.download("0.17.0", reopened.onProgress);
+    await desktop.download(STABLE, reopened.onProgress);
     await desktop.apply(() => {});
 
     expect(hourly).toMatchObject({ kind: "available", release: { version: "0.18.0", updateAction: { kind: "desktop" } } });
@@ -127,10 +130,10 @@ describe("desktop update flow", () => {
 
   test("a download that did not finish reports an error instead of ready", async () => {
     const { updater, calls } = createFakeUpdater({ downloadReady: false });
-    const desktop = createElectrobunDesktopUpdater(updater);
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
     const { progress, onProgress } = collect();
 
-    await desktop.download("0.17.0", onProgress);
+    await desktop.download(STABLE, onProgress);
     await desktop.apply(onProgress);
 
     expect(progress.at(-2)).toEqual({ phase: "error", error: "Desktop update did not finish downloading." });
@@ -141,8 +144,8 @@ describe("desktop update flow", () => {
   test("an apply Electrobun silently gives up on is an error, and a retry downloads again", async () => {
     // A newer release replaced the downloaded one, so there is nothing to install.
     const { updater, calls } = createFakeUpdater({ applyStatuses: [status({ status: "applying" })] });
-    const desktop = createElectrobunDesktopUpdater(updater);
-    await desktop.download("0.17.0", () => {});
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    await desktop.download(STABLE, () => {});
     const { progress, onProgress } = collect();
 
     await desktop.apply(onProgress);
@@ -153,7 +156,7 @@ describe("desktop update flow", () => {
     ]);
 
     const retry = collect();
-    await desktop.download("0.17.0", retry.onProgress);
+    await desktop.download(STABLE, retry.onProgress);
     expect(retry.progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
     expect(calls.filter((call) => call === "download")).toHaveLength(2);
   });
@@ -162,8 +165,8 @@ describe("desktop update flow", () => {
     const { updater } = createFakeUpdater({
       applyStatuses: [status({ status: "error", details: { errorMessage: "Failed to replace app: EACCES" } })],
     });
-    const desktop = createElectrobunDesktopUpdater(updater);
-    await desktop.download("0.17.0", () => {});
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    await desktop.download(STABLE, () => {});
     const { progress, onProgress } = collect();
 
     await desktop.apply(onProgress);
@@ -189,6 +192,7 @@ describe("desktop update channels", () => {
   test("nightly downloads the newest build from that release's own nightly files", async () => {
     const { updater, calls, sources } = createFakeUpdater();
     const desktop = createElectrobunDesktopUpdater(updater, {
+      runningVersion: "0.18.0",
       listReleases: async () => [
         // A stable-named manifest on a nightly build is never mistaken for one.
         listing("v0.18.2-nightly.20261017.6.gaaaaaaa", "stable", true),
@@ -207,9 +211,12 @@ describe("desktop update channels", () => {
       baseUrl: `https://github.com/gloom-sh/gloomberb/releases/download/${NIGHTLY}`,
     });
 
-    // The download reads the same release, and a nightly check while it waits
-    // for the restart leaves that source alone.
-    await desktop.download("0.18.0", () => {}, "nightly");
+    // The download asks again as the installed build, so it takes the build the
+    // check offered rather than finding nothing newer than that build itself.
+    // A nightly check while it waits for the restart leaves that source alone.
+    const { progress, onProgress } = collect();
+    await desktop.download(result.kind === "available" ? result.release : {}, onProgress);
+    expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
     await expect(desktop.check("0.18.0", "nightly")).resolves.toMatchObject({ release: { tagName: NIGHTLY } });
     expect(sources.at(-1)).toEqual(expect.objectContaining({ channel: "nightly" }));
     expect(calls).toEqual(["check", "check", "download"]);
@@ -217,9 +224,12 @@ describe("desktop update channels", () => {
 
   test("back on stable, a downloaded nightly build is dropped, so a restart cannot install it", async () => {
     const { updater, calls, sources } = createFakeUpdater({ applyStatuses: RELAUNCH, manifestVersion: "0.18.0" });
-    const desktop = createElectrobunDesktopUpdater(updater, { listReleases: async () => [listing(NIGHTLY, "nightly")] });
+    const desktop = createElectrobunDesktopUpdater(updater, {
+      runningVersion: "0.17.0",
+      listReleases: async () => [listing(NIGHTLY, "nightly")],
+    });
     const { progress, onProgress } = collect();
-    await desktop.download("0.17.0", onProgress, "nightly");
+    await desktop.download({ channel: "nightly" }, onProgress);
     expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
 
     // The stable check answers from version.json's source again (which also
@@ -236,9 +246,10 @@ describe("desktop update channels", () => {
   test("a downloaded stable release stays through a switch to nightly", async () => {
     const { updater } = createFakeUpdater({ manifestVersion: "0.18.0" });
     const desktop = createElectrobunDesktopUpdater(updater, {
+      runningVersion: "0.17.0",
       listReleases: async () => { throw new Error("a staged update needs no new list"); },
     });
-    await desktop.download("0.17.0", () => {}, "stable");
+    await desktop.download(STABLE, () => {});
     await expect(desktop.check("0.17.0", "nightly")).resolves.toMatchObject({ kind: "available", release: { version: "0.18.0" } });
   });
 
@@ -255,17 +266,19 @@ describe("desktop update channels", () => {
   test("a nightly build is offered the stable release that passes it, from the stable files", async () => {
     const { updater, sources } = createFakeUpdater({ manifestVersion: "0.18.1" });
     const desktop = createElectrobunDesktopUpdater(updater, {
+      runningVersion: NIGHTLY.slice(1),
       listReleases: async () => [listing("v0.18.1", "stable"), listing(NIGHTLY, "nightly")],
     });
 
-    await expect(desktop.check(NIGHTLY.slice(1), "nightly")).resolves.toMatchObject({
-      kind: "available",
-      release: { version: "0.18.1" },
-    });
+    const result = await desktop.check(NIGHTLY.slice(1), "nightly");
+    expect(result).toMatchObject({ kind: "available", release: { version: "0.18.1" } });
     expect(sources.at(-1)).toEqual({
       channel: "stable",
       baseUrl: "https://github.com/gloom-sh/gloomberb/releases/download/v0.18.1",
     });
+    const { progress, onProgress } = collect();
+    await desktop.download(result.kind === "available" ? result.release : {}, onProgress);
+    expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
   });
 
   test("stable reads version.json's own source and never goes back from a nightly build", async () => {

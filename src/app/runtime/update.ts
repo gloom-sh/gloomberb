@@ -68,11 +68,24 @@ export function useAppUpdateRuntime({
   runUpdateCommand: () => void;
 } {
   const restartingRef = useRef(false);
+  /** The tag of a release whose download found nothing to take; the hourly check does not offer it again. */
+  const declinedTagRef = useRef<string | null>(null);
 
   const startUpdate = useCallback((release: ReleaseInfo) => {
     dispatch({ type: "SET_UPDATE_PROGRESS", progress: { phase: "downloading", percent: 0 } });
     void performUpdate(release, (progress) => {
       logUpdateFailure(progress);
+      if (progress.phase === "done") {
+        // The download had nothing to take (that build is the installed one):
+        // an answer like a check's, so it passes as a notice like one. The
+        // release goes before the progress, so the effect below never starts
+        // it again, and the hourly check does not offer it again.
+        declinedTagRef.current = release.tagName;
+        dispatch({ type: "SET_UPDATE_AVAILABLE", release: null });
+        dispatch({ type: "SET_UPDATE_PROGRESS", progress: null });
+        dispatch({ type: "SET_UPDATE_NOTICE", notice: progress.message ?? null });
+        return;
+      }
       dispatch({ type: "SET_UPDATE_PROGRESS", progress });
     });
   }, [dispatch]);
@@ -116,7 +129,7 @@ export function useAppUpdateRuntime({
     if (result.kind === "error") updateLog.warn("update check failed", { error: result.error });
 
     if (!manual) {
-      if (result.kind === "available") {
+      if (result.kind === "available" && result.release.tagName !== declinedTagRef.current) {
         dispatch({ type: "SET_UPDATE_AVAILABLE", release: result.release });
       }
       return;
