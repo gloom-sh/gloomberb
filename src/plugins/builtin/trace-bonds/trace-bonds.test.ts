@@ -66,11 +66,11 @@ test("a CUSIP, a symbol root and a name each ask the tape for that issuer's live
   expect(parseBondQuery("A".repeat(500))!.text).toHaveLength(80);
 
   // A CUSIP is that bond, matured or not.
-  expect(bondTapeRequests(parseBondQuery("963320bg0"), TODAY).map((request) => request.filters)).toEqual([[
+  expect(bondTapeRequests(parseBondQuery("963320bg0"), TODAY).map((request): Filter[] => request.filters)).toEqual([[
     { fieldName: "cusip", compareType: "EQUAL", fieldValue: "963320BG0" },
     { fieldName: "lastTradeDate", compareType: "GREATER", fieldValue: "1900-01-01" },
   ]]);
-  const whr = bondTapeRequests(parseBondQuery("whr"), TODAY).map((request) => request.filters);
+  const whr: Filter[][] = bondTapeRequests(parseBondQuery("whr"), TODAY).map((request) => request.filters);
   // The name and the exact root, each for issues maturing after today and for perpetuals, which have no date.
   expect(whr).toEqual([
     [{ fieldName: "issuerName", compareType: "BEGINS_WITH", fieldValue: "WHR" }],
