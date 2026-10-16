@@ -7,8 +7,8 @@ export function normalizeAssetCategory(value: string | null | undefined): string
   return (value ?? "").toUpperCase().replace(/[\s_-]+/g, "");
 }
 
-/** ADR, ADS, GDR and their long names, in the singular or the plural. */
-const DEPOSITARY_RECEIPT = /^(?:ADRS?|ADSS?|GDRS?|(?:AMERICAN|GLOBAL)?DEPOSITARY(?:RECEIPT|SHARE)S?)$/;
+/** ADR, ADS, GDR and their long names, spelled "depositary" or "depository", in the singular or the plural. */
+const DEPOSITARY_RECEIPT = /^(?:ADRS?|ADSS?|GDRS?|(?:AMERICAN|GLOBAL)?DEPOSIT(?:ARY|ORY)(?:RECEIPT|SHARE)S?)$/;
 
 /**
  * Whether a category names a depositary receipt: a foreign company's shares

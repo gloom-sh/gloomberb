@@ -120,6 +120,7 @@ describe("syntheticPositionUnsupportedReason", () => {
     for (const category of [
       "American Depositary Receipt", "American Depositary Receipts", "American Depositary Share", "American Depositary Shares",
       "american-depositary_receipt", "ADR", "adr", "ADS", "Global Depositary Receipt", "GDR", "Depositary Receipt",
+      "American Depository Receipt", "American Depository Shares", "Global Depository Receipt", "Depository Receipt", "Depository Shares",
     ]) expect([category, reason(category)]).toEqual([category, null]);
   });
 
@@ -130,7 +131,7 @@ describe("syntheticPositionUnsupportedReason", () => {
 
   test("crypto and contracts stay outside the basket", () => {
     expect(reason("Cryptocurrency")).toBe("Crypto is not covered by the equity basket");
-    for (const category of ["OPT", "Future", "Bond", "Depositary Bank"])
+    for (const category of ["OPT", "Future", "Bond", "Depositary Bank", "Depository Bank"])
       expect([category, reason(category)]).toEqual([category, "Asset type is not covered by the equity basket"]);
   });
 });
