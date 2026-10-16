@@ -41,9 +41,9 @@ function ownerConnectsBroker(registry: PanePersonalDataSource["registry"], paneT
  * The personal data a pane shows now, from its `PaneDef.personalData` (and,
  * for a pane that declares nothing, the fallback in `resolvePanePersonalData`);
  * null for market data. The one answer to "does this pane show the person's
- * own data, so ask before it leaves the device": sharing its picture to chat
- * and attaching it to an Ask Gloom question both read it here, from the same
- * context.
+ * own data, so ask before it leaves the device": a public link to it, its
+ * picture in a bug report and attaching it to an Ask Gloom question all read
+ * it here, from the same context.
  */
 export function panePersonalData({ registry, ...source }: PanePersonalDataSource): PanePersonalData | null {
   return resolvePanePersonalData(source.pane.def, personalDataContext(source), {

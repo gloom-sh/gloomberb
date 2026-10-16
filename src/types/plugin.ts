@@ -209,8 +209,9 @@ export interface PaneDef {
   /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
   portableShare?: PanePortableShareDef;
   /**
-   * The person's own data the pane shows, so posting a picture of it to chat
-   * and attaching it to an Ask Gloom question ask first. A function decides
+   * The person's own data the pane shows, so copying a public link to it,
+   * posting its picture in a bug report and attaching it to an Ask Gloom
+   * question ask first. A function decides
    * per instance from what it shows now (a chat pane on a public channel, a
    * quote of a ticker not held), and a function that returns null opts that
    * instance out. Leave it off for market data. A pane that says nothing is
