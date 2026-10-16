@@ -5,6 +5,7 @@ import type {
   ChatMentionCandidate,
   PersistedAuthUser,
 } from "../../../../api-client";
+import type { ConversationActivity } from "../conversation-recency";
 import { createClientMessageId, getLatestMessageId } from "./utils";
 import type { ChatDraftAttachment, DraftAttachmentEntry } from "./attachments";
 
@@ -57,6 +58,12 @@ export interface ChatControllerSnapshot {
   channelId: string;
   channels: ChatChannel[];
   channelStates: ChatChannelState[];
+  /**
+   * When each direct and group conversation last had a message, in ms, by
+   * channel id; a conversation with no known activity is left out. The same
+   * object until one of them changes.
+   */
+  conversationActivity: ConversationActivity;
   channelsLoading: boolean;
   loading: boolean;
   /** Last message-load failure for this channel, or null. */

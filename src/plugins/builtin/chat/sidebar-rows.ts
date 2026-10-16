@@ -1,5 +1,11 @@
 import type { ChatChannel, TeamSummary } from "../../../api-client";
 import { sortTeamChannels } from "../../../team/model";
+import {
+  activityOfChannel,
+  isPeopleConversation,
+  sortByConversationActivity,
+  type ConversationActivity,
+} from "./conversation-recency";
 import type { ChatSidebarSection } from "./sidebar-store";
 
 interface SidebarHeaderBase {
@@ -24,31 +30,38 @@ export function isChatSidebarHeader(row: ChatSidebarRow): row is ChatSidebarHead
 /** The key of the section header a channel sits under. */
 export function chatSidebarHeaderKey(channel: ChatChannel): string {
   if (channel.kind === "team") return `team-header:${channel.teamId ?? channel.id}`;
-  if (channel.kind === "direct" || channel.kind === "group") return "direct-header";
+  if (isPeopleConversation(channel)) return "direct-header";
   return "public-header";
 }
 
 /**
  * The rows the channel sidebar draws, top to bottom: public channels, one
- * section per team (sorted by team name), then DMs. The sidebar renders this
- * list and the keyboard cursor walks it, so arrows land exactly on what is
- * drawn, headers included, and never inside a folded section.
+ * section per team (sorted by team name), then DMs and groups, the newest
+ * message first and those with none known last in the order they came. The
+ * sidebar renders this list and the keyboard cursor walks it, so arrows land
+ * exactly on what is drawn, headers included, and never inside a folded
+ * section.
  */
 export function buildChatSidebarRows({
   channels,
   collapsedSections,
   collapsedTeams,
   canCreateConversation,
+  conversationActivity,
   getTeam,
 }: {
   channels: readonly ChatChannel[];
   collapsedSections: ReadonlySet<ChatSidebarSection>;
   collapsedTeams: ReadonlySet<string>;
   canCreateConversation: boolean;
+  conversationActivity: ConversationActivity;
   getTeam: (teamId: string | undefined) => TeamSummary | null;
 }): ChatSidebarRow[] {
   const publicChannels = channels.filter((channel) => (channel.kind ?? "public") === "public");
-  const conversationChannels = channels.filter((channel) => channel.kind === "direct" || channel.kind === "group");
+  const conversationChannels = sortByConversationActivity(
+    channels.filter(isPeopleConversation),
+    (channel) => activityOfChannel(conversationActivity, channel),
+  );
   // A channel whose team is not loaded yet still shows, under its own id, so
   // nothing disappears while the team store refreshes.
   const byTeam = new Map<string, { team: TeamSummary | null; channels: ChatChannel[] }>();

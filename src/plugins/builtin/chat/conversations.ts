@@ -1,12 +1,13 @@
 import type { ChatChannel, ChatUserSummary } from "../../../api-client";
 import { teamStore } from "../../../team/store";
 import { formatChatPaneTitle } from "./channel-labels";
+import { compareConversationActivity, isPeopleConversation, sortByConversationActivity } from "./conversation-recency";
 
 /** What the chat controller holds about one conversation, read without a request. */
 export interface ChatConversationState {
   channel: ChatChannel;
   unreadCount: number;
-  /** Newest message on this device, or when a DM started; -Infinity when unknown. */
+  /** When the conversation last had a message (see conversationActivityAt); -Infinity when unknown. */
   lastActivityAt: number;
 }
 
@@ -136,11 +137,18 @@ function describe(
   }
 }
 
-/** The conversations the Chat sidebar lists, in its order, each named as the Chat pane names it. */
+/**
+ * The conversations the Chat sidebar lists, in its order (DMs and groups newest
+ * message first), each named as the Chat pane names it.
+ */
 export function buildChatConversations(
   states: readonly ChatConversationState[],
   userId: string | null = null,
 ): ChatConversation[] {
+  const positionOfPeople = new Map(
+    sortByConversationActivity(states.filter((state) => isPeopleConversation(state.channel)), (state) => state.lastActivityAt)
+      .map((state, position) => [state, position]),
+  );
   return states
     .map((state, index): ChatConversation => {
       const kind = conversationKind(state.channel);
@@ -152,7 +160,7 @@ export function buildChatConversations(
         username,
         unreadCount: state.unreadCount,
         lastActivityAt: state.lastActivityAt,
-        order: KIND_ORDER[kind] * 100_000 + index,
+        order: KIND_ORDER[kind] * 100_000 + (positionOfPeople.get(state) ?? index),
         ...described,
       };
     })
@@ -169,8 +177,7 @@ function compareUnreadFirst(left: ChatConversation, right: ChatConversation): nu
 
 /** Newest activity first; two with nothing known tie. */
 function compareActivity(left: ChatConversation, right: ChatConversation): number {
-  const activity = right.lastActivityAt - left.lastActivityAt;
-  return Number.isNaN(activity) ? 0 : activity;
+  return compareConversationActivity(left.lastActivityAt, right.lastActivityAt);
 }
 
 /** Newest activity first; the sidebar's order breaks ties. */

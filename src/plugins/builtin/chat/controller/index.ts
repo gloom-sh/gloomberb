@@ -76,6 +76,12 @@ import { ChatControllerStorage } from "./storage";
 import { listUnreadInboxItems } from "../unread-inbox";
 import type { ChatConversationList } from "../conversations";
 import {
+  conversationActivityAt,
+  isPeopleConversation,
+  NO_ACTIVITY,
+  type ConversationActivity,
+} from "../conversation-recency";
+import {
   applySignedOutChatControllerSession,
   createChatControllerSessionState,
   hydrateChatControllerSession,
@@ -85,30 +91,24 @@ import {
 const chatLog = debugLog.createLogger("chat-controller");
 const IMAGE_LINK_REFRESH_INTERVAL_MS = 60_000;
 
-function timeOf(value: string | undefined): number {
-  const time = value ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
-}
-
 /**
- * The newest message held for a conversation, sent or received. A DM or group
- * with nothing on this device yet counts from when it was started.
+ * When a conversation last had a message: the newest one held on this device,
+ * sent or received, or what the server reports for it.
  */
 function lastConversationActivity(channel: ChatChannel, state: ChannelRuntimeState | undefined): number {
-  const started = channel.kind === "direct" || channel.kind === "group"
-    ? timeOf(channel.created_at)
-    : Number.NEGATIVE_INFINITY;
-  return Math.max(
-    started,
-    timeOf(state?.messages.at(-1)?.createdAt),
-    timeOf(state?.pendingMessages.at(-1)?.createdAt),
-  );
+  return conversationActivityAt(channel, {
+    messageAt: state?.messages.at(-1)?.createdAt,
+    pendingAt: state?.pendingMessages.at(-1)?.createdAt,
+  });
 }
 
 export type { ChatControllerSnapshot } from "./state";
 
 export class ChatController {
   private appActive = true;
+  private activityOfConversations: ConversationActivity = {};
+  /** The activity every open view was last told about, to tell when a conversation moved. */
+  private announcedActivity: ConversationActivity = this.activityOfConversations;
   private readonly session = createChatControllerSessionState();
   private pendingMessageSeq = 0;
   private draftAttachmentSeq = 0;
@@ -151,6 +151,7 @@ export class ChatController {
     ensureChannelState: (channelId) => this.ensureChannelState(channelId),
     getChannels: () => this.channelCatalog.getChannels(),
     getChannelStateSnapshots: () => this.channelCatalog.getChannelStateSnapshots(),
+    getConversationActivity: () => this.conversationActivity(),
     isChannelsLoading: () => this.channelCatalog.isLoading(),
     isSessionChecked: () => this.session.sessionChecked,
     hasSession: () => !!this.session.sessionToken || !!this.session.user,
@@ -816,8 +817,32 @@ export class ChatController {
   }
 
   private emit(channelId?: string): void {
-    this.view.emit(channelId);
+    // A message moves its conversation in every sidebar, not only in the panes
+    // reading that channel, so a change of order reaches them all.
+    const activity = this.conversationActivity();
+    const moved = activity !== this.announcedActivity;
+    this.announcedActivity = activity;
+    this.view.emit(moved ? undefined : channelId);
     this.unreadPeople.sync();
+  }
+
+  /**
+   * When each direct and group conversation last had a message, from the
+   * messages this device holds and what the server reports. The same object
+   * until one of them changes, so a view can tell without comparing.
+   */
+  private conversationActivity(): ConversationActivity {
+    const next: Record<string, number> = {};
+    for (const channel of this.channelCatalog.getChannels()) {
+      if (!isPeopleConversation(channel)) continue;
+      const at = lastConversationActivity(channel, this.storage.channelStates.get(channel.id));
+      if (at !== NO_ACTIVITY) next[channel.id] = at;
+    }
+    const previous = this.activityOfConversations;
+    const ids = Object.keys(next);
+    if (ids.length === Object.keys(previous).length && ids.every((id) => previous[id] === next[id])) return previous;
+    this.activityOfConversations = next;
+    return next;
   }
 
   private applyChannelState(state: ChatChannelState): void {

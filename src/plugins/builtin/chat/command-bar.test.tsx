@@ -18,7 +18,7 @@ import {
 } from "./command-bar";
 import { ChatContent } from "./content";
 import { chatController } from "./controller";
-import type { ChatConversationList, ChatConversationState } from "./conversations";
+import { buildChatConversations, type ChatConversationList, type ChatConversationState } from "./conversations";
 import { chatModule } from "./index";
 import { ChatPane } from "./pane";
 import { createChatTestHarness, createController, installServerChannels, makeMessage } from "./test-harness";
@@ -140,6 +140,26 @@ describe("chat rows in the command bar", () => {
     );
     await row!.execute();
     expect(opened).toEqual([{ templateId: "new-chat-pane", options: { arg: "dm:bob" } }]);
+  });
+});
+
+describe("the conversations in the sidebar's order", () => {
+  test("DMs and groups come newest message first, undated ones last in their original order", () => {
+    const dmCarol: ChatChannel = { id: "dm:carol", name: "@carol", kind: "direct", created_at: created };
+    const states = [
+      ...signedIn().states,
+      conversation(dmCarol),
+    ];
+    expect(buildChatConversations(states, SELF.id).map((entry) => entry.channelId)).toEqual([
+      "everyone",
+      "general",
+      "product",
+      "dm:gena",
+      "dm:bob",
+      "dm:alice",
+      "grp:desk",
+      "dm:carol",
+    ]);
   });
 });
 

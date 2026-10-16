@@ -143,6 +143,12 @@ export interface ChatChannel {
   teamId?: string;
   dmUser?: ChatUserSummary | null;
   members?: ChatUserSummary[];
+  /**
+   * When the newest message you can see in a direct or group conversation was
+   * sent; null when it has none. Absent from channels of other kinds and from
+   * servers that do not report it.
+   */
+  lastMessageAt?: string | null;
 }
 
 /** Minimal identities scoped by the server to this channel and existing DMs. */

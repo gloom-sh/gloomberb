@@ -3,6 +3,7 @@ import type { MutableRefObject } from "react";
 import type { ChatChannel } from "../../../../api-client";
 import { useThrottledCommitValue } from "../../../../react/use-throttled-commit-value";
 import { teamStore } from "../../../../team/store";
+import { orderConversationChannels, type ConversationActivity } from "../conversation-recency";
 import { chatSidebarStore } from "../sidebar-store";
 import {
   buildChatSidebarRows,
@@ -34,6 +35,7 @@ export function useChatChannelNavigation({
   channelIdRef,
   channels,
   channelsLoading,
+  conversationActivity,
   focused,
   inputFocused,
   onChannelChange,
@@ -47,6 +49,8 @@ export function useChatChannelNavigation({
   channelIdRef: MutableRefObject<string>;
   channels: ChatChannel[];
   channelsLoading: boolean;
+  /** When each DM and group last had a message, which orders the DMs section. */
+  conversationActivity: ConversationActivity;
   focused: boolean;
   inputFocused: boolean;
   onChannelChange?: (channelId: string) => void;
@@ -93,8 +97,9 @@ export function useChatChannelNavigation({
     collapsedSections,
     collapsedTeams: teamSnapshot.collapsedTeams,
     canCreateConversation,
+    conversationActivity,
     getTeam: (teamId) => teamStore.getTeam(teamId),
-  }), [canCreateConversation, channels, collapsedSections, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
+  }), [canCreateConversation, channels, collapsedSections, conversationActivity, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
   // Set while the cursor rests on a section header rather than a channel; the
   // channel cursor keeps its place underneath.
   const [sidebarHeaderCursor, setSidebarHeaderCursorState] = useState<string | null>(null);
@@ -138,16 +143,22 @@ export function useChatChannelNavigation({
     }
   }, [channelId, channels, expandDirectSection]);
 
+  // Cycling steps through the channels as the sidebar lists them, so the next
+  // DM is the one drawn below.
+  const cycleOrder = useMemo(
+    () => orderConversationChannels(channels, conversationActivity),
+    [channels, conversationActivity],
+  );
   const cycleChannel = useCallback((direction: 1 | -1) => {
-    if (channels.length <= 1 || !onChannelChange) return false;
-    const currentIndex = Math.max(0, channels.findIndex((channel) => channel.id === channelIdRef.current));
-    const nextIndex = (currentIndex + direction + channels.length) % channels.length;
-    const nextChannel = channels[nextIndex];
+    if (cycleOrder.length <= 1 || !onChannelChange) return false;
+    const currentIndex = Math.max(0, cycleOrder.findIndex((channel) => channel.id === channelIdRef.current));
+    const nextIndex = (currentIndex + direction + cycleOrder.length) % cycleOrder.length;
+    const nextChannel = cycleOrder[nextIndex];
     if (!nextChannel) return false;
     setSidebarHeaderCursor(null);
     setSidebarCursorChannelId(nextChannel.id, { immediate: true });
     return true;
-  }, [channelIdRef, channels, onChannelChange, setSidebarCursorChannelId, setSidebarHeaderCursor]);
+  }, [channelIdRef, cycleOrder, onChannelChange, setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   const focusChannelSidebar = useCallback(() => {
     if (!channelListVisible || !onChannelChange) return false;

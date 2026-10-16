@@ -83,6 +83,7 @@ export function useChatSnapshotState({
   const [channelsLoading, setChannelsLoading] = useState(initialSnapshot.channelsLoading);
   const [messages, setMessages] = useState<ChatMessage[]>(initialSnapshot.messages);
   const [channelStates, setChannelStates] = useState(initialSnapshot.channelStates);
+  const [conversationActivity, setConversationActivity] = useState(initialSnapshot.conversationActivity);
   const [hasSavedSession, setHasSavedSession] = useState(initialSnapshot.hasSavedSession);
   const [user, setUser] = useState<{ id: string; username: string; emailVerified: boolean } | null>(initialSnapshot.user);
   const [loading, setLoading] = useState(initialSnapshot.loading);
@@ -116,6 +117,7 @@ export function useChatSnapshotState({
         : { channelId: snapshot.channelId, candidates: snapshot.mentionCandidates });
       setChannels(snapshot.channels);
       setChannelStates(snapshot.channelStates);
+      setConversationActivity(snapshot.conversationActivity);
       setChannelsLoading(snapshot.channelsLoading);
       setHasSavedSession(snapshot.hasSavedSession);
       setUser(snapshot.user);
@@ -161,6 +163,7 @@ export function useChatSnapshotState({
     channels,
     channelsLoading,
     channelStates,
+    conversationActivity,
     draftAttachments,
     hasOlderMessages,
     hasSavedSession,

@@ -5,7 +5,7 @@ import { createStaticAppStore } from "../../../test-support/app-store";
 import { createConfigBackedTestPluginRuntime, createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, findPaneInstance, type PaneInstanceConfig } from "../../../types/config";
 import { TextAttributes } from "../../../ui";
-import { apiClient } from "../../../api-client";
+import { apiClient, type ChatChannel } from "../../../api-client";
 import { PluginRenderProvider } from "../../runtime";
 import { gloomberbCloudPlugin } from "../cloud";
 import { TeamStatusWidget } from "../cloud/team/status-widget";
@@ -602,6 +602,7 @@ describe("ChatContent channel sidebar", () => {
         channelIdRef,
         channels,
         channelsLoading: false,
+        conversationActivity: {},
         focused: true,
         inputFocused: false,
         onChannelChange: handleChannelChange,
@@ -810,6 +811,137 @@ describe("ChatContent channel sidebar", () => {
       installServerChannels(chatController, []);
       chatController.dispose();
     }
+  });
+});
+
+describe("DMs in the channel sidebar", () => {
+  const directChannel = (name: string, lastMessageAt: string | null): ChatChannel => ({
+    id: `dm:${name}`,
+    name: `@${name}`,
+    kind: "direct",
+    dmUser: { id: `u-${name}`, username: name, displayName: name },
+    created_at: "2026-05-01T00:00:00.000Z",
+    lastMessageAt,
+  });
+  const dmChannels = [
+    { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
+    directChannel("alice", "2026-06-01T09:00:00.000Z"),
+    directChannel("bob", "2026-06-01T12:00:00.000Z"),
+    directChannel("carol", "2026-06-01T08:00:00.000Z"),
+  ] satisfies ChatChannel[];
+  /** The DMs in the order the frame draws them, top to bottom. */
+  const drawnDms = () => ["@alice", "@bob", "@carol"]
+    .sort((left, right) => tui.frame().indexOf(left) - tui.frame().indexOf(right));
+
+  test("lists DMs by their newest message and moves one to the top when a message arrives", async () => {
+    const controller = createController({
+      sessionToken: "token-123",
+      user: { id: "u0", username: "ada", emailVerified: true },
+    });
+    installServerChannels(controller, dmChannels);
+    controller.refreshChannels = async () => {};
+    controller.refreshChannelMessages = async () => {};
+    const ChannelPane = createChannelPane(controller, "everyone");
+
+    await act(async () => {
+      await tui.render(<ChannelPane />, { width: 90, height: 14 });
+    });
+    await flushFrame();
+    expect(drawnDms()).toEqual(["@bob", "@alice", "@carol"]);
+
+    await act(async () => {
+      (controller as any).mergeMessages("dm:carol", [{
+        ...makeMessage(1),
+        channelId: "dm:carol",
+        createdAt: "2026-06-01T13:00:00.000Z",
+        user: { id: "u-carol", username: "carol", displayName: "Carol" },
+      }]);
+    });
+    await flushFrame();
+    expect(drawnDms()).toEqual(["@carol", "@bob", "@alice"]);
+
+    // Sending moves one too, before the server has answered.
+    await act(async () => {
+      (controller as any).ensureChannelState("dm:alice").pendingMessages.push({
+        ...makeMessage(2),
+        channelId: "dm:alice",
+        createdAt: "2026-06-01T14:00:00.000Z",
+        clientStatus: "sending",
+      });
+      (controller as any).emit("dm:alice");
+    });
+    await flushFrame();
+    expect(drawnDms()).toEqual(["@alice", "@carol", "@bob"]);
+  });
+
+  test("the keyboard cursor stays on its conversation when the rows reorder under it", async () => {
+    const channels = dmChannels;
+    let navigation = null as ReturnType<typeof useChatChannelNavigation> | null;
+    let setActivity: (activity: Record<string, number>) => void = () => {};
+    const at = (iso: string) => Date.parse(iso);
+
+    function NavigationHarness() {
+      const [channelId, setChannelId] = useState("everyone");
+      const [activity, setActivityState] = useState<Record<string, number>>({
+        "dm:alice": at("2026-06-01T09:00:00.000Z"),
+        "dm:bob": at("2026-06-01T12:00:00.000Z"),
+        "dm:carol": at("2026-06-01T08:00:00.000Z"),
+      });
+      setActivity = setActivityState;
+      const channelIdRef = useRef(channelId);
+      channelIdRef.current = channelId;
+      navigation = useChatChannelNavigation({
+        blurInput: () => {},
+        channelId,
+        channelIdRef,
+        channels,
+        channelsLoading: false,
+        conversationActivity: activity,
+        focused: true,
+        inputFocused: false,
+        onChannelChange: setChannelId,
+        resetTranscriptSelection: () => {},
+        channelListVisible: true,
+      });
+      return null;
+    }
+
+    await act(async () => {
+      await tui.render(<NavigationHarness />, { width: 90, height: 12 });
+    });
+    // Rows: Channels header, everyone, DMs header, bob, alice, carol. Put the cursor on alice.
+    await act(async () => {
+      navigation?.focusChannelSidebar();
+      navigation?.moveSidebarChannelSelection("down");
+      navigation?.moveSidebarChannelSelection("down");
+      navigation?.moveSidebarChannelSelection("down");
+      await tui.setup().renderOnce();
+    });
+    expect(navigation?.sidebarCursorChannelId).toBe("dm:alice");
+
+    // Carol gets a message and moves to the top, above the cursor.
+    await act(async () => {
+      setActivity({
+        "dm:alice": at("2026-06-01T09:00:00.000Z"),
+        "dm:bob": at("2026-06-01T12:00:00.000Z"),
+        "dm:carol": at("2026-06-01T13:00:00.000Z"),
+      });
+      await tui.setup().renderOnce();
+    });
+    expect(navigation?.sidebarCursorChannelId).toBe("dm:alice");
+    expect(navigation?.sidebarCursorRow).toMatchObject({ kind: "channel", channel: { id: "dm:alice" } });
+
+    // Alice is now last, so Down stays on her and Up goes to the DM drawn above her.
+    await act(async () => {
+      navigation?.moveSidebarChannelSelection("down");
+      await tui.setup().renderOnce();
+    });
+    expect(navigation?.sidebarCursorChannelId).toBe("dm:alice");
+    await act(async () => {
+      navigation?.moveSidebarChannelSelection("up");
+      await tui.setup().renderOnce();
+    });
+    expect(navigation?.sidebarCursorChannelId).toBe("dm:bob");
   });
 });
 

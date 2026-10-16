@@ -17,6 +17,7 @@ import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { teamAccentHex, teamPrefix } from "../../../team/model";
 import { teamStore } from "../../../team/store";
 import type { ChatController } from "./controller";
+import type { ConversationActivity } from "./conversation-recency";
 import { chatSidebarStore } from "./sidebar-store";
 import { buildChatSidebarRows } from "./sidebar-rows";
 import { formatChannelLabel } from "./channel-labels";
@@ -100,6 +101,7 @@ function ProfileIcon({
 export function ChannelSidebar({
   channels,
   channelStates,
+  conversationActivity,
   activeChannelId,
   cursorHeaderKey = null,
   width,
@@ -121,6 +123,8 @@ export function ChannelSidebar({
 }: {
   channels: ChatChannel[];
   channelStates: ReturnType<ChatController["getSnapshot"]>["channelStates"];
+  /** When each DM and group last had a message, which orders the DMs section. */
+  conversationActivity: ConversationActivity;
   activeChannelId: string;
   /** The section header the keyboard cursor rests on, if it is on one. */
   cursorHeaderKey?: string | null;
@@ -160,8 +164,9 @@ export function ChannelSidebar({
     collapsedSections: sidebarSnapshot.collapsedSections,
     collapsedTeams: teamSnapshot.collapsedTeams,
     canCreateConversation,
+    conversationActivity,
     getTeam: (teamId) => teamStore.getTeam(teamId),
-  }), [canCreateConversation, channels, sidebarSnapshot.collapsedSections, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
+  }), [canCreateConversation, channels, conversationActivity, sidebarSnapshot.collapsedSections, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
   const widthRange = getPaneSidebarWidthRange(paneWidth);
 
   return (

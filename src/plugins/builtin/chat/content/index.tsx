@@ -173,6 +173,7 @@ export function ChatContent({
     channels,
     channelsLoading,
     channelStates,
+    conversationActivity,
     draftAttachments,
     hasOlderMessages,
     hasSavedSession,
@@ -476,6 +477,7 @@ export function ChatContent({
     channelIdRef,
     channels,
     channelsLoading,
+    conversationActivity,
     focused,
     inputFocused,
     onChannelChange: onListChannelChange,
@@ -1005,6 +1007,7 @@ export function ChatContent({
     <ChannelSidebar
       channels={channels}
       channelStates={channelStates}
+      conversationActivity={conversationActivity}
       activeChannelId={sidebarFocused ? (sidebarHeaderCursor ? "" : sidebarCursorChannelId) : channelId}
       cursorHeaderKey={sidebarFocused ? sidebarHeaderCursor : null}
       width={stackedNav ? width : channelSidebarWidth}
