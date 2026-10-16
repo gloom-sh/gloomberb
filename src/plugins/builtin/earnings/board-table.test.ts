@@ -3,7 +3,7 @@ import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../ap
 import { colors } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { boardReport, reportMove, type BoardRow } from "./board-model";
-import { boardColumns, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardColumns, boardHasActuals, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyRows } from "./history-model";
 import { historyColumns, renderHistoryCell } from "./history-table";
 
@@ -60,6 +60,33 @@ describe("EVTS rows", () => {
     // With STATUS on screen WHEN is the time alone.
     expect(cell(TRV, "when")).toEqual({ text: "BMO", color: colors.textDim });
     expect(cell(HDB, "when")).toEqual({ text: "--", color: colors.textDim });
+  });
+});
+
+describe("EVTS when narrow", () => {
+  const ids = (width: number, actuals?: boolean) => boardColumns(width, { actuals }).map((entry) => entry.id);
+  // The board's width at 720px, where the dropped columns used to hide the actuals.
+  const NARROW = 88;
+
+  test("with no actual on the board, keeps today's order and spends no space on empty actual columns", () => {
+    expect(boardHasActuals([row(LADR), row(HDB), { kind: "section", key: "today", label: "Today" } as BoardRow])).toBe(false);
+    expect(ids(NARROW)).toEqual(["owned", "symbol", "name", "when", "implied", "move", "average", "epsEstimate", "revenueEstimate"]);
+    for (let width = 50; width <= 160; width += 1) expect(ids(width, false)).toEqual(ids(width));
+  });
+
+  test("with an actual on the board, EPS ACT and then EPS SURP outrank SALES EST, MKT CAP and AVG MOVE", () => {
+    expect(boardHasActuals([row(LADR), row(TRV)])).toBe(true);
+    expect(ids(NARROW, true)).toEqual(["owned", "symbol", "name", "when", "implied", "move", "epsEstimate", "epsActual", "epsSurprise"]);
+    for (let width = 50; width <= 160; width += 1) {
+      const shown = new Set(ids(width, true));
+      const context = ["revenueEstimate", "cap", "average"].filter((id) => shown.has(id as BoardColumn["id"]));
+      if (context.length > 0) expect([width, shown.has("epsActual"), shown.has("epsSurprise")]).toEqual([width, true, true]);
+      if (shown.has("epsSurprise")) expect([width, shown.has("epsActual")]).toEqual([width, true]);
+      // The implied move and the move on the report never go.
+      expect([width, shown.has("implied"), shown.has("move")]).toEqual([width, true, true]);
+    }
+    // Wide enough, every column shows either way.
+    expect(ids(2000, true)).toEqual(ids(2000));
   });
 });
 

@@ -38,16 +38,31 @@ const ALL_COLUMNS: BoardColumn[] = [
  */
 const DROP_ORDER: BoardColumnId[] = ["basis", "analysts", "epsSurprise", "status", "epsActual", "cap", "revenueEstimate", "epsEstimate", "owned"];
 
+/**
+ * With an actual on the board the report is the news: EPS ACT, then EPS SURP,
+ * outrank SALES EST, MKT CAP and AVG MOVE, which go first, the average before
+ * the cap before the sales estimate. WHEN carries the status (✓) once STATUS
+ * goes. Without one, those two columns would be empty, so DROP_ORDER holds.
+ */
+const REPORTED_DROP_ORDER: BoardColumnId[] = [
+  "basis", "analysts", "status", "average", "cap", "revenueEstimate", "epsSurprise", "epsActual", "epsEstimate", "owned",
+];
+
 /** Header clicks sort these; the rest keep the ranking. */
 export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
   symbol: "symbol", cap: "cap", implied: "implied", average: "average",
 };
 
-export function boardColumns(width: number): BoardColumn[] {
+/** Whether any report on the board has an actual: the narrow board then keeps EPS ACT and EPS SURP (boardColumns). */
+export function boardHasActuals(rows: readonly BoardRow[]): boolean {
+  return rows.some((row) => row.kind === "report" && row.report.epsActual != null);
+}
+
+export function boardColumns(width: number, { actuals = false }: { actuals?: boolean } = {}): BoardColumn[] {
   const fixed = (list: BoardColumn[]) =>
     list.reduce((sum, column) => sum + (column.id === "name" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
   let columns = ALL_COLUMNS;
-  for (const id of DROP_ORDER) {
+  for (const id of actuals ? REPORTED_DROP_ORDER : DROP_ORDER) {
     if (fixed(columns) + NAME_MIN_WIDTH <= width) break;
     columns = columns.filter((column) => column.id !== id);
   }

@@ -30,7 +30,7 @@ import {
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardColumns, boardHasActuals, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { cachedEarningsCalendar, loadEarningsBoard } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { EarningsHistoryView } from "./history";
@@ -135,7 +135,9 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const selected = reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null;
   const open = reportRows.find((row) => row.key === openKey)?.report
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
-  const columns = useMemo(() => boardColumns(width), [width]);
+  // A board with an actual keeps EPS ACT and EPS SURP when narrow; keyed by the flag, so the columns hold between renders.
+  const actuals = boardHasActuals(rows);
+  const columns = useMemo(() => boardColumns(width, { actuals }), [actuals, width]);
   // The move on each report out today, beside its implied move, from the quotes every board reads.
   // Keyed by content: the rows are rebuilt on renders that change nothing, and the quote board reloads on a new list.
   const reportedKey = [...new Set(reportRows.filter((row) => row.report.dateStatus === "reported" && row.report.date === today)
