@@ -13,12 +13,13 @@ function timeOf(value: string | null | undefined): number {
 }
 
 /**
- * When a conversation last had a message, in ms, or {@link NO_ACTIVITY}: the
+ * When a conversation last had activity, in ms, or {@link NO_ACTIVITY}: the
  * newest of what the server reported for it and the newest message this device
  * holds, sent or received. The server's value is what dates a DM whose
- * messages are not loaded yet. A server that reports nothing at all (the field
- * is absent, not null) leaves a DM or group dated from when it was started, the
- * best bound there is; one that says null is saying the conversation is empty.
+ * messages are not loaded yet. A DM or group with no message time known, whether
+ * the server says it is empty (null) or reports nothing (the field is absent),
+ * counts from when it was started, since starting one is activity: a new DM
+ * sorts above older ones. Other channels with nothing known have none.
  */
 export function conversationActivityAt(
   channel: ChatChannel,
@@ -26,7 +27,7 @@ export function conversationActivityAt(
 ): number {
   const known = Math.max(timeOf(channel.lastMessageAt), timeOf(held.messageAt), timeOf(held.pendingAt));
   if (known !== NO_ACTIVITY) return known;
-  return isPeopleConversation(channel) && channel.lastMessageAt === undefined ? timeOf(channel.created_at) : NO_ACTIVITY;
+  return isPeopleConversation(channel) ? timeOf(channel.created_at) : NO_ACTIVITY;
 }
 
 /** Newest first; a conversation with no known activity after every other, and equal to another. */

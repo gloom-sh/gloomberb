@@ -2407,9 +2407,11 @@ describe("ChatController", () => {
     await controller.refreshChatState();
 
     const before = controller.getSnapshot("options").conversationActivity;
+    // An empty DM counts from when it was started.
     expect(before).toEqual({
       "dm:alice": Date.parse("2026-04-01T10:00:00.000Z"),
       "dm:bob": Date.parse("2026-04-02T10:00:00.000Z"),
+      "dm:carol": Date.parse("2026-03-03T00:00:00.000Z"),
     });
     expect(controller.getSnapshot("options").conversationActivity).toBe(before);
 

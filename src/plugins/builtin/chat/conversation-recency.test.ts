@@ -43,11 +43,23 @@ describe("conversation recency", () => {
     expect(conversationActivityAt(channel, { messageAt: "2026-05-20T00:00:00.000Z" })).toBe(at("2026-06-01T00:00:00.000Z"));
   });
 
-  test("a server that says the conversation is empty leaves it undated; one that says nothing dates it from its start", () => {
-    expect(conversationActivityAt(dm("dm:a", { lastMessageAt: null }))).toBe(NO_ACTIVITY);
+  test("a DM or group with no message time counts from when it was started, whether the server says it is empty or says nothing", () => {
+    expect(conversationActivityAt(dm("dm:a", { lastMessageAt: null }))).toBe(at(STARTED));
     expect(conversationActivityAt(dm("dm:a"))).toBe(at(STARTED));
+    expect(conversationActivityAt({ ...dm("grp:a", { lastMessageAt: null }), kind: "group" })).toBe(at(STARTED));
+    // Undated, it has nothing: with no usable start, and any other kind of channel.
     expect(conversationActivityAt(dm("dm:a", { created_at: "not a date" }))).toBe(NO_ACTIVITY);
     expect(conversationActivityAt({ id: "general", name: "general", kind: "public", created_at: STARTED })).toBe(NO_ACTIVITY);
+  });
+
+  test("a new empty DM sorts above older DMs whose last message is older than its creation", () => {
+    const channels = [
+      dm("dm:old", { created_at: "2026-01-01T00:00:00.000Z", lastMessageAt: "2026-02-01T00:00:00.000Z" }),
+      dm("dm:older", { created_at: "2025-12-01T00:00:00.000Z", lastMessageAt: "2026-03-01T00:00:00.000Z" }),
+      dm("dm:new", { created_at: "2026-06-01T00:00:00.000Z", lastMessageAt: null }),
+    ];
+    const activity = Object.fromEntries(channels.map((channel) => [channel.id, conversationActivityAt(channel)]));
+    expect(orderConversationChannels(channels, activity).map((channel) => channel.id)).toEqual(["dm:new", "dm:older", "dm:old"]);
   });
 
   test("orders only the DMs and groups, each into a slot a DM held", () => {
