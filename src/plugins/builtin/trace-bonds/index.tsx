@@ -26,6 +26,8 @@ export const traceBondsModule: PluginModule = {
         keywords: ["bond", "bonds", "corporate", "agency", "coupon", "yield", "issuer", "cusip", "credit", "fixed income", "trace"],
         shortcut: { prefix: "TRACE", argKind: "text", argOptional: true, argPlaceholder: "issuer, symbol or CUSIP" },
         headless: traceBondsHeadless,
+        // Its sales date a capture, never the stock quote of a ticker typed as its argument (`TRACE CMLSQ`).
+        reportFreshness: { source: "FINRA", status: "not-a-feed", basis: "last sales" },
         createInstance: (_context, options) => createTraceBondsInstance(options),
       }, "bonds", "tape"),
     },

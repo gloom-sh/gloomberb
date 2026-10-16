@@ -43,6 +43,8 @@ import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
+import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
+import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
 import { deriveHeadlessFreshness } from "./freshness";
 import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
@@ -1171,7 +1173,7 @@ describe("portfolio screenshot members", () => {
   });
 });
 
-test("an Issuer Debt capture is dated by its SEC filings, never by the issuer's stock session", () => {
+test("an Issuer Debt or TRACE capture is dated by its own data, never by the issuer's stock session", () => {
   const NOW = Date.parse("2026-10-16T20:12:00Z");
   const template = debtMaturitiesModule.paneTemplates![0]!;
   // Fixed Income hosts the view and declares nothing of its own; WHR's delayed quote is on the page.
@@ -1187,4 +1189,10 @@ test("an Issuer Debt capture is dated by its SEC filings, never by the issuer's 
   // A view that does not declare its source is still dated by the quote it shows.
   const quoted = shotFreshness({ pane, template: { ...template, reportFreshness: undefined } }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
   expect(quoted.dates).toBe("quotes");
+  // TRACE given a ticker shows its quote's company's bonds, dated by their last sale.
+  const sales = deriveHeadlessFreshness(traceBondsHeadless, {
+    sections: [{ title: "", columns: [], rows: [{ id: "23110AAB2", lastTradeDate: "2026-07-27" }] }], freshness: { oldest: null },
+  }, NOW);
+  const trace = shotFreshness({ pane, template: traceBondsModule.paneTemplates![0]! }, { ...payload, instrumentFinancials: [] }, render, [], sales, NOW);
+  expect(trace.variants[0]).toBe("Source: FINRA · Mon 27 Jul 2026 · not a live feed (last sales)");
 });
