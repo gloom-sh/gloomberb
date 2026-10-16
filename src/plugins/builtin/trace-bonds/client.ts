@@ -1,10 +1,18 @@
+import { shortCompanyName } from "../../../tickers/company-name";
+import type { DataProvider } from "../../../types/data-provider";
 import { signalWithTimeout } from "../../../utils/async-deadline";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { httpFetch } from "../../../utils/http-transport";
 import { isoDateOrNull, numericOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
+import { zonedDateKey } from "../../../utils/zoned-date-time";
 
 const ENDPOINT = "https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities";
 const PAGE_SIZE = 100;
 const FETCH_TIMEOUT_MS = 20_000;
+/** The most of what was typed that is sent; the tape's longest issuer names are shorter. */
+const MAX_QUERY_LENGTH = 80;
+/** The tape's calendar: a bond that matures today has stopped trading by tonight there. */
+const TAPE_TIME_ZONE = "America/New_York";
 
 const REQUEST_HEADERS = {
   Accept: "application/json",
@@ -43,11 +51,20 @@ export interface CorporateBond {
 
 /**
  * What the tape is asked for: one CUSIP, or an issuer by the start of its
- * name, and by its symbol root when the text reads as a symbol (`WHR`).
+ * name, and by its symbol root when the text reads as one (`WHR`).
  */
 export type BondQuery =
   | { kind: "cusip"; text: string; cusip: string }
-  | { kind: "issuer"; text: string; name: string; symbol: string | null };
+  | {
+    kind: "issuer";
+    text: string;
+    /** The start of the issuer's name, upper case as the tape spells it. */
+    name: string;
+    /** The tape's own symbol root, matched exactly: `WHR` is `WHR4800338` and `WHR.GM`, never `WHRL…`. */
+    root: string | null;
+    /** A stock ticker the text can be, whose company is asked for when nothing else matches. */
+    ticker: string | null;
+  };
 
 /** The CUSIP check digit of its first eight characters, or null when one is not a CUSIP character. */
 function cusipCheckDigit(base: string): number | null {
@@ -70,34 +87,91 @@ export function isCusip(text: string): boolean {
 
 /** Null for no text: the market-wide tape. */
 export function parseBondQuery(input: string): BondQuery | null {
-  const text = input.trim().replace(/\s+/g, " ");
+  const text = input.trim().replace(/\s+/g, " ").slice(0, MAX_QUERY_LENGTH).trim();
   if (!text) return null;
   const upper = text.toUpperCase();
   if (isCusip(upper)) return { kind: "cusip", text, cusip: upper };
-  return { kind: "issuer", text, name: upper, symbol: /^[A-Z][A-Z0-9.]{0,5}$/.test(upper) ? upper : null };
+  return {
+    kind: "issuer",
+    text,
+    name: upper,
+    root: /^[A-Z]{1,6}$/.test(upper) ? upper : null,
+    ticker: /^[A-Z]{1,6}(?:[.-][A-Z]{1,2})?$/.test(upper) ? upper : null,
+  };
 }
 
 interface CompareFilter {
   fieldName: string;
-  compareType: "EQUAL" | "GREATER" | "BEGINS_WITH";
-  fieldValue: string;
+  compareType: "EQUAL" | "GREATER" | "LESSER" | "BEGINS_WITH";
+  /** Null with EQUAL matches a field the issue has no value for. */
+  fieldValue: string | null;
+}
+
+/** One request to the tape, and what its rows must be: checked again before they merge, so no filter is taken on trust. */
+export interface BondRequest {
+  filters: CompareFilter[];
+  accepts: (bond: CorporateBond) => boolean;
 }
 
 /** Bonds with no last sale come first in a descending sort; this keeps them out. */
 const TRADED: CompareFilter = { fieldName: "lastTradeDate", compareType: "GREATER", fieldValue: "1900-01-01" };
 
+const anyBond = () => true;
+
 /**
- * The filters of each request a query makes, filtered by the tape itself
- * rather than in a page of the latest sales: one for a CUSIP or the market,
- * two for text that can be a name and a symbol, merged after.
+ * Whether an issue belongs to the symbol root asked for: `WHR` takes
+ * `WHR4800338` and `WHR.GM` but not `WHRL1234`, so a short root does not
+ * pull in every longer one that starts with it.
  */
-export function bondTapeFilters(query: BondQuery | null): CompareFilter[][] {
-  if (!query) return [[TRADED]];
-  if (query.kind === "cusip") return [[{ fieldName: "cusip", compareType: "EQUAL", fieldValue: query.cusip }, TRADED]];
+function issueOfRoot(bond: Pick<CorporateBond, "symbol">, root: string): boolean {
+  const issue = bond.symbol?.toUpperCase();
+  return !!issue && issue.startsWith(root) && /^[./\d]/.test(issue.slice(root.length));
+}
+
+/**
+ * The root's issues and no longer root's, filtered by the tape: symbols
+ * continue the root with a dot, a slash or a digit, which sort between
+ * `WHR-` and `WHR:`, and a letter, which starts another root, sorts after.
+ */
+function rootFilters(root: string): CompareFilter[] {
   return [
-    [{ fieldName: "issuerName", compareType: "BEGINS_WITH", fieldValue: query.name }, TRADED],
-    ...(query.symbol ? [[{ fieldName: "issueSymbolIdentifier", compareType: "BEGINS_WITH" as const, fieldValue: query.symbol }, TRADED]] : []),
+    { fieldName: "issueSymbolIdentifier", compareType: "GREATER", fieldValue: `${root}-` },
+    { fieldName: "issueSymbolIdentifier", compareType: "LESSER", fieldValue: `${root}:` },
   ];
+}
+
+/** One or two letters start too many names (`GE` starts GENERAL MOTORS and GEORGIA POWER), so they are a first word. */
+function nameFilter(name: string): CompareFilter {
+  return { fieldName: "issuerName", compareType: "BEGINS_WITH", fieldValue: name.length < 3 ? `${name} ` : name };
+}
+
+function unmatured(bond: Pick<CorporateBond, "maturityDate">, today: string): boolean {
+  return bond.maturityDate == null || bond.maturityDate > today;
+}
+
+/**
+ * The requests a query makes, each filtered by the tape itself rather than in
+ * a page of the latest sales: the market's, one CUSIP's (matured or not), or
+ * an issuer's by name and by symbol root, merged after. An issuer's bonds
+ * that matured by `today` are left out on the tape's side so they do not
+ * take the page; a filter on the date also drops perpetuals, which have
+ * none, so each is asked twice, once for each.
+ */
+export function bondTapeRequests(query: BondQuery | null, today: string): BondRequest[] {
+  if (!query) return [{ filters: [TRADED], accepts: anyBond }];
+  if (query.kind === "cusip") {
+    return [{ filters: [{ fieldName: "cusip", compareType: "EQUAL", fieldValue: query.cusip }, TRADED], accepts: anyBond }];
+  }
+  const live = (bond: CorporateBond) => unmatured(bond, today);
+  const name = nameFilter(query.name);
+  const terms: Array<{ filters: CompareFilter[]; accepts: (bond: CorporateBond) => boolean }> = [
+    { filters: [name], accepts: (bond) => live(bond) && bond.issuerName.toUpperCase().startsWith(name.fieldValue!) },
+    ...(query.root ? [{ filters: rootFilters(query.root), accepts: (bond: CorporateBond) => live(bond) && issueOfRoot(bond, query.root!) }] : []),
+  ];
+  return terms.flatMap(({ filters, accepts }) => [
+    { filters: [...filters, { fieldName: "maturityDate", compareType: "GREATER", fieldValue: today }, TRADED], accepts },
+    { filters: [...filters, { fieldName: "maturityDate", compareType: "EQUAL", fieldValue: null }, TRADED], accepts },
+  ]);
 }
 
 function bondTapeRequestBody(filters: readonly CompareFilter[], limit = PAGE_SIZE) {
@@ -108,16 +182,6 @@ function bondTapeRequestBody(filters: readonly CompareFilter[], limit = PAGE_SIZ
     limit,
     offset: 0,
   };
-}
-
-/**
- * Whether an issue belongs to the symbol asked for: `WHR` takes `WHR4800338`
- * and `WHR.GM` but not `WHRL1234`, so a short root does not pull in every
- * longer one that starts with it.
- */
-function issueOfSymbol(bond: Pick<CorporateBond, "symbol">, symbol: string): boolean {
-  const issue = bond.symbol?.toUpperCase();
-  return !!issue && issue.startsWith(symbol) && !/[A-Z]/.test(issue.charAt(symbol.length));
 }
 
 /** A sale date as its day. Text that is not a date is kept as published. */
@@ -187,14 +251,12 @@ function bondId(raw: Record<string, unknown>, index: number): string {
     ?? `${textOrNull(raw.issuerName) ?? ""}|${textOrNull(raw.maturityDate) ?? ""}|${index}`;
 }
 
-function parseBond(raw: unknown, index: number, seen: Map<string, number>): CorporateBond | null {
+/** A row as a bond; its id is the issue's until `mergeBondAnswers` tells repeats apart. */
+function parseBond(raw: unknown, index: number): CorporateBond | null {
   const record = recordOrNull(raw);
   if (!record) return null;
-  const base = bondId(record, index);
-  const count = seen.get(base) ?? 0;
-  seen.set(base, count + 1);
   return {
-    id: count === 0 ? base : `${base}#${count + 1}`,
+    id: bondId(record, index),
     issuerName: textOrNull(record.issuerName) ?? "",
     cusip: textOrNull(record.cusip),
     symbol: textOrNull(record.issueSymbolIdentifier),
@@ -215,35 +277,58 @@ function byLastTrade(left: CorporateBond, right: CorporateBond): number {
   return left.lastTradeDate < right.lastTradeDate ? 1 : -1;
 }
 
+/** How many issues matched a request in all, which the tape states beside the page it sends. */
+function recordTotal(payload: unknown): number | null {
+  const headers = recordOrNull(recordOrNull(recordOrNull(payload)?.returnBody)?.headers);
+  const value = headers?.["Record-Total"] ?? headers?.["record-total"];
+  const total = Number(Array.isArray(value) ? value[0] : value);
+  return Number.isFinite(total) ? total : null;
+}
+
+interface BondAnswer {
+  payload: unknown;
+  accepts: (bond: CorporateBond) => boolean;
+  limit: number;
+}
+
 /**
- * The bonds of one or more reporting payloads, newest last sale first. An
- * issue an earlier payload already gave (a name and a symbol request both
- * answer it) is listed once. An unrecognized payload adds none; the fetch
- * rejects that case.
+ * The bonds of one or more answers, newest last sale first, at most a page.
+ * Each answer's rows are held to its request before they merge, so the page
+ * is cut from bonds that belong in it. An issue an earlier answer already
+ * gave (a name and a symbol request both answer it) is listed once.
+ * `truncated` when more issues matched than the page shows.
  */
-function parseCorporateBondTape(payloads: readonly unknown[]): CorporateBond[] {
+function mergeBondAnswers(answers: readonly BondAnswer[]): { bonds: CorporateBond[]; truncated: boolean } {
   const seen = new Map<string, number>();
   const earlier = new Set<string>();
   const bonds: CorporateBond[] = [];
+  let truncated = false;
   let index = 0;
-  for (const payload of payloads) {
+  for (const { payload, accepts, limit } of answers) {
+    const rows = corporateBondPayloadRows(payload) ?? [];
+    if (rows.length >= limit || (recordTotal(payload) ?? 0) > rows.length) truncated = true;
     const issues: string[] = [];
-    for (const row of corporateBondPayloadRows(payload) ?? []) {
-      const record = recordOrNull(row);
-      const issue = record ? textOrNull(record.cusip) ?? textOrNull(record.issueSymbolIdentifier) : null;
+    for (const row of rows) {
+      const bond = parseBond(row, index);
+      index += 1;
+      if (!bond || !accepts(bond)) continue;
+      const issue = bond.cusip ?? bond.symbol;
       if (issue && earlier.has(issue)) continue;
       if (issue) issues.push(issue);
-      const bond = parseBond(row, index, seen);
-      index += 1;
-      if (bond) bonds.push(bond);
+      const count = seen.get(bond.id) ?? 0;
+      seen.set(bond.id, count + 1);
+      bonds.push(count === 0 ? bond : { ...bond, id: `${bond.id}#${count + 1}` });
     }
     for (const issue of issues) earlier.add(issue);
   }
-  return bonds.sort(byLastTrade).slice(0, PAGE_SIZE);
+  bonds.sort(byLastTrade);
+  return { bonds: bonds.slice(0, PAGE_SIZE), truncated: truncated || bonds.length > PAGE_SIZE };
 }
 
+/** A filter that matches nothing can answer 204 with no body: no rows, not a failure. */
 async function readPayload(response: Response): Promise<unknown> {
   const text = await response.text();
+  if (response.status === 204 || !text.trim()) return [];
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -294,6 +379,64 @@ function latestTradeDate(bonds: readonly CorporateBond[]): string | null {
   return latest;
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Every request of a query at once. One that fails does not fail the others:
+ * their rows still show and the failure is listed. Only when none answers
+ * does the load fail.
+ */
+async function askTape(token: string, requests: readonly BondRequest[], signal: AbortSignal) {
+  const settled = await Promise.allSettled(requests.map((request) => postBondPage(token, request.filters, PAGE_SIZE, signal)));
+  const answers: BondAnswer[] = [];
+  const failures: string[] = [];
+  for (const [index, result] of settled.entries()) {
+    if (result.status === "fulfilled") answers.push({ payload: result.value, accepts: requests[index]!.accepts, limit: PAGE_SIZE });
+    else failures.push(errorText(result.reason));
+  }
+  if (answers.length === 0) throw (settled[0] as PromiseRejectedResult).reason;
+  return { ...mergeBondAnswers(answers), failures: [...new Set(failures)] };
+}
+
+/**
+ * A company's name as the tape spells its issuers: upper case, without its
+ * legal form, a closing "Holdings" (the tape writes `HLDGS`) or periods.
+ * `Cumulus Media Inc.` is `CUMULUS MEDIA`, which starts `CUMULUS MEDIA NEW
+ * HLDGS INC`. Null for a name with nothing left.
+ */
+export function tapeIssuerName(company: string): string | null {
+  const name = shortCompanyName(company).toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ")
+    .replace(/ HOLDINGS?$/, "").slice(0, MAX_QUERY_LENGTH).trim();
+  return name.length >= 2 ? name : null;
+}
+
+/**
+ * The company a stock ticker's quote names, read the way other panes resolve
+ * an issuer (`resolveIssuerListing`). Null without a market data source or
+ * when the quote names nothing but the ticker.
+ */
+export async function quotedCompanyName(
+  marketData: Pick<DataProvider, "getQuote"> | null | undefined,
+  ticker: string,
+  exchange?: string,
+): Promise<string | null> {
+  if (!marketData) return null;
+  const listing = parsePublicTickerKey(ticker);
+  const quote = await marketData.getQuote(listing.symbol, exchange ?? listing.exchange ?? "");
+  const name = quote.name?.trim();
+  return name && name.toUpperCase() !== listing.symbol.toUpperCase() ? name : null;
+}
+
+/** The issuer a stock ticker was read as when no bonds trade under the ticker itself. */
+export interface BondIssuer {
+  /** What the ticker's quote calls the company: `Cumulus Media Inc.` */
+  company: string;
+  /** The start of the issuer name the tape was asked for: `CUMULUS MEDIA`. */
+  name: string;
+}
+
 export interface BondTape {
   query: BondQuery | null;
   /** Newest last sale first, at most one hundred. */
@@ -303,30 +446,69 @@ export interface BondTape {
    * newest, the day the empty answer is for. Null when unknown.
    */
   tradeDate: string | null;
+  /** A query matched more issues than the hundred shown. The market's tape is always its latest hundred and never says so. */
+  truncated: boolean;
+  /** Set when a ticker had no bonds of its own and its company's name was asked for instead. */
+  issuer: BondIssuer | null;
+  /** Requests that failed while others answered: the rows leave out what they would have given. */
+  failures: string[];
+}
+
+export interface BondTapeOptions {
+  signal?: AbortSignal;
+  /** The tape's calendar day; an issuer's bonds that matured by it are left out. Today in New York by default. */
+  today?: string;
+  /** The company a stock ticker's quote names (`quotedCompanyName`), asked once when the ticker finds nothing. */
+  companyName?: (ticker: string) => Promise<string | null>;
 }
 
 /**
  * The latest corporate and agency bond sales: the market's newest hundred,
- * or every issue of one issuer, symbol or CUSIP, asked of the tape itself.
+ * or the live issues of one issuer, symbol root or CUSIP, asked of the tape
+ * itself. A stock ticker with no bonds under its own symbol or name is
+ * asked again once by its company's name.
  */
-export async function fetchBondTape(input: string, signal?: AbortSignal): Promise<BondTape> {
+export async function fetchBondTape(input: string, options: BondTapeOptions = {}): Promise<BondTape> {
   const query = parseBondQuery(input);
-  const deadline = signalWithTimeout(signal, FETCH_TIMEOUT_MS);
+  const today = options.today ?? zonedDateKey(Date.now(), TAPE_TIME_ZONE);
+  const deadline = signalWithTimeout(options.signal, FETCH_TIMEOUT_MS);
   const token = await openSession(deadline);
-  const payloads = await Promise.all(bondTapeFilters(query).map((filters) => postBondPage(token, filters, PAGE_SIZE, deadline)));
-  const parsed = parseCorporateBondTape(payloads);
-  const bonds = query?.kind === "issuer" && query.symbol
-    ? parsed.filter((bond) => bond.issuerName.toUpperCase().startsWith(query.name) || issueOfSymbol(bond, query.symbol!))
-    : parsed;
-  if (bonds.length > 0 || !query) return { query, bonds, tradeDate: latestTradeDate(bonds) };
+  const first = await askTape(token, bondTapeRequests(query, today), deadline);
+  let answer = first;
+  let issuer: BondIssuer | null = null;
+  if (first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.companyName) {
+    const company = await options.companyName(query.ticker).catch(() => null);
+    const name = company ? tapeIssuerName(company) : null;
+    if (company && name && name !== query.name) {
+      issuer = { company, name };
+      answer = await askTape(token, bondTapeRequests({ kind: "issuer", text: name, name, root: null, ticker: null }, today), deadline)
+        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorText(error)] }));
+      answer = { ...answer, failures: [...new Set([...first.failures, ...answer.failures])] };
+    }
+  }
+  const { bonds, truncated, failures } = answer;
+  const result = { query, bonds, truncated: !!query && truncated, issuer, failures };
+  if (bonds.length > 0 || !query) return { ...result, tradeDate: latestTradeDate(bonds) };
   // No prints for the query: date the answer by the market's newest sale.
   const market = await postBondPage(token, [TRADED], 1, deadline)
-    .then((payload) => latestTradeDate(parseCorporateBondTape([payload])))
+    .then((payload) => latestTradeDate(mergeBondAnswers([{ payload, accepts: anyBond, limit: 1 }]).bonds))
     .catch(() => null);
-  return { query, bonds, tradeDate: market };
+  return { ...result, tradeDate: market };
 }
 
-/** What an empty answer to a query says: `No prints for CMLSQ on 2026-10-16.` */
-export function noPrintsText(query: BondQuery, tradeDate: string | null): string {
-  return tradeDate ? `No prints for ${query.text} on ${tradeDate}.` : `No prints for ${query.text}.`;
+/**
+ * What an empty answer to a query says: `No prints for CMLSQ on 2026-10-16.`,
+ * naming the company's issuer name too when that was asked.
+ */
+export function noPrintsText(query: BondQuery, tradeDate: string | null, issuer: BondIssuer | null = null): string {
+  const asked = issuer ? `${query.text} or ${issuer.name}` : query.text;
+  return tradeDate ? `No prints for ${asked} on ${tradeDate}.` : `No prints for ${asked}.`;
 }
+
+/** What a ticker read as its company says: `Showing bonds for CUMULUS MEDIA (Cumulus Media Inc.): none trade under CMLSQ.` */
+export function issuerFallbackText(query: BondQuery, issuer: BondIssuer): string {
+  return `Showing bonds for ${issuer.name} (${issuer.company}): none trade under ${query.text}.`;
+}
+
+/** A query that matched more issues than one page holds. */
+export const TRUNCATED_TEXT = "First 100 issues, newest last sale first.";

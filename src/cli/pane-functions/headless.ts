@@ -476,7 +476,8 @@ function renderBundle(
 ): string[] {
   return result.sections.flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
-    renderSection(section.title),
+    // A section with no title is its rows, or its empty message, alone.
+    ...(section.title ? [renderSection(section.title)] : []),
     "rows" in section && section.rows
       ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.textEntries ?? section.entries),

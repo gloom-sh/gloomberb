@@ -100,10 +100,11 @@ const BOND_COLUMNS: readonly BondColumn[] = [
 /**
  * What a narrow tape gives up first. The issuer, coupon and maturity name a
  * bond, so two of one issuer's issues stay told apart, and its price is
- * what was printed; they never go. The headless report moves its columns
- * under the rows in the same order (`BOND_STACK_PRIORITY`).
+ * what was printed; they never go. The trade date, the default sort and
+ * how old a last sale is, outlasts the CUSIP and yield. The headless report
+ * moves its columns under the rows in the same order (`bondStackPriority`).
  */
-const BOND_NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "traded", "cusip", "yield"];
+const BOND_NARROW_DROP_ORDER: readonly BondColumnId[] = ["grade", "change", "cusip", "yield", "traded"];
 
 /** `stackPriority` of each column in the text report: the higher, the sooner it moves under its row. */
 export function bondStackPriority(columnId: BondColumnId): number {

@@ -1,5 +1,13 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
-import { fetchBondTape, noPrintsText, type CorporateBond } from "./client";
+import { resolveHeadlessInstrument } from "../shared/headless-market-data";
+import {
+  TRUNCATED_TEXT,
+  fetchBondTape,
+  issuerFallbackText,
+  noPrintsText,
+  quotedCompanyName,
+  type CorporateBond,
+} from "./client";
 import { bondStackPriority, formatBondChange, formatBondDecimal, type BondColumnId } from "./model";
 
 const decimal = (digits: number) => (value: unknown) => (
@@ -47,7 +55,7 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
     kind: "free-text",
     optional: true,
     placeholder: "issuer, symbol or CUSIP",
-    description: "Issuer name (matched from its start), symbol root or CUSIP. Leave it out for the market's latest sales.",
+    description: "Issuer name (matched from its start), symbol root, stock ticker or CUSIP. Leave it out for the market's latest sales.",
   },
   options: [],
   discovery: {
@@ -55,25 +63,43 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
     dataRequirements: ["Corporate and agency bond last sales"],
     limitations: [
       "One page of 100 bonds, most recent last sale first",
-      "An issuer name matches the start of the issuer's name; a symbol matches the tape's own symbol root, which can differ from the stock ticker",
+      "An issuer name matches the start of the issuer's name; a symbol matches the tape's own symbol root, which can differ from the stock ticker. A ticker with no bonds under either is asked once more by the name its quote gives the company",
+      "An issuer's bonds that have matured are left out; a CUSIP shows its bond either way",
     ],
   },
   describe: "Latest corporate and agency bond sales",
   freshness: { source: "FINRA", status: "not-a-feed", basis: "last sales", observedKey: "lastTradeDate" },
   async load(args, ctx) {
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "";
-    const tape = await fetchBondTape(argument, ctx.signal);
-    const { query, bonds, tradeDate } = tape;
+    const tape = await fetchBondTape(argument, {
+      signal: ctx.signal,
+      // A stock ticker with no bonds of its own: its company, as its quote names it.
+      companyName: async (ticker) => {
+        const { symbol, exchange } = await resolveHeadlessInstrument(ctx, ticker);
+        return quotedCompanyName(ctx.marketData, symbol, exchange);
+      },
+    });
+    const { query, bonds, tradeDate, truncated, issuer, failures } = tape;
+    const shown = issuer && bonds.length > 0;
     return {
       sections: [{
-        // An empty answer dates itself in its message.
-        title: tradeDate && bonds.length > 0 ? `Last sales ${tradeDate}` : "Last sales",
+        // An empty answer is its message alone, dated in its own words.
+        title: bonds.length > 0 ? (tradeDate ? `Last sales ${tradeDate}` : "Last sales") : query ? "" : "Last sales",
         columns: COLUMNS,
         rows: bonds.map(reportRow),
-        ...(query ? { empty: noPrintsText(query, tradeDate) } : {}),
+        ...(query ? { empty: noPrintsText(query, tradeDate, issuer) } : {}),
       }],
       complete: true,
-      metadata: { tradeDate, matched: bonds.length, ...(query ? { query: query.text } : {}) },
+      ...(failures.length > 0 ? { errors: failures } : {}),
+      ...(truncated ? { notes: [TRUNCATED_TEXT] } : {}),
+      ...(shown ? { warnings: [issuerFallbackText(query!, issuer)] } : {}),
+      metadata: {
+        tradeDate,
+        matched: bonds.length,
+        ...(query ? { query: query.text } : {}),
+        ...(issuer ? { issuerName: issuer.name, company: issuer.company } : {}),
+        ...(truncated ? { truncated } : {}),
+      },
       // One issuer's rows are each issue's own last sale, however old: a history, not stale rows.
       ...(query ? { freshness: { oldest: null } } : {}),
     };
