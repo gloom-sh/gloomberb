@@ -82,7 +82,7 @@ function projectEarningsEstimatesHeadless(
       returned: rows.length,
       truncated: rows.length < matching.length,
       coverageNote: notice?.text,
-      epsBasis: `${EPS_BASIS_NOTE} TTM EPS sums the reported quarter rows when all four match a statement period; otherwise it is statement EPS.`,
+      epsBasis: `${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM), or the four statement quarters' diluted EPS when none is served; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
       unmatchedReportedPeriods,
     },
