@@ -32,7 +32,7 @@ test("what became of a symbol is one line from quote's sources: a listing that s
   expect(listingFateNotes(holder, { served: true, firstDate: "2022-06-13" })).toEqual([]);
 });
 
-test("a pane serves a symbol that trades at once, waits on a stopped line's lookup, and shows only where a moved company went", () => {
+test("a pane serves a symbol at once unless its quote shows the line ended, and shows only where a moved company went", () => {
   const now = Date.parse("2026-10-15T15:00:00Z");
   const aapl = { ...QUOTES.AAPL!, lastUpdated: now, lastTradeTime: now };
   const meta = { ...QUOTES.META!, lastUpdated: now, lastTradeTime: now };
@@ -40,13 +40,17 @@ test("a pane serves a symbol that trades at once, waits on a stopped line's look
     const found = listingFateGate({ symbol }, { quote, changes }, now);
     return found.kind === "moved" ? found.change.note : found.kind;
   };
-  // A quote that shows the symbol trading never waits on its lookup, however slow; nor does a symbol with no quote.
+  // Nothing waits on a lookup, however slow, but a line whose quote shows it ended: not a quote that trades,
+  // one cached from an earlier session, one still coming (a cold open), or no quote at all.
   expect(gate("AAPL", aapl, undefined)).toBe("serve");
+  const lastWeek = now - 7 * 24 * 60 * 60_000;
+  expect(gate("AAPL", { ...aapl, lastUpdated: lastWeek, lastTradeTime: lastWeek }, undefined)).toBe("serve");
+  expect(gate("AAPL", undefined, undefined)).toBe("serve");
   expect(gate("AAPL", null, undefined)).toBe("serve");
-  // A quote still coming, or one that stopped, waits for the lookup.
-  expect(gate("AAPL", undefined, undefined)).toBe("wait");
   expect(gate("HFC", QUOTES.HFC, undefined)).toBe("wait");
+  // A company that left with nothing known listed there waits for the quote; with a new listing named, it serves.
   expect(gate("HFC", undefined, CHANGES.HFC)).toBe("wait");
+  expect(gate("HFC", undefined, { ...CHANGES.HFC!, listedName: "Hightower Fund" })).toBe("serve");
   expect(gate("HFC", QUOTES.HFC, CHANGES.HFC)).toBe("HFC became DINO on 2022-03-15");
   expect(gate("RDS-A", QUOTES["RDS-A"], CHANGES["RDS-A"])).toBe("RDS-A became SHEL on 2022-01-31");
   // A lookup that failed or timed out is no change; a new company holding the symbol is not a move.

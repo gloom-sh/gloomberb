@@ -324,13 +324,14 @@ function fateQuote(entry: QueryEntry<Quote> | null): Quote | null | undefined {
 }
 
 /**
- * Whether a pane may ask for a symbol's data (`listingFateGate`): a symbol
- * whose company moved, with nothing new listed under it, has none of its own.
- * It reads the symbol's quote and change lookup as `quote` does: a symbol
- * whose quote shows it trading never waits on the lookup, a stopped line or a
- * quote still coming waits for it, and a gate still waiting after
- * LATE_CHANGE_WAIT_MS serves. The quote is watched only while the answer can
- * turn on it, so a symbol with no change on record costs no re-render per tick.
+ * Whether a pane shows a symbol's own data (`listingFateGate`): a symbol
+ * whose company moved, with nothing new listed under it, has none. It reads
+ * the symbol's quote and change lookup as `quote` does. A symbol is served
+ * at once, whatever is still loading, unless what is known says nothing
+ * trades under it (a line that ended, a company that left); only then does
+ * the pane wait for the rest, never longer than LATE_CHANGE_WAIT_MS. The
+ * quote is watched only while the answer can turn on it, so a symbol with no
+ * change on record costs no re-render per tick.
  */
 export function useListingFateGate(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): ListingFateGate {
   const coordinator = getSharedMarketDataCoordinator();
@@ -354,7 +355,7 @@ export function useListingFateGate(symbol: string | null | undefined, ticker: Ti
   const watchQuote = !!listing && (changes === undefined || !!changes?.moved);
   const quoteEntry = useQuoteEntry(watchQuote ? symbol : null, watchQuote ? ticker : null);
   const gate = listing && watchQuote ? listingFateGate(listing, { quote: fateQuote(quoteEntry), changes }) : SERVE_GATE;
-  // Nothing holds a pane longer than a stopped line's lookup may take.
+  // A wait never holds a pane longer than the commands wait for a fate.
   const [expired, setExpired] = useState<string | null>(null);
   const waiting = gate.kind === "wait";
   useEffect(() => {

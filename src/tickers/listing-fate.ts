@@ -205,11 +205,13 @@ export function fateListing(instrument: {
 }
 
 /**
- * What a pane does with a symbol before it asks for any data of it: serve
- * it, wait to know, or show that its company moved (`ListingFate.moved`) and
- * ask for nothing. The same rule as the commands: a symbol whose quote shows
- * it trading never waits on its change lookup; a stopped line, or one whose
- * quote is still coming, waits for the lookup; a lookup that failed or
+ * What a pane does with a symbol: serve it, wait to know, or show that its
+ * company moved (`ListingFate.moved`) instead of another security's data.
+ * A symbol waits only while what is known says nothing trades under it: a
+ * quote that shows the line ended waits for the change lookup, and a change
+ * that says the company left with nothing known listed there waits for the
+ * quote. Any other symbol is served at once, whatever is still coming, a
+ * quote cached from an earlier session included. A lookup that failed or
  * answered nothing is no change.
  */
 export type ListingFateGate =
@@ -222,16 +224,19 @@ const WAIT: ListingFateGate = { kind: "wait" };
 
 /**
  * `ListingFateGate` from what is known so far. `quote` and `changes` are
- * undefined while they load and null when there is none.
+ * undefined while they load and null when there is none. A move on record
+ * is told by the quote, which says whether the old line stopped or something
+ * new trades there (FB's fund); until it is in, the change's own word on
+ * what lists there now decides whether to wait for it.
  */
 export function listingFateGate(
   listing: { symbol: string; exchange?: string | null },
   { quote, changes }: { quote: Quote | null | undefined; changes: TickerChanges | null | undefined },
   now = Date.now(),
 ): ListingFateGate {
-  if (changes === undefined) return quote === null || (quote && !mayHaveMoved(quote, now)) ? SERVE : WAIT;
+  if (changes === undefined) return quote && endedTradingDate(quote, now) ? WAIT : SERVE;
   if (!changes?.moved) return SERVE;
-  if (quote === undefined) return WAIT;
+  if (quote === undefined) return movedAwayChange(describeTickerChange(listing.symbol, changes)) ? WAIT : SERVE;
   const { moved } = describeListingFate(listing, quote, changes, now);
   return moved ? { kind: "moved", change: moved } : SERVE;
 }
