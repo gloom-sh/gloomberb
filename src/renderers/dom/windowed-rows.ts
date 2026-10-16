@@ -21,7 +21,11 @@ export function useWindowedRows(
     if (!visible) return false;
     const buffer = Math.floor(list.options.overscan / 2);
     return (mounted.start > 0 && visible.startIndex < mounted.start + buffer)
-      || (mounted.end < list.options.count - 1 && visible.endIndex > mounted.end - buffer);
+      || (mounted.end < list.options.count - 1 && visible.endIndex > mounted.end - buffer)
+      // A much smaller viewport must also shed its old window. Keep hysteresis
+      // for ordinary wrapping, without retaining an arbitrarily large old view.
+      || visible.startIndex - mounted.start > list.options.overscan * 2
+      || mounted.end - visible.endIndex > list.options.overscan * 2;
   };
   const positionRows = (list: Virtualizer<HTMLElement, HTMLDivElement>) => {
     const total = list.getTotalSize();

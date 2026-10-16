@@ -21,6 +21,9 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
     getItemKey,
     getScrollElement: () => contentRef.current?.parentElement ?? null,
     estimateSize: () => estimateSize,
+    // Images can end at fractional pixels. Rounding rows accumulates gaps or
+    // overlaps, and a remounted row may have a different wrapping width.
+    measureElement: (node, entry) => entry?.borderBoxSize?.[0]?.blockSize ?? node.getBoundingClientRect().height,
     overscan,
     // Start with the tail, never a first render of the entire channel. The
     // actual viewport and row sizes replace these estimates before paint.
