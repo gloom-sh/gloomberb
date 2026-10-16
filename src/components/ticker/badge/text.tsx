@@ -7,7 +7,7 @@ import { tf } from "../../../i18n";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { splitLongTextSegmentByDisplayWidth } from "../../../utils/text-wrap";
-import { blendHex, colors } from "../../../theme/colors";
+import { blendHex, colors, hoverText } from "../../../theme/colors";
 
 export interface TickerBadgeTextProps {
   text: string;
@@ -35,7 +35,7 @@ function UsernameBadge({
   const backgroundColor = hovered
     ? blendHex(colors.bg, colors.borderFocused, 0.34)
     : blendHex(colors.bg, colors.borderFocused, 0.16);
-  const color = hovered ? colors.textBright : colors.borderFocused;
+  const color = hovered ? hoverText(backgroundColor) : colors.borderFocused;
   usePaneLinkMenuEntry(`user:${username}`, tf("Open {label}", { label: `@${username}` }), () => onOpen(username));
 
   return (

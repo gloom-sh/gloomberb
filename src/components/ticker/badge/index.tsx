@@ -1,10 +1,11 @@
 import { Box, Text, useTickerContextMenu, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
-import { blendHex, colors, priceColor } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import { getSharedRegistry } from "../../../plugins/registry";
 import type { Quote } from "../../../types/financials";
 import { useInlineTickerQuote, type InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
-import { getTickerBadgeText, type TickerBadgeStatus } from "./format";
+import { getTickerBadgeHoverText, getTickerBadgeText, tickerBadgeColors, type TickerBadgeStatus } from "./format";
+import { displayWidth, padTo } from "../../../utils/format";
 import { tf } from "../../../i18n";
 import { usePaneLinkMenuEntry } from "../../ui/external-link";
 
@@ -23,7 +24,15 @@ export interface TickerBadgeProps {
   onOpen: (symbol: string) => void;
 }
 
-const NATIVE_CHIP_STYLE = { height: "calc(100% - 4px)", borderRadius: 3 };
+const NATIVE_CHIP_STYLE = { height: "calc(100% - 4px)", borderRadius: 3, position: "relative" };
+/**
+ * Desktop and web: under the pointer the resting text stays in the flow,
+ * unseen, and the price is laid over it. The chip keeps the width its resting
+ * text gives it, whatever the font draws the price with, and the pointer stays
+ * over the same element, so nothing re-lays out and hover does not flicker.
+ */
+const NATIVE_RESTING_TEXT_UNDER_PRICE = { color: "transparent" };
+const NATIVE_PRICE_OVER_RESTING_TEXT = { position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" };
 
 export function TickerBadge({
   symbol,
@@ -50,11 +59,9 @@ export function TickerBadge({
   const tone = status === "ready" && quoteForDisplay
     ? priceColor(quoteForDisplay.changePercent)
     : colors.borderFocused;
-  const text = getTickerBadgeText({ symbol, status, quote, liveQuote, hovered, maxTextWidth });
-  const color = hovered ? colors.textBright : tone;
-  const backgroundColor = hovered
-    ? blendHex(colors.bg, tone, 0.42)
-    : blendHex(colors.bg, tone, 0.18);
+  const text = getTickerBadgeText({ symbol, status, quote, liveQuote, maxTextWidth });
+  const price = hovered ? getTickerBadgeHoverText({ symbol, status, quote, liveQuote, maxTextWidth }) : null;
+  const { fg: color, bg: backgroundColor } = tickerBadgeColors(tone, hovered);
   // An ambiguous symbol is worth opening: that is how the listing gets picked.
   const interactive = status !== "loading";
   usePaneLinkMenuEntry(interactive ? `ticker:${symbol}` : null, tf("Open {ticker}", { ticker: symbol }), () => onOpen(symbol));
@@ -93,9 +100,23 @@ export function TickerBadge({
           void openTickerContextMenu(event);
         }}
       >
-        <Text fg={color} attributes={TextAttributes.BOLD}>
-          {text}
-        </Text>
+        {nativePaneChrome ? (
+          <>
+            <Text fg={color} attributes={TextAttributes.BOLD} style={price ? NATIVE_RESTING_TEXT_UNDER_PRICE : undefined}>
+              {text}
+            </Text>
+            {price ? (
+              <Box flexDirection="row" justifyContent="center" alignItems="center" style={NATIVE_PRICE_OVER_RESTING_TEXT}>
+                <Text fg={color} attributes={TextAttributes.BOLD}>{price}</Text>
+              </Box>
+            ) : null}
+          </>
+        ) : (
+          // Cells are exact: the price, centred in the resting text's cells, takes as many.
+          <Text fg={color} attributes={TextAttributes.BOLD}>
+            {price ? padTo(price, displayWidth(text), "center") : text}
+          </Text>
+        )}
       </Box>
     </Box>
   );

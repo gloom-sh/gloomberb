@@ -90,7 +90,9 @@ export function TickerBadgeList({
   /**
    * Every symbol keeps its chip; only the spare columns buy prices. The budget
    * is spent left to right, so the first badges in a cell show their change and
-   * the ones that would overflow quietly shrink back to the symbol.
+   * the ones that would overflow quietly shrink back to the symbol. It is spent
+   * on resting text only: a hovered chip keeps its width, so hovering one never
+   * moves the others.
    */
   const budgets = useMemo(() => {
     let remaining = slack;
@@ -102,13 +104,12 @@ export function TickerBadgeList({
         status: badgeStatus(catalog[symbol]),
         quote: catalog[symbol]?.quote ?? null,
         liveQuote: liveQuotes,
-        hovered: hoveredSymbol === symbol,
         maxTextWidth: budget,
       });
       remaining -= displayWidth(chosen) - base;
       return budget;
     });
-  }, [catalog, hoveredSymbol, liveQuotes, named, slack]);
+  }, [catalog, liveQuotes, named, slack]);
 
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">

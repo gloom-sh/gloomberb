@@ -116,6 +116,26 @@ export function hoverBg(palette: ThemeColors = colors): string {
   return blendHex(palette.bg, palette.selected, 0.5);
 }
 
+/** Body-text contrast, which text on a hovered control keeps whatever the surface. */
+const HOVER_TEXT_MIN_CONTRAST = 4.5;
+
+/**
+ * Text on a control under the pointer: the theme's bright text, which hovered
+ * buttons, tabs and table actions light up to, pushed toward black or white
+ * only as far as `surface` needs for it to stay readable. A chip tinted with
+ * its own tone (a ticker's day move, a mention) is the case that needs it: a
+ * phosphor theme's bright text is its own hue, and red on a green chip is not
+ * readable.
+ */
+export function hoverText(surface: string, palette: ThemeColors = colors): string {
+  return blendForContrast(
+    palette.textBright,
+    surface,
+    higherContrast("#ffffff", "#000000", surface),
+    HOVER_TEXT_MIN_CONTRAST,
+  );
+}
+
 function syncThemeCssVariables(): void {
   const documentLike = (globalThis as {
     document?: { documentElement?: { style?: { setProperty: (name: string, value: string) => void } } };

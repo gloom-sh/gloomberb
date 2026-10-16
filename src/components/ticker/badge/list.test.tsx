@@ -15,6 +15,13 @@ const tui = createOpenTuiTestHarness();
 function createState() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-badge-list-test"));
   state.tickers.set("NFLX", createTestTicker("NFLX", "Netflix", { broker_contracts: [] }));
+  state.tickers.set("TSLA", createTestTicker("TSLA", "Tesla", { broker_contracts: [] }));
+  state.financials.set("TSLA", {
+    annualStatements: [],
+    quarterlyStatements: [],
+    priceHistory: [],
+    quote: { symbol: "TSLA", price: 250, currency: "USD", change: -12.5, changePercent: -5, lastUpdated: Date.now() },
+  });
   state.financials.set("NFLX", {
     annualStatements: [],
     quarterlyStatements: [],
@@ -31,13 +38,13 @@ function createState() {
   return state;
 }
 
-async function renderList(width: number) {
+async function renderList(width: number, symbols: string[] = ["NFLX"]) {
   const state = createState();
   setSharedRegistryForTests({ pinTicker: () => {} } as unknown as PluginRegistry);
   await act(async () => {
     await tui.render(
       <AppContext value={createStaticAppStore(state)}>
-        <TickerBadgeList symbols={["NFLX"]} width={width} />
+        <TickerBadgeList symbols={symbols} width={width} />
       </AppContext>,
       { width: width + 4, height: 1 },
     );
@@ -63,5 +70,22 @@ describe("TickerBadgeList", () => {
     const frame = await renderList(9);
     expect(frame).toContain("NFLX");
     expect(frame).not.toContain("+1.2");
+  });
+
+  test("hovering a chip shows its price without moving the chips after it", async () => {
+    const resting = (await renderList(30, ["NFLX", "TSLA"])).split("\n")[0]!;
+    expect(resting).toContain("NFLX +1.2%");
+    expect(resting).toContain("TSLA -5.0%");
+
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(resting.indexOf("NFLX") + 1, 0);
+      await tui.setup().renderOnce();
+    });
+    await tui.setup().renderOnce();
+    const hovered = tui.frame().split("\n")[0]!;
+
+    expect(hovered).toContain("$1,234.50");
+    expect(hovered).not.toContain("NFLX");
+    expect(hovered.indexOf("TSLA -5.0%")).toBe(resting.indexOf("TSLA -5.0%"));
   });
 });

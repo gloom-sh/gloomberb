@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { TickerBadgeText } from "./text";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
@@ -60,6 +61,33 @@ describe("TickerBadgeText", () => {
     await clickFrameText("TSLA -5.0%");
 
     expect(opened).toEqual(["TSLA"]);
+  });
+
+  test("a hovered chip shows its price in the cells it had at rest", async () => {
+    await tui.render(
+      <TickerBadgeText
+        text="Watching $TSLA now"
+        lineWidth={40}
+        catalog={{ TSLA: makeCatalogEntry() }}
+        textColor="#ffffff"
+        openTicker={() => {}}
+      />,
+      { width: 40, height: 4 },
+    );
+    await tui.setup().renderOnce();
+    const resting = tui.frame().split("\n")[0]!;
+    expect(resting).toContain("TSLA -5.0%");
+
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(resting.indexOf("TSLA") + 1, 0);
+      await tui.setup().renderOnce();
+    });
+    await tui.setup().renderOnce();
+    const hovered = tui.frame().split("\n")[0]!;
+
+    expect(hovered).toContain("$250.00");
+    expect(hovered).not.toContain("TSLA");
+    expect(hovered.indexOf("now")).toBe(resting.indexOf("now"));
   });
 
   test("renders usernames as clickable tags when a username opener is provided", async () => {
