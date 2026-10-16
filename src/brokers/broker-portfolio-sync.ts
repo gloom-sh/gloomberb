@@ -181,10 +181,16 @@ export function clearBrokerInstanceTickerData(
   brokerPortfolioIds: Set<string>,
   /** Portfolios this profile just took over: whatever another profile imported there goes too. */
   takenOverPortfolioIds: ReadonlySet<string> = new Set(),
+  /**
+   * Portfolios this sync writes. A position there without a profile came from
+   * another device's sync of the same account, so this one replaces it too.
+   */
+  syncedPortfolioIds: ReadonlySet<string> = new Set(),
 ): TickerRecord | null {
   const positions = ticker.metadata.positions.filter((position) =>
     position.brokerInstanceId !== instanceId
     && !(takenOverPortfolioIds.has(position.portfolio) && position.brokerInstanceId)
+    && !(syncedPortfolioIds.has(position.portfolio) && !position.brokerInstanceId)
   );
   const remainingPositionPortfolios = new Set(positions.map((position) => position.portfolio));
   const portfolios = ticker.metadata.portfolios.filter((portfolioId) =>
@@ -209,6 +215,65 @@ export function clearBrokerInstanceTickerData(
       broker_contracts: brokerContracts,
     },
   };
+}
+
+/** The profile a broker portfolio id was made for: `broker:<profile>:<account>`. */
+function brokerInstanceIdOfPortfolio(portfolioId: string): string | undefined {
+  return isBrokerPortfolioId(portfolioId) ? portfolioId.split(":")[1] || undefined : undefined;
+}
+
+/** The broker portfolios and profiles that still exist somewhere this device knows of. */
+export interface KnownBrokerHoldings {
+  portfolioIds: ReadonlySet<string>;
+  instanceIds: ReadonlySet<string>;
+}
+
+export function knownBrokerHoldings(
+  ...sources: Array<{ portfolios?: ReadonlyArray<{ id: string }>; brokerInstances?: ReadonlyArray<{ id: string }> }>
+): KnownBrokerHoldings {
+  return {
+    portfolioIds: new Set(sources.flatMap((source) => source.portfolios?.map((portfolio) => portfolio.id) ?? [])),
+    instanceIds: new Set(sources.flatMap((source) => source.brokerInstances?.map((instance) => instance.id) ?? [])),
+  };
+}
+
+/**
+ * A broker portfolio that is gone, along with the profile it was made for. One
+ * that still has its profile stays: that profile restores it on its next sync.
+ */
+function isGoneBrokerPortfolio(portfolioId: string, known: KnownBrokerHoldings): boolean {
+  if (!isBrokerPortfolioId(portfolioId) || known.portfolioIds.has(portfolioId)) return false;
+  const instanceId = brokerInstanceIdOfPortfolio(portfolioId);
+  return !instanceId || !known.instanceIds.has(instanceId);
+}
+
+function isLeftoverBrokerPosition(position: TickerPosition, known: KnownBrokerHoldings): boolean {
+  return isGoneBrokerPortfolio(position.portfolio, known)
+    && !(position.brokerInstanceId && known.instanceIds.has(position.brokerInstanceId));
+}
+
+/**
+ * The ticker without what removed broker profiles left on it: positions and
+ * links in portfolios that are gone with their profile, and contracts of
+ * profiles that are gone. A pull from another device brings such positions
+ * without the profile that imported them, as a profile never leaves its
+ * device, so nothing else ever clears them. Null when there is none.
+ */
+export function clearLeftoverBrokerHoldings(ticker: TickerRecord, known: KnownBrokerHoldings): TickerRecord | null {
+  const { metadata } = ticker;
+  const positions = metadata.positions.filter((position) => !isLeftoverBrokerPosition(position, known));
+  const held = new Set(positions.map((position) => position.portfolio));
+  const portfolios = metadata.portfolios.filter((portfolioId) => held.has(portfolioId) || !isGoneBrokerPortfolio(portfolioId, known));
+  const contracts = metadata.broker_contracts ?? [];
+  const brokerContracts = contracts.filter((contract) => !contract.brokerInstanceId || known.instanceIds.has(contract.brokerInstanceId));
+  if (
+    positions.length === metadata.positions.length
+    && portfolios.length === metadata.portfolios.length
+    && brokerContracts.length === contracts.length
+  ) {
+    return null;
+  }
+  return { ...ticker, metadata: { ...metadata, positions, portfolios, broker_contracts: brokerContracts } };
 }
 
 function inferBrokerAccountId(position: TickerPosition, portfolioId: string, instanceId: string): string | undefined {

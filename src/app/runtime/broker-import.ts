@@ -120,7 +120,8 @@ export function useBrokerImportRuntime({
       throwIfBrokerImportCancelled(options?.signal);
       options?.onCommitStart?.();
       commitStarted = true;
-      await result.commit();
+      // Onto the tickers as they are now: a pull or an edit while the broker answered stays.
+      await result.commit(tickerMap ? undefined : stateRef.current);
       throwIfBrokerImportCancelled(options?.signal);
       await applyBrokerImportResult(instanceId, result, baseConfig, {
         ...options,
@@ -155,7 +156,8 @@ export function useBrokerImportRuntime({
       deferPersistence: true,
       onResult: async (result, instance, previousConfig) => {
         if (!getBrokerInstance(stateRef.current.config.brokerInstances, instance.id)) return;
-        await result.commit();
+        // Startup syncs run beside the first pull, so they commit onto what it left.
+        await result.commit(stateRef.current);
         await applyBrokerImportResult(instance.id, result, previousConfig, {
           refreshImportedTickers: false,
         });

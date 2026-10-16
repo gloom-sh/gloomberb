@@ -28,8 +28,14 @@ import {
   encodeBuiltinDisabledPluginIds,
   normalizeBuiltinPluginStateMap,
 } from "../plugins/ownership";
-import { isRecord } from "../utils/guards";
+import { isFiniteNumber, isRecord, recordOrNull } from "../utils/guards";
+import { getBrokerInstance } from "../utils/broker-instances";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
+import {
+  clearLeftoverBrokerHoldings,
+  knownBrokerHoldings,
+  type KnownBrokerHoldings,
+} from "../brokers/broker-portfolio-sync";
 
 /**
  * What a saved layout mirrors from the live session rather than from the
@@ -922,6 +928,13 @@ function mergeConfigPayload(
   return next;
 }
 
+/** The entries of a pulled list that carry an id. */
+function idEntries(entries: unknown): Array<{ id: string }> {
+  return Array.isArray(entries)
+    ? entries.flatMap((entry) => (isRecord(entry) && typeof entry.id === "string" ? [{ id: entry.id }] : []))
+    : [];
+}
+
 function idsOf(entries: unknown[]): Set<string> {
   return new Set(entries.flatMap((entry) => (isRecord(entry) && typeof entry.id === "string" ? [entry.id] : [])));
 }
@@ -1058,23 +1071,152 @@ function lastSyncedTickersById(baselinePayload: unknown): Map<string, Record<str
   return byId;
 }
 
-/** Quotes churn on every refresh, so they cannot signal a user edit. */
-function withoutQuote(metadata: Record<string, unknown>): Record<string, unknown> {
-  const { quote: _quote, ...rest } = metadata;
+/**
+ * Compared as stored. What this device last synced is read back from storage
+ * at launch without the fields that were undefined, so set against a copy
+ * collected fresh as is, every ticker read as edited here: a device started
+ * after a while away kept all its old rows and pushed them over newer ones.
+ */
+function sameAsStored(left: unknown, right: unknown): boolean {
+  const stored = (value: unknown) => (value === undefined ? null : JSON.parse(JSON.stringify(value)));
+  return stableStringify(stored(left)) === stableStringify(stored(right));
+}
+
+/**
+ * A ticker's own fields. Quotes churn on every refresh, and which portfolios
+ * hold it, and how much, merges portfolio by portfolio.
+ */
+function tickerOwnFields(metadata: Record<string, unknown>): Record<string, unknown> {
+  const { quote: _quote, positions: _positions, portfolios: _portfolios, ...rest } = metadata;
   return rest;
 }
 
-function tickerChangedSinceLastSync(
-  current: TickerRecord | null | undefined,
-  lastSyncedTickers: Map<string, Record<string, unknown>> | null,
-): boolean {
-  if (!lastSyncedTickers || !current) return false;
-  const local = sanitizeTickerMetadata(current.metadata);
-  const baseline = lastSyncedTickers.get(current.metadata.ticker);
-  // No baseline entry means this device never uploaded the ticker: filed
+/** One portfolio's part of a ticker: whether it lists the ticker, and the positions it holds in it. */
+function holdingIn(positions: readonly TickerPosition[], links: readonly unknown[], portfolioId: string) {
+  return {
+    linked: links.includes(portfolioId),
+    positions: positions.filter((position) => position.portfolio === portfolioId).map(sanitizePosition),
+  };
+}
+
+interface PulledTickersMerge {
+  lastSyncedTickers: Map<string, Record<string, unknown>> | null;
+  /** This device's live broker portfolios, each with the side holding its latest broker sync. */
+  brokerPortfolios: ReadonlyMap<string, "local" | "pulled">;
+  known: KnownBrokerHoldings;
+}
+
+/**
+ * Which side holds the latest sync of each live broker portfolio. Its
+ * positions are what the broker last reported, so only a later sync replaces
+ * them: a pushed copy older than this device's (from a device that was away,
+ * or an older build) never takes away positions this device's broker reported
+ * since, whatever other portfolios hold on the same ticker.
+ */
+function latestBrokerPortfolioSyncs(
+  atPullStart: AppConfig,
+  live: AppConfig,
+  pulledPortfolios: unknown,
+): Map<string, "local" | "pulled"> {
+  const pulledSyncedAt = new Map<string, number>();
+  for (const portfolio of Array.isArray(pulledPortfolios) ? pulledPortfolios : []) {
+    if (isRecord(portfolio) && typeof portfolio.id === "string" && isFiniteNumber(portfolio.lastSyncedAt)) {
+      pulledSyncedAt.set(portfolio.id, portfolio.lastSyncedAt);
+    }
+  }
+  const sides = new Map<string, "local" | "pulled">();
+  for (const portfolio of live.portfolios) {
+    if (!getBrokerInstance(live.brokerInstances, portfolio.brokerInstanceId)) continue;
+    const localSyncedAt = atPullStart.portfolios.find((entry) => entry.id === portfolio.id)?.lastSyncedAt;
+    // Never synced here: its positions merge like a manual portfolio's.
+    if (!isFiniteNumber(localSyncedAt)) continue;
+    const pulled = pulledSyncedAt.get(portfolio.id);
+    // Later than this device's copy, and than a sync here that ended while the pull was out.
+    const pulledIsLater = pulled !== undefined
+      && pulled > localSyncedAt
+      && pulled >= (isFiniteNumber(portfolio.lastSyncedAt) ? portfolio.lastSyncedAt : 0);
+    sides.set(portfolio.id, pulledIsLater ? "pulled" : "local");
+  }
+  return sides;
+}
+
+/**
+ * A pulled ticker merged with this device's, portfolio by portfolio: this
+ * device's part in a portfolio stays when it changed it since it last synced,
+ * a live broker portfolio goes to the side with its latest sync, and the rest
+ * comes from the pull. Broker contracts never sync and stay local.
+ */
+function mergePulledTicker(
+  current: TickerRecord | undefined,
+  pulled: Record<string, unknown>,
+  merge: PulledTickersMerge,
+): TickerRecord {
+  const local = current?.metadata;
+  const baseline = merge.lastSyncedTickers?.get(String(pulled.ticker));
+  // Nothing to compare with (no copy here, or this device never synced): the pull is taken.
+  const comparable = !!local && !!merge.lastSyncedTickers;
+  // No copy last synced means this device never uploaded the ticker: filed
   // locally it is unsynced work, unfiled it is not something sync tracks.
-  if (!baseline) return isSyncableTicker(local);
-  return !valuesEqual(withoutQuote(local), withoutQuote(baseline));
+  const ownFieldsEdited = comparable && (baseline
+    ? !sameAsStored(tickerOwnFields(sanitizeTickerMetadata(local)), tickerOwnFields(baseline))
+    : isSyncableTicker(sanitizeTickerMetadata(local)));
+
+  const localPositions = local?.positions ?? [];
+  const localLinks = local?.portfolios ?? [];
+  const pulledPositions = Array.isArray(pulled.positions)
+    ? mergeLocalBrokerPositionIdentity(localPositions, pulled.positions as TickerPosition[])
+    : localPositions;
+  const pulledLinks = Array.isArray(pulled.portfolios)
+    ? pulled.portfolios.filter((portfolioId): portfolioId is string => typeof portfolioId === "string")
+    : localLinks;
+  const baselinePositions = Array.isArray(baseline?.positions) ? baseline.positions as TickerPosition[] : [];
+  const baselineLinks = Array.isArray(baseline?.portfolios) ? baseline.portfolios : [];
+
+  const portfolioIds = [...new Set([
+    ...localLinks, ...localPositions.map((position) => position.portfolio),
+    ...pulledLinks, ...pulledPositions.map((position) => position.portfolio),
+  ])];
+  const positions: TickerPosition[] = [];
+  const portfolios: string[] = [];
+  for (const portfolioId of portfolioIds) {
+    const brokerSide = merge.brokerPortfolios.get(portfolioId);
+    const takePulled = brokerSide
+      ? brokerSide === "pulled"
+      : !comparable || sameAsStored(
+        holdingIn(localPositions, localLinks, portfolioId),
+        holdingIn(baselinePositions, baselineLinks, portfolioId),
+      );
+    const [sidePositions, sideLinks] = takePulled ? [pulledPositions, pulledLinks] : [localPositions, localLinks];
+    positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId));
+    if (sideLinks.includes(portfolioId)) portfolios.push(portfolioId);
+  }
+
+  const record: TickerRecord = {
+    metadata: hydrateTickerMetadata({
+      ...(ownFieldsEdited ? local : { ...local, ...pulled }),
+      positions,
+      portfolios,
+      broker_contracts: local?.broker_contracts ?? [],
+    }),
+  };
+  return clearLeftoverBrokerHoldings(record, merge.known) ?? record;
+}
+
+/**
+ * A ticker the pull did not carry: without what removed broker profiles left,
+ * and without positions in a broker portfolio whose later sync elsewhere no
+ * longer reports the ticker. Null when nothing changes.
+ */
+function withoutUnpulledHoldings(ticker: TickerRecord, merge: PulledTickersMerge): TickerRecord | null {
+  const sold = (portfolioId: string) => merge.brokerPortfolios.get(portfolioId) === "pulled";
+  const { metadata } = ticker;
+  const positions = metadata.positions.filter((position) => !sold(position.portfolio));
+  const portfolios = metadata.portfolios.filter((portfolioId) => !sold(portfolioId));
+  const kept = positions.length === metadata.positions.length && portfolios.length === metadata.portfolios.length
+    ? ticker
+    : { ...ticker, metadata: { ...metadata, positions, portfolios } };
+  const cleaned = clearLeftoverBrokerHoldings(kept, merge.known) ?? kept;
+  return cleaned === ticker ? null : cleaned;
 }
 
 const CORE_CONFIG_CONTRIBUTOR_ID = "core.config";
@@ -1149,59 +1291,53 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     await loadHoldingExchangeRates(state.config, state.tickers, state.financials),
     state.brokerAccounts,
   ),
-  apply: async (payload, { baselinePayload, getState, isCurrent, dispatch, tickerRepository }) => {
+  apply: async (payload, { snapshot, baselinePayload, baselineState, getState, isCurrent, dispatch, tickerRepository }) => {
     if (!isRecord(payload)) return;
     hydrateProfileAnalytics(payload);
-    const lastSyncedTickers = lastSyncedTickersById(baselinePayload);
-    // The config contributor applies first, so these are the watchlists this
-    // pull left. Tickers here and pulled ones drop the ids of any list that is
-    // gone (removed elsewhere, or deleted by an older build that left its id on
-    // the tickers), so this device never pushes them back.
-    const watchlistIds = new Set(getState().config.watchlists.map((watchlist) => watchlist.id));
-    const incomingRecords: TickerRecord[] = [];
-    const rawTickers = Array.isArray(payload.tickers) ? payload.tickers : [];
-    for (const rawTicker of rawTickers) {
-      if (!isCurrent()) return;
-      if (!isRecord(rawTicker)) continue;
-      const current = typeof rawTicker.ticker === "string"
-        ? getState().tickers.get(rawTicker.ticker)
-        : null;
-      // Local edits the cloud has never seen (CLI positions, offline changes)
-      // win here and are uploaded by the push that follows this pull.
-      if (tickerChangedSinceLastSync(current, lastSyncedTickers)) continue;
-      const syncedPositions = Array.isArray(rawTicker.positions)
-        ? mergeLocalBrokerPositionIdentity(
-          current?.metadata.positions ?? [],
-          rawTicker.positions as TickerPosition[],
-        )
-        : current?.metadata.positions ?? [];
-      const metadata = hydrateTickerMetadata({
-        ...current?.metadata,
-        ...rawTicker,
-        positions: syncedPositions,
-        broker_contracts: current?.metadata.broker_contracts ?? [],
-      });
-      const record = withoutMissingWatchlists({ metadata }, watchlistIds);
-      await tickerRepository.saveTicker(record);
-      incomingRecords.push(record);
-    }
-
     if (!isCurrent()) return;
-    const nextTickers = new Map(getState().tickers);
-    for (const record of incomingRecords) {
+    // The config contributor applies first, so this is the config this pull left.
+    const state = getState();
+    const pulledConfig = recordOrNull(snapshot?.contributors[CORE_CONFIG_CONTRIBUTOR_ID]?.payload);
+    const pulledPortfolios = Array.isArray(payload.portfolios) ? payload.portfolios : pulledConfig?.portfolios;
+    const merge: PulledTickersMerge = {
+      lastSyncedTickers: lastSyncedTickersById(baselinePayload),
+      brokerPortfolios: latestBrokerPortfolioSyncs(baselineState.config, state.config, pulledPortfolios),
+      // A broker portfolio the pull still lists may only exist on another device: it stays.
+      known: knownBrokerHoldings(state.config, {
+        portfolios: [pulledPortfolios, pulledConfig?.portfolios].flatMap(idEntries),
+        brokerInstances: idEntries(pulledConfig?.brokerInstances),
+      }),
+    };
+    // Tickers here and pulled ones drop the ids of any watchlist that is gone
+    // (removed elsewhere, or deleted by an older build that left its id on the
+    // tickers), so this device never pushes them back.
+    const watchlistIds = new Set(state.config.watchlists.map((watchlist) => watchlist.id));
+
+    // Merged and handed to the app in one go, with no wait in between, so a
+    // broker sync committing meanwhile is not overwritten with an older row.
+    const nextTickers = new Map(state.tickers);
+    const changed: TickerRecord[] = [];
+    const pulledSymbols = new Set<string>();
+    for (const rawTicker of Array.isArray(payload.tickers) ? payload.tickers : []) {
+      if (!isRecord(rawTicker) || typeof rawTicker.ticker !== "string") continue;
+      pulledSymbols.add(rawTicker.ticker);
+      const current = state.tickers.get(rawTicker.ticker);
+      const record = withoutMissingWatchlists(mergePulledTicker(current, rawTicker, merge), watchlistIds);
+      if (current ? sameAsStored(record.metadata, hydrateTickerMetadata({ ...current.metadata })) : !isSyncableTicker(record.metadata)) continue;
       nextTickers.set(record.metadata.ticker, record);
+      changed.push(record);
     }
-    let pruned = false;
-    for (const ticker of nextTickers.values()) {
-      const next = withoutMissingWatchlists(ticker, watchlistIds);
+    for (const ticker of state.tickers.values()) {
+      if (pulledSymbols.has(ticker.metadata.ticker)) continue;
+      const kept = withoutUnpulledHoldings(ticker, merge) ?? ticker;
+      const next = withoutMissingWatchlists(kept, watchlistIds);
       if (next === ticker) continue;
-      if (!isCurrent()) return;
-      await tickerRepository.saveTicker(next);
       nextTickers.set(next.metadata.ticker, next);
-      pruned = true;
+      changed.push(next);
     }
-    if (!isCurrent() || (incomingRecords.length === 0 && !pruned)) return;
+    if (changed.length === 0) return;
     dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    for (const record of changed) await tickerRepository.saveTicker(record);
   },
 };
 

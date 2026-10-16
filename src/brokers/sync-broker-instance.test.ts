@@ -736,6 +736,87 @@ describe("switching an account to sign-in", () => {
   });
 });
 
+describe("a signed-in import over rows other portfolios hold", () => {
+  const signedIn: BrokerInstanceConfig = {
+    id: "signed-in-ibkr", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, enabled: true,
+  };
+  const signedInId = "broker:signed-in-ibkr:ACC";
+  const demoId = "broker:demo-work:WORK";
+  // Profiles removed long ago: one left its positions here, one came back with a pull, without its profile.
+  const goneId = "broker:ibkr-flex:ACC";
+  const pulledGoneId = "broker:ibkr-gateway:ACC";
+  const mainPosition = { portfolio: "main", shares: 4, avgCost: 50, currency: "USD", broker: "manual" };
+  const demoPosition = { portfolio: demoId, shares: 7, avgCost: 20, currency: "USD", broker: "demo", brokerInstanceId: "demo-work", brokerAccountId: "WORK" };
+  const config = (): AppConfig => ({
+    ...createDefaultConfig("/tmp/gloomberb-signed-in-over-other-rows"),
+    portfolios: [
+      { id: "main", name: "Main", currency: "USD" },
+      { id: signedInId, name: "ACC", currency: "USD", brokerId: "ibkr", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "ACC", lastSyncedAt: 5 },
+      { id: demoId, name: "WORK", currency: "USD", brokerId: "demo", brokerInstanceId: "demo-work", brokerAccountId: "WORK" },
+    ],
+    brokerInstances: [signedIn, createBrokerInstanceWithId("demo-work")],
+  });
+  const signedInBrokers = (positions: Array<{ ticker: string; shares: number }>) => new Map<string, BrokerAdapter>([
+    ["demo", createDemoBroker()],
+    ["signed-in", createSignedInBrokerAdapter({
+      request: async <T,>() => ({
+        accounts: [{ accountId: "ACC", name: "ACC", currency: "USD", source: "cloud" }],
+        positions: positions.map((position) => ({ ...position, exchange: "NASDAQ", avgCost: 10, currency: "USD", accountId: "ACC", brokerContract: { conId: 1, symbol: position.ticker } })),
+      }) as T,
+      findBroker: () => null,
+    })],
+  ]);
+
+  test("ends with what the account reports, clears what removed profiles left, and leaves live portfolios alone", async () => {
+    const tickerRepository = new JsonTickerRepository(undefined, [
+      createTestTicker("AAA", "AAA", {
+        portfolios: [goneId, pulledGoneId, demoId, "main"],
+        positions: [
+          { portfolio: goneId, shares: 8, broker: "ibkr", brokerInstanceId: "ibkr-flex", brokerAccountId: "ACC" },
+          { portfolio: pulledGoneId, shares: 9, broker: "ibkr" },
+          demoPosition,
+          mainPosition,
+        ],
+        broker_contracts: [{ brokerId: "ibkr", brokerInstanceId: "ibkr-flex", conId: 1, symbol: "AAA" }],
+      }),
+      // Pulled from another device's sync of this account, so without the profile; sold since.
+      createTestTicker("CCC", "CCC", { portfolios: [signedInId], watchlists: ["watchlist"], positions: [{ portfolio: signedInId, shares: 5, broker: "signed-in" }] }),
+    ]);
+
+    const result = await syncBrokerInstance({ config: config(), instanceId: "signed-in-ibkr", brokers: signedInBrokers([{ ticker: "AAA", shares: 12 }, { ticker: "BBB", shares: 3 }]), tickerRepository });
+
+    const aaa = (await tickerRepository.loadTicker("AAA"))!.metadata;
+    expect(aaa.positions).toEqual([demoPosition, mainPosition, expect.objectContaining({ portfolio: signedInId, shares: 12, brokerInstanceId: "signed-in-ibkr" })]);
+    expect(aaa.portfolios).toEqual([demoId, "main", signedInId]);
+    expect(aaa.broker_contracts).toEqual([expect.objectContaining({ brokerInstanceId: "signed-in-ibkr" })]);
+    expect((await tickerRepository.loadTicker("BBB"))!.metadata.positions).toEqual([expect.objectContaining({ portfolio: signedInId, shares: 3 })]);
+    expect((await tickerRepository.loadTicker("CCC"))!.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+    expect(result.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", signedInId, demoId]);
+  });
+
+  test("commits onto the tickers as they are by then, keeping what changed while the broker answered", async () => {
+    const before = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [demoId], positions: [demoPosition] })]]);
+    const tickerRepository = new JsonTickerRepository(undefined, [...before.values()]);
+
+    const result = await syncBrokerInstance({
+      config: config(),
+      instanceId: "signed-in-ibkr",
+      brokers: signedInBrokers([{ ticker: "AAA", shares: 12 }]),
+      tickerRepository,
+      existingTickers: before,
+      deferPersistence: true,
+    });
+    // Meanwhile a pull brought a position in the manual portfolio.
+    const live = new Map([["AAA", createTestTicker("AAA", "AAA", { portfolios: [demoId, "main"], positions: [demoPosition, mainPosition] })]]);
+    await result.commit({ tickers: live, config: config() });
+
+    const expected = [demoPosition, mainPosition, expect.objectContaining({ portfolio: signedInId, shares: 12 })];
+    expect(result.tickers.get("AAA")?.metadata.positions).toEqual(expected);
+    expect(result.updatedTickers.map((ticker) => ticker.metadata.positions)).toEqual([expected]);
+    expect((await tickerRepository.loadTicker("AAA"))!.metadata.positions).toEqual(expected);
+  });
+});
+
 describe("removing one of an account's profiles", () => {
   const flex: BrokerInstanceConfig = {
     id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", connectionMode: "flex", config: { connectionMode: "flex" }, enabled: true,
@@ -826,6 +907,18 @@ describe("removing one of an account's profiles", () => {
       positions: [expect.objectContaining({ brokerInstanceId: "signed-in-ibkr" })],
     });
     expect(synced).toEqual(["signed-in-ibkr"]);
+  });
+
+  test("removing a profile clears positions it left without its id, from another device's pull", async () => {
+    const pulled = createTestTicker("AAPL", "AAPL", {
+      portfolios: [portfolioId, "main"],
+      positions: [{ portfolio: portfolioId, shares: 10, broker: "signed-in" }, { portfolio: "main", shares: 1, broker: "manual" }],
+      broker_contracts: [],
+    });
+    const { state } = await remove({ instances: [signedIn], portfolio: heldBy("signed-in-ibkr"), tickers: [pulled], instanceId: "signed-in-ibkr" });
+
+    expect(state.config.portfolios).toEqual([]);
+    expect(state.tickers.get("AAPL")?.metadata).toMatchObject({ portfolios: ["main"], positions: [{ portfolio: "main", shares: 1 }] });
   });
 
   test("without a signed-in profile, the portfolio still goes with the profile that held it", async () => {

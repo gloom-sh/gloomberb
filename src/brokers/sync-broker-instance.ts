@@ -7,9 +7,11 @@ import type { TickerRecord } from "../types/ticker";
 import { getBrokerInstance } from "../utils/broker-instances";
 import {
   clearBrokerInstanceTickerData,
+  clearLeftoverBrokerHoldings,
   ensureBrokerPortfolio,
   findReusableBrokerPortfolioId,
   isHeldByOtherSignedInProfile,
+  knownBrokerHoldings,
   removeStaleBrokerPortfolios,
   resolvePortfolioBrokerId,
 } from "./broker-portfolio-sync";
@@ -33,6 +35,12 @@ export interface SyncBrokerInstanceArgs {
   deferPersistence?: boolean;
 }
 
+/** The app as it is when a sync commits, which may be seconds after the sync read it. */
+interface BrokerSyncCommitTarget {
+  tickers: ReadonlyMap<string, TickerRecord>;
+  config: Pick<AppConfig, "portfolios" | "brokerInstances">;
+}
+
 export interface SyncBrokerInstanceResult {
   config: AppConfig;
   tickers: Map<string, TickerRecord>;
@@ -41,7 +49,13 @@ export interface SyncBrokerInstanceResult {
   portfolioIds: string[];
   addedTickers: TickerRecord[];
   updatedTickers: TickerRecord[];
-  commit(): Promise<void>;
+  /**
+   * Writes the sync. Given the app as it is by then, the sync is first carried
+   * onto its tickers, so what changed while the broker answered (a pull from
+   * another device, an edit) stays; `tickers`, `addedTickers` and
+   * `updatedTickers` then say what was written.
+   */
+  commit(onto?: BrokerSyncCommitTarget): Promise<void>;
 }
 
 export interface SyncBrokerInstancesArgs {
@@ -310,62 +324,76 @@ export async function syncBrokerInstance({
     : []);
 
   nextConfig = removeStaleBrokerPortfolios(nextConfig, instance.id, currentPortfolioIds);
-  const cleanedTickers = new Map<string, TickerRecord>();
-  for (const ticker of tickers.values()) {
-    const cleanedTicker = clearBrokerInstanceTickerData(ticker, instance.id, brokerPortfolioIds, takenOverPortfolioIds);
-    if (!cleanedTicker) continue;
-    tickers.set(cleanedTicker.metadata.ticker, cleanedTicker);
-    cleanedTickers.set(cleanedTicker.metadata.ticker, cleanedTicker);
-  }
-
   nextConfig = await maybePersistResolvedBrokerConfig(nextConfig, instance, broker, persistResolvedBrokerConfig);
   throwIfBrokerImportCancelled(signal);
   nextConfig = markBrokerInstanceSynced(nextConfig, instance.id, syncedAt);
+  const syncedConfig = nextConfig;
 
-  const addedTickers = new Map<string, TickerRecord>();
-  const updatedTickers = new Map<string, TickerRecord>();
+  // What the sync does to the tickers, given them: it runs on the tickers it
+  // read, and again on the live ones when it commits after the broker answered.
+  const writeTickers = (source: ReadonlyMap<string, TickerRecord>, liveConfig?: BrokerSyncCommitTarget["config"]) => {
+    const tickers = new Map(source);
+    // Only a portfolio and a profile gone everywhere this device knows of make a leftover.
+    const known = knownBrokerHoldings(config, syncedConfig, ...(liveConfig ? [liveConfig] : []));
+    const cleanedTickers = new Map<string, TickerRecord>();
+    for (const ticker of tickers.values()) {
+      const cleared = clearBrokerInstanceTickerData(
+        ticker, instance.id, brokerPortfolioIds, takenOverPortfolioIds, currentPortfolioIds,
+      );
+      const cleanedTicker = clearLeftoverBrokerHoldings(cleared ?? ticker, known) ?? cleared;
+      if (!cleanedTicker) continue;
+      tickers.set(cleanedTicker.metadata.ticker, cleanedTicker);
+      cleanedTickers.set(cleanedTicker.metadata.ticker, cleanedTicker);
+    }
 
-  for (const position of positions) {
-    throwIfBrokerImportCancelled(signal);
-    const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, position.accountId, portfolioBrokerId);
-    if (heldElsewhere.has(portfolioId)) continue;
-    const { ticker, created } = upsertBrokerPositionTicker({
-      tickers,
-      instance,
-      portfolioId,
-      position,
-    });
-    if (created) {
-      addedTickers.set(position.ticker, ticker);
-    } else {
-      cleanedTickers.delete(ticker.metadata.ticker);
-      if (!addedTickers.has(position.ticker)) {
+    const addedTickers = new Map<string, TickerRecord>();
+    const updatedTickers = new Map<string, TickerRecord>();
+
+    for (const position of positions) {
+      throwIfBrokerImportCancelled(signal);
+      const portfolioId = findReusableBrokerPortfolioId(syncedConfig, instance, position.accountId, portfolioBrokerId);
+      if (heldElsewhere.has(portfolioId)) continue;
+      const { ticker, created } = upsertBrokerPositionTicker({
+        tickers,
+        instance,
+        portfolioId,
+        position,
+      });
+      if (created) {
+        addedTickers.set(position.ticker, ticker);
+      } else {
+        cleanedTickers.delete(ticker.metadata.ticker);
+        if (!addedTickers.has(position.ticker)) {
+          updatedTickers.set(position.ticker, ticker);
+        }
+      }
+
+      tickers.set(position.ticker, ticker);
+      if (addedTickers.has(position.ticker)) {
+        addedTickers.set(position.ticker, ticker);
+      } else {
         updatedTickers.set(position.ticker, ticker);
       }
     }
 
-    tickers.set(position.ticker, ticker);
-    if (addedTickers.has(position.ticker)) {
-      addedTickers.set(position.ticker, ticker);
-    } else {
-      updatedTickers.set(position.ticker, ticker);
+    for (const ticker of cleanedTickers.values()) {
+      if (!addedTickers.has(ticker.metadata.ticker) && !updatedTickers.has(ticker.metadata.ticker)) {
+        updatedTickers.set(ticker.metadata.ticker, ticker);
+      }
     }
-  }
+    return { tickers, addedTickers: [...addedTickers.values()], updatedTickers: [...updatedTickers.values()] };
+  };
 
-  for (const ticker of cleanedTickers.values()) {
-    if (!addedTickers.has(ticker.metadata.ticker) && !updatedTickers.has(ticker.metadata.ticker)) {
-      updatedTickers.set(ticker.metadata.ticker, ticker);
-    }
-  }
-
+  let written = writeTickers(tickers);
   let committed = false;
-  const commit = async () => {
+  const commit = async (onto?: BrokerSyncCommitTarget) => {
     if (committed) return;
     throwIfBrokerImportCancelled(signal);
+    if (onto) written = writeTickers(onto.tickers, onto.config);
     if (resources) {
       persistBrokerAccounts(resources, instance, broker, brokerAccounts);
     }
-    await Promise.all([...addedTickers.values(), ...updatedTickers.values()].map((ticker) => (
+    await Promise.all([...written.addedTickers, ...written.updatedTickers].map((ticker) => (
       tickerRepository.saveTicker(ticker)
     )));
     committed = true;
@@ -377,12 +405,12 @@ export async function syncBrokerInstance({
 
   return {
     config: nextConfig,
-    tickers,
+    get tickers() { return written.tickers; },
     brokerAccounts,
     positions,
     portfolioIds,
-    addedTickers: [...addedTickers.values()],
-    updatedTickers: [...updatedTickers.values()],
+    get addedTickers() { return written.addedTickers; },
+    get updatedTickers() { return written.updatedTickers; },
     commit,
   };
 }

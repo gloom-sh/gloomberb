@@ -513,6 +513,119 @@ describe("core sync contributors", () => {
     expect(current.tickers.get("NVDA")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["tech"] });
   });
 
+  describe("pulled broker positions", () => {
+    const signedIn = { id: "signed-in-ibkr", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {} };
+    const demo = { id: "demo-live", brokerType: "demo", label: "Demo", config: {} };
+    const signedInId = "broker:signed-in-ibkr:ACC";
+    const demoId = "broker:demo-live:WORK";
+    // A profile removed long ago, as another device still pushes it: no portfolio, no profile.
+    const goneId = "broker:ibkr-flex:ACC";
+    const signedInPosition = (shares: number) => ({
+      portfolio: signedInId, shares, broker: "signed-in", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "ACC",
+    });
+    const demoPosition = (shares: number) => ({ portfolio: demoId, shares, broker: "demo", brokerInstanceId: "demo-live", brokerAccountId: "WORK" });
+    const mainPosition = { portfolio: "main", shares: 4, avgCost: 50, currency: "USD", broker: "manual" };
+    const gonePosition = (shares: number) => ({ portfolio: goneId, shares, broker: "ibkr" });
+
+    function deviceConfig(signedInSyncedAt: number) {
+      const config = createDefaultConfig("/tmp/gloomberb-sync-pulled-broker-positions");
+      config.brokerInstances = [signedIn, demo];
+      config.portfolios = [
+        ...config.portfolios,
+        { id: signedInId, name: "ACC", currency: "USD", brokerId: "ibkr", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "ACC", lastSyncedAt: signedInSyncedAt },
+        { id: demoId, name: "WORK", currency: "USD", brokerId: "demo", brokerInstanceId: "demo-live", brokerAccountId: "WORK", lastSyncedAt: 100 },
+      ];
+      return config;
+    }
+
+    async function pull(state: ReturnType<typeof createInitialState>, pulled: unknown, baselinePayload: unknown) {
+      let current = state;
+      const saved: string[] = [];
+      await coreCollectionsSyncContributor.apply?.(pulled, {
+        baselinePayload,
+        baselineState: state,
+        state,
+        getState: () => current,
+        isCurrent: () => true,
+        dispatch: (action: { type: string; tickers?: typeof state.tickers }) => {
+          if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+        },
+        tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record.metadata.ticker); } },
+      } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
+      return { state: current, saved };
+    }
+
+    // The device that holds the signed-in account pulls what a device that was
+    // away pushed: its own old copies of these rows, before sign-in, with the
+    // positions of a profile removed since.
+    test("a pull of an older copy leaves this device's broker positions alone and brings no leftovers of removed profiles", async () => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: [signedInId], positions: [signedInPosition(10)] })],
+        ["BBB", createTestTicker("BBB", "BBB", {
+          portfolios: [signedInId, demoId, "main"],
+          positions: [signedInPosition(3), demoPosition(7), mainPosition],
+        })],
+        ["CCC", createTestTicker("CCC", "CCC", { portfolios: [signedInId], positions: [signedInPosition(5)] })],
+        ["EEE", createTestTicker("EEE", "EEE", { portfolios: [goneId], watchlists: ["watchlist"], positions: [gonePosition(1)] })],
+      ]);
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+
+      const away = createInitialState(deviceConfig(200));
+      away.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: [goneId], positions: [gonePosition(8)] })],
+        ["BBB", createTestTicker("BBB", "BBB", { portfolios: [goneId, demoId, "main"], positions: [gonePosition(2), demoPosition(7), mainPosition] })],
+        ["CCC", state.tickers.get("CCC")!],
+        ["DDD", createTestTicker("DDD", "DDD", { portfolios: [goneId], positions: [gonePosition(6)] })],
+      ]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: away });
+
+      const { state: after, saved } = await pull(state, pulled, pushed);
+
+      expect(after.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: [signedInId], positions: [signedInPosition(10)] });
+      expect(after.tickers.get("BBB")?.metadata).toMatchObject({
+        portfolios: [signedInId, demoId, "main"],
+        positions: [signedInPosition(3), demoPosition(7), mainPosition],
+      });
+      expect(after.tickers.has("DDD")).toBe(false);
+      // Already here: the leftover goes, the ticker's own place in a watchlist stays.
+      expect(after.tickers.get("EEE")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+      expect(saved.sort()).toEqual(["EEE"]);
+    });
+
+    // The device that was away, started again, pulls what the signed-in one pushed.
+    test("a device back from a while away takes the rows it never changed, and a newer broker sync replaces its positions", async () => {
+      const elsewhere = createInitialState(deviceConfig(300));
+      elsewhere.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: [signedInId], positions: [signedInPosition(10)] })],
+        ["BBB", createTestTicker("BBB", "BBB", { portfolios: [signedInId, "main"], positions: [signedInPosition(3), mainPosition] })],
+      ]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const state = createInitialState(deviceConfig(200));
+      state.tickers = new Map([
+        ["AAA", createTestTicker("AAA", "AAA", { portfolios: [goneId], positions: [gonePosition(8)] })],
+        ["BBB", createTestTicker("BBB", "BBB", { portfolios: [signedInId, demoId, "main"], positions: [signedInPosition(3), demoPosition(7), mainPosition] })],
+        // Sold since: the newer sync elsewhere no longer reports it.
+        ["CCC", createTestTicker("CCC", "CCC", { portfolios: [signedInId], watchlists: ["watchlist"], positions: [signedInPosition(5)] })],
+      ]);
+      // What this device pushed before it closed, as read back from storage at launch.
+      const pushed = JSON.parse(JSON.stringify(await coreCollectionsSyncContributor.collect({ state })));
+
+      const { state: after } = await pull(state, pulled, pushed);
+
+      // Without the profile: that never leaves the device that imported it.
+      expect(after.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: [signedInId], positions: [{ portfolio: signedInId, shares: 10, broker: "signed-in" }] });
+      // Elsewhere does not hold this device's other broker portfolio: it stays.
+      expect(after.tickers.get("BBB")?.metadata).toMatchObject({
+        portfolios: [signedInId, demoId, "main"],
+        positions: [signedInPosition(3), demoPosition(7), mainPosition],
+      });
+      expect(after.tickers.get("CCC")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+    });
+  });
+
   test("a watchlist removed elsewhere leaves no id on tickers, pulled or local", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-watchlist-removal-test");
     config.watchlists = [{ id: "watchlist", name: "Watchlist" }, { id: "tech", name: "Tech" }];
