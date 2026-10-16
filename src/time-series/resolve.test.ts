@@ -2095,6 +2095,36 @@ describe("resolveChartSpecData", () => {
     }
   });
 
+  test("a fresh chart of a day the history lacks opens its candle with the session's range, mid-session and just after the close", async () => {
+    // Friday 16 Oct: the history ends on Thursday, so Friday's candle is the quote's.
+    const source = { kind: "security" as const, instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
+    const history = [{ date: new Date("2026-10-15T00:00:00Z"), open: 346.95, high: 347.85, low: 341.6, close: 342, volume: 39_678_300 }];
+    const session = { open: 346.085, high: 347.82, low: 340.46, volume: 60_000_000 };
+    const resolveAt = async (time: string, quote: Record<string, unknown>) => {
+      const now = Date.parse(time);
+      const result = await resolveChartSpecData(chartSpec({
+        viewport: { range: "1M", resolution: "1d" },
+        series: [chartSeries({ source, style: "candles" })],
+      }), {
+        dataProvider: createTestDataProvider({ getPriceHistoryForResolution: async () => history }),
+        now: new Date(now),
+        quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+          symbol: "AAPL", currency: "USD", change: 1.46, changePercent: 0.43, previousClose: 342, listingExchangeName: "NASDAQ",
+          lastUpdated: now - 60_000, ...session, ...quote,
+        } as never]]),
+      });
+      expect(result.errors).toEqual([]);
+      return result.series[0]?.points.at(-1);
+    };
+    expect(await resolveAt("2026-10-16T17:00:00Z", { price: 345, marketState: "REGULAR" }))
+      .toMatchObject({ date: new Date("2026-10-16T00:00:00Z"), open: 346.085, high: 347.82, low: 340.46, value: 345, volume: 60_000_000 });
+    // After-hours print under the day's low: the close is the regular close, the low the session's.
+    expect(await resolveAt("2026-10-16T20:10:00Z", {
+      price: 340, marketState: "POST", postMarketPrice: 340, changeSessionDate: "2026-10-16",
+      regularClose: 343.46, regularCloseSessionDate: "2026-10-16", regularChange: 1.46, regularChangePercent: 0.427,
+    })).toMatchObject({ open: 346.085, high: 347.82, low: 340.46, value: 343.46 });
+  });
+
   test("reuses raw source loads while live quotes recompute the chart tail", async () => {
     const now = Date.parse("2026-05-15T20:30:00Z");
     const source = {

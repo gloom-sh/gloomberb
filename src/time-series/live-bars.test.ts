@@ -22,6 +22,10 @@ function bar(time: string, open: number, high: number, low: number, close: numbe
   return { date: new Date(at(time)), open, high, low, close, volume };
 }
 
+function dated(date: string, open: number, high: number, low: number, close: number, volume: number): PricePoint {
+  return { date: new Date(`${date}T00:00:00Z`), open, high, low, close, volume };
+}
+
 describe("LiveBarAccumulator", () => {
   test("folds every quote into the forming bar and opens a new bar at each boundary", () => {
     const history = [bar("14:00:00", 100, 101, 99, 100, 5_000), bar("14:01:00", 100, 100.5, 99.5, 100, 800)];
@@ -106,6 +110,92 @@ describe("LiveBarAccumulator", () => {
     expect(points).toHaveLength(2);
     expect(points[0]?.volume).toBe(40_500_000);
     expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), open: 99, high: 101, low: 99, close: 101, volume: 2_600_000 });
+  });
+
+  describe("a calendar bar formed from the quote takes the session's own range", () => {
+    // Tuesday 22 Sep 2026: the history ends on Monday's candle, as a fresh process reads it.
+    const history = [dated("2026-09-21", 100, 104, 98, 103, 40_000_000)];
+    const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1d" as const, exchange: "NASDAQ" });
+    const session = { open: 101, high: 106, low: 100.5 };
+
+    test("mid-session: open, high and low from the quote, widened by later prints", () => {
+      const bars = new LiveBarAccumulator();
+      let next = quote("15:00:00", 105, 12_000_000, session);
+      expect(bars.apply(history, next, options(next)).at(-1)).toEqual({
+        date: new Date("2026-09-22T00:00:00Z"), open: 101, high: 106, low: 100.5, close: 105, volume: 12_000_000,
+      });
+      next = quote("15:30:00", 107, 13_000_000, { ...session, high: 107.2 });
+      expect(bars.apply(history, next, options(next)).at(-1)).toMatchObject({ open: 101, high: 107.2, low: 100.5, close: 107, volume: 13_000_000 });
+      // A quote without the session's range falls back to the prints alone.
+      next = quote("16:00:00", 99, 14_000_000);
+      expect(bars.apply(history, next, options(next)).at(-1)).toMatchObject({ open: 101, high: 107.2, low: 99, close: 99 });
+      expect(new LiveBarAccumulator().apply(history, next, options(next)).at(-1)).toMatchObject({ open: 99, high: 99, low: 99, close: 99 });
+    });
+
+    test("inside the settle window after the close: the session's range, closing at the regular close", () => {
+      const closed = (time: string, print: number): Quote => quote(time, print, 40_000_000, {
+        ...session, marketState: "POST", postMarketPrice: print, changeSessionDate: "2026-09-22", regularClose: 103.5,
+        regularCloseSessionDate: "2026-09-22", regularChange: 0.5, regularChangePercent: 0.48,
+      });
+      const bars = new LiveBarAccumulator();
+      let next = closed("20:10:00", 102.5);
+      expect(bars.apply(history, next, options(next)).at(-1)).toMatchObject({
+        date: new Date("2026-09-22T00:00:00Z"), open: 101, high: 106, low: 100.5, close: 103.5, volume: 40_000_000,
+      });
+      // An after-hours print below the day's low is not part of the session.
+      next = closed("20:20:00", 95);
+      expect(bars.apply(history, next, options(next)).at(-1)).toMatchObject({ open: 101, high: 106, low: 100.5, close: 103.5 });
+    });
+
+    test("a range that belongs to another session, or to other units, is not taken", () => {
+      let next = quote("15:00:00", 105, 12_000_000, { ...session, changeSessionDate: "2026-09-21" });
+      expect(new LiveBarAccumulator().apply(history, next, options(next)).at(-1)).toMatchObject({ open: 105, high: 105, low: 105 });
+      next = quote("15:00:00", 105, 12_000_000, { open: 10_100, high: 10_600, low: 10_050 });
+      expect(new LiveBarAccumulator().apply(history, next, options(next)).at(-1)).toMatchObject({ open: 105, high: 105, low: 105 });
+    });
+  });
+
+  describe("a weekly or monthly bar keeps the open of its period", () => {
+    const options = (next: Quote, resolution: "1wk" | "1mo") => ({ now: next.lastUpdated, resolution, exchange: "NASDAQ" });
+    const day = (date: string, time: string, price: number, overrides: Partial<Quote>): Quote =>
+      ({ ...quote("00:00:00", price, 30_000_000, overrides), lastUpdated: Date.parse(`${date}T${time}Z`) });
+
+    test("history holding earlier days of the period: the open stays, the range widens", () => {
+      // Thursday's session over the week's bar from Monday.
+      const history = [dated("2026-09-14", 98, 101, 96, 99, 150_000_000), dated("2026-09-21", 100, 104, 98, 103, 90_000_000)];
+      const next = day("2026-09-24", "15:00:00", 107, { open: 103.5, high: 108, low: 102 });
+      expect(new LiveBarAccumulator().apply(history, next, options(next, "1wk")).at(-1)).toMatchObject({
+        date: new Date("2026-09-21T00:00:00Z"), open: 100, high: 108, low: 98, close: 107,
+      });
+      const monthly = [dated("2026-08-01", 90, 99, 88, 97, 2_000_000_000), dated("2026-09-01", 97, 104, 94, 103, 1_000_000_000)];
+      expect(new LiveBarAccumulator().apply(monthly, next, options(next, "1mo")).at(-1)).toMatchObject({
+        date: new Date("2026-09-01T00:00:00Z"), open: 97, high: 108, low: 94, close: 107,
+      });
+    });
+
+    test("a period's first session opens its bar with its own open; a later one cannot name the period's", () => {
+      const weekly = [dated("2026-09-14", 98, 101, 96, 99, 150_000_000)];
+      // Monday 21 Sep opens the week.
+      let next = day("2026-09-21", "15:00:00", 105, { open: 101, high: 106, low: 100.5 });
+      expect(new LiveBarAccumulator().apply(weekly, next, options(next, "1wk")).at(-1)).toMatchObject({
+        date: new Date("2026-09-21T00:00:00Z"), open: 101, high: 106, low: 100.5, close: 105,
+      });
+      // Tuesday's session is the week's second: its open is not the week's.
+      next = day("2026-09-22", "15:00:00", 105, { open: 101, high: 106, low: 100.5 });
+      expect(new LiveBarAccumulator().apply(weekly, next, options(next, "1wk")).at(-1)).toMatchObject({
+        date: new Date("2026-09-21T00:00:00Z"), open: 105, high: 106, low: 100.5, close: 105,
+      });
+      // Thursday 1 Oct opens October; Friday 2 Oct is its second session.
+      const monthly = [dated("2026-09-01", 97, 104, 94, 103, 1_000_000_000)];
+      next = day("2026-10-01", "15:00:00", 105, { open: 101, high: 106, low: 100.5 });
+      expect(new LiveBarAccumulator().apply(monthly, next, options(next, "1mo")).at(-1)).toMatchObject({
+        date: new Date("2026-10-01T00:00:00Z"), open: 101, high: 106, low: 100.5,
+      });
+      next = day("2026-10-02", "15:00:00", 105, { open: 101, high: 106, low: 100.5 });
+      expect(new LiveBarAccumulator().apply(monthly, next, options(next, "1mo")).at(-1)).toMatchObject({
+        date: new Date("2026-10-01T00:00:00Z"), open: 105, high: 106, low: 100.5,
+      });
+    });
   });
 
   test("an overnight price moves no daily candle: no history covers that session", () => {

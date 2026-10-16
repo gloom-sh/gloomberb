@@ -8,6 +8,7 @@ import {
   liveQuoteObservation,
   MIN_LIVE_QUOTE_TAIL_GAP_MS,
   quoteBelongsToLatestBar,
+  quoteSessionRange,
 } from "./chart-data";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
 import { isFiniteNumber } from "../utils/guards";
@@ -271,6 +272,8 @@ export class LiveBarAccumulator {
 
     const { resolution } = options;
     const calendar = isCalendarResolution(resolution);
+    // A daily or longer bar also takes the session's own range from the quote: what traded before this watch began.
+    const range = calendar ? quoteSessionRange(quote, observation, resolution, exchange) : null;
     const preMarket = !!quote.marketState && PRE_MARKET_STATES.has(quote.marketState);
     const previousTime = this.lastTime;
     let previous = this.cumulative;
@@ -305,15 +308,15 @@ export class LiveBarAccumulator {
       return;
     }
     if (forming && this.inBar(time, forming.time, options, exchange)) {
-      forming.high = Math.max(forming.high, price);
-      forming.low = Math.min(forming.low, price);
+      forming.high = Math.max(forming.high, price, range?.high ?? price);
+      forming.low = Math.min(forming.low, price, range?.low ?? price);
       forming.close = price;
       forming.point = null;
       return;
     }
     if (!forming && this.inBar(time, anchor.time, options, exchange)) {
-      anchor.high = Math.max(anchor.high ?? price, price);
-      anchor.low = Math.min(anchor.low ?? price, price);
+      anchor.high = Math.max(anchor.high ?? price, price, range?.high ?? price);
+      anchor.low = Math.min(anchor.low ?? price, price, range?.low ?? price);
       anchor.close = price;
       return;
     }
@@ -346,9 +349,9 @@ export class LiveBarAccumulator {
     const sessionCount = calendar && previous === null && !preMarket;
     this.bars.push({
       time: barTime,
-      open: price,
-      high: price,
-      low: price,
+      open: range?.open ?? price,
+      high: range?.high ?? price,
+      low: range?.low ?? price,
       close: price,
       volumeStart: sessionCount ? 0 : previous ?? volume,
       volumeEnd: null,
