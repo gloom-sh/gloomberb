@@ -8,8 +8,8 @@ import { serveFixturePage, type FixturePage } from "./page";
  * Panes at rest, pixel for pixel, against a base checkout: each fixture layout
  * (fixture.tsx) drawn by both checkouts in the same headless Chrome, at the
  * same size, compared pixel by pixel. Reports how many pixels differ, in which
- * pane and where, and saves the base, head and diff images of every layout
- * that differs under the cache folder.
+ * pane and where, and saves base and head images of every layout for review,
+ * plus a diff image of each layout that differs, under the cache folder.
  *
  *   bun run check:pane-rest --base <checkout> [--head <checkout>] [--width 1440] [--height 900]
  *     [--only chat] [--theme paper] [--label rest-diff]
@@ -163,12 +163,10 @@ async function main(): Promise<void> {
         .map((region) => `${region.where}: ${region.pixels} px in ${region.box.width} by ${region.box.height} at (${region.box.x}, ${region.box.y})`)
         .join("; ");
       lines.push(`| ${layout.name} | ${diff.pixels} | ${where || "nothing"} |`);
-      if (diff.image) {
-        const slug = layout.query.replace(/[^a-z0-9]+/gi, "-");
-        await Bun.write(join(outDir, `${slug}-base.png`), Buffer.from(before.png, "base64"));
-        await Bun.write(join(outDir, `${slug}-head.png`), Buffer.from(after.png, "base64"));
-        await Bun.write(join(outDir, `${slug}-diff.png`), Buffer.from(diff.image, "base64"));
-      }
+      const slug = layout.query.replace(/[^a-z0-9]+/gi, "-");
+      await Bun.write(join(outDir, `${slug}-base.png`), Buffer.from(before.png, "base64"));
+      await Bun.write(join(outDir, `${slug}-head.png`), Buffer.from(after.png, "base64"));
+      if (diff.image) await Bun.write(join(outDir, `${slug}-diff.png`), Buffer.from(diff.image, "base64"));
       console.error(`${layout.name}: ${diff.pixels} px differ`);
     }
   } finally {
@@ -176,7 +174,7 @@ async function main(): Promise<void> {
     await base.close();
     await head.close();
   }
-  lines.push("", `Images of every layout that differs: ${outDir}`);
+  lines.push("", `Images of every layout, plus differences: ${outDir}`);
   console.log(lines.join("\n"));
 }
 

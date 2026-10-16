@@ -171,20 +171,28 @@ window.__chat = {
         let node;
         while ((node = walker.nextNode())) {
           if (!node.textContent.trim()) continue;
+          let clipLeft = -Infinity, clipRight = Infinity;
+          for (let el = node.parentElement; el; el = el.parentElement) {
+            if (getComputedStyle(el).overflowX !== 'visible') {
+              const clip = el.getBoundingClientRect();
+              clipLeft = Math.max(clipLeft, clip.left);
+              clipRight = Math.min(clipRight, clip.right);
+            }
+          }
+          const outside = (rect) => {
+            if (rect.bottom <= view.top || rect.top >= view.bottom) return 0;
+            const left = Math.max(rect.left, clipLeft), right = Math.min(rect.right, clipRight);
+            return right > left ? Math.max(track.left - left, right - Math.min(track.right, pane.right)) : 0;
+          };
           const range = document.createRange();
           range.selectNodeContents(node);
-          for (const rect of range.getClientRects()) {
-            if (rect.bottom <= view.top || rect.top >= view.bottom) continue;
-            let left = rect.left, right = rect.right;
-            for (let el = node.parentElement; el; el = el.parentElement) {
-              if (getComputedStyle(el).overflowX !== 'visible') {
-                const clip = el.getBoundingClientRect();
-                left = Math.max(left, clip.left);
-                right = Math.min(right, clip.right);
-              }
-            }
-            if (right <= left) continue;
-            const px = Math.max(track.left - left, right - Math.min(track.right, pane.right));
+          if (![...range.getClientRects()].some((rect) => outside(rect) > 0.5)) continue;
+          // A wrapped line's trailing space has a range but paints no glyph.
+          for (let i = 0; i < node.textContent.length; i++) {
+            if (!node.textContent[i].trim()) continue;
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const px = outside(range.getBoundingClientRect());
             if (px > 0.5) glyphOverflow.push({ id: row.getAttribute('data-gloom-chat-message-id'), text: node.textContent.slice(0, 40), px });
           }
         }
