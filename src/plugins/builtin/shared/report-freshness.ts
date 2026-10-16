@@ -2,6 +2,7 @@ import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { delayedFeedLagMs, readIndexSession } from "../../../market-data/market/freshness";
+import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
 import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
@@ -88,11 +89,13 @@ export function quoteFreshnessFields(
 
 /**
  * One quote as a report reads it among the observations behind a view: its
- * freshness fields and when it was updated. A board publishes one per quote
- * it shows, so `fn` and `shot` date it as `quote` dates the same quotes.
+ * freshness fields and when the price it headlines was observed
+ * (quoteHeadlineTime: in a pre-market nothing has traded in, the close it
+ * stands at). A board publishes one per quote it shows, so `fn` and `shot`
+ * date it as `quote` dates the same quotes.
  */
 export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { updatedAt: number } {
-  return { ...quoteFreshnessFields(quote, now), updatedAt: quote.lastUpdated };
+  return { ...quoteFreshnessFields(quote, now), updatedAt: quoteHeadlineTime(quote) };
 }
 
 /**

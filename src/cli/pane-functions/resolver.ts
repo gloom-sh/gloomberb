@@ -17,7 +17,9 @@ import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
+  nearFunctionCodes,
   suggestPaneFunctions,
+  type NearFunctionCode,
   type PaneFunctionCatalog,
 } from "./catalog";
 import {
@@ -184,32 +186,51 @@ function takeTableSection(
 
 /** A name that opens no function: `details` list the closest ones and where to search for more. */
 export class UnknownPaneFunctionError extends Error {
-  constructor(name: string, readonly details: string) {
-    super(`Unknown function or pane "${name}".`);
+  constructor(name: string, readonly details: string, suggestion: string | null = null) {
+    super(`Unknown function or pane "${name}".${suggestion ? ` Did you mean ${suggestion}?` : ""}`);
     this.name = "UnknownPaneFunctionError";
   }
 }
 
+/** `RDCF (Reverse DCF)`, `ERN (Earnings) or EPS (EPS Estimates)`. */
+function nearCodesText(near: readonly NearFunctionCode[]): string {
+  const named = near.map(({ code, label }) => `${code} (${label})`);
+  return named.length > 1 ? `${named.slice(0, -1).join(", ")} or ${named.at(-1)}` : named[0]!;
+}
+
+/**
+ * A name that opens no function: the code it is one slip from (`did you mean
+ * RDCF?`) with the command that runs it on the same argument, the functions
+ * the catalog finds for it, and where to search. A name near no code and
+ * found by no search says so plainly and points at the whole catalog.
+ */
 async function unknownPaneFunctionError(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   name: string,
+  arg: string,
+  command: "fn" | "shot",
 ): Promise<UnknownPaneFunctionError> {
+  const near = nearFunctionCodes(registry, name);
   // A catalog that cannot be read still leaves the pointer to it.
-  const closest = await suggestPaneFunctions(registry, context, name).catch(() => []);
+  const closest = (await suggestPaneFunctions(registry, context, name).catch(() => []))
+    .filter((entry) => !near.some(({ code }) => code === entry.token));
   const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
   const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
+  const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
   return new UnknownPaneFunctionError(name, [
-    ...closest.length > 0 ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`)] : [],
-    `Search the catalog: gloomberb catalog ${word}`,
-  ].join("\n"));
+    ...near.length === 1 ? [`Run: gloomberb ${command} ${near[0]!.code}${argument}`] : [],
+    ...closest.length > 0
+      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloomberb catalog ${word}`]
+      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloomberb catalog`],
+  ].join("\n"), near.length > 0 ? nearCodesText(near) : null);
 }
 
 export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   parsedArgs: ParsedPaneFunctionArgs,
-  resolutionSettings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
+  resolutionSettings: { strictHeadlessOptions?: boolean; tableSection?: boolean; command?: "fn" | "shot" } = {},
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
   if (!args.target) {
@@ -217,7 +238,7 @@ export async function resolvePaneFunction(
   }
 
   const found = findPaneFunction(registry, args.target);
-  if (!found) throw await unknownPaneFunctionError(registry, context, args.target);
+  if (!found) throw await unknownPaneFunctionError(registry, context, args.target, args.arg, resolutionSettings.command ?? "fn");
 
   const { template, pane } = found;
   if (!pane) {

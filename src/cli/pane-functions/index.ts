@@ -6,6 +6,7 @@ import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-outpu
 import {
   filterPaneCatalogEntries,
   findFunctionCode,
+  nearFunctionCodes,
   renderPaneCatalogReport,
   selectPaneCatalogMatches,
   suggestPaneFunctions,
@@ -28,8 +29,9 @@ import {
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import {
-  ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuote, quotedListingChoiceNotes, refuseMovedListing,
+  ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
+import { isNotATickerMessage } from "../not-a-ticker";
 import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
@@ -124,6 +126,35 @@ export async function functionCodeCommand(
   }
 }
 
+/**
+ * The one function code a command name is a slip from (`gloomberb RCDF PLTR`
+ * for RDCF), with the command that runs it on the reader's arguments. Null
+ * when no code, or more than one, is that close, or the catalog cannot be read.
+ */
+export async function nearFunctionCodeCommand(
+  ctx: CliCommandContext,
+  token: string,
+  args: readonly string[],
+): Promise<{ code: string; label: string; command: string } | null> {
+  const word = token.trim();
+  if (!FUNCTION_CODE_WORD.test(word)) return null;
+  try {
+    const near = await withMarketData(ctx, async (market) => {
+      const registry = await createPaneCatalog(market, ctx.plugins);
+      try {
+        return nearFunctionCodes(registry, word);
+      } finally {
+        registry.destroy();
+      }
+    });
+    if (near.length !== 1) return null;
+    const { code, label } = near[0]!;
+    return { code, label, command: ["gloomberb fn", code, ...args.map(commandWord)].join(" ") };
+  } catch {
+    return null;
+  }
+}
+
 /** How many functions an unknown command word is answered with. */
 const COMMAND_HIT_LIMIT = 3;
 
@@ -186,8 +217,12 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       // one ticker, as the app gates those panes, serves none and names the new symbol with the same
       // function, as `history` does. Looked up beside the report. A loader that finds it itself (VCA of
       // one symbol) fails the same way.
-      const fate = parsed.listing && isTickerLinkPeer(resolved.instance, registry.panes)
-        ? listingFateLoader(parsed.listing, context, loadListingQuote(context.dataProvider, parsed.listing))
+      const listing = parsed.listing;
+      // The listing's own quote, as `quote` asks for it: what the fate reads, and what says a name is not a ticker.
+      let quoted: ReturnType<typeof loadListingQuoteAnswer> | null = null;
+      const quoteAnswer = listing ? () => quoted ??= loadListingQuoteAnswer(context.dataProvider, listing) : null;
+      const fate = listing && quoteAnswer && isTickerLinkPeer(resolved.instance, registry.panes)
+        ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote))
         : null;
       const moved = { command: "fn", retry: (key: string) => `gloomberb fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
@@ -201,6 +236,13 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           (built) => built.data.empty || !built.data.complete,
         ),
       ));
+      // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
+      // "Not a ticker: PALANTIR. Try `gloomberb search Palantir`.", not an empty report.
+      if (quoteAnswer && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
+        const { quote, error } = await quoteAnswer();
+        const message = error instanceof Error ? error.message : null;
+        if (!quote && isNotATickerMessage(message)) ctx.fail(message!);
+      }
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0
           ? ` Missing data for ${report.data.unavailableSymbols.join(", ")}.`
@@ -412,7 +454,7 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     // A failure with fields for --json (`ticker_moved`, its change and retry) keeps its code and them.
     if (isCliFailure(error) && error.fields) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
-    if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details);
+    if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
     const message = error instanceof Error ? error.message : String(error);
     // A failure the command already worded keeps its advice line.
     const stated = error instanceof Error ? (error as Error & { details?: unknown }).details : undefined;

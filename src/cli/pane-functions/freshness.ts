@@ -44,6 +44,12 @@ export interface ReportFreshness {
   basis?: string;
   /** Set when the dates are the start of a period: the status line then reads `Sep 2026 (monthly)`. */
   periodicity?: "monthly" | "quarterly" | "annual";
+  /**
+   * The newest bar's week or month had not ended, and the last day it covers
+   * so far (`asOf`, when known): the status line reads `month to date, through
+   * Thu 15 Oct 2026`.
+   */
+  periodToDate?: { period: "week" | "month"; through?: string };
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
   /**
@@ -346,11 +352,20 @@ function declaredSources(declared: HeadlessPaneFreshness, now: number): Array<{ 
   });
 }
 
+/** A declared bar period still forming, its last day read as a date; null for anything else. */
+function readPeriodToDate(declared: HeadlessPaneFreshness["periodToDate"], now: number): { period: "week" | "month"; through: ReportTime | null } | null {
+  if (declared?.period !== "week" && declared?.period !== "month") return null;
+  const through = declared.through ? parseReportTime(declared.through) : null;
+  return { period: declared.period, through: through?.dateOnly && through.time <= now + FUTURE_TOLERANCE_MS ? through : null };
+}
+
 function resolveFreshness({ declared, signals, observations, now }: FreshnessInputs): ReportFreshness {
   const sources = declaredSources(declared, now);
   // Sources date the data by their own observations, as a declared as-of does.
   const declaredAsOf = observedTime({ asOf: declared.asOf }, now, ["asOf"]) ?? newest(sources.map(({ time }) => time));
-  const asOf = declaredAsOf ?? newest([...observations.units, ...observations.extra]);
+  // A bar still forming covers its period through a later day than the one it is dated by.
+  const periodToDate = readPeriodToDate(declared.periodToDate, now);
+  const asOf = declaredAsOf ?? periodToDate?.through ?? newest([...observations.units, ...observations.extra]);
   // The oldest source, not the newest, says how far behind the view can be.
   const agedFrom = sources.length ? oldest(sources.map(({ time }) => time))
     : declared.oldestAge ? oldest(observations.units) ?? asOf : null;
@@ -443,6 +458,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(partial ?? {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
     ...(periodicity ? { periodicity } : {}),
+    ...(periodToDate && !declaredAsOf ? { periodToDate: { period: periodToDate.period, ...(periodToDate.through ? { through: isoTime(periodToDate.through) } : {}) } } : {}),
     ...(asOfClose ? { asOfClose } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
@@ -548,6 +564,16 @@ function periodText(date: string, periodicity: NonNullable<ReportFreshness["peri
   return periodicity === "monthly" ? `${MONTHS[month]} ${year}`
     : periodicity === "quarterly" ? `Q${Math.floor(month / 3) + 1} ${year}`
       : `${year}`;
+}
+
+/**
+ * A bar still forming: `month to date, through Thu 15 Oct 2026`, or with no
+ * day to name, the period from its start, `Oct 2026 to date` or `week of Mon
+ * 12 Oct 2026 to date`.
+ */
+function periodToDateText({ period, through }: NonNullable<ReportFreshness["periodToDate"]>, asOf: string): string {
+  if (through) return `${period} to date, through ${dayText(through)}`;
+  return period === "month" ? `${periodText(asOf, "monthly")} to date` : `week of ${dayText(asOf)} to date`;
 }
 
 /** The period a FRED series frequency ("Monthly", "Quarterly") publishes in; null for daily and weekly series, whose dates are days. */
@@ -674,7 +700,8 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   const market = freshness.tradingDayMarket;
   const period = freshness.periodicity;
   const time = parseReportTime(freshness.asOf);
-  const asOf = period ? `${periodText(freshness.asOf, period)} (${period})`
+  const asOf = freshness.periodToDate ? periodToDateText(freshness.periodToDate, freshness.asOf)
+    : period ? `${periodText(freshness.asOf, period)} (${period})`
     : freshness.asOfClose
       ? `${tradingDayText(freshness.asOfClose, market)} close`
       : time?.dateOnly ? tradingDayText(freshness.asOf, market)
@@ -706,16 +733,22 @@ function sourcesAsOfParts(freshness: ReportFreshness, sources: readonly ReportSo
  * When the first venue opens again: its UTC time when that is later the same
  * UTC day, else its weekday at the venue (`Mon`), with the date a week out.
  */
-function reopenText(market: ReportMarket, now: number, local: boolean): string | null {
+function reopenText(market: ReportMarket, now: number, local: boolean): { text: string; time: boolean } | null {
   if (!market.reopensAt || !market.reopensOn) return null;
   const at = Date.parse(market.reopensAt);
   if (!Number.isFinite(at)) return null;
   const iso = new Date(at).toISOString();
-  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}`;
-  return at - now > WEEKDAY_ONLY_MS ? dayText(market.reopensOn) : WEEKDAYS[new Date(`${market.reopensOn}T00:00:00Z`).getUTCDay()]!;
+  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return { text: `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}`, time: true };
+  return { text: at - now > WEEKDAY_ONLY_MS ? dayText(market.reopensOn) : WEEKDAYS[new Date(`${market.reopensOn}T00:00:00Z`).getUTCDay()]!, time: false };
 }
 
-/** `markets closed until Mon`; `short` is the compact form a narrow capture falls back to (`reopens Mon`). */
+/**
+ * `markets closed until Mon`; `short` is the compact form a narrow capture
+ * falls back to (`reopens Mon`). A time is always the regular session's open,
+ * and says so (`pre-market open · regular session opens 13:30 UTC`), so it is
+ * never read as when the pre-market opens, nor a US market as closed until
+ * then while its pre-market trades first.
+ */
 function marketText(market: ReportMarket, now: number, short: boolean, local: boolean): string {
   const reopen = reopenText(market, now, local);
   switch (market.state) {
@@ -724,10 +757,12 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
     case "after-hours":
       return "after hours";
     case "pre-market":
-      return reopen ? `pre-market, opens ${reopen}` : "pre-market";
+      if (!reopen) return "pre-market open";
+      return short ? `pre-market · regular opens ${reopen.text}` : `pre-market open · regular session opens ${reopen.text}`;
     case "closed":
-      if (short) return reopen ? `reopens ${reopen}` : "closed";
-      return reopen ? `markets closed until ${reopen}` : "markets closed";
+      if (!reopen) return short ? "closed" : "markets closed";
+      if (reopen.time) return short ? `regular opens ${reopen.text}` : `markets closed · regular session opens ${reopen.text}`;
+      return short ? `reopens ${reopen.text}` : `markets closed until ${reopen.text}`;
     default: {
       const _exhaustive: never = market.state;
       return _exhaustive;

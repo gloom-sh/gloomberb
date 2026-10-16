@@ -197,3 +197,16 @@ test("fn HIVG and fn VCA of a moved symbol serve nothing and name the new symbol
     ["META", expect.any(Number), null],
   ]);
 });
+
+test("fn given a company's name where its ticker goes answers as quote does: not a ticker, and the search that finds it", async () => {
+  for (const code of ["RDCF", "HIVG"]) {
+    const { error, printed } = await runFn([code, "Palantir"]);
+    expect(printed).toBeUndefined();
+    expect((error as Error).message).toBe("Not a ticker: PALANTIR.");
+    // The same hint `quote` adds, from what the reader typed.
+    const { stderr } = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }, { command: "fn", args: [code, "Palantir"] }));
+    expect(stderr).toBe("error: Not a ticker: PALANTIR. Try `gloomberb search Palantir`.");
+  }
+  // A ticker the function has data for is served as before.
+  expect((await runFn(["HIVG", "META"])).error).toBeNull();
+});

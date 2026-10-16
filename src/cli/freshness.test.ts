@@ -49,7 +49,7 @@ describe("quote status line", () => {
 
   test("on a weeknight the reopen is a UTC time, and in session the as-of is the print's time", () => {
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-10-12T23:59:00Z") })], "2026-10-13T02:00:00Z"))
-      .toBe("US trading day Mon 12 Oct 2026 close · 15 min delayed · markets closed until 13:30 UTC");
+      .toBe("US trading day Mon 12 Oct 2026 close · 15 min delayed · markets closed · regular session opens 13:30 UTC");
     expect(status([cloudQuote({ lastUpdated: Date.parse("2026-10-12T14:45:00Z"), marketState: "REGULAR" })], "2026-10-12T15:00:00Z"))
       .toBe("Mon 12 Oct 2026 14:45 UTC · 15 min delayed · markets open");
   });
@@ -68,5 +68,22 @@ describe("quote status line", () => {
     });
     expect(status([bitcoin("live", 1)], now)).toBe("Sat 10 Oct 2026 12:59 UTC · live");
     expect(status([bitcoin("delayed", 16)], now)).toBe("Sat 10 Oct 2026 12:44 UTC · 15 min delayed");
+  });
+
+  test("in the pre-market, a quote nothing has traded on is its last close, and the open named is the regular session's", () => {
+    // Fri 16 Oct 08:14 UTC: Thursday's last after-hours print at 23:59, its 20:00 UTC close carried.
+    const waiting = cloudQuote({
+      symbol: "PLTR", marketState: "PRE", extendedSessionPrint: false, price: 200.66, previousClose: 200.5,
+      regularClose: 200.5, regularCloseSessionDate: "2026-10-15", regularChange: -0.47, regularChangePercent: -0.2339,
+      changeSessionDate: "2026-10-16", lastUpdated: Date.parse("2026-10-15T23:59:00Z"),
+    });
+    const freshness = quotesFreshness([waiting], undefined, Date.parse("2026-10-16T08:14:00Z"))!;
+    expect(freshness.asOf).toBe("2026-10-15T20:00:00.000Z");
+    expect(formatFreshnessLine(freshness))
+      .toBe("Source: Gloom Cloud · US trading day Thu 15 Oct 2026 close · 15 min delayed · pre-market open · regular session opens 13:30 UTC");
+    // A pre-market trade dates the line by its own time.
+    const printed = { ...waiting, preMarketPrice: 201.29, extendedSessionPrint: true, lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
+    expect(status([printed], "2026-10-16T08:14:00Z"))
+      .toBe("Fri 16 Oct 2026 08:03 UTC · 15 min delayed · pre-market open · regular session opens 13:30 UTC");
   });
 });

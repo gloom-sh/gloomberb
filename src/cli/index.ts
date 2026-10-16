@@ -37,7 +37,7 @@ import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
-import { catalogCommandHits, functionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogCommandHits, functionCodeCommand, nearFunctionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 import { catalogPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 
@@ -323,6 +323,8 @@ function nearCommand(token: string, commands: CliCommandDef[]): string | null {
 interface UnknownCommandPointers {
   /** The word is a function's code: the command that runs it. */
   fn: { code: string; command: string } | null;
+  /** The word is a slip from one function's code (RCDF for RDCF), read only when it is no code, no command is close to it and the catalog finds nothing for it. */
+  nearFn: { code: string; label: string; command: string } | null;
   /** Functions the catalog finds for the word, read only when it is no code and no command is close to it. */
   hits: CatalogCommandHit[];
   /** What the reader typed after the word, which a pointer runs the function with. */
@@ -337,17 +339,24 @@ async function unknownCommandPointers(
   commands: CliCommandDef[],
 ): Promise<UnknownCommandPointers> {
   const fn = await functionCodeCommand(ctx, token, args);
-  const hits = fn || nearCommand(token, commands) ? [] : await catalogCommandHits(ctx, token);
-  return { fn, hits, args };
+  const command = fn || nearCommand(token, commands);
+  const hits = command ? [] : await catalogCommandHits(ctx, token);
+  // What the catalog finds for a word (`comps`) outranks the code it happens to be a slip from.
+  const nearFn = command || hits.length > 0 ? null : await nearFunctionCodeCommand(ctx, token, args);
+  return { fn, nearFn, hits, args };
 }
 
 /**
  * A function's code is pointed at `fn`; a typo of a command at the command;
- * a word the catalog knows (`comps`, `peers`) at the functions it finds.
+ * a typo of a function's code (`RCDF`) at that function; a word the catalog
+ * knows (`comps`, `peers`) at the functions it finds.
  */
 function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
   if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
   const suggestion = nearCommand(token, commands);
+  if (!suggestion && pointers.nearFn) {
+    fail(`Unknown command "${token}". Did you mean the function ${pointers.nearFn.code} (${pointers.nearFn.label})?`, `Run: ${pointers.nearFn.command}`);
+  }
   const catalog = suggestion ? null : catalogPointer(token, pointers.hits, pointers.args);
   fail(
     `Unknown command "${token}".`,
@@ -449,7 +458,7 @@ export async function failUnknownCliCommand(args: string[], options: DispatchCli
   // functions, with the arguments the reader gave.
   const pointers = token && parsed
     ? await unknownCommandPointers(createCliCommandContext("core", registry, parsed.options, parsed.args.slice(1)), token, parsed.args.slice(1), commands)
-    : { fn: null, hits: [], args: [] };
+    : { fn: null, nearFn: null, hits: [], args: [] };
   return failUnknownCommand(token, commands, pointers);
 }
 

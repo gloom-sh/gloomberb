@@ -1,7 +1,7 @@
 import { FINANCIAL_VINTAGE_NOTICE, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
-import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../../market-data/market/status";
-import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
+import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
+import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
@@ -31,6 +31,7 @@ import {
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
+import { barPeriodToDate, type BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "../../../time-series/resolution";
 import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
@@ -247,7 +248,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
         ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
         change, changePercent, ...extended,
-        marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+        marketCap: quote.marketCap ?? null, updatedAt: quoteHeadlineTime(quote),
         ...quoteFreshnessFields(quote),
       };
     });
@@ -289,11 +290,37 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
+    const resolution = barResolutionFromDates(rows.map((row) => row.date));
+    // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
+    const forming = await formingBarPeriod(ctx, symbol, rows.at(-1)?.date, resolution);
+    const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
-    const freshness = { ...barHistoryFreshness(barResolutionFromDates(rows.map((row) => row.date))), observedKey: "date", oldest: null };
-    return { rows, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+    const freshness = {
+      ...barHistoryFreshness(resolution), observedKey: "date", oldest: null, ...(forming ? { periodToDate: forming } : {}),
+    };
+    return { rows: shown, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
   },
 };
+
+/**
+ * Whether the newest weekly or monthly bar was still forming (barPeriodToDate),
+ * read on the listing's venue: its key's, or for a bare symbol its quote's.
+ * The quote is asked for only while the bar's calendar period runs on.
+ */
+async function formingBarPeriod(
+  ctx: HeadlessPaneContext,
+  key: string,
+  date: string | undefined,
+  resolution: "1d" | "1wk" | "1mo",
+): Promise<BarPeriodToDate | null> {
+  const period = resolution === "1mo" ? "month" : resolution === "1wk" ? "week" : null;
+  if (!date || !period || !barPeriodToDate(date, period, undefined, Date.now())) return null;
+  const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
+  const venue = exchange || await ctx.marketData.getQuote(symbol, "")
+    .then((quote) => quote.listingExchangeName || quote.exchangeName)
+    .catch(() => undefined);
+  return barPeriodToDate(date, period, venue, Date.now());
+}
 
 /** A percent with its sign, two decimals: `+0.63%`; a dash for a gap. */
 function signedPercentCell(value: unknown): string {

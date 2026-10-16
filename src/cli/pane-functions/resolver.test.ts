@@ -85,5 +85,25 @@ test("a name that opens nothing lists the closest functions and where to search,
   expect(close).toBeInstanceOf(UnknownPaneFunctionError);
   expect(close?.message).toBe('Unknown function or pane "volsurf".');
   expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloomberb catalog volsurf");
-  expect((await unknown("zzqxvb"))?.details).toBe("Search the catalog: gloomberb catalog zzqxvb");
+  // Near no code and found by no search: said plainly, with the whole catalog to look in.
+  expect((await unknown("zzqxvb"))?.details).toBe("No function code is close to zzqxvb. List every function: gloomberb catalog");
+});
+
+test("a code one slip from a function's (swapped, missing or extra letter) names it and the command that runs it", async () => {
+  const dcf: PaneTemplateDef = { ...template("RDCF", "reverse-dcf", indices), label: "Reverse DCF" };
+  const withDcf: PaneFunctionCatalog = {
+    ...registry,
+    panes: new Map([...registry.panes, ["reverse-dcf", pane("reverse-dcf")]]),
+    paneTemplates: new Map([...registry.paneTemplates, ["reverse-dcf-pane", dcf]]),
+  };
+  const unknown = (args: string[]) => resolvePaneFunction(withDcf, context, parsePaneFunctionArgs(args))
+    .then(() => null, (error: unknown) => error as UnknownPaneFunctionError);
+  for (const typed of ["RCDF", "rdc", "RDCFF"]) {
+    const error = await unknown([typed, "PLTR"]);
+    expect(error?.message).toBe(`Unknown function or pane "${typed}". Did you mean RDCF (Reverse DCF)?`);
+    expect(error?.details).toBe("Run: gloomberb fn RDCF PLTR");
+  }
+  // Two letters off, or a name too short to tell, is no suggestion.
+  expect((await unknown(["RDXX", "PLTR"]))?.message).toBe('Unknown function or pane "RDXX".');
+  expect((await unknown(["WE", "PLTR"]))?.message).toBe('Unknown function or pane "WE".');
 });

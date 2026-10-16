@@ -5,6 +5,7 @@ import { mapWithConcurrency } from "../utils/concurrency";
 import { isUsListingExchange } from "../utils/exchanges";
 import { STARTER_SYMBOLS } from "../tickers/starter-symbols";
 import { TickerNotFoundError } from "./ticker-resolution";
+import { typoDistance } from "../utils/typo-distance";
 
 /** How long a suggestion waits for search; a slow search leaves the plain "not found" as it was. */
 const SUGGESTION_TIMEOUT_MS = 6_000;
@@ -39,25 +40,6 @@ function typedForm(symbol: string): string {
   return compact(symbol.split(":")[0]!.replace(/=[A-Z]?$/i, ""));
 }
 
-/** The edits (insert, delete, replace, swap two neighbours) between two strings, up to two; anything further apart is 2. */
-function editDistance(left: string, right: string): number {
-  if (left === right) return 0;
-  if (Math.abs(left.length - right.length) > 1) return 2;
-  const rows: number[][] = Array.from({ length: left.length + 1 }, (_, row) => [row, ...new Array<number>(right.length).fill(0)]);
-  for (let column = 1; column <= right.length; column += 1) rows[0]![column] = column;
-  for (let row = 1; row <= left.length; row += 1) {
-    for (let column = 1; column <= right.length; column += 1) {
-      const same = left[row - 1] === right[column - 1] ? 0 : 1;
-      let best = Math.min(rows[row - 1]![column]! + 1, rows[row]![column - 1]! + 1, rows[row - 1]![column - 1]! + same);
-      if (row > 1 && column > 1 && left[row - 1] === right[column - 2] && left[row - 2] === right[column - 1]) {
-        best = Math.min(best, rows[row - 2]![column - 2]! + 1);
-      }
-      rows[row]![column] = best;
-    }
-  }
-  return rows[left.length]![right.length]!;
-}
-
 function candidateName(candidate: TickerSearchCandidate): string {
   return candidate.detail.split(" | ")[0]?.trim() ?? "";
 }
@@ -68,7 +50,7 @@ function nearness(typed: string, candidate: TickerSearchCandidate): number | nul
   if (!wanted) return null;
   const symbol = typedForm(candidate.label || candidate.symbol);
   if (wanted === symbol || wanted === compact(candidateName(candidate))) return 0;
-  return wanted.length >= MIN_TYPO_LENGTH && symbol.length >= MIN_TYPO_LENGTH && editDistance(wanted, symbol) === 1 ? 1 : null;
+  return wanted.length >= MIN_TYPO_LENGTH && symbol.length >= MIN_TYPO_LENGTH && typoDistance(wanted, symbol) === 1 ? 1 : null;
 }
 
 /**
@@ -154,7 +136,7 @@ export async function suggestUsTicker(typed: string, deps: SuggestionDeps): Prom
   const saved = (await deps.store.loadAllTickers().catch(() => [])).filter((ticker) => isUsListingExchange(ticker.metadata.exchange));
   const near = new Set([...STARTER_SYMBOLS, ...saved.map((ticker) => ticker.metadata.ticker)]
     .map((symbol) => symbol.trim().toUpperCase())
-    .filter((symbol) => compact(symbol).length >= MIN_TYPO_LENGTH && editDistance(wanted, compact(symbol)) === 1));
+    .filter((symbol) => compact(symbol).length >= MIN_TYPO_LENGTH && typoDistance(wanted, compact(symbol)) === 1));
   if (near.size !== 1) return null;
   const [symbol] = near;
   const candidates = await searchCandidates(symbol!, deps);

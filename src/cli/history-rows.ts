@@ -16,6 +16,7 @@ import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
+import { barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -231,6 +232,25 @@ export function historyRows(
     const flags = [...flagCodes(row), ...breaks[index]!];
     return flags.length > 0 ? { ...row, flag: flags.join(",") } : row;
   });
+}
+
+/**
+ * The newest weekly or monthly bar while its period has not ended at `now`
+ * (barPeriodToDate): marked `partial`, as a bar its source marks is, with
+ * how far into its period it runs, which the status line names (`month to
+ * date, through Thu 15 Oct 2026`). Daily and intraday bars are left as the
+ * source marks them. Null when the newest bar is complete.
+ */
+export function formingPeriodBar(
+  rows: readonly HistoryRow[],
+  venue: string | undefined,
+  now = Date.now(),
+): { rows: HistoryRow[]; periodToDate: BarPeriodToDate } | null {
+  const last = rows.at(-1);
+  const period = last?.interval === "1mo" ? "month" : last?.interval === "1wk" ? "week" : null;
+  const forming = last && period ? barPeriodToDate(last.date, period, venue, now) : null;
+  if (!forming) return null;
+  return { rows: [...rows.slice(0, -1), { ...last!, partial: true }], periodToDate: forming };
 }
 
 /**

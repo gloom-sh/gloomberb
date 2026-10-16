@@ -4,6 +4,7 @@ import { isFiniteNumber } from "../../utils/guards";
 import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 import { isQuoteBeforeLatestSession } from "../quotes/freshness";
+import { regularSessionCloseOn } from "./freshness";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -64,10 +65,23 @@ export function marketStateLabel(state: MarketState): string {
 /** What a quote's session reads as once its last print is older than its venue's latest completed session. */
 const STALE_SESSION_LABEL = "STALE";
 
-/** A quote's market state as a status cell names it (marketStateLabel), STALE for a print older than its venue's latest session. */
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** `Thu close`: the weekday of the session whose close a quote still stands at. */
+function closeLabel(date: string): string {
+  return `${WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]} close`;
+}
+
+/**
+ * A quote's market state as a status cell names it (marketStateLabel), STALE
+ * for a print older than its venue's latest session, and the close it stands
+ * at (`Thu close`) in a pre-market nothing has traded in yet.
+ */
 export function quoteMarketStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote?.marketState) return null;
-  return isQuoteBeforeLatestSession(quote, now) ? STALE_SESSION_LABEL : marketStateLabel(quote.marketState);
+  if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
+  const awaiting = preMarketCloseAwaitingPrint(quote);
+  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quote.marketState);
 }
 
 /** An extended session's column, named as marketStateLabel names its state. */
@@ -148,24 +162,29 @@ function overnightSessionDisplay(quote: Quote): ExtendedSessionDisplay | null {
 /**
  * A quote's session as a status cell names it: STALE when its last print is
  * older than its venue's latest completed session (isQuoteBeforeLatestSession),
- * the overnight session while the quote is priced by it, else its market
+ * the overnight session while the quote is priced by it, the close it stands
+ * at (`Thu close`) in a pre-market nothing has traded in yet, else its market
  * state (marketStateLabel). The exchange stays closed overnight, so the state
  * alone reads CLOSED.
  */
 export function quoteSessionLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
-  return overnightSessionDisplay(quote) ? "OVERNIGHT" : marketStateLabel(quote.marketState);
+  if (overnightSessionDisplay(quote)) return "OVERNIGHT";
+  const awaiting = preMarketCloseAwaitingPrint(quote);
+  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quote.marketState);
 }
 
 /**
  * The color of quoteSessionLabel: STALE in the warning color every stale
- * mark uses, an extended session's while the overnight session prices the quote.
+ * mark uses, an extended session's while the overnight session prices the
+ * quote, a closed session's for the close a pre-market still stands at.
  */
 export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors, now = Date.now()): string {
   if (!quote?.marketState) return palette.textDim;
   if (isQuoteBeforeLatestSession(quote, now)) return palette.warning;
-  return overnightSessionDisplay(quote) ? marketStateColor("POST", palette) : marketStateColor(quote.marketState, palette);
+  if (overnightSessionDisplay(quote)) return marketStateColor("POST", palette);
+  return marketStateColor(preMarketCloseAwaitingPrint(quote) ? "CLOSED" : quote.marketState, palette);
 }
 
 /**
@@ -282,6 +301,34 @@ function completedRegularClose(quote: Quote): number | null {
 }
 
 /**
+ * The completed regular session a pre-market quote's headline still shows
+ * while nothing has traded in the pre-market: the source says so
+ * (extendedSessionPrint false) or sends no pre-market price. Its exchange-local
+ * date and when it closed, so the quote reads as that close (`Thu close`, at
+ * 20:00 UTC), not as the pre-market or the after-hours print before it. Null
+ * once a pre-market trade prints, in any other session, and while the quote
+ * cannot say which close its headline is or its venue's hours are unknown.
+ */
+function preMarketCloseAwaitingPrint(quote: Quote | null | undefined): { date: string; closedAt: number } | null {
+  if (quote?.marketState !== "PRE") return null;
+  if (quote.extendedSessionPrint !== false && isFiniteNumber(quote.preMarketPrice)) return null;
+  const date = completedRegularSession(quote)?.date;
+  if (!date) return null;
+  const closedAt = regularSessionCloseOn(quote.listingExchangeName || quote.exchangeName, date);
+  return closedAt == null ? null : { date, closedAt };
+}
+
+/**
+ * When the price a quote's headline shows was observed: the regular close a
+ * pre-market with no trade yet still stands at (preMarketCloseAwaitingPrint),
+ * otherwise the quote's last update. What an Updated cell and a report's
+ * as-of date the quote by.
+ */
+export function quoteHeadlineTime(quote: Quote): number {
+  return preMarketCloseAwaitingPrint(quote)?.closedAt ?? quote.lastUpdated;
+}
+
+/**
  * The day's headline: the regular session, which stops at its close. Once it
  * is over, and in the pre-market while the quote carries the last session's
  * close and move, the price is that close and the move is its own, so
@@ -349,6 +396,8 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
   if (overnight) return overnight;
   const state = quote.marketState;
   if (state === "PRE" || state === "PREPRE") {
+    // Nothing has traded in the pre-market: its figures are the close carried forward, no print.
+    if (state === "PRE" && preMarketCloseAwaitingPrint(quote)) return null;
     if (isFiniteNumber(quote.preMarketPrice)) {
       // Against the close the headline shows, so the two cannot disagree about it.
       const close = state === "PRE" && quote.preMarketPrice > 0 ? completedRegularClose(quote) : null;

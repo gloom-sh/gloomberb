@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
-  cleanFloat32Price, historyFlagNote, historyGapNote, historyJumpNote, historyNotes, historyPriceDecimals, historyRows, historyUnbrokenFrom,
+  cleanFloat32Price, formingPeriodBar, historyFlagNote, historyGapNote, historyJumpNote, historyNotes, historyPriceDecimals, historyRows, historyUnbrokenFrom,
   historyUnit,
 } from "./history-rows";
 import { pricePointValues } from "../utils/price-history-integrity";
 import type { ManualChartResolution } from "../time-series/resolution";
+import { rowsFreshness } from "./freshness";
+import { formatFreshnessLine } from "./pane-functions/freshness";
+import { barHistoryFreshness } from "../plugins/builtin/shared/report-freshness";
 
 const daily = (bars: number[][]) => historyRows(bars.map(([open, high, low, close], index) => ({
   date: new Date(Date.UTC(2026, 0, index + 1)), open, high, low, close: close!,
@@ -174,5 +177,52 @@ describe("history rows", () => {
     expect(historyPriceDecimals(daily(shib.map((bar) => bar.map(Math.fround))))).toBe(8);
     // A known kind applies the app's price rules: an equity shows cents even with sub-penny prints.
     expect(historyPriceDecimals(daily([[334.5795, 335.48, 333.1697, 334.225], [334.26, 334.1216, 332.8706, 333.8972]]), "STK")).toBe(2);
+  });
+});
+
+describe("a weekly or monthly bar whose period runs on", () => {
+  const bars = (dates: string[], resolution: ManualChartResolution) => historyRows(dates.map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 100 })), resolution);
+  // The status line `history` ends with, from the bars it prints.
+  const footer = (rows: ReturnType<typeof bars>, venue: string, now: number) => {
+    const forming = formingPeriodBar(rows, venue, now);
+    const shown = forming?.rows ?? rows;
+    return {
+      partial: shown.map((row) => row.partial === true),
+      line: formatFreshnessLine(rowsFreshness(shown, {
+        ...barHistoryFreshness(rows[0]!.interval), observedKey: "date", oldest: null, cadenceExchange: venue,
+        ...(forming ? { periodToDate: forming.periodToDate } : {}),
+      }, undefined, now)!),
+    };
+  };
+  // Fri 16 Oct 2026 08:14 UTC: New York has not opened; Thursday's session is the latest close.
+  const friday = Date.parse("2026-10-16T08:14:00Z");
+  const monthly = bars(["2026-09-01", "2026-10-01"], "1mo");
+  const weekly = bars(["2026-10-05", "2026-10-12"], "1wk");
+
+  test("is marked partial and dated by the last session it covers, not the start of its period", () => {
+    expect(footer(monthly, "NASDAQ", friday)).toEqual({
+      partial: [false, true], line: "Source: Gloom Cloud · month to date, through Thu 15 Oct 2026 · not a live feed (monthly bars)",
+    });
+    expect(footer(weekly, "NASDAQ", friday)).toEqual({
+      partial: [false, true], line: "Source: Gloom Cloud · week to date, through Thu 15 Oct 2026 · not a live feed (weekly bars)",
+    });
+    // While a session trades, the bar runs through today; a coin's always does.
+    expect(footer(monthly, "NASDAQ", Date.parse("2026-10-16T15:00:00Z")).line).toContain("month to date, through Fri 16 Oct 2026");
+    expect(footer(weekly, "CCC", friday).line).toContain("week to date, through Fri 16 Oct 2026");
+    // A venue whose sessions are unknown is read by the calendar, with no day to name.
+    expect(footer(monthly, "", friday).line).toContain("· Oct 2026 to date ·");
+  });
+
+  test("is complete once the last session of its period has closed, though the month runs on", () => {
+    // Sat 31 Oct: October's last session closed on Friday the 30th.
+    const saturday = Date.parse("2026-10-31T12:00:00Z");
+    expect(footer(monthly, "NASDAQ", saturday)).toEqual({
+      partial: [false, false], line: "Source: Gloom Cloud · Thu 1 Oct 2026 · not a live feed (monthly bars)",
+    });
+    // September's bar on 16 Oct, and last week's on Monday before the open, are complete.
+    expect(formingPeriodBar(bars(["2026-08-01", "2026-09-01"], "1mo"), "NASDAQ", friday)).toBeNull();
+    expect(formingPeriodBar(bars(["2026-10-05"], "1wk"), "NASDAQ", Date.parse("2026-10-12T08:00:00Z"))).toBeNull();
+    // Daily bars are left as their source marks them.
+    expect(formingPeriodBar(bars(["2026-10-15", "2026-10-16"], "1d"), "NASDAQ", Date.parse("2026-10-16T15:00:00Z"))).toBeNull();
   });
 });

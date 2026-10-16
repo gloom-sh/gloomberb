@@ -200,6 +200,13 @@ export interface HeadlessPaneFreshness {
    * quarter or year, not a day it was never observed on.
    */
   periodicity?: "monthly" | "quarterly" | "annual";
+  /**
+   * The newest row is a weekly or monthly bar whose period had not ended when
+   * it was served (October's bar on 16 Oct), and the last day it covers so
+   * far. The report is then dated by that day, `month to date, through Thu 15
+   * Oct 2026`, not by the start of the period the bar is dated by.
+   */
+  periodToDate?: { period: "week" | "month"; through?: string | null };
   /** The newest observation is stale once it is older than this many minutes. */
   maxAgeMinutes?: number;
   /**

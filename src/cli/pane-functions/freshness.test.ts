@@ -134,7 +134,7 @@ describe("report freshness", () => {
     });
     const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
-      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed until 06:00 UTC");
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed · regular session opens 06:00 UTC");
     // A venue whose newest row is a day older says so beside the others.
     const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
@@ -158,9 +158,9 @@ describe("report freshness", () => {
     const status = (quote: ReturnType<typeof index>) => formatStatusLine(deriveHeadlessFreshness(rows(), { rows: [quoteObservation(quote, WED)] }, WED));
     const gspc = index("^GSPC", "SNP", "PRE", "2026-10-13T20:33:00Z", "America/New_York", window("2026-10-14", "13:30", "20:00"), window("2026-10-13", "13:30", "20:00"));
     // A prior close under a pre-market chip says whose close it is and when the market opens, as the equity lines do.
-    expect(status(gspc)).toBe("US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC");
+    expect(status(gspc)).toBe("US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC");
     // Without the sessions the line is the bare print, as before.
-    expect(status({ ...gspc, indexSession: undefined })).toBe("Tue 13 Oct 2026 20:33 UTC \u00b7 15 min delayed \u00b7 pre-market");
+    expect(status({ ...gspc, indexSession: undefined })).toBe("Tue 13 Oct 2026 20:33 UTC \u00b7 15 min delayed \u00b7 pre-market open");
     // A print from before the last session opened is no close of it.
     expect(status({ ...gspc, lastUpdated: Date.parse("2026-10-13T12:00:00Z") })).not.toContain("close");
     // Another market's index keeps its bare date: its publisher's name (OSAKA) is no market, and a closed session has no open to wait for.
@@ -197,7 +197,7 @@ describe("report freshness", () => {
     const at = (time: string) => Date.parse(`${time}Z`);
     // Before the open, on the day of it: pre-market, waiting for the open.
     expect(footer(gspc("2026-10-15", "2026-10-14T20:00:00Z"), at("2026-10-15T12:30:00")))
-      .toBe("Source: Gloom Cloud \u00b7 US trading day Wed 14 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC");
+      .toBe("Source: Gloom Cloud \u00b7 US trading day Wed 14 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC");
     // In the session: open, and the open is behind it.
     expect(footer(gspc("2026-10-15", "2026-10-15T13:50:00Z"), at("2026-10-15T14:05:00")))
       .toBe("Source: Gloom Cloud \u00b7 Thu 15 Oct 2026 13:50 UTC \u00b7 15 min delayed \u00b7 markets open");
@@ -209,7 +209,7 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud \u00b7 US trading day Fri 16 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon");
     // A state the quote does state wins over the calendar.
     expect(footer({ ...gspc("2026-10-15", "2026-10-14T20:00:00Z"), marketState: "CLOSED" }, at("2026-10-15T12:30:00")))
-      .toContain("\u00b7 markets closed until 13:30 UTC");
+      .toContain("\u00b7 markets closed \u00b7 regular session opens 13:30 UTC");
     // Without sessions there is nothing to place it on.
     expect(footer({ ...gspc("2026-10-15", "2026-10-14T20:00:00Z"), indexSession: undefined }, at("2026-10-15T12:30:00")))
       .toBe("Source: Gloom Cloud \u00b7 Wed 14 Oct 2026 20:00 UTC \u00b7 15 min delayed");

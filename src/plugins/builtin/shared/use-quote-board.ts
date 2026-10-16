@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
 import { useQuoteEntries } from "../../../market-data/hooks";
-import { getRegularSessionDisplay, quoteDotMarketState, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";
+import { getRegularSessionDisplay, quoteDotMarketState, quoteHeadlineTime, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -618,15 +618,22 @@ const boardHeadlines = new WeakMap<Quote, Quote>();
 /**
  * The quote with its regular session's price and move (getRegularSessionDisplay),
  * as `ticker` reads it: after the close its close and move, never an extended
- * print, which a board of these columns has nowhere to show.
+ * print, which a board of these columns has nowhere to show. Its time is that
+ * price's (quoteHeadlineTime), as `quote` dates it.
  */
 export function boardHeadlineQuote(quote: Quote): Quote {
   const cached = boardHeadlines.get(quote);
   if (cached) return cached;
   const display = getRegularSessionDisplay(quote);
-  const headline = !display || (display.price === quote.price && display.change === quote.change && display.changePercent === quote.changePercent)
+  const lastUpdated = quoteHeadlineTime(quote);
+  const headline = (!display || (display.price === quote.price && display.change === quote.change && display.changePercent === quote.changePercent))
+    && lastUpdated === quote.lastUpdated
     ? quote
-    : { ...quote, price: display.price, change: display.change ?? Number.NaN, changePercent: display.changePercent ?? Number.NaN };
+    : {
+      ...quote,
+      ...display ? { price: display.price, change: display.change ?? Number.NaN, changePercent: display.changePercent ?? Number.NaN } : {},
+      lastUpdated,
+    };
   boardHeadlines.set(quote, headline);
   return headline;
 }

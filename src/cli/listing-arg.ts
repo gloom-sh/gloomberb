@@ -884,10 +884,18 @@ export function listingIdentity(
 
 /** The listing's own quote, for its company name and venue; null when it has none. */
 export async function loadListingQuote(dataProvider: DataProvider, listing: Pick<CliListing, "request">): Promise<Quote | null> {
+  return (await loadListingQuoteAnswer(dataProvider, listing)).quote;
+}
+
+/** The listing's own quote, or the error its request failed with: "Not a ticker: PALANTIR." for a name typed as a symbol. */
+export async function loadListingQuoteAnswer(
+  dataProvider: DataProvider,
+  listing: Pick<CliListing, "request">,
+): Promise<{ quote: Quote | null; error?: unknown }> {
   try {
-    return await dataProvider.getQuote(listing.request.symbol, listing.request.exchange);
-  } catch {
-    return null;
+    return { quote: await dataProvider.getQuote(listing.request.symbol, listing.request.exchange) };
+  } catch (error) {
+    return { quote: null, error };
   }
 }
 

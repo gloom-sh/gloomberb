@@ -11,6 +11,7 @@ import {
   getTradedSessionMoveDisplay,
   marketStateCountdown,
   quoteDotMarketState,
+  quoteHeadlineTime,
   quoteMarketStateLabel,
   quoteSessionColor,
   quoteSessionLabel,
@@ -238,5 +239,66 @@ describe("a quote older than its venue's latest completed session", () => {
     const fx: Quote = { ...nyse("REGULAR", "2026-10-12T14:00:00Z"), symbol: "EURUSD=X", listingExchangeName: "CCY", stale: true };
     expect(quoteSessionLabel(fx, regular)).toBe("OPEN");
     expect(quoteSessionLabel({ ...fx, symbol: "BTC-USD", listingExchangeName: "CCC" }, regular)).toBe("OPEN");
+  });
+});
+
+describe("a pre-market nothing has traded in yet", () => {
+  // PLTR at Fri 16 Oct 2026 08:14 UTC: the US pre-market opened at 08:00, nothing has printed in it. The price is
+  // Thursday's last after-hours print at 23:59 UTC; the quote carries Thursday's 20:00 UTC close and its move.
+  const thursdayClose = Date.parse("2026-10-15T20:00:00Z");
+  const waiting: Quote = {
+    symbol: "PLTR", currency: "USD", price: 200.66, change: 0.16, changePercent: 0.0798, previousClose: 200.5,
+    regularClose: 200.5, regularCloseSessionDate: "2026-10-15", regularChange: -0.47, regularChangePercent: -0.2339,
+    changeSessionDate: "2026-10-16", marketState: "PRE", extendedSessionPrint: false, listingExchangeName: "NASDAQ",
+    lastUpdated: Date.parse("2026-10-15T23:59:00Z"),
+  };
+  const now = Date.parse("2026-10-16T08:14:00Z");
+
+  test("reads as the regular close it stands at, by that close's weekday and time, not the pre-market or the after-hours print", () => {
+    expect(getRegularSessionDisplay(waiting)).toEqual({ price: 200.5, change: -0.47, changePercent: -0.2339 });
+    expect(quoteSessionLabel(waiting, now)).toBe("Thu close");
+    expect(quoteMarketStateLabel(waiting, now)).toBe("Thu close");
+    expect(quoteSessionColor(waiting, colors, now)).toBe(colors.textDim);
+    expect(quoteHeadlineTime(waiting)).toBe(thursdayClose);
+    // A source that projects the carried price into the pre-market fields, saying nothing traded, shows no pre-market print.
+    const projected = { ...waiting, preMarketPrice: 200.66, preMarketChange: 0.16, preMarketChangePercent: 0.0798 };
+    expect(getExtendedSessionDisplay(projected)).toBeNull();
+    expect(quoteSessionLabel(projected, now)).toBe("Thu close");
+    expect(getSessionMoveDisplay(projected)).toEqual(getRegularSessionDisplay(waiting));
+    // So does one that sends no pre-market price and does not say.
+    expect(quoteSessionLabel({ ...waiting, extendedSessionPrint: undefined }, now)).toBe("Thu close");
+  });
+
+  test("a pre-market trade is the pre-market again, at that trade's time", () => {
+    const printed = { ...waiting, price: 201.29, preMarketPrice: 201.29, preMarketChange: 0.79, preMarketChangePercent: 0.394,
+      extendedSessionPrint: true, lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
+    expect(quoteSessionLabel(printed, now)).toBe("PRE-MKT");
+    expect(quoteHeadlineTime(printed)).toBe(printed.lastUpdated);
+    expect(getExtendedSessionDisplay(printed)).toMatchObject({ session: "PRE", price: 201.29 });
+    // Without the close and its move the quote cannot say which close it is: it stays the pre-market's.
+    const unanchored = { ...waiting, regularClose: undefined, regularCloseSessionDate: undefined };
+    expect(quoteSessionLabel(unanchored, now)).toBe("PRE-MKT");
+    expect(quoteHeadlineTime(unanchored)).toBe(waiting.lastUpdated);
+  });
+
+  test("the regular session and after hours keep their own labels and times", () => {
+    const { regular, afterHours } = sessionQuotes();
+    expect(quoteSessionLabel(regular, regular.lastUpdated)).toBe("OPEN");
+    expect(quoteHeadlineTime(regular)).toBe(regular.lastUpdated);
+    expect(quoteSessionLabel(afterHours, afterHours.lastUpdated)).toBe("AFTER-HRS");
+    expect(quoteHeadlineTime(afterHours)).toBe(afterHours.lastUpdated);
+  });
+
+  test("after a weekend or a holiday the close is the last session's: Friday's, and its early close", () => {
+    // Monday 12 Oct 05:00 New York: Friday 9 Oct closed at 20:00 UTC.
+    const { weekend } = sessionQuotes();
+    const monday = { ...weekend, marketState: "PRE" as const, changeSessionDate: "2026-10-12", extendedSessionPrint: false };
+    expect(quoteSessionLabel(monday, Date.parse("2026-10-12T09:00:00Z"))).toBe("Fri close");
+    expect(quoteHeadlineTime(monday)).toBe(Date.parse("2026-10-09T20:00:00Z"));
+    // Monday 30 Nov: the day after Thanksgiving closed early, at 13:00 New York.
+    const afterThanksgiving = { ...monday, regularCloseSessionDate: "2026-11-27", changeSessionDate: "2026-11-30",
+      lastUpdated: Date.parse("2026-11-28T00:59:00Z") };
+    expect(quoteSessionLabel(afterThanksgiving, Date.parse("2026-11-30T10:00:00Z"))).toBe("Fri close");
+    expect(quoteHeadlineTime(afterThanksgiving)).toBe(Date.parse("2026-11-27T18:00:00Z"));
   });
 });

@@ -109,11 +109,11 @@ test("QQ, FUT and ECO explain the quote, futures and calendar words they print",
     "Ticker  Name       Last     Change  Change %  Pre-Market",
     "AAPL    Apple Inc. $341.27  +$0.30  +0.09%    $342.68 +0.41%",
     "",
-    "Source: Gloom Cloud \u00b7 Wed 14 Oct 2026 10:51 UTC \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC",
+    "Source: Gloom Cloud \u00b7 Wed 14 Oct 2026 10:51 UTC \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC",
   ].join("\n");
   expect(terms(reportGlossary("QQ", quotes))).toEqual(["Ticker", "Pre-market", "Delayed"]);
   // An index's prior close is dated in the status line; "closed" is not "close".
-  expect(terms(reportGlossary("QQ", "^GSPC  7,805.45\n\nSource: Gloom Cloud \u00b7 US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC")))
+  expect(terms(reportGlossary("QQ", "^GSPC  7,805.45\n\nSource: Gloom Cloud \u00b7 US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market open \u00b7 regular session opens 13:30 UTC")))
     .toEqual(["Pre-market", "Regular close", "Delayed"]);
   expect(terms(reportGlossary("QQ", "AAPL  After Hours\n\nSource: Gloom Cloud \u00b7 15 min delayed \u00b7 markets closed until Thu"))).toEqual(["After hours", "Delayed"]);
 

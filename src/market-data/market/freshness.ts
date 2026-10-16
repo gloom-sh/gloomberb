@@ -359,6 +359,19 @@ export function latestRegularSessionClose(
 }
 
 /**
+ * When the venue's regular session on `date` (its local `YYYY-MM-DD`) closed,
+ * a published early close included. Null when the venue had no session that
+ * day or its hours are unknown.
+ */
+export function regularSessionCloseOn(exchange: string | undefined, date: string): number | null {
+  const timeZone = sessionCalendarTimeZone(exchange);
+  if (!timeZone || isoLocalDateToUtcDay(date) == null) return null;
+  const endOfDay = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)), 23, 59, 59);
+  const close = latestRegularSessionClose(exchange, endOfDay);
+  return close?.date === date ? close.close : null;
+}
+
+/**
  * The UTC minute of the day the venue's regular session closed, for the latest
  * session at or before `time` (20:00 UTC is 1200 while New York is on daylight
  * time). Null for round-the-clock venues and for venues whose close hour is

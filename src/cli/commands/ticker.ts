@@ -27,6 +27,7 @@ import {
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
+  quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
@@ -797,7 +798,7 @@ export async function buildTickerReport({
       // A perpetual's price comes with no volume; its 0 means not reported, not no trades.
       ["Volume", quote.volume != null && !(quote.volume === 0 && isCryptoVenuePerpetual(quote.instrumentType, quote.name))
         ? formatNumber(quote.volume, 0) : "—"],
-      ["Updated", formatTimestamp(quote.lastUpdated)],
+      ["Updated", formatTimestamp(quoteHeadlineTime(quote))],
     ]);
 
     if (futuresContract) appendMetricSection(lines, "Contract", futuresContractMetrics(futuresContract, quote.symbol ?? symbol));
