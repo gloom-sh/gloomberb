@@ -1189,18 +1189,19 @@ const steps: Step[] = [
       if (byKey.floating.length) fail("text floats over the plot", byKey.floating);
       if (!byKey.timeTag) fail("the time axis has no tag under the crosshair", byKey);
       if (byKey.tags !== 6 || byKey.pointerTags !== 0) fail("the keyboard cursor did not read every series on its axis", byKey);
-      // Only the hovered panel has a horizontal pointer line. Every series,
-      // including volume, reads its observation on its own axis in all panels.
+      // An ordinary hover draws no horizontal pointer line in any panel. Every
+      // series, including volume, reads its observation on its own axis.
       const panels = await evaluate<Rect[]>(cdp, `[...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map(__check.rect)`);
       for (const [index, panel] of [[0, panels[0]!], [panels.length - 1, panels.at(-1)!]] as const) {
         const at = { x: panel.x + panel.width * 0.3, y: panel.y + panel.height * 0.4 };
         await mouse(cdp, "mouseMoved", at.x, at.y, false);
+        await frames(cdp, 4);
         const lines = `(() => {
           const ys = [...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map((plot) => !!plot.querySelector("[data-gloom-role=chart-crosshair-y]"));
           return { ys, ...${readout} };
         })()`;
-        const state = await waitFor<(Readout & { ys: boolean[] }) | null>(cdp, `(() => { const r = ${lines}; return r.entries === 6 && r.markers === 5 && r.tags === 6 && r.pointerTags === 0 && r.ys.filter(Boolean).length === 1 && r.ys[${index}] ? r : null; })()`);
-        if (!state) fail(`the pointer in panel ${index} did not read every series on its axis without a pointer-height value`, await evaluate(cdp, lines));
+        const state = await waitFor<(Readout & { ys: boolean[] }) | null>(cdp, `(() => { const r = ${lines}; return r.entries === 6 && r.markers === 5 && r.tags === 6 && r.pointerTags === 0 && !r.ys.some(Boolean) ? r : null; })()`);
+        if (!state) fail(`the pointer in panel ${index} did not read every series on its axis without a level line or a pointer-height value`, await evaluate(cdp, lines));
         if (state.floating.length) fail("text floats over the plot", state.floating);
         if (!state.timeTag) fail(`panel ${index}: the time axis has no tag under the crosshair`, state);
       }

@@ -207,7 +207,11 @@ export function CompositePanelSurface({
   // The level line follows the pointer only. A keyboard or shared cursor knows
   // its column, and the series markers and axis readout already say the value.
   // A tool placed from the keyboard is the exception: its end is a level.
-  const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
+  // On the desktop and the web an ordinary hover reads each series on its own
+  // axis and draws only the vertical line; the level line, and the pointer's
+  // value on the axes, belong to an armed or placing tool.
+  const readsPointerLevel = !isDesktopWeb || armedTool !== null || activeDrag !== null;
+  const pointerCursorYRatio = scene.cursorXRatio === null || !readsPointerLevel ? null : heldCursorYRatio;
   const crosshair = useMemo(
     () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, colors.crosshair),
     [bitmap, colors.crosshair, panel, pointerCursorYRatio, scene],
@@ -394,9 +398,8 @@ export function CompositePanelSurface({
   const cursorPixelY = activeCursorYRatio === null
     ? null
     : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0);
-  // A tool still reads its endpoint. Ordinary desktop hover reads only the
-  // observations, not an unprojected pointer value on every axis.
-  const axisCursorYRatio = isDesktopWeb && !activeDrag ? null : activeCursorYRatio;
+  // The pointer's value on the axes follows the level line it belongs to.
+  const axisCursorYRatio = isDesktopWeb ? pointerCursorYRatio : activeCursorYRatio;
   const leftCursorLabel = cursorAxisLabel(panel, "left", axisCursorYRatio, formatAxisValue);
   const rightCursorLabel = cursorAxisLabel(panel, "right", axisCursorYRatio, formatAxisValue);
   const seriesAxisTags = useMemo(() => isDesktopWeb ? resolveSeriesAxisTags(panel, scene, formatAxisValue) : [], [formatAxisValue, isDesktopWeb, panel, scene]);
