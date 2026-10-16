@@ -120,13 +120,18 @@ try {
     // already show the latest message while keeping earlier rows unmounted.
     if (!await waitFor(cdp, `window.__chatLatency?.snapshot('everyone').messages.length>=${count} && document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-chat-message-id="m${count - 1}"]') && __chatLatency.stats.pulls>0`, 15000)) throw new Error(`Chat fixture did not start: ${await evaluate(cdp, 'document.body.innerText.slice(0,1000)')}`);
     await frames(cdp, 6);
+    if (await evaluate<number>(cdp, "window.__peakMountedRows") > 80) {
+      failures++;
+      console.error(`${host}/${count}: initial open exceeded the 80-row mounting budget`);
+    }
     if (args.includes("--lifecycle")) {
       const states: Record<string, unknown>[] = [];
       const capture = async (channel: string, expected: string, paneId = "chat:a") => {
         const view = await evaluate<{ rows: number; visible: string[]; text: string; status: boolean; height: number }>(cdp, transcriptView(paneId));
+        const latestId = await evaluate<string>(cdp, "__chatFake.messages.at(-1).id");
         const passed = view.height > 0 && (expected.startsWith("text:")
           ? view.rows === 0 && view.status && view.text.includes(expected.slice(5))
-          : view.visible.some((id) => id.startsWith(expected) && (expected !== "m" || !id.includes(":"))));
+          : view.visible.includes(expected === "m" ? latestId : expected.slice(0, -1) + latestId));
         states.push({ channel, paneId, expected, passed, view });
         if (!passed) {
           failures++;

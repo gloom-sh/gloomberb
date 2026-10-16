@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import { Fragment, type ReactNode, type RefObject } from "react";
 import { ScrollBox, useUiHost, type ScrollBoxRenderable } from "../../ui";
 
 /** A variable-height list. The terminal keeps its ordinary, unwindowed rows. */
@@ -22,6 +22,6 @@ export function WindowedList(props: WindowedListProps) {
     data-gloom-role={props.role} onMouseScroll={props.onScrollActivity}
     onMouseMove={props.onPointerMove} onStickyPinChange={props.onPinChange}
     style={{ minHeight: 0, display: "block" }}>
-    {props.itemKeys.map((_, index) => props.renderItem(index))}
+    {props.itemKeys.map((key, index) => <Fragment key={key}>{props.renderItem(index)}</Fragment>)}
   </ScrollBox>;
 }

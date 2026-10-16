@@ -36,7 +36,7 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
       elementScroll(offset, options, instance);
       // Measurements can arrive before the browser's scroll event. Report the
       // applied position now so they cannot correct against the previous jump.
-      if (instance.scrollElement) syncOffset.current?.(instance.scrollElement.scrollTop, false);
+      if (instance.scrollElement && instance.scrollElement.clientHeight > 0) syncOffset.current?.(instance.scrollElement.scrollTop, false);
     },
     observeElementOffset: (instance, callback) => {
       syncOffset.current = callback;
@@ -57,7 +57,7 @@ export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize 
       });
     },
     onChange: (instance) => {
-      if (resizingViewport.current) return;
+      if (resizingViewport.current || !instance.scrollElement?.clientHeight) return;
       const pinned = instance.isAtEnd(STICKY_BOTTOM_THRESHOLD_PX);
       if (pinnedRef.current === pinned) return;
       pinnedRef.current = pinned;
