@@ -1016,6 +1016,39 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    // Rows report their new heights before the view reports its own in the same
+    // frame. Reading the bottom between the two used to let go of it for good.
+    name: "chat list: a reader at the bottom keeps following when rows above grow and when they re-wrap as the view gets shorter",
+    scenario: "chat&count=500&loaded=500",
+    async run(cdp) {
+      await ready(cdp);
+      const following = async (what: string) => {
+        await evaluate(cdp, `void window.__chatFake.deliver('After ${what}.')`);
+        await frames(cdp, 6);
+        const after = await state(cdp);
+        const latest = await evaluate<string>(cdp, "__chatFake.messages.at(-1).id");
+        const visible = await evaluate(cdp, `(() => { const r = __chat.rowRect('${latest}'), s = __chat.scroller().getBoundingClientRect(); return !!r && r.y + r.height <= s.bottom + 1; })()`);
+        if (after.fromBottom > 4 || !visible) fail(`the list stopped following new messages after ${what}`, after);
+        if (await evaluate(cdp, "__chat.jump()")) fail(`a new messages control was offered after ${what}`);
+      };
+      const above = await evaluate<string>(cdp, `(() => { const top = __chat.scroller().getBoundingClientRect().top; return __chat.rows().filter((r) => r.getBoundingClientRect().bottom < top).at(-1)?.getAttribute('data-gloom-chat-message-id'); })()`);
+      if (!above) fail("no message is mounted above the view");
+      await evaluate(cdp, `window.__chatFake.update('${above}', (m) => ({ ...m, content: m.content + '\\n' + 'a late addition '.repeat(40) }))`);
+      await frames(cdp, 4);
+      await following("a message above the view grew");
+      try {
+        // One resize: narrower re-wraps the rows, shorter shrinks the view, in the same layout.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false });
+        await frames(cdp, 8);
+        const resized = await state(cdp);
+        if (resized.fromBottom > 4) fail("the list left the bottom when the window got narrower and shorter", resized);
+        await following("the window got narrower and shorter");
+      } finally {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+      }
+    },
+  },
+  {
     name: "chat list: a message changing above the view does not move the reader, with no help from the browser",
     scenario: "chat&anchoring=off",
     async run(cdp) {
