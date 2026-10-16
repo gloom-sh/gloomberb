@@ -10,7 +10,7 @@ import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import type { CloudMarketScreenerItem } from "../../../api-client/types";
 import { loadMarketMoverTab } from "./client";
 import { createMarketMoversHeadless } from "./headless";
-import { overlayMarketMoverQuotes, screenerQuoteFromQuote, type MoverQuote } from "./model";
+import { overlayMarketMoverQuotes, screenerQuoteFromQuote, type MoverQuote, type MoverRankBasis } from "./model";
 import { fetchPreferredMarketMovers } from "./screener";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
 
@@ -88,9 +88,9 @@ function cloudMoverItem(quote: Quote): CloudMarketScreenerItem {
 }
 
 /** MOST's `list` from a Pro account's Cloud rows. */
-async function cloudList(list: "gainers" | "losers" | "actives", quotes: Quote[]) {
+async function cloudList(list: "gainers" | "losers" | "actives", quotes: Quote[], basis?: MoverRankBasis) {
   const headless = createMarketMoversHeadless({
-    load: (_args, tab, provider) => loadMarketMoverTab(tab, provider, undefined, {
+    load: (_args, tab, provider) => loadMarketMoverTab(tab, provider, basis ? { basis } : undefined, {
       fetchPreferred: (category, count) => fetchPreferredMarketMovers(category, count, { metadataWaitMs: 0 }, {
         isCloudEligible: () => true,
         fetchCloud: async (category) => ({ status: "success", data: { providerId: "gloomberb-cloud", category, asOf: "2026-10-10T20:00:00Z", items: quotes.map(cloudMoverItem) } }),
@@ -130,16 +130,22 @@ test("Gainers, Losers and Most Active read each row's regular session from the s
   expect((await cloudList("actives", [bare as Quote])).rows[0]).toMatchObject({ price: 198.8, changePercent: 0.5157, extendedSession: null });
 });
 
-test("a list keeps the order its live print ranks it in, whatever the regular session's moves", async () => {
-  // Saturday: AAA closed -8% and printed -10% after hours, BBB closed -9% and printed -8.8%.
+test("after the close a list ranks by the regular-session move it shows, or by the extended move when asked", async () => {
+  // Saturday: AAA closed -8% and printed -10% after hours, BBB closed -9% and printed -8.8%; the live print ranks AAA first.
   const closed = (symbol: string, close: number, last: number) => ({
     symbol, currency: "USD", price: last, change: last - 50, changePercent: (last / 50 - 1) * 100, previousClose: 50,
     regularClose: close, regularCloseSessionDate: "2026-10-09", regularChange: close - 50, regularChangePercent: (close / 50 - 1) * 100,
     changeSessionDate: "2026-10-09", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:58:00Z"),
   }) as Quote;
-  const { rows } = await cloudList("losers", [closed("BBB", 45.5, 45.6), closed("AAA", 46, 45)]);
-  expect(rows.map((row) => [row.symbol, row.rank, Number(Number(row.changePercent).toFixed(2)), row.extendedPrice])).toEqual([
-    ["AAA", 1, -8, 45],
-    ["BBB", 2, -9, 45.6],
+  const quotes = [closed("AAA", 46, 45), closed("BBB", 45.5, 45.6)];
+  const regular = await cloudList("losers", quotes);
+  expect(regular.rows.map((row) => [row.symbol, row.rank, Number(Number(row.changePercent).toFixed(2)), row.extendedPrice])).toEqual([
+    ["BBB", 1, -9, 45.6],
+    ["AAA", 2, -8, 45],
   ]);
+  expect(regular.text).toContain("Ranked by the regular-session move.");
+  // After hours BBB rose from its close, so it is no after-hours loser.
+  const extended = await cloudList("losers", quotes, "extended");
+  expect(extended.rows.map((row) => [row.symbol, Number(Number(row.extendedChangePercent).toFixed(2))])).toEqual([["AAA", -2.17]]);
+  expect(extended.text).toContain("Ranked by the after-hours move.");
 });

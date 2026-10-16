@@ -252,7 +252,9 @@ export class LiveBarAccumulator {
   private observe(latest: PricePoint, quote: Quote, options: LiveBarOptions, exchange?: string): void {
     if (quote === this.lastQuote) return;
     this.lastQuote = quote;
-    const observation = liveQuoteObservation(quote, options.now, options.assetCategory);
+    // A daily or longer bar is the regular session's: after the close it holds at the close.
+    const observation = liveQuoteObservation(quote, options.now, options.assetCategory,
+      isCalendarResolution(options.resolution) ? "regular" : "latest");
     if (!observation) return;
     const { time, price } = observation;
     const volume = isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null;

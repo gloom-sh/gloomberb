@@ -6,6 +6,10 @@ import {
   getPortfolioPositionMetrics,
   resolvePortfolioMarketValue,
 } from "../../../portfolio/position-metrics";
+import type { Quote } from "../../../types/financials";
+import type { CloudQuotePayload } from "../../../api-client/types";
+import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
+import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import type { DatedReturn } from "./metrics";
 import {
   computeWeightedPortfolioReturns,
@@ -45,8 +49,12 @@ interface PortfolioRiskHolding {
   /** Gross current value in the portfolio currency, for the covered share only; null when nothing values it. */
   marketValue: number | null;
   priceAsOf: string | null;
-  /** "close" when no current quote arrived and the latest completed close marks the holding. */
-  markSource?: "quote" | "close" | null;
+  /**
+   * "close" when no current quote arrived and the latest completed close marks
+   * the holding; "regular-close" when the quote's regular session is over and
+   * its close marks it, not a pre-market or after-hours print.
+   */
+  markSource?: "quote" | "close" | "regular-close" | null;
   /** The listing currency its closes were converted from at daily FX closes; null for a USD listing. */
   convertedFrom: string | null;
   historyAsOf: string | null;
@@ -169,6 +177,19 @@ function quoteDate(value: number | undefined): string | null {
   return Number.isFinite(value) && value! > 0
     ? new Date(value!).toISOString()
     : null;
+}
+/**
+ * A current quote's close once its regular session is over (after hours,
+ * overnight, through a weekend, and in the pre-market while the quote reports
+ * the last close), as `portfolio show --close` values a book: a pre-market or
+ * after-hours print never marks a holding. Null while the session trades.
+ */
+function regularCloseMark(quote: CloudQuotePayload): { price: number; date: string } | null {
+  const read: Quote = { ...quote, change: quote.change ?? Number.NaN, changePercent: quote.changePercent ?? Number.NaN,
+    priceBasis: quote.priceBasis === "nav" ? undefined : quote.priceBasis };
+  const close = getCompletedRegularSessionDisplay(read);
+  const date = quote.regularCloseSessionDate ?? quoteTradingDay(read);
+  return close && Number.isFinite(close.price) && close.price > 0 && date ? { price: close.price, date } : null;
 }
 function positions(ticker: TickerRecord, id: string) {
   return ticker.metadata.positions.filter(
@@ -345,12 +366,16 @@ export function buildPortfolioRisk(
     const history = byId.get(id),
       quote = history?.quote,
       lots = positions(ticker, portfolio.id);
-    // A current quote marks the holding; otherwise its latest completed close does.
+    // A current quote marks the holding, at its close once the regular session
+    // is over; otherwise its latest completed close does. A converted quote's
+    // session fields are still in its listing currency, and its venue has no
+    // extended prints to leave out.
     const close = history?.closeMark ?? null;
+    const regularClose = !close && quote && !quote.stale && !history?.converted ? regularCloseMark(quote) : null;
     const mark = close
       ? { price: close.price, currency: close.currency, stale: false }
       : quote
-        ? { price: quote.price, currency: quote.currency, stale: !!quote.stale }
+        ? { price: regularClose?.price ?? quote.price, currency: quote.currency, stale: !!quote.stale }
         : null;
     const quantity = signedQuantity(lots);
     // A converted listing is marked and returned in USD; its own currency is what the holding records.
@@ -377,7 +402,7 @@ export function buildPortfolioRisk(
         : null) ??
       history?.error ??
       (!history ? "Daily history unavailable" : null);
-    const priceDate = close ? close.date : quoteDate(quote?.lastUpdated);
+    const priceDate = close ? close.date : regularClose ? regularClose.date : quoteDate(quote?.lastUpdated);
     const marked =
       mark &&
       mark.currency === portfolio.currency &&
@@ -414,7 +439,7 @@ export function buildPortfolioRisk(
           ? Math.abs(value)
           : outsideValue(ticker, portfolio, quote ?? history?.listing ?? null, rates),
       priceAsOf: priceDate,
-      markSource: close ? "close" : quote ? "quote" : null,
+      markSource: close ? "close" : regularClose ? "regular-close" : quote ? "quote" : null,
       convertedFrom,
       historyAsOf: history?.asOf ?? null,
       returns,
@@ -627,7 +652,7 @@ export function buildPortfolioRisk(
       asOf: row.priceAsOf,
       detail: row.leftOut
         ? row.leftOut
-        : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" ? ` at ${row.priceAsOf} close` : ""}${row.convertedFrom ? ` from ${row.convertedFrom} at daily FX` : ""}; history ${row.historyAsOf}`,
+        : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" || row.markSource === "regular-close" ? ` at ${row.priceAsOf} close` : ""}${row.convertedFrom ? ` from ${row.convertedFrom} at daily FX` : ""}; history ${row.historyAsOf}`,
       ...(row.leftOut ? { leftOut: row.leftOut } : {}),
     })),
     correlation: correlation.map((row) => ({

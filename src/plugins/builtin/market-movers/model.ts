@@ -152,6 +152,68 @@ export function moverExtendedSessions(rows: readonly MoverQuote[]): ExtendedSess
   return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extended?.session === session));
 }
 
+/**
+ * What Gainers and Losers rank by: `regular` the regular session's move, the
+ * Chg% each row shows (once the session is over, its close's move); `extended`
+ * the pre-market or after-hours move from that close.
+ */
+export type MoverRankBasis = "regular" | "extended";
+export const MOVER_RANK_BASES: readonly MoverRankBasis[] = ["regular", "extended"];
+
+/** What a list was ranked by, as its header names it. */
+export type MoverRanking = "regular" | ExtendedSession | "volume";
+
+export const MOVER_RANKING_LABELS: Record<MoverRanking, string> = {
+  regular: "the regular-session move",
+  PRE: "the pre-market move",
+  POST: "the after-hours move",
+  OVERNIGHT: "the overnight move",
+  volume: "volume",
+};
+
+/** The extended session most rows have a print for; null when none has one. */
+function prevailingExtendedSession(rows: readonly MoverQuote[]): ExtendedSession | null {
+  const counts = new Map<ExtendedSession, number>();
+  for (const row of rows) {
+    if (row.extended && isFiniteNumber(row.extended.changePercent)) {
+      counts.set(row.extended.session, (counts.get(row.extended.session) ?? 0) + 1);
+    }
+  }
+  let best: ExtendedSession | null = null;
+  for (const [session, count] of counts) if (best == null || count > counts.get(best)!) best = session;
+  return best;
+}
+
+/**
+ * A list's rows, read as `ticker` reads them (moverRegularSession), in the
+ * order its header names. Most Active ranks by volume. Gainers and Losers rank
+ * by the move on `basis`, largest first, and keep only rows moving the list's
+ * way on it: after the close a gainer is a stock whose regular session closed
+ * up, whatever it did after hours. While the regular session trades its move
+ * is the live one, so nothing changes. The extended basis ranks by the
+ * pre-market or after-hours move most rows have; with none (the regular
+ * session is open) the list ranks by the regular-session move and says so.
+ */
+export function rankMoverQuotes(
+  category: ScreenerCategory,
+  rows: readonly MoverQuote[],
+  basis: MoverRankBasis = "regular",
+): { quotes: MoverQuote[]; rankedBy: MoverRanking } {
+  const byVolume = (left: MoverQuote, right: MoverQuote) => (right.volume ?? 0) - (left.volume ?? 0);
+  if (category === "most_actives") {
+    const known = (row: MoverQuote) => row.volume != null && Number.isFinite(row.volume);
+    return { quotes: [...rows].sort((left, right) => known(left) !== known(right) ? (known(left) ? -1 : 1) : byVolume(left, right)), rankedBy: "volume" };
+  }
+  const session = basis === "extended" ? prevailingExtendedSession(rows) : null;
+  const move = (row: MoverQuote) => session ? moverExtendedMove(row, session)
+    : isFiniteNumber(row.changePercent) ? row.changePercent : null;
+  const sign = category === "day_losers" ? -1 : 1;
+  const quotes = rows
+    .filter((row) => (move(row) ?? 0) * sign > 0)
+    .sort((left, right) => (move(right)! - move(left)!) * sign || byVolume(left, right) || left.symbol.localeCompare(right.symbol));
+  return { quotes, rankedBy: session ?? "regular" };
+}
+
 export function createRows(quotes: readonly MoverQuote[]): MarketMoverRow[] {
   return quotes.map((quote, index) => {
     const cached = moverRows.get(quote);
@@ -187,9 +249,8 @@ function moverExtended(quote: Quote): ExtendedSessionDisplay | null {
 /**
  * A listed row as `ticker` reads its quote: Last and Chg% are the regular
  * session's close and move, and a pre-market or after-hours print is its
- * `extended`, measured from that close. The list ranked it by its live print
- * first, so its place stays. A row without its quote's sessions (an older
- * server) reads as it came.
+ * `extended`, measured from that close; rankMoverQuotes then places it. A row
+ * without its quote's sessions (an older server) reads as it came.
  */
 export function moverRegularSession({ sessions, ...row }: ScreenerQuote): MoverQuote {
   if (!sessions || row.price == null) return row;

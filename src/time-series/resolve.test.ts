@@ -1963,7 +1963,8 @@ describe("resolveChartSpecData", () => {
       const price = result.series.find((entry) => entry.id === "price");
       const sma = result.series.find((entry) => entry.id === "sma");
       expect(price?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
-      expect(price?.points.at(-1)?.close).toBe(elapsed ? 129 : 100);
+      // After the close the daily bar takes the regular close (130), not the 129 after-hours print.
+      expect(price?.points.at(-1)?.close).toBe(elapsed ? 130 : 100);
       expect(price?.latestChangePercent).toBe(elapsed ? 30 : undefined);
       expect(sma?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
     } finally { clock.mockRestore(); }
@@ -2005,13 +2006,40 @@ describe("resolveChartSpecData", () => {
       ] }),
       now: new Date(now),
       quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
-        symbol: "SQQQ", price: 100, postMarketPrice: 105, currency: "USD", change: 0, changePercent: 0,
+        symbol: "SQQQ", price: 101, postMarketPrice: 105, currency: "USD", change: 0, changePercent: 0,
         lastUpdated: now - 60_000, marketState: "POST",
       }]]),
     });
     expect(result.errors).toEqual([]);
     expect(result.series[0]?.points).toHaveLength(1);
-    expect(result.series[0]?.points[0]?.value).toBe(105);
+    // The after-hours quote reaches the day's bar at the regular close, not its extended print.
+    expect(result.series[0]?.points[0]?.value).toBe(101);
+  });
+
+  test("a closed market's last daily candle is its regular close, as history serves it", async () => {
+    // CRWV after Thursday's after-hours session: Gloom Cloud's price is the 68.10 print, its close 69.69 beside it.
+    const now = Date.parse("2026-10-16T03:45:00Z");
+    const source = { kind: "security" as const, instrument: { symbol: "CRWV", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
+    const history = [
+      { date: new Date("2026-10-14T00:00:00Z"), open: 71.74, high: 72.52, low: 64.41, close: 65.78, volume: 111_214_200 },
+      { date: new Date("2026-10-15T00:00:00Z"), open: 61.43, high: 69.76, low: 59.51, close: 69.69, volume: 130_000_400 },
+    ];
+    const result = await resolveChartSpecData(chartSpec({
+      viewport: { range: "1M", resolution: "1d" },
+      series: [chartSeries({ source, style: "candles" })],
+    }), {
+      dataProvider: createTestDataProvider({ getPriceHistoryForResolution: async () => history }),
+      now: new Date(now),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+        symbol: "CRWV", price: 68.1, currency: "USD", change: 2.32, changePercent: 3.53, previousClose: 65.78,
+        listingExchangeName: "NASDAQ", marketState: "POSTPOST", changeSessionDate: "2026-10-15",
+        regularClose: 69.69, regularCloseSessionDate: "2026-10-15", regularChange: 3.91, regularChangePercent: 5.944,
+        lastUpdated: Date.parse("2026-10-15T23:59:59Z"),
+      }]]),
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual([65.78, 69.69]);
+    expect(result.series[0]?.points.at(-1)).toMatchObject({ open: 61.43, high: 69.76, low: 59.51 });
   });
 
   test("reuses raw source loads while live quotes recompute the chart tail", async () => {

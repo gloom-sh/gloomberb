@@ -28,6 +28,7 @@ import {
 import { portfolioOptionGreeks } from "./risk-options";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { createTestTicker } from "../../../test-support/ticker";
+import type { CloudQuotePayload } from "../../../api-client/types";
 const portfolio: Portfolio = {
   id: "local",
   name: "Test basket",
@@ -188,6 +189,26 @@ test("factor proxies resolve on their own listing venue", () => {
   const factor = model.factors.find((row) => row.id === "momentum")!;
   expect(factor.samples).toBe(60);
   expect(factor.value).not.toBeNull();
+});
+test("after the close a holding is marked at its regular close, not its after-hours print, and says so", () => {
+  const snapshot = market();
+  const withSpy = (quote: Partial<CloudQuotePayload>) => ({
+    ...snapshot,
+    histories: snapshot.histories.map((row) => row.instrument.symbol === "SPY" ? { ...row, quote: { ...row.quote!, ...quote } } : row),
+  });
+  const spy = (model: ReturnType<typeof buildPortfolioRisk>) => model.rows.holdings.find((row) => row.label === "SPY");
+  // Monday's close was 110; the quote's price is the 108 printed after hours.
+  const closed = buildPortfolioRisk(portfolio, [holding("SPY", 40)], withSpy({
+    price: 108, marketState: "POSTPOST", changeSessionDate: "2026-09-21", regularClose: 110,
+    regularCloseSessionDate: "2026-09-21", regularChange: 1, regularChangePercent: 0.92, lastUpdated: Date.parse("2026-09-21T23:59:00Z"),
+  }));
+  expect(closed.coverage.marketValue).toBe(4_400);
+  expect(spy(closed)).toMatchObject({ asOf: "2026-09-21", detail: expect.stringContaining("40 shares; 4,400.00 USD at 2026-09-21 close") });
+  expect(closed.notes.filter((row) => row.includes("no current quote"))).toEqual([]);
+  // While the session trades the quote marks it.
+  const open = buildPortfolioRisk(portfolio, [holding("SPY", 40)], withSpy({ price: 108, marketState: "REGULAR" }));
+  expect(open.coverage.marketValue).toBe(4_320);
+  expect(spy(open)?.detail).toMatch(/^40 shares; 4,320\.00 USD; history /);
 });
 test("only held positions marked at a close raise the close-mark warning", () => {
   // Factor proxies with no current quote never weight a holding.

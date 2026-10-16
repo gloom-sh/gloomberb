@@ -231,6 +231,8 @@ interface CompletedRegularSession {
   close: number;
   /** The close's move from the session before it, when the quote reports it with the close. */
   reported: { change: number; changePercent: number } | null;
+  /** The session's exchange-local date when the quote reports it with the close; otherwise the quote's own day. */
+  date?: string;
 }
 
 function reportedRegularMove(quote: Quote, close: number): CompletedRegularSession["reported"] {
@@ -262,9 +264,11 @@ function completedRegularSession(quote: Quote): CompletedRegularSession | null {
     if (state === "PRE") {
       // The quote's own day is today; the close must be an earlier one, with its move.
       const today = quoteTradingDay(quote);
-      return reported && closeDate && today && closeDate < today ? { close, reported } : null;
+      return reported && closeDate && today && closeDate < today ? { close, reported, date: closeDate } : null;
     }
-    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") return { close, reported };
+    if (closeDate ? closeDate === quoteTradingDay(quote) : state === "POST") {
+      return closeDate ? { close, reported, date: closeDate } : { close, reported };
+    }
   }
   if (state === "POST" && isFiniteNumber(quote.postMarketPrice) && isFiniteNumber(quote.postMarketChange)) {
     const derived = quote.postMarketPrice - quote.postMarketChange;
@@ -310,6 +314,27 @@ export function getRegularSessionDisplay(quote: Quote | null | undefined): Activ
  */
 export function getCompletedRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   return quote && completedRegularClose(quote) != null ? getRegularSessionDisplay(quote) : null;
+}
+
+/**
+ * The price a daily, weekly or monthly bar takes from a quote: the regular
+ * session's, never an extended print, so a closed market's last bar is the
+ * close `history` and `portfolio show --close` give. While the session
+ * trades, or when the quote does not say its session, the quote's price. Once
+ * it is over, its close as the headline reads it, with that session's date
+ * when the quote reports one (in the pre-market it is an earlier day's).
+ * Null in the pre-market while the quote cannot say which close that is: a
+ * pre-market print is no regular session's price, and today's bar has not
+ * opened.
+ */
+export function getRegularSessionBarClose(quote: Quote | null | undefined): { price: number; sessionDate: string | null } | null {
+  if (!quote) return null;
+  const state = quote.marketState;
+  if (state == null || state === "REGULAR") return { price: quote.price, sessionDate: null };
+  const session = completedRegularSession(quote);
+  if (session) return { price: session.close, sessionDate: session.date ?? null };
+  if (state === "PRE" || (state === "PREPRE" && quote.preMarketPrice != null)) return null;
+  return { price: quote.price, sessionDate: null };
 }
 
 /**

@@ -7,10 +7,18 @@ import {
   fetchScreenerResult,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
-  rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
-import { formatMoverPrice, moverReferencePrice, moverRegularSession } from "../../plugins/builtin/market-movers/model";
+import {
+  formatMoverPrice,
+  MOVER_RANK_BASES,
+  MOVER_RANKING_LABELS,
+  moverReferencePrice,
+  moverRegularSession,
+  rankMoverQuotes,
+  type MoverRankBasis,
+} from "../../plugins/builtin/market-movers/model";
+import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -111,7 +119,16 @@ const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
   "most-active": "most_actives",
   trending: "trending",
 };
-const MOVERS_USAGE = "movers [gainers|losers|active|trending]";
+const MOVERS_USAGE = "movers [gainers|losers|active|trending] [--session regular|extended]";
+/** The most rows the movers list serves in one request. */
+const MOVER_REQUEST_CAP = 100;
+
+function moverRankBasis(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): MoverRankBasis {
+  if (value == null) return "regular";
+  const basis = MOVER_RANK_BASES.find((candidate) => candidate === value.trim().toLowerCase());
+  if (!basis) ctx.fail(`Unknown --session "${value}".`, "Use regular or extended.");
+  return basis;
+}
 
 function screenerCategory(args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): ScreenerCategory | "trending" {
   rejectExtraArgs(args, 1, { usage: MOVERS_USAGE, takes: "one list" }, ctx);
@@ -154,9 +171,16 @@ function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/d
   });
 }
 
-async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
+  const sessionOption = takeOption(args, "--session");
+  const basis = moverRankBasis(sessionOption, ctx);
   const category = screenerCategory(args, ctx);
   const limit = ctx.cliOptions.limit ?? 25;
+  if (sessionOption != null && (category === "trending" || category === "most_actives")) {
+    ctx.fail("--session ranks Gainers and Losers.", category === "trending"
+      ? "Trending keeps its source's order." : "Most active ranks by volume.");
+  }
   if (category === "trending") {
     await withCliServices(ctx, async (services) => {
       const trending = await fetchTrending(limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
@@ -171,11 +195,17 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
     return;
   }
 
-  const screener = await fetchScreenerResult(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
-  // Ranked by the live print, as the list is; then Last and Chg% are the regular
-  // session, as `ticker` reads it, and a pre-market or after-hours print is its own column.
-  const rows = rankScreenerQuotes(category, screener.data).map((quote) => {
-    const { extended, ...row } = moverRegularSession(quote);
+  // After the close a price list keeps only the rows moving its way on the basis
+  // asked for, so it reads more candidates than it shows.
+  const count = category === "most_actives" ? limit : Math.min(MOVER_REQUEST_CAP, Math.max(limit, MOVER_CANDIDATES));
+  const screener = await fetchScreenerResult(category, count, undefined, { forceRefresh: ctx.cliOptions.refresh });
+  // Last and Chg% are the regular session, as `ticker` reads it, and a
+  // pre-market or after-hours print is its own column. The list is ranked by
+  // the regular session's move (its close's after the close), or with
+  // --session extended by the extended print's move from that close.
+  const { quotes, rankedBy } = rankMoverQuotes(category, screener.data.map(moverRegularSession), basis);
+  const rows = quotes.slice(0, limit).map((quote) => {
+    const { extended, ...row } = quote;
     return {
       ...row,
       extendedSession: extended?.session ?? null,
@@ -184,8 +214,15 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
       extendedChangePercent: extended?.changePercent ?? null,
     };
   });
+  const fellBack = basis === "extended" && rankedBy === "regular";
   // A screener snapshot, as the MOST report reads it: delayed, each row dated by its own last price.
-  ctx.printResult({ data: rows, freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }) }, {
+  ctx.printResult({
+    data: rows,
+    metadata: { category, rankedBy },
+    ...(fellBack ? { warnings: ["No pre-market or after-hours prints now, so the list is ranked by the regular-session move."] } : {}),
+    freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }),
+  }, {
+    heading: `Ranked by ${MOVER_RANKING_LABELS[rankedBy]}`,
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),
       ...EXTENDED_COLUMNS,
@@ -557,7 +594,11 @@ export const overviewCliCommands: CliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.markets,
       usage: [MOVERS_USAGE],
-      examples: ["movers", "movers losers --limit 10", "movers trending"],
+      options: [{
+        flags: "--session <basis>",
+        description: "Rank gainers and losers by the regular-session move (regular, the default) or by the pre-market or after-hours move from the close (extended)",
+      }],
+      examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers trending"],
     },
     execute: runMoverCommand,
   },

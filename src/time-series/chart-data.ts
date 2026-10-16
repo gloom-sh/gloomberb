@@ -1,6 +1,8 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { getRegularSessionBarClose } from "../market-data/market/status";
+import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { quoteFutureToleranceMs } from "../market-data/quotes/clock";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
@@ -131,27 +133,49 @@ interface LiveQuoteObservation {
   price: number;
 }
 
+/**
+ * Which of a quote's prices a history takes: `latest` the live print,
+ * pre-market and after hours included, as intraday bars do; `regular` the
+ * regular session's (getRegularSessionBarClose), as daily and longer bars do,
+ * so a closed market's last bar is its regular close.
+ */
+export type LiveQuoteBasis = "latest" | "regular";
+
+/**
+ * The regular-session observation of a quote: its price while the session
+ * trades, else the completed session's close. A close from before the quote's
+ * own day (the pre-market's) is none: that session's bar is the history's, and
+ * a day that has not traded has no bar yet.
+ */
+function regularSessionObservation(quote: Quote, quoteTime: number): LiveQuoteObservation | null {
+  const bar = getRegularSessionBarClose(quote);
+  if (!bar || !Number.isFinite(bar.price) || bar.price <= 0) return null;
+  if (bar.sessionDate != null && bar.sessionDate !== quoteTradingDay(quote)) return null;
+  return { time: quoteTime, price: bar.price };
+}
+
 /** A current, well-formed quote price that may extend a price history, or null. */
 export function liveQuoteObservation(
   quote: Quote | null | undefined,
   now: number,
   assetCategory?: string,
+  basis: LiveQuoteBasis = "latest",
 ): LiveQuoteObservation | null {
   if (!quote || isQuoteStaleForCurrentSession(quote, quoteObservationNow(quote, now))) return null;
   if (hasUnknownBondHistoryBasis(quote, assetCategory)) return null;
   // No history covers the overnight session: its prices form or move no bar.
   if (quote.overnightPrice != null) return null;
   const quoteTime = quote.lastUpdated;
-  const quotePrice = getActiveQuotePrice(quote);
   if (
     !Number.isFinite(quoteTime)
-    || !Number.isFinite(quotePrice)
-    || quotePrice <= 0
     || quoteTime > now + Math.max(MAX_LIVE_QUOTE_CLOCK_SKEW_MS, quoteFutureToleranceMs())
     || now - quoteTime > MAX_LIVE_QUOTE_TAIL_AGE_MS
   ) {
     return null;
   }
+  if (basis === "regular") return regularSessionObservation(quote, quoteTime);
+  const quotePrice = getActiveQuotePrice(quote);
+  if (!Number.isFinite(quotePrice) || quotePrice <= 0) return null;
   return { time: quoteTime, price: quotePrice };
 }
 
@@ -161,23 +185,26 @@ export function appendLiveQuotePoint(
   options: AppendLiveQuotePointOptions = {},
 ): PricePoint[] {
   const now = options.now ?? Date.now();
-  const observation = liveQuoteObservation(quote, now, options.assetCategory);
-  if (!quote || !observation) return points;
-  const { time: quoteTime, price: quotePrice } = observation;
-
   const latest = points.at(-1);
-  if (!latest) return points;
+  if (!quote || !latest) return points;
 
   const latestTime = getPointTime(latest);
   if (!Number.isFinite(latestTime)) return points;
+  const previous = points.at(-2);
+  const latestInterval = previous ? latestTime - getPointTime(previous) : Number.NaN;
+  // Daily and longer bars are regular-session bars; intraday ones follow the live print.
+  const calendarBars = options.mode === "ohlc"
+    ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
+    : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
+  const observation = liveQuoteObservation(quote, now, options.assetCategory, calendarBars ? "regular" : "latest");
+  if (!observation) return points;
+  const { time: quoteTime, price: quotePrice } = observation;
   // A calendar bar labelled with its own zone's date at UTC midnight starts
   // after `now` while that zone is ahead of UTC: London FX opens its day at
   // 23:00 UTC in summer. A quote shortly before such a bar is its live price.
   const beforeDatedBar = quoteTime < latestTime;
   if (beforeDatedBar && !(latestTime > now && latestTime - quoteTime < DAY_MS)) return points;
 
-  const previous = points.at(-2);
-  const latestInterval = previous ? latestTime - getPointTime(previous) : Number.NaN;
   if (
     latestInterval > 0
     && latestInterval <= MAX_INTRADAY_BAR_INTERVAL_MS
@@ -195,9 +222,6 @@ export function appendLiveQuotePoint(
   }
 
   if (beforeDatedBar) {
-    const calendarBars = options.mode === "ohlc"
-      ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
-      : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
     if (!calendarBars) return points;
     const merged = options.mode === "ohlc" || latest.high != null || latest.low != null
       ? mergeQuoteIntoLatestBar(latest, quotePrice)

@@ -119,20 +119,39 @@ describe("LiveBarAccumulator", () => {
     expect(new LiveBarAccumulator().apply(history, overnight, options(overnight))).toEqual(history);
   });
 
-  test("a pre-market quote still carrying yesterday's count does not become today's volume", () => {
+  test("a pre-market print opens no daily candle; the regular session opens it with its own count", () => {
     const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
     const bars = new LiveBarAccumulator();
     const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1d" as const, exchange: "NASDAQ" });
+    // Still carrying yesterday's count.
     let next: Quote = { ...quote("00:00:00", 103, 40_000_000, { marketState: "PRE", preMarketPrice: 104 }),
       lastUpdated: Date.parse("2026-09-23T12:00:00Z") };
-    let points = bars.apply(history, next, options(next));
-    expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), close: 104 });
-    expect(points[1]?.volume).toBeUndefined();
-    // The regular session restarts the count on the same date, here first seen mid-morning.
+    expect(bars.apply(history, next, options(next))).toBe(history);
+    // The regular session's count starts on the same date, here first seen mid-morning.
     next = { ...quote("00:00:00", 105, 25_000_000), lastUpdated: Date.parse("2026-09-23T15:00:00Z") };
-    points = bars.apply(history, next, options(next));
+    const points = bars.apply(history, next, options(next));
     expect(points[0]?.volume).toBe(40_000_000);
-    expect(points[1]).toMatchObject({ close: 105, volume: 25_000_000 });
+    expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), close: 105, volume: 25_000_000 });
+  });
+
+  test("after the close the daily candle holds at the regular close while after-hours prints arrive", () => {
+    const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
+    const bars = new LiveBarAccumulator();
+    const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1d" as const, exchange: "NASDAQ" });
+    // As Gloom Cloud sends it in the after-hours session: the close, the session's print beside it.
+    const closed = (time: string, print: number): Quote => quote(time, 103.5, 40_000_000, {
+      marketState: "POST", postMarketPrice: print, changeSessionDate: "2026-09-22", regularClose: 103.5,
+      regularCloseSessionDate: "2026-09-22", regularChange: 1.5, regularChangePercent: 1.47,
+    });
+    bars.apply(history, closed("20:30:00", 99), options(closed("20:30:00", 99)));
+    let points = bars.apply(history, closed("23:30:00", 97), options(closed("23:30:00", 97)));
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({ high: 104, low: 98, close: 103.5 });
+    // Past the after-hours session the price is the last print, and the close still stands.
+    const evening: Quote = { ...closed("00:00:00", 96.5), price: 96.5, marketState: "POSTPOST", lastUpdated: Date.parse("2026-09-23T00:30:00Z") };
+    points = bars.apply(history, evening, options(evening));
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({ low: 98, close: 103.5 });
   });
 
   test("regular bars keep extended-hours prints out, including a bar still open after the close", () => {

@@ -10,7 +10,7 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import { loadMarketMoverTab, loadSessionMovers, type MarketMoverTabResult } from "./client";
-import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, moverExtendedSessions, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
+import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, MOVER_RANKING_LABELS, moverExtendedSessions, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
@@ -163,12 +163,17 @@ export function createMarketMoversHeadless(
           row.fiftyTwoWeekHigh,
         ),
       }));
+      // Beside an extended column, say which move the order follows.
+      const rankedBy = result.rankedBy ?? null;
       return {
         ...(extendedSessions.length > 0
           ? { columns: [...COLUMNS.slice(0, 5), ...extendedSessions.map(extendedColumn), ...COLUMNS.slice(5)] }
           : {}),
         rows,
-        metadata: { list: tab, source: result.source, stale: result.stale },
+        ...(rankedBy && rankedBy !== "volume" && extendedSessions.length > 0
+          ? { notes: [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] }
+          : {}),
+        metadata: { list: tab, source: result.source, stale: result.stale, rankedBy },
       };
     },
   };

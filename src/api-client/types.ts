@@ -1529,7 +1529,7 @@ export type CloudMoverSessionFields = Partial<Pick<Quote,
   | "preMarketPrice" | "preMarketChange" | "preMarketChangePercent"
   | "postMarketPrice" | "postMarketChange" | "postMarketChangePercent">>;
 
-/** price, change and changePercent are the live print the list is ranked by; the session fields say how it reads. */
+/** price, change and changePercent are the live print the server ranks the list by; the session fields say how it reads. */
 export interface CloudMarketScreenerItem extends CloudMoverSessionFields {
   rank: number;
   symbol: string;

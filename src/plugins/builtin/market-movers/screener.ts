@@ -327,9 +327,10 @@ async function bestEffortMarketMetadata(
 
 /**
  * Screeners rank on a snapshot older than the quote fields they return, so a
- * list is re-ranked on the metric it displays. Unknown values sort last.
+ * list is re-ranked on its rows' own figures. Unknown values sort last. The
+ * rows' regular sessions then place them (rankMoverQuotes).
  */
-export function rankScreenerQuotes(category: ScreenerCategory, quotes: ScreenerQuote[]): ScreenerQuote[] {
+function rankScreenerQuotes(category: ScreenerCategory, quotes: ScreenerQuote[]): ScreenerQuote[] {
   const metric = (quote: ScreenerQuote): number | null => {
     const value = category === "most_actives" ? quote.volume : quote.changePercent;
     if (value == null || !Number.isFinite(value)) return null;
