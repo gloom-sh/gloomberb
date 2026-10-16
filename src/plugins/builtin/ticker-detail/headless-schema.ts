@@ -1,5 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import { FINANCIAL_PERIOD_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
+import { historyIntervalsByRange } from "../../../cli/history-rows";
+import { HISTORY_DEFAULT_RANGE } from "./data-panes/history-bars";
 import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-model";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
@@ -51,11 +53,11 @@ export const paneSchemas = {
     options: [
       {
         key: "range",
-        description: "Price-history window.",
+        description: `Price-history window, which also sets the bar size: ${historyIntervalsByRange()}.`,
         type: "enum",
         aliases: ["rangePreset"],
         values: HISTORY_RANGE_VALUES,
-        defaultValue: "ALL",
+        defaultValue: HISTORY_DEFAULT_RANGE,
         pluginState: { pluginId: "ticker-research" },
       },
     ],

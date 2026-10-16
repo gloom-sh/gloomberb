@@ -29,13 +29,16 @@ import {
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
-import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
-import { barPeriodToDate, type BarPeriodToDate } from "../../../market-data/market/bar-period";
+import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "../../../time-series/resolution";
 import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
 import { loadReturnSeries } from "./data-panes/returns-history";
+import {
+  formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyDateHeader, isDailyOrLongerBar, type HistoryBarSize,
+} from "./data-panes/history-bars";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
@@ -264,23 +267,44 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   },
 };
 
+/** The price columns of HP, which `fn HP` prints and exports with the date column of the bars' size. */
+const HISTORY_PRICE_COLUMNS: HeadlessPaneColumn[] = ["open", "high", "low", "close", "volume"].map((key) => ({
+  key, header: key, align: "right" as const,
+  format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? "-"
+    : key === "volume" ? formatNumber(Number(value), 0)
+    : formatPriceObservation(Number(value), { minimumFractionDigits: 2 }),
+}));
+
+/**
+ * The columns of HP's rows. A day or longer bar is a date and an intraday one a
+ * UTC time. The text table dates a month's bar as the month and marks a bar
+ * whose period runs on (`2026-10 MTD`); the export keeps each bar's own date
+ * and adds a `Partial` column when one is.
+ */
+function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean): HeadlessPaneColumn[] {
+  const daily = isDailyOrLongerBar(size);
+  const date: HeadlessPaneColumn = {
+    key: "date",
+    header: daily ? historyDateHeader(size) ?? "Date" : "Time (UTC)",
+    format: (value, row) => daily
+      ? (text ? historyBarDate(String(value).slice(0, 10), size, row.partial === true) : String(value).slice(0, 10))
+      : String(value).slice(0, 16).replace("T", " "),
+  };
+  const marked: HeadlessPaneColumn[] = partial && !text
+    ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
+    : [];
+  return [date, ...HISTORY_PRICE_COLUMNS, ...marked];
+}
+
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["historical-prices-pane"],
   shape: "rows",
-  description: "Daily OHLCV rows (date, open, high, low, close, volume) for one ticker over a range.",
-  describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${options.range ?? "ALL"}`,
-  columns: [
-    { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },
-    ...["open", "high", "low", "close", "volume"].map((key) => ({
-      key, header: key, align: "right" as const,
-      format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? "-"
-        : key === "volume" ? formatNumber(Number(value), 0)
-        : formatPriceObservation(Number(value), { minimumFractionDigits: 2 }),
-    })),
-  ],
+  description: "OHLCV bars (date, open, high, low, close, volume) for one ticker over a range: daily to start, weekly for 5Y and monthly for ALL, with the newest weekly or monthly bar marked partial while its week or month runs on.",
+  describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${options.range ?? HISTORY_DEFAULT_RANGE}`,
+  columns: historyColumns("1d", false, false),
   async load({ symbols, options }, ctx) {
     const symbol = symbols[0]!;
-    const range = (options.range ?? "ALL") as TimeRange;
+    const range = (options.range ?? HISTORY_DEFAULT_RANGE) as TimeRange;
     const points = await loadHeadlessPriceHistory(ctx, symbol, range);
     const rows = points.map((point) => {
       const date = new Date(point.date);
@@ -290,20 +314,28 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
-    const resolution = barResolutionFromDates(rows.map((row) => row.date));
+    const size = historyBarSize(rows.map((row) => Date.parse(row.date)));
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
-    const forming = await formingBarPeriod(ctx, symbol, rows.at(-1)?.date, resolution);
+    const forming = await formingBarPeriod(ctx, symbol, rows.at(-1)?.date, size);
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
     const freshness = {
-      ...barHistoryFreshness(resolution), observedKey: "date", oldest: null, ...(forming ? { periodToDate: forming } : {}),
+      ...barHistoryFreshness(isDailyOrLongerBar(size) ? size : null), observedKey: "date", oldest: null, ...(forming ? { periodToDate: forming } : {}),
     };
-    return { rows: shown, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+    return {
+      rows: shown,
+      columns: historyColumns(size, !!forming, false),
+      textColumns: historyColumns(size, !!forming, true),
+      freshness,
+      ...(notice ? { complete: false } : {}),
+      unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
+      metadata: { symbol, range, ...(size === "intraday" ? {} : { interval: size }), ...(notice ? { notices: [notice] } : {}) },
+    };
   },
 };
 
 /**
- * Whether the newest weekly or monthly bar was still forming (barPeriodToDate),
+ * Whether the newest weekly or monthly bar was still forming (formingHistoryBar),
  * read on the listing's venue: its key's, or for a bare symbol its quote's.
  * The quote is asked for only while the bar's calendar period runs on.
  */
@@ -311,15 +343,14 @@ async function formingBarPeriod(
   ctx: HeadlessPaneContext,
   key: string,
   date: string | undefined,
-  resolution: "1d" | "1wk" | "1mo",
+  size: HistoryBarSize,
 ): Promise<BarPeriodToDate | null> {
-  const period = resolution === "1mo" ? "month" : resolution === "1wk" ? "week" : null;
-  if (!date || !period || !barPeriodToDate(date, period, undefined, Date.now())) return null;
+  if (!formingHistoryBar(size, date, undefined, Date.now())) return null;
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   const venue = exchange || await ctx.marketData.getQuote(symbol, "")
     .then((quote) => quote.listingExchangeName || quote.exchangeName)
     .catch(() => undefined);
-  return barPeriodToDate(date, period, venue, Date.now());
+  return formingHistoryBar(size, date, venue, Date.now());
 }
 
 /** A percent with its sign, two decimals: `+0.63%`; a dash for a gap. */
@@ -350,7 +381,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const percent = (value: number | null) => value === null ? null : value * 100;
     const intraday = isIntradayResolution(series.resolution);
     // A daily or longer bar is a trading date; an intraday one its UTC open.
-    const rows = returns.map((row) => ({
+    const unmarked = returns.map((row) => ({
       time: intraday ? new Date(row.timestamp).toISOString() : new Date(row.timestamp).toISOString().slice(0, 10),
       close: rounded(row.price),
       intervalChange: rounded(row.intervalChange),
@@ -359,15 +390,31 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       totalReturnPct: percent(row.cumulativePercent),
       ...(row.inconsistent ? { inconsistent: true } : {}),
     }));
+    // A weekly or monthly bar whose period runs on is the period so far: marked partial, and dated by how far it runs.
+    const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
+    const rows = forming ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
-    const columns: HeadlessPaneColumn[] = [
-      { key: "time", header: intraday ? "Time (UTC)" : "Date", format: (value) => String(value).slice(0, 16).replace("T", " ") },
+    const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
       { key: "intervalReturnPct", header: "Int %", align: "right", format: signedPercentCell },
       { key: "totalChange", header: "Total $", align: "right", format: price },
       { key: "totalReturnPct", header: "Total %", align: "right", format: signedPercentCell },
     ];
+    // The text table dates a month's bar as the month and marks one still running (`2026-10 MTD`); the export keeps the day and says which bar is partial.
+    const timeColumn = (text: boolean): HeadlessPaneColumn => ({
+      key: "time",
+      header: intraday ? "Time (UTC)" : "Date",
+      format: (value, row) => text && !intraday
+        ? historyBarDate(String(value).slice(0, 10), series.resolution, row.partial === true)
+        : String(value).slice(0, 16).replace("T", " "),
+    });
+    const columns: HeadlessPaneColumn[] = [
+      timeColumn(false),
+      ...figures,
+      ...forming ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
+    ];
+    const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
       series.resolution !== requested
@@ -379,12 +426,14 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows,
       columns,
+      textColumns,
       unavailableSymbols: rows.length ? [] : [key],
       ...(rows.length ? {} : { errors: [`${key}: No bars in this window.`] }),
       freshness: {
         ...barHistoryFreshness(intraday ? null : series.resolution),
         observedKey: "time",
         oldest: null,
+        ...(forming ? { periodToDate: forming } : {}),
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
         // The window ends at the last session while the market is shut, which the status line says.
         ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),

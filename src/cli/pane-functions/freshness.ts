@@ -571,7 +571,7 @@ function periodText(date: string, periodicity: NonNullable<ReportFreshness["peri
  * day to name, the period from its start, `Oct 2026 to date` or `week of Mon
  * 12 Oct 2026 to date`.
  */
-function periodToDateText({ period, through }: NonNullable<ReportFreshness["periodToDate"]>, asOf: string): string {
+export function periodToDateText({ period, through }: NonNullable<ReportFreshness["periodToDate"]>, asOf: string): string {
   if (through) return `${period} to date, through ${dayText(through)}`;
   return period === "month" ? `${periodText(asOf, "monthly")} to date` : `week of ${dayText(asOf)} to date`;
 }

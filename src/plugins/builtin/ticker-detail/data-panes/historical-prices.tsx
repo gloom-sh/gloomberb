@@ -10,6 +10,7 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
+  type PaneFooterSegment,
 } from "../../../../components";
 import { TIME_RANGES, type TimeRange } from "../../../../time-series/range";
 import type { PaneProps } from "../../../../types/plugin";
@@ -29,6 +30,17 @@ import {
 import { usePaneTicker } from "../../../../state/app/context";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
+import {
+  formingHistoryBar,
+  formingHistoryBarText,
+  HISTORY_DEFAULT_RANGE,
+  historyBarDate,
+  historyBarSize,
+  historyBarSizeText,
+  historyBarSizeWord,
+  historyDateHeader,
+  type HistoryBarSize,
+} from "./history-bars";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
 type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
@@ -36,7 +48,12 @@ type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 export type HistoricalPriceRow = {
   key: string;
   point: ReturnType<typeof pricePointValues>;
+  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running. */
   date: string;
+  /** What a CSV export writes for the date: the bar's own date, whatever the table says of its period. */
+  exportDate: string;
+  /** The bar carries a time of day, so the table dates it with one. */
+  timed: boolean;
   change: number | null;
   changePercent: number | null;
 };
@@ -90,25 +107,43 @@ function formatMaybeCompact(value: number | null | undefined): string {
   return value == null ? "-" : formatCompact(value);
 }
 
-function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceRow[] {
+interface HistoricalPriceTable {
+  /** Newest first. */
+  rows: HistoricalPriceRow[];
+  size: HistoryBarSize;
+  /** The newest bar's week or month had not ended, and how far into it the bar runs. */
+  forming: ReturnType<typeof formingHistoryBar>;
+  /** The newest bar's day, `YYYY-MM-DD`. */
+  newestDate: string | undefined;
+}
+
+function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefined, now: number): HistoricalPriceTable {
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
       return date ? [{ point: pricePointValues(point), date, sourceIndex }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
-  return sorted.map((entry, index) => {
+  const size = historyBarSize(sorted.map((entry) => entry.date.getTime()));
+  const newestDate = sorted.at(-1)?.date.toISOString().slice(0, 10);
+  const forming = formingHistoryBar(size, newestDate, venue, now);
+  const rows = sorted.map((entry, index) => {
     const previous = sorted[index - 1]?.point;
     const { point, date, sourceIndex } = entry;
     const change = previous?.close != null && point.close != null ? point.close - previous.close : null;
+    const shown = formatDateTime(date);
+    const timed = shown.length > 10;
     return {
       key: `${date.toISOString()}:${sourceIndex}`,
       point,
-      date: formatDateTime(date),
+      date: timed ? shown : historyBarDate(shown, size, !!forming && index === sorted.length - 1),
+      exportDate: shown,
+      timed,
       change,
       changePercent: previous?.close && change !== null ? change / previous.close : null,
     };
   }).reverse();
+  return { rows, size, forming, newestDate };
 }
 
 const HISTORY_PRICE_WIDTH = 10;
@@ -123,8 +158,9 @@ const HISTORY_NUMERIC_IDS = ["open", "high", "low", "close", "change", "changePe
  * evenly, and give up cells down to a floor when it is narrow, so the volume
  * stays on screen.
  */
-function buildHistoryColumns(width: number, intraday: boolean): HistoryColumn[] {
-  const dateWidth = intraday ? 16 : 10;
+function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarSize, newestDate: string): HistoryColumn[] {
+  // A month reads as `2026-10`; the newest bar, when its week or month runs on, adds `MTD` or `WTD`.
+  const dateWidth = Math.max(intraday ? 16 : size === "1mo" ? 7 : 10, newestDate.length);
   const numeric: number[] = HISTORY_NUMERIC_IDS.map((id) => id === "changePercent" ? HISTORY_PERCENT_WIDTH : HISTORY_PRICE_WIDTH);
   // One gap per column plus the table's inset on both sides.
   const available = width - dateWidth - HISTORY_VOLUME_WIDTH - 8 - 2;
@@ -141,7 +177,7 @@ function buildHistoryColumns(width: number, intraday: boolean): HistoryColumn[] 
   }
   const [open, high, low, close, change, changePercent] = numeric as [number, number, number, number, number, number];
   return [
-    { id: "date", label: intraday ? "DATE/TIME" : "DATE", width: dateWidth, align: "left" },
+    { id: "date", label: intraday ? "DATE/TIME" : historyDateHeader(size)?.toUpperCase() ?? "DATE", width: dateWidth, align: "left" },
     { id: "open", label: "OPEN", width: open, align: "right", flexGrow: 1 },
     { id: "high", label: "HIGH", width: high, align: "right", flexGrow: 1 },
     { id: "low", label: "LOW", width: low, align: "right", flexGrow: 1 },
@@ -162,7 +198,7 @@ function nextHistoryRange(current: TimeRange): TimeRange {
 export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { symbol, exchange, ticker } = useBoundTicker();
-  const [range, setRange] = usePluginPaneState<TimeRange>("range", "ALL");
+  const [range, setRange] = usePluginPaneState<TimeRange>("range", HISTORY_DEFAULT_RANGE);
   const [selectedIdx, setSelectedIdx] = useDebouncedPluginPaneState<number>("selectedIdx", 0);
   const loader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider) throw new Error("Market data unavailable");
@@ -174,14 +210,20 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     );
   }, [dataProvider, range]);
   const { data, loading, error, reload } = useTickerRequest<PricePoint[]>(loader, symbol, exchange);
-  const rows = useMemo(() => buildHistoricalPriceRows(data ?? []), [data]);
+  // The quote knows the instrument type even when the saved ticker does not;
+  // resolve it the way every quote display does. It also names the venue
+  // whose sessions say whether a week or month is still running.
+  const { financials } = usePaneTicker();
+  const venue = exchange || financials?.quote?.listingExchangeName || financials?.quote?.exchangeName || undefined;
+  const { rows, size, forming, newestDate } = useMemo(
+    () => buildHistoricalPriceRows(data ?? [], venue, Date.now()),
+    [data, venue],
+  );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
   // Daily and longer bars are dates; only intraday bars carry a time.
-  const intraday = rows.length > 0 ? rows.some((row) => row.date.length > 10) : range === "1D" || range === "1W";
-  const columns = useMemo(() => buildHistoryColumns(width, intraday), [intraday, width]);
-  // The quote knows the instrument type even when the saved ticker does not;
-  // resolve it the way every quote display does.
-  const { financials } = usePaneTicker();
+  const intraday = rows.length > 0 ? rows.some((row) => row.timed) : range === "1D" || range === "1W";
+  const newestRowDate = rows[0]?.date ?? "";
+  const columns = useMemo(() => buildHistoryColumns(width, intraday, size, newestRowDate), [intraday, newestRowDate, size, width]);
   const assetCategory = quoteFormatOptions(
     financials?.quote,
     ticker?.metadata.assetCategory,
@@ -217,7 +259,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   ): DataTableCell => {
     switch (column.id) {
       case "date":
-        return { text: row.date, color: colors.textDim };
+        return { text: row.date, value: row.exportDate, color: colors.textDim };
       case "open":
       case "high":
       case "low":
@@ -236,8 +278,14 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     }
   }, [priceDecimals]);
 
-  // The range is picked in the query bar; t still steps through it.
-  usePaneStatusFooter({ registrationId: "historical-prices", loading, error });
+  // The range is picked in the query bar; t still steps through it. The range
+  // sets the bar size, which the footer says, and a week or month still
+  // running says how far the newest bar goes.
+  const barInfo = useMemo<PaneFooterSegment[]>(() => [
+    ...rows.length > 0 ? [{ id: "bars", parts: [{ text: historyBarSizeText(size), tone: "muted" as const }] }] : [],
+    ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
+  ], [forming, newestDate, rows.length, size]);
+  usePaneStatusFooter({ registrationId: "historical-prices", loading, error, info: barInfo });
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
@@ -280,7 +328,9 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       getExportMetadata={() => [
         ["Ticker", symbol ? publicTickerKey(symbol, exchange) : ""],
         ["Requested range", range],
+        ...(rows.length > 0 ? [["Bar size", historyBarSizeWord(size)]] : []),
         ["Time zone", "UTC"],
+        ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
         ["Price units", "As served in the history; currency and price-basis metadata are unavailable"],
         ["Status", error ? (rows.length ? "Retained after refresh failure" : "Unavailable")
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],

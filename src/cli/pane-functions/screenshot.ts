@@ -73,6 +73,7 @@ import { getCloudApiBaseUrl } from "../../api-client/request";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
+import { HISTORY_DEFAULT_RANGE } from "../../plugins/builtin/ticker-detail/data-panes/history-bars";
 import { accessGateSentence, accessGateStatus } from "./access-gate";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
 import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
@@ -736,6 +737,7 @@ function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null
     case "return-correlation":
       return (resolved.options.rangePreset ?? "1Y") as TimeRange;
     case "historical-prices":
+      return (resolved.options.range ?? HISTORY_DEFAULT_RANGE) as TimeRange;
     case "security-relationship":
       return (resolved.options.range ?? "1Y") as TimeRange;
     default:

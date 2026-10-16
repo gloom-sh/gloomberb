@@ -27,6 +27,8 @@ import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges"
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
+import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
+import { formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
 
@@ -295,7 +297,27 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
-  return barHistoryFreshness(coarsest);
+  const forming = formingPriceBar(series);
+  // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
+  return { ...barHistoryFreshness(coarsest), ...(forming ? { periodToDate: forming, oldest: null } : {}) };
+}
+
+/**
+ * The first series whose newest weekly or monthly bar is a week or month that
+ * had not ended, as `history` and HP date it: the report is then dated by how
+ * far that bar runs (`month to date, through Fri 16 Oct 2026`), not by the
+ * first day of the period the bar is dated by.
+ */
+function formingPriceBar(series: readonly HeadlessSeries[]): BarPeriodToDate | null {
+  for (const entry of series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>>) {
+    const last = entry.points.at(-1);
+    const time = last ? new Date(last.date).getTime() : Number.NaN;
+    if (!entry.historyResolution || !Number.isFinite(time)) continue;
+    const venue = entry.timeBasis?.exchange || entry.listing?.exchange || undefined;
+    const forming = formingHistoryBar(entry.historyResolution, new Date(time).toISOString().slice(0, 10), venue, Date.now());
+    if (forming) return forming;
+  }
+  return null;
 }
 
 /** What a chart series was asked as: a listing as typed (`USDZAR=X`, `SAN:EPA`), a FRED series by its ID. */

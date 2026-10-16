@@ -35,7 +35,7 @@ const BREAK_JUMP_RATIO = 100;
 const BREAK_FLAGS: ReadonlySet<string> = new Set(["gap", "jump"]);
 const FIRST_MONDAY_MS = Date.UTC(1970, 0, 5);
 
-const BAR_INTERVAL_LABELS: Record<ManualChartResolution, string> = {
+export const BAR_INTERVAL_LABELS: Record<ManualChartResolution, string> = {
   "1m": "1-minute",
   "5m": "5-minute",
   "15m": "15-minute",

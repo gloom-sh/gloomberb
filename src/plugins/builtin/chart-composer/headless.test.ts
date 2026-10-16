@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { chartHeadless, chartResolutionDrop, economicChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
@@ -130,6 +130,30 @@ test("a bar size the source does not serve for the range warns what came back an
   // Without a support list the source's answer is the reason.
   expect(chartResolutionDrop("1d", { range: "ALL" }, [{ historyResolution: "1wk", symbol: "USDNGN=X" }], [])?.warning)
     .toBe("1d is not available for ALL on USDNGN=X (the source returned 1wk bars); returning 1wk bars.");
+});
+
+test("a chart of monthly bars dates the report by how far its newest month has run, not by the 1st", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const monthly = ["2026-08-01", "2026-09-01", "2026-10-01"].map((date) => ({ date: new Date(`${date}T00:00:00Z`), open: 16, high: 17, low: 15, close: 16.5 }));
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getChartResolutionSupport: () => [{ resolution: "1mo", maxRange: "ALL" }],
+    getPriceHistoryForResolution: async () => monthly,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("USDZAR=X"), "chart-composer", { rangePreset: "ALL", chartResolution: "1mo" });
+  const load = async () => await chartHeadless("chart-composer-pane").load(
+    { argument: "USDZAR=X", rawArgument: "USDZAR=X", symbols: [], options: {} },
+    { ...fixture().context, marketData: provider, settings: { chartSpec: spec } },
+  );
+  try {
+    // Fri 16 Oct 2026: October's bar is still forming. Once the month has ended it is complete.
+    setSystemTime(new Date("2026-10-16T08:14:00Z"));
+    expect((await load()).freshness).toMatchObject({ basis: "monthly bars", periodToDate: { period: "month" } });
+    setSystemTime(new Date("2026-11-03T08:14:00Z"));
+    expect((await load()).freshness).not.toHaveProperty("periodToDate");
+  } finally {
+    setSystemTime();
+  }
 });
 
 describe("GIP headless sessions", () => {

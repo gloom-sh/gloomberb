@@ -42,6 +42,7 @@ import {
   type ReturnRow,
 } from "./returns-model";
 import { loadReturnSeries, type ReturnSeries } from "./returns-history";
+import { formingHistoryBar, formingHistoryBarText, historyBarDate } from "./history-bars";
 
 type ReturnColumnId = "time" | "price" | "intervalChange" | "intervalPercent" | "cumulativeChange" | "cumulativePercent";
 type ReturnColumn = DataTableColumn & { id: ReturnColumnId };
@@ -185,12 +186,21 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
   const hints = useMemo<PaneHint[]>(() => (
     table.searchable ? [{ id: "search", key: "/", label: "search", onPress: focusSearch }] : []
   ), [focusSearch, table.searchable]);
+  // A weekly or monthly interval's newest bar is its week or month so far when that has not ended.
+  const newestDate = returnRows[0] ? new Date(returnRows[0].timestamp).toISOString().slice(0, 10) : undefined;
+  const forming = useMemo(
+    () => data ? formingHistoryBar(data.resolution, newestDate, data.venue || undefined, Date.now()) : null,
+    [data, newestDate],
+  );
+  const formingKey = forming ? returnRows[0]?.key : undefined;
+  const barSize = data?.resolution ?? shownResolution;
   // A shut market's window ends at its last session, which the footer names.
-  const marketInfo = useMemo<PaneFooterSegment[]>(() => (
-    data?.lastSession
-      ? [{ id: "market", parts: [{ text: closedMarketNote(data.lastSession, data.visibleTo), tone: "muted" }] }]
-      : []
-  ), [data]);
+  const marketInfo = useMemo<PaneFooterSegment[]>(() => [
+    ...data?.lastSession
+      ? [{ id: "market", parts: [{ text: closedMarketNote(data.lastSession, data.visibleTo), tone: "muted" as const }] }]
+      : [],
+    ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
+  ], [data, forming, newestDate]);
   usePaneStatusFooter({ registrationId: "returns", loading, error, hints, info: marketInfo });
 
   const integrityNotice = priceHistoryIntegrityNotice(returnRows.filter((row) => row.inconsistent).length);
@@ -208,8 +218,15 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
 
   const renderCell = useCallback((row: ReturnRow, column: ReturnColumn): DataTableCell => {
     switch (column.id) {
-      case "time":
-        return { text: formatDateTime(new Date(row.timestamp)), value: new Date(row.timestamp).toISOString(), color: colors.textDim };
+      case "time": {
+        const shown = formatDateTime(new Date(row.timestamp));
+        // A daily or longer bar is a date; a month's reads as the month, and one still running says so.
+        return {
+          text: shown.length > 10 ? shown : historyBarDate(shown, barSize, row.key === formingKey),
+          value: new Date(row.timestamp).toISOString(),
+          color: colors.textDim,
+        };
+      }
       case "price":
         return { text: formatMaybePrice(row.price, priceDecimals, column.width), value: exportPrice(row.price, priceDecimals), color: colors.textBright, attributes: TextAttributes.BOLD };
       case "intervalChange":
@@ -221,7 +238,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
       case "cumulativePercent":
         return { text: formatMaybePercent(row.cumulativePercent), value: row.cumulativePercent === null ? null : row.cumulativePercent * 100, color: priceColor(row.cumulativePercent ?? 0) };
     }
-  }, [priceDecimals]);
+  }, [barSize, formingKey, priceDecimals]);
 
   return (
     <DataTableView<ReturnRow, ReturnColumn>
@@ -270,6 +287,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
         ["Ticker", symbol ? publicTickerKey(symbol, exchange) : ""],
         ["Range", data?.range ?? range],
         ["Interval", getChartResolutionLabel(data?.resolution ?? shownResolution)],
+        ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
         ["Window", data ? `after ${new Date(data.visibleFrom).toISOString()} through ${new Date(data.visibleTo).toISOString()}` : ""],
         ...(data?.lastSession ? [["Market", closedMarketNote(data.lastSession, data.visibleTo)]] : []),
         ["Time zone", "UTC, bar open"],

@@ -175,7 +175,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["DDIS"],
   },
   HP: {
-    summary: "Daily open, high, low, close and volume in a scrollable table.",
+    summary: "Open, high, low, close and volume in a scrollable table: daily bars over 3M to start, weekly for 5Y and monthly for ALL.",
     usage: ["HP AAPL"],
     keys: [key("t", " range")],
     data: QUOTES,
