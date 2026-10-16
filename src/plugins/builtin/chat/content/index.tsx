@@ -179,6 +179,7 @@ export function ChatContent({
     loading,
     loadingOlderMessages,
     messages,
+    mentionCandidates,
     messagesError,
     replyTo,
     setReplyTo,
@@ -290,7 +291,8 @@ export function ChatContent({
     activeChannel,
     currentUserId: user?.id,
     messages,
-  }), [activeChannel, messages, user?.id]);
+    candidates: mentionCandidates,
+  }), [activeChannel, messages, mentionCandidates, user?.id]);
   const mentionDisabled = activeChannel?.kind === "direct" || (!activeChannel && channelId.startsWith("dm:"));
   const mentionTrigger = useMemo(() => (
     mentionDisabled ? null : detectChatMentionTrigger(composerDraft, composerCursorOffset)

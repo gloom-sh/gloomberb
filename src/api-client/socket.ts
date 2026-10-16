@@ -109,6 +109,7 @@ export class CloudApiSocket {
   private reconnectDelayMs = 1000;
 
   private readonly channelListeners = new Map<string, Set<ChannelListener>>();
+  private readonly chatMentionCandidatesListeners = new Set<() => void>();
   private readonly chatNotificationListeners =
     new Set<ChatNotificationListener>();
   private readonly chatChannelStateListeners =
@@ -252,6 +253,11 @@ export class CloudApiSocket {
     return () => {
       this.chatNotificationListeners.delete(listener);
     };
+  }
+
+  subscribeChatMentionCandidatesChanged(listener: () => void): () => void {
+    this.chatMentionCandidatesListeners.add(listener);
+    return () => { this.chatMentionCandidatesListeners.delete(listener); };
   }
 
   /**
@@ -631,6 +637,10 @@ export class CloudApiSocket {
       return;
     }
 
+    if (parsed?.type === "chat.mentions_changed") {
+      for (const listener of this.chatMentionCandidatesListeners) listener();
+      return;
+    }
     if (parsed?.type === "chat.channel_state") {
       const state = normalizeChatChannelStateFrame(parsed.data);
       if (state) {

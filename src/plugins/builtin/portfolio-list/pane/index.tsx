@@ -92,7 +92,7 @@ import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
 import { perpetualDisplaySymbol, perpetualListing, perpetualVenueName } from "../../../../tickers/perpetual-listing";
 import { useColumnClock } from "../use-column-clock";
-import { liveMarketCapitalization } from "../live-valuation";
+import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
 import {
   allocationTotal,

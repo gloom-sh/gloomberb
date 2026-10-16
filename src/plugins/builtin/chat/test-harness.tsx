@@ -24,6 +24,7 @@ const TRANSCRIPT_SCHEMA_VERSION = 2;
 const originalConnectChannel = apiClient.connectChannel.bind(apiClient);
 const originalGetChannels = apiClient.getChannels.bind(apiClient);
 const originalGetChatPresence = apiClient.getChatPresence.bind(apiClient);
+const originalGetChatMentionCandidates = apiClient.getChatMentionCandidates;
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
 const testControllers = new Set<ChatController>();
@@ -40,6 +41,7 @@ const TEST_CHAT_CHANNELS: ChatChannel[] = [
 
 export function installChatApiTestDefaults(): void {
   apiClient.getChatPresence = async () => ({ onlineCount: 0 });
+  apiClient.getChatMentionCandidates = async () => { throw new Error("Fixture has no member endpoint"); };
   apiClient.updateChatChannelState = async (channelId, body) => ({
     channelId,
     notificationsEnabled: body.notificationsEnabled ?? false,
@@ -62,6 +64,7 @@ export function cleanupChatTest(): void {
   apiClient.connectChannel = originalConnectChannel;
   apiClient.getChannels = originalGetChannels;
   apiClient.getChatPresence = originalGetChatPresence;
+  apiClient.getChatMentionCandidates = originalGetChatMentionCandidates;
   apiClient.updateChatChannelState = originalUpdateChatChannelState;
   apiClient.editMessage = originalEditMessage;
   apiClient.setSessionToken(null);

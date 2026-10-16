@@ -1,5 +1,6 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
+import { regularSessionValuationPrice, regularSessionValuationTime } from "../market-data/quotes/regular-session-valuation";
 import { mergePriceHistoryIntegrity, pricePointIntegrity } from "../utils/price-history-integrity";
 
 export type ValuationPriceIssue = ({
@@ -56,6 +57,18 @@ export function valuationPriceAtOrBefore(history: readonly PricePoint[], date: s
     }) } satisfies ValuationPriceIssue,
   };
   return { price: points[0]!.close };
+}
+
+/**
+ * The price a Current multiple divides and when it is from: the regular
+ * session's, as `valuation` measures it, so after the close it is the close,
+ * dated by it, and never an after-hours or pre-market print. Null without a
+ * positive price or a dated quote.
+ */
+export function currentValuationPrice(quote: Quote | undefined): { price: number; date: Date } | null {
+  const price = regularSessionValuationPrice(quote);
+  const time = regularSessionValuationTime(quote);
+  return price != null && time ? { price, date: new Date(time.time) } : null;
 }
 
 export function valuationPriceWarning(issues: readonly ValuationPriceIssue[]): string | undefined {

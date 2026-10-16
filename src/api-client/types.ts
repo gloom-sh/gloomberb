@@ -145,6 +145,15 @@ export interface ChatChannel {
   members?: ChatUserSummary[];
 }
 
+/** Minimal identities scoped by the server to this channel and existing DMs. */
+export interface ChatMentionCandidate {
+  id: string;
+  username: string;
+  displayName: string | null;
+  channelActivityAt: string | null;
+  conversationActivityAt: string | null;
+}
+
 export interface ChatChannelState {
   channelId: string;
   notificationsEnabled: boolean;

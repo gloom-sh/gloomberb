@@ -221,6 +221,8 @@ export interface TimeSeriesFieldDefinition {
   id: string;
   label: string;
   shortLabel: string;
+  /** What a charted series is called after its symbol when that says more than `shortLabel`: the basis of its figures. */
+  seriesLabel?: string;
   sourceKind: ChartSeriesSource["kind"];
   dataShape: SeriesDataShape;
   unit: string;

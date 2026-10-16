@@ -42,6 +42,7 @@ const originalGetSession = apiClient.getSession.bind(apiClient);
 const originalGetMessages = apiClient.getMessages.bind(apiClient);
 const originalGetChannels = apiClient.getChannels.bind(apiClient);
 const originalGetChatPresence = apiClient.getChatPresence.bind(apiClient);
+const originalGetChatMentionCandidates = apiClient.getChatMentionCandidates;
 const originalGetChatState = apiClient.getChatState.bind(apiClient);
 const originalGetAccountProfile = apiClient.getAccountProfile.bind(apiClient);
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
@@ -117,6 +118,7 @@ class TrackingPersistence extends MemoryPersistence {
 
 beforeEach(() => {
   apiClient.getChatPresence = async () => ({ onlineCount: 0 });
+  apiClient.getChatMentionCandidates = async () => { throw new Error("Fixture has no member endpoint"); };
   apiClient.getChatState = async () => ({
     channels: SERVER_CHAT_CHANNELS,
     onlineCount: 0,
@@ -153,6 +155,7 @@ afterEach(() => {
   apiClient.getMessages = originalGetMessages;
   apiClient.getChannels = originalGetChannels;
   apiClient.getChatPresence = originalGetChatPresence;
+  apiClient.getChatMentionCandidates = originalGetChatMentionCandidates;
   apiClient.getChatState = originalGetChatState;
   apiClient.getAccountProfile = originalGetAccountProfile;
   apiClient.updateChatChannelState = originalUpdateChatChannelState;

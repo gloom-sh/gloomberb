@@ -1,6 +1,9 @@
 import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { priceEarningsEps } from "../../utils/fundamentals";
-import { getRegularSessionDisplay } from "../market/status";
+import type { ReportTime } from "../../utils/utc-time";
+import { latestRegularSessionClose } from "../market/freshness";
+import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../market/status";
+import { quoteTradingDay } from "./day-range";
 
 function positive(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -17,6 +20,34 @@ export function regularSessionValuationPrice(quote: Quote | null | undefined): n
   if (!quote || quote.priceBasis === "percent-of-par") return null;
   const price = getRegularSessionDisplay(quote)?.price;
   return positive(price) ? price : null;
+}
+
+/**
+ * When the completed regular session the quote reports closed: the venue's
+ * close on that day from its calendar, or the day alone when the calendar does
+ * not give the hour.
+ */
+function regularCloseTime(quote: Quote): ReportTime | null {
+  const date = quote.regularCloseSessionDate ?? quoteTradingDay(quote);
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const close = exchange && Number.isFinite(quote.lastUpdated) ? latestRegularSessionClose(exchange, quote.lastUpdated) : null;
+  if (close && (!date || close.date === date)) return { time: close.close, dateOnly: false };
+  const day = date ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
+  return Number.isFinite(day) ? { time: day, dateOnly: true } : null;
+}
+
+/**
+ * When the price regularSessionValuationPrice reads is from: once the regular
+ * session is over (and in the pre-market while the quote carries the last
+ * session's close), that session's close; while it trades, the quote's own
+ * time. A figure measured at that price is dated by it, never by an
+ * after-hours or pre-market print. Null without a dated quote.
+ */
+export function regularSessionValuationTime(quote: Quote | null | undefined): ReportTime | null {
+  if (!quote) return null;
+  const close = getCompletedRegularSessionDisplay(quote) ? regularCloseTime(quote) : null;
+  if (close) return close;
+  return Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? { time: quote.lastUpdated, dateOnly: false } : null;
 }
 
 function scaled(value: number | undefined, ratio: number): number | undefined {

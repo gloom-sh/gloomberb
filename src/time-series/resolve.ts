@@ -310,7 +310,7 @@ function behindHistoryNotice(
 function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: string): ResolvedSeries {
   const field = spec.source.kind === "security" ? getTimeSeriesField(spec.source.fieldId) : undefined;
   const label = spec.source.kind === "security"
-    ? `${instrumentLabel(spec.source)} ${field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`
+    ? `${instrumentLabel(spec.source)} ${field?.seriesLabel ?? field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`
     : spec.source.kind === "economic"
       ? `FRED ${spec.source.seriesId}`
       : spec.source.seriesId;
@@ -1228,7 +1228,7 @@ function baseSecuritySeries(
     && points.every((point) => [point.open, point.high, point.low].every((value) => value == null || value === point.close));
   return {
     id: spec.id,
-    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic) : `${symbol} ${field.shortLabel}`),
+    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic) : `${symbol} ${field.seriesLabel ?? field.shortLabel}`),
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,

@@ -6,9 +6,7 @@
     "api.fiscaldata.treasury.gov",
     "api.gemini.com",
     "api.limitless.exchange",
-    "api.publisher.jodidata.org",
     "api.votehub.com",
-    "apps.fas.usda.gov",
     "clinicaltrials.gov",
     "clob.polymarket.com",
     "data-api.polymarket.com",
@@ -19,8 +17,6 @@
     "markets.newyorkfed.org",
     "nasdaqtrader.com",
     "production.dataviz.cnn.io",
-    "services-dynarep.ddwa.finra.org",
-    "www.ers.usda.gov",
-    "www.jodidata.org"
+    "services-dynarep.ddwa.finra.org"
   ]
 }

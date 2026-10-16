@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
-import { dcfValue, projectReverseDcf, solveImpliedGrowth } from "./model";
+import { dcfValue, FORECAST_YEARS, projectReverseDcf, solveImpliedGrowth } from "./model";
 
 const financials = (fundamentals: TickerFinancials["fundamentals"], annual: Partial<FinancialStatement>[] = []): TickerFinancials =>
   ({ fundamentals, annualStatements: annual as FinancialStatement[], quarterlyStatements: [], priceHistory: [] });
@@ -34,5 +35,26 @@ describe("reverse DCF", () => {
     expect(projectReverseDcf(financials({ ...fundamentals, financialCurrency: "TWD" }), { symbol: "X", discountRate: 0.09 }).error)
       .toBe("Cash flows are in TWD and the market value in USD.");
     expect(projectReverseDcf(financials({ ...fundamentals, freeCashFlow: -1 }), { symbol: "X", discountRate: 0.09 }).implied).toBeNull();
+  });
+
+  test("reads the EV valuation shows: at the regular close, labelled against market cap + debt - cash, unavailable when withdrawn", () => {
+    // After hours: printed 210 after a 200 close; the cap, the EV and its check were measured at the print.
+    const quote = { ...sessionQuotes("TEST", { listingExchangeName: "NYSE" }).weekend, price: 210, regularClose: 200 };
+    const check = { status: "differs" as const, source: 1_900, currency: "USD", marketCap: 2_100, totalDebt: 100, cash: 50, computed: 2_150 };
+    const fundamentals = { enterpriseValue: 1_900, enterpriseValueCheck: check, marketCap: 2_100, sharesOutstanding: 10, trailingPE: 21, eps: 10,
+      freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD" };
+    const model = projectReverseDcf({ ...financials(fundamentals), quote }, { symbol: "X", discountRate: 0.09, fcfMargin: 0.25 });
+    // Only the equity part moves: 100 off the cap, so 1,800 against 2,050 computed, and the growth is solved at 1,800.
+    expect(model).toMatchObject({ enterpriseValue: 1_800, computedEnterpriseValue: 2_050, error: null,
+      implied: solveImpliedGrowth(1_800, 100, 0.09, 0.025) });
+    expect(model.enterpriseValueNote).toContain("(provider)");
+    const growth = model.implied?.kind === "rate" ? model.implied.value : NaN;
+    expect(model.impliedRevenue).toBeCloseTo(100 * (1 + growth) ** FORECAST_YEARS / 0.25, 6);
+
+    const withdrawn = { ...fundamentals, enterpriseValue: undefined, unavailableFields: ["enterpriseValue" as const],
+      enterpriseValueCheck: { ...check, status: "withdrawn" as const, source: 6_000 } };
+    const unavailable = projectReverseDcf({ ...financials(withdrawn), quote }, { symbol: "X", discountRate: 0.09 });
+    expect(unavailable).toMatchObject({ enterpriseValue: null, implied: null, impliedRevenue: null });
+    expect(unavailable.error).toStartWith("EV unavailable: the provider's");
   });
 });

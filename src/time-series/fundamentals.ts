@@ -9,9 +9,11 @@ import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog"
 import { forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
-import { valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
+import { currentValuationPrice, valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 import { isFiniteNumber } from "../utils/guards";
+import { liveForwardPE, liveTrailingPE } from "../market-data/quotes/live-valuation";
+import { comparablePriceEarnings } from "../utils/price-earnings";
 
 type NumericStatementField =
   | "totalRevenue"
@@ -107,7 +109,7 @@ const VALUATION_IDS = new Set([
   "priceFcf",
 ]);
 
-/** Statement-based multiples whose latest point is the live quote over the latest period. */
+/** Statement-based multiples whose latest point is the regular session price over the latest trailing period. */
 const QUOTE_DERIVED_VALUATION_IDS = new Set([
   "trailingPE",
   "priceSales",
@@ -734,15 +736,17 @@ function providerCurrentValuationPoint(
   financials: TickerFinancials,
   metric: string,
 ): TimeSeriesPoint | null {
+  // A forward P/E is measured at the regular session price, as `valuation` reads it; PEG stays as served.
   const value = metric === "forwardPE"
-    ? financials.fundamentals?.forwardPE
+    ? comparablePriceEarnings(liveForwardPE(financials.quote, financials.fundamentals))
     : metric === "pegRatio"
       ? financials.fundamentals?.pegRatio
       : undefined;
   if (!isFiniteNumber(value) || (metric === "forwardPE" && value <= 0)) return null;
   const quoteTime = financials.quote?.lastUpdated;
-  const date = validDate(isFiniteNumber(quoteTime) && quoteTime > 0 ? quoteTime : null);
-  if (!date) return null;
+  const quoteDate = validDate(isFiniteNumber(quoteTime) && quoteTime > 0 ? quoteTime : null);
+  if (!quoteDate) return null;
+  const date = metric === "forwardPE" ? currentValuationPrice(financials.quote)?.date ?? quoteDate : quoteDate;
   return {
     date,
     observedAt: date,
@@ -756,6 +760,21 @@ function providerCurrentValuationPoint(
   };
 }
 
+/**
+ * The trailing P/E `valuation`, DES and the portfolio columns show: the served
+ * one at the regular session price, over positive EPS.
+ */
+function servedTrailingPE(financials: TickerFinancials): number | null {
+  return comparablePriceEarnings(liveTrailingPE(financials.quote, financials.fundamentals));
+}
+
+/**
+ * The latest point of a statement-based multiple: the regular session price
+ * (after the close, the close, dated by it) over the latest period known when
+ * the quote was observed. The statements decide whether there is one; a
+ * trailing P/E then takes the served one at that price where there is one, so
+ * the chart ends on the P/E `valuation` prints.
+ */
 function currentDerivedValuationPoint(
   financials: TickerFinancials,
   statements: readonly FinancialStatement[],
@@ -766,6 +785,8 @@ function currentDerivedValuationPoint(
   if (valuationQuoteIssue(quote)) return null;
   const quoteDate = validDate(quote?.lastUpdated);
   if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
+  const current = currentValuationPrice(quote);
+  if (!current) return null;
   const quoteTime = quoteDate.getTime();
   // Select the latest known period first. Missing inputs, a loss or incompatible
   // currency cannot make an older period's denominator current again.
@@ -781,21 +802,38 @@ function currentDerivedValuationPoint(
     ))
     .at(-1)?.candidate;
   if (!statement) return null;
-  const comparablePrice = currencies.priceInStatementUnits(statement, quote.price);
+  const comparablePrice = currencies.priceInStatementUnits(statement, current.price);
   if (comparablePrice === null) return null;
   const value = valuationAtPrice(statement, metric, comparablePrice);
   if (value === null) return null;
   return {
-    date: quoteDate,
-    observedAt: quoteDate,
-    availableAt: quoteDate,
-    value,
+    date: current.date,
+    observedAt: current.date,
+    availableAt: current.date,
+    value: (metric === "trailingPE" ? servedTrailingPE(financials) : null) ?? value,
     periodLabel: "Current",
     provenance: {
       providerId: quote.providerId,
       quality: "derived",
     },
   };
+}
+
+/**
+ * The periods a Current multiple is read from: the selected ones, and beside
+ * fiscal years the trailing twelve months the quarters after them sum to, so a
+ * fiscal year's EPS never prices today once later quarters are reported. A
+ * fiscal year is itself a trailing twelve months at its end.
+ */
+function currentValuationStatements(
+  financials: TickerFinancials,
+  selected: ReturnType<typeof sourceStatements>,
+  metric: string,
+): InternalStatement[] {
+  if (selected.period !== "annual") return selected.statements;
+  const trailing = buildTtmStatements(deriveQuarterlyStatements(financials.quarterlyStatements, financials.annualStatements))
+    .filter((statement) => hasValuationInputs(statement, metric));
+  return [...selected.statements, ...trailing];
 }
 
 /** Whether a valuation field derives a current point from the latest quote. */
@@ -933,7 +971,7 @@ export function extractFundamentalSeries(
       valuationPriceIssues: [{ ...historical.issue, affectedAt: point.date.toISOString() }] };
     return point ? [point] : [];
   });
-  const current = currentDerivedValuationPoint(financials, selected.statements, metric, currencies);
+  const current = currentDerivedValuationPoint(financials, currentValuationStatements(financials, selected, metric), metric, currencies);
   if (!hasHistoricalObservation && !current) return [];
   const dedupedHistorical = dedupeFundamentalPeriods(historical);
   // Publication timestamps can be shared by distinct fiscal periods. Their

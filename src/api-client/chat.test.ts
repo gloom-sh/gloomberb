@@ -51,6 +51,20 @@ test("offers images only once the server says it takes them, and asks for them o
   expect(requests.map((request) => request.features)).toEqual(["chat.attachments", "chat.attachments"]);
 });
 
+test("membership invalidations reach subscribed mention caches and stop after unsubscribe", async () => {
+  const { chat, ws, requests } = createChat(() => []);
+  let invalidations = 0;
+  const stop = chat.subscribeMentionCandidatesChanged(() => { invalidations++; });
+  ws.receive({ type: "chat.mentions_changed", data: {} });
+  expect(invalidations).toBe(1);
+  expect(requests).toHaveLength(0);
+  stop();
+  ws.receive({ type: "chat.mentions_changed", data: {} });
+  expect(invalidations).toBe(1);
+  await chat.getMentionCandidates("team:one/desk");
+  expect(requests[0]?.path).toBe("/chat/channels/team%3Aone%2Fdesk/mention-candidates");
+});
+
 test("a REST answer carrying attachments proves support before the socket is ready", async () => {
   const { chat } = createChat((path) => (path.startsWith("/chat/channels/everyone/messages")
     ? [{ id: "m1", channelId: "everyone", content: "", replyToId: null, createdAt: "2026-10-05T00:00:00Z", user: { id: "u1", username: "ada", displayName: "Ada" }, attachments: [] }]

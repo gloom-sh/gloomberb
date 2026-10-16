@@ -1,8 +1,9 @@
-import type { ChatChannel, ChatMessage } from "../../../../api-client";
+import type { ChatChannel, ChatMentionCandidate, ChatMessage } from "../../../../api-client";
 import { isDiscordGhost } from "../ghost-user";
 
 export interface ChatMentionSuggestion {
   username: string;
+  displayName?: string | null;
 }
 
 interface ChatMentionTrigger {
@@ -11,7 +12,7 @@ interface ChatMentionTrigger {
   query: string;
 }
 
-const MENTION_TRIGGER_RE = /(^|[\s([{<,.;:!?])@([A-Za-z0-9_]{0,30})$/;
+const MENTION_TRIGGER_RE = /(^|[\s([{<,.;:!?])@([\p{L}\p{N}_]{0,30})$/u;
 const MAX_MENTION_SUGGESTIONS = 5;
 
 function normalizeUsername(username: string | null | undefined): string | null {
@@ -36,29 +37,50 @@ export function buildRecentMentionSuggestions({
   activeChannel,
   currentUserId,
   messages,
-  limit = MAX_MENTION_SUGGESTIONS,
+  candidates,
 }: {
   activeChannel: ChatChannel | undefined;
   currentUserId: string | null | undefined;
   messages: ChatMessage[];
-  limit?: number;
+  candidates?: ChatMentionCandidate[];
 }): ChatMentionSuggestion[] {
   if (activeChannel?.kind === "direct") return [];
-  const seen = new Set<string>();
-  const suggestions: ChatMentionSuggestion[] = [];
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const user = messages[index]?.user;
-    const username = normalizeUsername(user?.username);
-    if (!user || !username || user.id === currentUserId || isDiscordGhost(user)) continue;
-    const key = username.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    suggestions.push({ username });
-    if (suggestions.length >= limit) break;
+  const time = (value: string | null) => value ? Date.parse(value) || 0 : 0;
+  const people = new Map((candidates ?? []).map((person) => [person.id, {
+    ...person,
+    activity: time(person.channelActivityAt),
+    conversation: time(person.conversationActivityAt),
+  }]));
+  for (const message of messages) {
+    if (activeChannel && message.channelId !== activeChannel.id) continue;
+    const user = message.user;
+    const username = normalizeUsername(user.username);
+    if (!username || user.id === currentUserId || isDiscordGhost(user)) continue;
+    const existing = people.get(user.id);
+    // Private membership is authoritative, including removals. A newly
+    // received public message itself makes its author visible in this channel.
+    const publicChannel = activeChannel && (!activeChannel.kind || activeChannel.kind === "public");
+    if (candidates !== undefined && !existing && !publicChannel) continue;
+    people.set(user.id, {
+      id: user.id,
+      username: existing?.username ?? username,
+      displayName: existing?.displayName ?? user.displayName,
+      channelActivityAt: null,
+      conversationActivityAt: null,
+      activity: Math.max(existing?.activity ?? 0, time(message.createdAt)),
+      conversation: existing?.conversation ?? 0,
+    });
   }
-
-  return suggestions;
+  const seen = new Set<string>();
+  return [...people.values()]
+    .sort((a, b) => b.activity - a.activity || b.conversation - a.conversation || a.username.localeCompare(b.username))
+    .filter((person) => {
+      const key = person.username.toLowerCase();
+      if (person.id === currentUserId || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(({ username, displayName }) => ({ username, displayName }));
 }
 
 export function filterMentionSuggestions(
@@ -67,9 +89,16 @@ export function filterMentionSuggestions(
   limit = MAX_MENTION_SUGGESTIONS,
 ): ChatMentionSuggestion[] {
   const normalizedQuery = normalizeUsername(query)?.toLowerCase() ?? "";
-  return suggestions
-    .filter((suggestion) => !normalizedQuery || suggestion.username.toLowerCase().startsWith(normalizedQuery))
-    .slice(0, limit);
+  const matches: ChatMentionSuggestion[] = [];
+  for (const suggestion of suggestions) {
+    if (matches.length >= Math.min(limit, MAX_MENTION_SUGGESTIONS)) break;
+    if (!normalizedQuery
+      || suggestion.username.toLowerCase().startsWith(normalizedQuery)
+      || suggestion.displayName?.toLowerCase().split(/\s+/).some((word) => word.startsWith(normalizedQuery))) {
+      matches.push(suggestion);
+    }
+  }
+  return matches;
 }
 
 export function applyMentionSuggestion(

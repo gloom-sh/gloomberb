@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
+import { sessionQuotes } from "../test-support/test-fixture-session-quotes";
 import { createDefaultConfig } from "../types/config";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
@@ -237,4 +238,21 @@ test("chart and headless export preserve historical P/E without a Current point 
   data.annualStatements[1]!.eps = 3;
   const recovered = await loadChartPaneModel(spec, context);
   expect(recovered.series[0]?.points.at(-1)?.value).toBe(20);
+});
+
+test("an annual chart's Current multiple is the regular close over the latest trailing twelve months, and its P/E the served one", () => {
+  // After hours: printed 210 after a 200 close, two quarters after the fiscal year (EPS 5, TTM 6).
+  const quote = { ...sessionQuotes("TEST", { listingExchangeName: "NYSE", instrumentType: "Common Stock" }).weekend, price: 210, regularClose: 200 };
+  const quarter = (date: string, eps: number): FinancialStatement => ({ date, availableAt: date, currency: "USD", eps, totalRevenue: 100, dilutedShares: 10 });
+  const data: TickerFinancials = { ...fixture(), quote,
+    annualStatements: [{ date: "2025-12-31", availableAt: "2026-02-20", currency: "USD", eps: 5, totalRevenue: 300, dilutedShares: 10 }],
+    quarterlyStatements: [quarter("2025-09-30", 1.2), quarter("2025-12-31", 1.3), quarter("2026-03-31", 1.5), quarter("2026-06-30", 2)],
+    priceHistory: [{ date: new Date("2026-02-20"), close: 150 }] };
+  const current = (metric: string, financials = data) => extractFundamentalSeries(financials, source("annual", metric)).at(-1)!;
+  expect(current("trailingPE")).toMatchObject({ periodLabel: "Current", value: 200 / 6, date: new Date("2026-10-09T20:00:00Z") });
+  expect(current("priceSales").value).toBe(200 * 10 / 400);
+  // The served P/E `valuation` prints, moved from the print it was measured at to the close.
+  const served = { ...data, fundamentals: { trailingPE: 210 / 6.25, eps: 6.25, financialCurrency: "USD", marketCapCurrency: "USD" } };
+  expect(current("trailingPE", served).value).toBeCloseTo(32, 10);
+  expect(extractFundamentalSeries(served, source("annual")).map(({ value }) => value).slice(0, -1)).toEqual([30]);
 });

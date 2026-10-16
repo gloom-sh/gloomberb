@@ -222,6 +222,34 @@ describe("ChatContent", () => {
     expect(frame).not.toContain("@charlie");
   });
 
+  test("fills a cold mention menu with silent members without another keystroke or read", async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getChatMentionCandidates>>>();
+    let reads = 0;
+    apiClient.getChatMentionCandidates = () => { reads++; return pending.promise; };
+    const controller = createController({ messages: [makeNamedMessage(1, "alpha")] });
+    await renderFocusedComposerWithDraft(controller, "@");
+    expect(tui.frame()).toContain("@alpha");
+    expect(tui.frame()).not.toContain("@quiet");
+    await act(async () => {
+      pending.resolve([
+        { id: "u-alpha", username: "alpha", displayName: "Alpha", channelActivityAt: null, conversationActivityAt: null },
+        { id: "u-quiet", username: "quiet", displayName: "Silent Member", channelActivityAt: null, conversationActivityAt: null },
+      ]);
+      await pending.promise;
+    });
+    await flushFrame();
+    expect(tui.frame()).toContain("@quiet");
+    await act(async () => { await tui.setup().mockInput.typeText("Sil"); });
+    await flushFrame();
+    expect(tui.frame()).toContain("@quiet");
+    expect(tui.frame()).not.toContain("@alpha");
+    expect(reads).toBe(1);
+    const event = await emitKeypress({ name: "tab", sequence: "\t" });
+    await flushFrame();
+    expect(tui.frame()).toContain("> @quiet");
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   test("tab accepts the current mention suggestion without pane cycling", async () => {
     const controller = createController({
       messages: [

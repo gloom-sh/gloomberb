@@ -44,7 +44,7 @@ import {
   liveMarketCapitalization,
   liveTrailingPE,
   targetReferencePrice,
-} from "./live-valuation";
+} from "../../../market-data/quotes/live-valuation";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,

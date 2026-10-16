@@ -71,7 +71,10 @@ export interface ChatFake {
 }
 
 declare global {
-  interface Window { __chatFake: ChatFake }
+  interface Window {
+    __chatFake: ChatFake;
+    __chatMembers: { reads: string[]; release(): void };
+  }
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -275,6 +278,26 @@ const CHANNELS: ChatChannel[] = [
 
 apiClient.getChannels = async () => CHANNELS;
 apiClient.getChatPresence = async () => ({ onlineCount: 3 });
+const memberResponse = Promise.withResolvers<void>();
+if (params.get("members") !== "held") memberResponse.resolve();
+window.__chatMembers = { reads: [], release: () => memberResponse.resolve() };
+apiClient.getChatMentionCandidates = async (channelId) => {
+  window.__chatMembers.reads.push(channelId);
+  if (channelId === "everyone") await memberResponse.promise;
+  const authors = Object.values(MEMBERS).map((user) => ({
+    id: user.id, username: user.username!, displayName: user.displayName,
+    channelActivityAt: null, conversationActivityAt: null,
+  }));
+  if (!params.has("members") && params.get("latencyCheck") !== "1") return authors;
+  return [...authors,
+    { id: `silent-${channelId}`, username: channelId === "everyone" ? "quiet" : "othermember", displayName: "Silent Reader", channelActivityAt: null, conversationActivityAt: null },
+    { id: "penpal", username: "penpal", displayName: "Recent Contact", channelActivityAt: null, conversationActivityAt: "2026-01-04T00:00:00Z" },
+    ...Array.from({ length: 5000 }, (_, index) => ({
+      id: `member-${index}`, username: `member${index}`, displayName: `Member ${index}`,
+      channelActivityAt: null, conversationActivityAt: null,
+    })),
+  ];
+};
 apiClient.updateChatChannelState = async (channelId, body) => ({
   channelId, notificationsEnabled: body.notificationsEnabled ?? false, lastReadMessageId: body.readThroughMessageId ?? null, unreadCount: 0,
 });
