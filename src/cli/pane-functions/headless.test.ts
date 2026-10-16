@@ -424,12 +424,14 @@ test("a report's caveats print as Notes, what Pro unlocks under Pro, the failure
   expect(noted.text).not.toContain("Errors");
 });
 
-test("series text distinguishes explicit percent, basis-point and index units without scaling exports", () => {
+test("series text distinguishes explicit percent, basis-point, multiple and index units without scaling exports", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [
     { id: "percent", label: "Credit percent", unit: "%", points: [{ date: "2026-09-10", value: 2.7 }] },
     { id: "bp", label: "Credit basis points", unit: "bp", points: [{ date: "2026-09-10", value: 270 }] },
     { id: "index", label: "Indexed value", unit: "index", points: [{ date: "2026-09-10", value: 102.5 }] },
+    { id: "pe", label: "Trailing P/E", unit: "x", points: [{ date: "2026-09-10", value: 38.3292383292 }] },
+    { id: "ratio", label: "ETH over BTC", unit: "x", points: [{ date: "2026-09-10", value: 0.0307017 }] },
     { id: "missing", label: "Unknown unit", points: [{ date: "2026-09-10", value: 0 }] },
     { id: "empty", label: "Missing value", unit: "%", points: [] },
   ] };
@@ -438,6 +440,9 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   expect(text.split("\n").find(line => line.includes("Credit percent"))).toMatch(/2\.70\s+%/);
   expect(text.split("\n").find(line => line.includes("Credit basis points"))).toMatch(/270\s+bp/);
   expect(text.split("\n").find(line => line.includes("Indexed value"))).toMatch(/102\.5\s+index/);
+  // A multiple prints to two decimals, or three significant digits where two would flatten it; the export keeps every digit.
+  expect(text.split("\n").find(line => line.includes("Trailing P/E"))).toMatch(/38\.33\s+x/);
+  expect(text.split("\n").find(line => line.includes("ETH over BTC"))).toMatch(/0\.0307\s+x/);
   expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
   expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(/-\s+%/);
   expect(jsonData(definition, result)).toMatchObject({ data: { series: result.series } });
@@ -447,7 +452,8 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   const identity = "symbol_or_series,currency_or_unit,interval,source,as_of";
   expect(csv).toContain(`# section: Credit percent\nDate,Value,${identity}\n2026-09-10,2.7,,%,,Gloom Cloud,2026-09-10\n`);
   expect(csv).toContain(`# section: Credit basis points\nDate,Value,${identity}\n2026-09-10,270,,bp,,Gloom Cloud,2026-09-10\n`);
-  expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("Unit");
+  expect(csv).toContain(`# section: Trailing P/E\nDate,Value,${identity}\n2026-09-10,38.3292383292,,x,,Gloom Cloud,2026-09-10\n`);
+  expect(renderHeadlessPaneText(definition, { series: [result.series.find(({ id }) => id === "missing")!] }, args, "Unknown")).not.toContain("Unit");
 });
 
 async function reportOf(definition: HeadlessPaneDefinition, rawArgument = "") {

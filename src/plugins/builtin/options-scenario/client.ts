@@ -176,6 +176,11 @@ export function scenarioSpotBasis(
 
 function supplied(value: unknown): boolean { return value != null && value !== ""; }
 
+/** A position typed whole: its legs and the spot, rate and dividend yield they are valued at, so no market data is read. */
+export function suppliedScenarioInputs(settings: Record<string, unknown>): boolean {
+  return !!settings.legs && ["spot", "rate", "dividendYield"].every((key) => supplied(settings[key]));
+}
+
 function numericSetting(settings: Record<string, unknown>, key: string): number | undefined {
   const value = settings[key];
   if (!supplied(value)) return undefined;

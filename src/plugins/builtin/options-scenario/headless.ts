@@ -6,8 +6,9 @@ import {
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import {
   createScenarioDependencies, loadScenarioMarket, SCENARIO_STRATEGIES, scenarioControlsFromSettings, scenarioPositionFromSettings,
-  scenarioSpotBasis, type ScenarioMarketSnapshot,
+  scenarioSpotBasis, suppliedScenarioInputs, type ScenarioMarketSnapshot,
 } from "./client";
+import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
 import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
@@ -67,7 +68,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const settings: Record<string, unknown> = { ...ctx.settings, ...args.options, symbol };
     // Bad hedge inputs fail before any market request.
     hedgeInputsFromSettings(settings);
-    const suppliedInputs = !!settings.legs && ["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "");
+    const suppliedInputs = suppliedScenarioInputs(settings);
     let market: ScenarioMarketSnapshot;
     if (suppliedInputs) {
       // An explicit position can be valued offline and must never depend on unrelated market requests.
@@ -101,16 +102,12 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const csp = position && settings.strategy === "csp" ? cashSecuredPut(position, spotBasis!, earningsDate) : null;
     const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
       ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
-    const chain = market.chain;
     const currency = position ? currencyLabel(position.currency) : null;
     // Value, P&L, risk and the grid add every contract; entry prices and spot are per share.
     const valueUnit = position ? scenarioValueUnit(position) : null;
     const per = `${currency} ${valueUnit}`;
     return {
-      freshness: suppliedInputs
-        ? { source: "Your inputs", status: "not-a-feed", basis: "scenario" }
-        : { asOf: market.asOf, ...(chain?.dataSource === "live" || chain?.dataSource === "delayed" ? { status: chain.dataSource } : {}),
-          ...(chain?.delayMinutes ? { delayMinutes: chain.delayMinutes } : {}) },
+      freshness: scenarioFreshness(market, suppliedInputs),
       sections: scenario ? [
         { title: "Position", columns: [
           { key: "side", header: "Side" }, { key: "strike", header: "Strike" }, { key: "expiry", header: "Expiry" },

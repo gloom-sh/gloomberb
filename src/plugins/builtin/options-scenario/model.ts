@@ -162,6 +162,29 @@ export function scenarioValueUnit(position: Pick<ScenarioPosition, "legs">): str
   return contracts === 1 ? "per contract" : `for ${contracts.toLocaleString("en-US")} contracts`;
 }
 
+const LEG_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `15 Jan 2027`, the calendar date an expiration (Unix seconds) identifies. */
+function legExpiryText(expiration: number): string {
+  const day = new Date(expiration * 1000);
+  return `${day.getUTCDate()} ${LEG_MONTHS[day.getUTCMonth()]} ${day.getUTCFullYear()}`;
+}
+
+/**
+ * The legs a scenario values, named as a trader says them: `Long 1 SPY 695 put
+ * · 15 Jan 2027`. Legs on one expiry share it at the end; legs on several each
+ * carry their own.
+ */
+export function scenarioLegsText(position: Pick<ScenarioPosition, "symbol" | "legs">): string {
+  const shared = new Set(position.legs.map((leg) => leg.expiration)).size === 1;
+  const legs = position.legs.map((leg) => {
+    const quantity = Number(Math.abs(leg.quantity).toFixed(4));
+    const name = `${leg.quantity < 0 ? "Short" : "Long"} ${quantity} ${position.symbol} ${Number(leg.strike.toFixed(4))} ${leg.side}`;
+    return shared ? name : `${name} · ${legExpiryText(leg.expiration)}`;
+  });
+  return `${legs.join(", ")}${shared && position.legs[0] ? ` · ${legExpiryText(position.legs[0].expiration)}` : ""}`;
+}
+
 /** Also validates restored persistence values at the model boundary. */
 export function validatePosition(position: ScenarioPosition): string | null {
   return validateScenarioInputs(position) ?? (position.legs.length ? null : "Add at least one option leg.");

@@ -13,6 +13,7 @@ import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
+import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, showsEpsBasis } from "../shared/earnings-report";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
@@ -188,10 +189,14 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     impliedFrom: row.impliedMethod === "trade-close" ? "trade closes" : row.impliedMethod === "quote-mid" ? "quote mids" : null,
     move: row.move,
   }));
+  // An ETF, an index, a currency pair, a coin or a future has no earnings: that is the answer, not a gap in the data,
+  // and a history that failed for one (a coin is no US ticker) is no error.
+  const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol) : null;
   return {
     columns: HISTORY_COLUMNS,
     rows,
-    errors: history.status === "rejected" ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
+    ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] } : {}),
+    errors: history.status === "rejected" && !noEarnings ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
     metadata: {
       symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,
       epsBasis: EPS_BASIS_NOTE,

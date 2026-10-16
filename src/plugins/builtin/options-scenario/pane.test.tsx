@@ -18,6 +18,8 @@ import { OptionsScenarioPane } from "./pane";
 import { type SavedScenarioStrategy } from "./state";
 import { formatHedgePrice, scenarioHedgeBudget } from "./hedge";
 import { createTestPaneConfig } from "../../../test-support/pane";
+import { createTestQuote } from "../../../test-support/data-provider";
+import { renderedReportFreshness, renderedReportObservations } from "../../../cli/pane-functions/report-notices";
 import { createTestTicker } from "../../../test-support/ticker";
 import type { TickerRecord } from "../../../types/ticker";
 
@@ -240,6 +242,27 @@ test("a pane bound to a listing key reads the market for the bare symbol and kee
     expect(evidence().scenario!.position.spot).toBeCloseTo(100, 2);
     await tui.destroy();
   }
+});
+
+test("the Payoff names the legs it values and the session, and the pane dates its report by the quote it values at", async () => {
+  const base = closeMarket();
+  // The close's chain, 15 minutes behind, against an after-hours print the position is valued at.
+  const market: ScenarioMarketSnapshot = { ...base, chain: { ...base.chain!, dataSource: "delayed", delayMinutes: 15 },
+    underlyingQuote: createTestQuote({ symbol: "AAPL", price: 100.25, lastUpdated: base.asOf, providerId: "gloomberb-cloud", dataSource: "delayed",
+      listingExchangeName: "NASDAQ", marketState: "POST", postMarketPrice: 100.25, extendedSessionPrint: true }) };
+  const settings = { ...SEEDED, strategy: "put", strike: "100", scenarioMarketSnapshot: market };
+  await mount(configFor(settings, { activeTabId: "payoff" }));
+  expect(tui.frame()).toContain("Long 1 AAPL 100 put · 23 Sep 2026");
+  expect(tui.frame()).toContain("valued after hours");
+  // What a capture reads: the chain's feed and delay, and the quote it values at (its session is read against the clock: freshness.test.ts).
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ status: "delayed", delayMinutes: 15 });
+  expect(renderedReportObservations(registry.snapshot())).toMatchObject([{ updatedAt: base.asOf, dataSource: "delayed", delayMinutes: 15 }]);
+  await tui.destroy();
+
+  // A typed spot is a what-if, not the print.
+  await mount(configFor({ ...settings, spot: "101" }, { activeTabId: "payoff" }));
+  expect(tui.frame()).toContain("Long 1 AAPL 100 put");
+  expect(tui.frame()).not.toContain("valued after hours");
 });
 
 test("a hedge budget shows the report's sizing under the scenario figures, and says why it cannot size", async () => {

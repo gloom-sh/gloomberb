@@ -21,10 +21,13 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, type ScenarioMarketSnapshot } from "./client";
+import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, suppliedScenarioInputs,
+  type ScenarioMarketSnapshot } from "./client";
+import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspStatItems, loadNextEarningsDate } from "./csp";
 import { useAssetData } from "../../runtime";
-import { formatSpotTime } from "../options/model-spot";
+import { extendedSession, formatSpotTime } from "../options/model-spot";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
@@ -122,7 +125,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       delayed ||= quote!.dataSource !== "live";
     }
     return { position: liveScenarioPosition(storedPosition, spotQuote.price, Date.now(), mids), quotes,
-      observedAt: spotQuote.lastUpdated, basis: delayed ? "delayed" : "real-time" };
+      observedAt: spotQuote.lastUpdated, basis: delayed ? "delayed" : "real-time", session: extendedSession(spotQuote) };
   }, [follow, storedPosition, liveEntries, underlying, exchange, legSymbols, freshnessNow, subscriptionStartedAt]);
   const position = live?.position ?? storedPosition;
   const [controlState, setControls] = usePluginPaneState<ScenarioControls | null>("controls", null);
@@ -157,6 +160,14 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const csp = useMemo(() => cspStrategy && scenario && !earnings.loading
     ? cashSecuredPut(scenario.position, live?.basis ?? spotBasis ?? "last price", earningsDate) : null,
   [cspStrategy, scenario, earnings.loading, earningsDate, live?.basis, spotBasis]);
+  // A report or capture of the pane is dated as `fn OSA` dates the same position: by the underlying's quote, its delay and where its market stands.
+  const inputsOnly = suppliedScenarioInputs(settings);
+  useRemoteUiNode(scenario && (market || inputsOnly) ? { role: "report-freshness", label: "Scenario freshness",
+    getMetadata: () => ({ ...scenarioFreshness(market, inputsOnly) }) } : null);
+  // The session the position is valued in, when it is not the regular one: its spot is the market's print (not a typed what-if or a saved position's).
+  const valuedSession = live ? live.session
+    : market?.underlyingQuote && scenario?.position.asOf === market.underlyingQuote.lastUpdated && spotBasis !== "typed"
+      ? extendedSession(market.underlyingQuote) : null;
   // The report's Hedge budget, from the same position and quotes; a live position sizes at its live quotes and spot.
   const hedge = useMemo(() => {
     if (!scenario) return { value: null, error: null };
@@ -306,7 +317,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
-  const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} />
+  const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} session={valuedSession} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
       rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.columnId === "spot" ? row.spot : gridSort.columnId === "move" ? row.move ?? 0 : row.values[Number(gridSort.columnId)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
       sortColumnId={gridSort.columnId} sortDirection={gridSort.direction} onHeaderClick={(id) => {

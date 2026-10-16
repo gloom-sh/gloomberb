@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import {
-  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioValue, validatePosition,
+  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioLegsText, scenarioValue, validatePosition,
   type ScenarioLeg, type ScenarioPosition,
 } from "./model";
 
@@ -217,4 +217,16 @@ describe("typed legs and restored inputs", () => {
     expect(() => scenarioValue(position(), -1, AS_OF)).toThrow();
     expect(() => buildScenario(position(), { spotRange: Number.MAX_VALUE })).toThrow(/precision/);
   });
+});
+
+test("the legs a scenario values read as a trader says them, the expiry once when they share it", () => {
+  const jan = Date.UTC(2027, 0, 15) / 1000;
+  const mar = Date.UTC(2027, 2, 19) / 1000;
+  const named = (legs: ScenarioLeg[]) => scenarioLegsText({ symbol: "SPY", legs });
+  expect(named([leg({ side: "put", strike: 695, expiration: jan })])).toBe("Long 1 SPY 695 put · 15 Jan 2027");
+  expect(named([leg({ side: "put", strike: 12.5, quantity: -2, expiration: jan })])).toBe("Short 2 SPY 12.5 put · 15 Jan 2027");
+  expect(named([leg({ strike: 770, expiration: jan }), leg({ id: "b", strike: 780, quantity: -1, expiration: jan })]))
+    .toBe("Long 1 SPY 770 call, Short 1 SPY 780 call · 15 Jan 2027");
+  expect(named([leg({ strike: 770, expiration: jan }), leg({ id: "b", strike: 770, quantity: -1, expiration: mar })]))
+    .toBe("Long 1 SPY 770 call · 15 Jan 2027, Short 1 SPY 770 call · 19 Mar 2027");
 });

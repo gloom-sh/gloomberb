@@ -410,9 +410,20 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate): s
   return isDateOnly(date) ? date as string : new Date(time).toISOString().replace(".000Z", "Z");
 }
 
+/**
+ * A latest value as the series report prints it: percentages and multiples
+ * (P/E, EV/EBITDA, one series over another) to two decimals, which a multiple
+ * under 0.1 trades for three significant digits so a small ratio is not
+ * flattened to 0.03. The exports keep every digit. Any other unit prints as
+ * loaded, without float noise.
+ */
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
-  return series.unit?.trim() === "%" && Number.isFinite(value) ? value.toFixed(2) : displayNumber(value);
+  if (!Number.isFinite(value)) return displayNumber(value);
+  const unit = series.unit?.trim();
+  if (unit === "%") return value.toFixed(2);
+  if (unit?.toLowerCase() === "x") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
+  return displayNumber(value);
 }
 
 function renderRows(
