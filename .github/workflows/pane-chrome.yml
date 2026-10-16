@@ -137,6 +137,42 @@ jobs:
           path: ~/.cache/gloomberb-pane-chrome/failures
           if-no-files-found: ignore
 
+  chat-webkit:
+    name: Chat painting in WebKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install the pinned WebKit build and system libraries
+        run: bun node_modules/playwright-core/cli.js install --with-deps webkit
+
+      - name: Paint chat through mount and channel transitions in three panes
+        run: |
+          mkdir -p ~/.cache
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --multiple --arrival-on-mount --quick --repeat 3 --check --label chat-webkit
+
+      - name: Paint chat through the detached shell
+        run: flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --detached --arrival-on-mount --quick --repeat 3 --check --label chat-webkit-detached
+
+      - name: Paint cold and warm channel opens
+        run: flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --open-only --quick --check --label chat-webkit-open
+
+      - name: Keep chat paint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-webkit
+          path: |
+            ~/.cache/gloomberb-pane-chrome/chat-webkit/samples.json
+            ~/.cache/gloomberb-pane-chrome/chat-webkit/*.png
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-detached/samples.json
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-detached/*.png
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-open/samples.json
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-open/*.png
+          if-no-files-found: ignore
+
   copy-screenshot:
     name: Copy screenshot
     runs-on: ubuntu-latest

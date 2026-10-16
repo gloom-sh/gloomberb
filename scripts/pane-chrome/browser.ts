@@ -206,8 +206,11 @@ async function readDevToolsPort(stderr: ReadableStream<Uint8Array>): Promise<num
   throw new Error(`Chrome did not start:\n${text.slice(-2000)}`);
 }
 
+/** Commands needed by page probes, also implemented by the chat WebKit driver. */
+export type PageCommands = Pick<Cdp, "send">;
+
 /** Runs `expression` in the page and returns its value; a thrown error or rejection fails the call. */
-export async function evaluate<T = any>(cdp: Cdp, expression: string, timeoutMs = 30_000): Promise<T> {
+export async function evaluate<T = any>(cdp: PageCommands, expression: string, timeoutMs = 30_000): Promise<T> {
   const result = await cdp.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, timeoutMs);
   if (result.exceptionDetails) {
     throw new Error(`Page error: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
@@ -216,7 +219,7 @@ export async function evaluate<T = any>(cdp: Cdp, expression: string, timeoutMs 
 }
 
 /** Resolves after `count` animation frames in the page. */
-export function frames(cdp: Cdp, count = 1): Promise<void> {
+export function frames(cdp: PageCommands, count = 1): Promise<void> {
   return evaluate(cdp, `new Promise((done) => { let left = ${count}; const tick = () => (--left <= 0 ? done() : requestAnimationFrame(tick)); requestAnimationFrame(tick); })`);
 }
 
@@ -224,7 +227,7 @@ export function frames(cdp: Cdp, count = 1): Promise<void> {
  * Waits, a frame at a time, until `predicate` (a page expression) is truthy,
  * and returns its value; returns the last value after `timeoutMs`.
  */
-export function waitFor<T = any>(cdp: Cdp, predicate: string, timeoutMs = 3_000): Promise<T> {
+export function waitFor<T = any>(cdp: PageCommands, predicate: string, timeoutMs = 3_000): Promise<T> {
   return evaluate(cdp, `new Promise((done) => {
     const until = performance.now() + ${timeoutMs};
     const check = () => {
@@ -239,7 +242,7 @@ export function waitFor<T = any>(cdp: Cdp, predicate: string, timeoutMs = 3_000)
 
 type MouseType = "mouseMoved" | "mousePressed" | "mouseReleased";
 
-export function mouse(cdp: Cdp, type: MouseType, x: number, y: number, held: boolean): Promise<void> {
+export function mouse(cdp: PageCommands, type: MouseType, x: number, y: number, held: boolean): Promise<void> {
   return cdp.send("Input.dispatchMouseEvent", {
     type,
     x,

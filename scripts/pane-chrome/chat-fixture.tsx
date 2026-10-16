@@ -266,11 +266,11 @@ const latency = Number(params.get("latency") ?? 400);
 const initialRequests = new Map<string, PromiseWithResolvers<void>>();
 const failedInitial = new Set<string>();
 const lifecycle = params.get("lifecycle") === "1";
-if (lifecycle) for (const id of ["waiting", "failure", "late"]) initialRequests.set(id, Promise.withResolvers<void>());
+if (lifecycle) for (const id of ["waiting", "failure", "late", "resize"]) initialRequests.set(id, Promise.withResolvers<void>());
 const CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-01-01T00:00:00.000Z" },
   { id: "macro", name: "macro", created_at: "2026-01-01T00:00:00.000Z" },
-  ...(lifecycle ? ["empty", "waiting", "failure", "late"].map((id) => ({ id, name: id, created_at: "2026-01-01T00:00:00.000Z" })) : []),
+  ...(lifecycle ? ["empty", "waiting", "failure", "late", "resize"].map((id) => ({ id, name: id, created_at: "2026-01-01T00:00:00.000Z" })) : []),
 ];
 
 apiClient.getChannels = async () => CHANNELS;
@@ -278,7 +278,12 @@ apiClient.getChatPresence = async () => ({ onlineCount: 3 });
 apiClient.updateChatChannelState = async (channelId, body) => ({
   channelId, notificationsEnabled: body.notificationsEnabled ?? false, lastReadMessageId: body.readThroughMessageId ?? null, unreadCount: 0,
 });
+let mountArrivalDelivered = false;
 apiClient.getMessages = async (channelId, options) => {
+  if (params.get("arrival") === "mount" && channelId === "everyone" && !options?.before && !options?.after && !mountArrivalDelivered) {
+    mountArrivalDelivered = true;
+    fake.deliver("Arrival during the initial request.");
+  }
   if (channelId === "empty") return [];
   if (failedInitial.has(channelId)) throw new Error("Fixture messages unavailable.");
   const initial = !options?.before && !options?.after ? initialRequests.get(channelId) : null;

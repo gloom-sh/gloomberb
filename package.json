@@ -111,6 +111,7 @@
     "gloom-polls": "github:gloom-sh/gloom-polls",
     "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
     "happy-dom": "^20.11.1",
+    "playwright-core": "1.60.0",
     "png-to-ico": "^2.1.8",
     "rcedit": "^4.0.1",
     "typescript": "^5.9.2",
