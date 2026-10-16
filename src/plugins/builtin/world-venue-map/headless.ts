@@ -78,6 +78,21 @@ function layerColumns(layer: GeoLayerInfo): HeadlessPaneColumn[] {
   ];
 }
 
+/**
+ * What a search that finds nothing says. A search outside a one-country layer
+ * finds nothing because the layer has nothing there; ships are found by name,
+ * not by the ticker of the company that runs them, so a ticker that links no
+ * fleet (or a server that links none) gets a name to try.
+ */
+function emptySearchNote(layer: GeoLayerInfo, query: string): string | null {
+  const typed = query.trim();
+  if (!typed) return null;
+  const coverage = layerCoverageNote(layer);
+  if (coverage) return `No ${layer.name.toLowerCase()} match "${typed}". ${coverage}`;
+  if (layer.id === "vessels") return `No ${layer.name.toLowerCase()} match "${typed}"; try a ship-name prefix, such as --query Norwegian.`;
+  return null;
+}
+
 export const mapHeadless = {
   shape: "rows",
   description: "Trading venues with open status and local time, or one map layer's entities (ships, chokepoints, ports, airports, pipelines, fields, terminals) with their fields and linked tickers.",
@@ -126,12 +141,11 @@ export const mapHeadless = {
       lon: row.lon,
       lat: row.lat,
     }));
-    const coverage = layerCoverageNote(layer);
+    const empty = emptySearchNote(layer, query);
     return {
       columns: layerColumns({ ...layer, columns }),
       rows,
-      // A search outside a one-country layer finds nothing because the layer has nothing there.
-      ...(query.trim() && coverage ? { empty: `No ${layer.name.toLowerCase()} match "${query.trim()}". ${coverage}` } : {}),
+      ...(empty ? { empty } : {}),
       freshness: layerFreshness(layer),
       complete: layer.status === "ok",
       errors: layer.status === "unavailable" ? [`${layer.name}: ${layer.statusNote ?? "unavailable"}`] : [],

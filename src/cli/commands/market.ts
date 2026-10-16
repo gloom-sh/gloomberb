@@ -157,7 +157,7 @@ import { describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerC
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { crossRate, describeFxRate, isUsableRate, parseFxRequest } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
 import {
   holderListFacts,
   holderListPeriod,
@@ -1694,13 +1694,12 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 /** What an options chain export's `interval` says: one quote snapshot, not bars. */
 const OPTIONS_EXPORT_INTERVAL = "snapshot";
 
-const FX_USAGE = "fx <currency> | fx <base>/<quote>";
-
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const raw = requireOneArg(rawArgs, FX_USAGE, "currency or pair", ctx);
+  if (rawArgs.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
   await withMarketData(ctx, async (market) => {
-    const request = parseFxRequest(raw, market.config.baseCurrency);
-    if ("error" in request) return ctx.fail(request.error, `Usage: gloomberb ${FX_USAGE}`);
+    const parsed = parseFxArgs(rawArgs, market.config.baseCurrency);
+    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${FX_USAGE}`);
+    const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
     const reasons = new Map<string, string>();
@@ -1728,7 +1727,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const observed = legs.flatMap((leg) => leg?.asOf ?? []);
     const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
     const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
-    const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate };
+    const converted = amount == null ? null : amount * rate;
+    const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate, ...(amount == null ? {} : { amount, converted }) };
     // The closing line dates the rate, and says when it is stale, as `fn FXC` does.
     const freshness = fxPairFreshness(new Map(codes.flatMap((code, index) => {
       const leg = legs[index];
@@ -1737,8 +1737,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         timing: { asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes },
       }] as const] : [];
     })));
-    ctx.printResult({ data: [row], freshness }, {
-      text: () => describeFxRate(request, rate),
+    // An amount with one currency names no target; the answer says it went to USD.
+    const warnings = toUsdByDefault && amount != null
+      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${rawArgs[0]!.trim()} ${currency}/<to>.`]
+      : undefined;
+    ctx.printResult({ data: [row], freshness, warnings }, {
+      // The conversion, then the rate it used; the source line under it dates that rate.
+      text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
       exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "spot" },
       columns: [
@@ -1749,6 +1754,10 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         { key: "stale", header: "Stale" },
         { key: "pair", header: "Pair" },
         { key: "inverse", header: "Inverse", align: "right" },
+        ...(amount == null ? [] : [
+          { key: "amount", header: "Amount", align: "right" as const },
+          { key: "converted", header: "Converted", align: "right" as const },
+        ]),
       ],
     });
   });
@@ -2106,18 +2115,23 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "fx",
-    description: "Convert a currency into your base currency, or quote a pair such as USD/NGN",
+    description: "Convert a currency into your base currency, quote a pair such as USD/NGN, or convert an amount such as fx 1234.5 EUR/USD",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>", "fx <base>/<quote>"],
+      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>"],
       sections: [{
         title: "Direction",
         lines: [
           "A bare code is one unit of it in your base currency. A pair reads as markets quote it: USD/NGN is how many NGN one USD buys. Two codes neither of which is USD, such as ZAR/NGN, cross through their USD rates.",
           "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39). --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf and stale.",
         ],
+      }, {
+        title: "Amounts",
+        lines: [
+          "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It reads as typed with either decimal mark (1.234,5 and 1,234.5 are 1234.5); 1,234 or 1.234 could be a thousand or a decimal, so fx asks which. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
+        ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx USD/NGN", "fx ZAR/NGN", "fx JPY --json"],
+      examples: ["fx EUR", "fx NGN", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx JPY --json"],
     },
     execute: runFx,
   },

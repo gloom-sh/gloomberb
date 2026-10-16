@@ -60,6 +60,9 @@ test("a short weighs against the net total, and a total that is not positive has
 test("targets parse as percents and their sum names what is left unallocated", () => {
   expect(parseTargetWeight("12.5")).toBe(12.5);
   expect(parseTargetWeight(" 12.5% ")).toBe(12.5);
+  // A decimal comma reads as one; a weight is never in the thousands, so 12,500 is 12.5 too.
+  expect(parseTargetWeight("12,5%")).toBe(12.5);
+  expect(parseTargetWeight("12,500")).toBe(12.5);
   expect(() => parseTargetWeight("101")).toThrow("between 0% and 100%");
   expect(() => parseTargetWeight("ten")).toThrow("percent");
   expect(describeTargetSum(100)).toBeNull();

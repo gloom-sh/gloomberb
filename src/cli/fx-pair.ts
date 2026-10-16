@@ -1,3 +1,6 @@
+import { currencyMinorDigits } from "../market-data/market/format";
+import { ambiguousNumberMessage, parseTypedAmount } from "../utils/decimal-comma";
+
 /**
  * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
  * currency (`NGN`: USD per 1 NGN). A pair is market convention, BASE/QUOTE:
@@ -40,6 +43,74 @@ export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | {
   return parts.length === 2
     ? { currency: parts[0]!, baseCurrency: parts[1]! }
     : { currency: parts[0]!, baseCurrency: baseCurrency.trim().toUpperCase() };
+}
+
+/** What `gloomberb fx` is asked for, with the amount to convert when one comes first. */
+export interface FxArgs {
+  request: FxRequest;
+  /** The amount of `currency` to convert into `baseCurrency`; absent for a rate alone. */
+  amount?: number;
+  /** One currency after an amount names no target, so it converts to USD; the answer says so. */
+  toUsdByDefault?: boolean;
+}
+
+/** Every form `fx` takes, for its usage line. */
+export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to>";
+
+/**
+ * `fx` arguments: a currency or a pair (`EUR`, `USD/NGN`), or an amount and
+ * what to convert it from and to (`1234.5 EUR/USD`, `1234,5 EUR USD`). The
+ * amount reads as `parseTypedAmount` reads cash: `1.234,5` and `1,234.5` are
+ * 1234.5, and `1,234` or `1.234`, which read two ways, are refused naming both.
+ * An amount and one currency converts to USD (`toUsdByDefault`). The error
+ * sentence otherwise.
+ */
+export function parseFxArgs(args: readonly string[], baseCurrency: string): FxArgs | { error: string } {
+  if (args.length === 1) {
+    const request = parseFxRequest(args[0]!, baseCurrency);
+    if (!("error" in request)) return { request };
+    // A lone number is an amount with nothing to convert it from.
+    return parseTypedAmount(args[0]).kind === "invalid"
+      ? request
+      : { error: `fx ${args[0]!.trim()} names no currency; convert an amount as fx ${args[0]!.trim()} EUR/USD.` };
+  }
+  if (args.length === 0 || args.length > 3) {
+    return { error: `fx takes a currency, a pair, or an amount and a pair (fx 1234.5 EUR/USD); got ${args.length} arguments.` };
+  }
+  const typed = args.map((arg) => arg.trim());
+  const [first, ...codes] = typed;
+  const amount = parseTypedAmount(first);
+  if (amount.kind === "ambiguous") return { error: `The amount ${ambiguousNumberMessage(first!, amount)}.` };
+  if (amount.kind === "invalid") {
+    // The amount typed after the pair (fx EUR/USD 100) belongs in front.
+    if (parseTypedAmount(typed.at(-1)).kind === "number") {
+      return { error: `Put the amount first: fx ${[typed.at(-1), ...typed.slice(0, -1)].join(" ")}.` };
+    }
+    // Two codes are one pair (fx NGN ZAR is NGN/ZAR), never two answers.
+    const pair = typed.length === 2 && typed.every((arg) => /^[A-Za-z]{3}$/.test(arg)) ? typed.join("/").toUpperCase() : "EUR/USD";
+    return { error: `fx takes one currency or pair; got ${typed.join(" ")}. Write a pair as ${pair}, or convert an amount as fx 1234.5 ${pair}.` };
+  }
+  const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/");
+  const request = parseFxRequest(codes.join("/"), "USD");
+  if ("error" in request) return request;
+  return { request, amount: amount.value, ...(toUsdByDefault ? { toUsdByDefault } : {}) };
+}
+
+/**
+ * An amount in its currency's minor units, grouped (1,234.50 EUR; 1,235 JPY).
+ * One too small for them keeps six significant figures instead of reading 0.
+ */
+function formatFxAmount(amount: number, currency: string): string {
+  const digits = currencyMinorDigits(currency);
+  const rounded = Number(amount.toFixed(digits));
+  if (rounded === 0 && amount !== 0) return `${formatFxRate(amount)} ${currency}`;
+  const text = amount.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return `${text} ${currency}`;
+}
+
+/** `1,234.50 EUR = 1,383.47 USD`: the amount and what it converts to at the rate. */
+export function describeFxConversion(request: FxRequest, amount: number, rate: number): string {
+  return `${formatFxAmount(amount, request.currency)} = ${formatFxAmount(amount * rate, request.baseCurrency)}`;
 }
 
 /**

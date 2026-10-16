@@ -88,9 +88,51 @@ export function parsePastedNumber(value: unknown): PastedNumber {
   return Number.isFinite(number) ? { kind: "number", value: sign * number } : INVALID;
 }
 
-/** What to tell someone whose number could be read two ways: both readings, and what to type for each. */
+/**
+ * What to tell someone whose number could be read two ways: both readings, and
+ * what to type for each. The decimal reading is written so no reader takes it
+ * two ways either: 1.234 as 1.2340, since `parseTypedAmount` refuses 1.234.
+ */
 export function ambiguousNumberMessage(text: string, reading: { thousands: number; decimal: number }): string {
-  return `${text.trim()} could be ${reading.thousands} (thousands) or ${reading.decimal} (decimal comma); type ${reading.thousands} or ${reading.decimal}`;
+  const mark = text.includes(",") ? "decimal comma" : "decimal point";
+  return `${text.trim()} could be ${reading.thousands} (thousands) or ${reading.decimal} (${mark}); type ${unambiguous(reading.thousands)} or ${unambiguous(reading.decimal)}`;
+}
+
+/** A number as text that reads one way: a dot and three digits gains a zero (1.2340), which no thousands grouping has. */
+function unambiguous(value: number): string {
+  const text = String(value);
+  return thousandsDotReadings(text) ? `${text}0` : text;
+}
+
+/**
+ * Reads an amount typed with nothing beside it to tell a thousands mark from a
+ * decimal one (cash, a holding's shares or cost, a currency amount):
+ * `1.234,5`, `1234,5` and `1,234.5` are 1234.5, `18,50` is 18.5, and `_`
+ * between digits groups (500_000). A comma or a dot with exactly three digits
+ * after one to three (`1,234`, `1.234`) could be thousands or a decimal mark,
+ * so both are `ambiguous`; `parsePastedNumber` reads a lone dot as written,
+ * which only a price to compare with (an alert's last price) can check.
+ */
+export function parseTypedAmount(value: unknown): PastedNumber {
+  const text = typeof value === "string" ? value.trim().replace(/(?<=\d)_(?=\d)/g, "") : value;
+  const dot = thousandsDotReadings(text);
+  if (dot) return { kind: "ambiguous", thousands: dot.thousands, decimal: dot.decimal };
+  return parsePastedNumber(text);
+}
+
+/** How an amount may be written, for the error a malformed one gets. */
+export const TYPED_AMOUNT_FORMAT = "1234.5, 1,234.5 or 1.234,5";
+
+/**
+ * A labelled amount field as `parseTypedAmount` reads it: the number, or NaN
+ * when it is none. One that reads two ways throws naming both readings
+ * ("Cash amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); ..."),
+ * so neither is stored by guess.
+ */
+export function readTypedAmount(value: unknown, label: string): number {
+  const read = parseTypedAmount(value);
+  if (read.kind === "ambiguous") throw new Error(`${label} ${ambiguousNumberMessage(String(value), read)}.`);
+  return read.kind === "number" ? read.value : Number.NaN;
 }
 
 /** What a dot and exactly three digits after one to three (`81.000`, `81.250`) could mean. */

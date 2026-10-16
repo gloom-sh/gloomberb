@@ -22,7 +22,7 @@ const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
 });
 const quote = { symbol: "AAPL", price: 90, currency: "USD", change: -5, changePercent: -5.26, previousClose: 95, lastUpdated: Date.now() };
 
-test("CLI rejects blank acquisition cost and bare CASH before resolving or writing a ticker, and accepts explicit zero", async () => {
+test("CLI rejects a blank or ambiguous acquisition cost and bare CASH before resolving or writing a ticker, and accepts explicit zero and a decimal comma", async () => {
   const config = createDefaultConfig("/unused-cost-parser");
   let reads = 0;
   const saved: TickerRecord[] = [];
@@ -31,17 +31,22 @@ test("CLI rejects blank acquisition cost and bare CASH before resolving or writi
     dataProvider: createTestDataProvider(),
   }).context;
   for (const cost of ["", "  ", "NaN"]) {
-    await expect(portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", cost], ctx)).rejects.toThrow("Average cost must be a valid number");
+    await expect(portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", cost], ctx)).rejects.toThrow("Average cost must be a number such as 1234.5, 1,234.5 or 1.234,5");
     expect(saved).toEqual([]);
     expect(reads).toBe(0);
   }
+  // A cost that reads two ways is refused naming both, never stored as either.
+  await expect(portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "1,234"], ctx)).rejects.toThrow("1234 (thousands) or 1.234 (decimal comma)");
+  expect(reads).toBe(0);
   // Bare CASH once resolved to the company trading as CASH and valued the cash as its shares.
   await expect(portfolioCliCommand.execute(["position", "set", "main", "CASH", "500000", "1", "USD"], ctx)).rejects.toThrow("cash line");
   expect(reads).toBe(0);
   const logger = spyOn(console, "log").mockImplementation(() => {});
-  try { await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "0"], ctx); }
-  finally { logger.mockRestore(); }
-  expect(saved[0]?.metadata.positions[0]?.avgCost).toBe(0);
+  try {
+    await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "0"], ctx);
+    await portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", "18,50"], ctx);
+  } finally { logger.mockRestore(); }
+  expect(saved.map((record) => record.metadata.positions[0]?.avgCost)).toEqual([0, 18.5]);
 });
 
 test("ticker and collection CLI reconcile short P&L and withhold totals for a missing holding", async () => {

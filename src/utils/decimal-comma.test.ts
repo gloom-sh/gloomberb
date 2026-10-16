@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parsePastedNumber, thousandsDotReadings } from "./decimal-comma";
+import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parsePastedNumber, parseTypedAmount, readTypedAmount, thousandsDotReadings } from "./decimal-comma";
 
 test("a digits-comma-digits value reads as the dotted number, and nothing else does", () => {
   expect(dottedDecimal("4,5")).toBe("4.5");
@@ -83,4 +83,28 @@ test("a dot and three digits reads as thousands only when the number as written 
   expect(meant("81.000", 81.2)).toBe(false);
   expect(meant("81.000", null)).toBe(false);
   expect(meant("81.000", 0)).toBe(false);
+});
+
+test("an amount typed with nothing to compare it with reads either decimal mark, and refuses a comma or a dot that could be thousands", () => {
+  const read: Array<[string, number]> = [
+    ["1.234,5", 1234.5],
+    ["1234,5", 1234.5],
+    ["1,234.5", 1234.5],
+    ["18,50", 18.5],
+    ["500_000", 500000],
+    ["1.234.567", 1234567],
+    ["0.500", 0.5],
+    ["1234.567", 1234.567],
+    // The decimal reading as an ambiguity message spells it, so it can be typed back.
+    ["1.2340", 1.234],
+  ];
+  expect(read.map(([text]) => parseTypedAmount(text))).toEqual(read.map(([, value]) => ({ kind: "number", value })));
+  expect(parseTypedAmount("1,234")).toEqual({ kind: "ambiguous", thousands: 1234, decimal: 1.234 });
+  expect(parseTypedAmount("-1.234")).toEqual({ kind: "ambiguous", thousands: -1234, decimal: -1.234 });
+  expect(parseTypedAmount("_500")).toEqual({ kind: "invalid" });
+  expect(() => readTypedAmount("1,234", "Cash amount"))
+    .toThrow("Cash amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.");
+  expect(() => readTypedAmount("1.234", "Shares"))
+    .toThrow("Shares 1.234 could be 1234 (thousands) or 1.234 (decimal point); type 1234 or 1.2340.");
+  expect(readTypedAmount("abc", "Shares")).toBeNaN();
 });

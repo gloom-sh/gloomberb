@@ -15,6 +15,7 @@ import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
 import { debugLog } from "../../utils/debug-log";
+import { ambiguousNumberMessage, parseTypedAmount } from "../../utils/decimal-comma";
 import {
   getOnboardingPortfolioId,
   listOnboardingPositions,
@@ -52,11 +53,17 @@ function isSymbolQuery(query: string): boolean {
   return query.length > 0 && query.length <= 32 && SYMBOL_QUERY.test(query);
 }
 
+/** A typed amount as positions read everywhere (18,50 is 18.5, 1.234,5 is 1234.5): null when empty, NaN when it is no number. */
 function parseAmount(value: string): number | null {
-  const trimmed = value.trim().replace(/,/g, "");
-  if (!trimmed) return null;
-  const amount = Number(trimmed);
-  return Number.isFinite(amount) ? amount : Number.NaN;
+  if (!value.trim()) return null;
+  const read = parseTypedAmount(value);
+  return read.kind === "number" ? read.value : Number.NaN;
+}
+
+/** The error for an amount that reads two ways (1,234), naming both readings; null for any other. */
+function ambiguousAmount(value: string, label: string): string | null {
+  const read = parseTypedAmount(value);
+  return read.kind === "ambiguous" ? `${label} ${ambiguousNumberMessage(value, read)}.` : null;
 }
 
 /** The listing's own currency as its quote or the search knows it; empty when neither does. */
@@ -221,13 +228,13 @@ export function useOnboardingPositions({
     const shares = parseAmount(current.shares);
     if (shares !== null && (Number.isNaN(shares) || shares <= 0)) {
       setFieldIdx(1);
-      setError(t("Shares must be greater than 0."));
+      setError(ambiguousAmount(current.shares, "Shares") ?? t("Shares must be greater than 0."));
       return false;
     }
     const avgCost = parseAmount(current.avgCost);
     if (avgCost !== null && (Number.isNaN(avgCost) || avgCost < 0)) {
       setFieldIdx(2);
-      setError(t("Average cost must be a number."));
+      setError(ambiguousAmount(current.avgCost, "Average cost") ?? t("Average cost must be a number."));
       return false;
     }
 
@@ -332,7 +339,7 @@ export function useOnboardingPositions({
     if (fieldIdx === 1) {
       const shares = parseAmount(current.shares);
       if (shares !== null && (Number.isNaN(shares) || shares <= 0)) {
-        setError(t("Shares must be greater than 0."));
+        setError(ambiguousAmount(current.shares, "Shares") ?? t("Shares must be greater than 0."));
         return;
       }
       setError(null);
@@ -347,7 +354,7 @@ export function useOnboardingPositions({
     if (fieldIdx === 2) {
       const avgCost = parseAmount(current.avgCost);
       if (avgCost !== null && (Number.isNaN(avgCost) || avgCost < 0)) {
-        setError(t("Average cost must be a number."));
+        setError(ambiguousAmount(current.avgCost, "Average cost") ?? t("Average cost must be a number."));
         return;
       }
       setError(null);

@@ -4,6 +4,7 @@ import { parseListingArg } from "../../../../cli/listing-arg";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
+import { readTypedAmount, TYPED_AMOUNT_FORMAT } from "../../../../utils/decimal-comma";
 
 export { listingFields } from "../../../../cli/listing-arg";
 
@@ -91,12 +92,16 @@ export function misplacedSymbolList(
   };
 }
 
-export function parseFiniteNumber(rawValue: string | undefined, label: string): number {
-  const value = Number(rawValue);
-  if (!rawValue?.trim() || !Number.isFinite(value)) {
-    throw new Error(`${label} must be a valid number.`);
-  }
-  return value;
+/**
+ * An amount argument (cash, shares, a cost) as `parseTypedAmount` reads it:
+ * `1.234,5` and `1,234.5` are 1234.5, `18,50` is 18.5. One that reads two ways
+ * (`1,234`, `1.234`) fails naming both, rather than storing either.
+ */
+export function parseAmountArg(rawValue: string | undefined, label: string): number {
+  const value = readTypedAmount(rawValue, label);
+  if (Number.isFinite(value)) return value;
+  const typed = rawValue?.trim();
+  throw new Error(`${label} must be a number such as ${TYPED_AMOUNT_FORMAT}${typed ? `; got "${typed}"` : ""}.`);
 }
 
 export function requirePortfolio(config: AppConfig, rawName: string): NonNullable<ReturnType<typeof findPortfolio>> {
