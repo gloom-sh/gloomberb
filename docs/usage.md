@@ -136,7 +136,7 @@ A symbol that trades in several places lists its exchanges after a colon: `NET:`
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days |
-| `EVTS [ticker]` | The market's report days with implied and average moves; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
+| `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings call transcripts; alone, every transcribed call |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |

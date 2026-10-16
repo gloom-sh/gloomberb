@@ -135,3 +135,36 @@ test("ERN for a listing abroad shows its next report and names the company's US 
     "Past reports, surprises and implied moves cover US listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
   ]);
 });
+
+test("a press release's figures are flagged provisional on the board and in the history, and the text report says so", async () => {
+  const definition = createEarningsHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00.000Z`, from: today, to: addDays(today, 90), reports: [
+      { ...report({ symbol: "TFC", date: today, timing: "bmo", marketCap: 60e9, epsEstimate: 1.17, epsActual: 1.16, epsActualSource: "press-release",
+        epsAnalysts: 20, epsBasis: "adjusted", dateStatus: "reported" }), averageMove: null, averageReports: 0 },
+      { ...report({ symbol: "PEP", date: today, marketCap: 210e9, epsEstimate: 2.26, epsActual: 2.29, epsActualSource: "calendar",
+        epsBasis: "adjusted", dateStatus: "reported" }), averageMove: null, averageReports: 0 },
+    ] }),
+    history: async () => ({ ...history, symbol: "TFC", reports: [
+      report({ symbol: "TFC", date: today, fiscalPeriod: "2026-09", epsEstimate: 1.17, epsActual: 1.16, epsActualSource: "press-release",
+        epsBasis: "adjusted", dateStatus: "reported", revenueActual: 5.31e9, revenueActualSource: "press-release" }),
+    ] }),
+    upcoming: async () => [],
+  });
+  const board = await definition.load({ rawArgument: "TFC PEP", argument: ["TFC", "PEP"], symbols: ["TFC", "PEP"], options: {} }, context);
+  expect(board.rows.map((row) => [row.symbol, row.epsActual, row.epsActualProvisional, row.epsBasis])).toEqual([
+    ["PEP", 2.29, false, "adjusted"],
+    ["TFC", 1.16, true, "adjusted"],
+  ]);
+  expect(board.rows.find((row) => row.symbol === "TFC")?.epsSurprise).toBeCloseTo(-0.0085, 4);
+  expect(board.metadata?.provisional).toContain("press release");
+  const basis = board.columns!.find((column) => column.key === "epsBasis")!;
+  expect(board.rows.map((row) => basis.textFormat!(row.epsBasis, row))).toEqual(["adjusted", "adjusted, provisional"]);
+  // Exports keep the basis alone; the flag is its own field.
+  expect(basis.format).toBeUndefined();
+
+  const ern = await definition.load({ ...args, rawArgument: "TFC", argument: "TFC", symbols: ["TFC"] }, context);
+  expect(ern.rows.map((row) => [row.epsActual, row.epsActualProvisional, row.revenueActual, row.revenueActualProvisional])).toEqual([
+    [1.16, true, 5.31e9, true],
+  ]);
+  expect(ern.metadata?.provisional).toContain("press release");
+});

@@ -58,7 +58,14 @@ function signed(value: number | null): DataTableCell {
   return { text: signedPercent(value), color: value == null || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
 }
 
-export function renderHistoryCell(row: HistoryRow, column: HistoryColumn): DataTableCell {
+/**
+ * The move so far on a report out today (reportMove), as EVTS shows it, until
+ * the first close after the report settles the row's own; "loading" while its
+ * quote is.
+ */
+export type LiveMove = (row: HistoryRow) => number | "loading" | null;
+
+export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMove?: LiveMove): DataTableCell {
   const dim = colors.textDim;
   switch (column.id) {
     case "date":
@@ -72,7 +79,8 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn): DataT
     case "analysts":
       return { text: row.epsAnalysts == null ? "--" : String(row.epsAnalysts), color: dim };
     case "epsActual":
-      return { text: epsText(row.epsActual), color: colors.text };
+      // The company's press release's figure reads quieter until the calendar's replaces it.
+      return { text: epsText(row.epsActual), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       return !showsEpsBasis(row)
         ? { text: "--", color: dim }
@@ -82,13 +90,16 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn): DataT
     case "revenueEstimate":
       return { text: moneyText(row.revenueEstimate), color: dim };
     case "revenueActual":
-      return { text: moneyText(row.revenueActual), color: colors.text };
+      return { text: moneyText(row.revenueActual), color: row.revenueProvisional ? colors.textMuted : colors.text };
     case "revenueSurprise":
       return signed(row.revenueSurprise);
     case "implied":
       return { text: impliedText(row.implied), color: row.upcoming ? colors.textBright : colors.text };
-    case "move":
-      return signed(row.move);
+    case "move": {
+      // The averages, VS IMPL and the chart wait for the settled move; the cell shows the move so far.
+      const live = row.move == null ? liveMove?.(row) ?? null : null;
+      return live === "loading" ? { text: "…", color: dim } : signed(row.move ?? live);
+    }
     case "ratio":
       return { text: row.moveRatio == null ? "--" : `${row.moveRatio.toFixed(1)}x`, color: row.moveRatio != null && row.moveRatio > 1 ? colors.warning : dim };
   }

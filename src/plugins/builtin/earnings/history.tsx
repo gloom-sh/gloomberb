@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   ChartTableHeader,
   DataTableView,
@@ -12,12 +12,14 @@ import { staticSeries } from "../../../components/chart/static/series";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { colors } from "../../../theme/colors";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAssetData } from "../../runtime";
-import { newYorkToday } from "./board-model";
+import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
+import { newYorkToday, reportMove } from "./board-model";
 import { cachedEarningsHistory, loadEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { chartAxis, chartPoints, chartRows, historyFigures, historyRows, type HistoryRow } from "./history-model";
-import { historyColumns, renderHistoryCell, type HistoryColumn } from "./history-table";
+import { historyColumns, renderHistoryCell, type HistoryColumn, type LiveMove } from "./history-table";
 import { loadNoEarningsText } from "./no-earnings";
 import { listingAbroadVenue } from "../../../utils/sec";
 
@@ -50,6 +52,25 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const today = newYorkToday();
   const rows = useMemo(() => historyRows(payload, today, upcoming.data ?? null), [payload, today, upcoming.data]);
   const columns = useMemo(() => historyColumns(width, rows), [rows, width]);
+  // A report out today shows its move so far, from the quotes EVTS reads, until its first close after settles it.
+  const outToday = rows.some((row) => row.date === today && row.dateStatus === "reported" && row.move == null);
+  const quoteSymbols = useMemo(() => (outToday ? [symbol] : []), [outToday, symbol]);
+  const liveStreaming = useLiveStreamingSetting();
+  const { quotes } = useQuoteBoard(quoteSymbols, { liveStreaming });
+  const quoteState = quotes.get(symbol);
+  const quoteRef = useRef(quoteState);
+  quoteRef.current = quoteState;
+  const renderCell = useCallback((row: HistoryRow, column: HistoryColumn) => {
+    const liveMove: LiveMove = (report) => {
+      const move = reportMove(report, quoteRef.current?.quote, today);
+      return move == null && report.date === today && report.dateStatus === "reported" && isBoardRowLoading(quoteRef.current) ? "loading" : move;
+    };
+    return renderHistoryCell(row, column, liveMove);
+  }, [today]);
+  const rowVersion = useCallback(
+    (row: HistoryRow) => (row.date === today && quoteState ? `${row.key}:${quoteState.quote?.lastUpdated ?? ""}:${quoteState.loading}` : row.key),
+    [quoteState, today],
+  );
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`history:${symbol}:selected`, null);
   const selected = rows.find((row) => row.key === selectedId) ?? rows[0] ?? null;
   const bars = useMemo(() => chartRows(rows), [rows]);
@@ -104,7 +125,8 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
         columns={columns}
         items={rows}
         getItemKey={(row) => row.key}
-        renderCell={renderHistoryCell}
+        renderCell={renderCell}
+        getRowVersion={rowVersion}
         selectedTextOverridesCellColor
         sortColumnId={null}
         sortDirection="desc"

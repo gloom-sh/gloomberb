@@ -286,7 +286,8 @@ export function buildEventDetail({
   const comparison: EventDetailBlock[] = [
     ...(row.dateStatus && row.dateStatus !== "reported" ? [detailRow("Report date", row.date, row.dateStatus)] : []),
     detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency),
-      row.epsActual == null ? undefined : row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis),
+      row.epsActual == null ? undefined : [row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis,
+        row.epsProvisional ? "provisional, from the company's press release" : null].filter(Boolean).join(", ") || undefined),
     // An upcoming estimate names its basis when it is adjusted (a REIT's FFO consensus).
     detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency),
       [row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : null,

@@ -125,6 +125,7 @@ import {
   earningsDetailParts,
   earningsEpsBasis,
   epsBasisName,
+  isProvisionalActual,
   quarterLabel,
   showsEpsBasis,
 } from "../../plugins/builtin/shared/earnings-report";
@@ -526,6 +527,7 @@ function corporateActionRows(data: CorporateActionsData) {
         epsActual: event.epsActual,
         epsEstimate: event.epsEstimate,
         epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
+        ...(isProvisionalActual(event) ? { epsProvisional: true } : {}),
         epsAnalysts: event.epsAnalysts,
         dateStatus: earningsDateStatus(event.dateStatus) ?? undefined,
         fiscalPeriod: event.fiscalPeriod,

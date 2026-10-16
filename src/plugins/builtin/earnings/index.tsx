@@ -16,7 +16,7 @@ import { attachEarningsCalendarPersistence, resetEarningsCalendarPersistence } f
 import { attachEarningsCloudCaches, resetEarningsCloudCaches } from "./client";
 import { EarningsBoard } from "./board";
 import { EarningsHistoryView } from "./history";
-import { earningsBoardHeadless, earningsCalendarHeadless } from "./headless";
+import { EARNINGS_CALENDAR, earningsBoardHeadless, earningsCalendarHeadless } from "./headless";
 import { scopedSymbolsFromSettings } from "./model";
 
 /** `ERN <ticker>`: that company's reports, with the footer's ways into its other panes. */
@@ -114,6 +114,8 @@ export const earningsModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 28 },
       tableExport: true,
+      // Dated as `fn EVTS` and `fn ERN` date it, by the calendar, not by the quotes behind the board's MOVE column.
+      reportFreshness: EARNINGS_CALENDAR,
       settings: earningsSettings,
     },
   ],

@@ -23,6 +23,7 @@ import {
   epsBasisName,
   epsSurprise,
   inFiscalMonth,
+  isProvisionalActual,
   quarterLabel,
   showsEpsBasis,
   type EpsBasisName,
@@ -53,6 +54,8 @@ export interface EventRow {
   surprisePercent?: number;
   /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
+  /** The reported figure is the company's press release's, provisional until the calendar's replaces it. */
+  epsProvisional?: true;
   /** Analysts behind `epsEstimate`, when known. */
   epsAnalysts?: number;
   dateStatus?: EarningsDateStatus;
@@ -334,6 +337,7 @@ export function buildEventRows(
       surprisePercent,
       epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
         ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
+      ...(isProvisionalActual(earning) ? { epsProvisional: true as const } : {}),
       epsAnalysts: earning.epsAnalysts,
       dateStatus: earningsDateStatus(earning.dateStatus) ?? undefined,
       providerId: data?.providerId,

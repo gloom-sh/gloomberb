@@ -1,11 +1,12 @@
 import type { EarningsCalendarReport, EarningsTiming } from "../../../api-client/earnings";
+import { getExtendedSessionDisplay, getRegularSessionMoveDisplay } from "../../../market-data/market/status";
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { EarningsEvent } from "../../../types/data-provider";
-import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis } from "../shared/earnings-report";
+import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { coherentEarningsValue } from "./estimate-basis";
-import { shortDate, weekday } from "./format";
+import { shortDate, surprise, weekday } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
 export type Ownership = "held" | "watched";
@@ -25,8 +26,12 @@ export interface BoardReport {
   /** Analysts behind `epsEstimate`. */
   epsAnalysts: number | null;
   epsActual: number | null;
+  /** The actual is the company's press release's, until the calendar's replaces it. */
+  provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
   epsBasis: EarningsEpsBasis | null;
+  /** Actual over estimate minus one. */
+  epsSurprise: number | null;
   revenueEstimate: number | null;
   impliedMove: number | null;
   averageMove: number | null;
@@ -133,7 +138,9 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     epsEstimate: report.epsEstimate,
     epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
+    provisional: isProvisionalActual(report),
     epsBasis: earningsEpsBasis(report.epsBasis),
+    epsSurprise: surprise(report.epsActual, report.epsEstimate),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.implied?.move ?? null,
     averageMove: report.averageReports >= MIN_AVERAGE_REPORTS ? report.averageMove : null,
@@ -164,13 +171,36 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     // The count belongs to the estimate beside it.
     epsAnalysts: epsEstimate == null ? null : coherentEarningsValue(event, "epsAnalysts"),
     epsActual: null,
+    provisional: false,
     // The estimate's basis goes with it.
     epsBasis: epsEstimate == null ? null : earningsEpsBasis(event.epsBasis),
+    epsSurprise: null,
     revenueEstimate: dollars("revenueEstimate"),
     impliedMove: null,
     averageMove: null,
     owned: owned.get(event.symbol) ?? null,
   };
+}
+
+/**
+ * The price's move on the report so far, as a fraction, for a report out
+ * today: from the close before it, so the regular session's move (or the
+ * pre-market's before the open) for one out before or during the session,
+ * and the after-hours or overnight print for one out after the close. Null
+ * before the report, or when the quote has no trade for it yet.
+ */
+export function reportMove(report: Pick<BoardReport, "date" | "dateStatus" | "timing">, quote: Quote | null | undefined, today: string): number | null {
+  if (!quote || report.dateStatus !== "reported" || report.date !== today || !report.timing) return null;
+  // A bid and ask midpoint is no trade, so no move.
+  const extended = getExtendedSessionDisplay(quote);
+  const traded = extended && !extended.mark ? extended : null;
+  // Out after the close, the move is the after-hours one; a last price still at the close is no after-hours trade yet.
+  const percent = report.timing === "amc"
+    ? traded && traded.session !== "PRE" && traded.change !== 0 ? traded.changePercent : null
+    : quote.marketState === "PRE" || quote.marketState === "PREPRE"
+      ? traded?.session === "PRE" ? traded.changePercent : null
+      : getRegularSessionMoveDisplay(quote)?.changePercent;
+  return percent != null && Number.isFinite(percent) ? percent / 100 : null;
 }
 
 function compare(left: BoardReport, right: BoardReport, sort: BoardSort): number {

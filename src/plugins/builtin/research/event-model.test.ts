@@ -214,6 +214,18 @@ test("a REIT's pending report names the adjusted basis of its FFO consensus, as 
   expect(row).toMatchObject({ earningsState: "pending", qEps: 1.58, epsBasis: "adjusted", detail: "confirmed, 2 analysts, adj" });
 });
 
+test("a press release's figure reads provisional until the calendar's replaces it, as ERN and EVTS mark it", () => {
+  // The Travelers the morning of its report: its core EPS, read from the release before the calendar has the quarter.
+  const trv = (epsActualSource: "press-release" | undefined) => buildEventRows({ symbol: "TRV", dividends: [], splits: [], earnings: [
+    { date: "2026-10-16", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 7.07, epsActual: 9.18,
+      difference: 2.11, epsBasis: "adjusted", dateStatus: "reported", ...(epsActualSource ? { epsActualSource } : {}) },
+  ] }, null, null, "USD").find((row) => row.date === "2026-10-16");
+  expect(trv("press-release")).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", epsProvisional: true, detail: "adj, provisional, +2.11 vs est" });
+  const settled = trv(undefined);
+  expect(settled).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", detail: "adj, +2.11 vs est" });
+  expect(settled?.epsProvisional).toBeUndefined();
+});
+
 test("a beat against a negative estimate reads as a beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
     { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },

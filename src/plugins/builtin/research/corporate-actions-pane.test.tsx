@@ -117,6 +117,20 @@ describe("event detail", () => {
     expect(detail).not.toContain("gloom");
   });
 
+  test("a press release's actual says it is provisional and where it is from", () => {
+    const actual = (epsActualSource?: "press-release") => buildEventDetail({
+      row: buildEventRows({ symbol: "TRV", dividends: [], splits: [], earnings: [
+        { date: "2026-10-16", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 7.07, epsActual: 9.18,
+          difference: 2.11, epsBasis: "adjusted", dateStatus: "reported", ...(epsActualSource ? { epsActualSource } : {}) },
+      ] }, null, null, "USD").find((candidate) => candidate.status === "Earnings")!,
+      secFilingsLoading: false, filing: null, documents: [], documentsLoading: false, inlineContent: new Map(), primaryContent: null,
+      primaryContentLoading: false,
+    }).flatMap((section) => section.blocks).find((block) => block.kind === "row" && block.label === "Actual");
+    expect(actual("press-release")).toEqual({ kind: "row", label: "Actual", value: "9.18 USD",
+      detail: "adjusted, provisional, from the company's press release" });
+    expect(actual(undefined)).toEqual({ kind: "row", label: "Actual", value: "9.18 USD", detail: "adjusted" });
+  });
+
   test("matches reported earnings to nearby SEC earnings-release filings", () => {
     const row = buildEventRows({
       symbol: "AAPL",

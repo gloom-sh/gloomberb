@@ -4,7 +4,7 @@ import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis } from "../shared/earnings-report";
+import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { coherentEarningsValue } from "./estimate-basis";
 import { datedYear, impliedText, moveSize, shortDate, surprise, TIMING_LABEL } from "./format";
@@ -22,11 +22,15 @@ export interface HistoryRow {
   /** Analysts behind `epsEstimate`. */
   epsAnalysts: number | null;
   epsActual: number | null;
+  /** The actual is the company's press release's, until the calendar's replaces it. */
+  provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
   epsBasis: EarningsEpsBasis | null;
   epsSurprise: number | null;
   revenueEstimate: number | null;
   revenueActual: number | null;
+  /** The revenue is the press release's, until the statements have the quarter. */
+  revenueProvisional: boolean;
   revenueSurprise: number | null;
   implied: number | null;
   impliedMethod: "quote-mid" | "trade-close" | null;
@@ -60,10 +64,12 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       epsEstimate: report.epsEstimate,
       epsAnalysts: report.epsAnalysts,
       epsActual: report.epsActual,
+      provisional: isProvisionalActual(report),
       epsBasis: earningsEpsBasis(report.epsBasis),
       epsSurprise: surprise(report.epsActual, report.epsEstimate),
       revenueEstimate: report.revenueEstimate,
       revenueActual: report.revenueActual,
+      revenueProvisional: report.revenueActual != null && report.revenueActualSource === "press-release",
       revenueSurprise: surprise(report.revenueActual, report.revenueEstimate),
       implied,
       impliedMethod: report.implied?.method ?? null,
@@ -87,10 +93,12 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
         epsEstimate: coherentEarningsValue(upcoming, "epsEstimate"),
         epsAnalysts: coherentEarningsValue(upcoming, "epsAnalysts"),
         epsActual: null,
+        provisional: false,
         epsBasis: earningsEpsBasis(upcoming.epsBasis),
         epsSurprise: null,
         revenueEstimate: coherentEarningsValue(upcoming, "revenueEstimate"),
         revenueActual: null,
+        revenueProvisional: false,
         revenueSurprise: null,
         implied: null,
         impliedMethod: null,

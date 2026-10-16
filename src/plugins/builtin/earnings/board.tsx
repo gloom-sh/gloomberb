@@ -11,9 +11,11 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { EarningsCalendarQuery } from "../../../api-client/earnings";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import type { EarningsEvent } from "../../../types/data-provider";
 import { useAssetData, usePluginAppActions, usePluginTickerActions } from "../../runtime";
+import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
 import {
   addDays,
   boardReport,
@@ -23,11 +25,12 @@ import {
   newYorkToday,
   ownershipBySymbol,
   relativeDays,
+  reportMove,
   type BoardReport,
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, renderBoardCell, renderBoardSection, SORTABLE, type BoardColumn } from "./board-table";
+import { boardColumns, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { cachedEarningsCalendar, loadEarningsBoard } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { EarningsHistoryView } from "./history";
@@ -133,6 +136,33 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const open = reportRows.find((row) => row.key === openKey)?.report
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
   const columns = useMemo(() => boardColumns(width), [width]);
+  // The move on each report out today, beside its implied move, from the quotes every board reads.
+  // Keyed by content: the rows are rebuilt on renders that change nothing, and the quote board reloads on a new list.
+  const reportedKey = [...new Set(reportRows.filter((row) => row.report.dateStatus === "reported" && row.report.date === today)
+    .map((row) => row.report.symbol))].join(",");
+  const reportedSymbols = useMemo(() => (reportedKey ? reportedKey.split(",") : []), [reportedKey]);
+  const liveStreaming = useLiveStreamingSetting();
+  const { quotes } = useQuoteBoard(reportedSymbols, { liveStreaming, selectedSymbol: selected?.report.symbol ?? null });
+  const quotesRef = useRef(quotes);
+  quotesRef.current = quotes;
+  const statusShown = columns.some((column) => column.id === "status");
+  // Stable while the quotes tick: each row redraws by its own quote's version.
+  const renderCell = useCallback((row: BoardRow, column: BoardColumn) => {
+    const context: BoardCellContext = {
+      statusShown,
+      move: (report) => {
+        const state = quotesRef.current.get(report.symbol);
+        const move = reportMove(report, state?.quote, today);
+        return move == null && report.dateStatus === "reported" && report.date === today && isBoardRowLoading(state) ? "loading" : move;
+      },
+    };
+    return renderBoardCell(row, column, context);
+  }, [statusShown, today]);
+  const rowVersion = useCallback((row: BoardRow) => {
+    if (row.kind !== "report") return row.key;
+    const state = quotes.get(row.report.symbol);
+    return state ? `${state.quote?.lastUpdated ?? ""}:${state.loading}` : row.key;
+  }, [quotes]);
 
   useEffect(() => {
     const symbol = openSymbol.trim().toUpperCase();
@@ -205,7 +235,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         getItemKey={(row) => row.key}
         isNavigable={(row) => row.kind === "report"}
         renderSectionHeader={renderBoardSection}
-        renderCell={renderBoardCell}
+        renderCell={renderCell}
+        getRowVersion={rowVersion}
         selectedTextOverridesCellColor
         sortColumnId={sortColumn}
         sortDirection={sort.direction}

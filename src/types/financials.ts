@@ -435,6 +435,8 @@ export interface EarningsAction {
   /** Null when the basis cannot be determined; absent from sources that do not say. */
   epsBasis?: EarningsEpsBasis | null;
   dateStatus?: EarningsDateStatus;
+  /** `press-release` when `epsActual` is the company's release's, provisional until the calendar has the quarter. */
+  epsActualSource?: "press-release";
 }
 
 export interface CorporateActionsData {
