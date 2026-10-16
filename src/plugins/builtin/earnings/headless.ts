@@ -191,7 +191,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   }));
   // An ETF, an index, a currency pair, a coin or a future has no earnings: that is the answer, not a gap in the data,
   // and a history that failed for one (a coin is no US ticker) is no error.
-  const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol) : null;
+  const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
   return {
     columns: HISTORY_COLUMNS,
     rows,

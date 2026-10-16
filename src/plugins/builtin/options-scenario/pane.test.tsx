@@ -252,7 +252,10 @@ test("the Payoff names the legs it values and the session, and the pane dates it
       listingExchangeName: "NASDAQ", marketState: "POST", postMarketPrice: 100.25, extendedSessionPrint: true }) };
   const settings = { ...SEEDED, strategy: "put", strike: "100", scenarioMarketSnapshot: market };
   await mount(configFor(settings, { activeTabId: "payoff" }));
-  expect(tui.frame()).toContain("Long 1 AAPL 100 put · 23 Sep 2026");
+  expect(tui.frame()).toContain("Long 1 AAPL 100 put");
+  // The legend dates the one expiry; the legs row does not say it twice.
+  expect(tui.frame()).toContain("Expiry 2026-09-23");
+  expect(tui.frame()).not.toContain("23 Sep 2026");
   expect(tui.frame()).toContain("valued after hours");
   // What a capture reads: the chain's feed and delay, and the quote it values at (its session is read against the clock: freshness.test.ts).
   expect(renderedReportFreshness(registry.snapshot())).toEqual({ status: "delayed", delayMinutes: 15 });

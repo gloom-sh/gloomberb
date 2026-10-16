@@ -72,7 +72,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   } : null, [axis, cursorDate, link, series]);
   // A symbol with no reports on record may be one that never has any (an ETF, an index, a coin): its type says so.
   const bare = !resource.loading && rows.length === 0;
-  const noEarningsLoader = useCallback(() => (dataProvider ? loadNoEarningsText(dataProvider, symbol) : Promise.resolve(null)), [dataProvider, symbol]);
+  const noEarningsLoader = useCallback(() => (dataProvider ? loadNoEarningsText(dataProvider, symbol, "pane") : Promise.resolve(null)), [dataProvider, symbol]);
   const noEarnings = useAsyncResource(bare && !abroad ? noEarningsLoader : null);
   const emptyTitle = noEarnings.data ?? "No earnings reports on record.";
   // A coin's history fails (it is no US ticker), which says nothing once its type has answered.

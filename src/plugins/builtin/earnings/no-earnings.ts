@@ -21,24 +21,32 @@ function wrappedFund(type: string | null | undefined): { one: string; many: stri
   return word === "ETF" || word === "ETN" ? { one: `an ${word}`, many: `${word}s` } : null;
 }
 
+/** Where the sentence is read: `fn` types `fn ERN AAPL`, the app's command bar `ERN AAPL`. */
+export type NoEarningsSurface = "cli" | "pane";
+
 /**
  * Why a symbol has no earnings, when its type is one that never reports any:
- * `SPY is an ETF; ETFs have no earnings. Try `fn ERN AAPL`.` Null for a stock or
- * a type nothing classifies, whose empty history is only that nothing is on
- * record yet. The one sentence `fn ERN`, its capture and the pane's empty
- * state all say.
+ * `SPY is an ETF; ETFs have no earnings. Try `fn ERN AAPL`.` in `fn`, and in
+ * the pane and its capture `... Try ERN AAPL.` (no CLI syntax or backticks in
+ * the app). Null for a stock or a type nothing classifies, whose empty history
+ * is only that nothing is on record yet.
  */
-export function noEarningsText(symbol: string, instrumentType: string | null | undefined): string | null {
+export function noEarningsText(symbol: string, instrumentType: string | null | undefined, surface: NoEarningsSurface): string | null {
   const kind = classifyInstrumentType(instrumentType) ?? kindFromListingSyntax(symbol);
   const name = kind ? wrappedFund(instrumentType) ?? NO_EARNINGS[kind] : null;
-  return name ? `${symbol} is ${name.one}; ${name.many} have no earnings. Try \`fn ERN ${EXAMPLE}\`.` : null;
+  const command = surface === "cli" ? `\`fn ERN ${EXAMPLE}\`` : `ERN ${EXAMPLE}`;
+  return name ? `${symbol} is ${name.one}; ${name.many} have no earnings. Try ${command}.` : null;
 }
 
 /** `noEarningsText` for a symbol whose type is read from its quote; its listing syntax (`^GSPC`, `CL=F`) answers when the quote cannot. */
-export async function loadNoEarningsText(provider: Pick<DataProvider, "getQuote">, symbol: string): Promise<string | null> {
+export async function loadNoEarningsText(
+  provider: Pick<DataProvider, "getQuote">,
+  symbol: string,
+  surface: NoEarningsSurface,
+): Promise<string | null> {
   try {
-    return noEarningsText(symbol, (await provider.getQuote(symbol, "")).instrumentType);
+    return noEarningsText(symbol, (await provider.getQuote(symbol, "")).instrumentType, surface);
   } catch {
-    return noEarningsText(symbol, null);
+    return noEarningsText(symbol, null, surface);
   }
 }
