@@ -298,12 +298,17 @@ function ThemedCompositeChart({
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
-      ...(layoutPanels ?? []).flatMap((panel) => [
-        compositeAxisLabelWidth(panel.axes.left, formatAxisValue, includeCursorLabels),
-        compositeAxisLabelWidth(panel.axes.right, formatAxisValue, includeCursorLabels),
-      ]).map((width) => includeCursorLabels ? width : Math.min(width, maximumAxisWidth)),
+      ...(layoutPanels ?? []).flatMap((panel) => (["left", "right"] as const).map((side) => {
+        const width = compositeAxisLabelWidth(panel.axes[side], formatAxisValue, includeCursorLabels);
+        if (!isDesktopWeb || !includeCursorLabels || !width) return includeCursorLabels ? width : Math.min(width, maximumAxisWidth);
+        const count = panel.series.filter(({ source }) => source.axis === side && !source.hidden).length;
+        const lanes = Math.max(1, Math.ceil(count / Math.max(1, Math.floor(panel.height))));
+        // Reserve the observation leaders and dense-panel lanes before hover,
+        // so moving the crosshair never moves the plot or its time axis.
+        return (width + 1) * lanes;
+      })),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, layoutPanels, maximumAxisWidth]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, isDesktopWeb, layoutPanels, maximumAxisWidth]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;

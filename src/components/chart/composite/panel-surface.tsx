@@ -67,7 +67,7 @@ import {
   type PanGesture,
   type PendingWheel,
 } from "./panel-gestures";
-import { resolvePanelCrosshair, axisLabelRows, cursorAxisLabel, resolveSeriesCursorYRatio } from "./panel-labels";
+import { resolvePanelCrosshair, axisLabelRows, cursorAxisLabel, resolveSeriesCursorYRatio, resolveSeriesAxisTags } from "./panel-labels";
 import type { KeyboardToolDrag } from "./use-composite-chart-keyboard";
 
 const webFrame = globalThis as typeof globalThis & {
@@ -394,8 +394,12 @@ export function CompositePanelSurface({
   const cursorPixelY = activeCursorYRatio === null
     ? null
     : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0);
-  const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio, formatAxisValue);
-  const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio, formatAxisValue);
+  // A tool still reads its endpoint. Ordinary desktop hover reads only the
+  // observations, not an unprojected pointer value on every axis.
+  const axisCursorYRatio = isDesktopWeb && !activeDrag ? null : activeCursorYRatio;
+  const leftCursorLabel = cursorAxisLabel(panel, "left", axisCursorYRatio, formatAxisValue);
+  const rightCursorLabel = cursorAxisLabel(panel, "right", axisCursorYRatio, formatAxisValue);
+  const seriesAxisTags = useMemo(() => isDesktopWeb ? resolveSeriesAxisTags(panel, scene, formatAxisValue) : [], [formatAxisValue, isDesktopWeb, panel, scene]);
   const measureReadout = useMemo(() => {
     if (!activeDrag || !toolReadout?.summary) return null;
     const text = toolReadout.summary;
@@ -846,6 +850,8 @@ export function CompositePanelSurface({
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
             extraMarkers={leftAxisMarkers}
+            seriesTags={isDesktopWeb ? seriesAxisTags.filter((tag) => tag.side === "left") : undefined}
+            measuredPixelHeight={plotSize.height * cellHeightPx}
           />
           <Box width={axisGap} />
         </>
@@ -893,6 +899,8 @@ export function CompositePanelSurface({
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
             extraMarkers={rightAxisMarkers}
+            seriesTags={isDesktopWeb ? seriesAxisTags.filter((tag) => tag.side === "right") : undefined}
+            measuredPixelHeight={plotSize.height * cellHeightPx}
           />
         </>
       ) : null}

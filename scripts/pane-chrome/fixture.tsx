@@ -80,6 +80,7 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { AxisFixturePane } from "./axis-fixture";
 import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
@@ -1051,6 +1052,7 @@ function chartComposerSpec(kind: string): ChartSpec {
 }
 
 const PANES = {
+  axis: { name: "Composite chart", component: AxisFixturePane },
   palette: { name: "Surface", component: PalettePane },
   overview: { name: "Overview", component: OverviewPane },
   des: { name: "DES", component: DesPane },
@@ -1252,6 +1254,16 @@ function chartComposerLayout(): LayoutConfig {
   };
 }
 
+function axisLayout(): LayoutConfig {
+  const floating = params.get("float") === "1";
+  return {
+    dockRoot: floating ? leaf("plain:back") : leaf("axis:a"),
+    instances: [instance("axis:a"), ...(floating ? [instance("plain:back")] : [])],
+    floating: floating ? [{ instanceId: "axis:a", x: 2, y: 2, width: Math.max(30, window.innerWidth / WEB_CELL_WIDTH - 4), height: 34, zIndex: 60 }] : [],
+    detached: [],
+  };
+}
+
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
   const layout: LayoutConfig = scenario.startsWith("theme") ? themeLayout()
@@ -1268,6 +1280,7 @@ function config() {
     : scenario === "des" ? desLayout()
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
+    : scenario === "axis" ? axisLayout()
     : scenario === "cmp" ? chartComposerLayout()
     : scenario === "layout" ? layoutLayout(params)
     : chromeLayout();

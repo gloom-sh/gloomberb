@@ -4,6 +4,7 @@ import { positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse, pressKey, sleep, waitFor, type Cdp, type Chord, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 import { chatSteps } from "./chat-checks";
+import { axisSteps } from "./axis-checks";
 import { desSteps } from "./des-checks";
 import { heatSteps } from "./heat-checks";
 import { headerSteps } from "./header-checks";
@@ -1418,6 +1419,7 @@ const steps: Step[] = [
   ...headerSteps,
   ...layoutSteps,
   ...selectionSteps,
+  ...axisSteps,
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

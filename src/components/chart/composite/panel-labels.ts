@@ -39,6 +39,44 @@ export function resolvePanelCrosshair(
   };
 }
 
+export interface SeriesAxisTag {
+  seriesId: string;
+  seriesLabel: string;
+  side: "left" | "right";
+  value: number;
+  label: string;
+  color: string;
+  yRatio: number;
+  carried: boolean;
+}
+
+/** Each observation belongs to its own axis, never to the pointer's height. */
+export function resolveSeriesAxisTags(
+  panel: CompositePanelScene,
+  scene: Pick<CompositeChartScene, "cursorXRatio" | "cursorValues">,
+  format?: CompositeAxisValueFormatter,
+): SeriesAxisTag[] {
+  if (scene.cursorXRatio === null) return [];
+  const values = new Map(scene.cursorValues.map((entry) => [entry.seriesId, entry]));
+  return panel.series.flatMap(({ source }) => {
+    const cursor = values.get(source.id);
+    const domain = panel.axes[source.axis];
+    if (source.hidden || !domain || cursor?.value == null) return [];
+    const yRatio = projectCompositeValue(cursor.value, domain);
+    if (yRatio === null) return [];
+    return [{
+      seriesId: source.id,
+      seriesLabel: source.label,
+      side: source.axis,
+      value: cursor.value,
+      label: (format ?? formatCompositeCursorValue)(cursor.value, domain),
+      color: source.color,
+      yRatio,
+      carried: !!cursor.carried,
+    }];
+  });
+}
+
 export function axisLabelRows(lines: string[]): ReadonlyMap<number, string> {
   return new Map(lines.flatMap((line, row) => {
     const label = line.trim();

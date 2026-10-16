@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { clamp } from "../../../utils/math";
+import type { SeriesAxisTag } from "./panel-labels";
+import { placeSeriesAxisTags, SeriesAxisTags } from "./series-axis-tags";
 
 function formatAxisCell(label: string | null, width: number): string {
   if (width <= 0) return "";
@@ -34,6 +36,9 @@ interface PriceAxisLabelsProps {
   axisColor?: string;
   /** Anchors that stay put while the cursor moves, such as a measure start. */
   extraMarkers?: readonly PriceAxisMarker[];
+  /** Desktop/web observations, separate from a drawing tool's endpoint. */
+  seriesTags?: readonly SeriesAxisTag[];
+  measuredPixelHeight?: number;
 }
 
 interface CursorPriceAxisOverlay {
@@ -134,6 +139,8 @@ export function PriceAxisLabels({
   cursorBackgroundColor = colors.bg,
   axisColor = colors.textDim,
   extraMarkers,
+  seriesTags,
+  measuredPixelHeight,
 }: PriceAxisLabelsProps) {
   const { cellHeightPx = 18, fractionalViewport = false } = useUiCapabilities();
   const overlay = useMemo(() => buildCursorPriceAxisOverlay({
@@ -147,7 +154,11 @@ export function PriceAxisLabels({
   const usePixelOverlay = fractionalViewport && overlay.labelText !== null && overlay.topPercent !== null;
   // Row-snapped labels drift up to a row off the gridlines they name.
   const usePixelTicks = fractionalViewport && axisTicks !== undefined;
-  const pixelHeight = Math.max(height * cellHeightPx, 1);
+  const pixelHeight = Math.max(measuredPixelHeight ?? height * cellHeightPx, 1);
+  const placedSeriesTags = seriesTags ? placeSeriesAxisTags(seriesTags, pixelHeight, cellHeightPx) : [];
+  const lanes = Math.max(1, ...placedSeriesTags.map((tag) => tag.lane + 1));
+  // Fixed reference labels yield to observations, never the other way round.
+  const visibleMarkers = extraMarkers?.filter((marker) => placedSeriesTags.every((tag) => Math.abs(tag.centerY - marker.pixelY) >= cellHeightPx));
   const placedTicks = usePixelTicks
     ? placeAxisTicks({
       ticks: axisTicks,
@@ -155,7 +166,8 @@ export function PriceAxisLabels({
       cellHeightPx,
       badgeCentersPx: [
         ...(usePixelOverlay ? [(overlay.topPercent! / 100) * (pixelHeight - 1)] : []),
-        ...(extraMarkers?.map((marker) => marker.pixelY) ?? []),
+        ...(visibleMarkers?.map((marker) => marker.pixelY) ?? []),
+        ...placedSeriesTags.map((tag) => tag.centerY),
       ],
     })
     : null;
@@ -233,7 +245,7 @@ export function PriceAxisLabels({
           </Box>
         );
       }) : null}
-      {usePixelOverlay || usePixelTicks ? extraMarkers?.map((marker) => (
+      {usePixelOverlay || usePixelTicks ? visibleMarkers?.map((marker) => (
         <Box
           key={`${marker.label}:${marker.pixelY}`}
           width={axisSectionWidth}
@@ -255,6 +267,7 @@ export function PriceAxisLabels({
           {axisPaddingWidth > 0 ? <Box width={axisPaddingWidth} /> : null}
         </Box>
       )) : null}
+      {seriesTags ? <SeriesAxisTags placed={placedSeriesTags} pixelHeight={pixelHeight} lanes={lanes} background={cursorBackgroundColor} /> : null}
       {usePixelOverlay ? (
         <Box
           width={axisSectionWidth}
