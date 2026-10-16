@@ -11,7 +11,9 @@ import { useWindowedRows } from "./windowed-rows";
 export function WebWindowedList({ itemKeys, renderItem, scrollRef, estimateSize = 64, overscan = 8, onScrollActivity, onPinChange, onPointerMove, role }: WindowedListProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
-  const resizingViewport = useRef(false);
+  // On a hidden initial mount, rows can be measured on reveal before the
+  // viewport observer runs. Keep the initial pin until that first real rect.
+  const resizingViewport = useRef(true);
   const syncOffset = useRef<((offset: number, scrolling: boolean) => void) | null>(null);
   const onPinRef = useRef(onPinChange);
   onPinRef.current = onPinChange;
