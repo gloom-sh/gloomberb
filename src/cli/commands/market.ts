@@ -61,6 +61,7 @@ import {
   formatOptionIvCell,
   formatOptionQuoteCell,
   OPTION_MODEL_RATE,
+  OPTION_VOLATILITY_FIELDS,
   OPTIONS_USAGE,
   optionRows,
   optionsBasisFields,
@@ -1668,6 +1669,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         interval: OPTIONS_EXPORT_INTERVAL,
         // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
         units: { iv: "annualized decimal", delta: "decimal per 1.00 move in the underlying" },
+        // What each contract's `iv` and `impliedVolatility` are, so neither is read as the other.
+        fields: OPTION_VOLATILITY_FIELDS,
         // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
         model: {
           spot: basisFields.spot, spotBasis: basisFields.spotBasis, spotAsOf: basisFields.spotAsOf,

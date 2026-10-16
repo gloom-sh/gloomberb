@@ -67,6 +67,14 @@ interface OptionModelFigures {
 /** The risk-free rate every options valuation in the app assumes. */
 export const OPTION_MODEL_RATE = DEFAULT_OPTION_CALC_DRAFT.rate;
 
+/** What each contract's two volatilities are, stated in the chain's JSON metadata so neither is read as the other. */
+export const OPTION_VOLATILITY_FIELDS = {
+  iv: "Annualized volatility (decimal) solved from the quote midpoint, one per strike from its out-of-the-money side, at the "
+    + "spot, valuation time and rate in metadata.model. Delta here and dealer gamma (GEX) are valued with it.",
+  impliedVolatility: "The data provider's own reported implied volatility, passed through unchanged. Delta does not use it; "
+    + "GEX falls back to it only for a contract without a two-sided quote.",
+} as const;
+
 /**
  * IV and delta per contract, from the same solver and Greeks as the options
  * pane (put-call parity forward, one volatility per strike, the pane's rate).
