@@ -50,6 +50,14 @@ export interface GammaStrike {
   net: number;
 }
 
+interface GammaExpiry {
+  expiry: string;
+  calls: number;
+  /** Short, as a positive number. */
+  puts: number;
+  net: number;
+}
+
 export interface GammaPayload {
   version: 1;
   symbol: string;
@@ -72,6 +80,8 @@ export interface GammaPayload {
   bandWithBoxes?: { low: number; high: number } | null;
   flip: number | null;
   strikes: GammaStrike[];
+  /** Each priced expiry's totals, from the same legs as `total`; absent from older servers. */
+  byExpiry?: GammaExpiry[];
   quotesAsOf: string | null;
   warnings: string[];
 }

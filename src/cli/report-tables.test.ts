@@ -45,6 +45,15 @@ describe("report tables", () => {
     expect(table.rows).toEqual([["Revenue", 416.161], ["Net income", 112.01]]);
   });
 
+  test("a value drawn with its sign turned exports as drawn, every digit, not the rounded figure", () => {
+    // A short position kept positive and drawn negative: the export must still add up with the other sides.
+    const table = exportRowsTable("Gamma", [
+      { key: "calls", header: "Calls" },
+      { key: "puts", header: "Puts", format: (value) => `-${(Number(value) / 1e6).toFixed(2)}M` },
+    ], [{ calls: 57.13, puts: 1_139_604.2187 }]);
+    expect(table.rows).toEqual([[57.13, -1_139_604.2187]]);
+  });
+
   test("a table of metrics names each row's unit in its label; a column of mixed units gets a unit column", () => {
     const metrics = exportRowsTable("Backtest", [
       { key: "metric", header: "Metric" },

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chartWindow, expiryAxis, formatDistance, openInterestTotal, strikeAxis, strikeChartOpenInterest } from "./model";
+import { chartWindow, expiryAxis, formatDistance, gammaWalls, openInterestTotal, strikeAxis, strikeChartOpenInterest } from "./model";
 
 const rows = (entries: Array<[number, number]>) => entries.map(([strike, weight]) => ({ strike, weight }));
 const weight = (row: { weight: number }) => row.weight;
@@ -40,4 +40,16 @@ test("axes read round strikes and thin expiry labels, naming a year once it chan
   expect(expiries.at(0.7)).toBe("2026-12-18");
   expect(formatDistance(765, 765.54)).toBe("-0.1%");
   expect(formatDistance(765.4, 765.54)).toBe("0.0%");
+});
+
+test("the walls are the strikes with the most call and put gamma, ties to the lowest strike", () => {
+  const strikes = [
+    { strike: 790, calls: 5, puts: 0 },
+    { strike: 760, calls: 1, puts: 9 },
+    { strike: 770, calls: 5, puts: -9 },
+    { strike: 780, calls: 2, puts: 3 },
+  ];
+  // Listed out of order: 770 beats 790 for calls and 760 beats 770 for puts on the tie, a signed put counting by its size.
+  expect(gammaWalls(strikes)).toEqual({ callWall: 770, putWall: 760 });
+  expect(gammaWalls([{ strike: 700, calls: 0, puts: 0 }])).toEqual({ callWall: null, putWall: null });
 });

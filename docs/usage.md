@@ -148,7 +148,7 @@ A symbol that trades in several places lists its exchanges after a colon: `NET:`
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options chain, expected moves, 25-delta skew and adjacent-expiry term slope. **Strikes** in the bar lists every strike, a count either side of the money, or a call or put delta band ([method](research-data.md#omon-strike-window-and-carry)) |
 | `OVDV <ticker>` | Rotatable 3D implied-volatility surface by delta or moneyness, smiles, term structure, skew and forwards |
-| `OPX [ticker]` / `GEX [ticker]` | Open interest by strike and expiry with max pain, and dealer gamma by strike with its flip level; `GEX` opens on the gamma tab, `MAXPAIN` is `OPX`. SPY with no ticker ([method](options-positioning.md)) |
+| `OPX [ticker]` / `GEX [ticker]` | Open interest by strike and expiry with max pain, and dealer gamma by strike and expiry with its flip level and call and put walls; `GEX` opens on the gamma tab, `MAXPAIN` is `OPX`. SPY with no ticker ([method](options-positioning.md)) |
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `SEAS <ticker>` | Seasonality: monthly returns by year, each month's average and hit rate, year overlays, and returns by weekday and around the turn of the month |

@@ -431,7 +431,7 @@ Headless loaders must stay isomorphic. Do not import React, DOM APIs, Electrobun
 The four supported shapes cover the pane catalog:
 
 - `rows`: `{ columns?, rows }` for one table
-- `bundle`: `{ sections: [{ title, columns?, rows } | { title, entries }] }` for dashboards such as VAL and ECST
+- `bundle`: `{ sections: [{ title, columns?, rows, unit? } | { title, entries, textEntries? }] }` for dashboards such as VAL and ECST. A row section's `unit` fills the `currency_or_unit` column of its exported rows. An entry's `unit` exports its number whole with the unit beside the label, and `textEntries` are the lines the text report prints instead of `entries` when the pane says in one line what the export keeps apart (a range, a level with its distance)
 - `series`: `{ series: [{ id, label, points, unit?, symbol?, interval? }], stats? }` for charts and derived statistics. `unit`, `symbol` (what the series was asked as) and `interval` (the bars or frequency served) fill the `currency_or_unit`, `symbol_or_series` and `interval` columns every exported row ends with
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 

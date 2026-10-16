@@ -140,13 +140,20 @@ function readDisplay(value: string): DisplayNumber | typeof BLANK_DISPLAY | null
   return parseDisplayNumber(trimmed);
 }
 
-/** The value in the units the text drew, so a fraction drawn as 6.15% exports 6.15, or null when it is not what was drawn. */
+/**
+ * The value in the units the text drew, so a fraction drawn as 6.15% exports
+ * 6.15, or null when it is not what was drawn. A column that draws the value
+ * with its sign turned (a short position as a negative amount) exports it as
+ * drawn, every digit, not the rounded figure read back.
+ */
 function valueAsDrawn(value: number, drawn: DisplayNumber): number | null {
   const target = Number(drawn.number);
   const tolerance = drawn.step * (1 + 1e-9) + Number.EPSILON;
-  for (const scale of DISPLAY_SCALES) {
-    const scaled = value * scale;
-    if (Math.abs(scaled - target) <= tolerance) return exportNumber(scaled);
+  for (const sign of [1, -1]) {
+    for (const scale of DISPLAY_SCALES) {
+      const scaled = sign * value * scale;
+      if (Math.abs(scaled - target) <= tolerance) return exportNumber(scaled);
+    }
   }
   return null;
 }

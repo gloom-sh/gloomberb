@@ -241,14 +241,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["OMON"],
   },
   OPX: {
-    summary: "Open interest by strike for one expiry with max pain and spot marked, every expiry's open interest, put/call ratio and max pain, and dealer gamma (GEX) by strike with its flip level and a range for the dealer assumption. MAXPAIN opens it too.",
+    summary: "Open interest by strike for one expiry with max pain and spot marked, every expiry's open interest, put/call ratio, max pain and net dealer gamma, and dealer gamma (GEX) by strike with its flip level, call and put walls and a range for the dealer assumption. MAXPAIN opens it too.",
     usage: ["OPX", "OPX SPY", "OPX SPX"],
     keys: [TABS, OPEN],
     data: OPX_DATA,
     bloomberg: ["OPX"],
   },
   GEX: {
-    summary: "Net dealer gamma by strike across every expiry or one, with the total, the flip level and a range for the dealer assumption. The GEX tab of OPX.",
+    summary: "Net dealer gamma by strike across every expiry or one, with the total, the flip level, the call and put walls and a range for the dealer assumption. The GEX tab of OPX.",
     usage: ["GEX", "GEX SPY", "GEX SPX"],
     keys: [TABS],
     data: OPX_DATA,

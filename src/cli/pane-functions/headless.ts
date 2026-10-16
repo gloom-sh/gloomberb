@@ -286,6 +286,7 @@ function serializeBundleSection(
       title: section.title,
       columns: serializableColumns(columns),
       rows: section.rows,
+      ...(section.unit ? { unit: section.unit } : {}),
       ...(section.empty && section.rows.length === 0 ? { empty: section.empty } : {}),
     };
   }
@@ -478,7 +479,7 @@ function renderBundle(
     renderSection(section.title),
     "rows" in section && section.rows
       ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
-      : renderEntries(section.entries),
+      : renderEntries(section.textEntries ?? section.entries),
   ]);
 }
 
@@ -629,11 +630,11 @@ export function headlessReportTables(
       break;
     }
     case "bundle":
-      tables = (result as HeadlessBundleResult).sections.map((section) => (
-        "rows" in section && section.rows
-          ? exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows)
-          : exportEntriesTable(section.title, section.entries)
-      ));
+      tables = (result as HeadlessBundleResult).sections.map((section) => {
+        if (!("rows" in section && section.rows)) return exportEntriesTable(section.title, section.entries);
+        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows);
+        return section.unit?.trim() ? { ...table, identity: { currencyOrUnit: section.unit.trim() } } : table;
+      });
       break;
     case "series": {
       const seriesResult = result as HeadlessSeriesResult;

@@ -1056,7 +1056,7 @@
           {
             "code": "GEX",
             "name": "Dealer Gamma",
-            "description": "Net dealer gamma by strike, its total, flip level and the range for the dealer assumption."
+            "description": "Net dealer gamma by strike, its total, flip level, call and put walls and the range for the dealer assumption."
           },
           {
             "code": "OVME",

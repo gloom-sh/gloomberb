@@ -11,6 +11,39 @@ export const isPositioningTab = (value: unknown): value is PositioningTab =>
   POSITIONING_TABS.some((tab) => tab.value === value);
 /** The GEX tab's expiry choice for every expiry at once. */
 export const ALL_EXPIRIES = "all";
+/** What every GEX figure is in, as exports name a unit. */
+export const GAMMA_UNIT = "USD per 1% move";
+
+/**
+ * The call wall is the strike with the most call gamma in the strikes given
+ * (one expiry's or every expiry's), the put wall the strike with the most put
+ * gamma. Ties go to the lowest strike; a side with no gamma has no wall.
+ */
+export function gammaWalls(strikes: readonly { strike: number; calls: number; puts: number }[]): {
+  callWall: number | null;
+  putWall: number | null;
+} {
+  let call: { strike: number; size: number } | null = null;
+  let put: { strike: number; size: number } | null = null;
+  for (const row of strikes.toSorted((left, right) => left.strike - right.strike)) {
+    // Puts arrive as a positive amount from the server; a signed one counts by its size.
+    const puts = Math.abs(row.puts);
+    if (row.calls > 0 && (!call || row.calls > call.size)) call = { strike: row.strike, size: row.calls };
+    if (puts > 0 && (!put || puts > put.size)) put = { strike: row.strike, size: puts };
+  }
+  return { callWall: call?.strike ?? null, putWall: put?.strike ?? null };
+}
+
+/**
+ * Net dealer gamma of each expiry, from an all-expiries gamma answer. Null
+ * when the answer is for one expiry or the server is older than the field.
+ */
+export function netGammaByExpiry(
+  payload: { expiry: string | null; byExpiry?: readonly { expiry: string; net: number }[] } | null | undefined,
+): Map<string, number> | null {
+  if (!payload || payload.expiry != null || !payload.byExpiry) return null;
+  return new Map(payload.byExpiry.map((row) => [row.expiry, row.net]));
+}
 
 const dateSeconds = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
 /** Oct 16 '26, as OMON names its expiries. */

@@ -144,6 +144,12 @@ export interface HeadlessPaneEntry {
   value: unknown;
   /** Human-readable form used by text output while JSON retains `value`. */
   formatted?: string;
+  /**
+   * The unit of a numeric `value` (`USD`, `USD per 1% move`). Exports then
+   * write the value as it is, every digit, with the unit beside the label,
+   * rather than read back the number `formatted` draws.
+   */
+  unit?: string;
 }
 
 /**
@@ -341,15 +347,29 @@ export type HeadlessBundleSection =
     textColumns?: HeadlessPaneColumn[];
     /** The rows `textColumns` read, when the pane's rows are not the records (one per holding and scenario shock); `rows` when absent. */
     textRows?: HeadlessPaneRow[];
+    /**
+     * The currency or unit the rows' figures are in (`USD per 1% move`),
+     * which every exported row names in `currency_or_unit`.
+     */
+    unit?: string;
     entries?: never;
+    textEntries?: never;
   }
   | {
     title: string;
     entries: HeadlessPaneEntry[];
+    /**
+     * The lines the text report prints in place of `entries`, when the pane
+     * says in one line what the exported records keep apart (a range as
+     * `low to high`, a level with its distance from spot). CSV, NDJSON and
+     * JSON keep `entries`.
+     */
+    textEntries?: HeadlessPaneEntry[];
     columns?: never;
     rows?: never;
     textColumns?: never;
     textRows?: never;
+    unit?: never;
   };
 
 export interface HeadlessBundleResult extends HeadlessPaneResultBase {
