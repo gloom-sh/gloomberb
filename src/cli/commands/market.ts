@@ -116,7 +116,6 @@ import {
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
-  bareListingNote,
   tradingBoardNote,
   EXCHANGE_OPTION,
   futuresTryLine,
@@ -132,17 +131,15 @@ import {
   loadForListing,
   loadListingQuote,
   listingFateLoader,
-  listingFateNotes,
   movedSymbolLine,
-  noLongerTradingNote,
   notTradedMessage,
   quoteBareListing,
   requireCliListing,
-  tradingListing,
   type CliListing,
   type ListingDataRequest,
   type ListingIdentity,
 } from "../listing-arg";
+import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";

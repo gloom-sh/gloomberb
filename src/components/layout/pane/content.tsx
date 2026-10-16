@@ -9,6 +9,7 @@ import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registr
 import type { PaneDef } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { PaneErrorBoundary } from "./error-boundary";
+import { PaneTickerFateGate } from "./ticker-fate-gate";
 
 // Under GLOOMBERB_PERF_TRACE every pane commit is reported by pane, which is
 // how a store update that fans out to the whole layout gets attributed. The
@@ -72,14 +73,16 @@ export const PaneContent = memo(function PaneContent({
   const body = useMemo(() => (
     <PaneErrorBoundary paneType={paneType} title={title} onClose={closePane ? closeFailedPane : undefined}>
       <PaneRenderTrace paneId={paneId} paneType={paneType}>
-        <Component
-          paneId={paneId}
-          paneType={paneType}
-          focused={focused}
-          width={width}
-          height={height}
-          close={onClose ? close : undefined}
-        />
+        <PaneTickerFateGate paneId={paneId}>
+          <Component
+            paneId={paneId}
+            paneType={paneType}
+            focused={focused}
+            width={width}
+            height={height}
+            close={onClose ? close : undefined}
+          />
+        </PaneTickerFateGate>
       </PaneRenderTrace>
     </PaneErrorBoundary>
   ), [Component, close, closeFailedPane, closePane, focused, height, language, onClose, paneId, paneType, theme, title, width]);

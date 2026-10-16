@@ -1,11 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
-import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
-import type { TickerChanges } from "../types/ticker-changes";
+import { createTestDataProvider } from "../test-support/data-provider";
 import {
-  describeListingFate, ListingArgError, listingChoiceNote, listingFateNotes, listingVenues, loadForListing, notTradedMessage, parseListingArg,
-  resolveCliListing,
+  ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -262,32 +260,4 @@ test("every command agrees with quote on where a symbol trades: a venue search l
     .toBe("CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)");
   expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
     .toBeNull();
-});
-
-test("what became of a symbol is one line from quote's sources: a listing that stopped, a company that left, bars from its old symbol", () => {
-  const now = Date.parse("2026-10-12T06:00:00Z");
-  const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
-  const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true });
-  const ended = describeListingFate({ symbol: "TWTR" }, twitter, null, now);
-  expect(ended.endedOn).toBe("2022-10-27");
-  // Said where nothing was served; data that was served speaks for itself.
-  expect(listingFateNotes(ended, { served: false })).toEqual(["TWTR stopped trading 2022-10-27; no history or options served"]);
-  expect(listingFateNotes(ended, { served: true })).toEqual([]);
-
-  const hop = { from: "FB", to: "META", date: "2022-06-09" };
-  const fb: TickerChanges = { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] };
-  const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", lastUpdated: now });
-  // The fund's bars or none, the line is quote's.
-  const moved = describeListingFate({ symbol: "FB" }, etf, fb, now);
-  const line = "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)";
-  expect(listingFateNotes(moved, { served: true, firstDate: "2025-10-13" })).toEqual([line]);
-  expect(listingFateNotes(moved, { served: false })).toEqual([line]);
-  // Read on a listing abroad, the symbol is not the US one the changes are of.
-  expect(describeListingFate({ symbol: "FB" }, { ...etf, listingExchangeName: "PSE" }, fb, now).note).toBeNull();
-
-  const meta: TickerChanges = { symbol: "META", moved: null, formerly: [hop], listedName: "Meta Platforms, Inc.", changes: [hop] };
-  const holder = describeListingFate({ symbol: "META" }, createTestQuote({ symbol: "META", lastUpdated: now }), meta, now);
-  expect(holder.note).toBeNull();
-  expect(listingFateNotes(holder, { served: true, firstDate: "2021-10-18" })).toEqual(["Includes FB-era bars: META was FB until 2022-06-09"]);
-  expect(listingFateNotes(holder, { served: true, firstDate: "2022-06-13" })).toEqual([]);
 });

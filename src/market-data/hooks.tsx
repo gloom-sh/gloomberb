@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
@@ -9,6 +9,7 @@ import {
   getSharedMarketDataCoordinator,
   resolveEntryValue,
 } from "./coordinator";
+import { resolveEntryData } from "./selectors";
 import type { QueryEntry } from "./result-types";
 import {
   buildArticleSummaryKey,
@@ -23,6 +24,9 @@ import {
 } from "./selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { createBaselineChartRequest } from "./coordinator/chart";
+import { fateListing, LATE_CHANGE_WAIT_MS, listingFateGate, type ListingFateGate } from "../tickers/listing-fate";
+import type { TickerChangeLookup } from "../tickers/ticker-changes";
+import type { TickerChanges } from "../types/ticker-changes";
 
 const TICKER_FINANCIALS_LOAD_DELAY_MS = 250;
 export const DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS = 60_000;
@@ -308,6 +312,57 @@ export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerR
   }, [instrumentKey]);
 
   return entry;
+}
+
+const SERVE_GATE: ListingFateGate = { kind: "serve" };
+
+/** A quote entry as the fate reads it: undefined while it loads, null when the listing has none. */
+function fateQuote(entry: QueryEntry<Quote> | null): Quote | null | undefined {
+  const quote = resolveEntryData(entry);
+  if (quote) return quote;
+  return entry && (entry.phase === "error" || entry.phase === "ready") ? null : undefined;
+}
+
+/**
+ * Whether a pane may ask for a symbol's data (`listingFateGate`): a symbol
+ * whose company moved, with nothing new listed under it, has none of its own.
+ * It reads the symbol's quote and change lookup as `quote` does: a symbol
+ * whose quote shows it trading never waits on the lookup, a stopped line or a
+ * quote still coming waits for it, and a gate still waiting after
+ * LATE_CHANGE_WAIT_MS serves. The quote is watched only while the answer can
+ * turn on it, so a symbol with no change on record costs no re-render per tick.
+ */
+export function useListingFateGate(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): ListingFateGate {
+  const coordinator = getSharedMarketDataCoordinator();
+  const instrument = useTickerInstrument(symbol, ticker);
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
+  const listing = useMemo(() => (instrument ? fateListing(instrument) : null), [instrumentKey]);
+  const lookup = useMemo(
+    () => (coordinator && instrument && listing ? coordinator.lookupTickerChanges(instrument) : null),
+    [coordinator, instrumentKey],
+  );
+  const [answer, setAnswer] = useState<{ lookup: TickerChangeLookup; changes: TickerChanges | null } | null>(null);
+  const changes = !lookup ? null : answer?.lookup === lookup ? answer.changes : lookup.peek();
+  useEffect(() => {
+    if (!lookup || lookup.peek() !== undefined) return;
+    let current = true;
+    void lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
+      if (current) setAnswer({ lookup, changes: value });
+    });
+    return () => { current = false; };
+  }, [lookup]);
+  const watchQuote = !!listing && (changes === undefined || !!changes?.moved);
+  const quoteEntry = useQuoteEntry(watchQuote ? symbol : null, watchQuote ? ticker : null);
+  const gate = listing && watchQuote ? listingFateGate(listing, { quote: fateQuote(quoteEntry), changes }) : SERVE_GATE;
+  // Nothing holds a pane longer than a stopped line's lookup may take.
+  const [expired, setExpired] = useState<string | null>(null);
+  const waiting = gate.kind === "wait";
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => setExpired(instrumentKey), LATE_CHANGE_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [instrumentKey, waiting]);
+  return waiting && expired === instrumentKey ? SERVE_GATE : gate;
 }
 
 /**

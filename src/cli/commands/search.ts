@@ -16,7 +16,7 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
-import { loadListingFate } from "../listing-arg";
+import { loadListingFate } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { startTickerChangeLookup, tickerChangeLine, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail } from "../errors";

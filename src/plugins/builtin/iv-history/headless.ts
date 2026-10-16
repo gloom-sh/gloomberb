@@ -1,15 +1,14 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
-import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
+import { createHvDependencies, loadIvHistory, loadIvScreen, loadScreenVolatilities } from "./client";
 import { formatPoints, formatRank, formatSpot, formatStat, formatVol, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
-import { listingFateNotes, loadListingFate } from "../../../cli/listing-arg";
+import { listingFateNotes, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
+import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
-/** VCA rows with nothing to show whose symbol's fate it looks up; a long list of them is a backfill, not a lookup. */
-const MAX_FATE_LOOKUPS = 10;
 const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : "--";
 const points = (value: unknown) => typeof value === "number" ? formatPoints(value) : "--";
 
@@ -28,12 +27,16 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   async load(args, ctx) {
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
-    const [payload, prices, fate] = await Promise.all([
+    // What became of the symbol, as `quote` reads it, looked up beside the figures: FB's are the fund listed
+    // there now, TWTR stopped trading, and HFC, which became DINO, has none of its own.
+    const changes = startTickerChangeLookup(ctx.marketData, instrument.symbol, instrument.exchange);
+    const quote = ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(() => null);
+    const [payload, prices] = await Promise.all([
       loadIvHistory(instrument.symbol, { signal: ctx.signal }, ctx.apiClient),
       loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)),
-      // What became of the symbol, as `quote` reads it: FB's figures are the fund listed there now, TWTR stopped trading.
-      loadListingFate(instrument, ctx.marketData),
     ]);
+    const fate = await loadListingFate(instrument, ctx.marketData, { quote, changes });
+    if (fate.moved) throw new MovedSymbolError(fate.moved);
     const model = projectIvHistory(payload, prices.history, { lookback: String(args.options.lookback) as IvLookback,
       hvWindow: (Number(args.options.hvWindow) === 30 ? 30 : 20) as HvWindow });
     const hvByDay = new Map(model.hv.map((point) => [point.date.getTime(), point.value]));
@@ -97,18 +100,23 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const universe = args.symbols.length ? vcaUniverse("custom", args.symbols.join(","), null, [])
       : vcaUniverse(String(args.options.preset) === "megacaps" ? "megacaps" : "etfs", "", null, []);
-    const [payload, hv] = await Promise.all([
-      loadIvScreen(universe.instruments.map((instrument) => instrument.symbol), { signal: ctx.signal }, ctx.apiClient),
-      loadRealizedVolatilities(universe.instruments, 20, { signal: ctx.signal }, createHvDependencies(ctx.marketData)),
+    const screen = loadIvScreen(universe.instruments.map((instrument) => instrument.symbol), { signal: ctx.signal }, ctx.apiClient);
+    // A row with no reading says what became of its symbol, as `quote` reads it: TWTR stopped trading, FB is a fund now,
+    // and HFC, which became DINO, has no HV of its own.
+    const [payload, { hv, fates }] = await Promise.all([
+      screen,
+      loadScreenVolatilities(universe.instruments, screen.then((loaded) => loaded.rows), 20, { signal: ctx.signal }, createHvDependencies(ctx.marketData)),
     ]);
+    // One symbol whose company moved has nothing to screen.
+    const [only] = universe.instruments;
+    const movedOnly = universe.instruments.length === 1 ? fates.get(only!.symbol)?.moved : null;
+    if (movedOnly) throw new MovedSymbolError(movedOnly);
     const rows = projectRichCheap(payload.rows, hv).sort((a, b) => (b.percentile ?? -1) - (a.percentile ?? -1));
-    // A row with no reading says what became of its symbol, as `quote` reads it: TWTR stopped trading, FB is a fund now.
-    const unread = rows.filter((row) => row.iv30 == null && row.date == null).slice(0, MAX_FATE_LOOKUPS);
-    const fates = await Promise.all(unread.map(async (row) => {
-      const fate = await loadListingFate({ symbol: row.symbol }, ctx.marketData);
-      return [row.symbol, { fate, note: listingFateNotes(fate, { served: row.hv != null })[0] ?? null }] as const;
+    const noted = new Map(rows.flatMap((row) => {
+      const fate = fates.get(row.symbol);
+      const note = fate ? listingFateNotes(fate, { served: row.hv != null })[0] : undefined;
+      return fate && note ? [[row.symbol, { fate, note }] as const] : [];
     }));
-    const noted = new Map(fates.filter(([, entry]) => entry.note));
     // A listing that stopped trading has its row's note, not a line saying it has no options history.
     const coverage = screenCoverage(rows, { explained: new Set([...noted].filter(([, entry]) => entry.fate.endedOn).map(([symbol]) => symbol)) });
     const dates = richCheapDates(rows);

@@ -39,7 +39,12 @@ type TickerChangeSource = Pick<DataProvider, "getTickerChanges">;
 /** A lookup in flight: `settle` waits a little more for it, then gives up and stops the request. */
 export interface TickerChangeLookup {
   settle(graceMs?: number): Promise<TickerChanges | null>;
+  /** Its answer once it has one, null when it failed or there is nothing to look up; undefined while it runs. */
+  peek(): TickerChanges | null | undefined;
 }
+
+/** A change whose company moved to another symbol (`movedAwayChange`). */
+export type MovedTickerChange = TickerChange & { tradesAs: string };
 
 /** How long a command waits for a note once its own answer is ready. */
 const TICKER_CHANGE_GRACE_MS = 200;
@@ -54,12 +59,13 @@ interface Entry {
   promise: Promise<TickerChanges | null>;
   controller: AbortController;
   done: boolean;
+  value: TickerChanges | null;
   failedAt: number | null;
 }
 
 /** One session's answers per source: a symbol is looked up once. */
 const sessions = new WeakMap<TickerChangeSource, Map<string, Entry>>();
-const NONE: TickerChangeLookup = { settle: async () => null };
+const NONE: TickerChangeLookup = { settle: async () => null, peek: () => null };
 
 /** A venue the change history is about: none named, a US exchange, or US over-the-counter. */
 export function isUsSymbolVenue(exchange?: string | null): boolean {
@@ -99,9 +105,9 @@ function entryFor(symbol: string, source: TickerChangeSource & Required<TickerCh
   if (cached && (cached.failedAt === null || Date.now() - cached.failedAt < RETRY_FAILED_AFTER_MS)) return cached;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
-  const entry: Entry = { promise: Promise.resolve(null), controller, done: false, failedAt: null };
+  const entry: Entry = { promise: Promise.resolve(null), controller, done: false, value: null, failedAt: null };
   entry.promise = source.getTickerChanges(symbol, { signal: controller.signal })
-    .then(readPayload)
+    .then((payload) => entry.value = readPayload(payload))
     .catch(() => {
       entry.failedAt = Date.now();
       return null;
@@ -140,6 +146,7 @@ export function startTickerChangeLookup(
       entry.controller.abort();
       return null;
     },
+    peek: () => entry.done ? entry.value : undefined,
   };
 }
 
@@ -173,7 +180,7 @@ export function tickerChangeLine(change: TickerChange | null | undefined): strin
  * its own. Null for a symbol a new security took (FB lists a fund), one its
  * holder renamed into (META), and one with no change.
  */
-export function movedAwayChange(change: TickerChange | null | undefined): (TickerChange & { tradesAs: string }) | null {
+export function movedAwayChange(change: TickerChange | null | undefined): MovedTickerChange | null {
   return change?.kind === "moved" && !change.listed && change.tradesAs ? { ...change, tradesAs: change.tradesAs } : null;
 }
 

@@ -21,6 +21,8 @@ import {
 } from "../selectors";
 import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
 import { measurePerf } from "../../utils/perf-marks";
+import { startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
+import { fateListing, loadListingFate, NO_FATE, type ListingFate } from "../../tickers/listing-fate";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { hasUsablePriceHistory, normalizePriceHistory } from "../../utils/price-history";
 import { fxFreshUntil } from "../../utils/fx-market-hours";
@@ -292,6 +294,28 @@ export class MarketDataCoordinator {
     const financials = buildTickerFinancialsSnapshot(snapshotEntry, quoteEntry, chartEntry);
     this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, financials });
     return financials;
+  }
+
+  /**
+   * The ticker change lookup for an instrument's symbol (`startTickerChangeLookup`), through
+   * this coordinator's source: what `listingFateGate` reads beside the quote. A broker's
+   * contract has none.
+   */
+  lookupTickerChanges(instrument: InstrumentRef): TickerChangeLookup {
+    const listing = fateListing(instrument);
+    return startTickerChangeLookup(listing ? this.dataProvider : null, listing?.symbol ?? "", listing?.exchange);
+  }
+
+  /**
+   * What became of an instrument's listing (`loadListingFate`): its quote as this store
+   * has or loads it, its changes from `lookupTickerChanges`. A line that trades waits only
+   * a short grace for the lookup once its quote is in; a stopped one waits for it.
+   */
+  async loadListingFate(instrument: InstrumentRef): Promise<ListingFate> {
+    const listing = fateListing(instrument);
+    if (!listing) return NO_FATE;
+    const quote = this.loadQuote(instrument).then(resolveEntryData, () => null);
+    return loadListingFate(listing, this.dataProvider, { quote, changes: this.lookupTickerChanges(instrument) });
   }
 
   primeCachedFinancials(entries: Array<{ instrument: InstrumentRef; financials: TickerFinancials }>): void {

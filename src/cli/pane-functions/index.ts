@@ -27,7 +27,11 @@ import {
 } from "./catalog";
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
-import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
+import {
+  ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuote, quotedListingChoiceNotes, refuseMovedListing,
+} from "../listing-arg";
+import { isCliFailure } from "../errors";
+import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
@@ -158,7 +162,7 @@ function foundNothing(data: { rowCount: number; unavailableSymbols: readonly str
 
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
-    await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
+    await withPaneRuntime(ctx, args, async ({ parsed, context, registry, resolved }) => {
       if (parsed.strict) {
         throw new Error("--strict is an option of shot. fn takes --require-bot-safe to fail on a report that is not complete.");
       }
@@ -178,8 +182,16 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       // A report's title names the function and the symbol, never the listing a bare one was read on,
       // so it gets `quote`'s line for that. Looked up beside the report, so it costs no wait.
       const choice = parsed.listing ? quotedListingChoiceNotes(parsed.listing, context) : null;
+      // A symbol whose company moved (HFC became DINO) has no data of its own: a report of a pane that shows
+      // one ticker, as the app gates those panes, serves none and names the new symbol with the same
+      // function, as `history` does. Looked up beside the report. A loader that finds it itself (VCA of
+      // one symbol) fails the same way.
+      const fate = parsed.listing && isTickerLinkPeer(resolved.instance, registry.panes)
+        ? listingFateLoader(parsed.listing, context, loadListingQuote(context.dataProvider, parsed.listing))
+        : null;
+      const moved = { command: "fn", retry: (key: string) => `gloomberb fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
-      const report = await withPersistedCloudSession(
+      const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
         () => loadForListing(
           parsed.listing ?? [],
@@ -188,7 +200,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           () => buildFunctionReport(resolved, context, parsed.arg),
           (built) => built.data.empty || !built.data.complete,
         ),
-      );
+      ));
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0
           ? ` Missing data for ${report.data.unavailableSymbols.join(", ")}.`
@@ -397,6 +409,8 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
+    // A failure with fields for --json (`ticker_moved`, its change and retry) keeps its code and them.
+    if (isCliFailure(error) && error.fields) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details);
     const message = error instanceof Error ? error.message : String(error);

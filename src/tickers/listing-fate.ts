@@ -1,0 +1,237 @@
+import type { DataProvider } from "../types/data-provider";
+import type { Quote } from "../types/financials";
+import type { TickerChanges } from "../types/ticker-changes";
+import {
+  describeTickerChange,
+  movedAwayChange,
+  quotedListing,
+  startTickerChangeLookup,
+  tickerChangeLine,
+  type CurrentListing,
+  type MovedTickerChange,
+  type TickerChange,
+  type TickerChangeLookup,
+} from "./ticker-changes";
+import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../utils/exchanges";
+import { zonedDateKey } from "../utils/zoned-date-time";
+
+/*
+ * What became of a symbol, read the way `quote` reads it: the listing's own
+ * quote says whether and when it stopped trading, and the symbol's ticker
+ * changes say whether its company moved. The CLI commands and the app's panes
+ * both decide from here what a symbol has to serve.
+ */
+
+// A quote this much older than now, and stale, is a listing that stopped trading, not a quiet day.
+const ENDED_AFTER_MS = 183 * 24 * 60 * 60_000;
+
+/**
+ * The exchange-local date a listing last traded, when its quote is stale and
+ * that was over half a year ago (TWTR's 2022-10-27); null for anything newer.
+ */
+function endedTradingDate(quote: Quote, now = Date.now()): string | null {
+  const last = Math.max(...[quote.lastTradeTime, quote.lastUpdated].filter((time): time is number => Number.isFinite(time)));
+  if (!(last > 0) || now - last < ENDED_AFTER_MS || !isQuoteStaleForCurrentSession(quote, now)) return null;
+  const zone = resolveExchangeTimeZone(quote.listingExchangeName || quote.exchangeName) ?? "UTC";
+  return zonedDateKey(last, zone);
+}
+
+/** What trades under a symbol now, from its quote: nothing when it has none or stopped long ago. */
+export function tradingListing(quote: Quote | null | undefined, now = Date.now()): CurrentListing | null {
+  return quote && !endedTradingDate(quote, now) ? quotedListing(quote) : null;
+}
+
+/** "TWTR: no longer trading since 2022-10-27 (last price $53.86)", for a quote that stopped long ago. */
+export function noLongerTradingNote(label: string, quote: Quote, now = Date.now()): string | null {
+  const date = endedTradingDate(quote, now);
+  if (!date) return null;
+  const price = formatMarketPriceWithCurrency(quote.price, quote.currency, quoteFormatOptions(quote));
+  return `${label}: no longer trading since ${date} (last price ${price})`;
+}
+
+/**
+ * What became of a symbol, from what `quote` reads it by: the listing's own
+ * quote, which says when it stopped trading, and the symbol's ticker changes
+ * beside that quote (FB became META).
+ */
+export interface ListingFate {
+  /** The exchange-local date the listing last traded, when its quote stopped long ago (TWTR's 2022-10-27). */
+  endedOn: string | null;
+  /** The symbol's change as `quote` reads it; null when it has none, or was read on a listing abroad. */
+  change: TickerChange | null;
+  /**
+   * The line a command with nothing to serve for the symbol says: `quote`'s
+   * change line when its company left it ("FB now lists ...; Meta Platforms
+   * trades as META (changed 2022-06-09)"), else, for a listing that stopped,
+   * "TWTR stopped trading 2022-10-27; no history or options served". Null
+   * for a symbol that trades as it always has.
+   */
+  note: string | null;
+  /**
+   * The change when the symbol's company trades under another symbol now
+   * and its own quote shows nothing new listed under it (`movedAwayChange`):
+   * the old line, stopped or named for that company. Whatever data comes
+   * back under the symbol is then another security's (a listing abroad with
+   * the same letters, or the new symbol's bars under the old one), so a
+   * command or pane serves none and names the new symbol. Null without a
+   * quote to tell by.
+   */
+  moved: MovedTickerChange | null;
+}
+
+/** Nothing became of the symbol, or nothing could be told. */
+export const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null };
+/** How long a fate waits for a change lookup it started late, or for a stopped line's. */
+export const LATE_CHANGE_WAIT_MS = 2_000;
+
+// The zones of the US exchanges; a venue in another is abroad.
+const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
+
+/**
+ * "SXR8 -> XETRA" for a bare symbol the data service read on its home listing
+ * abroad, as it reads a symbol with no US listing whose listings belong to one
+ * company or fund: a row that shows the symbol as typed says which listing it
+ * is. Null for a named or saved venue, and for a venue the app does not place
+ * outside the US (a US exchange, OTC, a futures exchange).
+ */
+export function bareListingNote(
+  listing: { symbol: string; request: { exchange: string } },
+  quote: Pick<Quote, "listingExchangeName" | "exchangeName"> | null | undefined,
+): string | null {
+  if (listing.request.exchange || !quote || !/^[A-Z0-9]{1,10}$/.test(listing.symbol)) return null;
+  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  const zone = resolveExchangeTimeZone(venue);
+  return zone && !US_TIME_ZONES.has(zone) && !isUsListingExchange(venue) ? `${listing.symbol} -> ${venue}` : null;
+}
+
+/** `ListingFate` from a listing's quote (null when it has none) and its ticker changes. */
+export function describeListingFate(
+  listing: { symbol: string; exchange?: string | null },
+  quote: Quote | null,
+  changes: TickerChanges | null,
+  now = Date.now(),
+): ListingFate {
+  const symbol = listing.symbol.trim().toUpperCase();
+  const endedOn = quote ? endedTradingDate(quote, now) : null;
+  // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
+  const abroad = !!quote && !!bareListingNote({ symbol, request: { exchange: listing.exchange ?? "" } }, quote);
+  const change = abroad ? null : describeTickerChange(symbol, changes, tradingListing(quote, now));
+  const note = tickerChangeLine(change) ?? (endedOn ? `${symbol} stopped trading ${endedOn}; no history or options served` : null);
+  return { endedOn, change, note, moved: quote ? movedAwayChange(change) : null };
+}
+
+/**
+ * Whether a quote's line stopped: a whole session traded without it, or it
+ * ended long ago. Only such a line can be a company that moved away, so only
+ * its change lookup is waited for.
+ */
+function mayHaveMoved(quote: Quote | null, now = Date.now()): boolean {
+  return !!quote && (isQuoteBeforeLatestSession(quote, now) || endedTradingDate(quote, now) != null);
+}
+
+/**
+ * `describeListingFate` for a listing: its quote is `quote` when the command
+ * has it, else loaded; its changes come from `changes` when the command started
+ * that lookup beside its own request, else from one started here. Fails soft:
+ * a source that does not answer says nothing became of it.
+ */
+export async function loadListingFate(
+  listing: { symbol: string; exchange?: string | null; request?: { symbol: string; exchange: string } },
+  dataProvider: Pick<DataProvider, "getQuote" | "getTickerChanges">,
+  options: { quote?: Quote | null | Promise<Quote | null>; changes?: TickerChangeLookup } = {},
+): Promise<ListingFate> {
+  const request = listing.request ?? { symbol: listing.symbol, exchange: listing.exchange ?? "" };
+  const lookup = options.changes ?? startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
+  try {
+    const quote = await (options.quote !== undefined
+      ? options.quote
+      : dataProvider.getQuote(request.symbol, request.exchange).catch(() => null));
+    // A lookup started beside the command's request gets a short grace once that is ready, so a slow
+    // one never holds a symbol that trades. A line that stopped is waited for: only its company can
+    // have moved, and then the answer decides whether the command serves anything at all.
+    const changes = await lookup.settle(!options.changes || mayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
+    return describeListingFate(listing, quote, changes);
+  } catch {
+    return NO_FATE;
+  }
+}
+
+/**
+ * The lines a command says about a symbol's fate beside what it served. With
+ * nothing served, `fate.note`. With data, `quote`'s change line when the
+ * symbol's company left it (FB's bars are the fund listed there now), and, for
+ * bars from before the symbol's holder took it (META's from 2021), that they
+ * are from its old symbol: "Includes FB-era bars: META was FB until 2022-06-09".
+ */
+export function listingFateNotes(fate: ListingFate, served: { served: boolean; firstDate?: string | null }): string[] {
+  if (!served.served) return fate.note ? [fate.note] : [];
+  const { change } = fate;
+  const first = served.firstDate?.slice(0, 10);
+  const earlier = change?.kind === "formerly" && first ? change.changes.filter((hop) => first < hop.date).map((hop) => hop.from) : [];
+  return [
+    tickerChangeLine(change),
+    earlier.length > 0 ? `Includes ${earlier.join("- and ")}-era bars: ${change!.note}` : null,
+  ].filter((line): line is string => !!line);
+}
+
+/**
+ * What a report or loader with nothing of its own to serve for a symbol
+ * throws when the symbol's company moved (`ListingFate.moved`): its message
+ * is the change's line, "HFC became DINO on 2022-03-15".
+ */
+export class MovedSymbolError extends Error {
+  constructor(readonly change: MovedTickerChange) {
+    super(change.note);
+    this.name = "MovedSymbolError";
+  }
+}
+
+/**
+ * The listing an instrument's fate is read for: its symbol without the venue
+ * a key carries (HFC:NYSE is HFC on NYSE). Null for a broker's contract,
+ * which is not a listing the change history is about.
+ */
+export function fateListing(instrument: {
+  symbol: string;
+  exchange?: string | null;
+  brokerId?: string;
+  instrument?: unknown;
+}): { symbol: string; exchange: string } | null {
+  if (instrument.brokerId || instrument.instrument) return null;
+  const key = parsePublicTickerKey(instrument.symbol);
+  return { symbol: key.symbol, exchange: key.exchange ?? instrument.exchange ?? "" };
+}
+
+/**
+ * What a pane does with a symbol before it asks for any data of it: serve
+ * it, wait to know, or show that its company moved (`ListingFate.moved`) and
+ * ask for nothing. The same rule as the commands: a symbol whose quote shows
+ * it trading never waits on its change lookup; a stopped line, or one whose
+ * quote is still coming, waits for the lookup; a lookup that failed or
+ * answered nothing is no change.
+ */
+export type ListingFateGate =
+  | { kind: "serve" }
+  | { kind: "wait" }
+  | { kind: "moved"; change: MovedTickerChange };
+
+const SERVE: ListingFateGate = { kind: "serve" };
+const WAIT: ListingFateGate = { kind: "wait" };
+
+/**
+ * `ListingFateGate` from what is known so far. `quote` and `changes` are
+ * undefined while they load and null when there is none.
+ */
+export function listingFateGate(
+  listing: { symbol: string; exchange?: string | null },
+  { quote, changes }: { quote: Quote | null | undefined; changes: TickerChanges | null | undefined },
+  now = Date.now(),
+): ListingFateGate {
+  if (changes === undefined) return quote === null || (quote && !mayHaveMoved(quote, now)) ? SERVE : WAIT;
+  if (!changes?.moved) return SERVE;
+  if (quote === undefined) return WAIT;
+  const { moved } = describeListingFate(listing, quote, changes, now);
+  return moved ? { kind: "moved", change: moved } : SERVE;
+}

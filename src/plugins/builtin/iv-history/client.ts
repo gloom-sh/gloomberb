@@ -6,6 +6,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { realizedVolatility, realizedVolatilityCadenceIssue } from "../shared/volatility";
+import { NO_FATE, type ListingFate } from "../../../tickers/listing-fate";
 
 export type IvMethod = "quote-mid" | "trade-close";
 export type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
@@ -121,15 +122,53 @@ export function loadStoredSurface(symbol: string, date: string, options: { signa
 
 export interface HvDependencies {
   loadChart(request: ChartRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<PricePoint[]>>;
+  /** What became of a symbol (`MarketDataCoordinator.loadListingFate`). */
+  loadFate(instrument: InstrumentRef): Promise<ListingFate>;
 }
 export function createHvDependencies(marketData?: DataProvider): HvDependencies {
   const coordinator = marketData ? new MarketDataCoordinator(marketData) : getSharedMarketDataCoordinator();
   return { loadChart: (request, options) => coordinator ? coordinator.loadChart(request, options)
-    : Promise.reject(new Error("Market data coordinator unavailable")) };
+    : Promise.reject(new Error("Market data coordinator unavailable")),
+    loadFate: (instrument) => coordinator ? coordinator.loadListingFate(instrument) : Promise.resolve(NO_FATE) };
+}
+
+/** Screen rows with no reading whose symbol's fate is looked up; a long list of them is a backfill, not a lookup. */
+const MAX_FATE_LOOKUPS = 10;
+
+/**
+ * HV for a screen's symbols (`loadRealizedVolatilities`), started at once,
+ * and what became of the ones its rows have no reading for, at most
+ * MAX_FATE_LOOKUPS of them, looked up as the rows arrive: TWTR stopped
+ * trading, FB is a fund now, HFC became DINO. A symbol whose company moved,
+ * with nothing new listed under it, has no figures of its own: whatever its
+ * bars give is another security's, so it has no HV. Rows that fail to load
+ * look nothing up.
+ */
+export async function loadScreenVolatilities(
+  instruments: readonly InstrumentRef[], rows: Promise<readonly IvScreenRow[]>, window: number,
+  options: { signal?: AbortSignal; onValue?: (symbol: string, value: number | null) => void; onFates?: (fates: ReadonlyMap<string, ListingFate>) => void } = {},
+  dependencies: HvDependencies = createHvDependencies(),
+): Promise<{ hv: Map<string, number | null>; fates: Map<string, ListingFate> }> {
+  const moved = new Set<string>();
+  const onValue = options.onValue && ((symbol: string, value: number | null) => { if (!moved.has(symbol)) options.onValue!(symbol, value); });
+  const [hv, fates] = await Promise.all([
+    loadRealizedVolatilities(instruments, window, { ...options, onValue }, dependencies),
+    rows.then(async (screened) => {
+      const unread = new Set(screened.filter((row) => row.latest?.iv30 == null && row.latest?.date == null)
+        .slice(0, MAX_FATE_LOOKUPS).map((row) => row.symbol));
+      const fates = new Map(await Promise.all(instruments.filter((instrument) => unread.has(instrument.symbol)).map(async (instrument) =>
+        [instrument.symbol, await dependencies.loadFate(instrument).catch(() => NO_FATE)] as const)));
+      for (const [symbol, fate] of fates) if (fate.moved) moved.add(symbol);
+      if (!options.signal?.aborted) options.onFates?.(fates);
+      return fates;
+    }, () => new Map<string, ListingFate>()),
+  ]);
+  for (const symbol of moved) hv.set(symbol, null);
+  return { hv, fates };
 }
 
 /** Close-to-close HV over one window for each symbol from one year of daily closes, four at a time. */
-export async function loadRealizedVolatilities(
+async function loadRealizedVolatilities(
   instruments: readonly InstrumentRef[], window: number, options: { signal?: AbortSignal; onValue?: (symbol: string, value: number | null) => void } = {},
   dependencies: HvDependencies = createHvDependencies(),
 ): Promise<Map<string, number | null>> {

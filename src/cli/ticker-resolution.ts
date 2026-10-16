@@ -18,15 +18,14 @@ import {
   listingChoiceNote,
   listingReadNotes,
   listingVenues,
-  noLongerTradingNote,
   notTradedMessage,
   quoteBareListing,
   resolveCliListing,
   savedListingName,
-  tradingListing,
   type CliListing,
   type ListingDeps,
 } from "./listing-arg";
+import { noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
 import {
   describeTickerChange,
   startTickerChangeLookup,

@@ -1,11 +1,13 @@
-import { afterEach, expect, test } from "bun:test";
-import type { DataProvider } from "../../types/data-provider";
-import type { Quote } from "../../types/financials";
-import type { TickerChanges } from "../../types/ticker-changes";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { AppPersistence } from "../../data/app-persistence";
+import { TickerRepository } from "../../data/ticker-repository";
+import { getLoadablePlugins } from "../../plugins/catalog";
+import { runPaneFunction } from "../pane-functions";
 import type { MarketContext } from "../types";
 import { createDefaultConfig } from "../../types/config";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
-import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { createMovedSymbolsProvider, HFC_HOP, MOVED_SYMBOL_CHANGES as CHANGES } from "../../test-support/moved-symbols";
 import { captureConsole } from "../../test-support/console";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { printCliError } from "../errors";
@@ -18,53 +20,7 @@ const config = createDefaultConfig("/tmp/gloom-moved-symbols-fixture");
 
 afterEach(() => { process.exitCode = 0; });
 
-// HFC's company became DINO; RDS-A's (and RDS-B's) became SHEL, as Gloom Cloud answers them.
-const HFC_HOP = { from: "HFC", to: "DINO", date: "2022-03-15" };
-const RDS_HOP = { from: "RDS.A", to: "SHEL", date: "2022-01-31" };
-const FB_HOP = { from: "FB", to: "META", date: "2022-06-09" };
-const CHANGES: Record<string, TickerChanges> = {
-  HFC: { symbol: "HFC", moved: { symbol: "DINO", name: "HF Sinclair Corp", hops: [HFC_HOP] }, formerly: null, listedName: null, changes: [HFC_HOP] },
-  "RDS-A": { symbol: "RDS.A", moved: { symbol: "SHEL", name: "Shell plc", hops: [RDS_HOP] }, formerly: null, listedName: null, changes: [RDS_HOP] },
-  // A new company holds META now: the fund that was META moved to METV, Meta Platforms renamed into it.
-  META: {
-    symbol: "META", moved: null, formerly: [FB_HOP], listedName: "Meta Platforms, Inc.",
-    changes: [FB_HOP, { from: "META", to: "METV", date: "2022-01-31" }],
-  },
-};
-
-const HFC_LAST = Date.parse("2022-03-14T23:00:00.002Z");
-const RDS_LAST = Date.parse("2022-01-29T00:00:00.001Z");
-// The old lines' quotes stopped in 2022, while their source still states today's session.
-const QUOTES: Record<string, Quote> = {
-  HFC: createTestQuote({ symbol: "HFC", price: 36.39, lastUpdated: HFC_LAST, lastTradeTime: HFC_LAST, marketState: "REGULAR", stale: true }),
-  "RDS-A": createTestQuote({
-    symbol: "RDS-A", name: "Shell Plc Sponsored American Depositary Receipt", price: 51.04, listingExchangeName: "NYSE", exchangeName: "NYSE",
-    lastUpdated: RDS_LAST, lastTradeTime: RDS_LAST, marketState: "REGULAR", stale: true,
-  }),
-  META: createTestQuote({ symbol: "META", name: "Meta Platforms, Inc.", price: 736.72, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", marketState: "REGULAR" }),
-  AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 342, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", marketState: "REGULAR" }),
-};
-// Bars come back for every symbol: another listing's under HFC (a Canadian line), SHEL's under RDS-A.
-const CLOSES: Record<string, number> = { HFC: 0.26, "RDS-A": 103.58, META: 736.72, AAPL: 342 };
-
-function source(changes: DataProvider["getTickerChanges"] = async (symbol) => CHANGES[symbol] ?? null): DataProvider {
-  const quoteOf = (symbol: string) => {
-    const found = QUOTES[symbol];
-    if (!found) throw new Error(`Not a ticker: ${symbol}.`);
-    return found;
-  };
-  return createTestDataProvider({
-    getQuote: async (symbol) => quoteOf(symbol),
-    getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: quoteOf(target.symbol) })),
-    getPriceHistoryWithMetadata: async (symbol) => ({
-      resolution: "1d",
-      points: [{ date: new Date("2026-10-14"), open: CLOSES[symbol]!, high: CLOSES[symbol]!, low: CLOSES[symbol]!, close: CLOSES[symbol]!, volume: 0 }],
-    }),
-    getTickerFinancials: async (symbol) => createTestFinancials({ quote: quoteOf(symbol), profile: { sector: "Financial Services" } }),
-    getNews: async () => [],
-    getTickerChanges: changes,
-  });
-}
+const source = createMovedSymbolsProvider;
 
 async function runHistory(args: string[], dataProvider = source()) {
   const cli = createTestCliContext({ config, dataProvider });
@@ -169,4 +125,75 @@ test("a stopped line waits for a slow change lookup before serving, while a symb
   const meta = await runHistory(["META"], hung);
   expect(meta.error).toBeNull();
   expect(performance.now() - started).toBeLessThan(1_500);
+});
+
+/** Gloom Cloud's stored IV: a reading for META, none yet for anything else. */
+function impliedVolatility(path: string) {
+  const symbol = new URLSearchParams(path.split("?")[1]).get("symbol") ?? "";
+  const symbols = new URLSearchParams(path.split("?")[1]).get("symbols")?.split(",") ?? [];
+  const latest = (date: string) => ({
+    date, method: "quote-mid", capturedAt: `${date}T19:55:00Z`, spot: 736.72, iv7: null, iv30: 0.43, iv60: null, iv90: 0.38, iv180: null, iv365: null,
+  });
+  if (path.startsWith("history")) {
+    return { version: 1, symbol, asOf: "2026-10-15", status: "ready", coverage: null, stats: { iv30: null, iv90: null }, latest: null, series: [], warnings: [] };
+  }
+  return { version: 1, asOf: "2026-10-15", rows: symbols.map((entry) => ({
+    symbol: entry, status: "ready", iv30: null, iv90: null, skew: null, latest: entry === "META" ? latest("2026-10-15") : null,
+  })) };
+}
+
+async function runFn(args: string[], dataProvider = source()) {
+  const persistence = new AppPersistence(":memory:");
+  const iv = spyOn(apiClient, "impliedVolatility").mockImplementation(async (path: string) => impliedVolatility(path) as never);
+  const cli = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers) });
+  (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+  try {
+    const { result: error } = await captureConsole(() => runPaneFunction(args, cli.context).then(() => null, (failure: unknown) => failure));
+    return { error, printed: cli.printed[0] as PrintedCliResult | undefined };
+  } finally {
+    iv.mockRestore();
+    persistence.close();
+  }
+}
+
+test("fn HIVG and fn VCA of a moved symbol serve nothing and name the new symbol with the same function; META's are served", async () => {
+  for (const [args, line] of [
+    [["HIVG", "HFC"], "HFC became DINO on 2022-03-15: `gloomberb fn HIVG DINO`"],
+    [["HIVG", "RDS-A"], "RDS-A became SHEL on 2022-01-31: `gloomberb fn HIVG SHEL`"],
+    [["VCA", "HFC"], "HFC became DINO on 2022-03-15: `gloomberb fn VCA DINO`"],
+  ] as const) {
+    const { error, printed } = await runFn([...args]);
+    expect((error as Error).message).toBe(line);
+    expect(printed).toBeUndefined();
+    const { stderr } = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }));
+    expect(stderr).toBe(`error: ${line}`);
+    expect(await jsonError(error)).toEqual({
+      ok: false,
+      error: { code: "ticker_moved", message: line, retry: line.split("`")[1], tickerChange: expect.objectContaining({ kind: "moved" }) },
+    });
+  }
+  expect(((await jsonError((await runFn(["HIVG", "HFC"])).error)).error.tickerChange)).toEqual({
+    symbol: "HFC", kind: "moved", note: "HFC became DINO on 2022-03-15", changes: [HFC_HOP], tradesAs: "DINO", issuer: "HF Sinclair", listed: null,
+  });
+  for (const fn of ["HIVG", "VCA"]) {
+    const meta = await runFn([fn, "META"]);
+    expect(meta.error).toBeNull();
+    expect(meta.printed!.result.data).toMatchObject({ target: fn, symbols: ["META"] });
+  }
+  // In a list, a moved symbol is a row with no figures of its own beside the others'.
+  // Forty sessions of bars for every symbol, HFC's included: enough for an HV20.
+  const bars = Array.from({ length: 40 }, (_, day) => {
+    const close = 700 + (day % 3) * 9;
+    return { date: new Date(Date.UTC(2026, 7, 1 + day)), open: close, high: close, low: close, close, volume: 0 };
+  });
+  const list = await runFn(["VCA", "HFC,META"], source(undefined, {
+    getPriceHistory: async () => bars,
+    getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: bars }),
+  }));
+  expect(list.error).toBeNull();
+  const rows = (list.printed!.result.data as { sections: Array<{ rows: Array<{ symbol: string; hv: number | null; note?: string }> }> }).sections[0]!.rows;
+  expect(rows.map(({ symbol, hv, note }) => [symbol, hv, note ?? null])).toEqual([
+    ["HFC", null, "HFC became DINO on 2022-03-15"],
+    ["META", expect.any(Number), null],
+  ]);
 });

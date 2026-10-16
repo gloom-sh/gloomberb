@@ -53,7 +53,7 @@ export function closeAndFail(persistence: AppPersistence, message: string, detai
   fail(message, details);
 }
 
-function isCliFailure(error: unknown): error is CliFailure {
+export function isCliFailure(error: unknown): error is CliFailure {
   return error instanceof CliFailure;
 }
 

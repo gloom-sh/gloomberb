@@ -35,6 +35,9 @@ import { mayBeUsEquityTicker } from "../../../utils/sec";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestTicker } from "../../../test-support/ticker";
 import { createTestPaneConfig } from "../../../test-support/pane";
+import { createMovedSymbolsProvider } from "../../../test-support/moved-symbols";
+import { PaneContent } from "../../../components/layout/pane/content";
+import { LATE_CHANGE_WAIT_MS } from "../../../tickers/listing-fate";
 
 const TEST_PANE_ID = "ticker-research:test";
 
@@ -688,3 +691,84 @@ describe("TickerResearchPane", () => {
   });
 
 });
+
+describe("TickerResearchPane on a symbol whose company moved", () => {
+  // What the pane asks its source for, beside the quote and ticker changes the gate reads.
+  const GATE_READS = new Set(["getQuote", "getQuotesBatch", "getTickerChanges", "getExchangeRate"]);
+  function recordingProvider(changes?: DataProvider["getTickerChanges"]) {
+    const requested: string[] = [];
+    const provider = new Proxy(createMovedSymbolsProvider(changes), {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver);
+        if (typeof value !== "function" || GATE_READS.has(String(key))) return value;
+        return (...args: unknown[]) => {
+          requested.push(`${String(key)} ${String(args[0])}`);
+          return value.apply(target, args);
+        };
+      },
+    });
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+    return requested;
+  }
+
+  function GatedDetailHarness({ symbol }: { symbol: string }) {
+    const [state, dispatch] = useReducer(appReducer, createDetailState(createDetailConfig(symbol), createTestTicker(symbol), null));
+    return (
+      <AppContext value={createStaticAppStore(state, dispatch)}>
+        <PluginRenderProvider pluginId="ticker-research" runtime={runtime}>
+          <PaneContent component={DetailPane} paneId={TEST_PANE_ID} paneType={TICKER_RESEARCH_PANE_ID} title={symbol} focused width={90} height={24} />
+        </PluginRenderProvider>
+      </AppContext>
+    );
+  }
+
+  async function renderGated(symbol: string, waitMs = 400) {
+    await tui.render(<GatedDetailHarness symbol={symbol} />, { width: 90, height: 24 });
+    const started = performance.now();
+    while (performance.now() - started < waitMs) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await tui.setup().renderOnce();
+      });
+    }
+    return tui.frame();
+  }
+
+  afterEach(() => { setSharedMarketDataCoordinator(null); });
+
+  test("HFC and RDS-A show where the company went and ask for no bars, profile or anything else of theirs", async () => {
+    setSharedRegistryForTests(makeRegistry());
+    for (const [symbol, line, open] of [
+      ["HFC", "HFC became DINO on 2022-03-15.", "Open DINO"],
+      ["RDS-A", "RDS-A became SHEL on 2022-01-31.", "Open SHEL"],
+    ] as const) {
+      const requested = recordingProvider();
+      const frame = await renderGated(symbol);
+      expect(frame).toContain(line);
+      expect(frame).toContain(open);
+      expect(frame).not.toContain("Overview");
+      expect(requested).toEqual([]);
+    }
+  });
+
+  test("META, which a new company holds, and AAPL with a change lookup that hangs or fails render as before, without waiting on it", async () => {
+    setSharedRegistryForTests(makeRegistry());
+    const meta = recordingProvider();
+    const frame = await renderGated("META");
+    expect(frame).toContain("Overview");
+    expect(frame).not.toContain("became");
+    expect(meta).toContain("getTickerFinancials META");
+
+    const hung: DataProvider["getTickerChanges"] = (_symbol, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    });
+    for (const changes of [hung, async () => { throw new Error("fetch failed"); }] as Array<DataProvider["getTickerChanges"]>) {
+      recordingProvider(changes);
+      // Well inside the longest a stopped line's lookup is waited for.
+      const served = await renderGated("AAPL", LATE_CHANGE_WAIT_MS / 10);
+      expect(served).toContain("Overview");
+      expect(served).not.toContain("Loading");
+    }
+  });
+});
+

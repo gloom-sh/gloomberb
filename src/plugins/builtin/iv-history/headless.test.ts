@@ -3,6 +3,8 @@ import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createMovedSymbolsProvider } from "../../../test-support/moved-symbols";
+import { MovedSymbolError } from "../../../tickers/listing-fate";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
@@ -168,6 +170,21 @@ describe("VCA backfill states", () => {
       "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
     ]);
     expect(result.notes?.[0]).toBe("No options history: FB.");
+  });
+
+  test("one symbol whose company moved has nothing to load: HIVG and VCA fail with its change, whatever came back under it", async () => {
+    const marketData = createMovedSymbolsProvider();
+    const apiClient = { impliedVolatility: async (path: string) => path.startsWith("history")
+      ? { version: 1, symbol: "HFC", asOf: "2026-10-10", status: "ready", coverage: null, stats: { iv30: null, iv90: null }, latest: null, series: [], warnings: [] }
+      : { version: 1, asOf: "2026-10-10", rows: [pending("HFC", "unavailable", null, null)] } } as unknown as HeadlessPaneApiClient;
+    const ctx = createTestHeadlessContext({ apiClient, marketData });
+    for (const definition of [ivHistoryHeadless, ivScreenHeadless]) {
+      const failure = await Promise.resolve(definition.load(createTestHeadlessArgs({ symbols: ["HFC"] }), ctx)).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(MovedSymbolError);
+      expect((failure as MovedSymbolError).change).toMatchObject({ note: "HFC became DINO on 2022-03-15", tradesAs: "DINO" });
+    }
+    // META, which a new company holds, loads.
+    expect(await ivHistoryHeadless.load(createTestHeadlessArgs({ symbols: ["META"] }), ctx)).toBeDefined();
   });
 
   test("an older server's queued symbol reads as before, retried from now", async () => {
