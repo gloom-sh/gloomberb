@@ -306,6 +306,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
+| `TRACE [issuer, symbol or CUSIP]` | FINRA corporate and agency bond last sales: issuer, CUSIP, coupon, maturity, price, yield and grade. Alone it lists the latest prints market-wide; an issuer name (`TRACE whirlpool`), a TRACE issue symbol root or a 9-character CUSIP asks FINRA for that issuer's bonds, up to 100. A name with no bonds on the tape says `No prints for <name> on <date>.` |
 | `CBR` / `ECFC` / `CBRT` | Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed moves and one-year history |
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`, which adds each contract's premium to spot and annualised basis, `(Last / spot - 1) × 365 / days to expiry`) |
 | `COT [code or root]` / `CFTC [code or root]` | CFTC positioning extremes, weekly changes and historical percentiles, including CME crypto (`COT BTC`) |
@@ -875,7 +876,7 @@ Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or, onc
 
 ## Debt maturities
 
-`DDIS MSFT` opens the issuer's latest coherent principal maturity schedule. Maturities shows six relative fiscal buckets, including an open-ended Thereafter bucket, alongside the total and the shares due in the next twelve months and three years. Select a bucket for its exact amount and SEC fact. History shows the last ten years of annual filing cohorts; select an observation to inspect its filing. Filing shows currency, source concepts, interest expense, the borrowing-cost proxy when supported, and percentile coverage. `o` opens the selected filing.
+`DDIS MSFT` opens the issuer's latest coherent principal maturity schedule. Maturities shows six relative fiscal buckets, including an open-ended Thereafter bucket, alongside the total and the shares due in the next twelve months and three years. Select a bucket for its exact amount and SEC fact. When a 10-Q is newer than the annual schedule, a Latest 10-Q row adds its current and non-current debt with the period end and filing date; the Filing tab names their concepts and the 10-Q's accession. History shows the last ten years of annual filing cohorts; select an observation to inspect its filing. Filing shows currency, source concepts, interest expense, the borrowing-cost proxy when supported, and percentile coverage. `o` opens the selected filing.
 
 Use `gloomberb fn DDIS MSFT --json` for the source amounts, complete filing history, ranks and provenance. `gloomberb shot DDIS MSFT --tab history` captures the historical view; `--tab filing` selects the filing details. Missing facts remain unavailable, and unsupported issuers do not appear to have zero debt.
 
