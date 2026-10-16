@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
@@ -446,8 +446,10 @@ describe("ticker-search utilities", () => {
     });
     const resolve = (query: string, answer: ReturnType<typeof quote>) => resolveTickerSearch({ query, activeTicker: null, tickers: new Map(),
       dataProvider: createTestDataProvider({ search: async () => [], getQuote: async () => answer }) });
+    // The quote comes with it, so the add row does not ask for it again.
     expect(await resolve("CEZ.PR", quote("CEZ.PR"))).toMatchObject({
       kind: "provider", symbol: "CEZ.PR", result: { symbol: "CEZ.PR", exchange: "PSE", currency: "CZK", name: "CEZ, a. s.", type: "EQUITY" },
+      quote: { symbol: "CEZ.PR", price: 1365 },
     });
     // The quote has to answer for that key, price it, and sit on a venue the suffix belongs to.
     expect(await resolve("CEZ.PR", quote("CEZ"))).toBeNull();
@@ -455,6 +457,21 @@ describe("ticker-search utilities", () => {
     expect(await resolve("OMV.VI", quote("OMV.VI", { listingExchangeName: "LSE" }))).toBeNull();
     // A bare symbol is search's to resolve; its quote is never read as a listing.
     expect(await resolve("CEZ", quote("CEZ"))).toBeNull();
+  });
+
+  test("a suffixed listing whose quote never answers reads as unmatched, without waiting on it", async () => {
+    jest.useFakeTimers();
+    try {
+      let asked!: () => void;
+      const quoteAsked = new Promise<void>((resolve) => { asked = resolve; });
+      const resolved = resolveTickerSearch({ query: "CEZ.PR", activeTicker: null, tickers: new Map(),
+        dataProvider: createTestDataProvider({ search: async () => [], getQuote: () => { asked(); return new Promise(() => {}); } }) });
+      await quoteAsked;
+      jest.advanceTimersByTime(5_000);
+      expect(await resolved).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("resolves explicit venues ahead of punctuation lookalikes and saved foreign listings", async () => {

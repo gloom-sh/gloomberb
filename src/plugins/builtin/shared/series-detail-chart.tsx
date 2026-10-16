@@ -76,6 +76,7 @@ export function SeriesDetailChart({
   lines,
   axis,
   mean,
+  meanLabel = "mean",
   reference,
   resetKey,
   formatValue,
@@ -95,6 +96,8 @@ export function SeriesDetailChart({
   lines: readonly ResolvedSeries[];
   axis: SeriesAxis;
   mean: number;
+  /** The mean's legend entry, which says what it is taken over when that is not the range shown. */
+  meanLabel?: string;
   reference?: { label: string; value: number } | null;
   /** A new key drops the user's zoom and pan. */
   resetKey: string;
@@ -118,10 +121,10 @@ export function SeriesDetailChart({
       reference
         ? flatLine(lineAxis, "reference", reference.label, reference.value, colors.textDim, points)
         : null,
-      flatLine(lineAxis, "mean", "mean", mean, blendHex(colors.textDim, colors.bg, 0.35), points),
+      flatLine(lineAxis, "mean", meanLabel, mean, blendHex(colors.textDim, colors.bg, 0.35), points),
     ].filter((entry) => entry != null);
     return [...markers, ...lines];
-  }, [lines, mean, nativeFrequency, points, reference, unit, unitGroup]);
+  }, [lines, mean, meanLabel, nativeFrequency, points, reference, unit, unitGroup]);
 
   const legendSeries = useMemo(
     () => series.filter((entry) => entry.id === "reference" || entry.id === "mean"),

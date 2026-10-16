@@ -58,6 +58,11 @@ export interface IndicatorViewModel {
   chart: ValuationChartProjection;
   /** The dates the chart shows: the whole history when the range reaches past its start. */
   span: HistorySpan | null;
+  /**
+   * The first usable reading. The mean, the percentiles, the trend and the
+   * all-time high and low are taken from here whatever the range.
+   */
+  historyStart: string | null;
   asOf: string;
   observationStale: boolean;
 }
@@ -130,6 +135,7 @@ export function projectView(
     percentile,
     chart: projectChart(indicator, visible, mean),
     span: points[0] ? historySpan(points[0].date, visible.filter(isUsableRatio), RANGE_WINDOWS_MS[range]) : null,
+    historyStart: points[0]?.date ?? null,
     asOf: current.date,
     observationStale: build.sourceStale === true || nowMs - parseDateMs(current.date) > indicator.staleAfterMs,
   };

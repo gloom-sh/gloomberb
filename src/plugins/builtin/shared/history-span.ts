@@ -2,9 +2,9 @@ import type { StatItem } from "../../../components/ui";
 
 /**
  * The dates a range of a dated history shows. A range that reaches back past
- * the history's first date (ALL always does) shows the whole history, so it
- * is named by those dates, not by the range asked for: 10Y and ALL of a
- * series that starts in 1946 are told apart by 1946.
+ * the history's first date (ALL always does) shows the whole history, which
+ * is said with those dates: 10Y and ALL of a series that starts in 1946 are
+ * told apart by 1946.
  */
 export interface HistorySpan {
   /** The first and last dates the range shows. */
@@ -31,14 +31,12 @@ export function historySpan(
   return { start, end, whole };
 }
 
-/** The span as a report heads it: "1946-10-01 to 2026-04-01". */
-function historySpanText(span: HistorySpan): string {
-  return `${span.start} to ${span.end}`;
-}
-
-/** What a report heads a range with: its dates when it asked for more history than there is, else the range itself. */
-export function rangeHeading(range: string, span: HistorySpan | null): string {
-  return span?.whole ? historySpanText(span) : range;
+/**
+ * The label of a figure taken over the whole history whatever the range, so
+ * a shorter range does not read as having changed it: "Mean (since 1947)".
+ */
+export function sinceLabel(label: string, historyStart: string | null): string {
+  return historyStart ? `${label} (since ${historyStart.slice(0, 4)})` : label;
 }
 
 /**

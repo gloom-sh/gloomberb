@@ -33,6 +33,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
+import { settleWithin } from "../../utils/async-deadline";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -333,6 +334,9 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   });
 }
 
+/** As long as a search source gets: past it, the key reads as unmatched. */
+const SUFFIX_QUOTE_TIMEOUT_MS = 5_000;
+
 /**
  * A suffixed listing (CEZ.PR, PETR4.SA, VOLV-B.ST) that search does not list,
  * vouched for by its own quote: the quote answers for that key, prices it, and
@@ -344,31 +348,29 @@ async function quotedSuffixListing(
   symbol: string,
   { dataProvider, searchContext }: ResolveTickerSearchOptions,
 ): Promise<ResolvedTickerSearch | null> {
-  try {
-    const quote = await dataProvider.getQuote(symbol, "", {
-      brokerId: searchContext?.brokerId,
-      brokerInstanceId: searchContext?.brokerInstanceId,
-    });
-    const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-    if (!exchange || normalizeTickerSymbol(quote.symbol || "") !== symbol
-      || !Number.isFinite(quote.price) || quote.price === 0
-      || listingSuffixConflictsWithExchange(symbol, exchange)) return null;
-    return {
-      kind: "provider",
+  // No source prices the key, or none answers in time: it stays unmatched.
+  const quote = await settleWithin(dataProvider.getQuote(symbol, "", {
+    brokerId: searchContext?.brokerId,
+    brokerInstanceId: searchContext?.brokerInstanceId,
+  }), SUFFIX_QUOTE_TIMEOUT_MS);
+  if (!quote) return null;
+  const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (!exchange || normalizeTickerSymbol(quote.symbol || "") !== symbol
+    || !Number.isFinite(quote.price) || quote.price === 0
+    || listingSuffixConflictsWithExchange(symbol, exchange)) return null;
+  return {
+    kind: "provider",
+    symbol,
+    result: {
+      providerId: dataProvider.id,
       symbol,
-      result: {
-        providerId: dataProvider.id,
-        symbol,
-        name: quote.name?.trim() || symbol,
-        exchange,
-        currency: quote.currency || undefined,
-        type: quote.instrumentType || "",
-      },
-    };
-  } catch {
-    // No source prices the key: it stays unmatched.
-    return null;
-  }
+      name: quote.name?.trim() || symbol,
+      exchange,
+      currency: quote.currency || undefined,
+      type: quote.instrumentType || "",
+    },
+    quote,
+  };
 }
 
 async function resolveTickerSymbol(

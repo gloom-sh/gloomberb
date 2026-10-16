@@ -147,7 +147,10 @@ describe("MarketValuationPane", () => {
 
   test("a direct indicator shows no dollar levels row", async () => {
     const frame = await renderPane({ indicator: "shiller-cape" });
-    expect(frame).toContain("ATL");
+    // The high, the low and the mean are the whole history's, whatever the range, and say so.
+    expect(frame).toMatch(/High \(since \d{4}\)/);
+    expect(frame).toMatch(/Low \(since \d{4}\)/);
+    expect(frame).toMatch(/mean \(since \d{4}\)/);
     expect(frame).not.toContain("Mkt cap");
     expect(frame).not.toContain("Equities");
   });

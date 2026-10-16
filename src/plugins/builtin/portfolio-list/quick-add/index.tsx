@@ -157,15 +157,16 @@ export function QuickAddTickerInput({
     focusInput();
   }, [focusInput, focusRequest, focused]);
 
+  // A symbol with no listing leaves the field, so the next one typed replaces
+  // it instead of running on (OMV.VIREP.MC); the line under it still says what
+  // failed until something is typed.
+  const keepFailureRef = useRef(false);
   const resetInput = useCallback(() => {
+    keepFailureRef.current = false;
     setInputValue("");
     setValidation(IDLE_VALIDATION);
   }, []);
 
-  // A symbol that cannot be added leaves the field, so the next one typed
-  // replaces it instead of running on (OMV.VIREP.MC); the line under it still
-  // says what failed until then.
-  const keepFailureRef = useRef(false);
   const clearFailedInput = useCallback((failure: QuickAddValidation) => {
     keepFailureRef.current = true;
     validationSeqRef.current += 1;
@@ -201,15 +202,20 @@ export function QuickAddTickerInput({
     }
   }, [blurInput, focused, inputFocused]);
 
+  // Read when a lookup runs, so a quote tick does not look the typed symbol up again.
+  const tickersRef = useRef(tickers);
+  tickersRef.current = tickers;
+  const financialsRef = useRef(financials);
+  financialsRef.current = financials;
   const validateQuery = useCallback((query: string): Promise<QuickAddValidation> => {
     return resolveQuickAddValidation({
       query,
       collectionId,
       collectionKind,
-      tickers,
-      financials,
+      tickers: tickersRef.current,
+      financials: financialsRef.current,
     });
-  }, [collectionId, collectionKind, financials, tickers]);
+  }, [collectionId, collectionKind]);
 
   useEffect(() => {
     const query = normalizeQuickAddQuery(inputValue);
@@ -217,11 +223,7 @@ export function QuickAddTickerInput({
     const seq = validationSeqRef.current;
 
     if (!query) {
-      if (keepFailureRef.current) {
-        keepFailureRef.current = false;
-        return;
-      }
-      setValidation(IDLE_VALIDATION);
+      if (!keepFailureRef.current) setValidation(IDLE_VALIDATION);
       return;
     }
     keepFailureRef.current = false;
@@ -293,7 +295,8 @@ export function QuickAddTickerInput({
             ? "Ticker lookup is still in progress."
             : currentValidation.message;
         notify({ type: "error", body });
-        if (currentValidation.status === "missing" || currentValidation.status === "error") clearFailedInput(currentValidation);
+        // Only a symbol nothing lists leaves the field. A lookup that failed (offline) keeps what was typed, to try again.
+        if (currentValidation.status === "missing") clearFailedInput(currentValidation);
         return;
       }
 
@@ -351,7 +354,7 @@ export function QuickAddTickerInput({
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
     } catch {
-      clearFailedInput({ status: "error", query, message: "Ticker add failed" });
+      setValidation({ status: "error", query, message: "Ticker add failed" });
       notify({ type: "error", body: tf("Failed to add {symbol}.", { symbol: query }) });
     } finally {
       setSubmitting(false);

@@ -119,20 +119,31 @@ function canonicalJson(value: unknown): string {
 
 /**
  * Hashes the content of a publishable payload: pane instances with their
- * bindings, params, settings, and publishable state. The dock tree and
- * floating geometry are left out on purpose; where panes sit is personal.
+ * titles, bindings, params, settings, and publishable state. The dock tree
+ * and floating geometry are left out on purpose; where panes sit is personal.
  * Instances are keyed by what they are, not by their wire id, so reordering
  * the instance list does not read as an edit.
+ *
+ * A title its pane derives from what the window shows (`derivesTitle`, the
+ * panes with `instanceTitle`) is left out too: it says nothing the params and
+ * settings do not, and a build that words it differently ("CTM BZ", now
+ * "Curve · BZ") retitles the window on open, which is not an edit.
  */
-export function layoutContentFingerprint(payload: Pick<LayoutMarketplacePayload, "layout" | "paneState">): string {
+export function layoutContentFingerprint(
+  payload: Pick<LayoutMarketplacePayload, "layout" | "paneState">,
+  derivesTitle: (paneId: string) => boolean = () => false,
+): string {
   const byId = new Map(payload.layout.instances.map((instance) => [instance.instanceId, instance]));
+  const title = (instance: (typeof payload.layout.instances)[number]) => (
+    derivesTitle(instance.paneId) ? null : instance.title ?? null
+  );
   const describe = (instanceId: string): string => {
     const instance = byId.get(instanceId);
-    return instance ? `${instance.paneId}|${instance.title ?? ""}` : instanceId;
+    return instance ? `${instance.paneId}|${title(instance) ?? ""}` : instanceId;
   };
   const items = payload.layout.instances.map((instance) => canonicalJson({
     paneId: instance.paneId,
-    title: instance.title ?? null,
+    title: title(instance),
     binding: instance.binding?.kind === "follow"
       ? { kind: "follow", source: describe(instance.binding.sourceInstanceId) }
       : (instance.binding ?? null),

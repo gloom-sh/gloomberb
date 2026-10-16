@@ -12,6 +12,11 @@ export interface LinkedLayoutStatus {
   updateAvailable: number | null;
 }
 
+/** Whether a pane titles its windows from what they show, so the title is no edit of its own. */
+function derivesTitle(panes: ReadonlyMap<string, PaneDef>): (paneId: string) => boolean {
+  return (paneId) => panes.get(paneId)?.instanceTitle !== undefined;
+}
+
 /**
  * Fingerprints a saved tab the same way the server sees it: through the
  * publishable projection, so private fields and geometry never count as
@@ -23,7 +28,7 @@ function fingerprintSavedLayout(
   panes: ReadonlyMap<string, PaneDef>,
 ): string | null {
   try {
-    return layoutContentFingerprint(publishableMarketplaceLayout(layout, paneState, panes));
+    return layoutContentFingerprint(publishableMarketplaceLayout(layout, paneState, panes), derivesTitle(panes));
   } catch {
     return null;
   }
@@ -106,14 +111,30 @@ export function decideLinkedAction(
   return status.dirty ? "ask" : "pull";
 }
 
-export function originFromEntry(entry: CloudLayoutEntry): LayoutOrigin | null {
+export function originFromEntry(entry: CloudLayoutEntry, panes: ReadonlyMap<string, PaneDef>): LayoutOrigin | null {
   if (entry.owner.kind !== "team") return null;
   return {
     kind: "team",
     teamId: entry.owner.id,
     layoutId: entry.id,
     revision: entry.revision,
-    contentHash: layoutContentFingerprint(entry),
+    contentHash: layoutContentFingerprint(entry, derivesTitle(panes)),
     syncedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * The origin with its hash taken again from the revision it links, when an
+ * older build hashed that same revision another way (it counted a title the
+ * pane derives). Null when the hashes agree, or when the team holds another
+ * revision, whose content says nothing about the one linked.
+ */
+export function rehashedOrigin(
+  origin: LayoutOrigin,
+  entry: CloudLayoutEntry,
+  panes: ReadonlyMap<string, PaneDef>,
+): LayoutOrigin | null {
+  if (entry.id !== origin.layoutId || entry.revision !== origin.revision) return null;
+  const contentHash = layoutContentFingerprint(entry, derivesTitle(panes));
+  return contentHash === origin.contentHash ? null : { ...origin, contentHash };
 }

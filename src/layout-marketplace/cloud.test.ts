@@ -114,6 +114,26 @@ describe("layoutContentFingerprint", () => {
     };
     expect(layoutContentFingerprint(added)).not.toBe(base);
   });
+
+  test("a title its pane derives is no edit, and leaves other layouts hashed as before", () => {
+    const titled = (title: string): LayoutMarketplacePayload => ({
+      ...payload,
+      layout: {
+        ...payload.layout,
+        instances: [
+          { instanceId: "p1", paneId: "commodities-energy", title, settings: { workspaceTab: "curve" }, params: { root: "BZ" } },
+          { ...payload.layout.instances[1]!, binding: { kind: "follow", sourceInstanceId: "p1" } },
+        ],
+      },
+    });
+    const derives = (paneId: string) => paneId === "commodities-energy";
+    // An older build titled the window "CTM BZ"; this one says "Curve \u00b7 BZ" when it opens.
+    expect(layoutContentFingerprint(titled("Curve \u00b7 BZ"), derives)).toBe(layoutContentFingerprint(titled("CTM BZ"), derives));
+    expect(layoutContentFingerprint(titled("Curve \u00b7 BZ"))).not.toBe(layoutContentFingerprint(titled("CTM BZ")));
+    // A layout with no such pane keeps the hash every linked tab already recorded.
+    expect(layoutContentFingerprint(payload, derives)).toBe("2-70f1b4ce");
+    expect(layoutContentFingerprint(payload)).toBe("2-70f1b4ce");
+  });
 });
 
 describe("computeLayoutRequirements", () => {

@@ -60,4 +60,26 @@ describe("quick-add listing resolution", () => {
     expect(tickerNameFromValidation(validation)).toBe("Netcall Plc");
     expect(exchangeLabelFromValidation(validation)).toBe("LSE");
   });
+
+  test("a listing found through its own quote is priced from that quote, asked once", async () => {
+    const quoted: string[] = [];
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async () => [],
+        getQuote: async (symbol) => {
+          quoted.push(symbol);
+          return createTestQuote({ symbol: "OMV.VI", listingExchangeName: "VIE", currency: "EUR", price: 47.1, name: "OMV AG" });
+        },
+      }),
+    } as PluginRegistry);
+    const validation = await resolveQuickAddValidation({
+      query: "OMV.VI",
+      collectionId: "watchlist",
+      collectionKind: "watchlist",
+      tickers: new Map(),
+      financials: new Map(),
+    });
+    expect(validation).toMatchObject({ status: "ready", quote: { price: 47.1 } });
+    expect(quoted).toEqual(["OMV.VI"]);
+  });
 });

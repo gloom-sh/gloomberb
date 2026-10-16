@@ -125,7 +125,8 @@ export function useOnboardingPositions({
     });
     if (!resolved) return null;
     const ticker = resolved.kind === "local" ? resolved.ticker : (stateRef.current.tickers.get(resolved.symbol) ?? null);
-    let quote: Quote | null = stateRef.current.financials.get(resolved.symbol)?.quote ?? null;
+    let quote: Quote | null = stateRef.current.financials.get(resolved.symbol)?.quote
+      ?? (resolved.kind === "provider" ? resolved.quote : null) ?? null;
     if (!quote) {
       try {
         const exchange = resolved.kind === "provider" ? resolved.result.exchange : resolved.ticker.metadata.exchange;

@@ -83,6 +83,25 @@ function savedPaneTitle(instance: PaneInstanceConfig): string | null {
   return title && !/^(?:dm|group):/.test(title) ? title : null;
 }
 
+/**
+ * What a pane that names its windows by what they show calls this one, or
+ * null when it does not say. A plugin's answer is not trusted to be a string,
+ * or to return at all.
+ */
+function derivedPaneTitle(def: PaneDef | undefined, instance: PaneInstanceConfig): string | null {
+  if (!def?.instanceTitle) return null;
+  try {
+    const title: unknown = def.instanceTitle(instance);
+    return typeof title === "string" && title.trim() ? title.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each window as the browser lists it, by its own title: the one its pane
+ * derives from what it shows, else the title it saved, else the pane's name.
+ */
 export function summarizeLayoutPanes(
   layout: LayoutConfig,
   panes: ReadonlyMap<string, PaneDef>,
@@ -90,7 +109,7 @@ export function summarizeLayoutPanes(
   return placedInstances(layout).map(({ instance, placement }) => {
     const def = panes.get(instance.paneId);
     // A pane that names its windows by what they show is asked first: a saved title can predate it.
-    const title = def?.instanceTitle?.(instance)?.trim() || savedPaneTitle(instance);
+    const title = derivedPaneTitle(def, instance) ?? savedPaneTitle(instance);
     const symbol = instance.binding?.kind === "fixed" ? instance.binding.symbol : null;
     return {
       instanceId: instance.instanceId,

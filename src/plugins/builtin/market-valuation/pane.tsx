@@ -29,7 +29,7 @@ const LIST_WIDTH = 46;
 /** The range strip names the key that picks each range: 1, 2 and 3, as the chart's range keys do. */
 const RANGE_VIEW_OPTIONS = RANGE_OPTIONS.map((option, index) => ({ ...option, hint: String(index + 1) }));
 
-type ColumnId = "name" | "value" | "zone" | "percentile" | "sigma";
+type ColumnId = "name" | "value" | "zone" | "percentile" | "since" | "sigma";
 interface Column extends DataTableColumn { id: ColumnId }
 
 interface IndicatorRow {
@@ -57,8 +57,10 @@ function buildColumns(width: number, stacked: boolean): Column[] {
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "zone", label: "ZONE", width: 11, align: "right" },
     { id: "percentile", label: "RICH", width: 6, align: "right" },
+    // Where each history starts, which the percentile and trend are taken from whatever the range.
     ...(withTrend
-      ? [{ id: "sigma" as const, label: "TREND", width: 8, align: "right" as const }]
+      ? [{ id: "since" as const, label: "SINCE", width: 5, align: "right" as const },
+        { id: "sigma" as const, label: "TREND", width: 8, align: "right" as const }]
       : []),
   ];
 }
@@ -75,6 +77,7 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
       value: { text: "--", color: colors.textDim },
       zone: { text: "Unavailable", color: colors.warning },
       percentile: { text: "--", color: colors.textDim },
+      since: { text: view?.historyStart?.slice(0, 4) ?? "--", color: colors.textDim },
       sigma: { text: "--", color: colors.textDim },
     };
   }
@@ -85,6 +88,7 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
     // Restated so a high number always means expensive, whichever way the
     // underlying measure runs, otherwise the column cannot be read down.
     percentile: { text: view.richPercentile == null ? "--" : formatNumber(view.richPercentile, 0), color: colors.text },
+    since: { text: view.historyStart?.slice(0, 4) ?? "--", color: colors.textMuted },
     sigma: { text: formatSigma(view.richSigma), color: colors.textMuted },
   };
 }

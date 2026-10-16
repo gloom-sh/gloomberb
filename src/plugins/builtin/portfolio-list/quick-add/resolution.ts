@@ -163,7 +163,8 @@ export async function resolveQuickAddValidation({
     const symbol = resolved.symbol;
     const ticker = tickerForResolved(resolved, tickers);
     const cachedQuote = ticker ? financials.get(ticker.metadata.ticker)?.quote ?? null : null;
-    let quote = cachedQuote;
+    // A listing its own quote vouched for comes with it.
+    let quote = cachedQuote ?? (resolved.kind === "provider" ? resolved.quote ?? null : null);
     if (!quote) {
       try {
         quote = await registry.marketData.getQuote(

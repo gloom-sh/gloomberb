@@ -44,10 +44,14 @@ test.each([
     await tui.setup().renderOnce();
   });
   expect(tui.frame()).toContain("2s10s");
-  await act(async () => {
-    for (let tick = 0; tick < 8; tick++) await tui.setup().mockMouse.scroll(width - 1, 34, "down");
+  const scroll = (ticks: number) => act(async () => {
+    for (let tick = 0; tick < ticks; tick++) await tui.setup().mockMouse.scroll(width - 1, 34, "down");
     await tui.setup().renderOnce();
   });
+  // The High row passes on the way down; the History row under Low pushes it off the last screen at 48 columns.
+  await scroll(1);
+  expect(tui.frame()).toMatch(/High\s+124\.00%\s+2021-01-01/);
+  await scroll(7);
   const scrolled = tui.frame();
   expect(scrolled).toContain("FRED T10Y2Y");
   expect(scrolled).toContain("10Y minus 2Y");

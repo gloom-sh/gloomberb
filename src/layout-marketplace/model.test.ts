@@ -52,6 +52,13 @@ describe("gallery layout summaries", () => {
     expect(named("chat:1")?.name).toBe("Chart");
     // A title that already names the ticker does not get it twice.
     expect(named("ticker-chart:2")).toMatchObject({ name: "Chart NVDA", symbol: null });
+
+    // A plugin's title that throws, is not a string, or is blank leaves the saved title, else the type's name.
+    for (const instanceTitle of [() => { throw new Error("broken plugin"); }, () => 42 as unknown as string, () => "  "]) {
+      const broken = summarizeLayoutPanes(layout, new Map([...panes, ["commodities-energy", { ...workspace, instanceTitle }]]));
+      expect(broken.find((pane) => pane.instanceId === "commodities-energy:CL")?.name).toBe("Curve \u00b7 CL");
+      expect(broken.find((pane) => pane.instanceId === "commodities-energy:BZ")?.name).toBe("Commodities & Energy");
+    }
   });
 
   test("counts placements without double counting floating or detached panes", () => {

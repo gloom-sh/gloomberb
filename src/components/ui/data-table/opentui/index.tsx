@@ -21,17 +21,19 @@ import {
   useMeasuredTableContentWidth,
 } from "../../table-layout";
 import type {
-  DataTableCell,
   DataTableColumn,
   DataTableProps,
 } from "../types";
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
-import { resolveDataTableColumnClips, resolveDataTableVisibleWindow, type DataTableColumnClip } from "./model";
-
-/** What a number column the pane's edge cuts draws: nothing, in its own place. */
-const CUT_CELL: DataTableCell = { text: "" };
+import {
+  cutColumnText,
+  resolveDataTableColumnClips,
+  resolveDataTableVisibleWindow,
+  reuseDataTableColumnClips,
+  type DataTableColumnClip,
+} from "./model";
 
 interface DataTableRowPointerTarget<T> {
   item: T;
@@ -200,13 +202,18 @@ function OpenTuiDataTableRowInner<
       {displayColumns.map((column, columnIndex) => {
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
         const clip = columnClips?.[columnIndex] ?? null;
-        // A number the pane's edge cuts keeps its place, blank; cut text is fitted to what shows.
-        const cell = clip?.kind === "blank" ? CUT_CELL : renderCell(item, column, index, rowState);
+        const cell = renderCell(item, column, index, rowState);
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
-        const inset = clip?.kind === "fit" ? clip.inset : !frozen && frozenColumnOffset !== undefined
+        const inset = clip ? clip.inset : !frozen && frozenColumnOffset !== undefined
           ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
-        const shownWidth = clip?.kind === "fit" ? clip.width : column.width - inset;
+        const shownWidth = clip ? clip.width : column.width - inset;
+        // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
+        // and its cell keeps its background and its press.
+        const shownText = clip
+          ? cutColumnText(cell.text, column.align, column.width, clip, (text, width) => fitTableCellText(text, width, column.align))
+          : shownWidth > 0 ? fitTableCellText(cell.text, shownWidth, column.align) : "";
+        const contentCut = clip !== null && column.align === "right" && shownText.trim() === "";
         return (
           <Box
             key={column.id}
@@ -232,7 +239,7 @@ function OpenTuiDataTableRowInner<
               handleRowMouseDown(itemKey, { item, index }, event);
             }}
           >
-            {cell.content !== undefined ? (frozenColumnOffset === undefined && !clip ? cell.content : (
+            {cell.content !== undefined && !contentCut ? (frozenColumnOffset === undefined && !clip ? cell.content : (
               <>
                 {frozen && <Text position="absolute" left={0} top={0}>{" ".repeat(column.width + columnGap + horizontalPadding)}</Text>}
                 <Box marginLeft={frozen ? horizontalPadding : inset} width={Math.max(0, shownWidth)} overflow="hidden">
@@ -246,7 +253,7 @@ function OpenTuiDataTableRowInner<
                   ? colors.selectedText
                   : cell.color ?? colors.text}
               >
-                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${shownWidth > 0 ? fitTableCellText(cell.text, shownWidth, column.align) : ""}${frozen ? " ".repeat(columnGap) : ""}`}
+                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${shownText}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
             )}
           </Box>
@@ -309,7 +316,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const nativeRenderer = useNativeRenderer();
   const [scrollVersion, setScrollVersion] = useState(0);
   // How far the columns are scrolled sideways: a frozen first column moves with
-  // it, and a column the viewport cuts is left blank (resolveDataTableWholeColumns).
+  // it, and a column the viewport cuts is drawn to what shows (resolveDataTableColumnClips).
   const [scrollLeft, setScrollLeft] = useState(0);
   const frozenColumnOffset = scrollLeft;
   useEffect(() => {
@@ -371,9 +378,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
+  // A scroll step that cuts the columns as the last one did keeps the same
+  // array, so the memoized rows skip the render.
+  const columnClipsRef = useRef<readonly (DataTableColumnClip | null)[] | null>(null);
   const columnClips = useMemo(
-    () => resolveDataTableColumnClips({
-      aligns: displayColumns.map((column) => column.align),
+    () => columnClipsRef.current = reuseDataTableColumnClips(columnClipsRef.current, resolveDataTableColumnClips({
       columnGap,
       columnStarts,
       frozenFirstColumn: freezeFirstColumn,
@@ -382,7 +391,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       // A table that cannot scroll sideways fits its own columns; one it cut could never be scrolled to.
       viewportWidth: showHorizontalScrollbar ? measuredViewportWidth : 0,
       widths: displayColumns.map((column) => column.width),
-    }),
+    })),
     [columnGap, columnStarts, displayColumns, freezeFirstColumn, horizontalPadding, measuredViewportWidth, scrollLeft, showHorizontalScrollbar],
   );
   const reportVisibleRange = useVisibleRangeEmitter({
@@ -594,9 +603,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
             const frozen = freezeFirstColumn && columnIndex === 0;
             const columnStart = columnStarts[columnIndex] ?? 0;
             const clip = columnClips?.[columnIndex] ?? null;
-            const inset = clip?.kind === "fit" ? clip.inset : freezeFirstColumn && !frozen
+            const inset = clip ? clip.inset : freezeFirstColumn && !frozen
               ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
-            const shownWidth = clip?.kind === "fit" ? clip.width : column.width - inset;
+            const shownWidth = clip ? clip.width : column.width - inset;
             const isSorted = sortColumnId === column.id;
             const marker = sortDirection === "asc" ? "▲" : "▼";
             // An unlabeled column shows the bare marker, not a stray space before it.
@@ -606,14 +615,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
             // over its numbers.
             const hasNextLabel = columnIndex < displayColumns.length - 1
               && tableColumnLeadGap(displayColumns, columnIndex + 1, columnGap) === 0;
-            const labelText = clip?.kind === "blank" ? " ".repeat(column.width)
-              : " ".repeat(inset) + (shownWidth > 0 ? fitTableHeaderText(
-                column.label + indicator,
-                shownWidth,
-                column.align,
-                // Cut by the edge, the label's last cell is the edge.
-                hasNextLabel && clip === null,
-              ) : "");
+            const label = column.label + indicator;
+            const labelText = " ".repeat(inset) + (clip
+              // Cut on the right, the label's last cell is the edge.
+              ? cutColumnText(label, column.align, column.width, clip, (text, width, cutRight) => (
+                fitTableHeaderText(text, width, column.align, hasNextLabel && !cutRight)
+              ))
+              : shownWidth > 0 ? fitTableHeaderText(label, shownWidth, column.align, hasNextLabel) : "");
             return (
               <Box
                 key={column.id}

@@ -1,4 +1,5 @@
 import type { BrokerContractRef, InstrumentSearchResult, TickerListingRef } from "../../types/instrument";
+import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 
 export type TickerSearchInstrumentClass = "equity" | "fund" | "derivative" | "other";
@@ -44,6 +45,8 @@ export type ResolvedTickerSearch =
     result: InstrumentSearchResult;
     /** A bare symbol's other listings (SYM:EXCH) when its quote chose one of several. */
     otherListings?: string[];
+    /** The quote that vouched for a listing search does not carry, so the caller need not ask again. */
+    quote?: Quote;
   };
 
 export interface TickerOpenTarget {

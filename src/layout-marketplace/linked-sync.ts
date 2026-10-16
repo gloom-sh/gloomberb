@@ -4,7 +4,7 @@ import { rememberLayoutRequirements } from "../components/layout/missing-pane";
 import type { PluginRegistry } from "../plugins/registry";
 import { teamStore } from "../team/store";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
-import { decideLinkedAction, linkedLayoutStatus, linkedLayoutUpdates, originFromEntry } from "./linked";
+import { decideLinkedAction, linkedLayoutStatus, linkedLayoutUpdates, originFromEntry, rehashedOrigin } from "./linked";
 import { materializeMarketplaceLayout } from "../shares/portable-layout";
 
 /**
@@ -44,10 +44,16 @@ export function useLinkedLayoutSync(pluginRegistry: PluginRegistry): void {
         }
         rememberLayoutRequirements(cloud.id, cloud.requires);
         linkedLayoutUpdates.setRemoteRevision(cloud.id, cloud.revision);
-        const status = linkedLayoutStatus(saved, panes, cloud.revision);
+        // A revision an older build hashed another way is hashed again, so it does not read as edited.
+        const rehashed = rehashedOrigin(origin, cloud, panes);
+        if (rehashed) {
+          const liveIndex = layoutsRef.current.findIndex((entry) => entry.origin?.layoutId === origin.layoutId);
+          if (liveIndex !== -1) dispatch({ type: "SET_LAYOUT_ORIGIN", index: liveIndex, origin: rehashed });
+        }
+        const status = linkedLayoutStatus(rehashed ? { ...saved, origin: rehashed } : saved, panes, cloud.revision);
         const action = decideLinkedAction(status);
         if (action === "pull") {
-          const nextOrigin = originFromEntry(cloud);
+          const nextOrigin = originFromEntry(cloud, panes);
           if (!nextOrigin) continue;
           const installed = materializeMarketplaceLayout(cloud);
           const liveIndex = layoutsRef.current.findIndex((entry) => entry.origin?.layoutId === origin.layoutId);

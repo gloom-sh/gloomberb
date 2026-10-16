@@ -11,7 +11,7 @@ import {
 import type { ValuationRangeId } from "./defs";
 import { DEFAULT_INDICATOR_ID, INDICATORS, resolveIndicatorArg } from "./indicators";
 import { createCloudSourceDeps } from "./sources";
-import { historyStartNotice, rangeHeading, type HistorySpan } from "../shared/history-span";
+import { historyStartNotice, sinceLabel } from "../shared/history-span";
 import { formatSigma } from "../shared/trend";
 import {
   selectValuationViews,
@@ -30,9 +30,10 @@ function detailEntries(view: IndicatorViewModel): HeadlessPaneEntry[] {
       value: view.ratioOneYearAgo,
       formatted: view.ratioOneYearAgo == null ? "-" : format(view.ratioOneYearAgo),
     },
-    { label: "Mean", value: view.mean, formatted: format(view.mean) },
+    // Taken over the whole history whatever the range, and labelled so.
+    { label: sinceLabel("Mean", view.historyStart), value: view.mean, formatted: format(view.mean) },
     {
-      label: "Rich percentile",
+      label: sinceLabel("Rich percentile", view.historyStart),
       value: view.richPercentile,
       formatted: view.richPercentile == null ? "--" : formatNumber(view.richPercentile, 0),
     },
@@ -42,12 +43,12 @@ function detailEntries(view: IndicatorViewModel): HeadlessPaneEntry[] {
       formatted: formatSigma(view.richSigma),
     },
     {
-      label: "All-time high",
+      label: sinceLabel("High", view.historyStart),
       value: { value: view.allTimeHigh.ratio, date: view.allTimeHigh.date },
       formatted: `${format(view.allTimeHigh.ratio)} ${view.allTimeHigh.date}`,
     },
     {
-      label: "All-time low",
+      label: sinceLabel("Low", view.historyStart),
       value: { value: view.allTimeLow.ratio, date: view.allTimeLow.date },
       formatted: `${format(view.allTimeLow.ratio)} ${view.allTimeLow.date}`,
     },
@@ -72,6 +73,7 @@ function projectValuationHeadlessBundle(
     zone: view.zone?.label ?? "Unavailable",
     richPercentile: view.richPercentile,
     richSigma: view.richSigma,
+    historyStart: view.historyStart,
     asOf: view.asOf,
     stale: view.observationStale,
   }));
@@ -97,6 +99,13 @@ function projectValuationHeadlessBundle(
             format: (value) => value == null ? "--" : formatNumber(Number(value), 0),
           },
           {
+            // Where the indicator's history starts: its percentile and trend are taken from there whatever the range.
+            key: "historyStart",
+            header: "Since",
+            align: "right",
+            format: (value) => typeof value === "string" ? value.slice(0, 4) : "--",
+          },
+          {
             key: "richSigma",
             header: "Trend",
             align: "right",
@@ -116,8 +125,6 @@ function projectValuationHeadlessBundle(
       sources: bundle.sources,
       range,
       selected: selected?.indicator.id ?? null,
-      // The dates the selected indicator's chart covers, which head the report when the range outruns them.
-      span: selected?.span ?? null,
       ...(notice ? { notices: [notice] } : {}),
     },
   };
@@ -140,8 +147,8 @@ export const marketValuationHeadless: HeadlessPaneDefinition<"bundle"> = {
     values: [{ value: "10Y" }, { value: "25Y" }, { value: "ALL", aliases: ["all"] }],
     defaultValue: "25Y",
   }],
-  describe: (args, result) => `Market Valuation | ${rangeHeading(String(args.options.range),
-    (result?.metadata?.span as HistorySpan | null | undefined) ?? null)}`,
+  // The range asked for: the table lists every indicator, each with a history of its own.
+  describe: (args) => `Market Valuation | ${String(args.options.range)}`,
   async load(args, ctx) {
     const requested = typeof args.argument === "string" ? resolveIndicatorArg(args.argument) : null;
     if (args.argument && !requested) {

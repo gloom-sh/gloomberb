@@ -746,6 +746,15 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     // The failed symbol leaves the field, still named under it, so the next one replaces it instead of running on.
     expect(tui.frame()).toContain("NOPE  No exact ticker match");
+    // Quotes keep arriving; the line stays until something is typed.
+    for (const price of [101, 102]) {
+      await act(async () => {
+        harnessDispatch!({ type: "SET_FINANCIALS", symbol: "AAPL", data: createTestFinancials({ quote: makeQuote({ symbol: "AAPL", price }) }) });
+        await new Promise((resolve) => setTimeout(resolve, 360));
+      });
+      await flushFrame();
+      expect(tui.frame()).toContain("NOPE  No exact ticker match");
+    }
 
     await act(async () => {
       await tui.setup().mockInput.typeText("MSF");
@@ -755,6 +764,46 @@ describe("PortfolioListPane cash and margin UI", () => {
     // The lookup runs on what was typed next alone.
     expect(tui.frame()).toMatch(/\+ MSF\s+MSF checking/);
     expect(tui.frame()).not.toContain("NOPE");
+  });
+
+  test("quick-add keeps what was typed when adding fails for a reason other than no listing", async () => {
+    const config = createManualCollectionConfig("watchlist");
+    const notifications: Array<{ type?: string; body: string }> = [];
+    const registry = installQuickAddRegistry(createQuickAddProvider(true));
+    registry.tickerRepository.loadTicker = async () => { throw new Error("offline"); };
+
+    await tui.render(
+      <PortfolioHarness
+        config={config}
+        collectionId="watchlist"
+        ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })}
+        runtime={createTestPluginRuntime({
+          notify: (notification) => { notifications.push(notification); },
+        })}
+        paneHeight={12}
+      />,
+      { width: 100, height: 12 },
+    );
+
+    await flushFrame();
+    await act(async () => {
+      tui.setup().mockInput.pressKey("a");
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await tui.setup().mockInput.typeText("MSFT");
+      await new Promise((resolve) => setTimeout(resolve, 360));
+    });
+    await flushFrame();
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await flushFrame();
+
+    expect(notifications.at(-1)).toMatchObject({ type: "error", body: "Failed to add MSFT." });
+    // Enter tries the same symbol again.
+    expect(tui.frame()).toMatch(/\+ MSFT\s+Ticker add failed/);
   });
 
   test("quick-add shows the saved listing's venue, and a colon opens that symbol's venues in the command bar", async () => {
