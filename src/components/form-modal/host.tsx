@@ -9,6 +9,7 @@ import { RemoteUiScope } from "../../remote/semantic-tree";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
 import { useDialog, type AlertContext } from "../../ui/dialog";
+import { FORM_DIALOG_WIDTH } from "../ui/frame";
 import { CONFIRM_MODAL_WIDTH, ConfirmModalContent } from "./confirm";
 import { FormModalContent, type FormModalRuntime } from "./content";
 import type { FormModalDeps } from "./deps";
@@ -24,10 +25,9 @@ import {
 
 /**
  * Pane settings width, in cells. The broker connect step that New Portfolio
- * advances to fits in it too (its QR code, the link, the note wrapped), since
- * a dialog keeps the width it opened with.
+ * advances to fits in it too, since a dialog keeps the width it opened with.
  */
-const FORM_MODAL_WIDTH = 68;
+const FORM_MODAL_WIDTH = FORM_DIALOG_WIDTH;
 /** A prompt or a JSON body needs room to read. */
 const FORM_MODAL_TEXTAREA_WIDTH = 88;
 

@@ -54,11 +54,13 @@ export function renderQrLines(text: string): string[] {
 }
 
 /**
- * One `background-image` value for the desktop host. Runs of dark modules are
- * merged into a single rect per run so the markup stays small, and
- * `shape-rendering="crispEdges"` keeps module edges from being blurred away.
+ * One `background-image` value for the desktop host, and the modules across
+ * it, quiet zone included, so the host can draw each module in whole pixels.
+ * Runs of dark modules are merged into a single rect per run so the markup
+ * stays small, and `shape-rendering="crispEdges"` keeps module edges from
+ * being blurred away.
  */
-export function renderQrSvgDataUri(text: string): string {
+export function renderQrSvgDataUri(text: string): { image: string; modules: number } {
   const { size, isDark } = qrGrid(text);
 
   let rects = "";
@@ -78,5 +80,5 @@ export function renderQrSvgDataUri(text: string): string {
     + `<rect width="${size}" height="${size}" fill="#ffffff"/>`
     + `<g fill="#000000">${rects}</g>`
     + "</svg>";
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  return { image: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`, modules: size };
 }

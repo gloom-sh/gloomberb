@@ -636,9 +636,8 @@ export interface UiHost {
   ListView?: ComponentType<any>;
   SegmentedControl?: ComponentType<any>;
   DialogFrame?: ComponentType<any>;
-  /** Props are `DialogActionsProps` / `DialogHintsProps` from components/ui/dialog-actions. */
+  /** Props are `DialogActionsProps` from components/ui/dialog-actions. */
   DialogActions?: ComponentType<any>;
-  DialogHints?: ComponentType<any>;
   PageStackView?: ComponentType<any>;
   Tabs?: ComponentType<HostTabsProps>;
   Checkbox?: ComponentType<HostCheckboxProps>;

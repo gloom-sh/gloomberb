@@ -1,9 +1,9 @@
 /**
- * Connecting a signed-in broker: Gloom Cloud hands out a link and a short code,
- * the user opens the link, types the code, and signs in to the broker there.
- * The code is what ties the browser to this app, so a link someone else started
- * cannot attach their brokerage to this account. The connection itself lives in
- * the Cloud account, shared by every device and by the user's agents.
+ * Connecting a signed-in broker: Gloom Cloud hands out a link, the user opens
+ * it and signs in to the broker there. The link goes on only in a browser
+ * signed in to Gloom as this account, so a link someone else started cannot
+ * attach their brokerage to it. The connection itself lives in the Cloud
+ * account, shared by every device and by the user's agents.
  */
 import { ApiRequestError } from "../../api-client/errors";
 import {
@@ -19,6 +19,7 @@ type BrokerSignInPhase = "starting" | "waiting" | "connected" | "signed-out" | "
 export interface BrokerSignInSnapshot {
   phase: BrokerSignInPhase;
   connectUrl: string | null;
+  /** Only from a Cloud that still asks the browser for a code; none otherwise. */
   code: string | null;
   /** A transient poll failure while waiting, or why starting failed. */
   error: string | null;
@@ -37,7 +38,7 @@ export interface BrokerSignInOptions {
 }
 
 export interface BrokerSignInIo {
-  start(brokerId: string, write: boolean): Promise<{ connectUrl: string; code: string; expiresAt: string }>;
+  start(brokerId: string, write: boolean): Promise<{ connectUrl: string; code?: string | null; expiresAt: string }>;
   fetchConnection(brokerId: string): Promise<BrokerConnectionRead>;
   now(): number;
   delay(ms: number): Promise<void>;
@@ -46,7 +47,7 @@ export interface BrokerSignInIo {
 const POLL_INTERVAL_MS = 2_000;
 const RETRY_MAX_MS = 30_000;
 /** Used when the expiry is missing or unreadable, so polling can never run forever. */
-const DEFAULT_CODE_TTL_MS = 15 * 60_000;
+const DEFAULT_LINK_TTL_MS = 15 * 60_000;
 
 const defaultIo: BrokerSignInIo = {
   start: (brokerId, write) => startSignedInBrokerConnect(brokerId, write),
@@ -61,13 +62,13 @@ function describeStartError(error: unknown, broker: SignedInBroker): string {
 }
 
 /**
- * When a code stops working. An expiry this device's clock already sees as
- * past (the clock runs fast) counts as missing, or every code would expire
+ * When a link stops working. An expiry this device's clock already sees as
+ * past (the clock runs fast) counts as missing, or every link would expire
  * the moment it arrived.
  */
-function codeDeadline(expiresAt: string, now: number): number {
+function linkDeadline(expiresAt: string, now: number): number {
   const parsed = Date.parse(expiresAt);
-  return Number.isFinite(parsed) && parsed > now ? parsed : now + DEFAULT_CODE_TTL_MS;
+  return Number.isFinite(parsed) && parsed > now ? parsed : now + DEFAULT_LINK_TTL_MS;
 }
 
 function stamp(value: string | null | undefined): number | null {
@@ -96,7 +97,7 @@ export class BrokerSignInController {
   private generation = 0;
   /**
    * Renewing only: the account's connection as first seen. It outlives a
-   * restarted code, so a sign-in finished while "r" asked for a new one still
+   * restarted link, so a sign-in finished while "r" asked for a new one still
    * counts.
    */
   private before: BrokerConnectionRead | null = null;
@@ -125,7 +126,7 @@ export class BrokerSignInController {
     };
   }
 
-  /** Starts, or restarts with a fresh code. Safe to call repeatedly. */
+  /** Starts, or restarts with a fresh link. Safe to call repeatedly. */
   start(): void {
     const generation = ++this.generation;
     void this.run(generation);
@@ -143,7 +144,7 @@ export class BrokerSignInController {
   private async run(generation: number): Promise<void> {
     const stale = () => this.generation !== generation;
     let retryMs = POLL_INTERVAL_MS;
-    // Renewing: read before a code exists, so nothing the user does can come
+    // Renewing: read before a link exists, so nothing the user does can come
     // first. A failed read leaves the first poll to stand in for it: no
     // sign-in finishes within a poll interval.
     if (this.renew && !this.before) {
@@ -151,8 +152,8 @@ export class BrokerSignInController {
       if (stale()) return;
       this.before ??= read;
     }
-    // Each iteration is one code: start, poll until connected, and loop again
-    // when the code expired so the link refreshes instead of dead-ending.
+    // Each iteration is one link: start, poll until connected, and loop again
+    // when the link expired so it refreshes instead of dead-ending.
     while (!stale()) {
       this.update({ phase: "starting", connectUrl: null, code: null, error: null });
       let started: Awaited<ReturnType<BrokerSignInIo["start"]>>;
@@ -174,9 +175,9 @@ export class BrokerSignInController {
       }
       if (stale()) return;
       retryMs = POLL_INTERVAL_MS;
-      this.update({ phase: "waiting", connectUrl: started.connectUrl, code: started.code, error: null });
-      const deadline = codeDeadline(started.expiresAt, this.io.now());
-      // At least one poll per code, so the next code is never asked for at once.
+      this.update({ phase: "waiting", connectUrl: started.connectUrl, code: started.code ?? null, error: null });
+      const deadline = linkDeadline(started.expiresAt, this.io.now());
+      // At least one poll per link, so the next link is never asked for at once.
       do {
         await this.io.delay(POLL_INTERVAL_MS);
         if (stale()) return;

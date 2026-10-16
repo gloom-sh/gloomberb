@@ -19,11 +19,11 @@ import type { SignedInBroker } from "../../../brokers/signed-in/client";
 import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
 import { SIGNED_IN_BROKER_TYPE } from "../../../brokers/signed-in/profile";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../../brokers/signed-in/sign-in";
-import { promptGloomSignIn, useBrokerSignInAttempt } from "../../../brokers/signed-in/sign-in-dialog";
+import { BrokerConnectView, promptGloomSignIn, useBrokerSignInAttempt } from "../../../brokers/signed-in/sign-in-dialog";
 import { Button, ListView, useFieldRing } from "../../../components";
 import { showCollectionInPortfolioPane } from "../../../components/command-bar/pane-actions";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { BrokerConnectView } from "../../../components/form-modal/broker-step";
+
 import { listCursorMove, type ListViewItem } from "../../../components/ui/list-view";
 import { t, tf } from "../../../i18n";
 import { useShortcut, type KeyEventLike } from "../../../react/input";
@@ -582,9 +582,9 @@ function DeviceProfileForm({
 }
 
 /**
- * One attempt at connecting a signed-in broker: the link, code and status the
+ * One attempt at connecting a signed-in broker: the link and status the
  * connect dialog shows, in the pane. Enter skips the beat "Connected" stays up
- * for, and `r` asks for a new code.
+ * for, and `r` asks for a new link.
  */
 function ConnectAttempt({
   broker,

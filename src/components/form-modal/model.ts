@@ -11,6 +11,7 @@ import type {
 import type { ReactNode } from "react";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { t } from "../../i18n";
+import type { DialogKeyHint } from "../ui/frame";
 
 /** A form in the modal: the command bar's workflow route, owned by the modal now. */
 export type FormRoute = CommandBarWorkflowRoute;
@@ -26,6 +27,8 @@ export interface FormStep {
   id: string;
   title: string;
   subtitle?: string;
+  /** Desktop and web: keys the step takes besides Esc, beside its Cancel button. */
+  hints?: DialogKeyHint[];
   render(context: FormStepContext): ReactNode;
 }
 
