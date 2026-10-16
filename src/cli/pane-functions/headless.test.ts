@@ -261,7 +261,7 @@ describe("headless pane arguments and options", () => {
       argument: ["AAPL", "MSFT"],
       symbols: ["AAPL", "MSFT"],
     });
-    expect(buildHeadlessPaneLoadArgs(definition, "CMP", "$aapl msft, AAPL", {})).toMatchObject({
+    expect(buildHeadlessPaneLoadArgs(definition, "CMP", "$aapl\nmsft, AAPL", {})).toMatchObject({
       symbols: ["AAPL", "MSFT"],
     });
     expect(() => buildHeadlessPaneLoadArgs(definition, "CMP", "AAPL", {}))

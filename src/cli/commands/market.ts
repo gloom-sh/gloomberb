@@ -48,7 +48,7 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
-  cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, loadForwardYieldDeclarations, renderFundamentalsReport,
+  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadForwardYieldDistributions, renderFundamentalsReport,
 } from "./ticker";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
@@ -161,6 +161,7 @@ import { notATickerSymbol, providerMissReason } from "../../sources/provider-err
 import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
+import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
@@ -246,10 +247,12 @@ function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined
 /**
  * The symbols of a command's arguments, one each however they were separated
  * (spaces, commas or pasted lines), and each security once however its case or
- * share class was written: `AAPL aapl BRK.B BRK-B` is AAPL and BRK.B.
+ * share class was written: `AAPL aapl BRK.B BRK-B` is AAPL and BRK.B. A
+ * company's name, an entry of a comma list, keeps its case for the line that
+ * says which listing it was read as.
  */
 function normalizeSymbols(args: string[]): string[] {
-  return uniqueSecuritySymbols(splitSymbolArgs(args).map((symbol) => symbol.toUpperCase()));
+  return uniqueSecuritySymbols(splitSymbolArgs(args).map((symbol) => isCompanyNameInput(symbol) ? symbol : symbol.toUpperCase()));
 }
 
 /** What JSON metadata says about the listing a command resolved. */
@@ -1035,10 +1038,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
       const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
-      // A forward yield dated ahead names the declared distribution it annualizes, in the text and tables.
-      const report = ctx.cliOptions.format === "json" ? data : {
-        ...data, declaredDividends: await loadForwardYieldDeclarations(market.dataProvider, listing.request, financials.fundamentals),
-      };
+      // A forward yield dated ahead names the declared distribution it annualizes, and one whose dividend stopped says so.
+      const distributions = await loadForwardYieldDistributions(market.dataProvider, listing.request, financials.fundamentals);
+      const report = { ...data, distributions };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1048,7 +1050,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCap: capitalization?.value ?? null,
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
-          fundamentals: exportedFundamentals(priced.fundamentals),
+          fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, distributions),
         },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),

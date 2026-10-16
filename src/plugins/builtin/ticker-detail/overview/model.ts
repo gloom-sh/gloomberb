@@ -19,6 +19,8 @@ import {
   withCurrencyMinorDigits,
 } from "../../../../market-data/market/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
+import type { ForwardDividendState } from "./dividend-lapse";
+import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
@@ -77,6 +79,7 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   today,
+  forwardDividend,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -91,6 +94,8 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
+  /** Whether a forward yield's dividend has stopped (useForwardDividendLapse); without it the yield stands. */
+  forwardDividend?: ForwardDividendState;
 }): StatField[] {
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
@@ -147,15 +152,19 @@ export function buildOverviewStats({
     });
   }
   const dividendYield = liveDividendYield(quote, fundamentals);
-  if (fundamentals && dividendYield != null) {
+  // A dividend that stopped has no forward yield, and its last ex-date is when it was last paid.
+  const lapse = forwardDividend?.lapse ?? null;
+  if (fundamentals && lapse) {
+    stats.push({ label: "Fwd Div Yld", value: NO_CURRENT_DIVIDEND });
+  } else if (fundamentals && dividendYield != null && !forwardDividend?.pending) {
     const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
     stats.push({ label, value: formatLevelPercent(dividendYield) });
   }
-  const exDividendDate = fundamentals?.exDividendDate;
+  const exDividendDate = lapse?.lastPaid ?? fundamentals?.exDividendDate;
   if (exDividendDate && ISO_DATE.test(exDividendDate)) {
     const days = today ? daysUntil(exDividendDate, today) : -1;
     stats.push({
-      label: "Ex-Dividend",
+      label: lapse ? "Last Paid" : "Ex-Dividend",
       value: calendarDate(exDividendDate, today ?? exDividendDate),
       detail: days >= 0 ? daysAhead(days) : undefined,
       link: DIVIDENDS,

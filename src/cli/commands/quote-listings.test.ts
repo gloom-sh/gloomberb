@@ -316,7 +316,7 @@ test("a pasted list is one row per symbol, in order, however it is separated, fo
       return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
     },
   });
-  const pasted = [["jnk\nEMB\nBRK.B, bf-b "], ["JNK EMB", "brk.b,BF-B"], ["jnk\temb\r\nbrk.b bf-b"], ["jnk,emb", "$brk.b\n", " bf-b "]];
+  const pasted = [["jnk\nEMB\nBRK.B, bf-b "], ["JNK EMB", "brk.b,BF-B"], ["jnk\temb\r\nbrk.b\tbf-b"], ["jnk,emb", "$brk.b\n", " bf-b "]];
   for (const name of ["quote", "compare"]) {
     for (const args of pasted) {
       asked.length = 0;

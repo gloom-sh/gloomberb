@@ -41,7 +41,8 @@ export interface PastedSymbolList {
 
 /**
  * The symbols in text typed or pasted after `AW`, split as `gloomberb quote`
- * splits its arguments: commas, semicolons, spaces, tabs and lines. Null for
+ * splits its arguments: on commas, semicolons, tabs and lines when it has
+ * them, so an entry can be a company's name, else on spaces. Null for
  * one symbol or none, which keep the single add. Spaces alone also separate a
  * company's name (`Palo Alto Networks`), which is why `separated` says when
  * the text left no doubt it is a list.
@@ -82,6 +83,7 @@ function ambiguityFailure(error: Error): Error {
 function reasonLine(row: SymbolRow): string | null {
   const typed = symbolInputKey(row.input);
   if (row.hint && row.status === "added") return row.hint;
+  if (row.readAs && (row.status === "added" || row.status === "already_listed")) return row.readAs;
   if (row.status !== "failed" && !(row.status === "not_found" && row.message && !NO_MATCH.test(row.message))) return null;
   const text = reason(row.message ?? "", typed);
   return text.includes(typed) ? text : `${typed}: ${text}`;

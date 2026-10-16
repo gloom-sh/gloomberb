@@ -206,7 +206,7 @@ export function ownNamesUniverse(tickers: readonly Pick<TickerRecord, "metadata"
 const DASHED_CLASS_SHARE = /^([A-Z]{1,5})-([A-Z])$/;
 
 /**
- * The names typed or pasted: split by commas, semicolons or blanks, each
+ * The names typed or pasted: split as splitSymbolArgs splits a list, each
  * without the quote marks or the `$` around it. A name this cannot read as a US
  * symbol is left out and named with its reason.
  */

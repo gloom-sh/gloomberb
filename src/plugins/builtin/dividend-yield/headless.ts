@@ -8,7 +8,7 @@ import { dividendReferencePrice, fetchDividendData, type DividendData } from "./
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
-import { forwardDividendBasis } from "../../../utils/forward-dividend";
+import { forwardDividendBasis, noCurrentDividend } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -100,7 +100,8 @@ export function projectDividendYieldHeadless(
             ? "Stale reference price; cash yield may be out of date."
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
           { label: "Trailing yield", value: metrics.trailingYield, formatted: formatDividendYield(metrics.trailingYield) },
-          { label: "Forward yield", value: metrics.forwardYield, formatted: metrics.forwardYield == null ? formatDividendYield(null)
+          { label: "Forward yield", value: metrics.forwardYield, formatted: metrics.lapse ? noCurrentDividend(metrics.lapse)
+            : metrics.forwardYield == null ? formatDividendYield(null)
             : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf,
               { payDate: forwardPayDate(metrics), declared: data.declared, currency })})` },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },

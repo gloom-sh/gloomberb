@@ -23,6 +23,8 @@ export interface SymbolRow extends Record<string, unknown> {
   message: string | null;
   /** What the single-symbol add says beside the listing: the venue a bare symbol went to, a listing that stopped trading. */
   notes: string | null;
+  /** How the symbol was read, when not as typed: a company's name as the listing it names. */
+  readAs?: string;
   /** A not-found symbol's nearest listing in search, as the line names it: `USDNGN=X (US Dollar/Nigerian Naira)`. Only when asked for and found. */
   suggestion?: string;
   /**
@@ -48,9 +50,12 @@ export function listingRow(
   input: string,
   status: SymbolStatus,
   ticker: TickerRecord,
-  { notes = [], ended = null, hint = null, extra = {} }: { notes?: string[]; ended?: string | null; hint?: string | null; extra?: Record<string, unknown> } = {},
+  { notes = [], ended = null, hint = null, readAs = null, extra = {} }: {
+    notes?: string[]; ended?: string | null; hint?: string | null; readAs?: string | null; extra?: Record<string, unknown>;
+  } = {},
 ): SymbolRow {
-  return { input, status, ...listingFields(savedListingName(ticker)), message: ended, notes: notes.join("; ") || null, hint, ...extra };
+  return { input, status, ...listingFields(savedListingName(ticker)), message: ended, notes: notes.join("; ") || null, hint,
+    ...readAs ? { readAs } : {}, ...extra };
 }
 
 export function failedRow(input: string, error: Error, status: SymbolStatus = error instanceof TickerNotFoundError ? "not_found" : "failed"): SymbolRow {
@@ -153,7 +158,7 @@ export async function addSymbols({
       continue;
     }
     if (result.changed) await staged.saveTicker(result.ticker);
-    rows.push(listingRow(input, result.changed ? "added" : "already_listed", result.ticker, { notes: resolution.notes, ended: resolution.ended, hint: resolution.coinNote }));
+    rows.push(listingRow(input, result.changed ? "added" : "already_listed", result.ticker, { notes: resolution.notes, ended: resolution.ended, hint: resolution.coinNote, readAs: resolution.readAs }));
   }
   await staged.commit();
   return suggest ? withSuggestions(rows, staged, dataProvider) : rows;

@@ -8,7 +8,8 @@ import { loadEarningsCalendar } from "../../earnings/data/cache";
 
 const SUPPLEMENTAL_BATCH_LIMIT = 6;
 const ANALYST_COLUMN_IDS = new Set(["target", "target_pct", "rating"]);
-const CORPORATE_COLUMN_IDS = new Set(["ex_div", "next_earn"]);
+// DIV% reads the distribution history to tell a forward yield whose dividend stopped.
+const CORPORATE_COLUMN_IDS = new Set(["ex_div", "next_earn", "dividend_yield"]);
 const EARNINGS_COLUMN_IDS = new Set(["next_earn"]);
 
 interface SupplementalTarget {

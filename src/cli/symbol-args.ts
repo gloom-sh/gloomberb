@@ -2,17 +2,25 @@
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
 const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
 
+/** What separates the entries of a list: a comma, a semicolon, a tab (a sheet's cells) or a line. */
+const LIST_SEPARATOR = /[,;\t\r\n]/;
+
 /**
- * Symbols given as command arguments, each of which may hold several split by
- * commas, semicolons, spaces, tabs or newlines (a pasted list), with the blanks
- * dropped, the quote marks around each entry removed and the typed case kept.
- * Every command that takes a symbol list splits its arguments here, and
- * `not-a-ticker` reads the typed spelling back from them.
+ * Symbols given as command arguments, each of which may hold several (a pasted
+ * list), with the blanks dropped, the quote marks around each entry removed
+ * and the typed case kept. An argument with commas, semicolons, tabs or lines
+ * in it is split on those alone, so an entry can be a company's name (`WHR,
+ * Whirlpool Corporation, BRK.B`); one without them is split on spaces (`JNK
+ * EMB BRK.B`). Every command that takes a symbol list splits its
+ * arguments here, and `not-a-ticker` reads the typed spelling back from them.
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
   return args
-    .flatMap((arg) => arg.replace(/^\uFEFF/, "").split(/[\s,;]+/))
-    .map((entry) => entry.replace(QUOTE_EDGES, ""))
+    .flatMap((arg) => {
+      const text = arg.replace(/^\uFEFF/, "");
+      return LIST_SEPARATOR.test(text) ? text.split(LIST_SEPARATOR) : text.split(/\s+/);
+    })
+    .map((entry) => entry.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
     .filter(Boolean);
 }
 

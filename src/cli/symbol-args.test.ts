@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { splitSymbolArgs, stripStrayEdges, uniqueSecuritySymbols } from "./symbol-args";
 
-test("arguments split on commas, spaces and newlines in any mix", () => {
+test("an argument with commas, semicolons, tabs or lines splits on those alone, so an entry can be a name; one without splits on spaces", () => {
   expect(splitSymbolArgs(["AAPL, msft ,XXXXX,ttf.as", "nvda", "xom ", "BRK.B;SAN:EPA\n7203.T"]))
     .toEqual(["AAPL", "msft", "XXXXX", "ttf.as", "nvda", "xom", "BRK.B", "SAN:EPA", "7203.T"]);
+  expect(splitSymbolArgs(["WHR, Whirlpool  Corporation , BRK.B"])).toEqual(["WHR", "Whirlpool Corporation", "BRK.B"]);
+  expect(splitSymbolArgs(["JNK EMB", "BRK.B"])).toEqual(["JNK", "EMB", "BRK.B"]);
 });
 
 test("a list pasted from a terminal, a sheet or a chat splits whatever its separators and keeps each symbol's typed case", () => {

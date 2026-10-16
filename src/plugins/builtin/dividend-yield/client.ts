@@ -9,6 +9,7 @@ import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
+import { lapsedDividend } from "../../../utils/forward-dividend";
 import type { DeclaredDividendAction } from "../../../types/financials";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
@@ -113,13 +114,13 @@ export async function fetchDividendData(
   const summaryRatesComparable = cashUnit.divisor === 1
     && !!summaryUnit.currency && summaryUnit.currency === currency && summaryUnit.divisor === 1;
   const metricFields = actions && historyError && quoteFields ? { ...quoteFields, trailingAnnualDividendRate: null } : quoteFields;
-  const metrics = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable });
-  if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
-    throw new Error(`No dividend data found for ${symbol}`);
-  }
   // Stated in the cash history's units, read as its payments are.
   const declared = actions && cashUnit.currency
     ? declaredDividends(actions).map((row) => ({ ...row, amount: row.amount / cashUnit.divisor })) : [];
+  const metrics = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable, declared });
+  if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
+    throw new Error(`No dividend data found for ${symbol}`);
+  }
   return {
     payments, ...(declared.length > 0 ? { declared } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
@@ -150,15 +151,17 @@ export function buildDividendMetrics(
   payments: DividendPayment[],
   quoteFields: QuoteSummaryDividendFields | null,
   currentPrice: number | null,
-  options: { historyAvailable?: boolean; summaryRatesComparable?: boolean; now?: Date } = {},
+  options: { historyAvailable?: boolean; summaryRatesComparable?: boolean; now?: Date;
+    /** Declared, still owed distributions (declaredDividends): one keeps the dividend current. */
+    declared?: readonly DeclaredDividendAction[] } = {},
 ): DividendMetrics {
   const now = options.now ?? new Date();
   const eligible = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0);
   const trailingRate = options.historyAvailable !== false
     ? trailingCashAt(eligible, now)
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
-  const forwardRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
-  const forwardRateAsOf = forwardRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
+  const statedRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
+  const statedAsOf = statedRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
     ? quoteFields!.forwardRateAsOf! : null;
   const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
   const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
@@ -176,12 +179,24 @@ export function buildDividendMetrics(
   const today = new Date(now.toISOString().slice(0, 10));
   const nextPayDate = reportedPayDate && reportedPayDate >= today ? reportedPayDate : null;
 
+  // A dividend that has stopped has no forward rate, whatever is still stated for it.
+  // Without a usable history only the latest date known says it, on the annual window.
+  const declared = options.declared ?? [];
+  const lapse = options.historyAvailable !== false
+    ? lapsedDividend(statedAsOf, {
+      exDates: [...payments.map((payment) => payment.exDate), ...lastExDividendDate ? [lastExDividendDate] : []], declared }, now)
+    : lapsedDividend([statedAsOf, lastExDividendDate?.toISOString().slice(0, 10)]
+      .filter((day): day is string => !!day).sort().at(-1), { exDates: null, declared }, now);
+  const forwardRate = lapse ? null : statedRate;
+  const forwardRateAsOf = lapse ? null : statedAsOf;
+
   return repriceDividendMetrics({
     trailingYield: null,
     forwardYield: null,
     trailingRate,
     forwardRate,
     forwardRateAsOf,
+    lapse,
     payoutRatio: quoteFields?.payoutRatio ?? null,
     growth1Y,
     growth3Y,

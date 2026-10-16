@@ -88,7 +88,7 @@ describe("short watch names", () => {
   test("a pasted list reads one name per entry, whatever the separators, quote marks and share class spelling", () => {
     expect(customUniverse("GME, amc,CVNA ,BRK-B ")).toEqual({ symbols: ["GME", "AMC", "CVNA", "BRK.B"], notice: null });
     expect(customUniverse("GME;AMC").symbols).toEqual(["GME", "AMC"]);
-    expect(customUniverse(`"GME", 'AMC'; “CVNA”, $BF-B\nBF.B brk.b BRK-B`).symbols).toEqual(["GME", "AMC", "CVNA", "BF.B", "BRK.B"]);
+    expect(customUniverse(`"GME", 'AMC'; “CVNA”, $BF-B\nBF.B\tbrk.b; BRK-B`).symbols).toEqual(["GME", "AMC", "CVNA", "BF.B", "BRK.B"]);
   });
 
   test("a name left out is listed with its own reason, never only counted", () => {

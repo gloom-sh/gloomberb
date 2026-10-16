@@ -32,6 +32,7 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
+import { distributionHistory, forwardDividendMayHaveLapsed, lapsedDividend } from "../../../utils/forward-dividend";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
 import { currentListingName } from "../../../tickers/listing-name";
@@ -205,6 +206,25 @@ function nextEarningsDate(symbol: string, ctx: ColumnContext): { pending: boolea
     pending: false,
     date: futureOrLatestDate(actions.data?.earnings ?? [], (earning) => earning.date, ctx.now),
   };
+}
+
+/**
+ * DIV%: the yield at the live price, none once a forward yield's dividend has
+ * stopped (lapsedDividend), and pending while the history that says so loads.
+ */
+function currentDividendYield(
+  symbol: string,
+  quote: TickerFinancials["quote"],
+  fundamentals: TickerFinancials["fundamentals"],
+  ctx: ColumnContext,
+): { pending: boolean; value: number | null } {
+  const value = liveDividendYield(quote, fundamentals) ?? null;
+  if (value == null || fundamentals?.dividendYieldBasis !== "forward") return { pending: false, value };
+  const now = new Date(ctx.now);
+  if (!forwardDividendMayHaveLapsed(fundamentals.exDividendDate, now)) return { pending: false, value };
+  const actions = mapData(ctx.corporateActions, symbol);
+  if (actions.pending) return { pending: true, value: null };
+  return { pending: false, value: lapsedDividend(fundamentals.exDividendDate, distributionHistory(actions.data, now), now) ? null : value };
 }
 
 function exDividendDate(symbol: string, ctx: ColumnContext): { pending: boolean; date: Date | null } {
@@ -437,8 +457,9 @@ export function getColumnValue(
     case "forward_pe":
       return { text: formatPriceEarnings(liveForwardPE(quote, fundamentals)) };
     case "dividend_yield": {
-      const dividendYield = liveDividendYield(quote, fundamentals);
-      return { text: dividendYield != null ? `${(dividendYield * 100).toFixed(2)}%` : "—" };
+      const dividendYield = currentDividendYield(ticker.metadata.ticker, quote, fundamentals, ctx);
+      if (dividendYield.pending) return { text: "…" };
+      return { text: dividendYield.value != null ? `${(dividendYield.value * 100).toFixed(2)}%` : "—" };
     }
     case "ext_hours": {
       const changePercent = getExtendedSessionDisplay(quote)?.changePercent;
@@ -663,7 +684,7 @@ export function getSortValue(
     case "forward_pe":
       return comparablePriceEarnings(liveForwardPE(quote, fundamentals));
     case "dividend_yield":
-      return liveDividendYield(quote, fundamentals) ?? null;
+      return currentDividendYield(ticker.metadata.ticker, quote, fundamentals, ctx).value;
     case "ext_hours":
       return getExtendedSessionDisplay(quote)?.changePercent ?? null;
     case "side":

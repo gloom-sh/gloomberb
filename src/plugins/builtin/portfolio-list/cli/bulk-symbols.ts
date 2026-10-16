@@ -31,15 +31,21 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). A list with commas or newlines is split on those alone, so an entry can be a company's name, read as its US listing first, and the line under it says which listing that was. A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
   ],
 };
 
-/** A row's line, and under it the coin hint when a bare coin ticker was read as something else. */
+/**
+ * A row's line, and under it the listing a company's name was read as, and
+ * the coin hint when a bare coin ticker was read as something else.
+ */
 function rowLines(row: SymbolRow, verb: Verb): string {
-  const line = rowLine(row, verb);
-  return row.hint ? `${line}\n  ${cliStyles.warning(row.hint)}` : line;
+  return [
+    rowLine(row, verb),
+    ...row.readAs ? [`  ${cliStyles.muted(row.readAs)}`] : [],
+    ...row.hint ? [`  ${cliStyles.warning(row.hint)}`] : [],
+  ].join("\n");
 }
 
 function rowLine(row: SymbolRow, verb: Verb): string {
