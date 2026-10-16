@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createPaneDiscoveryContext } from "../../../cli/pane-functions/discovery";
 import { parseDocsFeed } from "../../../docs/content";
 import { DOCS_SNAPSHOT } from "../../../docs/snapshot.chunk";
@@ -18,7 +18,8 @@ import { docsTopicForArgument, docsTopicForFunction, docsTopicForPane } from "./
  */
 
 const started: GloomPlugin[] = [];
-afterAll(() => {
+// Built-ins keep one disposer, so release this setup before the next replaces it.
+afterEach(() => {
   for (const plugin of started.splice(0).reverse()) plugin.dispose?.();
 });
 

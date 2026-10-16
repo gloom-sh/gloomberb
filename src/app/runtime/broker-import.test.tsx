@@ -1,24 +1,17 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
-import { setConfigStoreHost, type ConfigStoreHost } from "../../data/config/store";
 import { addPaneToLayout, getDockedPaneIds, isPaneInLayout } from "../../layout/pane-manager";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../state/app/context";
-import { createDefaultConfig, createPaneInstance, type AppConfig, type BrokerInstanceConfig } from "../../types/config";
+import { createDefaultConfig, createPaneInstance, type BrokerInstanceConfig } from "../../types/config";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import type { TickerRecord } from "../../types/ticker";
+import { captureConfigSaves } from "../../test-support/config-store";
 import { createTestTicker } from "../../test-support/ticker";
 import { useBrokerImportRuntime } from "./broker-import";
 
-const saved: AppConfig[] = [];
-setConfigStoreHost({
-  saveConfig: async (config: AppConfig) => { saved.push(config); },
-} as unknown as ConfigStoreHost);
-
 const tui = createOpenTuiTestHarness();
-afterEach(() => {
-  saved.length = 0;
-});
+const savedHere = captureConfigSaves();
 
 const instance: BrokerInstanceConfig = { id: "demo-broker", brokerType: "demo", label: "Demo", config: {}, enabled: true };
 
@@ -88,8 +81,6 @@ test("the startup broker sync keeps a pane opened while the broker was answering
   expect(isPaneInLayout(live.layout, pane.instanceId)).toBe(true);
   expect(live.portfolios.some((portfolio) => portfolio.brokerInstanceId === instance.id)).toBe(true);
   expect(live.brokerInstances[0]?.lastSyncedAt).toBeNumber();
-  // A config save another test file scheduled can land here too; only this app's count.
-  const savedHere = saved.filter((entry) => entry.dataDir === live.dataDir);
   expect(savedHere.length).toBeGreaterThan(0);
   expect(savedHere.every((entry) => isPaneInLayout(entry.layout, pane.instanceId))).toBe(true);
   // The sync leaves the layout alone, so opening the pane can still be undone.

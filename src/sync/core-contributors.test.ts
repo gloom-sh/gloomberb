@@ -12,10 +12,13 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { setSyncedProfileAnalytics } from "./profile-analytics";
+import { captureConfigSaves } from "../test-support/config-store";
 import { createTestTicker } from "../test-support/ticker";
 import { createTestFinancials } from "../test-support/data-provider";
 
 describe("core sync contributors", () => {
+  captureConfigSaves();
+
   function priceHistoryFromReturns(returns: number[]): PricePoint[] {
     let close = 100;
     return [

@@ -13,6 +13,7 @@ name: Pane chrome
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
