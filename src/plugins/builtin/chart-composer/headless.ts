@@ -5,7 +5,7 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
 import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
-import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
+import { GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import {
   getSupportMaxRange,
@@ -159,6 +159,18 @@ export async function loadChartPaneModel(
     return history ? { ...data, priceHistory: history.points, priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
       priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey } : data;
   };
+  // The company a security's series is of, from the quote it was read with, and a study's of one series
+  // (its volume) that series'. A series labeled for what it is (FUT:CL is "WTI Crude Oil") names nothing more.
+  const seriesCompany = (id: string, depth = 0): string | undefined => {
+    const entry = spec.series.find((candidate) => candidate.id === id);
+    if (entry) {
+      return entry.source.kind === "security" && !entry.label?.trim()
+        ? financials.get(snapshotInstrumentKey(entry.source.instrument))?.quote?.name?.trim() || undefined
+        : undefined;
+    }
+    const study = spec.studies.find((candidate) => id === candidate.id || id.startsWith(`${candidate.id}:`));
+    return study?.inputSeriesIds.length === 1 && depth < 4 ? seriesCompany(study.inputSeriesIds[0]!, depth + 1) : undefined;
+  };
   const historyVariants = [...histories].flatMap(([key, variants]) => variants.size > 1
     ? [...variants.values()].flatMap(({ resolution, requestKey, points, session, sourceKey }) => resolution === undefined ? [] : [{ target: instruments.get(key)!, resolution, requestKey, points, session, sourceKey }]) : []);
   return {
@@ -185,6 +197,7 @@ export async function loadChartPaneModel(
     // price's own bars, which a report would mislabel as the profile.
     series: chart.series.filter((series) => !series.profile).map((series) => {
       const source = spec.series.find((entry) => entry.id === series.id)?.source;
+      const name = seriesCompany(series.id);
       const kind = source?.kind === "security" && source.fieldId.startsWith("fundamental.") ? "fundamental"
         : source?.kind === "security" && source.fieldId.startsWith("valuation.") ? "valuation" : null;
       const growth = kind && source?.kind === "security" ? new Map(graphRowsForFinancials(
@@ -194,6 +207,7 @@ export async function loadChartPaneModel(
       ).map((row) => [row.date, row.growth])) : null;
       return {
         ...series,
+        ...name ? { name } : {},
         derived: !ids.has(series.id),
         points: series.points.map((point) => ({
           ...point,
@@ -380,6 +394,24 @@ export function chartResolutionDrop(
   };
 }
 
+/**
+ * The chart's argument with a bare symbol's series on one listing: `BDI` with
+ * BDI:TSX is `BDI:TSX`, `BDI:volume, AAPL` is `BDI:TSX:volume, AAPL`. The
+ * listing alone when the argument does not name the symbol as a series.
+ */
+export function argumentWithListing(argument: string, symbol: string, key: string): string {
+  let named = false;
+  const legs = argument.split(/([;,\n]\s*)/).map((leg, index) => {
+    if (index % 2 === 1) return leg;
+    const parsed = parseSeriesExpression(leg);
+    const typed = /^(\s*)([^:\s]+)(.*)$/s.exec(leg);
+    if (parsed?.kind !== "security" || parsed.exchange || !typed || typed[2]!.toUpperCase() !== symbol.toUpperCase()) return leg;
+    named = true;
+    return `${typed[1]}${key}${typed[3]}`;
+  });
+  return named ? legs.join("") : key;
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
@@ -388,12 +420,22 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
       const parsed = parseChartSpec(context.settings?.chartSpec);
       if (!parsed) throw new Error("The chart specification is invalid.");
-      let spec = context.resolveInstrument ? {
+      // A bare symbol is the listing `quote` reads it as: BDI, which two companies list, asks which,
+      // as `quote BDI` does, instead of charting whichever line a source picked.
+      const reads = new Map<string, ReturnType<typeof readSeriesListing>>();
+      const readSeriesListing = async (symbol: string): Promise<{ symbol: string; exchange?: string } | null> => {
+        const read = await context.resolveListing?.(symbol, (key) => argumentWithListing(args.rawArgument, symbol, key));
+        if (read) return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {} };
+        return context.resolveInstrument ? context.resolveInstrument(symbol) : null;
+      };
+      let spec = context.resolveInstrument || context.resolveListing ? {
         ...parsed,
         series: await Promise.all(parsed.series.map(async (series) => {
           if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
-          const instrument = await context.resolveInstrument!(series.source.instrument.symbol);
-          return { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } };
+          const { symbol } = series.source.instrument;
+          if (!reads.has(symbol)) reads.set(symbol, readSeriesListing(symbol));
+          const instrument = await reads.get(symbol)!;
+          return instrument ? { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } } : series;
         })),
       } : parsed;
       if (template === "graph-intraday-price-pane" && !spec.viewport.dateWindow) {

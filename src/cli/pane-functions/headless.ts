@@ -2,6 +2,7 @@ import { getSharedRegistry } from "../../plugins/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import { findNamedCollection } from "../../portfolio/collection-name";
+import { readBareListing } from "../listing-arg";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
@@ -199,6 +200,14 @@ function createHeadlessPaneContext(
       const ticker = await context.store.loadTicker(key)
         ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
+    },
+    async resolveListing(symbol, argumentWith) {
+      const command = `fn ${resolved.token}`;
+      const read = await readBareListing(symbol, context, {
+        command, noun: "a quote", retry: (key) => `gloomberb ${command} ${argumentWith(key)}`,
+      }, { refresh: !!context.refresh });
+      if (!read) return null;
+      return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {}, ...read.name ? { name: read.name } : {} };
     },
   };
 }
@@ -498,6 +507,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     ));
     return {
       series: series.label,
+      name: series.name?.trim() || null,
       latest: latest ? seriesPointDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() || null,
@@ -506,6 +516,8 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   });
   const columns: HeadlessPaneColumn[] = [
     { key: "series", header: "Series" },
+    // A security's series names its company (BDI:XTSE is Black Diamond Group); other series have none.
+    ...(rows.some((row) => row.name) ? [{ key: "name", header: "Name" }] : []),
     { key: "latest", header: "Latest", shrink: false },
     { key: "value", header: "Value", align: "right" },
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),

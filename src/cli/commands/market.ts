@@ -173,7 +173,9 @@ import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentC
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { looksLikeCurrencyPair } from "../../utils/currency-pair";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
+import {
+  describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
+} from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
@@ -230,6 +232,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
   tickerChange?: TickerChange;
+  /** The company that last held the symbol merged into another, which trades under its own symbol now (GOGL, CMBT). */
+  formerIssuer?: FormerIssuer;
   /** A bare symbol read on a listing abroad that is one slip from a US ticker: the US ticker it was most likely typed for. */
   usSuggestion?: ListingSuggestion;
 };
@@ -617,9 +621,10 @@ const MAX_CHOICE_LOOKUPS = 10;
  * names the quote of its new symbol ("HFC became DINO on 2022-03-15:
  * `gloomberb quote DINO`"); its old line's last price stays in the row.
  */
-function quoteChangeLine(change: TickerChange | null | undefined): string | null {
+function quoteChangeLine(change: TickerChange | null | undefined, formerIssuer?: FormerIssuer | null): string | null {
   const moved = movedAwayChange(change);
-  return moved ? movedSymbolLine(moved, `gloomberb quote ${moved.tradesAs}`) : tickerChangeLine(change);
+  // One line per symbol: a company that left it, else the company that merged away from it (GOGL).
+  return (moved ? movedSymbolLine(moved, `gloomberb quote ${moved.tradesAs}`) : tickerChangeLine(change)) ?? formerIssuer?.note ?? null;
 }
 
 async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
@@ -659,15 +664,19 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null);
     }));
     const now = Date.now();
-    const tickerChanges = await Promise.all(answers.map(async ({ result }, index) => {
+    const symbolChanges = await Promise.all(answers.map(async ({ result }, index) => {
       const listing = asked[index]!;
       // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
-      if (result.quote && bareListingNote(listing, result.quote)) return null;
-      return describeTickerChange(listing.symbol, await changes.get(listing)?.settle() ?? null, tradingListing(result.quote, now));
+      if (result.quote && bareListingNote(listing, result.quote)) return { change: null, formerIssuer: null };
+      const payload = await changes.get(listing)?.settle() ?? null;
+      const current = tradingListing(result.quote, now);
+      return { change: describeTickerChange(listing.symbol, payload, current), formerIssuer: describeFormerIssuer(listing.symbol, payload, current) };
     }));
+    const tickerChanges = symbolChanges.map(({ change }) => change);
+    const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
     const failed = answers[0]?.failure;
     if (listings.length === 1 && failed) {
-      ctx.fail(failed.message, [quoteChangeLine(tickerChanges[0]), failed.details].filter(Boolean).join("\n") || undefined);
+      ctx.fail(failed.message, [quoteChangeLine(tickerChanges[0], formerIssuers[0]), failed.details].filter(Boolean).join("\n") || undefined);
     }
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
@@ -695,11 +704,13 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
       ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
+      ...formerIssuers[index] ? { formerIssuer: formerIssuers[index] } : {},
     }));
     const notes = [
       // FB now lists another security; the company that was FB trades as META. A symbol a
       // company renamed into (META) is what was typed: its change is in the row, not here.
-      ...tickerChanges.flatMap((change) => quoteChangeLine(change) ?? []),
+      // GOGL was Golden Ocean, which merged into CMB.Tech; a fund lists there now.
+      ...tickerChanges.flatMap((change, index) => quoteChangeLine(change, formerIssuers[index]) ?? []),
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
       // A row that stopped trading long ago reads as a quote that is merely stale.

@@ -95,13 +95,14 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
 async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { store, dataProvider }: MarketContext) {
   try {
     // A bare symbol is stored on the listing `quote` reads it as, and the notes say which.
-    const { ticker, notes, change } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
+    const { ticker, notes, change, formerIssuer } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
       retry: (key) => `gloomberb watchlist add ${watchlist.name} ${key}`,
     });
     const result = addTickerToWatchlist(ticker, watchlist.id);
     // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
     const saved = savedListingName(ticker);
-    const data = { changed: result.changed, ...listingFields(saved), watchlist: watchlist.name, ...change ? { tickerChange: change } : {} };
+    const data = { changed: result.changed, ...listingFields(saved), watchlist: watchlist.name,
+      ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {} };
     const warnings = notes.length > 0 ? notes : undefined;
     if (!result.changed) {
       ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${watchlist.name}".`) });

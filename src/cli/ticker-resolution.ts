@@ -28,10 +28,12 @@ import {
 } from "./listing-arg";
 import { noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
 import {
+  describeFormerIssuer,
   describeTickerChange,
   startTickerChangeLookup,
   tickerChangeLine,
   type CurrentListing,
+  type FormerIssuer,
   type TickerChange,
   type TickerChangeLookup,
 } from "../tickers/ticker-changes";
@@ -60,6 +62,11 @@ export interface CliTicker {
   readAs: string | null;
   /** The symbol changed (FB became META); when its company left it, the line leads `notes`. */
   change: TickerChange | null;
+  /**
+   * The company that last held the symbol merged into another (GOGL was
+   * Golden Ocean, now CMB.Tech: CMBT); its line leads `notes` when no change does.
+   */
+  formerIssuer: FormerIssuer | null;
   /**
    * A bare coin ticker (ETH) read as a listing that is not the coin, such as a
    * fund named for it: "ETH is Grayscale Ethereum Mini Trust ETF, not ethereum.
@@ -163,8 +170,9 @@ export async function resolveCliTicker(
 
   if (!resolved) {
     const message = await missingListingMessage(listing, deps);
-    const change = describeTickerChange(listing.symbol, await changes?.settle() ?? null, null);
-    const line = tickerChangeLine(change);
+    const payload = await changes?.settle() ?? null;
+    const line = tickerChangeLine(describeTickerChange(listing.symbol, payload, null))
+      ?? describeFormerIssuer(listing.symbol, payload, null)?.note;
     throw new TickerNotFoundError(line ? `${message} ${line}.` : message);
   }
   if (resolved.kind === "local") {
@@ -202,13 +210,16 @@ export async function resolveCliTicker(
 async function withChange(
   listing: Pick<CliListing, "symbol" | "exchange" | "readAs">,
   lookup: TickerChangeLookup | null,
-  resolved: Omit<CliTicker, "change" | "coinNote" | "readAs">,
+  resolved: Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs">,
   current: CurrentListing | null | undefined,
 ): Promise<CliTicker> {
-  const change = describeTickerChange(listing.symbol, await lookup?.settle() ?? null, current);
-  const line = tickerChangeLine(change);
+  const payload = await lookup?.settle() ?? null;
+  const change = describeTickerChange(listing.symbol, payload, current);
+  const formerIssuer = describeFormerIssuer(listing.symbol, payload, current);
+  // One line: a company that left the symbol, else one that merged away from it.
+  const line = tickerChangeLine(change) ?? formerIssuer?.note;
   const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
-  return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, coinNote,
+  return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, formerIssuer, coinNote,
     readAs: listing.readAs ?? null };
 }
 
