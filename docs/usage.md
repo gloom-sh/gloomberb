@@ -515,6 +515,11 @@ for the same event, and `gloomberb alerts delete <id>` removes it. Earnings
 alerts also reach the phone app like the other market alerts; CPI and FOMC
 alerts notify in the running app only.
 
+`gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts
+with their event date, lead time and state, and `--tab history` the alerts
+delivered to your account (signed in); `gloomberb shot ALRT --tab events` draws
+that tab.
+
 ## Live prices and refresh cadence
 
 Prices come from one shared stream: a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update on every frame (about 10 per second); everything else about once a second. A pane covered by floating windows keeps its subscriptions at that slower rate and its refresh clocks rest until it is uncovered. Minimizing or hiding the app pauses streams and polling; the terminal always counts as visible. Plans that cap streamed symbols spend them on the rows in view.

@@ -28,7 +28,7 @@ import {
   serializeAlerts,
 } from "./alert-engine";
 import { parseAlertCommandValues } from "./command";
-import { ALERTS_KEY } from "./constants";
+import { ALERT_TABS, ALERTS_KEY } from "./constants";
 import {
   conditionLabel,
   formatAlertDistance,
@@ -72,12 +72,6 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
   (sum, column) => sum + column.width + 1,
   2,
 );
-
-const ALERT_TABS = [
-  { label: "Prices", value: "prices" },
-  { label: "Events", value: "events" },
-  { label: "History", value: "history" },
-];
 
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");

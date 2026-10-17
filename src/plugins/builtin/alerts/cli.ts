@@ -4,16 +4,15 @@ import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, type ListingArg } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
-import type { AppConfig } from "../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../types/plugin";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { settleWithin } from "../../../utils/async-deadline";
 import { cliStyles } from "../../../utils/cli-output";
 import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
-import { createAlert, deserializeAlerts, rearmAlert, serializeAlerts } from "./alert-engine";
-import { ALERTS_KEY } from "./constants";
-import { EVENT_ALERTS_KEY, MAX_EVENT_ALERTS, eventAlertTarget, readEventAlerts, toggleEventAlert, type EventAlertRule } from "./events";
+import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
+import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
+import { EVENT_ALERTS_KEY, MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
 import { MAX_LEAD_DAYS, type MacroAlertEvent } from "./research-rules";
 import {
@@ -36,9 +35,8 @@ import {
   type ScheduledEventTarget,
 } from "./scheduled";
 import { scheduledEventSources } from "./scheduled-sources";
+import { readAlertStores } from "./storage";
 import type { AlertCondition, AlertRule } from "./types";
-
-const ALERTS_PLUGIN_ID = "alerts";
 
 const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n>], or alerts add <CPI|FOMC> [--days <n>]";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
@@ -230,17 +228,6 @@ async function requireEventDate(
   return lookup.date;
 }
 
-function readAlertStores(config: AppConfig) {
-  const pluginState = config.pluginConfig[ALERTS_PLUGIN_ID] ?? {};
-  const rawPrice = pluginState[ALERTS_KEY];
-  const rawEvents = pluginState[EVENT_ALERTS_KEY];
-  return {
-    pluginState,
-    alerts: deserializeAlerts(typeof rawPrice === "string" ? rawPrice : "[]"),
-    events: readEventAlerts(typeof rawEvents === "string" ? rawEvents : "[]"),
-  };
-}
-
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
@@ -385,10 +372,12 @@ export const alertsCliCommand: CliCommandDef = {
         await save({ events: [...rules, rule] });
         const eventDate = rule.eventDate!;
         const due = scheduledPhase(eventDate, scheduled.leadDays, undefined, today) === "due";
+        const delivery = scheduled.target.kind === "macro" ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
+          // Delivery, as docs/usage.md states it: CPI and FOMC notify in the running app only; earnings also reach the phone.
           text: (data) => `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
             ? "already reached, so the app alerts at its next check"
-            : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}).${dryRunNote(data.dryRun)}`,
+            : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}${delivery}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }

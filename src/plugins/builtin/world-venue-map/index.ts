@@ -65,7 +65,7 @@ export const worldVenueMapModule: PluginModule = {
       paneId: WORLD_VENUE_MAP_PANE_ID,
       label: "World Map",
       description: "A world map with trading venues and their hours; ships, ports, energy and airports as layers.",
-      keywords: ["world", "map", "globe", "countries", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "vessels", "ports", "chokepoints", "pipelines", "airports", "energy", "layers"],
+      keywords: ["world", "map", "globe", "countries", "venue", "venues", "exchange", "mic", "market hours", "open markets", "ships", "ship", "vessels", "vessel", "shipping", "ais", "ports", "port", "chokepoints", "pipelines", "airports", "energy", "layers"],
       shortcut: {
         prefix: "MAP",
         argPlaceholder: "layers",

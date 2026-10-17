@@ -27,6 +27,7 @@ import {
   parseAlertShortcutValues,
 } from "./command";
 import { POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
+import { alertHistoryLockNote, alertsHeadless } from "./headless";
 import { AlertsPane } from "./pane";
 import { alertsCliCommand } from "./cli";
 import {
@@ -317,6 +318,7 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerPane({
       id: "alerts",
       reportFreshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
+      reportLockNote: alertHistoryLockNote,
       name: "Alerts",
       icon: "A",
       component: AlertsPane,
@@ -349,6 +351,7 @@ export const alertsPlugin: GloomPlugin = {
       description: "Price, market and filing event alerts",
       keywords: ["alerts", "price", "trigger", "alarm", "watch", "notify"],
       shortcut: { prefix: "ALRT" },
+      headless: alertsHeadless,
     });
   },
 

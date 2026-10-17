@@ -21,6 +21,7 @@ import {
   toggleEventAlert,
   type EventAlertRule,
 } from "./events";
+import { ruleState, ruleTarget } from "./event-rows";
 import { relativeTime } from "./format";
 import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
@@ -28,22 +29,9 @@ import { useAsyncResource } from "../../../public/react";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { newYorkToday } from "../earnings/board-model";
-import { readScheduledRule, rearmScheduledAlert, scheduledAlertStatus } from "./scheduled";
+import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
 import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
-
-/** Earnings and macro event rules name the event day they wait for; the rest name what they follow. */
-function ruleTarget(rule: EventAlertRule): string {
-  const target = eventAlertTarget(rule);
-  if (!readScheduledRule(rule)) return target;
-  return `${target} · ${rule.eventDate ?? "date not known yet"}`;
-}
-
-function ruleState(rule: EventAlertRule, today: string): "Active" | "Paused" | "Alerted" {
-  const scheduled = readScheduledRule(rule);
-  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today) : rule.status;
-  return status === "paused" ? "Paused" : status === "triggered" ? "Alerted" : "Active";
-}
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },

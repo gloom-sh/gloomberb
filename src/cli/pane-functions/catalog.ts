@@ -603,6 +603,41 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   return lines.join("\n");
 }
 
+/** The functions a search lists, one row each. */
+function renderMatchesTable(shown: readonly PaneCatalogEntry[]): string {
+  return renderTable(
+    [
+      { header: "Function", shrink: false },
+      { header: "Name", maxWidth: 20 },
+      { header: "Argument", maxWidth: 14 },
+      { header: "Report" },
+      { header: "Description" },
+    ],
+    shown.map((entry) => [
+      cliStyles.command(entry.token),
+      entry.label,
+      argumentHint(entry),
+      readinessCell(entry.capability.reportReadiness),
+      entry.description,
+    ]),
+  );
+}
+
+/** The most other functions an exact code's page names. */
+const ALSO_MATCHES_LIMIT = 5;
+
+/**
+ * The other functions that list a query as one of their own keywords, when the
+ * query is also a function's code: `catalog port` opens PORT and still names
+ * MAP, whose ports layer answers to the same word.
+ */
+function renderAlsoMatches(exact: PaneCatalogEntry, entries: readonly PaneCatalogEntry[], query: string): string {
+  const others = entries
+    .filter((entry) => entry !== exact && [...entry.keywords, ...entry.capability.aliases].some((keyword) => keyword.toLowerCase() === query))
+    .slice(0, ALSO_MATCHES_LIMIT);
+  return others.length === 0 ? "" : [renderSection(`Also matches "${query}"`), renderMatchesTable(others)].join("\n");
+}
+
 /**
  * `fn <function> --help` and `shot <function> --help`: the function's own
  * card, as `catalog <function>` prints it, then where the options every
@@ -652,7 +687,7 @@ export function renderPaneCatalogReport(
       ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
   const withSetting = (text: string) => [text, setting ?? ""].filter(Boolean).join("\n\n");
-  if (exact) return withSetting(renderCatalogEntry(exact));
+  if (exact) return withSetting([renderCatalogEntry(exact), renderAlsoMatches(exact, entries, query)].filter(Boolean).join("\n\n"));
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const terms = renderCatalogGlossary(glossary, width);
@@ -678,22 +713,7 @@ export function renderPaneCatalogReport(
     : `Add --all to list all ${entries.length}.`;
   const lines = [
     `${renderSection(title)} ${cliStyles.muted(`(${count})`)}`,
-    renderTable(
-      [
-        { header: "Function", shrink: false },
-        { header: "Name", maxWidth: 20 },
-        { header: "Argument", maxWidth: 14 },
-        { header: "Report" },
-        { header: "Description" },
-      ],
-      shown.map((entry) => [
-        cliStyles.command(entry.token),
-        entry.label,
-        argumentHint(entry),
-        readinessCell(entry.capability.reportReadiness),
-        entry.description,
-      ]),
-    ),
+    renderMatchesTable(shown),
     "",
     note([
       loose ? "No function carries every word of the query; these are the closest." : "",

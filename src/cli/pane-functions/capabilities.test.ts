@@ -295,6 +295,21 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("a function's code page names the other functions that list the same word, and AIS finds the map in any case", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      // `catalog port` is PORT's page; MAP lists ports and vessels, so it is named under it.
+      const page = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "port"), { query: "port", limit: 10, botSafeOnly: false });
+      expect(page).toContain("gloomberb fn PORT <portfolio-id>");
+      expect(page).toMatch(/Also matches "port"[\s\S]*\nMAP\s/);
+      for (const query of ["ais", "AIS", "shipping"]) expect(filterPaneCatalogEntries(entries, query).map(({ token }) => token), query).toContain("MAP");
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("crack spread and refining margin searches find G alone, with the per-barrel crack presets it charts", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const plugins = getLoadablePlugins();
