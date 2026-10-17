@@ -114,6 +114,12 @@ interface InsiderSignalsFilters {
 }
 
 export interface InsiderSignalsPayload {
+  /**
+   * The company asked for (`ticker`): `rows` is its row alone, with every
+   * insider, whatever its size. Absent for the ranking, and from a server
+   * that predates the question, which answers the ranking instead.
+   */
+  ticker?: string;
   /** Left out by servers that predate selling: buying. */
   side?: InsiderSignalSide;
   /** Days of trading each row covers, ending `through`. */
@@ -148,4 +154,6 @@ export interface CloudInsiderSignalsParams {
   /** "new" on the buy side, "exited" on the sell side. */
   position?: "new" | "exited";
   cap?: InsiderSignalCap;
+  /** One company instead of the ranking: its row, with every insider. */
+  ticker?: string;
 }

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import {
   DataTableStackView,
   PaneStatusBody,
   QueryBar,
-  usePaneFooter,
   usePaneNoticeFooter,
   usePaneStatusFooter,
   type DataTableCell,
@@ -45,19 +44,33 @@ import {
   insiderSignalsBarFit,
   insiderSignalRowFacts,
   insiderSignalSortValue,
+  insiderViewMode,
   type InsiderSignalColumn,
   type InsiderSignalColumnId,
   type InsiderSignalOnly,
+  type InsiderViewMode,
 } from "./signals-model";
 import { factCell } from "./signals-cells";
-import { InsiderSignalCompanyDetail } from "./signals-detail";
+import type { InsiderViewControl } from "./insiders";
+
+/** A company opened from the ranking: INS on its ticker, in the ranking's stack. */
+export interface InsiderOpenedCompany {
+  symbol: string;
+  /** Opens on Insiders, over the ranking's window, its dollars sorted by the ranking's side. */
+  control: InsiderViewControl;
+  width: number;
+  height: number;
+  focused: boolean;
+  /** A transaction opened in the company: Esc closes it before the company. */
+  onDetailChange: (open: boolean) => void;
+}
 
 interface InsiderSignalsViewProps {
   width: number;
   height: number;
   focused: boolean;
-  /** Opens the company's own INS, its trades as filed, in its own pane. */
-  onOpenIns: (ticker: string) => void;
+  /** The company's INS; the pane's module draws it, as it draws INS on a ticker. */
+  renderCompany: (company: InsiderOpenedCompany) => ReactNode;
 }
 
 /** A ranking with the query it answers, so rows another query left on screen are told from this one's. */
@@ -71,12 +84,12 @@ interface InsiderSignalsAnswer {
  * own shares in the open market lately, ranked, each with why as columns:
  * the lead insider's role, nth trade, size against usual and stake. Filters
  * narrow by role, size, clusters, new positions or whole stakes sold, and
- * market value. Enter or a click opens a company here, as other tables open
- * a row: its figures and its insiders in the same columns, and Back or Esc
- * returns to the same row. `i` opens the company's own INS, its trades as
- * filed, in its own pane, from the table or the opened company.
+ * market value. Enter or a double click opens a company here as INS on its
+ * ticker, on its insiders over the ranking's window, the ranking's side's
+ * dollars first; its trades are one click away. Back or Esc returns to the
+ * same row.
  */
-export function InsiderSignalsView({ width, height, focused, onOpenIns }: InsiderSignalsViewProps) {
+export function InsiderSignalsView({ width, height, focused, renderCompany }: InsiderSignalsViewProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const session = useResearchCloudSession();
@@ -100,8 +113,12 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
   const side = query.side;
   const words = insiderSideWords(side);
   const [selectedTicker, setSelectedTicker] = usePluginPaneState<string | null>("insider:signals:selected", null);
-  // The opened company, by ticker, with the selected row, so a reload or a shared layout lands on it.
+  // The opened company, by ticker, with the selected row, so a reload or a shared layout lands on it,
+  // and what it shows: it opens on its insiders over the ranking's window.
   const [openTicker, setOpenTicker] = usePluginPaneState<string | null>("insider:signals:open", null);
+  const [openView, setOpenView] = usePluginPaneState<InsiderViewMode>("insider:signals:openView", "insiders");
+  const [openWindow, setOpenWindow] = usePluginPaneState<number>("insider:signals:openWindow", DEFAULT_INSIDER_SIGNAL_WINDOW);
+  const [transactionOpen, setTransactionOpen] = useState(false);
   const [sort, setSort] = useState<{ columnId: InsiderSignalColumnId; direction: "asc" | "desc" }>({ columnId: "score", direction: "desc" });
 
   const loader = useCallback(
@@ -126,7 +143,9 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
   }, [answered, query, resource.error]);
   const shown = answered ?? (resource.loading && failedQuery !== query ? resource.data?.resource ?? null : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  const detailOpen = !!openTicker;
+  // An opened company refreshes itself.
+  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !detailOpen });
   // Signing in or out reads the ranking again for the new session.
   const sessionKeyRef = useRef(session.requestKey);
   const reload = resource.reload;
@@ -149,20 +168,29 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
     ));
   }, [rows, sort]);
   const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
+  // The company stays open while the ranking refreshes, ranked or not: it reads its own data.
   const openRow = openTicker ? rows.find((row) => row.ticker === openTicker) ?? null : null;
-  const detailOpen = !!openRow;
-  // A company this query no longer ranks closes, once the query has answered.
-  useEffect(() => {
-    if (openTicker && answered && !answered.payload.rows.some((row) => row.ticker === openTicker)) setOpenTicker(null);
-  }, [answered, openTicker, setOpenTicker]);
-  const selectedRow = sortedRows.find((row) => row.ticker === selectedTicker) ?? sortedRows[0] ?? null;
-  const insTarget = openRow ?? selectedRow;
-  usePaneFooter("insider:signals:ins", () => (insTarget ? {
-    hints: [{ id: "insider-ins", key: "i", label: "ns", title: "Insider transactions (INS)", onPress: () => onOpenIns(insTarget.ticker) }],
-  } : null), [insTarget, onOpenIns]);
+  const openControl = useMemo<InsiderViewControl>(() => ({
+    view: insiderViewMode(openView),
+    setView: setOpenView,
+    window: insiderSignalsQueryFrom({ window: openWindow }).window,
+    setWindow: setOpenWindow,
+    side,
+  }), [openView, openWindow, setOpenView, setOpenWindow, side]);
+  const openCompany = useCallback((ticker: string) => {
+    setSelectedTicker(ticker);
+    setOpenView("insiders");
+    setOpenWindow(query.window);
+    setOpenTicker(ticker);
+  }, [query.window, setOpenTicker, setOpenView, setOpenWindow, setSelectedTicker]);
+  const closeCompany = useCallback(() => {
+    setTransactionOpen(false);
+    setOpenTicker(null);
+  }, [setOpenTicker]);
 
   usePaneStatusFooter({
     registrationId: "insider:signals",
+    enabled: !detailOpen,
     loading: resource.loading,
     error: data ? resource.error : null,
     stale: !!data && !!shown?.stale,
@@ -284,7 +312,10 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
   ];
 
   const queryBar = <QueryBar width={width} filters={filters} />;
-  if (!data) {
+  const company = openTicker
+    ? renderCompany({ symbol: openTicker, control: openControl, width, height, focused, onDetailChange: setTransactionOpen })
+    : null;
+  if (!data && !detailOpen) {
     // Loading, or a failure: the query bar stays above, so another side or filter is one click away.
     return (
       <Box flexDirection="column" width={width} height={height}>
@@ -301,13 +332,12 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
 
   return (
     <DataTableStackView<InsiderSignalRow, InsiderSignalColumn>
-      focused={focused}
+      // Its keys pass to an open transaction first, so Esc closes that before the company.
+      focused={focused && !transactionOpen}
       detailOpen={detailOpen}
-      onBack={() => setOpenTicker(null)}
-      detailTitle={openRow ? insiderSignalDetailTitle(openRow) : undefined}
-      detailContent={openRow
-        ? <InsiderSignalCompanyDetail key={openRow.ticker} row={openRow} side={dataSide} window={data.window} width={width} focused={focused} />
-        : null}
+      onBack={closeCompany}
+      detailTitle={openRow ? insiderSignalDetailTitle(openRow) : openTicker ?? undefined}
+      detailContent={company}
       rootWidth={width}
       rootHeight={height}
       rootBefore={queryBar}
@@ -320,10 +350,7 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
         getId: (row) => row.ticker,
         onChange: (ticker) => setSelectedTicker(ticker),
       }}
-      onActivate={(row) => {
-        setSelectedTicker(row.ticker);
-        setOpenTicker(row.ticker);
-      }}
+      onActivate={(row) => openCompany(row.ticker)}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as InsiderSignalColumnId, {
@@ -332,7 +359,9 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
       renderCell={renderCell}
       selectedTextOverridesCellColor
       showHorizontalScrollbar={false}
-      emptyStateTitle={insiderSignalsEmptyTitle(data.window, dataSide, insiderSignalsFiltered(query))}
+      emptyStateTitle={data
+        ? insiderSignalsEmptyTitle(data.window, dataSide, insiderSignalsFiltered(query))
+        : resource.loading ? "Loading insider activity..." : "Insider activity unavailable."}
     />
   );
 }

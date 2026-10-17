@@ -430,10 +430,13 @@ const DAY_MS = 86_400_000;
  * trading than it says, and so does one before any day has been read whole,
  * or one holding days an outage left unread.
  */
-export function insiderSignalsCoverageNotice(payload: Pick<InsiderSignalsPayload, "window" | "through" | "coverage" | "side">): string | null {
+export function insiderSignalsCoverageNotice(
+  payload: Pick<InsiderSignalsPayload, "window" | "through" | "coverage" | "side">,
+  { subject = "this ranking" }: { subject?: string } = {},
+): string | null {
   const activity = insiderSideWords(payload.side ?? "buy").activity;
   const from = payload.coverage.from;
-  if (!from) return `Form 4 filings are still being read, so this ranking may leave out ${activity}.`;
+  if (!from) return `Form 4 filings are still being read, so ${subject} may leave out ${activity}.`;
   const windowStart = new Date(Date.parse(`${payload.through}T00:00:00Z`) - (payload.window - 1) * DAY_MS).toISOString().slice(0, 10);
   const missingDays = Array.isArray(payload.coverage.missingDays) ? payload.coverage.missingDays : [];
   const missing = missingDays.filter((day) => typeof day === "string" && day >= windowStart && day <= payload.through);
@@ -441,11 +444,11 @@ export function insiderSignalsCoverageNotice(payload: Pick<InsiderSignalsPayload
   const days = (count: number) => `${count} ${count === 1 ? "day" : "days"}`;
   if (from > windowStart) {
     return missing.length
-      ? `Form 4 filings are read from ${day(from)}, and ${days(missing.length)} since ${missing.length === 1 ? "is" : "are"} not read yet, so this ranking may leave out ${activity}.`
+      ? `Form 4 filings are read from ${day(from)}, and ${days(missing.length)} since ${missing.length === 1 ? "is" : "are"} not read yet, so ${subject} may leave out ${activity}.`
       : `Form 4 filings are read from ${day(from)}, so this window leaves out ${activity} before then.`;
   }
-  if (missing.length === 1) return `Form 4 filings for ${day(missing[0]!)} are not read yet, so this ranking may leave out ${activity}.`;
-  if (missing.length > 1) return `Form 4 filings for ${days(missing.length)} in this window are not read yet, so this ranking may leave out ${activity}.`;
+  if (missing.length === 1) return `Form 4 filings for ${day(missing[0]!)} are not read yet, so ${subject} may leave out ${activity}.`;
+  if (missing.length > 1) return `Form 4 filings for ${days(missing.length)} in this window are not read yet, so ${subject} may leave out ${activity}.`;
   return null;
 }
 
@@ -471,142 +474,142 @@ export function insiderSignalDetailTitle(row: Pick<InsiderSignalRow, "ticker" | 
   return `${row.ticker} \u00b7 ${row.company}`;
 }
 
-/** One figure of the opened company, for its `StatGrid` and the CLI's line over its insiders. */
-export interface InsiderSignalFigure {
-  id: string;
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "positive" | "negative";
+/** INS on a ticker shows its trades as filed, or its insiders in the ranking's terms. */
+export type InsiderViewMode = "trades" | "insiders";
+
+export const INSIDER_VIEW_OPTIONS: Array<{ value: InsiderViewMode; label: string }> = [
+  { value: "trades", label: "Trades" },
+  { value: "insiders", label: "Insiders" },
+];
+
+export function insiderViewMode(value: unknown): InsiderViewMode {
+  return value === "insiders" ? "insiders" : "trades";
 }
 
 /**
- * The opened company's figures, each said once: its score, the dollars and
- * shares, how many insiders on how many days, the window and the first
- * trade in it, the last trade and when it was filed, and the market value where
- * the server stores it. What each insider did is the table under them.
+ * One insider of a company over the window, in the ranking's terms: their
+ * nth trade, size against usual and stake, and the dollars on the side
+ * their trades net to. Each insider is on one side: one who bought and sold
+ * is counted on the net, as the ranking counts them, with the both-ways mark.
  */
-export function insiderSignalFigures(row: InsiderSignalRow, window: number, side: InsiderSignalSide): InsiderSignalFigure[] {
-  const words = insiderSideWords(side);
-  const days = `${row.buys} ${side === "sell" ? "sale" : "buy"} ${row.buys === 1 ? "day" : "days"}`;
-  return [
-    { id: "score", label: "Score", value: String(row.score) },
-    {
-      id: "value",
-      label: words.traded,
-      value: formatSignalValue(row.value),
-      detail: `${formatCompact(Math.round(row.shares))} shares`,
-      tone: side === "sell" ? "negative" : "positive",
-    },
-    { id: "insiders", label: words.insiders, value: String(row.insiders), detail: days },
-    { id: "window", label: "Window", value: `${window}D`, detail: `first ${side === "sell" ? "sale" : "buy"} ${formatSignalDay(row.firstBuy)}` },
-    { id: "last", label: words.last, value: formatSignalDay(row.lastBuy), detail: `filed ${formatSignalDay(row.lastFiled)}` },
-    ...(row.marketCap != null && row.marketCap > 0 ? [{
-      id: "cap",
-      label: "Market cap",
-      value: formatSignalValue(row.marketCap),
-      detail: `${formatSharePct(row.value / row.marketCap)} ${words.traded.toLowerCase()}`,
-    }] : []),
-  ];
-}
-
-/** A part of a company, in percent: 0.42%, 3.1%, 12%, and <0.01% for less than rounds to. */
-function formatSharePct(ratio: number): string {
-  const pct = ratio * 100;
-  if (pct < 0.01) return "<0.01%";
-  return `${pct < 1 ? pct.toFixed(2) : pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`;
-}
-
-/** One line of the opened company's insiders: an insider, in the ranking's columns. */
-export interface InsiderSignalDetailLine {
+export interface InsiderActivityLine {
+  /** Which way the insider's trades net. */
+  side: InsiderSignalSide;
   buyer: InsiderSignalBuyer;
+  /** First name first. */
   name: string;
   role: InsiderSignalRole;
   nth: InsiderSignalFact;
   usual: InsiderSignalFact;
   stake: InsiderSignalFact;
-  value: string;
+  /** Dollars bought, net; null for a seller. */
+  bought: number | null;
+  /** Dollars sold, net; null for a buyer. */
+  sold: number | null;
+  /** The last trade day, as the INS table writes it. */
   last: string;
 }
 
-export function insiderSignalDetailLines(row: InsiderSignalRow): InsiderSignalDetailLine[] {
-  return row.buyers.map((buyer) => ({
+/** A company's insiders on both sides, largest first whichever way: the order a sort falls back on. */
+export function insiderActivityLines(activity: Record<InsiderSignalSide, Pick<InsiderSignalsPayload, "rows">>): InsiderActivityLine[] {
+  const lines = (side: InsiderSignalSide) => activity[side].rows.flatMap((row) => row.buyers.map((buyer): InsiderActivityLine => ({
+    side,
     buyer,
     name: formatInsiderName(buyer.name),
     role: buyer.role,
     nth: insiderNthFact(buyer, row),
     usual: insiderUsualFact(buyer, row),
     stake: insiderStakeFact(buyer),
-    value: formatSignalValue(buyer.value),
+    bought: side === "buy" ? buyer.value : null,
+    sold: side === "sell" ? buyer.value : null,
     last: formatSignalDay(buyer.lastBuy),
-  }));
+  })));
+  return [...lines("buy"), ...lines("sell")].sort((a, b) => b.buyer.value - a.buyer.value);
 }
 
-export type InsiderSignalDetailColumnId = "name" | "role" | "nth" | "usual" | "stake" | "value" | "lastBuy";
-export type InsiderSignalDetailColumn = DataTableColumn & { id: InsiderSignalDetailColumnId };
+/** One insider line's key: a name is on one side at a time. */
+export function insiderActivityKey(line: Pick<InsiderActivityLine, "side" | "buyer">): string {
+  return `${line.side}:${line.buyer.name}`;
+}
+
+export function insiderActivityEmptyTitle(window: number): string {
+  return `No open-market insider buying or selling in the last ${window} days.`;
+}
+
+export type InsiderActivityColumnId = "name" | "role" | "nth" | "usual" | "stake" | "bought" | "sold" | "last";
+export type InsiderActivityColumn = DataTableColumn & { id: InsiderActivityColumnId };
+
+/** The columns a narrow Insiders view gives up, first to last: the ranking's, then the role, so a phone keeps the dollars whole. */
+const ACTIVITY_DROPS = ["usual", "nth", "last", "role"] as const;
 
 /**
- * The opened company's insider columns, the ranking's in the same order:
- * name, role, nth trade, size against usual, stake, dollars and last trade
- * day. The name takes the room left; below 12 cells the size against usual
- * goes, then the nth trade, then the last trade day, as the ranking drops
- * them, so a phone keeps the dollars whole.
+ * A company's insider columns, the ranking's in its order: name, role, nth
+ * trade, size against usual, stake, dollars bought and sold, and the last
+ * trade day. The name takes the room left; below 12 cells the size against
+ * usual goes, then the nth trade and the last day, as the ranking drops
+ * them, then the role.
  */
-export function buildInsiderSignalDetailColumns(
-  width: number,
-  lines: readonly InsiderSignalDetailLine[],
-  { side = "buy" }: { side?: InsiderSignalSide } = {},
-): InsiderSignalDetailColumn[] {
-  const words = insiderSideWords(side);
+export function buildInsiderActivityColumns(width: number, lines: readonly InsiderActivityLine[]): InsiderActivityColumn[] {
+  const dollars = (pick: (line: InsiderActivityLine) => number | null) =>
+    lines.flatMap((line) => { const value = pick(line); return value == null ? [] : [formatSignalValue(value)]; });
   const widths = {
     role: fitWidth(lines.map((line) => line.role), "Role", 16),
     nth: fitWidth(lines.map((line) => line.nth.text), "Nth", 6),
     usual: fitWidth(lines.map((line) => line.usual.text), "Vs Usual", 6),
     stake: fitWidth(lines.map((line) => line.stake.text), "Stake", 10),
-    value: fitWidth(lines.map((line) => line.value), words.traded, 8),
-    lastBuy: fitWidth(lines.map((line) => line.last), words.last, 8),
+    bought: fitWidth(dollars((line) => line.bought), "Bought", 8),
+    sold: fitWidth(dollars((line) => line.sold), "Sold", 8),
+    last: fitWidth(lines.map((line) => line.last), "Last", 8),
   };
-  const show = { usual: true, nth: true, lastBuy: true };
+  const show = { usual: true, nth: true, last: true, role: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
   const room = () => available - [
-    widths.role,
+    show.role ? widths.role : 0,
     show.nth ? widths.nth : 0,
     show.usual ? widths.usual : 0,
     widths.stake,
-    widths.value,
-    show.lastBuy ? widths.lastBuy : 0,
+    widths.bought,
+    widths.sold,
+    show.last ? widths.last : 0,
   ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
-  for (const drop of ["usual", "nth", "lastBuy"] as const) {
+  for (const drop of ACTIVITY_DROPS) {
     if (room() >= COMPANY_MIN) break;
     show[drop] = false;
   }
   return [
     { id: "name", label: "Insider", width: Math.max(COMPANY_MIN, room()), align: "left", flexGrow: 1 },
-    { id: "role", label: "Role", width: widths.role, align: "left" },
+    ...(show.role ? [{ id: "role" as const, label: "Role", width: widths.role, align: "left" as const }] : []),
     ...(show.nth ? [{ id: "nth" as const, label: "Nth", width: widths.nth, align: "right" as const }] : []),
     ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
     { id: "stake", label: "Stake", width: widths.stake, align: "right" },
-    { id: "value", label: words.traded, width: widths.value, align: "right" },
-    ...(show.lastBuy ? [{ id: "lastBuy" as const, label: words.last, width: widths.lastBuy, align: "right" as const }] : []),
+    { id: "bought", label: "Bought", width: widths.bought, align: "right" },
+    { id: "sold", label: "Sold", width: widths.sold, align: "right" },
+    ...(show.last ? [{ id: "last" as const, label: "Last", width: widths.last, align: "right" as const }] : []),
   ];
 }
 
-/** What an insider column sorts by, as the ranking's columns do. */
-export function insiderSignalDetailSortValue(line: InsiderSignalDetailLine, columnId: InsiderSignalDetailColumnId): SortComparableValue {
+/** What an insider column sorts by, as the ranking's columns do; a seller has no Bought and a buyer no Sold, which sort last. */
+export function insiderActivitySortValue(line: InsiderActivityLine, columnId: InsiderActivityColumnId): SortComparableValue {
   switch (columnId) {
     case "name": return line.name.toLocaleLowerCase("en-US");
     case "role": return line.role;
     case "nth": return line.nth.sort;
     case "usual": return line.usual.sort;
     case "stake": return line.stake.sort;
-    case "value": return line.buyer.value;
-    case "lastBuy": return line.buyer.lastBuy;
+    case "bought": return line.bought;
+    case "sold": return line.sold;
+    case "last": return line.buyer.lastBuy;
   }
 }
 
 /** Names and roles sort A to Z first, figures and dates largest first. */
-export function insiderSignalDetailFirstDirection(columnId: InsiderSignalDetailColumnId): "asc" | "desc" {
+export function insiderActivityFirstDirection(columnId: InsiderActivityColumnId): "asc" | "desc" {
   return columnId === "name" || columnId === "role" ? "asc" : "desc";
+}
+
+/** The side's dollars first: buying reads the largest buyers first, selling the largest sellers. */
+export function insiderActivityDefaultSort(side: InsiderSignalSide): { columnId: InsiderActivityColumnId; direction: "desc" } {
+  return { columnId: side === "sell" ? "sold" : "bought", direction: "desc" };
 }
 
 /** Cells left and right of the columns, and between two of them. */

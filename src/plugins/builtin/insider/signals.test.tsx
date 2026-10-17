@@ -5,6 +5,7 @@ import { act, useMemo, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CloudInsiderSignalsParams, InsiderSignalRow, InsiderSignalsPayload } from "../../../api-client/insider-signals";
+import type { DataProvider } from "../../../types/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -12,16 +13,18 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { findPaneInstance } from "../../../types/config";
+import { compareSortValues } from "../../../utils/sort-values";
 import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
 import {
+  buildInsiderActivityColumns,
   buildInsiderSignalColumns,
-  buildInsiderSignalDetailColumns,
   formatInsiderStake,
   formatInsiderUsual,
-  insiderSignalDetailLines,
+  insiderActivityDefaultSort,
+  insiderActivityLines,
+  insiderActivitySortValue,
   insiderSignalDetailTitle,
-  insiderSignalFigures,
   insiderSignalRowFacts,
   insiderSignalSortValue,
   insiderSignalsCoverageNotice,
@@ -59,15 +62,13 @@ function Harness({ width, height }: { width: number; height: number }) {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-test"), { instanceId: PANE_ID, paneId: "insider", title: "Insider Activity" });
   const [current, dispatch] = useReducer(appReducer, config, (initialConfig) => {
     const initial = createInitialState(initialConfig);
-    initial.tickers = new Map(ROWS.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)]));
+    initial.tickers = new Map([...ROWS, ...SELLING].map((row) => [row.ticker, createTestTicker(row.ticker, row.company)]));
     initial.focusedPaneId = PANE_ID;
     initial.paneState[PANE_ID] = { pluginState: { insider: seed } };
     return initial;
   });
   state = current;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime({
-    createPaneFromTemplate: async (templateId, options) => { created.push({ templateId, symbol: options?.symbol ?? null }); },
-  }), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
   return <TestPaneFrame state={current} dispatch={dispatch} paneId={PANE_ID} pluginId="insider" runtime={runtime} width={width} height={height} footerKeys>
     {(body) => <InsiderPane paneId={PANE_ID} paneType="insider" focused {...body} />}
   </TestPaneFrame>;
@@ -77,32 +78,45 @@ const pane = () => findPaneInstance(state!.config.layout, PANE_ID)!;
 async function settle() {
   for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await tui.setup().renderOnce(); });
 }
-async function mount(load: (window: number, params: CloudInsiderSignalsParams) => Promise<InsiderSignalsPayload>, width = 140, height = 20) {
+/**
+ * A company opened from the ranking asks the server for itself (`ticker`),
+ * on each side: its row, as the ranking holds it, with every insider.
+ */
+let companies: () => Record<"buy" | "sell", InsiderSignalRow[]> = () => ({ buy: BUYING, sell: SELLING });
+function companyAnswer(window: number, params: CloudInsiderSignalsParams): InsiderSignalsPayload {
+  const side = params.side ?? "buy";
+  return { ...payload(window, companies()[side].filter((row) => row.ticker === params.ticker)), side, ticker: params.ticker };
+}
+
+async function mount(
+  load: (window: number, params: CloudInsiderSignalsParams) => Promise<InsiderSignalsPayload>,
+  width = 140,
+  height = 20,
+  filings: Partial<DataProvider> = { getSecFilings: async () => [] },
+) {
   const windows: number[] = [];
   asked.length = 0;
   spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => {
     windows.push(params.window ?? 30);
     asked.push(params);
-    return load(params.window ?? 30, params);
+    return params.ticker ? companyAnswer(params.window ?? 30, params) : load(params.window ?? 30, params);
   });
-  // The company opened from the ranking reads its own filings.
-  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
+  // The company opened from the ranking reads its own filings for its trades.
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider(filings)));
   await act(async () => { await tui.render(<Harness width={width} height={height} />, { width, height }); });
   await settle();
   return windows;
 }
 const asked: CloudInsiderSignalsParams[] = [];
-/** Panes the view asked the app to open: INS for a company, from `i`. */
-const created: Array<{ templateId: string; symbol: string | null }> = [];
 
 afterEach(() => {
   insiderSignalsCache.reset();
   setSharedMarketDataCoordinator(null);
   seed = {};
-  created.length = 0;
+  companies = () => ({ buy: BUYING, sell: SELLING });
 });
 
-test("ranks companies; Enter opens one in the pane's detail, Esc comes back to the same row, and i opens its INS", async () => {
+test("ranks companies; Enter opens the company's own INS here, on its insiders, and Esc comes back to the same row", async () => {
   await mount(async (window) => payload(window));
   let frame = tui.frame();
   // A server from before the structured facts: the lead's role and how many others, the rest dashes.
@@ -110,47 +124,78 @@ test("ranks companies; Enter opens one in the pane's detail, Esc comes back to t
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+--\s+--\s+--\s+3\s+\$1\.15M/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610k/);
   expect(frame).toContain("as of Oct 14, 2026");
-  // Footers follow the conventions: no generic key hints for Enter or Esc.
+  // Footers follow the conventions: no generic key hints for Enter or Esc, and no second way into the same INS.
   expect(frame).not.toContain("[Enter]");
-
-  // i opens the selected company's own INS, in a pane of its own; the ranking stays.
-  expect(frame).toContain("[i]ns");
+  expect(frame).not.toContain("[i]ns");
 
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  // The detail: the company named once, in the stack's title, then its figures and insiders.
+  // INS on the company, in the ranking's stack: named once, on its insiders over the ranking's window.
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
-  expect(frame).toMatch(/Score\s+72/);
-  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT/);
+  expect(frame).toMatch(/Window\s+7D\s+30D\s+90D.*Trades\s+Insiders/);
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
+  // The same facts the ranking gives its lead insider: an older server's from the why facts.
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k\s+--\s+10\/14\/26/);
   expect(frame).not.toContain("Northwind Biologics");
+  expect(asked.filter((params) => params.ticker)).toEqual([{ window: 30, ticker: "CTSO" }, { side: "sell", window: 30, ticker: "CTSO" }]);
   // The pane stays the ranking: no ticker, no new title.
   expect(pane().binding?.kind ?? "none").toBe("none");
   expect(pane().title ?? "Insider Activity").toBe("Insider Activity");
-  await tui.emitKeypress({ name: "i", sequence: "i" }, { trackPropagation: true });
-  await settle();
-  expect(created).toEqual([{ templateId: "insider-pane", symbol: "CTSO" }]);
 
   await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
   await settle();
   frame = tui.frame();
   expect(frame).toContain("Northwind Biologics");
   expect(frame).not.toContain("\u2190 Back");
-  // Back lands on the row it opened: Enter opens CTSO again, and i from the table opens the selected row's INS.
+  // Back lands on the row it opened: Enter opens CTSO again.
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
   expect(tui.frame()).toContain("\u2190 Back CTSO");
-  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
-  await settle();
-  await tui.emitKeypress({ name: "up", sequence: "\u001b[A" }, { trackPropagation: true });
-  await tui.emitKeypress({ name: "i", sequence: "i" }, { trackPropagation: true });
-  await settle();
-  expect(created.at(-1)).toEqual({ templateId: "insider-pane", symbol: "NWBI" });
   // The opened company is pane state: a reload lands on it.
+  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:open": "CTSO", "insider:signals:selected": "CTSO" });
+});
+
+/** A Form 4 of one open-market purchase, as EDGAR files it. */
+function form4(owner: string, shares: number) {
+  return `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${owner.length}</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Common Stock</value></securityTitle><transactionDate><value>2026-10-14</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>`;
+}
+
+test("Enter on an insider shows their trades as filed; Esc closes an open trade before the company", async () => {
+  const filings = ["a", "b"].map((accessionNumber) => ({ accessionNumber, form: "4", filingDate: new Date(), cik: "999", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
+  await mount(sided, 140, 24, {
+    getSecFilings: async () => filings,
+    getSecFilingContent: async (filing) => filing.accessionNumber === "a" ? form4("RIVERA ANA", 4_000) : form4("JONES BOB", 9_000),
+  });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:open": "NWBI", "insider:signals:selected": "NWBI" });
+  expect(tui.frame()).toContain("\u2190 Back NWBI \u00b7 Northwind Biologics Inc");
+  // The largest buyer first: the CEO. Enter shows her trades, the Insider filter set to her.
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  let frame = tui.frame();
+  expect(frame).toMatch(/Insider\s+Ana Rivera/);
+  expect(frame).toMatch(/Ana Rivera\s+BUY\s+4k\s+\$10\.00\s+\$40k/);
+  expect(frame).not.toContain("$90k");
+  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:openView": "trades", "insider:nameFilter:NWBI": "Rivera Ana" });
+
+  // A trade opens in the company's own stack, under the company's.
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  frame = tui.frame();
+  expect(frame.match(/\u2190 Back/g)?.length).toBe(2);
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+  await settle();
+  frame = tui.frame();
+  expect(frame.match(/\u2190 Back/g)?.length).toBe(1);
+  expect(frame).toContain("\u2190 Back NWBI");
+  expect(frame).toMatch(/Insider\s+Ana Rivera/);
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+  await settle();
+  frame = tui.frame();
+  expect(frame).not.toContain("\u2190 Back");
+  expect(frame).toContain("Contoso Energy Corp");
 });
 
 test("the window is a query-bar choice and a double click opens a row", async () => {
@@ -340,13 +385,38 @@ test("why reads as columns: the lead insider's role and how many others, their n
     .toEqual(["-100%", "-39%", "-0.4%", "--", "--", "+300%", "4.5x", "6x", "25x", "709x"]);
   expect(formatInsiderStake("NEW", true)).toBe("NEW \u00b1");
 
-  // The detail strip says the same for each insider, largest first.
-  expect(insiderSignalDetailLines(BUYING[0]!).map((line) => [line.name, line.role, line.nth.text, line.usual.text, line.stake.text, line.value]))
-    .toEqual([
-      ["Ana Rivera", "CEO", "1st", "1.4x", "+12%", "$496k"],
-      ["Li Chen", "CFO", "3rd", "2.8x", "+56%", "$354k"],
-      ["Ben Okafor", "Director", "1st", "--", "NEW", "$302.5k"],
-    ]);
+});
+
+test("INS on a ticker lists its insiders on both sides in the ranking's terms: the lead's facts are the ranking's, the largest first", () => {
+  const lines = insiderActivityLines({ buy: { rows: [BUYING[0]!] }, sell: { rows: [SELLING[1]!] } });
+  expect(lines.map((line) => [line.side, line.name, line.role, line.nth.text, line.usual.text, line.stake.text, line.bought, line.sold, line.last])).toEqual([
+    ["sell", "Li Chen", "CFO", "--", "--", "-22% \u00b1", null, 700_000, "10/12/26"],
+    ["buy", "Ana Rivera", "CEO", "1st", "1.4x", "+12%", 496_000, null, "10/1/26"],
+    ["buy", "Li Chen", "CFO", "3rd", "2.8x", "+56%", 354_000, null, "10/9/26"],
+    ["buy", "Ben Okafor", "Director", "1st", "--", "NEW", 302_500, null, "10/14/26"],
+    ["sell", "Ana Rivera", "CEO", "1st", "0.6x", "-4%", null, 200_000, "10/10/26"],
+  ]);
+  // Every ranked row's lead reads the same in the company's insiders, whichever server sent it.
+  for (const [side, row] of [...BUYING.map((row) => ["buy", row] as const), ...SELLING.map((row) => ["sell", row] as const)]) {
+    const line = insiderActivityLines({ buy: { rows: side === "buy" ? [row] : [] }, sell: { rows: side === "sell" ? [row] : [] } })[0]!;
+    const facts = insiderSignalRowFacts(row);
+    expect([line.nth, line.usual, line.stake]).toEqual([facts.nth, facts.usual, facts.stake]);
+  }
+  expect(insiderActivityLines({ buy: { rows: [] }, sell: { rows: [] } })).toEqual([]);
+});
+
+test("the insiders sort by any column: the side's dollars first, the other side's dash last either way", () => {
+  const lines = insiderActivityLines({ buy: { rows: [BUYING[0]!] }, sell: { rows: [SELLING[1]!] } });
+  const sorted = (columnId: Parameters<typeof insiderActivitySortValue>[1], direction: "asc" | "desc") => [...lines]
+    .sort((a, b) => compareSortValues(insiderActivitySortValue(a, columnId), insiderActivitySortValue(b, columnId), direction))
+    .map((line) => `${line.side}:${line.name}`);
+  expect(insiderActivityDefaultSort("buy")).toEqual({ columnId: "bought", direction: "desc" });
+  expect(insiderActivityDefaultSort("sell")).toEqual({ columnId: "sold", direction: "desc" });
+  expect(sorted("bought", "desc")).toEqual(["buy:Ana Rivera", "buy:Li Chen", "buy:Ben Okafor", "sell:Li Chen", "sell:Ana Rivera"]);
+  expect(sorted("sold", "desc")).toEqual(["sell:Li Chen", "sell:Ana Rivera", "buy:Ana Rivera", "buy:Li Chen", "buy:Ben Okafor"]);
+  // NEW above any change; a holding's change by how far it moved, either way.
+  expect(sorted("stake", "desc")).toEqual(["buy:Ben Okafor", "buy:Li Chen", "sell:Li Chen", "buy:Ana Rivera", "sell:Ana Rivera"]);
+  expect(sorted("name", "asc")).toEqual(["buy:Ana Rivera", "sell:Ana Rivera", "buy:Ben Okafor", "sell:Li Chen", "buy:Li Chen"]);
 });
 
 test("every column sorts: NEW above any raise, EXITED as a whole stake, the dash last either way, the role by its count", () => {
@@ -372,14 +442,11 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
   frame = tui.frame();
-  // Each figure once: the score, dollars and shares, insiders and days, the window, the last trade and its filing.
-  expect(frame).toMatch(/Score\s+78\s+Bought\s+\$1\.15M\s+10k shares\s+Buyers\s+3\s+2 buy days/);
-  expect(frame).toMatch(/Window\s+30D\s+first buy 10\/1\/26\s+Last Buy\s+10\/14\/26\s+filed 10\/14\/26/);
-  // Its insiders in the ranking's columns, largest first.
-  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+LAST BUY/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496k\s+10\/1\/26/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+10\/9\/26/);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+10\/14\/26/);
+  // Its insiders in the ranking's columns, the buyers' dollars first.
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496k\s+--\s+10\/1\/26/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+--\s+10\/9\/26/);
+  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+--\s+10\/14\/26/);
   // The headers sort, as the ranking's do: stake largest first puts NEW on top.
   await tui.clickFrameText("STAKE");
   await settle();
@@ -405,11 +472,10 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   await settle();
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back WWIM \u00b7 Wide World Importers");
-  expect(frame).toMatch(/Sold\s+\$900k/);
-  expect(frame).toMatch(/Sellers\s+2/);
-  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+SOLD ▼\s+LAST SALE/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+\$700k\s+10\/12\/26/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+\$200k\s+10\/10\/26/);
+  // Opened from Selling: the sellers' dollars first.
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT\s+SOLD ▼\s+LAST/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+--\s+\$700k\s+10\/12\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+--\s+\$200k\s+10\/10\/26/);
 });
 
 test("the filters narrow the request, and an empty answer says it is the filters", async () => {
@@ -444,68 +510,73 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   let frame = tui.frame();
   expect(frame).toMatch(/TICKER\s+COMPANY\s+SCORE ▼\s+ROLE\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
   expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
-  // The opened company keeps every column while the names fit, its figures two to a row.
+  // The opened company keeps every column while the names fit.
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
-  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+LAST BUY/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k/);
-  expect(frame).toContain("[i]ns");
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k\s+--\s+10\/14\/26/);
 });
 
-test("an opened company's columns drop the size against usual, then the nth trade, then the last day, as the ranking's do", () => {
-  const lines = insiderSignalDetailLines(BUYING[0]!);
-  const ids = (width: number) => buildInsiderSignalDetailColumns(width, lines).map((column) => column.id);
-  expect(ids(80)).toEqual(["name", "role", "nth", "usual", "stake", "value", "lastBuy"]);
-  expect(ids(64)).toEqual(["name", "role", "nth", "stake", "value", "lastBuy"]);
-  expect(ids(52)).toEqual(["name", "role", "stake", "value", "lastBuy"]);
-  // A 390 px phone, about 48 cells: the dollars stay whole and the last day goes.
-  expect(ids(44)).toEqual(["name", "role", "stake", "value"]);
-  expect(buildInsiderSignalDetailColumns(140, lines, { side: "sell" }).map((column) => column.label)).toEqual([
-    "Insider", "Role", "Nth", "Vs Usual", "Stake", "Sold", "Last Sale",
+test("the insiders' columns drop the size against usual, then the nth trade and the last day, as the ranking's do, then the role", () => {
+  const lines = insiderActivityLines({ buy: { rows: [BUYING[0]!] }, sell: { rows: [SELLING[1]!] } });
+  const ids = (width: number) => buildInsiderActivityColumns(width, lines).map((column) => column.id);
+  // 80 cells, the terminal's 80 columns and the desktop at 640 px: every column.
+  expect(ids(80)).toEqual(["name", "role", "nth", "usual", "stake", "bought", "sold", "last"]);
+  expect(ids(72)).toEqual(["name", "role", "nth", "stake", "bought", "sold", "last"]);
+  expect(ids(60)).toEqual(["name", "role", "stake", "bought", "sold", "last"]);
+  expect(ids(52)).toEqual(["name", "role", "stake", "bought", "sold"]);
+  // A 390 px phone, about 44 cells: both sides' dollars stay whole.
+  expect(ids(44)).toEqual(["name", "stake", "bought", "sold"]);
+  expect(buildInsiderActivityColumns(100, lines).map((column) => [column.label, column.align])).toEqual([
+    ["Insider", "left"], ["Role", "left"], ["Nth", "right"], ["Vs Usual", "right"], ["Stake", "right"], ["Bought", "right"], ["Sold", "right"], ["Last", "right"],
   ]);
-  // A company with a market value says what part of it traded; a ranking that keeps the largest of more insiders says so.
-  const capped = { ...BUYING[0]!, marketCap: 230_000_000, insiders: 14 };
-  expect(insiderSignalFigures(capped, 30, "buy").map((figure) => [figure.label, figure.value, figure.detail ?? ""])).toEqual([
-    ["Score", "78", ""],
-    ["Bought", "$1.15M", "10k shares"],
-    ["Buyers", "14", "2 buy days"],
-    ["Window", "30D", "first buy 10/1/26"],
-    ["Last Buy", "10/14/26", "filed 10/14/26"],
-    ["Market cap", "$230M", "0.50% bought"],
-  ]);
-  // A part too small to round to a hundredth of a percent says so, never 0.00%.
-  expect(insiderSignalFigures({ ...capped, marketCap: 13_530_000_000, value: 656_500 }, 30, "buy").at(-1)?.detail).toBe("<0.01% bought");
-  expect(insiderSignalDetailTitle(capped)).toBe("NWBI \u00b7 Northwind Biologics Inc");
+  expect(buildInsiderActivityColumns(100, lines)[0]).toMatchObject({ flexGrow: 1 });
+  expect(insiderSignalDetailTitle(BUYING[0]!)).toBe("NWBI \u00b7 Northwind Biologics Inc");
 });
 
-test("an opened company comes back opened, and closes once the ranking answers without it", async () => {
+test("an opened company comes back opened, and stays open when a refreshed ranking no longer has it", async () => {
   seed = { "insider:signals:open": "CTSO", "insider:signals:selected": "CTSO" };
   await mount(async (window) => payload(window), 140, 24);
   expect(tui.frame()).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
   insiderSignalsCache.reset();
 
-  // A shared layout, or a refresh, whose ranking no longer has it: the table, on the first row.
+  // A shared layout, or a refresh, whose ranking no longer has it: the company reads its own answer.
   seed = { "insider:signals:open": "CTSO", "insider:signals:selected": "CTSO" };
   await mount(async (window) => payload(window, [ROWS[0]!, ROWS[2]!]), 140, 24);
-  expect(tui.frame()).toContain("Fabrikam Bancorp");
-  expect(tui.frame()).not.toContain("\u2190 Back");
-  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:open": null });
-});
-
-test("a ranking that keeps the largest of more insiders says so under the opened company", async () => {
-  await mount(async (window) => payload(window, [{ ...BUYING[0]!, insiders: 14 }]), 140, 24);
-  await act(async () => { tui.setup().mockInput.pressEnter(); });
-  await settle();
-  // The notice sits behind the footer's mark, as the coverage notices do.
-  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+  let frame = tui.frame();
+  expect(frame).toContain("\u2190 Back CTSO");
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th/);
   await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
   await settle();
-  expect(tui.frame()).not.toContain("[!]");
+  frame = tui.frame();
+  expect(frame).toContain("Fabrikam Bancorp");
+  expect(frame).not.toContain("\u2190 Back");
 });
 
+test("a company with no open-market trades in the window says so, with its trades a click away", async () => {
+  companies = () => ({ buy: [], sell: [] });
+  await mount(async (window) => payload(window), 140, 24);
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  const frame = tui.frame();
+  expect(frame).toContain("\u2190 Back NWBI");
+  expect(frame).toContain("No open-market insider buying or selling in the last 30 days.");
+  expect(frame).toContain("Trades lists every Form 4 the company's insiders filed.");
+  expect(frame).toMatch(/Trades\s+Insiders/);
+});
+
+test("a server that predates one company's answer says Insiders are not available, never the ranking's rows", async () => {
+  await mount(async (window) => payload(window), 140, 24);
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => payload(params.window ?? 30));
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  const frame = tui.frame();
+  expect(frame).toContain("Insiders are not available yet.");
+  expect(frame).not.toContain("Contoso Energy Corp");
+});
 
 test("a side or filter whose read fails says so in the body with Retry, never under another query's rows", async () => {
   let pending: { resolve: (payload: InsiderSignalsPayload) => void; reject: (error: Error) => void } | null = null;

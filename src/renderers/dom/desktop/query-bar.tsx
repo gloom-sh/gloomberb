@@ -202,7 +202,10 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
   const [stackAttached, setStackAttached] = useState(false);
   useLayoutEffect(() => {
     const bar = rootRef.current;
-    const container = stack?.containerRef.current;
+    // A bar that mounts with its detail runs this before React attaches the
+    // detail's ref, so it finds the detail it sits in by itself.
+    const container = stack?.containerRef.current
+      ?? bar?.closest<HTMLElement>("[data-gloom-role='page-stack-detail']");
     if (!stack || !bar || !container || !container.contains(bar)) return;
     if (Math.abs(bar.getBoundingClientRect().top - container.getBoundingClientRect().top) > 1.5) return;
     const release = stack.attach();

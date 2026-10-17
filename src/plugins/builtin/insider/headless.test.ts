@@ -6,7 +6,7 @@ import { loadParsedInsiderFilings } from "./client";
 import { createInsiderHeadless } from "./headless";
 import type { ParsedInsiderFiling } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
-import type { InsiderSignalsPayload } from "../../../api-client/insider-signals";
+import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import { insiderSignalsCache } from "./signals-client";
 import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
@@ -291,7 +291,7 @@ describe("insider report without a ticker", () => {
   });
 });
 
-test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row; --company opens one", async () => {
+test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row", async () => {
   // Invented company and people.
   const rows: InsiderSignalsPayload["rows"] = [{
     ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Incorporated", score: 78, reasons: ["3 insiders, $1.2M in 14 days"],
@@ -334,21 +334,55 @@ test("the ranking's text fits 120 columns whole, and on 80 the size against usua
     expect(narrow).toContain("  Company Northwind Biologics Incorporated  Nth 12th  Vs Usual 100x+");
     expect(Math.max(...narrow.map((line) => line.length))).toBeLessThanOrEqual(80);
 
-    // --company: one ranked company, as Enter opens it in the pane. Its figures once, then its insiders in the ranking's columns.
-    const openArgs = { ...args, options: { ...args.options, company: "nwbi" } };
-    const opened = await headless.load(openArgs, createTestHeadlessContext({ apiClient }));
-    expect(typeof headless.describe === "function" ? headless.describe(openArgs, opened) : null).toBe("Insider Activity | Buying | NWBI \u00b7 Northwind Biologics Incorporated");
+  } finally {
+    setCliWidthOverride(null);
+    insiderSignalsCache.reset();
+  }
+});
+
+test("fn INS <ticker> --view insiders lists each insider as the ranking counts them, the side's dollars first; trades stays the default", async () => {
+  // Invented company and people, too small to rank: the server answers it by its ticker.
+  const company = (buyers: InsiderSignalsPayload["rows"][number]["buyers"]): InsiderSignalsPayload["rows"][number] => ({
+    ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Inc", score: 9, reasons: ["CEO bought $12k"],
+    insiders: buyers.length, buys: 1, value: 12_000, shares: 1_000, firstBuy: "2026-10-01", lastBuy: "2026-10-14", lastFiled: "2026-10-14",
+    signals: { clusterInsiders: 1, repeatBuys: 1, usualRatio: null, stakeIncreasePct: null, newPosition: false }, buyers,
+  });
+  const asked: CloudInsiderSignalsParams[] = [];
+  let echo = true;
+  const apiClient = { getCloudSecInsiderSignals: async (params: CloudInsiderSignalsParams): Promise<InsiderSignalsPayload> => {
+    asked.push(params);
+    const side = params.side ?? "buy";
+    return {
+      ...(echo ? { ticker: params.ticker } : {}), side, window: params.window ?? 30, through: "2026-10-15", asOf: "2026-10-14",
+      coverage: { from: "2026-08-31", through: "2026-10-14" },
+      rows: side === "buy"
+        ? [company([{ name: "Rivera Ana", role: "CEO", value: 12_000, buys: 1, lastBuy: "2026-10-14", shares: 1_000, stakeChangePct: 3.2, newPosition: false, exited: false, repeatBuys: 4, usualRatio: 2.8 }])]
+        : [company([{ name: "Okafor Ben", role: "Director", value: 1_300_000, buys: 2, lastBuy: "2026-10-09", shares: 40_000, stakeChangePct: -100, newPosition: false, exited: true, repeatBuys: 2, usualRatio: null }])],
+    };
+  } } as never;
+  // The trades are not read for the insiders.
+  const headless = createInsiderHeadless({ loadParsed: async () => { throw new Error("trades read"); } });
+  const args = (options: Record<string, unknown>) => ({ rawArgument: "NWBI", argument: "NWBI", symbols: ["NWBI"], options: { name: "", limit: 20, window: 30, view: "insiders", ...options } });
+  try {
+    const result = await headless.load(args({}), createTestHeadlessContext({ apiClient }));
+    expect(asked).toEqual([{ window: 30, ticker: "NWBI" }, { side: "sell", window: 30, ticker: "NWBI" }]);
+    expect(typeof headless.describe === "function" ? headless.describe(args({}), result) : null).toBe("Insiders | NWBI");
     setCliWidthOverride(120);
-    const company = renderHeadlessPaneText(headless, opened, openArgs, "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
-    expect(company).toContain("Insider     Role        Nth  Vs Usual  Stake   Bought  Last Buy");
-    expect(company).toContain("Ana Rivera  10% owner  12th     100x+    25x    $796k  10/1/26");
-    expect(company).toContain("Ben Okafor  Director    1st        --    NEW  $356.5k  10/14/26");
-    expect(company.join("\n")).toContain("Score 78 \u00b7 Bought $1.15M (95k shares) \u00b7 Buyers 3 (3 buy days) \u00b7 Window 30D (first buy 10/1/26) \u00b7 Last Buy 10/14/26 (filed 10/14/26)");
-    expect(company.join("\n")).toContain("fn INS NWBI lists each trade as filed.");
-    expect(opened.metadata?.company).toMatchObject({ ticker: "NWBI", score: 78 });
-    const missing = await headless.load({ ...args, options: { ...args.options, company: "MSFT" } }, createTestHeadlessContext({ apiClient }));
-    expect(missing.rows).toEqual([]);
-    expect(missing.empty).toBe("MSFT is not among the companies ranked for buying in the last 30 days.");
+    const text = renderHeadlessPaneText(headless, result, args({}), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought   Sold  Last");
+    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k     --  10/14/26");
+    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --  $1.3M  10/9/26");
+    expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.sold])).toEqual([["Ana Rivera", "buy", 12_000, null], ["Ben Okafor", "sell", null, 1_300_000]]);
+    // --side sell: the sellers' dollars first.
+    const selling = await headless.load(args({ side: "sell" }), createTestHeadlessContext({ apiClient }));
+    expect(selling.rows.map((row) => row.insider)).toEqual(["Ben Okafor", "Ana Rivera"]);
+    // Another window is the server's answer for it.
+    await headless.load(args({ window: 90 }), createTestHeadlessContext({ apiClient }));
+    expect(asked.slice(-2)).toEqual([{ window: 90, ticker: "NWBI" }, { side: "sell", window: 90, ticker: "NWBI" }]);
+    // A server that predates the question answers the ranking: no insiders, said so.
+    insiderSignalsCache.reset();
+    echo = false;
+    await expect(headless.load(args({}), createTestHeadlessContext({ apiClient }))).rejects.toThrow("Insiders are not available yet.");
   } finally {
     setCliWidthOverride(null);
     insiderSignalsCache.reset();
@@ -363,7 +397,7 @@ test("the catalog's examples for the ranking run without a ticker and read as th
     ["--side sell --min-value 250000", true],
     ["--role directors --cluster --window 90", true],
     ["--side sell --exited", true],
-    ["--side sell --company ESTC", true],
+    ["--view insiders --window 90", undefined],
   ]);
   const read = (example: string) => {
     const parsed = parsePaneFunctionArgs(["INS", ...example.split(" ")]);
@@ -374,6 +408,8 @@ test("the catalog's examples for the ranking run without a ticker and read as th
   expect(read(examples[0]![0] as string)).toMatchObject({ side: "sell", window: 30, role: "all", minValue: 250_000 });
   expect(read(examples[1]![0] as string)).toMatchObject({ side: "buy", window: 90, role: "directors", cluster: true });
   expect(read(examples[2]![0] as string)).toMatchObject({ side: "sell", exited: true });
-  const parsed = parsePaneFunctionArgs(["INS", ...(examples[3]![0] as string).split(" ")]);
-  expect(normalizeCapabilityOptions(capability, parsed.options, { code: "INS" })).toMatchObject({ side: "sell", company: "ESTC" });
+  // The insiders are a ticker's.
+  const parsed = parsePaneFunctionArgs(["INS", "NWBI", ...(examples[3]![0] as string).split(" ")]);
+  expect(parsed.arg).toBe("NWBI");
+  expect(normalizeCapabilityOptions(capability, parsed.options, { code: "INS" })).toMatchObject({ view: "insiders", window: 90 });
 });

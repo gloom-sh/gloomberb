@@ -87,9 +87,7 @@ test("opens on 60 already-read Form 4 filings without a render per filing", asyn
 
 const RANKING_ID = "insider:ranking:desktop:test";
 let rankingState: AppState | null = null;
-/** Panes the ranking asked the app to open: a company's own INS, from `i`. */
-const createdPanes: Array<{ templateId: string; symbol: string | null }> = [];
-function RankingPane() {
+function RankingPane({ width = 120 }: { width?: number } = {}) {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Activity" });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({
     ...createInitialState(initialConfig),
@@ -97,14 +95,12 @@ function RankingPane() {
     tickers: new Map(RANKING.rows.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)])),
   }));
   rankingState = state;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime({
-    createPaneFromTemplate: async (templateId, options) => { createdPanes.push({ templateId, symbol: options?.symbol ?? null }); },
-  }), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
         <WebDialogHostProvider>
-          <TestPaneFrame state={state} dispatch={dispatch} paneId={RANKING_ID} pluginId="insider" runtime={runtime} width={120} height={24} footerKeys>
+          <TestPaneFrame state={state} dispatch={dispatch} paneId={RANKING_ID} pluginId="insider" runtime={runtime} width={width} height={24} footerKeys>
             {(body) => <PaneContent component={InsiderView} paneId={RANKING_ID} paneType="insider" title="Insider Activity" focused {...body} />}
           </TestPaneFrame>
         </WebDialogHostProvider>
@@ -128,8 +124,11 @@ async function until(done: () => boolean) {
   for (let i = 0; i < 100 && !done(); i++) await act(async () => { await Bun.sleep(20); });
 }
 
-test("the ranking opens a company in its detail by keyboard and by click, Back returns, and i opens its INS", async () => {
-  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => RANKING);
+test("the ranking opens a company's INS in its detail by keyboard and by click, Back in its query bar, and Back returns", async () => {
+  // A company asks for itself: its row on each side.
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => (params.ticker
+    ? { ...RANKING, side: params.side ?? "buy", ticker: params.ticker, rows: params.side === "sell" ? [] : RANKING.rows.filter((row) => row.ticker === params.ticker) }
+    : RANKING));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
   const pane = () => findPaneInstance(rankingState!.config.layout, RANKING_ID)!;
   const press = async (key: string) => {
@@ -162,27 +161,36 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
   expect(container.textContent).toContain("2nd");
   expect(container.textContent).toContain("as of Oct 14, 2026");
 
-  createdPanes.length = 0;
   // The stack's title, ticker and company, shows only while a company is open.
   const opened = () => !!container.textContent?.includes(" \u00b7 ");
   await press("ArrowDown");
   await press("Enter");
-  await until(opened);
+  await until(() => opened() && !!container.textContent?.includes("Ana Rivera"));
   // The company named once, in the stack's title; the pane stays the ranking.
   expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
   expect(container.textContent).not.toContain("Northwind Biologics Inc");
   expect(pane().binding?.kind ?? "none").toBe("none");
-  expect(container.textContent).toContain("Ana Rivera");
-  await press("i");
-  expect(createdPanes).toEqual([{ templateId: "insider-pane", symbol: "CTSO" }]);
+  // One toolbar: Back and the company lead INS's own query bar, its Window and its views.
+  const bars = container.querySelectorAll("[data-gloom-role='page-stack-header']");
+  expect(bars.length).toBe(0);
+  const bar = container.querySelector(".gloom-qb");
+  expect(bar?.textContent).toContain("Back");
+  expect(bar?.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  expect(bar?.textContent).toContain("Trades");
+  expect(bar?.textContent).toContain("Insiders");
+  // Its insider in the ranking's terms: the CFO's 2nd buy.
+  expect(container.textContent).toContain("2nd");
 
   await press("Escape");
   await until(() => !!container.textContent?.includes("Northwind Biologics Inc"));
   expect(opened()).toBe(false);
-  // Back lands on the row it opened.
+  // Back lands on the row it opened. Opened again, drawn at once from the
+  // ticker it now knows, Back still sits in the one bar.
   await press("Enter");
   await until(opened);
   expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  expect(container.querySelectorAll("[data-gloom-role='page-stack-header']").length).toBe(0);
+  expect(container.querySelector(".gloom-qb")?.textContent).toContain("Back");
   await press("Escape");
   await until(() => !opened());
 
@@ -195,6 +203,40 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
   await until(opened);
   expect(container.textContent).toContain("NWBI \u00b7 Northwind Biologics Inc");
 }
+
+// On the desktop an opened company's bar also holds Back and its name, so its
+// Type choices go to a menu where a pane of its own would still show them all.
+test("an opened company's trades keep the Type choices in a menu where Back and the name leave no room", async () => {
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => (params.ticker
+    ? { ...RANKING, side: params.side ?? "buy", ticker: params.ticker, rows: params.side === "sell" ? [] : RANKING.rows.filter((row) => row.ticker === params.ticker) }
+    : RANKING));
+  const filing: SecFilingItem = { accessionNumber: "a1", form: "4", filingDate: new Date(Date.now() - 2 * DAY_MS), cik: "9900001", filingUrl: "https://www.sec.gov/a1" };
+  const day = new Date(filing.filingDate).toISOString().slice(0, 10);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getSecFilings: async () => [filing],
+    getSecFilingContent: async () => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>RIVERA ANA</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Common</value></securityTitle><transactionDate><value>${day}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>`,
+  })));
+  await withViewport(async () => {
+    for (const [width, inline] of [[90, false], [100, true]] as const) {
+      const container = await dom.render(<RankingPane width={width} />);
+      await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
+      const row = [...container.querySelectorAll("[data-gloom-role='data-table-row']")].find((element) => element.textContent?.includes("CTSO"));
+      await act(async () => {
+        row!.dispatchEvent(new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 }) as unknown as Event);
+        await Bun.sleep(10);
+      });
+      await until(() => !!container.querySelector(".gloom-qb-view"));
+      const trades = [...container.querySelectorAll(".gloom-qb-view button")].find((button) => button.textContent === "Trades") as HTMLElement;
+      await act(async () => {
+        trades.click();
+        await Bun.sleep(10);
+      });
+      await until(() => !!container.textContent?.includes("Buys and sells (1)"));
+      expect(container.querySelector(".gloom-qb")?.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+      expect(!!container.querySelector(".gloom-qb-inline[data-item-id='type']")).toBe(inline);
+    }
+  });
+});
 
 test("why is columns on the desktop: figures right in the side's tone, NEW bold, the both-ways mark muted, each column sorted from its header", async () => {
   const director = { name: "Okafor Ben", role: "Director" } as const;

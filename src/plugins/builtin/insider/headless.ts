@@ -24,7 +24,15 @@ import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { InsiderSignalRoleGroup, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
-import { DEFAULT_INSIDER_SIGNALS_QUERY, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
+import {
+  DEFAULT_INSIDER_SIGNALS_QUERY,
+  loadInsiderCompany,
+  loadInsiderSignals,
+  type InsiderCompanyActivity,
+  type InsiderCompanyQuery,
+  type InsiderSignalsQuery,
+} from "./signals-client";
+import { compareSortValues } from "../../../utils/sort-values";
 import {
   formatInsiderNth,
   formatInsiderStake,
@@ -33,12 +41,15 @@ import {
   formatSignalValue,
   INSIDER_SIGNAL_CAP_OPTIONS,
   INSIDER_SIGNALS_TITLE,
+  insiderActivityDefaultSort,
+  insiderActivityEmptyTitle,
+  insiderActivityLines,
+  insiderActivitySortValue,
   insiderNth,
   insiderSideWords,
   insiderSignalLead,
   insiderSignalRoleText,
-  insiderSignalDetailTitle,
-  insiderSignalFigures,
+  insiderSignalsCoverageNotice,
   insiderSignalsEmptyTitle,
   insiderSignalsFiltered,
   insiderSignalWhy,
@@ -102,7 +113,8 @@ const figureOrDash = (value: unknown) => (typeof value === "number" ? value : nu
  * narrow table the size against usual moves under the row first, then the
  * nth trade, the company and the filing day, as the pane drops them. The
  * exports also carry each row's insiders (`buyers`); the text leaves them to
- * `--company`, as the pane leaves them to the opened company.
+ * `fn INS <ticker> --view insiders`, as the pane leaves them to the opened
+ * company.
  */
 function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
   const words = insiderSideWords(side);
@@ -132,46 +144,48 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
   ];
 }
 
-/** The opened company's insiders, in the ranking's columns and the side's words. */
-function companyColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
-  const words = insiderSideWords(side);
-  return [
-    { key: "insider", header: "Insider" },
-    { key: "role", header: "Role", shrink: false },
-    { key: "nth", header: "Nth", align: "right", stackPriority: 2, format: (value) => formatInsiderNth(figureOrDash(value)) },
-    { key: "vsUsual", header: "Vs Usual", align: "right", stackPriority: 3, format: (value) => formatInsiderUsual(figureOrDash(value)) },
-    {
-      key: "stake",
-      header: "Stake",
-      align: "right",
-      shrink: false,
-      format: (value, row) => formatInsiderStake(
-        typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
-        row.stakeBothWays === true,
-      ),
-    },
-    { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
-    { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
-  ];
-}
+/** INS on a ticker, its insiders: one row each, in the ranking's columns, the dollars on the side their trades net to. */
+const INSIDERS_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "insider", header: "Insider" },
+  { key: "role", header: "Role", shrink: false },
+  { key: "nth", header: "Nth", align: "right", stackPriority: 2, format: (value) => formatInsiderNth(figureOrDash(value)) },
+  { key: "vsUsual", header: "Vs Usual", align: "right", stackPriority: 3, format: (value) => formatInsiderUsual(figureOrDash(value)) },
+  {
+    key: "stake",
+    header: "Stake",
+    align: "right",
+    shrink: false,
+    format: (value, row) => formatInsiderStake(
+      typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
+      row.stakeBothWays === true,
+    ),
+  },
+  { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
+  { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
+  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
+];
 
-function companyRows(row: InsiderSignalsPayload["rows"][number]): HeadlessPaneRow[] {
-  return row.buyers.map((buyer) => ({
-    insider: formatInsiderName(buyer.name),
-    reportedName: buyer.name,
-    role: buyer.role,
-    nth: insiderNth(buyer, row),
-    vsUsual: insiderUsualRatio(buyer, row),
-    stake: insiderStakeValue(buyer),
-    stakeBothWays: buyer.twoWay === true,
-    value: buyer.value,
-    shares: buyer.shares ?? null,
-    lastBuy: buyer.lastBuy,
-  }));
+/** The insiders as the pane lists them first: the side's dollars largest first, then the largest either way. */
+function insidersRows(activity: InsiderCompanyActivity, side: InsiderSignalSide): HeadlessPaneRow[] {
+  const sort = insiderActivityDefaultSort(side);
+  return insiderActivityLines(activity)
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => compareSortValues(insiderActivitySortValue(a.line, sort.columnId), insiderActivitySortValue(b.line, sort.columnId), sort.direction) || a.index - b.index)
+    .map(({ line }) => ({
+      insider: line.name,
+      reportedName: line.buyer.name,
+      role: line.role,
+      side: line.side,
+      nth: insiderNth(line.buyer),
+      vsUsual: insiderUsualRatio(line.buyer),
+      stake: insiderStakeValue(line.buyer),
+      stakeBothWays: line.buyer.twoWay === true,
+      bought: line.bought,
+      sold: line.sold,
+      shares: line.buyer.shares ?? null,
+      last: line.buyer.lastBuy,
+    }));
 }
-
-/** Rankings are asked for at most this many rows; `--company` reads the whole of them. */
-const COMPANY_RANKING_LIMIT = 200;
 
 /**
  * A row's fields: the columns' figures (the lead insider's nth trade, size
@@ -237,6 +251,7 @@ function amendmentNote(entry: ParsedInsiderFiling): string {
 
 export interface InsiderHeadlessDependencies {
   loadSignals?(query: InsiderSignalsQuery, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
+  loadCompany?(query: InsiderCompanyQuery, ctx: HeadlessPaneContext): Promise<InsiderCompanyActivity>;
   loadParsed(
     symbol: string,
     limit: number,
@@ -248,6 +263,11 @@ export interface InsiderHeadlessDependencies {
 const defaultDependencies: InsiderHeadlessDependencies = {
   loadSignals: async (query, limit, ctx) => (await loadInsiderSignals(query, {
     limit,
+    force: ctx.refresh === true,
+    client: ctx.apiClient,
+    signal: ctx.signal,
+  })).payload,
+  loadCompany: async (query, ctx) => (await loadInsiderCompany(query, {
     force: ctx.refresh === true,
     client: ctx.apiClient,
     signal: ctx.signal,
@@ -303,7 +323,7 @@ export function createInsiderHeadless(
       {
         key: "limit",
         aliases: ["count", "rows"],
-        description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank (--company always reads 200).",
+        description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
         type: "integer",
         defaultValue: 20,
         minimum: 1,
@@ -312,7 +332,7 @@ export function createInsiderHeadless(
       {
         key: "window",
         aliases: ["days"],
-        description: "Without a ticker: days of open-market buying or selling to rank, 1 to 90.",
+        description: "Without a ticker: days of open-market buying or selling to rank, 1 to 90; with --view insiders, the days its insiders cover.",
         type: "integer",
         defaultValue: 30,
         minimum: 1,
@@ -376,11 +396,16 @@ export function createInsiderHeadless(
         pluginState: SIGNAL_OPTION_STATE("position"),
       },
       {
-        key: "company",
-        description: "Without a ticker: open one ranked company, as Enter does in the pane: its figures and its insiders in the ranking's columns. It reads the ranking's 200 rows, the most the server sends, so --limit does not apply. fn INS <ticker> lists its trades as filed.",
-        type: "string",
-        example: "--side sell --company ESTC",
-        exampleWithoutArgument: true,
+        key: "view",
+        description: "With a ticker: trades (each Form 4 line as filed, the default) or insiders (one row per insider over --window, as the ranking counts them: nth trade, size against usual, stake, dollars bought or sold; --side sell lists the largest sellers first).",
+        type: "enum",
+        defaultValue: "trades",
+        values: [
+          { value: "trades", aliases: ["transactions"] },
+          { value: "insiders", aliases: ["insider"] },
+        ],
+        example: "--view insiders --window 90",
+        pluginState: { pluginId: "ticker-research", key: "insider:view" },
       },
       {
         key: "cap",
@@ -391,40 +416,23 @@ export function createInsiderHeadless(
       },
     ],
     columns: INSIDER_COLUMNS,
-    describe: (args, result) => {
-      if (args.symbols[0]) return `Insider Transactions | ${args.symbols[0]}`;
-      const ranking = `${INSIDER_SIGNALS_TITLE} | ${args.options.side === "sell" ? "Selling" : "Buying"}`;
-      const company = result?.metadata?.company as { ticker?: unknown; company?: unknown } | null | undefined;
-      return company && typeof company.ticker === "string" && typeof company.company === "string"
-        ? `${ranking} | ${insiderSignalDetailTitle({ ticker: company.ticker, company: company.company })}`
-        : ranking;
+    describe: (args) => {
+      const symbol = args.symbols[0];
+      if (symbol) return args.options.view === "insiders" ? `Insiders | ${symbol}` : `Insider Transactions | ${symbol}`;
+      return `${INSIDER_SIGNALS_TITLE} | ${args.options.side === "sell" ? "Selling" : "Buying"}`;
     },
     async load(args, ctx) {
       const symbol = args.symbols[0];
       if (!symbol) {
         const query = signalQuery(args.options);
-        const opened = typeof args.options.company === "string" ? args.options.company.trim().toUpperCase() : "";
-        const limit = opened ? COMPANY_RANKING_LIMIT : Number(args.options.limit);
-        const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, limit, ctx);
+        const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, Number(args.options.limit), ctx);
         const side = payload.side ?? "buy";
-        const company = opened ? payload.rows.find((row) => row.ticker.toUpperCase() === opened) ?? null : null;
-        const table = opened
-          ? {
-            columns: companyColumns(side),
-            rows: company ? companyRows(company) : [],
-            ...(company ? {} : { empty: `${opened} is not among the companies ranked for ${insiderSideWords(side).activity} in the last ${payload.window} days${insiderSignalsFiltered(query) ? " with these filters" : ""}.` }),
-          }
-          : {
-            columns: signalColumns(side),
-            // The exports carry each row's insiders; the text leaves them to --company.
-            textColumns: signalColumns(side).filter((column) => column.key !== "buyers"),
-            rows: signalRows(payload),
-            ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
-          };
-        // The opened company's figures, each once, over its insiders; its trades as filed are fn INS <ticker>.
-        const figures = company ? insiderSignalFigures(company, payload.window, side) : [];
         return {
-          ...table,
+          columns: signalColumns(side),
+          // The exports carry each row's insiders; the text leaves them to fn INS <ticker> --view insiders.
+          textColumns: signalColumns(side).filter((column) => column.key !== "buyers"),
+          rows: signalRows(payload),
+          ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
           metadata: {
             side,
             window: payload.window,
@@ -433,21 +441,36 @@ export function createInsiderHeadless(
             through: payload.through,
             asOf: payload.asOf,
             coverage: payload.coverage,
-            ...(opened ? {
-              company: company ? signalRows({ ...payload, rows: [company] })[0] : null,
-              figures,
-              ...(company ? {
-                notices: [
-                  figures.map((figure) => `${figure.label} ${figure.value}${figure.detail ? ` (${figure.detail})` : ""}`).join(" \u00b7 "),
-                  `fn INS ${company.ticker} lists each trade as filed.`,
-                ],
-              } : {}),
-            } : {}),
             limitations: [
               side === "sell"
                 ? "Open-market sales (Form 4 code S) an officer, director or 10% owner chose to make only: sales under a Rule 10b5-1 plan, to cover tax, of shares exercised that day, in an offering, into a deal or in a private sale are left out, as are forms a company files as an owner of another issuer."
                 : "Open-market purchases (Form 4 code P) by officers, directors and 10% owners only; forms a company files as an owner of another issuer are left out.",
               ...(query.cap && payload.marketCaps === "unavailable" ? ["The server stores no market values, so the cap filter leaves nothing."] : []),
+            ],
+          },
+        };
+      }
+      if (args.options.view === "insiders") {
+        const { window, side } = signalQuery(args.options);
+        const ticker = parsePublicTickerKey(symbol).symbol;
+        const activity = await (dependencies.loadCompany ?? defaultDependencies.loadCompany!)({ ticker, window }, ctx);
+        const notices = [...new Set([activity.buy, activity.sell]
+          .map((payload) => insiderSignalsCoverageNotice(payload, { subject: "this list" }))
+          .filter((notice): notice is string => !!notice))];
+        const rows = insidersRows(activity, side);
+        return {
+          columns: INSIDERS_COLUMNS,
+          rows,
+          ...(rows.length === 0 ? { empty: insiderActivityEmptyTitle(window) } : {}),
+          metadata: {
+            symbol,
+            window,
+            through: activity.buy.through,
+            asOf: activity.buy.asOf,
+            coverage: { buy: activity.buy.coverage, sell: activity.sell.coverage },
+            ...(notices.length ? { notices } : {}),
+            limitations: [
+              "Open-market purchases (code P) and the sales an insider chose to make (code S, not under a Rule 10b5-1 plan, to cover tax, of shares exercised that day or in an offering), as the ranking counts them: an insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed is the default view.",
             ],
           },
         };
