@@ -40,7 +40,7 @@ export interface ModelDividendYield {
 }
 
 /** What the yield is read from: the fundamentals' yield, its basis, and the ex-date of the distribution it annualizes. */
-export type StatedDividend = Pick<Fundamentals, "dividendYield" | "dividendYieldBasis" | "exDividendDate">;
+type StatedDividend = Pick<Fundamentals, "dividendYield" | "dividendYieldBasis" | "exDividendDate">;
 
 const symbolKey = (value: string | null | undefined) => (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -101,6 +101,9 @@ export async function loadModelDividendYield(
   return stoppedDividend(stated?.exDividendDate, actions, now);
 }
 
+/** What a yield the history shows none paid is, beside the 0%: `no dividend in the last 15 months`. */
+const NO_DIVIDEND_PAID = "no dividend in the last 15 months";
+
 /**
  * What a yield read as 0 is, beside the 0%: `no dividend in the last 15
  * months`, or `no current dividend, last paid 2026-02-27` in the words every
@@ -112,6 +115,3 @@ export function modelDividendYieldNote(dividend: Pick<ModelDividendYield, "basis
   const lastPaid = lastPaidNote({ lastPaid: dividend.lastPaid ?? null });
   return lastPaid ? `${NO_CURRENT_DIVIDEND}, ${lastPaid}` : NO_CURRENT_DIVIDEND;
 }
-
-/** What a yield the history shows none paid is, beside the 0%: `no dividend in the last 15 months`. */
-export const NO_DIVIDEND_PAID = "no dividend in the last 15 months";
