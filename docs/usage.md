@@ -11,6 +11,7 @@
 - [CLI commands and output formats](#cli)
 - [Plugins pane](#plugins-pane)
 - [Portfolio currency](#portfolio-currency)
+- [Dividend income and DRIP](#dividend-income-and-drip)
 - [Importing a manager's 13F as a portfolio](#importing-a-managers-13f-as-a-portfolio)
 - [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
@@ -161,7 +162,7 @@ A symbol that trades in several places lists its exchanges after a colon: `NET:`
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
-| `DVD <ticker>` | Dividend yield and history |
+| `DVD <ticker>` | Dividend yield and history; `gloomberb fn DVD KO PEP JNJ` ranks several tickers in one table by yield, with payout, growth, last ex-date and pay date |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `SIW [tickers]` | Short squeeze watch: short interest as a share of float, days to cover, change since the prior settlement and the 1M price move across your portfolios and watchlists, crowded names that are rising first |
@@ -737,6 +738,18 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 
 A broker portfolio's header leads with `Net Liq`, the account's equity, then `Gross`, the market value of its positions, and `Cash`, which is negative while the account borrows on margin. `Lev` (gross over Net Liq) appears once the account is levered, and the day's percentage is a return on the equity. The broker's last account snapshot is kept across restarts in the terminal, desktop and web apps, and the footer gives its sync time. Until there is one, `Net Liq` and `Cash` read `—`, because the positions alone are not what the account is worth, and when the broker's last call failed (a sign-in that lapsed, say) the footer says why. `PORT` shows the same figures and `KELLY` bets the same equity.
 
+## Dividend income and DRIP
+
+`gloomberb portfolio show <name>` adds Income and Yield after Weight for a portfolio of shares or funds: a year of trailing dividends on the shares held, in the portfolio's currency, and that over the holding's value (on TOTAL, over the whole portfolio, cash included). A holding whose dividends could not be read shows `—`, and so does the total, never $0.
+
+```bash
+gloomberb portfolio show Income                                  # Income and Yield columns
+gloomberb portfolio show Income --drip --years 3 --withholding 20 # reinvested shares and income per year
+gloomberb fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
+```
+
+`--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year, in the portfolio's currency. Today's dividends, prices and exchange rates are held flat and reinvested once a year. `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).
+
 ## Importing a manager's 13F as a portfolio
 
 `gloomberb portfolio import --13f <CIK|fund name>` makes a manual portfolio from a manager's latest 13F, to follow it in `PF` and `PORT`:
@@ -1064,8 +1077,17 @@ social attention, fields cover:
 - **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility
   between its 52-week low (0) and high (100), and over the realized volatility of
   the last 21 daily closes. IV rank is a rank, not an IV percentile.
+- **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal
+  year over that year's net income attributable to the parent, from SEC filings, so
+  US filers only; unavailable when the income is zero or negative.
+- **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`,
+  `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and
+  three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that
+  stopped reads -100%; a company with too short a history or none paid in the base
+  year has none. Distribution history is stored for most large USD payers and fewer
+  elsewhere, so check coverage before ranking a small-cap or non-USD universe.
 
-Returns, EPS revisions and upside take the sign colour.
+Returns, EPS revisions, upside and dividend growth take the sign colour.
 
 **Results** leads with the chosen metric and its covered-universe percentile, then
 one column per numeric criterion and context columns (market cap, price, change, P/E,

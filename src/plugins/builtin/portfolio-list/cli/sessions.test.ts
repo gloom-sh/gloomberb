@@ -14,6 +14,9 @@ import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import { collectionHoldingsHeadless } from "../headless";
 import { showCollection } from "./render";
 import { portfolioCliCommand } from "./portfolio-command";
+import { answerDividendReadsOffline } from "../test-fixture";
+
+answerDividendReadsOffline();
 
 afterEach(() => setCliColorEnabledOverride(null));
 

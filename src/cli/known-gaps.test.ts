@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
-import { knownGapMessage, topicPointer } from "./known-gaps";
+import { commandPointer, knownGapMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
@@ -89,4 +89,13 @@ test("securities-lending data is said to be unavailable, with short interest as 
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["borrow fee"]), lookupGlossary("borrow fee"), pointer.message);
   expect(catalog).toContain("not available");
   expect(catalog).not.toContain("No functions match");
+});
+
+test("an income or reinvestment query names portfolio show --drip; a statement or margin query does not", () => {
+  const line = "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip";
+  for (const query of ["drip", "DRIP projection", "reinvest", "dividend reinvestment", "dividend income", "my portfolio income"]) {
+    expect(commandPointer(query), query).toBe(line);
+  }
+  for (const query of ["income statement", "net income", "fixed income", "dark pool"]) expect(commandPointer(query), query).toBeNull();
+  expect(commandPointer("light theme")).toBe("Themes: gloomberb config themes");
 });

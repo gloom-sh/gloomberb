@@ -122,3 +122,33 @@ test("cash growth and payout text use percentages while JSON and CSV keep fracti
     expect(data.metrics.growth1Y).toBe(growth);
   }
 });
+
+test("several symbols are one table ranked by trailing yield, with gaps as dashes and a failed read last", async () => {
+  const withYield = (trailingYield: number | null, extra: Partial<DividendData> = {}): DividendData => ({ ...fixture, ...extra,
+    metrics: { ...fixture.metrics, trailingYield, payoutRatio: null, nextPayDate: null,
+      ...trailingYield == null ? { forwardYield: null, growth1Y: null, growth3Y: null } : {} } });
+  const data: Record<string, DividendData> = {
+    // A rand payer beside dollar payers: yields are ratios, so they rank together.
+    "SBK.JO": withYield(0.0578, { currency: "ZAR", declared: [{ exDate: "2030-03-10", amount: 9.5, payDate: "2030-04-01" }] }),
+    KO: withYield(0.0224, { currency: "USD" }),
+    NEW: withYield(null, { currency: "USD" }),
+  };
+  const definition = createDividendYieldHeadless({
+    loadData: async (symbol) => {
+      if (!data[symbol]) throw new Error(`No dividend data found for ${symbol}`);
+      return data[symbol]!;
+    },
+  });
+  const request = { rawArgument: "NEW KO GONE SBK.JO", argument: ["NEW", "KO", "GONE", "SBK.JO"], symbols: ["NEW", "KO", "GONE", "SBK.JO"], options: { type: "all", limit: 40 } };
+  const result = await definition.load(request, context);
+  expect(result.sections).toHaveLength(1);
+  const rows = result.sections[0]!.rows!;
+  expect(rows.map((row) => row.symbol)).toEqual(["SBK.JO", "KO", "NEW", "GONE"]);
+  expect(rows[0]).toMatchObject({ trailingYield: 0.0578, payDate: "2030-04-01", payoutRatio: null });
+  expect(result).toMatchObject({ complete: false, unavailableSymbols: ["GONE"] });
+  const text = renderHeadlessPaneText(definition, result, request, "DVD");
+  const line = (symbol: string) => text.split("\n").find((entry) => entry.startsWith(`${symbol} `))!;
+  expect(line("SBK.JO")).toContain("5.78%");
+  expect(line("NEW")).not.toMatch(/\d\.\d\d%/);
+  expect(line("GONE")).toContain("—");
+});

@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { RESEARCH_FIELDS, SOCIAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -84,6 +84,13 @@ test("query boundary rejects valid rows from different criteria", async () => {
   })).rejects.toThrow("requested criteria");
 });
 
+test("a field typed without its unit or in part names the screen fields it means", () => {
+  const criterion = (field: string) => () => parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field, op: "lte", value: 60 }] });
+  expect(criterion("payoutRatio")).toThrow('"payoutRatio" is not a screen field (did you mean payoutRatioPercent?)');
+  expect(criterion("dividendGrowth")).toThrow("did you mean dividendGrowth1YPercent or dividendGrowth3YPercent?");
+  expect(criterion("bogus")).toThrow('"bogus" is not a screen field: use a numeric field');
+});
+
 test("thresholds accept scale suffixes and reject anything else", () => {
   expect(parseThreshold("10B")).toBe(10_000_000_000);
   expect(parseThreshold("1.5t")).toBe(1_500_000_000_000);
@@ -140,12 +147,13 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.atrPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   const broken = payload();
   delete (broken.rows[0]!.metrics as Partial<typeof broken.rows[0]["metrics"]>).price;
   expect(() => validateScreenPayload(broken)).toThrow("price");
@@ -180,7 +188,7 @@ test("the field list is requested with the volatility group, which servers witho
   } as never);
   try {
     const data = await fetchScreenFields();
-    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b/);
+    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b/);
     expect(data.fields.map((entry) => entry.id)).toEqual(["atrPercent"]);
   } finally {
     ask.mockRestore();

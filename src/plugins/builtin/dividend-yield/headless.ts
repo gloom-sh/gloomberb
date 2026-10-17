@@ -13,6 +13,12 @@ import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
+import { mapWithConcurrency } from "../../../utils/concurrency";
+import { projectDividendRanking, type DividendRankingEntry } from "./ranking";
+
+/** Symbols one `fn DVD` ranks at most, and how many it reads at once. */
+const MAX_RANKED_SYMBOLS = 25;
+const RANKING_CONCURRENCY = 4;
 
 const PAYMENT_COLUMNS = [
   { key: "exDate", header: "Ex-date" },
@@ -156,9 +162,10 @@ export function createDividendYieldHeadless(
     shape: "bundle",
     freshness: { status: "not-a-feed", basis: "distribution history" },
     argument: {
-      kind: "ticker",
-      placeholder: "ticker",
-      description: "Company symbol.",
+      kind: "tickers",
+      placeholder: "tickers",
+      description: "Company symbol, or several to rank in one table by trailing yield.",
+      maximum: MAX_RANKED_SYMBOLS,
     },
     options: [
       {
@@ -183,13 +190,20 @@ export function createDividendYieldHeadless(
         maximum: 200,
       },
     ],
-    describe: (args) => `Dividend Yield | ${String(args.argument)}`,
+    describe: (args) => `Dividend Yield | ${args.symbols.join(", ")}`,
     async load(args, context) {
-      const symbol = String(args.argument);
-      return projectDividendYieldHeadless(
-        await dependencies.loadData(symbol, context),
-        args,
-      );
+      // One symbol is its full report; several are one table ranked by yield.
+      if (args.symbols.length <= 1) {
+        return projectDividendYieldHeadless(await dependencies.loadData(args.symbols[0] ?? String(args.argument), context), args);
+      }
+      const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
+        try {
+          return { symbol, data: await dependencies.loadData(symbol, context) };
+        } catch (error) {
+          return { symbol, error: error instanceof Error ? error.message : String(error) };
+        }
+      });
+      return projectDividendRanking(entries);
     },
   };
 }

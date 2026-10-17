@@ -46,6 +46,8 @@ export interface PaneCatalogEntry {
   aliases: string[];
   argKind?: string;
   argPlaceholder?: string;
+  /** What `shot` takes when the pane shows one ticker but the report ranks several (DVD). */
+  shotArgument?: string;
   keywords: string[];
   defaultSettings: Record<string, unknown>;
   capability: PaneFunctionCapability;
@@ -246,6 +248,8 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: headless?.argument.kind ?? template.shortcut?.argKind,
     argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
+    ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
+      ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
     defaultSettings,
     capability: getPaneFunctionCapability(template, pane),
@@ -592,7 +596,8 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
       if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
     }
   }
-  lines.push(...wrapCommandLine(`gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`, width));
+  const shotInvocation = entry.shotArgument ? `${entry.token} ${entry.shotArgument}` : invocation;
+  lines.push(...wrapCommandLine(`gloomberb shot ${shotInvocation} --output ${entry.token.toLowerCase()}.png`, width));
   return lines.join("\n");
 }
 

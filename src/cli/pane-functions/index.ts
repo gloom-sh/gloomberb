@@ -34,7 +34,7 @@ import {
 import { isNotATickerMessage } from "../not-a-ticker";
 import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
-import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -428,8 +428,9 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
-        // A setting is a command, not a function: "light theme" names `config themes` beside THEM.
-        const setting = settingsPointer(parsed.query);
+        // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
+        // "drip" names `portfolio show --drip` beside DVD.
+        const setting = commandPointer(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer
