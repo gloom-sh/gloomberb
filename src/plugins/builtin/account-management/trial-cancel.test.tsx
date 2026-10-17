@@ -20,7 +20,7 @@ test("the trial ends only after its warning, and Enter or Esc keep it", async ()
   const answer = async (keys: TestKeyEvent[]) => {
     let flow: Promise<{ endedNow: boolean } | null> = Promise.resolve(null);
     await act(async () => {
-      flow = endTrialAfterWarning(dialog!, new Date("2026-10-23T12:00:00Z"), async () => {
+      flow = endTrialAfterWarning(dialog!, { isTrialActive: true, trialEndsAt: new Date("2026-10-23T12:00:00Z") }, async () => {
         ended.push("end");
         return { canceled: true, endedNow: true };
       });
@@ -28,7 +28,8 @@ test("the trial ends only after its warning, and Enter or Esc keep it", async ()
     });
     const frame = await tui.waitForFrameToContain("Cancel Trial?");
     expect(frame).toContain("Cancelling ends your trial and Pro now.");
-    expect(frame).toContain("cancel any time before Oct 23");
+    expect(frame).toContain("If you keep your trial, you can still cancel before");
+    expect(frame).toContain("Oct 23 without being charged.");
     expect(ended).toEqual([]);
     for (const key of keys) await tui.emitKeypress(key);
     const result = await act(() => flow);
@@ -42,4 +43,17 @@ test("the trial ends only after its warning, and Enter or Esc keep it", async ()
 
   expect(await answer([{ name: "y", sequence: "y" }])).toEqual({ endedNow: true });
   expect(ended).toEqual(["end"]);
+});
+
+test("with no trial running it asks nothing and ends nothing", async () => {
+  await tui.render(<TestDialogProvider><DialogCapture /></TestDialogProvider>);
+  const ended: string[] = [];
+  const result = await endTrialAfterWarning(dialog!, { isTrialActive: false, trialEndsAt: null }, async () => {
+    ended.push("end");
+    return { canceled: true, endedNow: true };
+  });
+  await tui.renderFrames(2);
+  expect(result).toBeNull();
+  expect(ended).toEqual([]);
+  expect(tui.frame()).not.toContain("Cancel Trial?");
 });

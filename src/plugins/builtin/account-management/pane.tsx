@@ -749,9 +749,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField("cancelTrialAction");
     if (busy) return;
     try {
+      // Asks nothing unless a trial is running.
       const result = await endTrialAfterWarning(
         dialog,
-        planAccess.trialEndsAt,
+        planAccess,
         () => apiClient.endCloudTrial(),
         () => {
           setBusy("trial");
@@ -777,7 +778,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     } finally {
       setBusy(null);
     }
-  }, [busy, dialog, planAccess.trialEndsAt]);
+  }, [busy, dialog, planAccess]);
 
   useAccountManagementFooter({
     busy,
