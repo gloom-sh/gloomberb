@@ -64,7 +64,12 @@ const HOVERED = new Set(["button", "tab", "link", "chip", "toggle", "input", "se
 function variantKeyOf(element: { family: string; shape: string; component: string; state: string }): string {
   return [element.family, element.shape, element.component, element.state].join("|");
 }
-const ENTRY_TIMEOUT_MS = 6 * 60_000;
+/**
+ * How long one function may take before it counts as stuck. T measures 34
+ * views at two widths and pictures them in two themes; on a busy host that
+ * passed six minutes without anything being stuck.
+ */
+const ENTRY_TIMEOUT_MS = 12 * 60_000;
 const debug = process.env.UI_AUDIT_DEBUG ? (message: string) => console.log(`  ${(performance.now() / 1000).toFixed(1)}s ${message}`) : () => {};
 
 interface AuditEntry extends CatalogEntry {
