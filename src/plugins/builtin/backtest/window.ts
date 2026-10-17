@@ -23,16 +23,28 @@ export function listDates(dates: readonly string[]): string {
   return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
 }
 
+/** A run over a loaded history, as `runHistoryBacktest` returns it. */
+export interface HistoryBacktestResult extends BacktestResult {
+  /**
+   * Running it again gives the same answer: it has an end no later than the
+   * newest complete session served. Without one, or with one still to come,
+   * later sessions change it.
+   */
+  repeatable: boolean;
+}
+
 /**
  * The bars a run tests, and a warning for every served session it leaves out
  * other than after `end`: closes the curve cannot run through, named by date,
  * and a session still forming, which is left out unless asked for so the
  * newest complete session ends the run and a repeat gives the same answer.
+ * An end after the newest complete session is warned too: sessions still to
+ * come up to it change the run until it has passed.
  */
 export function backtestWindow(
   history: Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped">,
   options: BacktestWindowOptions = {},
-): { bars: BacktestBar[]; warnings: string[] } {
+): { bars: BacktestBar[]; warnings: string[]; repeatable: boolean } {
   const end = options.end?.trim() || null;
   const inWindow = end ? history.bars.filter((bar) => bar.date <= end) : history.bars;
   if (end && inWindow.length === 0 && history.bars.length > 0) {
@@ -48,17 +60,22 @@ export function backtestWindow(
     warnings.push(`${history.undatedSkipped} price ${history.undatedSkipped === 1 ? "point" : "points"} without a date ${history.undatedSkipped === 1 ? "was" : "were"} left out.`);
   }
   const forming = inWindow.filter((bar) => bar.partial);
-  if (forming.length === 0) return { bars: inWindow, warnings };
-  const dates = listDates(forming.map((bar) => bar.date));
-  if (options.includePartial) {
-    warnings.push(`${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and kept: the last close is the latest price, so the results move until the session ends.`);
-    return { bars: inWindow, warnings };
-  }
-  const bars = inWindow.filter((bar) => !bar.partial);
+  const bars = forming.length === 0 || options.includePartial ? inWindow : inWindow.filter((bar) => !bar.partial);
   const through = bars.at(-1)?.date;
-  warnings.push(`${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and left out`
-    + `${through ? `: the test runs through ${through}, the last complete session` : ""}.`);
-  return { bars, warnings };
+  if (forming.length > 0) {
+    const dates = listDates(forming.map((bar) => bar.date));
+    warnings.push(options.includePartial
+      ? `${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and kept: the last close is the latest price, so the results move until the session ends.`
+      : `${dates} ${forming.length === 1 ? "is" : "are"} still forming (partial) and left out`
+        + `${through ? `: the test runs through ${through}, the last complete session` : ""}.`);
+  }
+  const newestComplete = history.bars.findLast((bar) => !bar.partial)?.date;
+  const repeatable = !!end && !!newestComplete && end <= newestComplete;
+  if (end && !repeatable && through) {
+    warnings.push(`The end date ${end} is after the newest complete session, so the run ends at ${through}`
+      + ` and is not repeatable until ${end} has passed.`);
+  }
+  return { bars, warnings, repeatable };
 }
 
 /** The run over a loaded history: its window's bars, then the engine, every left-out session warned first. */
@@ -67,10 +84,10 @@ export function runHistoryBacktest(
   entry: Rule,
   exit: Rule,
   options: BacktestOptions & BacktestWindowOptions,
-): BacktestResult {
+): HistoryBacktestResult {
   const window = backtestWindow(history, options);
   const result = runBacktest(window.bars, entry, exit, options);
-  return { ...result, warnings: [...window.warnings, ...result.warnings] };
+  return { ...result, warnings: [...window.warnings, ...result.warnings], repeatable: window.repeatable };
 }
 
 /**

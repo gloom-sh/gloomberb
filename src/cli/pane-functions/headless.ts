@@ -645,7 +645,14 @@ export function headlessReportTables(
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
           ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
         };
-        return Object.keys(identity).length > 0 ? { ...table, identity } : table;
+        const unitKey = section.rowUnitKey;
+        const rowIdentities = unitKey
+          ? section.rows.map((row) => {
+            const unit = row[unitKey];
+            return { currencyOrUnit: typeof unit === "string" ? unit : null };
+          })
+          : undefined;
+        return { ...table, ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
       });
       break;
     case "series": {
@@ -673,7 +680,7 @@ export function headlessReportTables(
       incomplete: incompleteDetail(result, status),
       locked,
       errors: failed,
-      notes: [...textNotices(result), ...(result.notes ?? [])],
+      notes: [...textNotices(result), ...(definition.exportWarnings ? result.warnings ?? [] : []), ...(result.notes ?? [])],
     }),
   };
 }

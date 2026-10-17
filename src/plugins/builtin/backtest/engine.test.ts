@@ -118,6 +118,12 @@ test("a forming session is left out unless asked for, and an end date repeats a 
   expect(after).toEqual(before);
   expect(after.end).toBe(day(280));
   expect(after.warnings).toEqual([]);
+  expect(after.repeatable).toBe(true);
+  // An end still to come runs to the newest complete session, and says the run changes until it has passed.
+  const ahead = backtestWindow(history, { end: day(320) });
+  expect(ahead.repeatable).toBe(false);
+  expect(ahead.warnings.at(-1)).toBe(`The end date ${day(320)} is after the newest complete session, so the run ends at ${day(299)}`
+    + ` and is not repeatable until ${day(320)} has passed.`);
   expect(() => backtestWindow(history, { end: "2019-01-01" })).toThrow("No daily sessions on or before 2019-01-01");
 });
 

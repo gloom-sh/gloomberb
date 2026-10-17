@@ -354,6 +354,12 @@ export type HeadlessBundleSection =
      * which every exported row names in `currency_or_unit`.
      */
     unit?: string;
+    /**
+     * The row field naming each row's own unit, for a table of metrics whose
+     * rows differ (`%`, a ratio, a count): each exported row names it in
+     * `currency_or_unit` in place of `unit`, blank when the field is empty.
+     */
+    rowUnitKey?: string;
     /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
     interval?: string;
     entries?: never;
@@ -374,6 +380,7 @@ export type HeadlessBundleSection =
     textColumns?: never;
     textRows?: never;
     unit?: never;
+    rowUnitKey?: never;
     interval?: never;
   };
 
@@ -469,6 +476,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   ): Promise<HeadlessArgumentExpansion | null>;
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
+  /**
+   * A `--csv` export also closes with the report's warnings, as notes, for a
+   * report whose warnings say which rows it left out (a backtest's dropped
+   * sessions), so a saved file keeps what stderr said.
+   */
+  exportWarnings?: boolean;
   columns?: HeadlessPaneColumn[];
   /**
    * The report title. A report passes the loaded result, so a title can name

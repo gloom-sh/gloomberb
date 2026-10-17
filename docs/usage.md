@@ -1156,12 +1156,16 @@ which also say when the ticker is a rolled futures continuation such as
 and says where the file went.
 
 From the command line, `--end YYYY-MM-DD` stops the run at that session, so the
-same command gives the same curve, trades and statistics later.
-`--include-partial` keeps a session still forming, whose close moves until the
-day ends. `--equity` reports the daily curve instead of the summary: each
-session's close in the listing's currency, the position (1 long, 0 flat), the
-strategy's and buy-and-hold's growth of 1 and the drawdown in percent, every
-digit in `--csv` and `--json`. `gloomberb fn BT --help` lists every option.
+same command gives the same curve, trades and statistics later. An end after
+the newest complete session is warned: the run ends at that session and changes
+until the end date has passed. `--include-partial` keeps a session still
+forming, whose close moves until the day ends. `--equity` reports the daily
+curve instead of the summary: each session's close in the listing's currency,
+the position (1 long, 0 flat), the strategy's and buy-and-hold's growth of 1 and
+the drawdown in percent, every digit in `--csv` and `--json`. In `--csv` each
+summary row names its own unit (`%`, `ratio`, `trades`, `sessions`), trade
+prices are in the listing's currency, and the file closes with the run's
+warnings and notes. `gloomberb fn BT --help` lists every option.
 
 ```sh
 gloomberb fn BT AAPL --json

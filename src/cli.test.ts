@@ -91,6 +91,8 @@ describe("CLI watchlist commands", () => {
     expect(own.stdout).toContain("--include-partial <boolean>");
     expect(own.stdout).toContain("gloomberb fn BT <ticker> --csv --equity");
     expect(own.stdout).not.toContain("Run a market function");
+    // A pane id runs the function, so it is helped like one.
+    expect((await captureConsole(() => runCli(["fn", "backtest", "--help"]))).stdout).toContain("--include-partial <boolean>");
     // Without a function, or with a word that names none, the command's own help stands.
     for (const args of [["fn", "--help"], ["fn", "NOTAFUNCTION", "--help"]]) {
       expect((await captureConsole(() => runCli(args))).stdout).toContain("Run a market function and print its report");

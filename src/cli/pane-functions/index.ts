@@ -21,7 +21,7 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, findPaneFunction, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
@@ -410,13 +410,14 @@ const GLOSSARY_ACTIONS = new Set(["glossary", "explain"]);
 /**
  * The help of a command that runs a function (`fn BT --help`, `shot BT
  * --help`, `help fn BT`): that function's options and examples, as
- * `catalog BT` lists them. False when the first word is no function's code or
- * alias, or the catalog cannot be read, so the command's own help prints instead.
+ * `catalog BT` lists them. The first word is read as `fn` reads it, so a pane
+ * id or alias (`fn backtest --help`) helps with what it would run. False when
+ * it opens nothing or the catalog cannot be read, so the command's own help prints instead.
  */
 export async function runPaneFunctionHelp(command: string, args: string[], ctx: CliCommandContext): Promise<boolean> {
   let target: string;
   try {
-    target = parsePaneFunctionArgs(args).target.trim().toLowerCase();
+    target = parsePaneFunctionArgs(args).target.trim();
   } catch {
     // Intentional ignore: help for arguments that do not parse is the command's own.
     return false;
@@ -426,9 +427,13 @@ export async function runPaneFunctionHelp(command: string, args: string[], ctx: 
     const entry = await withMarketData(ctx, async (context) => {
       const registry = await createPaneCatalog(context, ctx.plugins);
       try {
+        const found = findPaneFunction(registry, target);
+        if (!found?.pane) return undefined;
+        const { template, pane } = found;
         const entries = await buildPaneCatalogEntries(registry, context);
-        return entries.find((candidate) => candidate.token.toLowerCase() === target)
-          ?? entries.find((candidate) => candidate.aliases.some((alias) => alias.toLowerCase() === target));
+        // A pane named directly, where functions open it, is helped by the first of them.
+        return (template ? entries.find((candidate) => candidate.templateId === template.id) : undefined)
+          ?? entries.find((candidate) => candidate.paneId === pane.id);
       } finally {
         registry.destroy();
       }

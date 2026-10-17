@@ -4,6 +4,8 @@ export type StatValue = { value: number | null; kind: "signed" | "percent" | "ra
 export interface SummaryRow {
   id: string;
   label: string;
+  /** What a count counts (`trades`, `sessions`); a percent's and a ratio's unit follow from their kind. */
+  countUnit?: string;
   strategy: (result: BacktestResult) => StatValue | null;
   benchmark?: (result: BacktestResult) => StatValue | null;
 }
@@ -18,12 +20,12 @@ export const SUMMARY_ROWS: SummaryRow[] = [
   { id: "drawdown", label: "Max drawdown", strategy: (r) => stat(r.strategy.maxDrawdownPct, "signed"), benchmark: (r) => stat(r.benchmark.maxDrawdownPct, "signed") },
   { id: "exposure", label: "Time in market", strategy: (r) => stat(r.strategy.exposurePct, "percent"), benchmark: () => stat(100, "percent") },
   { id: "rolling", label: "1Y windows beating B&H", strategy: (r) => stat(r.rollingWin.sharePct, "percent") },
-  { id: "trades", label: "Closed trades", strategy: (r) => stat(r.strategy.closedTrades, "count") },
+  { id: "trades", label: "Closed trades", countUnit: "trades", strategy: (r) => stat(r.strategy.closedTrades, "count") },
   { id: "hit", label: "Hit rate", strategy: (r) => stat(r.strategy.hitRatePct, "percent") },
   { id: "win", label: "Average win", strategy: (r) => stat(r.strategy.avgWinPct, "signed") },
   { id: "loss", label: "Average loss", strategy: (r) => stat(r.strategy.avgLossPct, "signed") },
   { id: "pf", label: "Profit factor", strategy: (r) => stat(r.strategy.profitFactor, "ratio") },
-  { id: "hold", label: "Average hold (sessions)", strategy: (r) => stat(r.strategy.avgSessions, "count") },
+  { id: "hold", label: "Average hold (sessions)", countUnit: "sessions", strategy: (r) => stat(r.strategy.avgSessions, "count") },
 ];
 
 export function formatStat(stat: StatValue | null): string {

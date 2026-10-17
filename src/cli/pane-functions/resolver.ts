@@ -103,7 +103,8 @@ async function buildPaneInstance(
   };
 }
 
-function findPaneFunction(registry: PaneFunctionCatalog, target: string): { template?: PaneTemplateDef; pane?: PaneDef } | null {
+/** The template or pane a name opens, as `fn` resolves it: a function code, an alias, a pane id or name, a keyword. */
+export function findPaneFunction(registry: PaneFunctionCatalog, target: string): { template?: PaneTemplateDef; pane?: PaneDef } | null {
   const entry = buildPaneFunctionLookup(registry).get(normalizeLookupToken(target));
   if (!entry) return null;
   const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;

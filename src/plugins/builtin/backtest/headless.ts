@@ -24,6 +24,8 @@ async function priceUnit(ctx: HeadlessPaneContext, instrument: InstrumentRef): P
 export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: BACKTEST_FRESHNESS,
+  // The sessions a run leaves out stay with a saved curve, not only on stderr.
+  exportWarnings: true,
   argument: { kind: "ticker", description: "Instrument to test" },
   describe: (args) => `BT ${args.symbols[0] ?? ""}`,
   discovery: {

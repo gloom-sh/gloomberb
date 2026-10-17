@@ -27,13 +27,13 @@ import { Box, useUiCapabilities } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
-import type { BacktestResult, BacktestTrade } from "./engine";
+import type { BacktestTrade } from "./engine";
 import { backtestEquityCsv } from "./export";
 import { formatStat, SUMMARY_ROWS, type SummaryRow } from "./format";
 import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
 import { backtestPriceUnit, backtestReport } from "./report";
 import { parseRule } from "./rules";
-import { continuationNote, runHistoryBacktest } from "./window";
+import { continuationNote, runHistoryBacktest, type HistoryBacktestResult } from "./window";
 
 const TABS = [{ value: "summary", label: "Summary" }, { value: "trades", label: "Trades" }];
 // Growth multiples on a log axis keep a 140x run and a flat decade readable together.
@@ -104,7 +104,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const costBps = Math.min(100, Math.max(0, Number(costText) || 0));
   const runWindow = useMemo(() => ({ end: typeof endText === "string" ? endText.trim() || null : null, includePartial: includePartial === true }),
     [endText, includePartial]);
-  const run = useMemo((): { result: BacktestResult | null; error: string | null } => {
+  const run = useMemo((): { result: HistoryBacktestResult | null; error: string | null } => {
     if (!history.data || !rules.entry || !rules.exit) return { result: null, error: null };
     try {
       const options = { lookbackYears: lookbackYears(lookback), costBps, ...runWindow };
@@ -127,7 +127,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
 
   const series = useMemo(() => {
     if (!result) return [];
-    const points = (pick: (row: BacktestResult["equity"][number]) => number) =>
+    const points = (pick: (row: HistoryBacktestResult["equity"][number]) => number) =>
       result.equity.map((row) => scalarPoint(new Date(row.date), pick(row)));
     // Buy-and-hold first so the strategy line draws on top where they coincide.
     return [
