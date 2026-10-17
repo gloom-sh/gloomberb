@@ -457,7 +457,9 @@ A forward yield is shown only while the dividend behind it is current: its lates
 
 Dividend summary failures are reported independently of cash-history coverage. A failed summary request or invalid reported summary date leaves that information unavailable while preserving valid cash totals and independently reported summary fields. Invalid dates cannot become payment projections or break the report; their failure appears in the existing footer and structured report errors.
 
-Cash events require their source's currency and units; a quote or separate summary cannot supply missing history units. Invalid or missing records make cash totals, growth, cadence, and the TTM chart unavailable while valid history rows remain visible with a failure status. A confirmed empty history still has zero trailing cash. An unavailable source does not establish zero cash. A separately reported forward rate can remain available when its own currency is known and compatible, even when chart history is unusable; an unknown chart-price denomination cannot supply its yield denominator. On an integrity failure during refresh, retained history rows keep their own units and retrieval time while current cash totals stay unavailable. A confirmed empty response clears those retained rows.
+Cash events require their source's currency and units; a quote or separate summary cannot supply missing history units. A history stated in a currency's sub-unit (GBp, ZAc, ILA) is converted to the major unit once, as it arrives, at the precision its source stated it: Standard Bank's 902.00006 ZAc reads ZAR 9.02 in `DVD`, `events`, EVT and a forward yield's declared distribution alike. Gloom Cloud states the forward rate of such a listing in the major unit too, so its `DVD` forward yield is the one `ticker` shows.
+
+Every dividend yield names its basis in the same words. A trailing yield is the `last 12 months of distributions` over the price; a forward yield is the `latest distribution annualized, as of` that distribution's ex-date; EQS's is that forward yield as of the date the screen's data was collected. A semiannual payer whose interim and final distributions differ (Standard Bank's ZAR 8.78 and ZAR 9.02) therefore has a trailing yield below or above its forward one, and both differ from a screen collected at another price. Invalid or missing records make cash totals, growth, cadence, and the TTM chart unavailable while valid history rows remain visible with a failure status. A confirmed empty history still has zero trailing cash. An unavailable source does not establish zero cash. A separately reported forward rate can remain available when its own currency is known and compatible, even when chart history is unusable; an unknown chart-price denomination cannot supply its yield denominator. On an integrity failure during refresh, retained history rows keep their own units and retrieval time while current cash totals stay unavailable. A confirmed empty response clears those retained rows.
 
 Dividend reference prices retain their own source timestamp, including the backend feed's regular-session price when a separate quote is unavailable. The footer prioritizes that timestamp and shows the separate history retrieval time when space permits; exports retain both. Stale prices and missing price timestamps remain explicit. Fetching cash history does not refresh the time of its reference price.
 
@@ -1098,7 +1100,9 @@ is performed. Missing values fail numeric comparisons. `Unavailable` means the
 field lacks evidence; it does not mean the financial quantity is zero. Provider
 multiples, market capitalization and dividend yield carry no observation date; a
 company's detail shows their collection date, marked collected, instead of inventing
-a source date.
+a source date. The dividend yield (FWD DIV%) is the forward yield `ticker` and `DVD`
+show, the latest distribution annualized, at the price when the screen's data was
+collected, so it differs from theirs by the price move since that date.
 
 Outside the regular session a listing is priced at the last regular close and its
 move, with its market cap moved to that close, so a pre-market or after-hours print

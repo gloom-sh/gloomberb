@@ -71,7 +71,7 @@ import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
-import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
+import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { notTheCoinNote } from "./crypto-hints";
 
@@ -400,18 +400,21 @@ function forwardYieldLapse(
 }
 
 /**
- * A forward yield says what it annualizes and when, as DVD does (a declared
- * distribution by its ex-date and stated amount), and once its dividend has
- * stopped, that there is none and when it was last paid; any other yield is
- * the figure alone.
+ * A dividend yield says its basis in the words DVD uses: a forward yield what
+ * it annualizes and when (a declared distribution by its ex-date and stated
+ * amount), and once its dividend has stopped, that there is none and when it
+ * was last paid; a trailing one the twelve months it covers. A yield of no
+ * stated basis is the figure alone.
  */
 function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: ForwardYieldDistributions | null): MetricFigure {
   const lapse = forwardYieldLapse(fundamentals, distributions);
   if (lapse) return { text: noCurrentDividend(lapse), value: null };
   const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
-  return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
-    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })})` }
-    : figure;
+  if (fundamentals?.dividendYield == null) return figure;
+  const basis = fundamentals.dividendYieldBasis === "forward"
+    ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
+    : fundamentals.dividendYieldBasis === "trailing" ? TRAILING_DIVIDEND_BASIS : null;
+  return basis ? { ...figure, text: `${figure.text} (${basis})` } : figure;
 }
 
 /**

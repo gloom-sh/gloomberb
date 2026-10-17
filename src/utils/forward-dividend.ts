@@ -15,6 +15,14 @@ import { formatDistributionAmount } from "./format";
  */
 const LATEST_DISTRIBUTION = "latest distribution annualized";
 
+/**
+ * What a trailing dividend yield is everywhere it shows (DVD, a fund's in
+ * fundamentals): the distributions that went ex in the last twelve months
+ * over the price, so it differs from the forward yield whenever the latest
+ * distribution is not the year's usual one.
+ */
+export const TRAILING_DIVIDEND_BASIS = "last 12 months of distributions";
+
 /** `2026-10-01` from a date or an ISO text; null when it is neither. */
 function isoDay(value: string | Date | null | undefined): string | null {
   const text = value instanceof Date ? (Number.isFinite(value.getTime()) ? value.toISOString() : "") : value ?? "";

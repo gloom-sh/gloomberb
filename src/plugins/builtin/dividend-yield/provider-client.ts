@@ -1,6 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { cashInMajorUnits } from "../../../utils/dividend-cash";
 import { buildDividendMetrics, dividendReferencePrice, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, toDividendPayment, type DividendData } from "./client";
 import { dividendQuotePriceMetadata } from "./reference-price";
 
@@ -13,16 +14,18 @@ export async function fetchProviderDividendData(
   currentPriceCurrency?: string,
 ): Promise<DividendData> {
   if (!provider.getCorporateActions) throw new Error("Dividend history source unavailable.");
-  const [actions, quote] = await Promise.all([
+  const [sourceActions, quote] = await Promise.all([
     provider.getCorporateActions(symbol, exchange),
     provider.getQuote(symbol, exchange).catch(() => null),
   ]);
+  // In the major unit as the history arrives, as the provider router serves it.
+  const actions = cashInMajorUnits(sourceActions);
   let historyError = actions.coverage?.dividends !== "available" && actions.dividends.length === 0
     ? "Dividend history is unavailable; this does not mean the security pays no cash." : undefined;
   const currency = resolveCurrencyUnit(actions.currency).currency;
   if (!currency) historyError = MISSING_DIVIDEND_CURRENCY;
   const payments = currency ? actions.dividends.flatMap((action) => {
-    const payment = toDividendPayment(action.exDate, action.amount, actions.currency!);
+    const payment = toDividendPayment(action.exDate, action.amount, currency);
     return payment ? [payment] : [];
   }).sort((left, right) => right.exDate.getTime() - left.exDate.getTime()) : [];
   if (!historyError && (actions.coverage?.dividends === "unavailable" || payments.length !== actions.dividends.length)) {
