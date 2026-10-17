@@ -1,0 +1,42 @@
+engine	theme	width	view	differing_pixels	cause
+chromium	paper	1280	OSA--detail	244	valuation timestamp from the clock (milliseconds)
+chromium	paper	1280	TAS--root	4796	footer warning icon caught mid-blink
+chromium	paper	1280	VOLS--tab-curve	1473	which failing series answered first
+chromium	paper	1280	VOLS--tab-history	1473	which failing series answered first
+chromium	paper	640	OSA--detail	288	valuation timestamp from the clock (milliseconds)
+chromium	paper	640	QR--tab-trades	4796	footer warning icon caught mid-blink
+chromium	paper	640	TAS--tab-nbbo	4796	footer warning icon caught mid-blink
+chromium	white	1280	OSA--detail	224	valuation timestamp from the clock (milliseconds)
+chromium	white	1280	PM--tab-climate	40	loading spinner frame
+chromium	white	1280	PM--tab-social	40	loading spinner frame
+chromium	white	1280	QR--tab-trades	6383	footer warning icon caught mid-blink
+chromium	white	1280	TAS--tab-nbbo	6383	footer warning icon caught mid-blink
+chromium	white	640	BT--root	5	query bar range indicator mid-transition
+chromium	white	640	FA--root	39	loading spinner frame
+chromium	white	640	HILO--root	78	scanner spinner frame
+chromium	white	640	OSA--detail	219	valuation timestamp from the clock (milliseconds)
+chromium	white	640	QR--tab-trades	6383	footer warning icon caught mid-blink
+chromium	white	640	twitter-feed-pane--root	89	search field caret blink
+webkit	paper	1280	FA--root	56	loading spinner frame
+webkit	paper	1280	FLOW--root	80	scanner spinner frame
+webkit	paper	1280	GIP--root	160	chart axis row drawn a frame apart
+webkit	paper	1280	OSA--detail	275	valuation timestamp from the clock (milliseconds)
+webkit	paper	1280	PM--tab-climate	80	loading spinner frame
+webkit	paper	640	CMP--root	418	which failing series answered first
+webkit	paper	640	FA--root	56	loading spinner frame
+webkit	paper	640	FLOW--root	80	scanner spinner frame
+webkit	paper	640	HILO--root	174	scanner spinner frame
+webkit	paper	640	OSA--detail	190	valuation timestamp from the clock (milliseconds)
+webkit	white	1280	FA--root	53	loading spinner frame
+webkit	white	1280	FLOW--root	37	scanner spinner frame
+webkit	white	1280	GIP--root	105	chart axis row drawn a frame apart
+webkit	white	1280	HILO--root	79	scanner spinner frame
+webkit	white	1280	OSA--detail	233	valuation timestamp from the clock (milliseconds)
+webkit	white	1280	PM--tab-climate	34	loading spinner frame
+webkit	white	1280	PM--tab-entertainment	34	loading spinner frame
+webkit	white	1280	PM--tab-social	37	loading spinner frame
+webkit	white	1280	PM--tab-sports	37	loading spinner frame
+webkit	white	640	FA--root	53	loading spinner frame
+webkit	white	640	FLOW--root	37	scanner spinner frame
+webkit	white	640	HILO--root	79	scanner spinner frame
+webkit	white	640	OSA--detail	143	valuation timestamp from the clock (milliseconds)
