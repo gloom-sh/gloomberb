@@ -146,7 +146,14 @@ async function listAlternatives(cdp: Cdp, scope: string, selector: string): Prom
  */
 async function selectAlternative(cdp: Cdp, scope: string, selector: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
   await helpers(cdp);
-  const aimed = await evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
+  const aim = () => evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
+  let aimed = await aim();
+  // What the press before revealed may arrive with its data (a chart's intervals once its bars load): wait for it twice more.
+  for (let attempt = 0; aimed.error === "not on the page" && attempt < 2; attempt += 1) {
+    await settle();
+    await helpers(cdp);
+    aimed = await aim();
+  }
   if (aimed.error) return { ok: false, reason: aimed.error };
   await frames(cdp, 2);
   const at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
