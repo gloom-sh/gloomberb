@@ -25,6 +25,8 @@ export interface Alternative {
   id: string;
   /** The labels of its group, to tell a group a press revealed from one it relabelled. */
   groupLabels: string[];
+  /** Its group's place among the groups and its place in the group ("2.3"): what finds it when its label carries a count that moved. */
+  place: string;
   label: string;
   /** The label, told apart from another alternative with the same label in the same state. */
   name: string;
@@ -90,11 +92,15 @@ const HELPERS = `(() => {
   };
   window.__tabVisits = {
     list(scope, selector) {
-      return entries(scope, selector).map(({ el, place, ...entry }) => entry);
+      return entries(scope, selector).map(({ el, ...entry }) => entry);
     },
     /** Scrolls the alternative into view and says where a press lands on it, or why it cannot. */
-    aim(scope, selector, id) {
-      const entry = entries(scope, selector).find((candidate) => candidate.id === id);
+    aim(scope, selector, id, place, label) {
+      const base = (text) => text.replace(/\\s+\\(.*\\)$/, "");
+      const all = entries(scope, selector);
+      // Its identity, or (a count in a label moved with the data: "All (120)") the same label in the same place.
+      const entry = all.find((candidate) => candidate.id === id)
+        ?? all.find((candidate) => candidate.place === place && base(candidate.label) === base(label));
       if (!entry) return { error: "not on the page" };
       if (entry.disabled) return { error: "disabled" };
       if (entry.hidden) return { error: "not laid out" };
@@ -105,7 +111,9 @@ const HELPERS = `(() => {
       return { ok: true, place: entry.place, label: entry.label };
     },
     point(scope, selector, id) {
-      const entry = entries(scope, selector).find((candidate) => candidate.id === id);
+      const all = entries(scope, selector);
+      const marked = document.querySelector("[data-tab-visit-target]");
+      const entry = all.find((candidate) => candidate.el === marked) ?? all.find((candidate) => candidate.id === id);
       if (!entry) return { error: "not on the page" };
       const rect = entry.el.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
@@ -144,9 +152,10 @@ async function listAlternatives(cdp: Cdp, scope: string, selector: string): Prom
  * Presses one alternative and confirms the page selected it; the error says
  * why it did not. `settle` waits for what the press loads.
  */
-async function selectAlternative(cdp: Cdp, scope: string, selector: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
+async function selectAlternative(cdp: Cdp, scope: string, selector: string, alternative: Alternative, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { id } = alternative;
   await helpers(cdp);
-  const aim = () => evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
+  const aim = () => evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)}, ${JSON.stringify(alternative.place)}, ${JSON.stringify(alternative.label)})`);
   let aimed = await aim();
   // What the press before revealed may arrive with its data (a chart's intervals once its bars load): wait for it twice more.
   for (let attempt = 0; aimed.error === "not on the page" && attempt < 2; attempt += 1) {
@@ -155,8 +164,13 @@ async function selectAlternative(cdp: Cdp, scope: string, selector: string, id: 
     aimed = await aim();
   }
   if (aimed.error) return { ok: false, reason: aimed.error };
-  await frames(cdp, 2);
-  const at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
+  // A strip that scrolls smoothly takes a few frames to bring it in.
+  let at: { x?: number; y?: number; error?: string } = { error: "not pointed at" };
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await frames(cdp, 2);
+    at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
+    if (!at.error) break;
+  }
   if (at.error || at.x === undefined || at.y === undefined) return { ok: false, reason: at.error ?? "no point to press" };
   await click(cdp, { x: at.x, y: at.y });
   await settle();
@@ -208,7 +222,7 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
     await reset();
     let failure: string | null = null;
     for (const [step, alternative] of path.entries()) {
-      const result = await selectAlternative(cdp, scope, selector, alternative.id, settle);
+      const result = await selectAlternative(cdp, scope, selector, alternative, settle);
       if (!result.ok) {
         failure = path.length > 1 ? `press ${step + 1} of ${path.length} (${alternative.name}): ${result.reason}` : result.reason;
         break;
