@@ -58,7 +58,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
       <KeyValueRow label="Confidence" value={`${Math.round(evidence.confidence * 100)}%`} detail={evidence.quoteMatchMode === "exact" ? "Exact text match" : "Normalized text match"} labelWidth={18} />
       {/* The filing's own words: on the desktop, the quote block. */}
       {desktop
-        ? <Box marginY={1} style={quoteBlockStyle()}><Text fg={colors.textBright}>{evidence.quote}</Text></Box>
+        ? <Box marginY={1} style={quoteBlockStyle()}><Text fg={colors.textBright} wrapText>{evidence.quote}</Text></Box>
         : <Box paddingY={1}><Text fg={colors.textBright}>{evidence.quote}</Text></Box>}
       <Text fg={colors.textDim}>{evidence.url}</Text>
     </Box>
