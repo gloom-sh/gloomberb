@@ -332,6 +332,35 @@ describe("pane state updates", () => {
     expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("financials");
   });
 
+  test("switching layouts back and forth keeps no copy of pane state per switch", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const home = config.activeLayoutIndex;
+    const away = home === 0 ? 1 : 0;
+    const articles = Array.from({ length: 50 }, (_, index) => ({ id: `a${index}`, tags: ["markets"] }));
+    config.layouts[home] = {
+      ...config.layouts[home]!,
+      paneState: { "ticker-detail:main": { pluginState: { news: { articles } } } },
+    };
+    let state = createInitialState(config);
+    // Built in a function so no copy stays on this frame's stack.
+    const switchBackAndForth = (times: number) => {
+      const copies: WeakRef<object>[] = [];
+      for (let index = 0; index < times; index += 1) {
+        state = appReducer(state, { type: "SWITCH_LAYOUT", index: away });
+        state = appReducer(state, { type: "SWITCH_LAYOUT", index: home });
+        const live = state.paneState["ticker-detail:main"]?.pluginState as { news: { articles: object } };
+        copies.push(new WeakRef(live.news.articles));
+      }
+      return copies;
+    };
+    const copies = switchBackAndForth(40);
+    await Bun.sleep(0);
+    Bun.gc(true);
+
+    expect(new Set(copies.map((copy) => copy.deref()).filter(Boolean)).size).toBeLessThanOrEqual(2);
+    expect((state.paneState["ticker-detail:main"]?.pluginState as { news: { articles: unknown[] } }).news.articles).toHaveLength(50);
+  });
+
   test("hydrates saved layout pane state before legacy session pane state", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     config.layouts[config.activeLayoutIndex] = {
