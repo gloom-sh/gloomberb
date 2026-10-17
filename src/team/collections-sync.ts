@@ -110,9 +110,18 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
   const refresh = async () => {
     if (!apiClient.isVerified()) return;
     const currentTeams = teamStore.getSnapshot().teams;
-    const teamIds = currentTeams.map((team) => team.id);
-    const lists = await Promise.all(currentTeams.map((team) => apiClient.listTeamCollections(team.id).catch(logFailure("team.collections-sync", "Listing team collections failed", [] as TeamCollection[]))));
-    await applyCollections(teamIds, lists.flat());
+    const lists = await Promise.all(currentTeams.map((team) => apiClient.listTeamCollections(team.id).catch(logFailure("team.collections-sync", "Listing team collections failed", null))));
+    // A team whose list failed is left out of this refresh, not read as an empty list:
+    // its collections, members and config entries stay as they were until a refresh succeeds.
+    const teamIds: string[] = [];
+    const collections: TeamCollection[] = [];
+    currentTeams.forEach((team, index) => {
+      const list = lists[index];
+      if (!list) return;
+      teamIds.push(team.id);
+      collections.push(...list);
+    });
+    await applyCollections(teamIds, collections);
   };
 
   const applyEvent = async (event: TeamCollectionEvent) => {
