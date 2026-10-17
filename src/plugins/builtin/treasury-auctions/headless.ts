@@ -28,8 +28,8 @@ import {
 
 /**
  * A completed auction's missing bid-to-cover or bidder split is a blank cell:
- * the source has none for nearly all auctions before 2000. "-" stays for an
- * announced auction whose results are not out yet.
+ * the source has bid-to-cover regularly from late 1999 and the split only from
+ * 2008-04-07. "-" stays for an announced auction whose results are not out yet.
  */
 const missing = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction) ? "-" : "";
 const formatPercent = (value: unknown, row: Record<string, unknown>) => value == null ? missing(row) : `${Number(value).toFixed(1)}%`;
@@ -38,7 +38,12 @@ const formatPercent = (value: unknown, row: Record<string, unknown>) => value ==
 const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
 
-const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction, as for nearly all before 2000; - is a result not out yet.";
+const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction: "
+  + "bid-to-cover is regular from late 1999, the indirect, direct and dealer split from 2008-04-07. - is a result not out yet.";
+
+/** A completed auction the source gives no bid-to-cover or no bidder split for. */
+const lacksMetrics = (auction: TreasuryAuction) => !isPendingAuction(auction)
+  && (auction.bidToCoverRatio == null || indirectPct(auction) == null || directPct(auction) == null || dealerPct(auction) == null);
 
 /** The rate as the table prints it; a TIPS or FRN row says what its number is (`2.653% real`, `4.0bp spread`). */
 const rateCell = (value: unknown, row: Record<string, unknown>) => {
@@ -136,7 +141,7 @@ function createTreasuryAuctionsHeadless(
         // ALL is the whole history: nothing older to point to.
         ...(nextWindow ? [`Older auctions: use --historyDays ${nextWindow}.`] : []),
         ...(auctions.length > 0 ? [STOP_OUT_NOTE] : []),
-        ...(auctions.some((auction) => auction.bidToCoverRatio == null && !isPendingAuction(auction)) ? [MISSING_METRICS_NOTE] : []),
+        ...(auctions.some(lacksMetrics) ? [MISSING_METRICS_NOTE] : []),
       ];
       return {
         complete: !result.refreshError,

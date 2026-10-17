@@ -65,9 +65,9 @@ function formatRate(value: number | null): string {
 }
 
 /**
- * A metric a completed auction does not have is blank: Treasury's data has no
- * bid-to-cover or bidder split for nearly all auctions before 2000. "—"
- * stays for an announced auction whose results are not out yet.
+ * A metric a completed auction does not have is blank: Treasury's data has
+ * bid-to-cover regularly from late 1999 and the bidder split only from
+ * 2008-04-07. "—" stays for an announced auction whose results are not out yet.
  */
 function formatRatio(value: number | null, auction?: TreasuryAuction): string {
   if (value == null) return auction && !isPendingAuction(auction) ? "" : "—";
