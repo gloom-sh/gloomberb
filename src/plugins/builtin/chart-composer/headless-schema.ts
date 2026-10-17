@@ -5,11 +5,12 @@ import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_V
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
 /**
- * GF opens on quarterly bars, as its catalog entry says and as the template
- * builds them in the app; a default left at annual would override that for
- * every `fn`, `shot` and agent read. Annual is `--period annual`.
+ * GF and GE open on quarterly figures (GE's multiples on trailing twelve
+ * months of them), as their catalog entries say and as the templates build
+ * them in the app; a default left at annual would override that for every
+ * `fn`, `shot` and agent read. Annual is `--period annual`.
  */
-const FUNDAMENTAL_PERIOD_OPTION: HeadlessPaneOptionDef = { ...FINANCIAL_PERIOD_OPTION, defaultValue: "quarterly" };
+const GRAPH_PERIOD_OPTION: HeadlessPaneOptionDef = { ...FINANCIAL_PERIOD_OPTION, defaultValue: "quarterly" };
 
 export const paneSchemas = {
   "chart-composer-pane": {
@@ -178,7 +179,7 @@ export const paneSchemas = {
         ],
         defaultValue: "totalRevenue",
       },
-      FUNDAMENTAL_PERIOD_OPTION,
+      GRAPH_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
     ],
     discovery: {
@@ -217,7 +218,7 @@ export const paneSchemas = {
         // The same metric the GE template opens with in the app.
         defaultValue: "trailingPE",
       },
-      FINANCIAL_PERIOD_OPTION,
+      GRAPH_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
     ],
     discovery: {

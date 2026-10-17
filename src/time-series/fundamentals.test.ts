@@ -417,6 +417,19 @@ describe("fundamental series extraction", () => {
     expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-02-01");
   });
 
+  test("a multiple names the period its earnings come from: the trailing quarters, or the fiscal year", () => {
+    const quarterly = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31", "2025-03-31"]
+      .map((date) => ({ date, availableAt: date, eps: 1 }));
+    const annual = [{ date: "2024-06-30", availableAt: "2024-08-01", eps: 4 }];
+    const history = [...quarterly.map(({ date }) => date), "2024-06-30"]
+      .map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 100 }));
+    const snapshot = financials(quarterly, annual, history);
+    const names = (period: SecuritySeriesSource["period"]) => extractFundamentalSeries(snapshot, source("valuation.trailingPE", period))
+      .map((point) => point.fiscalPeriod);
+    expect(names("quarterly").at(-1)).toBe("TTM Q3 FY25");
+    expect(names("annual")).toEqual(["FY2024"]);
+  });
+
   test("deduplicates annual provider aliases before calculating valuation points", () => {
     const points = extractFundamentalSeries(
       financials([], [
