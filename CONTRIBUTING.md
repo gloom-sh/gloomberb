@@ -78,6 +78,7 @@ Some changes need one more check:
 | Build scripts or the terminal entry point | `bun run build` |
 | Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
 | Pane chrome, docking, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |
+| Cloud sync, the portfolio analytics it values, or the desktop view's RPC path (Electrobun's patch included) | `bun scripts/pane-chrome/sync-poll.ts --check` (needs Playwright WebKit): the longest main-thread block of a sync on a large invented workspace and of a 4 MB message through Electrobun's preload codec, against a budget; the Performance workflow runs it for those paths |
 
 Try UI changes in the app as well. [`.agents/skills/tui-testing/SKILL.md`](.agents/skills/tui-testing/SKILL.md) shows how to drive the terminal app from tmux; give it a throwaway `GLOOMBERB_HOME`.
 
