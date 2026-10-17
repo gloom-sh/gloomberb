@@ -96,3 +96,44 @@ jobs:
       # job summary either way.
       - name: Compare a pane drag's frame budget with the base branch
         run: bun run benchmark:pane-drag:compare --base ../base
+
+  # How long one Cloud sync blocks the desktop view on a large workspace, in
+  # WebKit. Only for changes to the sync, the portfolio analytics it values,
+  # the desktop view's RPC path (Electrobun's patch included), or the check.
+  sync-budget:
+    name: Cloud sync main-thread budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: scope
+        name: Check whether the change touches the sync or the desktop RPC path
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          if git diff --name-only FETCH_HEAD HEAD | grep -E '^(src/sync/|src/plugins/builtin/analytics/metrics\.ts|src/renderers/electrobun/|src/utils/http-proxy-response\.ts|patches/electrobun|scripts/pane-chrome/sync-poll|\.github/workflows/performance\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.scope.outputs.relevant == 'true'
+        uses: ./.github/actions/setup-bun
+
+      - if: steps.scope.outputs.relevant == 'true'
+        name: Install the pinned WebKit build and system libraries
+        run: bun node_modules/playwright-core/cli.js install --with-deps webkit
+
+      # Fails when an unchanged, a repriced or an edited workspace's sync, or
+      # a 4 MB message through the preload codec, blocks the main thread past
+      # its budget, or when an unchanged workspace is uploaded again.
+      - if: steps.scope.outputs.relevant == 'true'
+        name: Check a Cloud sync's longest main-thread block
+        run: bun scripts/pane-chrome/sync-poll.ts --check --label sync-poll
+
+      - if: always() && steps.scope.outputs.relevant == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-poll
+          path: ~/.cache/gloomberb-pane-chrome/sync-poll/samples.json
+          if-no-files-found: ignore
