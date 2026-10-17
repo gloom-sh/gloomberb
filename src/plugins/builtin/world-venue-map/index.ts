@@ -14,10 +14,24 @@ import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
 
 const CHOKE_SERIES_LIMIT = 6;
 
+const chartComposerHeadless = chartHeadless("chart-composer-pane");
+
 const chokepointTemplate: PaneTemplateDef = {
   id: "chokepoint-chart-pane",
   paneId: CHART_COMPOSER_PANE_ID,
-  headless: { ...chartHeadless("chart-composer-pane"), description: "Daily vessel transits through the main shipping chokepoints, or one chokepoint by name." },
+  headless: {
+    ...chartComposerHeadless,
+    description: "Daily vessel transits through the main shipping chokepoints, or one chokepoint by name.",
+    // Keeps the chart composer's id, which its screenshot is read by, and says what it charts: vessel transits, not FRED series.
+    discovery: {
+      ...chartComposerHeadless.discovery,
+      aliases: ["chokepoint transits", "shipping chokepoints"],
+      limitations: [
+        "Transit counts are estimates from ships' position reports (AIS), published weekly a few days after the ships pass; the latest weeks can be revised.",
+        "A ship that turns off its transponder is not counted.",
+      ],
+    },
+  },
   label: "Chokepoint Transits",
   description: "Chart daily vessel transits through the main shipping chokepoints, or one of them.",
   keywords: ["chokepoint", "chokepoints", "transits", "suez", "panama", "hormuz", "malacca", "shipping", "strait", "canal"],

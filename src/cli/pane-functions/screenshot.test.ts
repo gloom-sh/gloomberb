@@ -45,7 +45,7 @@ import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
-import { deriveHeadlessFreshness } from "./freshness";
+import { deriveCaptureReport } from "./freshness";
 import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
 import { loadPeriodEndHistory } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
@@ -1220,15 +1220,15 @@ test("an Issuer Debt or TRACE capture is dated by its own data, never by the iss
     sessionExchange: "NYSE", marketState: "POST" } as never);
   const payload = { financials: [["WHR", createTestFinancials({ quote })]] } as unknown as Pick<DesktopPaneShotPayload, "financials">;
   const render = { semanticUi: [], footerText: "", rows: [] };
-  const report = deriveHeadlessFreshness(debtMaturitiesHeadless, { sections: [], freshness: { asOf: "2026-06-30" } }, NOW);
+  const report = deriveCaptureReport(debtMaturitiesHeadless, { sections: [], freshness: { asOf: "2026-06-30" } }, NOW);
   const line = shotFreshness({ pane, template }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
   expect(line.variants[0]).toBe("Source: SEC EDGAR · Tue 30 Jun 2026 · not a live feed (filed data)");
   expect(line.dates).toBe("data");
-  // A view that does not declare its source is still dated by the quote it shows.
-  const quoted = shotFreshness({ pane, template: { ...template, reportFreshness: undefined } }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
-  expect(quoted.dates).toBe("quotes");
+  // A view that declares nothing itself is dated by its report all the same: the report says what its data is.
+  const undeclared = shotFreshness({ pane, template: { ...template, reportFreshness: undefined } }, { ...payload, instrumentFinancials: [] }, render, [], report, NOW);
+  expect(undeclared.variants[0]).toBe(line.variants[0]);
   // TRACE given a ticker shows its quote's company's bonds, dated by their last sale.
-  const sales = deriveHeadlessFreshness(traceBondsHeadless, {
+  const sales = deriveCaptureReport(traceBondsHeadless, {
     sections: [{ title: "", columns: [], rows: [{ id: "23110AAB2", lastTradeDate: "2026-07-27" }] }], freshness: { oldest: null },
   }, NOW);
   const trace = shotFreshness({ pane, template: traceBondsModule.paneTemplates![0]! }, { ...payload, instrumentFinancials: [] }, render, [], sales, NOW);

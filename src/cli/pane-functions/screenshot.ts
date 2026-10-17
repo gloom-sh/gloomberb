@@ -100,7 +100,7 @@ import {
   withShotSeasonalityHistory,
 } from "./data";
 import { declaredReportFreshness, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
-import { captureStatusLine, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureStatusLine, type ReportFreshness } from "./freshness";
+import { captureStatusLine, deriveCaptureReport, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureReport, type CaptureStatusLine, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
@@ -775,20 +775,21 @@ function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPa
 
 /**
  * How current a capture's data is (`captureStatusLine`). A pane that dates its
- * view itself (the news wire's delay, FXC's rates) is taken at its word, and a
- * pane that declares a status is never dated by the quotes it shows; otherwise
- * those quotes date it, with their delay and where their markets stand. Then
- * the pane's report, as `fn` ends; then what the rendered view carries. A
- * function that opens one view of a pane hosting several declares it on its
- * template (DDIS in Fixed Income), so its filings, not the issuer's stock
- * quote, date the capture.
+ * view itself (the news wire's delay, FXC's rates) is taken at its word, and so
+ * is a report that says what its data is (EE's estimates, MDAY's study): the
+ * quotes the page loaded beside them do not date them. A pane that declares a
+ * status is never dated by the quotes it shows; otherwise those quotes date it,
+ * with their delay and where their markets stand. Then the pane's report, as
+ * `fn` ends; then what the rendered view carries. A function that opens one
+ * view of a pane hosting several declares it on its template (DDIS in Fixed
+ * Income), so its filings, not the issuer's stock quote, date the capture.
  */
 export function shotFreshness(
   resolved: Pick<ResolvedPaneFunction, "pane" | "template">,
   payload: Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">,
   render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "footerText" | "rows">,
   bridgedQuotes: readonly Quote[],
-  report: ReportFreshness | undefined,
+  report: CaptureReport | undefined,
   now = Date.now(),
 ): CaptureStatusLine {
   const published = renderedReportFreshness(render.semanticUi ?? []);
@@ -824,11 +825,11 @@ async function reportShotFreshness(
   resolved: Pick<ResolvedPaneFunction, "headless">,
   loadModel: () => Promise<LoadedHeadlessPaneModel>,
   now = Date.now(),
-): Promise<ReportFreshness | undefined> {
+): Promise<CaptureReport | undefined> {
   if (!resolved.headless) return undefined;
   try {
     const loaded = await loadModel();
-    return deriveHeadlessFreshness(loaded.definition, loaded.result, now);
+    return deriveCaptureReport(loaded.definition, loaded.result, now);
   } catch (error) {
     logFailure("cli.screenshot", "Read screenshot report freshness failed")(error);
     return undefined;

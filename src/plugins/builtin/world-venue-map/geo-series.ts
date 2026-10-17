@@ -76,6 +76,8 @@ export async function resolveGeoChartSeries(
     panelId: "main",
     interpolation: "none",
     points,
+    // A chart of map series alone cites who published them, as `fn CHOKE` and its export do.
+    ...(payload.publisher ? { attribution: { source: payload.publisher, publisher: payload.publisher } } : {}),
   };
 }
 
@@ -117,6 +119,12 @@ const CHOKEPOINT_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Who publishes the chokepoints' daily transits, as the server's chokepoints
+ * layer names them (`publisher`); the catalog lists the key straits offline.
+ */
+const CHOKEPOINT_PUBLISHER = "IMF PortWatch";
+
+/**
  * The key straits' daily transits in the catalog. The rest of the map's
  * series stay a `GEO:` expression or a map click away: the server's index of
  * them changes without a release.
@@ -127,6 +135,7 @@ export const CHOKEPOINT_SERIES: readonly SeriesDefinition[] = KEY_CHOKEPOINTS.ma
   unit: "count",
   frequency: "daily",
   group: "Alternative data",
+  publisher: CHOKEPOINT_PUBLISHER,
   tags: ["chokepoint", "shipping", "transits", "vessels", "trade"],
   expression: formatGeoSeriesExpression(alias),
 }));

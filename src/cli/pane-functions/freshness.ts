@@ -258,6 +258,11 @@ function collect(
   return { signals, observations };
 }
 
+/** Rows that are quotes: a feed (live or delayed) or a venue's session dates them. */
+function rowsAreQuotes(signals: FeedSignals): boolean {
+  return signals.live || signals.delayed || signals.sessions.length > 0;
+}
+
 function isoTime(time: ReportTime): string {
   return time.dateOnly ? new Date(time.time).toISOString().slice(0, 10) : new Date(time.time).toISOString();
 }
@@ -436,7 +441,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     : asOf?.dateOnly ? declared.tradingDayMarket?.trim() || null : null;
   const periodicity = declared.periodicity && asOf?.dateOnly ? declared.periodicity : undefined;
   // Rows that are quotes (a feed, a venue's session) keep the market line, even on a dataset's pane.
-  const quoted = signals.live || signals.delayed || signals.sessions.length > 0;
+  const quoted = rowsAreQuotes(signals);
   // A dataset disseminated with a delay (DTCC's swap tape) lags its newest observation all the same.
   const lagDays = declared.dataset && asOf && !quoted && (status === "not-a-feed" || status === "stale" || status === "delayed")
     ? datasetLagDays(asOf, periodicity, now) : null;
@@ -485,9 +490,34 @@ export function deriveHeadlessFreshness(
   result: HeadlessPaneResult,
   now = Date.now(),
 ): ReportFreshness {
+  return deriveCaptureReport(definition, result, now).freshness;
+}
+
+/** A pane's report as a capture of the pane reads it. */
+export interface CaptureReport {
+  /** What `fn` says about the data. */
+  freshness: ReportFreshness;
+  /**
+   * The report says what its data is (a declared status) and its rows are
+   * neither quotes (a feed, a venue's session) nor a listing's prices: EE's
+   * estimates, MDAY's study, COT's weekly report. A capture then ends as `fn`
+   * does, not with the quotes the page loaded beside them.
+   */
+  declaresData: boolean;
+}
+
+/** `deriveHeadlessFreshness`, and whether that line is the report's own word on its data. */
+export function deriveCaptureReport(
+  definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">,
+  result: HeadlessPaneResult,
+  now = Date.now(),
+): CaptureReport {
   const declared = mergeDeclarations(definition.freshness, result.freshness);
   const { signals, observations } = collect(definition, result, now, declared);
-  return resolveFreshness({ declared, signals, observations, now });
+  return {
+    freshness: resolveFreshness({ declared, signals, observations, now }),
+    declaresData: !!declared.status && declared.prices !== true && !rowsAreQuotes(signals),
+  };
 }
 
 /**
@@ -961,13 +991,15 @@ export interface CaptureStatusLine {
  * What a capture's status line says about its data, from the first that applies:
  * - a dataset's report (CHOKE's transits, HIRE's postings): its source, newest observation and lag;
  * - a pane that dates its own view (PERP's venues, FXC's rates, the news wire's delay): what it publishes;
- * - quotes on screen, when the pane does not say what its data is: their session, delay and market;
- * - the pane's report, when it says how current its data is: the line `fn` ends with, source first;
+ * - a report that says what its data is (EE's estimates, MDAY's study): the line `fn` ends with, source first,
+ *   whatever quotes the page loaded beside it;
+ * - quotes on screen, when neither says what the data is (a quote board, a price chart): their session, delay and market;
+ * - the pane's report, when it says how current its data is: the line `fn` ends with;
  * - otherwise what the rendered view carries, which may be nothing.
  */
-export function captureStatusLine({ report, selfDated, quoted, rendered }: {
+export function captureStatusLine({ report: loaded, selfDated, quoted, rendered }: {
   /** The pane's own report, loaded for the capture: what `fn` would say. */
-  report?: ReportFreshness;
+  report?: CaptureReport;
   /** Whether the rendered pane published how current its view is. */
   selfDated: boolean;
   /** The quotes the capture shows, read when the pane does not say what its data is. */
@@ -976,13 +1008,16 @@ export function captureStatusLine({ report, selfDated, quoted, rendered }: {
 }): CaptureStatusLine {
   const plain = (freshness: ReportFreshness, dates: CaptureStatusLine["dates"]): CaptureStatusLine => ({ freshness, variants: statusLineVariants(freshness), dates });
   const dated = (freshness: ReportFreshness) => (freshness.asOf ? "data" as const : null);
+  const sourced = (freshness: ReportFreshness): CaptureStatusLine => ({ freshness, variants: statusLineVariants(freshness, { source: true }), dates: dated(freshness) });
+  const report = loaded?.freshness;
   if (report && datesObservation(report)) return plain(report, "data");
   if (selfDated) {
     const view = rendered();
     return plain(view, dated(view));
   }
+  if (report && loaded?.declaresData) return sourced(report);
   if (quoted) return plain(quoted, "quotes");
-  if (report && report.status !== "unreported") return { freshness: report, variants: statusLineVariants(report, { source: true }), dates: dated(report) };
+  if (report && report.status !== "unreported") return sourced(report);
   return plain(rendered(), null);
 }
 

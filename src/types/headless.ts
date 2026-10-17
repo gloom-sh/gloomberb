@@ -257,6 +257,13 @@ export interface HeadlessPaneFreshness {
    */
   dataset?: boolean;
   /**
+   * The rows are a listing's price bars, which its quote carries on (`G AAPL`,
+   * `HP`). A screenshot dates them as it dates a quote board, by the quotes it
+   * shows with their delay and market. Any other report that declares a
+   * `status` ends its screenshot as it ends `fn`, whatever quotes the page loaded.
+   */
+  prices?: boolean;
+  /**
    * What a dataset's newest observation is, when its every line names it:
    * `last trade` makes the `fn` footer, the pane footer and a screenshot read
    * the same, `Source: DTCC · last trade 2026-10-09 · lag 2 days`, dated as

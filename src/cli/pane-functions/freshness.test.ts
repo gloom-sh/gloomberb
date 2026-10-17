@@ -4,7 +4,7 @@ import { cloudNewsFreshness, quoteObservation } from "../../plugins/builtin/shar
 import { createTestQuote } from "../../test-support/data-provider";
 import { quotesFreshness } from "../freshness";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
-import { captureStatusLine, delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
+import { captureStatusLine, delayLength, deriveCaptureReport, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
 
 const NOW = Date.parse("2026-10-09T05:00:00Z"); // Friday, before the US open
 const rows = (freshness?: HeadlessPaneDefinition["freshness"]) => ({ shape: "rows" as const, ...(freshness ? { freshness } : {}) });
@@ -240,38 +240,53 @@ describe("report freshness", () => {
     const quoted = deriveHeadlessFreshness(rows(), { rows: [
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NYSE", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T20:00:00Z") },
     ] }, SUN);
-    expect(captureStatusLine({ report: freshness, quoted, selfDated: false, rendered: () => quoted }).variants[0]).toBe(one);
+    expect(captureStatusLine({ report: { freshness, declaresData: true }, quoted, selfDated: false, rendered: () => quoted }).variants[0]).toBe(one);
     // Without a name the dataset keeps its own line, and a delayed feed that is no dataset has no lag.
     expect(formatStatusLine(deriveHeadlessFreshness(rows({ ...tape, observation: undefined }), { rows: [] }, SUN)))
       .toBe("Source: DTCC \u00b7 observed Fri 9 Oct \u00b7 lag 2d");
     expect(deriveHeadlessFreshness(rows({ ...tape, dataset: undefined }), { rows: [] }, SUN).lagDays).toBeUndefined();
   });
 
-  test("a capture states its report's freshness as fn ends, unless the pane or its quotes date the view", () => {
+  test("a capture ends as its report's fn line when the report says what its data is; quotes date only quotes and prices", () => {
     const SUN = Date.parse("2026-10-11T06:17:00Z");
-    const cot = deriveHeadlessFreshness(rows({ source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 }),
+    const cot = deriveCaptureReport(rows({ source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 }),
       { rows: [{ asOf: "2026-10-06" }, { asOf: "2026-09-29" }] }, SUN);
     const rendered = deriveHeadlessFreshness(rows(), { rows: [] }, SUN);
-    const quoted = deriveHeadlessFreshness(rows(), { rows: [
-      { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
-    ] }, SUN);
+    const delayedClose = { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") };
+    const quoted = deriveHeadlessFreshness(rows(), { rows: [delayedClose] }, SUN);
+    const marketLine = "US trading day Fri 9 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon";
     const pick = (inputs: Partial<Parameters<typeof captureStatusLine>[0]>) => captureStatusLine({ selfDated: false, rendered: () => rendered, ...inputs });
     // The footer ends as `fn` does, then gives up the oldest observation, then its source.
     // It dates the pane's own data, so the pane's own `as of` goes.
-    expect(pick({ report: cot })).toEqual({ freshness: cot, dates: "data", variants: [
+    expect(cot.declaresData).toBe(true);
+    expect(pick({ report: cot })).toEqual({ freshness: cot.freshness, dates: "data", variants: [
       "Source: CFTC \u00b7 Tue 6 Oct 2026 (oldest Tue 29 Sep 2026) \u00b7 not a live feed (weekly report)",
       "Source: CFTC \u00b7 Tue 6 Oct 2026 \u00b7 not a live feed (weekly report)",
       "Tue 6 Oct 2026 \u00b7 not a live feed (weekly report)",
     ] });
-    expect(pick({ report: cot }).variants[0]).toBe(formatFreshnessLine(cot));
-    // Quotes on screen keep the market line; a pane that dates its own view keeps its word.
-    expect(pick({ report: cot, quoted }).variants[0]).toBe("US trading day Fri 9 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon");
-    expect(pick({ report: cot, quoted }).dates).toBe("quotes");
+    expect(pick({ report: cot }).variants[0]).toBe(formatFreshnessLine(cot.freshness));
+    // The quotes the page loaded beside it (EE's, MDAY's ticker) do not date it, undated or not.
+    expect(pick({ report: cot, quoted }).variants[0]).toBe(formatFreshnessLine(cot.freshness));
+    const estimates = deriveCaptureReport(rows({ status: "not-a-feed", basis: "estimates and reported earnings", oldest: null }),
+      { rows: [{ date: "2026-11-09" }, { date: "2026-08-11" }] }, SUN);
+    expect(pick({ report: estimates, quoted }).variants[0])
+      .toBe("Source: Gloom Cloud \u00b7 retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 not a live feed (estimates and reported earnings)");
+    // A pane that dates its own view keeps its word.
     expect(pick({ report: cot, quoted, selfDated: true }).freshness).toBe(rendered);
+    // Quotes keep the market line: a report whose rows are quotes, a price chart's bars, a report that declares nothing.
+    const board = deriveCaptureReport(rows({ status: "delayed" }), { rows: [delayedClose] }, SUN);
+    const bars = deriveCaptureReport(rows({ status: "not-a-feed", basis: "daily closes", cadence: "daily", prices: true }), { rows: [{ asOf: "2026-10-09" }] }, SUN);
+    const silent = deriveCaptureReport(rows(), { rows: [] }, SUN);
+    for (const report of [board, bars, silent]) {
+      expect(report.declaresData).toBe(false);
+      expect(pick({ report, quoted })).toMatchObject({ dates: "quotes", freshness: quoted });
+      expect(pick({ report, quoted }).variants[0]).toBe(marketLine);
+    }
+    expect(pick({ report: bars }).variants[0]).toBe(formatFreshnessLine(bars.freshness));
     // A report that cannot tell falls back to the rendered view.
-    expect(pick({ report: rendered, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 status not reported"] });
+    expect(pick({ report: silent, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 status not reported"] });
     // A dataset's report dates it whatever else the capture shows.
-    const dataset = deriveHeadlessFreshness(rows({ status: "not-a-feed", dataset: true }), { rows: [{ asOf: "2026-10-04" }] }, SUN);
+    const dataset = deriveCaptureReport(rows({ status: "not-a-feed", dataset: true }), { rows: [{ asOf: "2026-10-04" }] }, SUN);
     expect(pick({ report: dataset, quoted, selfDated: true }).variants[0]).toBe("Source: Gloom Cloud \u00b7 observed Sun 4 Oct \u00b7 lag 7d");
   });
 

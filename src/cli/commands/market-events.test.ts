@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
+import { formatFreshnessLine } from "../pane-functions/freshness";
 import { marketDataCliCommands } from "./market";
 
 const events = marketDataCliCommands.find((command) => command.name === "events")!;
@@ -53,4 +54,10 @@ test("events rows only gain fields, so NDJSON consumers keep type, date and deta
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
   expect(csv.split("\n")[0]).toStartWith("Date,Type,Detail,");
   expect(csv.split("\n")[0]).not.toContain("eps");
+});
+
+test("events is dated by when it was read: a row's date is when its event happens, so the newest past one is no as-of", async () => {
+  const { result } = await eventRows(PLTR);
+  expect(result.freshness).toMatchObject({ asOf: null, status: "not-a-feed", basis: "corporate actions" });
+  expect(formatFreshnessLine(result.freshness!)).toMatch(/^Source: Gloom Cloud · retrieved \w{3} \d+ \w{3} \d{4} \d{2}:\d{2} UTC · not a live feed \(corporate actions\)$/);
 });

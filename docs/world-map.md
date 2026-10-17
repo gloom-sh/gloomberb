@@ -27,6 +27,8 @@ Dense layers show counts until you zoom in. On the desktop and the web the map z
 
 `gloomberb fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloomberb shot MAP ships` saves a picture of the map.
 
+The chokepoints' transits and the ports' calls and trade are published by IMF PortWatch, from ships' position reports (AIS). `fn CHOKE`, `fn MAP ports`, their screenshots and their exports cite it as the source and publisher (`Source: IMF PortWatch · observed Sun 11 Oct · lag 6d` under `shot CHOKE`, `# Publisher: IMF PortWatch` in CSV), and `gloomberb catalog transits` lists it in the Publisher column. Layers that do not name a publisher cite Gloom Cloud.
+
 ## Map data
 
 Land, coastlines, country borders and country names come from [Natural Earth](https://www.naturalearthdata.com/) (1:50m, and 1:10m when zoomed in; names and their label points from the 1:50m admin-0 countries), which is in the public domain; at the closest zooms the coastline is the 1:10m outline, drawn as straight runs a few hundred metres long. `bun run map:data` rebuilds them from a pinned release with `scripts/generate-world-map-data.ts`; the app ships the result and asks no outside host for map data.

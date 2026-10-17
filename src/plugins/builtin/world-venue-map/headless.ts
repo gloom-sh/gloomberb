@@ -17,9 +17,11 @@ import { filterWorldVenues, formatVenueLocalTime } from "./model";
  */
 function layerFreshness(layer: GeoLayerInfo): HeadlessPaneFreshness | undefined {
   if (layer.status === "unavailable") return undefined;
-  if (layer.cadence === "live") return { status: "live" };
-  if (layer.cadence === "daily") return { status: "not-a-feed", basis: "daily data" };
-  return REFERENCE_DATA;
+  // Cited as the server names who published it (the ports' and chokepoints' publisher), else Gloom Cloud.
+  const cited = layer.publisher?.trim() ? { source: layer.publisher.trim(), publisher: layer.publisher.trim() } : {};
+  if (layer.cadence === "live") return { status: "live", ...cited };
+  if (layer.cadence === "daily") return { status: "not-a-feed", basis: "daily data", ...cited };
+  return { ...REFERENCE_DATA, ...cited };
 }
 
 function contextRequest(context: HeadlessPaneContext): GeoRequest {

@@ -81,6 +81,12 @@ export interface GeoLayerInfo {
   status: GeoLayerStatus;
   /** Short plain words, never a source name. */
   statusNote?: string;
+  /**
+   * Who published the data, as a reader cites it (`IMF PortWatch`), when the
+   * server names one: a public institution, never a vendor. Reports cite it
+   * as their source and publisher; absent, they cite Gloom Cloud.
+   */
+  publisher?: string;
   access: "free" | "pro";
   /** The entity table's columns; the first is the label. */
   columns: GeoColumn[];
@@ -164,6 +170,8 @@ export interface GeoSeriesPayload {
   /** [YYYY-MM-DD, value], oldest first. */
   points: [string, number][];
   asOf: string | null;
+  /** Its layer's `publisher`, when the server names one. */
+  publisher?: string;
 }
 
 /** West, south, east, north in degrees. */

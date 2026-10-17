@@ -1609,9 +1609,9 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     ctx.printResult({
       data,
       metadata: listingMetadata(identity),
-      freshness: rowsFreshness(corporateActionRows(data), {
-        ...REPORTED_DATA, basis: "corporate actions", observedKey: "date", oldest: null,
-      }),
+      // Dated by when it was read, as EE and fn EVT date the same events: a row's
+      // date is when the event happens, and the newest past one is no as-of.
+      freshness: rowsFreshness([], { ...REPORTED_DATA, basis: "corporate actions", oldest: null }),
       ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
       heading: listingHeading(identity),

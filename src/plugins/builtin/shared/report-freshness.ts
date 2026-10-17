@@ -22,13 +22,14 @@ const DAY_MINUTES = 24 * 60;
 /**
  * Price bars: a history, not a feed, stale once the bars stop arriving for
  * their size. Intraday and daily bars follow the US trading sessions; a
- * weekly or monthly bar is dated by the start of its period.
+ * weekly or monthly bar is dated by the start of its period. Their
+ * screenshot is dated by the listing's quote (`prices`).
  */
 export function barHistoryFreshness(resolution: string | null | undefined): HeadlessPaneFreshness {
-  if (resolution === "1wk") return { status: "not-a-feed", basis: "weekly bars", maxAgeMinutes: 14 * DAY_MINUTES };
-  if (resolution === "1mo") return { status: "not-a-feed", basis: "monthly bars", maxAgeMinutes: 45 * DAY_MINUTES };
-  if (resolution === "1d") return DAILY_CLOSES;
-  return { status: "not-a-feed", basis: "intraday bars", cadence: "daily" };
+  if (resolution === "1wk") return { status: "not-a-feed", basis: "weekly bars", maxAgeMinutes: 14 * DAY_MINUTES, prices: true };
+  if (resolution === "1mo") return { status: "not-a-feed", basis: "monthly bars", maxAgeMinutes: 45 * DAY_MINUTES, prices: true };
+  if (resolution === "1d") return { ...DAILY_CLOSES, prices: true };
+  return { status: "not-a-feed", basis: "intraday bars", cadence: "daily", prices: true };
 }
 
 /**
