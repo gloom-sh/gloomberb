@@ -62,6 +62,7 @@ import {
   columnWidth,
   criterionText,
   DEFAULT_SCREEN,
+  dividendYieldBasis,
   formatScreenValue,
   metricDate,
   parseScreenDefinition,
@@ -174,6 +175,7 @@ function ScreenDetail({
           const metric = row.metrics[field];
           const stamp = metricDate(metric);
           const extended = field === "changePercent" ? row.extended : undefined;
+          const basis = field === "dividendYieldPercent" ? dividendYieldBasis(metric) : null;
           return (
             <Fragment key={field}>
               <KeyValueRow
@@ -199,6 +201,7 @@ function ScreenDetail({
                   detail={`${formatPercentRaw(extended.changePercent)}${extended.mark ? " mid" : ""}`}
                 />
               ) : null}
+              {basis ? <KeyValueRow label="Yield basis" labelWidth={24} value={basis} /> : null}
             </Fragment>
           );
         })}

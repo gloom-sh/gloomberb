@@ -470,7 +470,8 @@ function quotedListings(items: TickerSearchCandidate[], exchange: string): Ticke
   return items.filter((item) => isUsListingExchange(venue(item)));
 }
 
-function listingExchange(result: InstrumentSearchResult): string {
+/** The venue a search row is a listing on: the primary exchange when a broker routes through SMART. */
+export function listingExchange(result: InstrumentSearchResult): string {
   return result.exchange === "SMART" ? result.primaryExchange || result.exchange
     : result.exchange || result.primaryExchange || "";
 }

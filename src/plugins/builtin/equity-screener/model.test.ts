@@ -8,6 +8,7 @@ import {
   columnWidth,
   criterionText,
   DEFAULT_SCREEN,
+  dividendYieldBasis,
   formatScreenValue,
   metricDate,
   parseCriterion,
@@ -111,6 +112,14 @@ test("undated provider values show their collection date, never an invented sour
   expect(metricDate({ ...base, asOf: "2026-08-31", observedAt: "2026-09-22T12:00:00Z" })).toEqual({ text: "2026-08-31", collected: false });
   expect(metricDate({ ...base, value: 10, asOf: null, observedAt: "2026-09-22T12:00:00Z" })).toEqual({ text: "2026-09-22", collected: true });
   expect(metricDate({ ...base, value: null, asOf: null, observedAt: null })).toEqual({ text: "--", collected: false });
+});
+
+test("a dividend yield names its own row's basis, and none the server did not state", () => {
+  const base = { ...payload().rows[0]!.metrics.trailingPE, value: 3.2, unit: "%" };
+  const basis = (reason: string) => dividendYieldBasis({ ...base, reason });
+  expect(basis("forward yield; provider observation date unavailable")).toBe("latest distribution annualized");
+  expect(basis("trailing yield; provider observation date unavailable")).toBe("last 12 months of distributions");
+  expect(basis("Unspecified yield; provider observation date unavailable")).toBeNull();
 });
 
 test("result columns lead with the focus metric and the screen's criteria; money needs a currency", () => {

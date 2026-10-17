@@ -9,6 +9,7 @@ import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
+import { atSourcePrecision, cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend } from "../../../utils/forward-dividend";
 import type { DeclaredDividendAction } from "../../../types/financials";
 
@@ -36,13 +37,13 @@ function trackRequest<T>(operation: string, request: () => Promise<T>): Promise<
 
 type QuoteSummaryDividendFields = DividendSummary;
 
+/** A paid row of a history already in the major unit (cashInMajorUnits); null when its date or amount is not one. */
 export function toDividendPayment(
   exDate: string,
   amount: number,
   currency: string,
 ): DividendPayment | null {
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  const unit = resolveCurrencyUnit(currency);
   const parsed = new Date(`${exDate}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== exDate) return null;
   return {
@@ -50,8 +51,8 @@ export function toDividendPayment(
     recordDate: null,
     paymentDate: null,
     declarationDate: null,
-    amount: amount / unit.divisor,
-    currency: unit.currency,
+    amount,
+    currency,
     type: "cash",
   };
 }
@@ -85,22 +86,24 @@ export async function fetchDividendData(
 ): Promise<DividendData> {
   const response = await trackRequest("dividends", () => apiClient.getMarketDividends(symbol, exchange));
   if (!response.data) throw new Error(`No dividend data found for ${symbol}`);
-  const { actions, quote: rawQuote, summary: quoteFields } = response.data;
+  const { actions: sourceActions, quote: rawQuote, summary: quoteFields } = response.data;
+  // In the major unit as the history arrives, as every other reader of it gets it.
+  const actions = sourceActions ? cashInMajorUnits(sourceActions) : null;
   const quote = rawQuote ? mapQuote(rawQuote) : null;
   const summaryError = response.data.summaryError ?? (!quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
     : [quoteFields.exDividendDate, quoteFields.dividendDate]
       .some((timestamp) => timestamp != null && reportedDividendDate(timestamp) === null)
       ? INVALID_DIVIDEND_SUMMARY_DATE : undefined);
-  const cashUnit = resolveCurrencyUnit(actions?.currency);
+  const cashCurrency = resolveCurrencyUnit(actions?.currency).currency;
   const summaryUnit = resolveCurrencyUnit(quoteFields?.currency);
-  const currency = cashUnit.currency || summaryUnit.currency;
+  const currency = cashCurrency || summaryUnit.currency;
   let historyError = response.data.historyError;
-  if (actions && !cashUnit.currency) historyError = MISSING_DIVIDEND_CURRENCY;
+  if (actions && !cashCurrency) historyError = MISSING_DIVIDEND_CURRENCY;
   if (!currency && (quoteFields?.trailingAnnualDividendRate != null || quoteFields?.forwardAnnualDividendRate != null)) {
     historyError = MISSING_DIVIDEND_CURRENCY;
   }
-  const payments = actions && cashUnit.currency ? actions.dividends.flatMap(action => {
-    const payment = toDividendPayment(action.exDate, action.amount, actions.currency!);
+  const payments = actions && cashCurrency ? actions.dividends.flatMap(action => {
+    const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     return payment ? [payment] : [];
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
   if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== actions.dividends.length)) {
@@ -110,13 +113,11 @@ export async function fetchDividendData(
   // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
   const price = suppliedPrice ?? dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
   const historyAvailable = actions !== null && !historyError;
-  // Minor-unit cash histories do not establish the denomination of annual-rate fields.
-  const summaryRatesComparable = cashUnit.divisor === 1
-    && !!summaryUnit.currency && summaryUnit.currency === currency && summaryUnit.divisor === 1;
+  // The annual rates are in the summary's currency, the major unit Gloom Cloud states it in. One stated in a
+  // sub-unit, as an older server's is, has them in an unstated unit (SBK's 17.8 "ZAc" is rand), so none is read.
+  const summaryRatesComparable = !!summaryUnit.currency && summaryUnit.divisor === 1 && summaryUnit.currency === currency;
   const metricFields = actions && historyError && quoteFields ? { ...quoteFields, trailingAnnualDividendRate: null } : quoteFields;
-  // Stated in the cash history's units, read as its payments are.
-  const declared = actions && cashUnit.currency
-    ? declaredDividends(actions).map((row) => ({ ...row, amount: row.amount / cashUnit.divisor })) : [];
+  const declared = actions && cashCurrency ? declaredDividends(actions) : [];
   const metrics = buildDividendMetrics(payments, metricFields, price, { historyAvailable, summaryRatesComparable, declared });
   if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
     throw new Error(`No dividend data found for ${symbol}`);
@@ -157,8 +158,9 @@ export function buildDividendMetrics(
 ): DividendMetrics {
   const now = options.now ?? new Date();
   const eligible = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0);
+  // A sum of figures at their source's precision, without the float noise of adding them (17.799999999999997).
   const trailingRate = options.historyAvailable !== false
-    ? trailingCashAt(eligible, now)
+    ? atSourcePrecision(trailingCashAt(eligible, now))
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const statedRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
   const statedAsOf = statedRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")

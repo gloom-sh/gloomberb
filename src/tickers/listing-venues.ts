@@ -1,7 +1,7 @@
 import type { DataProvider } from "../types/data-provider";
 import { quoteTradingExchange } from "../market-data/quotes/metadata";
 import type { TickerRecord } from "../types/ticker";
-import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, resolveTickerSearch } from "./search";
+import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, listingExchange, resolveTickerSearch } from "./search";
 import {
   canonicalExchange,
   exchangeCodeVenues,
@@ -59,6 +59,23 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
     });
   }
   return venues.filter((venue, index) => venues.findIndex((other) => other.exchange === venue.exchange) === index);
+}
+
+/**
+ * The venue a bare symbol goes to, resolved as `quote SYM` and adding the
+ * symbol to a watchlist resolve it: the one listing search finds, or, for a
+ * symbol several venues list, the one its own quote prices (the US exchanges
+ * share one symbol, so AAPL is its NASDAQ line and not the ones abroad).
+ * Empty when search lists nothing for the symbol. A symbol whose listings no
+ * quote settles throws `AmbiguousTickerError`, which names them. Asked for a
+ * symbol no saved row has a venue for; a saved row's venue is the user's.
+ */
+export async function bareListingExchange(symbol: string, { dataProvider }: Pick<ListingDeps, "dataProvider">): Promise<string> {
+  const resolved = await resolveTickerSearch({
+    query: symbol, activeTicker: null, tickers: new Map(), dataProvider, searchContext: { limit: LISTING_SEARCH_LIMIT },
+  });
+  if (!resolved) return "";
+  return canonicalExchange(resolved.kind === "local" ? resolved.ticker.metadata.exchange : listingExchange(resolved.result));
 }
 
 /**

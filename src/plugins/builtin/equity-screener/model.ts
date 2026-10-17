@@ -17,6 +17,7 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
 
 /**
@@ -125,6 +126,19 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   // A value that rounds to zero prints 0.0, never -0.0.
   const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
+}
+
+/**
+ * A row's dividend yield basis, in the words `ticker` and `DVD` use. Gloom
+ * Cloud serves each row's statistics yield as it is stated, forward for most
+ * companies and trailing where only that is stated, and names it in the
+ * metric's reason; a row whose basis is not stated gets none.
+ */
+export function dividendYieldBasis(metric: ScreenMetric): string | null {
+  if (metric.value == null) return null;
+  if (/^forward yield\b/i.test(metric.reason ?? "")) return LATEST_DISTRIBUTION;
+  if (/^trailing yield\b/i.test(metric.reason ?? "")) return TRAILING_DIVIDEND_BASIS;
+  return null;
 }
 
 /** Source observation date, or the collection date when the provider gives none. */
