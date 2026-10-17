@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { compareSemver } from "../src/utils/semver";
 import {
+  firstParentHistory,
   isNightlyTag,
   leftoverDrafts,
+  newestVerifiedCommit,
   nightlyBaseVersion,
   nightlyVersion,
   planNightly,
@@ -47,40 +49,117 @@ describe("nightly versions", () => {
 });
 
 describe("planNightly", () => {
+  const sha = (letter: string) => letter.repeat(40);
+  // main's first-parent history, newest first: "a" is the head the run started on.
+  const history = ["a", "b", "c", "d", "e"].map(sha);
   const base: NightlyPlanInput = {
     event: "schedule",
     publish: true,
     force: false,
     onMain: true,
-    sha: "a".repeat(40),
-    previousSha: "b".repeat(40),
-    verifyPassed: true,
-    verifyWindowsPassed: true,
+    head: sha("a"),
+    history,
+    previousSha: sha("e"),
+    verifyPassed: history,
+    verifyWindowsPassed: history,
   };
 
-  test("publishes a new main commit once Verify and Verify Windows passed on it", () => {
-    expect(planNightly(base)).toMatchObject({ build: true, publish: true });
+  test("publishes main's head once Verify and Verify Windows passed on it", () => {
+    expect(planNightly(base)).toEqual({
+      build: true,
+      publish: true,
+      sha: sha("a"),
+      reason: "publishing aaaaaaa: main's head passed Verify and Verify Windows",
+    });
+  });
+
+  // The schedule fires hours late, during the merges: the head is often still
+  // being verified, and a push cancels the Verify Windows run of the one before.
+  test("builds the newest commit both checks passed on when the head is not verified yet", () => {
+    const plan = planNightly({
+      ...base,
+      // b passed Verify but its Verify Windows run was cancelled by the next push.
+      verifyPassed: [sha("b"), sha("c"), sha("d")],
+      verifyWindowsPassed: [sha("c"), sha("d"), sha("e")],
+    });
+    expect(plan).toEqual({
+      build: true,
+      publish: true,
+      sha: sha("c"),
+      reason: "publishing ccccccc: head aaaaaaa not verified yet; newest verified is ccccccc, 2 commits behind",
+    });
+    expect(planNightly({ ...base, verifyPassed: [sha("b")], verifyWindowsPassed: [sha("b")] }).reason).toContain("1 commit behind");
+  });
+
+  test("with no verified commit in the window, skips on schedule and fails a manual run", () => {
+    const unverified = { ...base, previousSha: sha("9"), verifyPassed: [sha("9")], verifyWindowsPassed: [] };
+    expect(planNightly(unverified)).toEqual({
+      build: false,
+      publish: false,
+      sha: "",
+      reason: "None of main's last 5 commits has passed Verify and Verify Windows (head aaaaaaa)",
+    });
+    expect(planNightly({ ...unverified, event: "workflow_dispatch" }).error).toContain("None of main's last 5 commits");
+  });
+
+  test("skips when the newest verified commit is the last nightly build's, unless forced", () => {
+    const behind = { ...base, previousSha: sha("c"), verifyPassed: [sha("c")], verifyWindowsPassed: [sha("c")] };
+    expect(planNightly(behind)).toMatchObject({
+      build: false,
+      sha: "",
+      reason: "No commit after the last nightly build (ccccccc) has passed Verify and Verify Windows; head aaaaaaa not verified yet",
+    });
+    expect(planNightly(behind).error).toBeUndefined();
+    expect(planNightly({ ...behind, event: "workflow_dispatch" }).error).toContain("not verified yet");
+    expect(planNightly({ ...behind, force: true })).toMatchObject({ build: true, publish: true, sha: sha("c") });
   });
 
   test("skips when main has not moved, unless forced", () => {
-    expect(planNightly({ ...base, previousSha: base.sha })).toMatchObject({ build: false });
-    expect(planNightly({ ...base, previousSha: base.sha, force: true })).toMatchObject({ build: true });
+    expect(planNightly({ ...base, previousSha: base.head })).toMatchObject({ build: false, reason: "main has not moved since the last nightly build (aaaaaaa)" });
+    expect(planNightly({ ...base, previousSha: base.head, force: true })).toMatchObject({ build: true, sha: base.head });
   });
 
-  test("never publishes a commit the checks have not passed, and fails a manual run that asks", () => {
-    expect(planNightly({ ...base, verifyWindowsPassed: false })).toEqual({
-      build: false,
-      publish: false,
-      reason: "Verify Windows has not passed on aaaaaaa",
-    });
-    expect(planNightly({ ...base, event: "workflow_dispatch", verifyPassed: false }).error).toContain("Verify has not passed");
-    // A build-only run does not need them.
-    expect(planNightly({ ...base, publish: false, verifyPassed: false })).toMatchObject({ build: true, publish: false });
+  test("never publishes a commit one of the checks has not passed", () => {
+    expect(planNightly({ ...base, verifyWindowsPassed: [], previousSha: null })).toMatchObject({ build: false, publish: false });
+    expect(planNightly({ ...base, verifyPassed: [], previousSha: null, event: "workflow_dispatch" }).error).toBeDefined();
+  });
+
+  test("builds the commit the run started on when not publishing, verified or not", () => {
+    expect(planNightly({ ...base, publish: false, verifyPassed: [], verifyWindowsPassed: [] })).toMatchObject({ build: true, publish: false, sha: sha("a") });
   });
 
   test("publishes only from main", () => {
     expect(planNightly({ ...base, onMain: false }).error).toBeDefined();
     expect(planNightly({ ...base, onMain: false, publish: false })).toMatchObject({ build: true, publish: false });
+  });
+});
+
+describe("newestVerifiedCommit", () => {
+  const sha = (letter: string) => letter.repeat(40);
+  const history = ["a", "b", "c", "d", "e"].map(sha);
+
+  test("never goes back past the last nightly build, whatever the checks say about it now", () => {
+    // A re-run of its Verify failed, so it no longer reads as passed; the older d does.
+    expect(newestVerifiedCommit(history, [sha("d")], [sha("d")], sha("c"))).toEqual({ sha: sha("c"), behind: 2 });
+    // A newer verified commit still wins.
+    expect(newestVerifiedCommit(history, [sha("b")], [sha("b")], sha("c"))).toEqual({ sha: sha("b"), behind: 1 });
+    expect(newestVerifiedCommit(history, [sha("d")], [sha("d")], null)).toEqual({ sha: sha("d"), behind: 3 });
+  });
+});
+
+describe("firstParentHistory", () => {
+  test("follows first parents past a merge, leaving out its side branch, up to the limit", () => {
+    const commits = [
+      { sha: "m", parents: ["p1", "s2"] },
+      { sha: "s2", parents: ["s1"] },
+      { sha: "s1", parents: ["p1"] },
+      { sha: "p1", parents: ["p0"] },
+      { sha: "p0", parents: [] },
+    ];
+    expect(firstParentHistory("m", commits, 30)).toEqual(["m", "p1", "p0"]);
+    expect(firstParentHistory("m", commits, 2)).toEqual(["m", "p1"]);
+    // A head the listing does not know is still a window of one.
+    expect(firstParentHistory("x", commits, 30)).toEqual(["x"]);
   });
 });
 

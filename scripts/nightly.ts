@@ -2,23 +2,29 @@
  * The decisions behind .github/workflows/nightly.yml, kept here so they can be
  * tested:
  *
- *   bun run scripts/nightly.ts plan    whether this run builds, and as what version (GITHUB_OUTPUT)
+ *   bun run scripts/nightly.ts plan    whether this run builds, which commit, and as what version (GITHUB_OUTPUT)
  *   bun run scripts/nightly.ts notes   the prerelease notes: what changed since the last nightly build
  *   bun run scripts/nightly.ts prune   nightly prereleases older than NIGHTLY_PRUNE_DAYS; a dry run without it
  *   bun run scripts/nightly.ts claim-tag   fails unless no tag and no release (draft included) is named NIGHTLY_TAG yet
  *   bun run scripts/nightly.ts drop-draft  after a failed publish, deletes the drafts named NIGHTLY_TAG, nothing else
  *
- * A nightly build is `<base>-nightly.<UTC date>.<run number>.g<sha7>`. The base
- * is the patch after the latest stable release, so every nightly build sorts
- * above the stable release users already have and below the next one; the
- * date and run number order two builds of one day, whatever their shas look
- * like. Nothing here commits, tags or touches a stable release: GitHub reads
- * go through `gh`, `prune` deletes nothing but nightly prereleases, and
- * `drop-draft` nothing but the unpublished draft its own run created. No
- * command deletes a git tag other than `prune`, with the nightly release it
- * belongs to.
+ * A nightly build is of the newest commit among main's last NIGHTLY_WINDOW on
+ * which Verify and Verify Windows both passed: main's head when it is green,
+ * otherwise its newest green ancestor, so a run that fires while the head is
+ * still being verified (the schedule is often hours late, during the merges)
+ * does not skip the day.
+ *
+ * It is named `<base>-nightly.<UTC date>.<run number>.g<sha7>`, with the commit
+ * that was built in the name. The base is the patch after the latest stable
+ * release, so every nightly build sorts above the stable release users already
+ * have and below the next one; the date and run number order two builds of one
+ * day, whatever their shas look like. Nothing here commits, tags or touches a
+ * stable release: GitHub reads go through `gh`, `prune` deletes nothing but
+ * nightly prereleases, and `drop-draft` nothing but the unpublished draft its
+ * own run created. No command deletes a git tag other than `prune`, with the
+ * nightly release it belongs to.
  */
-import { appendFileSync, readFileSync } from "fs";
+import { appendFileSync } from "fs";
 import { compareSemver, parseSemver } from "../src/utils/semver";
 
 const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.g[0-9a-f]{7}$/;
@@ -63,6 +69,9 @@ export function isNightlyTag(tag: string): boolean {
   return NIGHTLY_TAG.test(tag);
 }
 
+/** How many of main's newest commits the plan looks through for one both checks passed on. */
+const NIGHTLY_WINDOW = 30;
+
 export interface NightlyPlanInput {
   event: string;
   /** The run asked to publish; off builds everything and publishes nothing. */
@@ -70,37 +79,107 @@ export interface NightlyPlanInput {
   /** Build even when main has not moved since the last nightly build. */
   force: boolean;
   onMain: boolean;
-  sha: string;
+  /** The commit the run started on: main's head when the schedule fired. */
+  head: string;
+  /** Main's first-parent history from `head` (first) back, newest first, at most NIGHTLY_WINDOW long. */
+  history: string[];
+  /** The commit the last nightly build was made from. */
   previousSha: string | null;
-  verifyPassed: boolean;
-  verifyWindowsPassed: boolean;
+  /** Commits Verify concluded success on for a push to main. */
+  verifyPassed: string[];
+  /** Commits Verify Windows concluded success on for a push to main. */
+  verifyWindowsPassed: string[];
 }
 
 export interface NightlyPlan {
   build: boolean;
   publish: boolean;
+  /** The commit to build and tag: main's head, or its newest ancestor both checks passed on. Empty when there is none. */
+  sha: string;
   /** A reason the run should fail rather than skip. */
   error?: string;
   reason: string;
 }
 
+interface NightlyPick {
+  sha: string;
+  /** How many commits it is behind main's head. */
+  behind: number;
+}
+
+/**
+ * The newest commit in `history` (newest first) that both checks passed on.
+ * The last nightly build's commit stops the search and counts as passed, since
+ * it was published: a re-run or a missing record on it must never send the
+ * next nightly build back to an older commit.
+ */
+export function newestVerifiedCommit(history: string[], verifyPassed: string[], verifyWindowsPassed: string[], previousSha: string | null): NightlyPick | null {
+  const verify = new Set(verifyPassed);
+  const verifyWindows = new Set(verifyWindowsPassed);
+  for (const [behind, sha] of history.entries()) {
+    if (sha === previousSha || (verify.has(sha) && verifyWindows.has(sha))) return { sha, behind };
+  }
+  return null;
+}
+
 export function planNightly(input: NightlyPlanInput): NightlyPlan {
-  const short = input.sha.slice(0, 7);
+  const head = input.head.slice(0, 7);
   if (input.publish && !input.onMain) {
-    return { build: false, publish: false, error: "Nightly builds publish only from main; run with publish off to try a branch.", reason: "not main" };
+    return { build: false, publish: false, sha: "", error: "Nightly builds publish only from main; run with publish off to try a branch.", reason: "not main" };
   }
-  if (!input.force && input.previousSha === input.sha) {
-    return { build: false, publish: false, reason: `main has not moved since the last nightly build (${short})` };
+  if (!input.force && input.previousSha === input.head) {
+    return { build: false, publish: false, sha: "", reason: `main has not moved since the last nightly build (${head})` };
   }
-  if (input.publish && !(input.verifyPassed && input.verifyWindowsPassed)) {
-    const missing = [!input.verifyPassed && "Verify", !input.verifyWindowsPassed && "Verify Windows"].filter(Boolean).join(" and ");
-    const reason = `${missing} has not passed on ${short}`;
-    // Asked for by hand, say so loudly; the schedule tries again tomorrow.
-    return input.event === "workflow_dispatch"
-      ? { build: false, publish: false, error: `${reason}; wait for it or fix main.`, reason }
-      : { build: false, publish: false, reason };
+  // Not publishing is a try-out of this branch or commit, whatever the checks say.
+  if (!input.publish) {
+    return { build: true, publish: false, sha: input.head, reason: `building ${head} without publishing` };
   }
-  return { build: true, publish: input.publish, reason: input.publish ? `publishing ${short}` : `building ${short} without publishing` };
+  // Asked for by hand, say so loudly; the schedule tries again tomorrow.
+  const stop = (reason: string): NightlyPlan => input.event === "workflow_dispatch"
+    ? { build: false, publish: false, sha: "", error: `${reason}; wait for it or fix main.`, reason }
+    : { build: false, publish: false, sha: "", reason };
+
+  const pick = newestVerifiedCommit(input.history, input.verifyPassed, input.verifyWindowsPassed, input.previousSha);
+  if (!pick) {
+    return stop(`None of main's last ${input.history.length} commits has passed Verify and Verify Windows (head ${head})`);
+  }
+  const short = pick.sha.slice(0, 7);
+  if (pick.sha === input.previousSha) {
+    if (!input.force) {
+      return stop(`No commit after the last nightly build (${short}) has passed Verify and Verify Windows; head ${head} not verified yet`);
+    }
+    return { build: true, publish: true, sha: pick.sha, reason: `publishing ${short} again, the commit of the last nightly build` };
+  }
+  return {
+    build: true,
+    publish: true,
+    sha: pick.sha,
+    reason: pick.behind === 0
+      ? `publishing ${short}: main's head passed Verify and Verify Windows`
+      : `publishing ${short}: head ${head} not verified yet; newest verified is ${short}, ${pick.behind} commit${pick.behind === 1 ? "" : "s"} behind`,
+  };
+}
+
+interface CommitListing {
+  sha: string;
+  parents: string[];
+}
+
+/**
+ * Main's first-parent history from `head`, newest first, at most `limit`
+ * commits. `commits` is what the commit list answers: it holds a merge's
+ * second-parent commits too, which a walk along first parents leaves out. It
+ * ends early where `commits` runs out, a shorter window and nothing worse.
+ */
+export function firstParentHistory(head: string, commits: CommitListing[], limit: number): string[] {
+  const firstParent = new Map(commits.map((commit) => [commit.sha, commit.parents[0]]));
+  const history = [head];
+  while (history.length < limit) {
+    const parent = firstParent.get(history[history.length - 1]!);
+    if (!parent) break;
+    history.push(parent);
+  }
+  return history;
 }
 
 /**
@@ -186,14 +265,41 @@ async function latestNightly(repo: string): Promise<{ tag: string; sha: string }
   return { tag, sha };
 }
 
-async function workflowPassed(repo: string, workflow: string, sha: string): Promise<boolean> {
-  const count = await gh([
+/**
+ * The commits `workflow` concluded success on for a push to main. One listing
+ * covers the whole window: a commit has at most one push run of a workflow (a
+ * re-run is the same run), so a hundred runs reach back further than
+ * NIGHTLY_WINDOW commits. A run a newer push cancelled is not listed.
+ */
+async function passedShas(repo: string, workflow: string): Promise<string[]> {
+  const listing = await gh([
     "api",
-    `repos/${repo}/actions/workflows/${workflow}/runs?head_sha=${sha}&event=push&status=success&per_page=1`,
+    `repos/${repo}/actions/workflows/${workflow}/runs?branch=main&event=push&status=success&per_page=100`,
     "--jq",
-    ".total_count",
+    '[.workflow_runs[] | select(.conclusion == "success") | .head_sha]',
   ]);
-  return Number(count.trim()) > 0;
+  return JSON.parse(listing) as string[];
+}
+
+async function readHistory(repo: string, head: string): Promise<string[]> {
+  const listing = await gh([
+    "api",
+    `repos/${repo}/commits?sha=${head}&per_page=100`,
+    "--jq",
+    "[.[] | {sha, parents: [.parents[].sha]}]",
+  ]);
+  return firstParentHistory(head, JSON.parse(listing) as CommitListing[], NIGHTLY_WINDOW);
+}
+
+/**
+ * The version in package.json at `sha`, the commit that gets built: main's head
+ * can already carry a version bump the commit does not.
+ */
+async function readPackageVersion(repo: string, sha: string): Promise<string> {
+  const file = await gh(["api", "-H", "Accept: application/vnd.github.raw+json", `repos/${repo}/contents/package.json?ref=${sha}`]);
+  const version = (JSON.parse(file) as { version?: unknown }).version;
+  if (typeof version !== "string") throw new Error(`package.json at ${sha.slice(0, 7)} has no version`);
+  return version;
 }
 
 function writeOutputs(values: Record<string, string>): void {
@@ -216,32 +322,36 @@ function fail(message: string): never {
 
 async function runPlan(): Promise<void> {
   const repo = requireEnv("GITHUB_REPOSITORY");
-  const sha = requireEnv("GITHUB_SHA");
+  const head = requireEnv("GITHUB_SHA");
   const runNumber = Number(requireEnv("GITHUB_RUN_NUMBER"));
-  const packageVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version;
   // Fails the plan, so nothing builds or publishes; no outputs are written.
   const latestStable = await readLatestStableTag(repo).catch((error: Error) => fail(error.message));
   const previous = await latestNightly(repo);
-  const [verifyPassed, verifyWindowsPassed] = await Promise.all([
-    workflowPassed(repo, "verify.yml", sha),
-    workflowPassed(repo, "verify-windows.yml", sha),
+  const [history, verifyPassed, verifyWindowsPassed] = await Promise.all([
+    readHistory(repo, head),
+    passedShas(repo, "verify.yml"),
+    passedShas(repo, "verify-windows.yml"),
   ]);
   const plan = planNightly({
     event: requireEnv("GITHUB_EVENT_NAME"),
     publish: process.env.NIGHTLY_PUBLISH === "true",
     force: process.env.NIGHTLY_FORCE === "true",
     onMain: process.env.GITHUB_REF === "refs/heads/main",
-    sha,
+    head,
+    history,
     previousSha: previous?.sha ?? null,
     verifyPassed,
     verifyWindowsPassed,
   });
-  const version = nightlyVersion(nightlyBaseVersion(packageVersion, latestStable), new Date(), runNumber, sha);
+  // The version and everything after it belong to the commit that is built, not to the one the run started on.
+  const version = plan.build
+    ? nightlyVersion(nightlyBaseVersion(await readPackageVersion(repo, plan.sha), latestStable), new Date(), runNumber, plan.sha)
+    : "";
 
   writeOutputs({
     build: String(plan.build),
     publish: String(plan.publish),
-    sha,
+    sha: plan.build ? plan.sha : "",
     version,
     previous_tag: previous?.tag ?? "",
   });
@@ -250,7 +360,7 @@ async function runPlan(): Promise<void> {
     "",
     `- ${plan.error ?? plan.reason}`,
     `- Latest stable release: ${latestStable}; last nightly build: ${previous?.tag ?? "none"}`,
-    `- Verify on ${sha.slice(0, 7)}: ${verifyPassed ? "passed" : "not passed"}; Verify Windows: ${verifyWindowsPassed ? "passed" : "not passed"}`,
+    `- Head ${head.slice(0, 7)}: Verify ${verifyPassed.includes(head) ? "passed" : "not passed"}, Verify Windows ${verifyWindowsPassed.includes(head) ? "passed" : "not passed"}; looked through ${history.length} commit${history.length === 1 ? "" : "s"} of history`,
   ].join("\n"));
   if (plan.error) fail(plan.error);
   if (!plan.build) console.log(`::notice::No nightly build: ${plan.reason}`);
