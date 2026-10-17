@@ -1,4 +1,4 @@
-import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
+import type { HeadlessPaneDefinition, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import { parseTickerListInput } from "../../tickers/list";
 import { normalizeTickerInput } from "../../tickers/search";
 import { resolveFinancialPeriodOption } from "../../plugins/builtin/ticker-detail/financials/model";
@@ -78,6 +78,20 @@ export function normalizeLookupToken(value: string): string {
 
 export function cleanTickerInput(value: string): string {
   return value.trim().replace(/^\$/, "").toUpperCase();
+}
+
+/**
+ * Whether a function's argument names the ticker its pane shows. Its report
+ * says first: AUCT's `10Y` and IPO's `pending` are free text its own resolver
+ * reads, never a symbol to look up. Without a report, the shortcut says.
+ */
+export function argumentNamesTicker(
+  template: Pick<PaneTemplateDef, "shortcut"> | undefined,
+  headless: Pick<HeadlessPaneDefinition, "argument"> | undefined,
+): boolean {
+  const kind = headless?.argument.kind;
+  if (kind === "free-text" || kind === "none") return false;
+  return kind === "tickers" || kind === "symbol-list" || template?.shortcut?.argKind !== "text";
 }
 
 export function parseArgumentsOption(value: string): Record<string, string> {

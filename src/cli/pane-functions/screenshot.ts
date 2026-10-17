@@ -73,6 +73,7 @@ import { getCloudApiBaseUrl } from "../../api-client/request";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
+import { isNotATickerMessage } from "../not-a-ticker";
 import { HISTORY_DEFAULT_RANGE } from "../../plugins/builtin/ticker-detail/data-panes/history-bars";
 import { accessGateSentence, accessGateStatus } from "./access-gate";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
@@ -607,6 +608,8 @@ export async function buildDesktopShotPayload(
     try {
       entry = await fetchTickerFinancials(context, symbol);
     } catch (error) {
+      // A report that reads its own argument (CDS's issuer name) renders it with no ticker data, as `fn` does.
+      if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) continue;
       // The pane values a holding no quote covers, such as an option contract,
       // at the broker's mark. It has no financials to capture.
       const holding = COLLECTION_PANE_IDS.has(resolved.pane.id) ? await loadBrokerMarkedHolding(context, symbol) : null;

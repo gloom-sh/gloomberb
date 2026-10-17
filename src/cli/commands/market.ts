@@ -155,16 +155,18 @@ import {
 } from "../listing-arg";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
+import { treasuryYieldLine, treasuryYieldTenor } from "../treasury-yields";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
-import { splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
+import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
-import { readNameEntries } from "../name-entries";
+import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { subMinuteDataMessage } from "../known-gaps";
+import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { looksLikeCurrencyPair } from "../../utils/currency-pair";
@@ -623,9 +625,15 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   const exchange = takeOption(args, "--exchange") ?? "";
   const entries = normalizeSymbols(args);
   if (entries.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
+  // One quoted argument with spaces is a company's name, a pasted line of tickers, or a phrase to search for.
+  const phrase = exchange ? null : quotedPhrase(args);
 
   await withMarketData(ctx, async (market) => {
-    const symbols = await readSymbols(entries, market.dataProvider);
+    const read = phrase ? await readPhraseArgument(phrase, market.dataProvider) : null;
+    if (read?.kind === "phrase") return answerPhrase(read.phrase, market, ctx);
+    const symbols = read?.kind === "name" ? [read.name]
+      : read?.kind === "symbols" ? uniqueEntries(read.symbols)
+      : await readSymbols(entries, market.dataProvider);
     // With several symbols, --exchange is for the ones that name no exchange of their own.
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
       symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
@@ -715,6 +723,24 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // The table names each symbol it found nothing for; with none found, the exit status says so too.
     if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
   });
+}
+
+/**
+ * `quote "10 year yield"`: a phrase that is no ticker and no company's name
+ * is answered with what search finds for it and the catalog, never quoted
+ * word by word (10, YEAR, YIELD). A script asked for a quote, so structured
+ * output fails with where to look instead.
+ */
+async function answerPhrase(phrase: string, market: MarketContext, ctx: Parameters<CliCommandDef["execute"]>[1]): Promise<void> {
+  const said = `"${phrase}" is not a ticker or a company's name.`;
+  if (ctx.cliOptions.format !== "text") {
+    ctx.fail(said, [knownGapMessage(phrase), `Search for it: gloomberb search "${phrase}"`, `Functions and data: gloomberb catalog "${phrase}"`]
+      .filter(Boolean).join("\n"));
+  }
+  process.exitCode = CLI_EXIT_CODES.error;
+  if (ctx.cliOptions.quiet) return;
+  console.error(`${cliStyles.warning("warning:")} ${said} What search finds for it:`);
+  console.log(await phraseSearchReport(phrase, market, ctx.plugins));
 }
 
 /**
@@ -819,8 +845,10 @@ async function answerQuote(
     };
   }
   // Other listings already name a futures board code's future (GC=F); with none, it is named here.
+  // A Treasury yield's root (TNX) names its FRED series and the curve beside its index.
+  const yieldTenor = root ? treasuryYieldTenor(listing.symbol) : null;
   const tryLines = [
-    root ? indexRootTryLine(root, request.command) : null,
+    yieldTenor ? treasuryYieldLine(yieldTenor) : root ? indexRootTryLine(root, request.command) : null,
     other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
   ].filter((line): line is string => !!line);
   if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };

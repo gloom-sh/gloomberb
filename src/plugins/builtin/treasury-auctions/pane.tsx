@@ -25,6 +25,8 @@ import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values"
 import { usePluginPaneState } from "../../runtime";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useCommandValue } from "../shared/command-tab";
+import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,
@@ -200,7 +202,13 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [sortPreference, setSortPreference] = useState<AuctionSortPreference>(DEFAULT_AUCTION_SORT);
-  const [searchQuery, setSearchQuery] = useState("");
+  // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
+  const [searchQuery, setSearchQuery] = useCommandValue(
+    FIXED_INCOME_PANE_ID,
+    "search",
+    (params) => params.view === "auctions" ? params.search ?? "" : null,
+    "",
+  );
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   // The cache decides whether a tick becomes a request; only [r] forces it.

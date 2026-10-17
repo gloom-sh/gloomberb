@@ -24,6 +24,7 @@ import {
   type PaneFunctionCatalog,
 } from "./catalog";
 import {
+  argumentNamesTicker,
   buildCreateOptions,
   cleanTickerInput,
   normalizeLookupToken,
@@ -64,15 +65,12 @@ async function buildPaneInstance(
 ): Promise<PaneInstanceConfig> {
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
-  const shortcutArgKind = resolved.template?.shortcut?.argKind;
   const headlessArgKind = resolved.headless?.argument.kind;
-  const fallbackSymbol = headlessArgKind === "free-text" || headlessArgKind === "none"
+  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless)
     ? null
     : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
       ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\s]+/)[0] ?? ""))
-      : shortcutArgKind === "text"
-        ? null
-        : normalizeTickerInput(null, cleanTickerInput(target));
+      : normalizeTickerInput(null, cleanTickerInput(target));
   const primarySymbol = resolved.createOptions?.symbol
     ?? resolved.createOptions?.symbols?.[0]
     ?? fallbackSymbol;

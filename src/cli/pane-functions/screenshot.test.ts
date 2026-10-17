@@ -1131,6 +1131,44 @@ test("screenshot bridge fetches tape through Bun with the exact listing identity
   await expect(bridge.marketData("getCloudTape",["AAPL"])).rejects.toThrow("listing exchange");
 });
 
+describe("screenshot arguments", () => {
+  const pane = (fields: object) => ({
+    pane: { id: "argument-pane" }, capability: { id: "argument-pane", options: [] }, options: {},
+    instance: { instanceId: "argument-pane:cli", paneId: "argument-pane", binding: { kind: "none" }, settings: {} }, ...fields,
+  }) as unknown as ResolvedPaneFunction;
+  const asked: string[] = [];
+  const capture = (request: ResolvedPaneFunction, rawArg: string) => buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/argument-shot-test"), store: { loadTicker: async () => null },
+    dataProvider: createTestDataProvider({
+      getTickerFinancials: async (symbol) => {
+        asked.push(symbol);
+        if (symbol !== "F") throw new Error(`Not a ticker: ${symbol}.`);
+        return createTestFinancials({ quote: createTestQuote({ symbol: "F", listingExchangeName: "NYSE" }) });
+      },
+    }),
+  } as unknown as MarketContext, rawArg, {}, 800, 600, null, 1, null);
+
+  test("an argument the function's report reads (AUCT 10Y, a CUSIP, a date) is never looked up as a ticker, as fn never does", async () => {
+    asked.length = 0;
+    for (const arg of ["10Y", "91282CRF0", "2026-10-07"]) {
+      const shot = await capture(pane({ headless: { argument: { kind: "free-text" } }, template: { shortcut: { prefix: "AUCT" } }, createOptions: { arg } }), arg);
+      expect(shot.financials).toEqual([]);
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test("a report that takes a ticker or a name (CDS) captures a ticker's data and renders a name without it", async () => {
+    const cds = (arg: string) => pane({ headless: { argument: { kind: "free-text" } }, template: { shortcut: { prefix: "CDS", argKind: "ticker" } },
+      createOptions: { arg, symbol: arg.toUpperCase() } });
+    expect((await capture(cds("Ford Motor"), "Ford Motor")).financials).toEqual([]);
+    expect((await capture(cds("F"), "F")).financials.map(([symbol]) => symbol)).toEqual(["F"]);
+  });
+
+  test("a function whose argument is a ticker still fails on one that is not", async () => {
+    await expect(capture(pane({ createOptions: { arg: "10Y" } }), "10Y")).rejects.toThrow("Not a ticker: 10Y.");
+  });
+});
+
 describe("portfolio screenshot members", () => {
   const request = {
     pane: { id: "portfolio-list" }, capability: { id: "portfolio-list-pane", options: [] },

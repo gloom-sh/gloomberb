@@ -1,9 +1,10 @@
 import { notATickerSymbol } from "../sources/provider-errors";
 import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
+import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
-// One that already names what to try (a search, a FRED series, the pair search offered) is left alone.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred) | Did you mean )/g;
+// One that already names what to try (a search, a FRED series, a yield, the pair search offered) is left alone.
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred|quote) | Did you mean )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -35,14 +36,17 @@ export type FredSeriesCheck = (seriesId: string) => boolean;
 /**
  * Adds the search hint after each "Not a ticker: APPLE." in text meant for a person. The router
  * only knows the symbol upper-cased, so the hint reads the user's own spelling from `args`. A FRED
- * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead.
+ * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead, and a
+ * Treasury yield typed as a ticker (US10Y) names the commands that have it.
  */
 export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
   return text.includes("Not a ticker: ")
     ? text.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
-      return `${sentence} ${/^[A-Z0-9]+$/.test(id) && isFredSeries(id) ? `Try \`gloomberb fred ${id}\`.` : searchHint(typed)}`;
+      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloomberb fred ${id}\`.`;
+      const tenor = treasuryYieldTenor(typed);
+      return `${sentence} ${tenor ? treasuryYieldHint(tenor) : searchHint(typed)}`;
     })
     : text;
 }

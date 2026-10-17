@@ -27,6 +27,22 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
 }
 
 /**
+ * The one argument a command was given, when the user quoted words with
+ * spaces and no list separator into it: `quote "10 year yield"`, `quote
+ * "Apple Inc"` or a pasted line `quote "AAPL MSFT"`. Which of those it is
+ * takes a lookup (`readPhraseArgument`); `splitSymbolArgs` would split it
+ * into words, each a symbol (10, YEAR, YIELD). Null for anything else:
+ * several arguments, one word, or a list with commas.
+ */
+export function quotedPhrase(args: readonly string[]): string | null {
+  if (args.length !== 1) return null;
+  const text = args[0]!.replace(/^\uFEFF/, "");
+  if (LIST_SEPARATOR.test(text)) return null;
+  const phrase = text.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " ");
+  return phrase.includes(" ") ? phrase : null;
+}
+
+/**
  * Symbols given as command arguments, split on commas, semicolons, spaces,
  * tabs and lines in any mix, each without its quote marks and in its typed
  * case: `"GME", 'AMC'\nBF.B brk.b` is GME, AMC, BF.B and brk.b. The split of

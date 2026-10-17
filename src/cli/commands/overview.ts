@@ -49,6 +49,7 @@ import {
   basisPointsCell,
   DEFAULT_FRED_START,
   filterFredSeries,
+  fredDecimals,
   fredEmptyAdvice,
   fredEmptyMessage,
   fredExportValue,
@@ -58,6 +59,7 @@ import {
   fredProvenance,
   fredPublicationTime,
   fredUnit,
+  fredValueCell,
   fredValueHeader,
   isSpreadSeries,
   laggingSeriesNote,
@@ -472,7 +474,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)
         ? { key: "value", header: "Value (bp)", align: "right", format: basisPointsCell }
-        : { key: "value", header: fredValueHeader(data.info), align: "right" },
+        : { key: "value", header: fredValueHeader(data.info), align: "right", format: fredValueCell(fredDecimals(rows.map((row) => row.value))) },
     ],
   });
 }

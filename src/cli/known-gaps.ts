@@ -1,3 +1,5 @@
+import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
+
 /**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
  * bars, and QR lists each trade of a US listing. `history --interval`, GIP's
@@ -128,9 +130,15 @@ function lookupKey(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** The line for a query that names a known subject as a whole ("carbon allowances", "EUA") or asks about a topic with no function ("defense budget"), else null. */
+/**
+ * The line for a query that names a known subject as a whole ("carbon allowances", "EUA"), a Treasury yield
+ * typed as a ticker (US10Y), or a topic with no function ("defense budget"), else null.
+ */
 export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
   if (!key) return null;
-  return KNOWN_GAPS.find((gap) => gap.terms.some((term) => lookupKey(term) === key))?.message ?? topicPointer(query)?.message ?? null;
+  const tenor = treasuryYieldTenor(query);
+  return KNOWN_GAPS.find((gap) => gap.terms.some((term) => lookupKey(term) === key))?.message
+    ?? (tenor ? treasuryYieldLine(tenor) : null)
+    ?? topicPointer(query)?.message ?? null;
 }

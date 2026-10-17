@@ -75,9 +75,12 @@ export const treasuryAuctionsModule: PluginModule = {
           "reopening",
           "issuance",
         ],
-        shortcut: { prefix: "AUCT" },
+        shortcut: { prefix: "AUCT", argKind: "text", argOptional: true, argPlaceholder: "search" },
         headless: treasuryAuctionsHeadless,
-        createInstance: () => ({ placement: "floating" }),
+        createInstance: (_context, options) => {
+          const search = options?.arg?.trim();
+          return { placement: "floating", ...(search ? { params: { search } } : {}) };
+        },
         publicShare: createPublicPaneShare("Treasury Auctions"),
       }, "treasury", "auctions"),
     },

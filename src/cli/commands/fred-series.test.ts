@@ -4,15 +4,26 @@ import {
   filterFredSeries,
   fredEmptyAdvice,
   fredEmptyMessage,
+  fredDecimals,
   fredExportValue,
   fredHistoryNotes,
   fredInterval,
   fredObservationsFromStart,
   fredPublicationTime,
   fredUnit,
+  fredValueCell,
   isSpreadSeries,
   laggingSeriesNote,
 } from "./fred-series";
+
+test("a table prints every observation at the series' precision, which FRED's dropped zeros and float noise do not lower or raise", () => {
+  // FRED serves 5.10 and 5.00 as 5.1 and 5; beside 5.09 they print as 5.10 and 5.00.
+  const cell = fredValueCell(fredDecimals([5.09, 5.1, 5, null]));
+  expect([5.09, 5.1, 5, null].map(cell)).toEqual(["5.09", "5.10", "5.00", ""]);
+  expect(fredDecimals([0.9499999999999886, 16.532])).toBe(3);
+  expect(fredDecimals([32563.03, 31906.274])).toBe(3);
+  expect(fredDecimals([null])).toBe(0);
+});
 
 test("spreads export in basis points, FRED's other series as they come", () => {
   expect(["t10y2y", "T10Y3M", "BAMLH0A0HYM2", "DGS10", "T10YIE"].map(isSpreadSeries)).toEqual([true, true, true, false, false]);

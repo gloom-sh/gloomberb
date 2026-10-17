@@ -77,6 +77,28 @@ export function fredExportValue(seriesId: string, value: number | null): number 
   return isSpreadSeries(seriesId) ? toBasisPoints(value, 4) : value;
 }
 
+/** Decimals past which a value's digits are float noise, not the series' precision. */
+const MAX_FRED_DECIMALS = 6;
+
+/**
+ * The decimals a series is published to: the most any of its observations
+ * carries, float noise aside (DGS10 to the hundredth, DEXSFUS to the
+ * ten-thousandth). FRED drops trailing zeros, so 5.10 and 5.00 arrive as 5.1
+ * and 5, which printed bare read as rounder figures than 5.09 beside them.
+ */
+export function fredDecimals(values: ReadonlyArray<number | null>): number {
+  return values.reduce<number>((most, value) => {
+    if (value == null || !Number.isFinite(value)) return most;
+    const text = String(Number(value.toPrecision(10)));
+    return Math.max(most, text.includes("e") ? MAX_FRED_DECIMALS : Math.min(MAX_FRED_DECIMALS, text.split(".")[1]?.length ?? 0));
+  }, 0);
+}
+
+/** An observation as a `fred` table prints it, at the series' decimals (`fredDecimals`); exports keep the value as FRED gives it. */
+export function fredValueCell(decimals: number): (value: unknown) => string {
+  return (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "";
+}
+
 /** Basis points as a text table prints them, to a tenth: 44 is `44`, -12.5 is `-12.5`. */
 export function basisPointsCell(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "";
