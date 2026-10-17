@@ -87,6 +87,8 @@ const SAVED_MATCH_BONUS = 900;
  * then Brent) in the order the server sent them.
  */
 const BENCHMARK_FUTURE_RANK = 5;
+/** What a benchmark future's own name is worth as a text match: an exact alias. */
+const BENCHMARK_FUTURE_NAME_SCORE = 8_000;
 /**
  * How many times more popular a company whose name only starts with the query
  * must be to lead one named exactly as typed. TSMC is searched about five
@@ -233,8 +235,10 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         }),
       );
       const aliases = getItemSearchAliases(item);
+      // "nasdaq futures" reads as a venue and a type with no name left to match, so the future the server sent
+      // for what was typed matches by its own names.
       const aliasScore = (exactListingSymbol ? [...aliases, exactListingSymbol] : aliases)
-        .reduce((best, alias) => Math.max(best, scoreSearchAlias(intent, alias)), 0);
+        .reduce((best, alias) => Math.max(best, scoreSearchAlias(intent, alias)), answersToFutureName(item, query) ? BENCHMARK_FUTURE_NAME_SCORE : 0);
       // Several words match on all of them, in any order, across the name, type,
       // venue and the themes the row answers to; a theme alone ranks after a name.
       const keywordScore = scoreAllWords(intent, [...(item.searchKeywords ?? [])]) > 0 ? KEYWORD_MATCH_SCORE : 0;
@@ -704,18 +708,22 @@ function futuresNameKey(text: string): string {
 /**
  * Whether the query is, word for word, a name the server sent a future with:
  * "brent", "oil" and "natgas" are how the market asks for a benchmark
- * (BZ=F, CL=F, NG=F), which the server lists first and names in
- * `searchAliases`. Only a continuous future answers: a stock or a fund sent
- * with the same word as an alias keeps the rank its own symbol gives it, and
- * "gold etf" or "gold mining" name something else than the future.
+ * (BZ=F, CL=F, NG=F), and "s&p 500 futures", "nasdaq futures", "10 year note
+ * futures" or "vix futures" for an index, rate or volatility future (ES=F,
+ * NQ=F, ZN=F, VX1), which the server lists first and names in
+ * `searchAliases`. Only a continuous future answers, or the front generic of
+ * a root with no continuous symbol (VX1) sent as a future: a stock or a fund
+ * sent with the same word as an alias keeps the rank its own symbol gives it,
+ * and "gold etf" or "gold mining" name something else than the future.
  */
 export function answersToFutureName(
-  item: Pick<TickerSearchRankableItem, "label"> & Partial<Pick<TickerSearchRankableItem, "symbol" | "searchAliases">>,
+  item: Pick<TickerSearchRankableItem, "label"> & Partial<Pick<TickerSearchRankableItem, "symbol" | "searchAliases" | "instrumentType">>,
   query: string,
 ): boolean {
   const symbol = normalizeTickerSymbol(item.symbol || item.label);
   const typed = futuresNameKey(query);
-  return typed !== "" && /^[A-Z0-9]{1,6}=F$/.test(symbol) && !!item.searchAliases?.some((alias) => (
+  const isFront = /^[A-Z0-9]{1,6}=F$/.test(symbol) || (/^[A-Z]{2,5}1$/.test(symbol) && item.instrumentType?.toUpperCase() === "FUTURE");
+  return typed !== "" && isFront && !!item.searchAliases?.some((alias) => (
     normalizeSearchText(alias) !== normalizeSearchText(symbol) && futuresNameKey(alias) === typed
   ));
 }
