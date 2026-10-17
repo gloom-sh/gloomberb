@@ -17,6 +17,7 @@ import { insiderSignalsCache } from "./signals-client";
 import {
   buildInsiderSignalColumns,
   insiderSignalChips,
+  insiderSignalChipsFit,
   insiderSignalChipsText,
   formatInsiderStakeChange,
   insiderSignalsCoverageNotice,
@@ -262,6 +263,21 @@ test("why reads as chips' facts: roles once, then what each did; dollars stay in
   ]);
   // A server without them: the reasons.
   expect(insiderSignalChips(ROWS[0]!, "buy")).toBeNull();
+  // A narrow column shows the chips that fit whole, and no role without a fact.
+  const chips = insiderSignalChips({
+    ...BUYING[0]!,
+    whySignals: [
+      { kind: "cluster", value: 3, text: "3 insiders", insider: null },
+      { kind: "stake", value: 58, text: "+58%", insider: DIRECTOR },
+      { kind: "repeat", value: 2, text: "2nd buy", insider: DIRECTOR },
+    ],
+  }, "buy")!;
+  const labels = (width: number) => insiderSignalChipsFit(chips, width).map((chip) => chip.label);
+  // "3 insiders" takes 12 cells, then "Director" 11, "+58%" 7 and "2nd buy" 10, each with its gap.
+  expect(labels(40)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
+  expect(labels(30)).toEqual(["3 insiders", "Director", "+58%"]);
+  expect(labels(28)).toEqual(["3 insiders"]);
+  expect(labels(11)).toEqual([]);
   // A holding's change: a decimal under 1%, nothing said without balances.
   const buyer = SELLING[0]!.buyers[0]!;
   expect([-100, -38.6, -0.36, 0, null].map((stakeChangePct) => formatInsiderStakeChange({ ...buyer, exited: false, stakeChangePct })))

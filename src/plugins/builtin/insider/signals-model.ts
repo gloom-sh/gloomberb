@@ -184,6 +184,26 @@ export function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): nu
   return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? CHIP_GAP : 0), 0);
 }
 
+/**
+ * The chips that fit `width` cells whole, strongest first: a chip never
+ * shows cut, and an insider's role is not left alone without a fact about
+ * them. The text column keeps every chip.
+ */
+export function insiderSignalChipsFit(chips: readonly InsiderSignalChip[], width: number): InsiderSignalChip[] {
+  const shown: InsiderSignalChip[] = [];
+  let used = 0;
+  for (const chip of chips) {
+    const cells = displayWidth(chip.label) + CHIP_CHROME + (shown.length ? CHIP_GAP : 0);
+    if (used + cells > width) break;
+    shown.push(chip);
+    used += cells;
+  }
+  // A role whose facts did not fit says nothing about why.
+  const next = chips[shown.length];
+  if (next && !next.lead && shown[shown.length - 1]?.lead) shown.pop();
+  return shown;
+}
+
 const DAY_MS = 86_400_000;
 
 /**
