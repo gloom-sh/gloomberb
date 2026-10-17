@@ -496,9 +496,17 @@ export function useOptionsQuery(
 
 export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined): QueryEntry<SecFilingItem[]> | null {
   const requestKey = request ? buildSecFilingsKey(request) : null;
-  useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
+  const version = useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
-  const entry = coordinator && request ? coordinator.getSecFilingsEntry(request) : null;
+  // Read at the version React holds, as useSecFilingContent does. A pane
+  // opened from another (INS from its ranking) can render between the store
+  // write and its announcement; read early, the list is thrown away with that
+  // render, and the filing queue after it stays on "loading".
+  // The key stands for the request: a new object for the same filings reads the same entry.
+  const entry = useMemo(
+    () => coordinator && request ? coordinator.getSecFilingsEntry(request) : null,
+    [coordinator, requestKey, version],
+  );
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();

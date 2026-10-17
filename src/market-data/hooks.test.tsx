@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { PaneInViewProvider } from "../state/app/activity";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { PricePoint, Quote, TickerFinancials } from "../types/financials";
+import type { SecFilingItem } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "./coordinator";
-import { useChartQueries, useFxRatesMap, useQuoteEntries, useTickerFinancialsMap } from "./hooks";
+import { useChartQueries, useFxRatesMap, useQuoteEntries, useSecFilingsQuery, useTickerFinancialsMap } from "./hooks";
 import { instrumentFromTicker, type ChartRequest, type InstrumentRef } from "./request-types";
 import { createIdleEntry, type QueryEntry } from "./result-types";
 import { buildChartKey, buildQuoteKey } from "./selectors";
@@ -368,4 +369,44 @@ test("a fresh loadQuoteEntry does not open a flight", async () => {
     coordinator.destroy();
     Date.now = realNow;
   }
+});
+
+test("the SEC filings list is read at the version React holds, so a render before the store's announcement cannot see it early", async () => {
+  const listeners = new Set<() => void>();
+  let version = 1;
+  let entry: QueryEntry<SecFilingItem[]> = { ...createIdleEntry<SecFilingItem[]>(), phase: "loading" };
+  const coordinator = {
+    subscribeKeys: (_keys: readonly string[], listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+    getKeysVersion: () => version,
+    getSecFilingsEntry: () => entry,
+    loadSecFilings: async () => entry,
+  };
+  setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
+  const request = { instrument: { symbol: "GME", exchange: "NYSE", instrument: null }, count: 50 };
+  const committed: string[] = [];
+  let rerender: (() => void) | null = null;
+  function FilingsHarness() {
+    const [tick, setTick] = useState(0);
+    rerender = () => setTick((current) => current + 1);
+    const filings = useSecFilingsQuery(request);
+    // What a pane's queue starts from: effects run only for committed renders.
+    useEffect(() => { committed.push(filings?.phase ?? "none"); }, [filings]);
+    return <text>{`${tick} ${filings?.phase}`}</text>;
+  }
+  await tui.render(<FilingsHarness />, { width: 20, height: 1 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(committed).toEqual(["loading"]);
+
+  // The store holds the list before it announces it; a render in between still reads the loading entry.
+  entry = { ...entry, phase: "ready", data: [], lastGoodData: [] };
+  await act(async () => { rerender?.(); await Promise.resolve(); });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(committed).toEqual(["loading"]);
+
+  // The announcement brings it, in a render that commits.
+  version = 2;
+  await act(async () => { for (const listener of listeners) listener(); await Promise.resolve(); });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(committed).toEqual(["loading", "ready"]);
+  setSharedMarketDataCoordinator(null);
 });
