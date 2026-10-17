@@ -19,6 +19,9 @@ function rateLabel(rate: number): string {
   return `${Number(rate.toFixed(2))}\u00d7`;
 }
 
+/** The player that is playing; starting another stops it, so two panes never talk over each other. */
+let playingNow: (() => void) | null = null;
+
 function mediaErrorMessage(audio: HTMLAudioElement): string {
   switch (audio.error?.code) {
     case 2: return "The recording stopped loading.";
@@ -118,6 +121,10 @@ export function WebAudioPlayer({
     const onDuration = () => {
       if (Number.isFinite(audio.duration) && audio.duration > 0) setDuration(audio.duration);
     };
+    const onPlay = () => {
+      if (playingNow && playingNow !== pause) playingNow();
+      playingNow = pause;
+    };
     const onPlaying = () => report("playing");
     const onPause = () => { if (!audio.ended) report("paused"); };
     const onWaiting = () => report("loading");
@@ -136,24 +143,27 @@ export function WebAudioPlayer({
     audio.addEventListener("durationchange", onDuration);
     audio.addEventListener("loadedmetadata", onDuration);
     audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("play", onPlay);
     audio.addEventListener("playing", onPlaying);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("waiting", onWaiting);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onFailure);
     return () => {
+      if (playingNow === pause) playingNow = null;
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("seeked", onTime);
       audio.removeEventListener("durationchange", onDuration);
       audio.removeEventListener("loadedmetadata", onDuration);
       audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("play", onPlay);
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onFailure);
     };
-  }, [report]);
+  }, [pause, report]);
 
   // A new recording starts from the top; a new address for the same one (the
   // signed one ran out) picks up where it was.
@@ -191,13 +201,16 @@ export function WebAudioPlayer({
     audio.playbackRate = rate;
   }, [rate]);
 
-  // Leaving the call stops it.
-  useEffect(() => () => {
+  // Leaving the call stops it. The element is read now: React has cleared the
+  // ref by the time the cleanup runs.
+  useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
+    return () => {
+      if (!audio) return;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    };
   }, []);
 
   const total = duration > 0 ? duration : (durationSeconds ?? 0);

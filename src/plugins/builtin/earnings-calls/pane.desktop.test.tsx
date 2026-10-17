@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload } from "../../../api-client";
 import { createDomUiHost } from "../../../renderers/dom/dom-ui-host";
@@ -57,7 +57,9 @@ function Harness() {
   );
 }
 
-function serve(audio: "recording" | "none") {
+/** The recording's answer: its address, nothing (404), or a refusal or failure by status. */
+function serve(audio: "recording" | "none" | number, { expiresIn = 3_600_000 }: { expiresIn?: number } = {}) {
+  const requests = { audio: 0 };
   apiClient.setSessionToken("controlled-test-session");
   apiClient.restoreCachedUser({
     id: "controlled-user", name: "Test", email: "test@example.invalid", emailVerified: true, plan: "pro", effectivePlan: "pro",
@@ -65,16 +67,18 @@ function serve(audio: "recording" | "none") {
   setCloudApiFetchTransport(async (url) => {
     const path = new URL(String(url)).pathname;
     if (path.endsWith("/audio")) {
-      return audio === "none"
-        ? Response.json({ message: "No recording for this call." }, { status: 404 })
-        : Response.json({
-          kind: "recording", url: "https://media.example.invalid/calls/ACME-call.mp3?signature=controlled",
-          expiresAt: new Date(Date.now() + 3_600_000).toISOString(), durationSeconds: 600,
-        });
+      requests.audio += 1;
+      if (audio === "none") return Response.json({ message: "No recording for this call." }, { status: 404 });
+      if (typeof audio === "number") return Response.json({ message: "Controlled refusal." }, { status: audio });
+      return Response.json({
+        kind: "recording", url: "https://media.example.invalid/calls/ACME-call.mp3?signature=controlled",
+        expiresAt: new Date(Date.now() + expiresIn).toISOString(), durationSeconds: 600,
+      });
     }
     if (path.includes("/transcripts/")) return Response.json(TRANSCRIPT);
     return Response.json({ calls: [CALL] });
   });
+  return requests;
 }
 
 async function until(done: () => boolean) {
@@ -82,6 +86,7 @@ async function until(done: () => boolean) {
 }
 
 afterEach(() => {
+  setSystemTime();
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   resetEarningsCallsPersistence();
@@ -133,13 +138,75 @@ test("a call without a recording reads as before: no player and no playable line
   expect(container.textContent).not.toContain("audio unavailable");
 });
 
+for (const status of [401, 402, 403]) {
+  test(`a ${status} from the recording's address is no player and no notice, like a call without one`, async () => {
+    const requests = serve(status);
+    const container = await dom.render(<Harness />);
+    await until(() => container.textContent?.includes("Margins held steady") === true);
+    await until(() => requests.audio > 0);
+    await act(async () => { await Bun.sleep(30); });
+    expect(container.querySelector("[data-gloom-role='audio-player']")).toBeNull();
+    expect(container.textContent).not.toContain("audio unavailable");
+  });
+}
+
+test("a failing server is told: no player and an audio unavailable notice", async () => {
+  const requests = serve(503);
+  const container = await dom.render(<Harness />);
+  await until(() => container.textContent?.includes("Margins held steady") === true);
+  await until(() => container.textContent?.includes("audio unavailable") === true);
+  expect(requests.audio).toBe(1);
+  expect(container.querySelector("[data-gloom-role='audio-player']")).toBeNull();
+});
+
+test("a recording that keeps failing is asked for at most twice more, 30 seconds apart, and then reported", async () => {
+  // Every address comes back already run out, as from a server whose clock is
+  // ahead, so each failure looks like an expiry: the case that looped.
+  const requests = serve("recording", { expiresIn: -5_000 });
+  const container = await dom.render(<Harness />);
+  await until(() => !!container.querySelector("[data-gloom-role='audio-player'] audio"));
+  const audio = container.querySelector("audio") as HTMLAudioElement;
+  const fail = () => act(async () => {
+    audio.dispatchEvent(new Event("error"));
+    await Bun.sleep(30);
+  });
+  expect(requests.audio).toBe(1);
+
+  await fail();
+  await until(() => requests.audio === 2);
+  expect(container.textContent).not.toContain("audio unavailable");
+
+  // Inside 30 seconds of the last one: reported, not asked for again.
+  await fail();
+  expect(requests.audio).toBe(2);
+  await until(() => container.textContent?.includes("audio unavailable") === true);
+
+  setSystemTime(new Date(Date.now() + 31_000));
+  await fail();
+  await until(() => requests.audio === 3);
+
+  // Two renewals is all a call gets, however long it has been.
+  setSystemTime(new Date(Date.now() + 31_000));
+  await fail();
+  expect(requests.audio).toBe(3);
+  await until(() => container.textContent?.includes("audio unavailable") === true);
+});
+
 test("the find marks every match and Enter steps through them, leaving the transcript whole", async () => {
   serve("none");
   const container = await dom.render(<Harness />);
   await until(() => container.textContent?.includes("Margins held steady") === true);
   const input = container.querySelector("input") as HTMLInputElement;
+  // One letter would mark thousands of spans: it marks nothing and counts nothing.
   await act(async () => {
     input.focus();
+    input.value = "q";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await Bun.sleep(120);
+  });
+  expect(container.textContent).not.toContain("no matches");
+  expect(container.textContent).not.toContain("match 1 of");
+  await act(async () => {
     input.value = "qu";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     await Bun.sleep(120);

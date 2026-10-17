@@ -45,7 +45,7 @@ import {
   statusOf,
 } from "./data";
 import { callTitle, formatCallDate, formatDuration, formatPeriod, formatSentiment } from "./format";
-import { findCallForQuarter, findInLines, turnParagraphs } from "./model";
+import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
 
@@ -736,7 +736,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (readerOpen && playback.error) {
         info.push({ id: "audio-error", parts: [{ text: "audio unavailable", tone: "warning" }], title: playback.error });
       }
-      if (readerOpen && stepFind && searchQuery.trim() && readerTab !== "summary") {
+      if (readerOpen && stepFind && searchQuery.trim().length >= MIN_FIND_LENGTH && readerTab !== "summary") {
         info.push(activeMatch
           ? { id: "find", parts: [{ text: `match ${Math.min(matchIndex, findMatches.length - 1) + 1} of ${findMatches.length}`, tone: "muted" }] }
           : { id: "find", parts: [{ text: "no matches", tone: "warning" }] });

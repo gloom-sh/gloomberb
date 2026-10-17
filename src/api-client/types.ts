@@ -1148,8 +1148,8 @@ export interface CloudEarningsTranscriptPayload {
 }
 
 /**
- * A call's audio to play beside its transcript. `kind` names what it is: a
- * stored recording now; a live stream may join it later under its own kind.
+ * A call's audio to play beside its transcript. `kind` names what it is; a
+ * stored recording is the only kind so far.
  */
 export interface CloudEarningsCallAudioPayload {
   kind: "recording";

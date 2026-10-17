@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CloudTranscriptTurnPayload } from "../../../api-client";
-import { lineAt, transcriptLineStarts } from "./model";
+import { findInLines, lineAt, transcriptLineStarts } from "./model";
 
 const turn = (startSeconds: number | null, paragraphs: string[], paragraphStarts?: number[]): CloudTranscriptTurnPayload => ({
   speaker: "Jane Roe", text: paragraphs.join(" "), paragraphs, isQa: false, startSeconds, ...(paragraphStarts ? { paragraphStarts } : {}),
@@ -36,4 +36,14 @@ test("the paragraph being spoken is the last one to have started", () => {
   // A turn that starts on the same second as the paragraph before it takes over.
   expect(lineAt(starts, 90)).toEqual({ turn: 3, paragraph: 0 });
   expect(lineAt(starts, 5000)).toEqual({ turn: 3, paragraph: 1 });
+});
+
+test("a find starts at two characters: one letter matches nothing", () => {
+  const lines = [
+    { turn: 0, paragraph: 0, text: "Revenue grew this quarter." },
+    { turn: 1, paragraph: 0, text: "The quarter closed. Quarterly margins held." },
+  ];
+  expect(findInLines(lines, "q")).toEqual([]);
+  expect(findInLines(lines, " q ")).toEqual([]);
+  expect(findInLines(lines, "qu").map((match) => [match.turn, match.occurrence])).toEqual([[0, 0], [1, 0], [1, 1]]);
 });

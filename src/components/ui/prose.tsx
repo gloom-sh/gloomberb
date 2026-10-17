@@ -96,10 +96,13 @@ interface MarkRange {
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
 const NATIVE_TEXT_STYLE = { display: "block" };
 
+/** A find marks from this many characters: one letter would mark thousands of spans. */
+const MIN_MARK_LENGTH = 2;
+
 /** Where `marks.query` occurs in `text`, in order and without overlap. */
 function proseMarkRanges(text: string, marks: ProseMarks | undefined): MarkRange[] {
   const needle = marks?.query.trim().toLowerCase() ?? "";
-  if (!needle) return [];
+  if (needle.length < MIN_MARK_LENGTH) return [];
   const haystack = text.toLowerCase();
   const ranges: MarkRange[] = [];
   for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length)) {
@@ -199,29 +202,29 @@ export function Prose({
     );
   }
   const indent = " ".repeat(prefix.length);
+  const lines = wrapTextLines(text, Math.max(8, width - prefix.length));
+  const row = (line: string, index: number, ranges: readonly MarkRange[]) => (
+    <Box key={index} height={1} flexDirection="row" data-gloom-ui="prose">
+      {prefix ? (
+        <Text
+          fg={prefixForeground}
+          attributes={TextAttributes.BOLD}
+          flexShrink={0}
+        >
+          {index === 0 ? prefix : indent}
+        </Text>
+      ) : null}
+      <Text content={styledRuns(line, foreground, figureColor, attributes, ranges, palette)} />
+    </Box>
+  );
+  if (marked.length === 0) return lines.map((line, index) => row(line, index, marked));
   // Where each wrapped line sits in the text, so a match is marked on its line.
   let cursor = 0;
-  const lineStarts = wrapTextLines(text, Math.max(8, width - prefix.length)).map((line) => {
+  return lines.map((line, index) => {
     const start = Math.max(cursor, text.indexOf(line, cursor));
     cursor = start + line.length;
-    return { line, start };
+    return row(line, index, rangesIn(marked, start, line.length));
   });
-  return lineStarts.map(
-    ({ line, start }, index) => (
-      <Box key={index} height={1} flexDirection="row" data-gloom-ui="prose">
-        {prefix ? (
-          <Text
-            fg={prefixForeground}
-            attributes={TextAttributes.BOLD}
-            flexShrink={0}
-          >
-            {index === 0 ? prefix : indent}
-          </Text>
-        ) : null}
-        <Text content={styledRuns(line, foreground, figureColor, attributes, rangesIn(marked, start, line.length), palette)} />
-      </Box>
-    ),
-  );
 }
 
 /**

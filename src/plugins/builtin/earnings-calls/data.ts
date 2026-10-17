@@ -332,8 +332,7 @@ const NO_AUDIO_RECHECK_MS = 10 * 60 * 1000;
 
 /** True once a signed address has run out, or is about to. */
 export function callAudioExpired(audio: CloudEarningsCallAudioPayload, now = Date.now()): boolean {
-  const expires = Date.parse(audio.expiresAt);
-  return !Number.isFinite(expires) || now >= expires - 60_000;
+  return now >= Date.parse(audio.expiresAt) - 60_000;
 }
 
 type CallAudioClient = { getCloudEarningsCallAudio(id: string): Promise<CloudEarningsCallAudioPayload> };
@@ -360,7 +359,12 @@ export async function loadCallAudioWithClient(
     heldAudio.set(callId, { audio, until: Number.isFinite(expires) ? expires - AUDIO_EXPIRY_MARGIN_MS : now });
     return audio;
   } catch (error) {
-    if (statusOf(error) !== 404) throw error;
+    const status = statusOf(error);
+    // Signed out, unverified or without Pro is no player, like a call with no
+    // recording, and says nothing: only a failing server or network does. A
+    // refusal is not held, so signing in or upgrading plays on the next look.
+    if (status === 401 || status === 402 || status === 403) return null;
+    if (status !== 404) throw error;
     heldAudio.set(callId, { audio: null, until: now + NO_AUDIO_RECHECK_MS });
     return null;
   }

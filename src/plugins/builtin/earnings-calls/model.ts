@@ -311,13 +311,19 @@ export interface TranscriptMatch extends TranscriptLine {
   occurrence: number;
 }
 
+/**
+ * A find starts at this many characters, as the marks drawn in the text do:
+ * one letter would match thousands of times.
+ */
+export const MIN_FIND_LENGTH = 2;
+
 /** Every occurrence of `query` in `lines`, in reading order, ignoring case. */
 export function findInLines(
   lines: ReadonlyArray<TranscriptLine & { text: string }>,
   query: string,
 ): TranscriptMatch[] {
   const needle = query.trim().toLowerCase();
-  if (!needle) return [];
+  if (needle.length < MIN_FIND_LENGTH) return [];
   const matches: TranscriptMatch[] = [];
   for (const line of lines) {
     const haystack = line.text.toLowerCase();

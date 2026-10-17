@@ -5,6 +5,7 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import {
   attachEarningsCallsPersistence,
+  callAudioExpired,
   loadCallAudioWithClient,
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
@@ -300,4 +301,19 @@ test("a call's recording address is reused until shortly before it expires, and 
   expect(asked).toEqual(["spoken", "spoken", "silent"]);
   await expect(loadCallAudioWithClient({ getCloudEarningsCallAudio: async () => { throw new ApiRequestError("Server error", 500); } }, "broken", { now }))
     .rejects.toThrow("Server error");
+});
+
+test("a refused recording is no recording and is asked for again next time, a failing server throws, and an unreadable expiry is not an expired one", async () => {
+  const now = Date.UTC(2026, 7, 2, 12);
+  for (const status of [401, 402, 403]) {
+    let asked = 0;
+    const client = { getCloudEarningsCallAudio: async () => { asked += 1; throw new ApiRequestError("Refused", status); } };
+    expect(await loadCallAudioWithClient(client, `refused-${status}`, { now })).toBeNull();
+    expect(await loadCallAudioWithClient(client, `refused-${status}`, { now: now + 60_000 })).toBeNull();
+    expect(asked).toBe(2);
+  }
+  const audio = { kind: "recording" as const, url: "https://media.example.invalid/a.mp3", durationSeconds: 60 };
+  expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 30_000).toISOString() }, now)).toBe(true);
+  expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 600_000).toISOString() }, now)).toBe(false);
+  expect(callAudioExpired({ ...audio, expiresAt: "not a date" }, now)).toBe(false);
 });

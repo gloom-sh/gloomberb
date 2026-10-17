@@ -8,6 +8,9 @@ import { lineAt, transcriptLineStarts, type TranscriptLine } from "./model";
 export const PLAYBACK_RATES = [1, 1.5, 2] as const;
 /** The arrows move playback this far. */
 export const SEEK_STEP_SECONDS = 10;
+/** A call's recording is asked for again on its own at most this often, and this far apart. */
+const MAX_AUTO_RENEWALS = 2;
+const MIN_RENEWAL_GAP_MS = 30_000;
 
 type CallAudioStatus = "off" | "loading" | "ready" | "none" | "error";
 
@@ -66,6 +69,9 @@ export function useCallPlayback({
   // Set when a fresh address is asked for after the old one ran out, so the
   // error that prompted it is not reported.
   const renewing = useRef(false);
+  // The renewals made without being asked, so a recording that fails for
+  // another reason than its address cannot be fetched and failed in a loop.
+  const autoRenewals = useRef<{ callId: string | null; count: number; at: number }>({ callId: null, count: 0, at: 0 });
 
   const active = enabled && !!callId;
   useEffect(() => {
@@ -126,8 +132,14 @@ export function useCallPlayback({
   audioRef.current = audio;
   const onError = useCallback((message: string) => {
     const held = audioRef.current;
-    if (held && callAudioExpired(held) && !renewing.current) {
+    const made = autoRenewals.current.callId === callIdRef.current ? autoRenewals.current : { callId: callIdRef.current, count: 0, at: 0 };
+    const now = Date.now();
+    if (
+      held && callAudioExpired(held) && !renewing.current
+      && made.count < MAX_AUTO_RENEWALS && (made.count === 0 || now - made.at >= MIN_RENEWAL_GAP_MS)
+    ) {
       renewing.current = true;
+      autoRenewals.current = { callId: callIdRef.current, count: made.count + 1, at: now };
       setRenewal((last) => ({ callId: callIdRef.current, count: last.count + 1 }));
       return;
     }
