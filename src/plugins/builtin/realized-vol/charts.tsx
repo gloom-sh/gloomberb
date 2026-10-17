@@ -33,6 +33,6 @@ export function VolatilityConeChart({ rows, width, height, evidence, focused = f
   return <CompositeChart series={series} panels={[{ id: "main" }]} width={width} height={height} colors={chart}
     focused={focused} navigable={false} showLegend showTimeAxis remoteKind="volatility-cone"
     viewport={{ start: new Date(min * 86_400_000), end: new Date(max * 86_400_000) }} clipToViewport
-    xAxis={{ ticks: tickRows.map((row) => ({ ratio: (row.window - min) / Math.max(1, max - min), label: `${row.window}${row.window === max ? " sessions" : ""}` })),
-      formatCursor: (ratio) => `${Math.round(min + ratio * (max - min))} sessions` }} />;
+    xAxis={{ ticks: tickRows.map((row) => ({ ratio: (row.window - min) / Math.max(1, max - min), label: `${row.window}${row.window === max ? " bars" : ""}` })),
+      formatCursor: (ratio) => `${Math.round(min + ratio * (max - min))} bars` }} />;
 }

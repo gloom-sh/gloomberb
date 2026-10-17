@@ -1,3 +1,4 @@
+import { barsPerYear, type BarsPerYear } from "../../../market-data/bars-per-year";
 import type { PricePoint } from "../../../types/financials";
 import {
   REALIZED_VOLATILITY_WINDOWS, realizedVolatilityCadenceIssue, realizedVolatilityResult, rollingRealizedVolatility, volatilityCone,
@@ -15,6 +16,8 @@ export interface RealizedVolatilityModel {
   /** The cone always includes all seven standard windows, independent of chart selection. */
   cone: VolatilityConeStatistics[];
   asOf: Date | null;
+  /** What the volatility is annualised at, read from the series' own dates. */
+  barsPerYear: BarsPerYear;
   warnings: string[];
 }
 
@@ -79,7 +82,8 @@ export function projectRealizedVolatility(
     warnings.push("Unavailable historical estimates reduce volatility-cone sample coverage");
   }
   return { symbol: options.symbol.trim().toUpperCase(), estimator, lookbackYears, windows,
-    history: visible, series: visibleSeries, cone, asOf, warnings: [...new Set(warnings)] };
+    history: visible, series: visibleSeries, cone, asOf, barsPerYear: barsPerYear(history.map((point) => point.date)),
+    warnings: [...new Set(warnings)] };
 }
 
 interface CurrentAtmIvReference {

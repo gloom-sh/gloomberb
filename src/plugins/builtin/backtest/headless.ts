@@ -1,3 +1,4 @@
+import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
@@ -40,6 +41,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       complete: true,
       errors: result.warnings,
+      notes: [barsPerYearLabel(result.barsPerYear)],
       sections: [
         { title: `${rules.label} · ${result.start} to ${result.end}`, columns: [
           { key: "metric", header: "Metric" },
@@ -56,7 +58,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
           returnPct: trade.returnPct.toFixed(2), sessions: trade.sessions,
         })) },
       ],
-      metadata: { symbol: history.symbol, source: history.source, rules: { ...rules, costBps }, result },
+      metadata: { symbol: history.symbol, source: history.source, rules: { ...rules, costBps }, annualization: result.barsPerYear, result },
     };
   },
 };

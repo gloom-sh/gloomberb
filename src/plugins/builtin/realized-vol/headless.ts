@@ -1,3 +1,4 @@
+import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { createSurfaceDependencies } from "../vol-surface/client";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
@@ -17,14 +18,14 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       { key: "tab", type: "enum", values: [{ value: "graph" }, { value: "cone" }], defaultValue: initialView,
         description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
       { key: "estimator", type: "enum", values: ESTIMATOR_OPTIONS.map(({ value }) => ({ value })), defaultValue: "close-to-close", description: "Realized volatility estimator" },
-      { key: "windows", type: "string", defaultValue: "10,30,90", description: "Comma-separated session windows: 10,20,30,60,90,180,260" },
+      { key: "windows", type: "string", defaultValue: "10,30,90", description: "Comma-separated bar windows: 10,20,30,60,90,180,260" },
       { key: "lookbackYears", type: "integer", minimum: 1, maximum: 2, defaultValue: 1, description: "Historical lookback in calendar years" },
       { key: "showIv", type: "boolean", defaultValue: true, description: "Include a dated current ATM IV observation" },
     ],
     async load(args, ctx) {
       const windows = selectedWindows(args.options.windows);
       if (!windows.length || String(args.options.windows).split(",").some((value) => !windows.includes(Number(value)))) {
-        throw new Error("Choose session windows from 10,20,30,60,90,180,260");
+        throw new Error("Choose bar windows from 10,20,30,60,90,180,260");
       }
       const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
       // Options are US listings'; SAN:EPA has none, and bare SAN's chain is another company's.
@@ -56,7 +57,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
         freshness: { asOf: lastBar },
         sections: [
           { title: "Volatility cone", columns: [
-            { key: "window", header: "Sessions" },
+            { key: "window", header: "Bars" },
             ...["current", "min", "max", "mean", "median"].map((key) => ({ key, header: key,
               format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" })),
             { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" },
@@ -74,7 +75,8 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
         complete: model.cone.every((row) => row.current != null) && model.warnings.length === 0 && !history.stale && errors.length === 0
           && (!args.options.showIv || iv?.reference != null || iv?.noOptionChain === true),
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
-        metadata: { unit: "decimal annualized volatility", annualization: 252, model, currentIv: iv,
+        notes: [barsPerYearLabel(model.barsPerYear)],
+        metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
           ...(abroad && args.options.showIv ? { notices: [`Options data covers US listings only, so ${args.symbols[0]} has no current IV.`] } : {}),
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,
           methodology: "docs/research-data.md#shared-volatility-calculations" },

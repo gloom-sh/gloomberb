@@ -9,6 +9,9 @@ import {
   type RealizedVolatilityEstimator,
 } from "./realized-volatility";
 
+/** `history` runs on consecutive calendar dates, a 24/7 series, so it annualises at 365 bars a year. */
+const CALENDAR_BARS = 365;
+
 function history(returns: readonly number[]): PricePoint[] {
   const points: PricePoint[] = [{ date: new Date(Date.UTC(2025, 0, 1)), close: 100 }];
   for (const [index, value] of returns.entries()) {
@@ -31,7 +34,7 @@ describe("realized volatility estimators", () => {
   test("close-to-close uses n centered returns and sample variance", () => {
     // Mean log return 0.02, sample variance 0.0006.
     const points = history([0.01, -0.01, 0.04, 0.04]);
-    expect(realizedVolatility(points, 4)).toBeCloseTo(Math.sqrt(0.0006 * 252), 12);
+    expect(realizedVolatility(points, 4)).toBeCloseTo(Math.sqrt(0.0006 * CALENDAR_BARS), 12);
     expect(realizedVolatility(points.slice(1), 4)).toBeNull();
     expect(realizedVolatility(points, 2)).toBeCloseTo(0, 12);
     expect(realizedVolatility(history([0.02, 0.02, 0.02]), 3)).toBeCloseTo(0, 12);
@@ -82,6 +85,30 @@ describe("realized volatility estimators", () => {
   });
 });
 
+describe("annualization", () => {
+  /** The same returns on weekday-only dates (Wednesday 1 January 2025 onward): exchange sessions. */
+  function sessions(returns: readonly number[]): PricePoint[] {
+    return history(returns).map((point, index) => ({
+      ...point, date: new Date(Date.UTC(2025, 0, 1 + index + 2 * Math.floor((index + 2) / 5))),
+    }));
+  }
+
+  test("a series with weekend bars annualizes at 365 bars a year, a weekday-only one at 252", () => {
+    const returns = Array.from({ length: 40 }, (_, index) => 0.01 * Math.sin(index));
+    const latest = returns.slice(-30);
+    const mean = latest.reduce((sum, value) => sum + value, 0) / latest.length;
+    const variance = latest.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (latest.length - 1);
+    expect(realizedVolatility(history(returns), 30)).toBeCloseTo(Math.sqrt(variance * 365), 12);
+    expect(realizedVolatility(sessions(returns), 30)).toBeCloseTo(Math.sqrt(variance * 252), 12);
+    // Rolling and the cone read the same convention as the latest estimate.
+    for (const points of [history(returns), sessions(returns)]) {
+      const latestEstimate = realizedVolatility(points, 30)!;
+      expect(rollingRealizedVolatility(points, { windows: [30] }).at(-1)!.values[30]).toBeCloseTo(latestEstimate, 12);
+      expect(volatilityCone(points, { windows: [30] })[0]!.current!).toBeCloseTo(latestEstimate, 12);
+    }
+  });
+});
+
 describe("history integrity and rolling windows", () => {
   test("daily cadence guard recognizes corrected chronology and rejects contradictory fallback bars", () => {
     const daily = rangeHistory(10);
@@ -106,7 +133,7 @@ describe("history integrity and rolling windows", () => {
     expect(Object.isFrozen(result.integrity!.sourcePoints[0])).toBe(true);
     const series = rollingRealizedVolatility(points, { windows: [2] });
     expect(series.map((point) => point.values[2] === null)).toEqual([true, true, true, true, true, false, false]);
-    expect(series.at(-1)!.values[2]).toBeCloseTo(realizedVolatility(points.slice(-3), 2)!, 12);
+    expect(series.at(-1)!.values[2]).toBeCloseTo(realizedVolatility(points, 2)!, 12);
   });
 
   test("does not substitute older observations for invalid closes or incomplete OHLC", () => {
@@ -163,7 +190,7 @@ describe("volatility cone", () => {
   test("computes rank and distribution from rolling estimates, with midpoint ties", () => {
     const points = history([0.01, -0.01, 0.02, -0.02, 0.03]);
     const stats = volatilityCone(points, { windows: [2] })[0]!;
-    const factor = Math.sqrt(126);
+    const factor = Math.sqrt(CALENDAR_BARS / 2);
     // Two-return sample standard deviations equal |r2-r1| / sqrt(2).
     expect(stats.sampleSize).toBe(4);
     expect(stats.min).toBeCloseTo(0.02 * factor, 12);

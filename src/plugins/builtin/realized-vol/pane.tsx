@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
+import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -26,7 +27,7 @@ const ATM_IV_REFRESH_MS = 60_000;
 const TABS = [{ value: "graph", label: "History" }, { value: "cone", label: "Cone" }];
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
 const CONE_COLUMNS: DataTableColumn[] = [
-  { id: "window", label: "Sessions", width: 10, align: "left" },
+  { id: "window", label: "Bars", width: 10, align: "left" },
   ...["current", "min", "max", "mean", "median"].map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1), width: 11, align: "right" as const })),
   { id: "percentile", label: "Percentile", width: 12, align: "right" },
   { id: "sampleSize", label: "Samples", width: 10, align: "right" },
@@ -129,14 +130,16 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
-    ...(history.data ? [{ id: "cadence", parts: [{ text: "daily closes", tone: "muted" as const }] }] : []),
+    ...(history.data ? [{ id: "cadence", parts: [{
+      text: model ? `daily closes · ${barsPerYearLabel(model.barsPerYear)}` : "daily closes", tone: "muted" as const,
+    }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf.toISOString().slice(0, 10), tone: "muted" as const }] }] : []),
     ...(showIv && iv.loading ? [{ id: "iv-loading", parts: [{ text: "loading ATM IV", tone: "muted" as const }] }] : []),
   ], hints: [
     { id: "view", key: "v", label: "iew", onPress: cycleView },
     { id: "iv", key: "i", label: showIv ? "v off" : "v on", onPress: () => setShowIv(!showIv) },
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
-  ] }), [history.loading, history.data, model?.asOf, iv.loading, showIv, view, symbol, iv.data]);
+  ] }), [history.loading, history.data, model?.asOf, model?.barsPerYear, iv.loading, showIv, view, symbol, iv.data]);
   const evidence: RealizedVolEvidenceStatus = {
     symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator,
     windows, lookbackYears: Number(lookback) === 2 ? 2 : 1, showIv,
@@ -175,7 +178,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
           selection={{ kind: "id", selectedId: String(selected), getId: (row) => String(row.window), onChange: (_id, row) => setSelected(row.window) }}
           onActivate={(row) => setSelected(row.window)}
           getExportMetadata={() => [["symbol", model.symbol], ["estimator", model.estimator], ["lookback years", model.lookbackYears],
-            ["as of", model.asOf?.toISOString()], ["source", history.data?.source], ["units", "annualized %"], ["warnings", ...notices]]}
+            ["as of", model.asOf?.toISOString()], ["source", history.data?.source], ["units", "annualized %"], ["annualization", barsPerYearLabel(model.barsPerYear)], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "window" ? String(row.window)
             : column.id === "sampleSize" ? String(row.sampleSize)
               : column.id === "percentile" ? row.percentile == null ? "--" : `${row.percentile.toFixed(1)}%`

@@ -288,7 +288,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["HIVG", "GV"],
   },
   HVG: {
-    summary: "Rolling realized volatility over windows from 10 to 260 sessions, with price and today's at-the-money IV for reference.",
+    summary: "Rolling realized volatility over windows from 10 to 260 bars, with price and today's at-the-money IV for reference.",
     usage: ["HVG MSFT"],
     keys: [key("v", "iew"), key("i", "v on"), key("s", "urface")],
     data: { free: `Daily closes; ATM IV ${DELAYED}`, pro: "Daily closes; ATM IV real-time" },

@@ -16,6 +16,7 @@ import {
   type SelectControl,
 } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
+import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -137,7 +138,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   usePaneFooter("backtest", () => ({
     info: [
       ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
-      ...(result ? [{ id: "window", parts: [{ text: `${result.start} to ${result.end} · ${result.sessions} sessions`, tone: "muted" as const }] }] : []),
+      ...(result ? [{ id: "window", parts: [{
+        text: `${result.start} to ${result.end} · ${result.sessions} sessions · ${barsPerYearLabel(result.barsPerYear)}`, tone: "muted" as const,
+      }] }] : []),
     ],
     hints: [
       { id: "edit", key: "e", label: "dit rules", onPress: edit },

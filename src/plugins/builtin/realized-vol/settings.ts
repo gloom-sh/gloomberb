@@ -7,7 +7,7 @@ export const ESTIMATOR_OPTIONS: { value: RealizedVolatilityEstimator; label: str
   { value: "rogers-satchell", label: "Rogers-Satchell" },
   { value: "yang-zhang", label: "Yang-Zhang" },
 ];
-export const WINDOW_OPTIONS = REALIZED_VOLATILITY_WINDOWS.map((value) => ({ value: String(value), label: `${value} sessions` }));
+export const WINDOW_OPTIONS = REALIZED_VOLATILITY_WINDOWS.map((value) => ({ value: String(value), label: `${value} bars` }));
 export const DEFAULT_WINDOWS = ["10", "30", "90"];
 
 export function selectedWindows(value: unknown): number[] {

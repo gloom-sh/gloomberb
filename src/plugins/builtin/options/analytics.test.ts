@@ -35,11 +35,14 @@ function contract(
   };
 }
 
+/** Exchange sessions: weekdays from Thursday 1 January 2026, so HV30 annualizes at 252. */
+const sessionDate = (index: number) => new Date(Date.UTC(2026, 0, 1 + index + 2 * Math.floor((index + 3) / 5)));
+
 function priceHistory(): PricePoint[] {
-  const points: PricePoint[] = [{ date: new Date(Date.UTC(2026, 0, 1)), close: 100 }];
+  const points: PricePoint[] = [{ date: sessionDate(0), close: 100 }];
   for (let index = 0; index < 30; index += 1) {
     points.push({
-      date: new Date(Date.UTC(2026, 0, index + 2)),
+      date: sessionDate(index + 1),
       close: points.at(-1)!.close * Math.exp(index % 2 === 0 ? 0.01 : -0.01),
     });
   }

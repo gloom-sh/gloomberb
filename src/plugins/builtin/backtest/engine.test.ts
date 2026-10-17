@@ -4,8 +4,11 @@ import { evaluateOperand, evaluateRule, parseRule, ruleWarmup, type BacktestBar,
 import { BACKTEST_PRESETS } from "./presets";
 
 const day = (index: number) => new Date(Date.UTC(2020, 0, 1) + index * 86_400_000).toISOString().slice(0, 10);
-const bars = (closes: number[], open = (close: number) => close): BacktestBar[] =>
-  closes.map((close, index) => ({ date: day(index), open: open(close), high: close, low: close, close }));
+/** Weekdays only, from Wednesday 1 January 2020: exchange sessions. */
+const sessionDay = (index: number) => new Date(Date.UTC(2020, 0, 1 + index + 2 * Math.floor((index + 2) / 5))).toISOString().slice(0, 10);
+/** Consecutive calendar dates, a 24/7 series, unless `date` says otherwise. */
+const bars = (closes: number[], open = (close: number) => close, date = day): BacktestBar[] =>
+  closes.map((close, index) => ({ date: date(index), open: open(close), high: close, low: close, close }));
 
 const operandText = (operand: Operand): string =>
   operand.kind === "number" ? String(operand.value)
@@ -67,12 +70,28 @@ test("a signal on the final session does not trade", () => {
   expect(result.strategy.exposurePct).toBe(0);
 });
 
-test("rolling windows count sessions where the rule beat buy-and-hold", () => {
+test("rolling windows are one year of bars: 365 for a 24/7 series, 252 for exchange sessions", () => {
   // Steady rise: always-in matches buy-and-hold minus nothing; never-in loses every window.
   const closes = Array.from({ length: 400 }, (_, index) => 100 + index);
-  const never = runBacktest(bars(closes), parseRule("close < 0"), parseRule("close < 0"), { lookbackYears: null, costBps: 0 });
-  expect(never.rollingWin.windows).toBe(400 - 252);
+  const options = { lookbackYears: null, costBps: 0 };
+  const never = runBacktest(bars(closes), parseRule("close < 0"), parseRule("close < 0"), options);
+  expect(never.barsPerYear).toBe(365);
+  expect(never.rollingWin.windows).toBe(400 - 365);
   expect(never.rollingWin.sharePct).toBe(0);
   expect(never.benchmark.totalReturnPct).toBeGreaterThan(0);
   expect(never.strategy.maxDrawdownPct).toBe(0);
+  const sessions = runBacktest(bars(closes, undefined, sessionDay), parseRule("close < 0"), parseRule("close < 0"), options);
+  expect(sessions.barsPerYear).toBe(252);
+  expect(sessions.rollingWin.windows).toBe(400 - 252);
+});
+
+test("volatility and Sharpe annualize at the series' bars per year", () => {
+  const closes = Array.from({ length: 120 }, (_, index) => 100 * Math.exp(0.01 * Math.sin(index / 3) + index * 0.001));
+  const options = { lookbackYears: null, costBps: 0 };
+  const rule = parseRule("close > 0");
+  const crypto = runBacktest(bars(closes), rule, rule, options).benchmark;
+  const exchange = runBacktest(bars(closes, undefined, sessionDay), rule, rule, options).benchmark;
+  // Same returns, so only the annualization differs.
+  expect(crypto.volatilityPct! / exchange.volatilityPct!).toBeCloseTo(Math.sqrt(365 / 252), 10);
+  expect(crypto.sharpe! / exchange.sharpe!).toBeCloseTo(Math.sqrt(365 / 252), 10);
 });
