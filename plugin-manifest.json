@@ -590,8 +590,8 @@
           },
           {
             "code": "ETF",
-            "name": "ETF Filings",
-            "description": "A US-listed fund's SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT."
+            "name": "Fund Facts",
+            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
           },
           {
             "code": "RISK",

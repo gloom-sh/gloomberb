@@ -6,7 +6,7 @@ describe("asset class query", () => {
     expect(parseAssetClassQuery("es fut")).toEqual({ code: "FUT", symbolQuery: "es" });
     expect(parseAssetClassQuery("Vanguard Total ETF")).toEqual({ code: "ETF", symbolQuery: "Vanguard Total" });
     // A code alone is a symbol (EQ) or a command (FUT, ETF), and a leading
-    // code is a command with its argument (ETF SPY opens ETF Filings).
+    // code is a command with its argument (ETF SPY opens Fund Facts).
     for (const query of ["EQ", "FUT", "ETF", "CRYP", "FUND", "ETF SPY", "FUT ES", "CRYP BTC", "FUND VTSAX", "ES FUTURE"]) {
       expect(parseAssetClassQuery(query)).toBeNull();
     }

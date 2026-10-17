@@ -16,7 +16,7 @@ type Client = Pick<typeof apiClient, "getFundFacts">;
 
 const fact = (value: unknown) => value === null || (typeof value === "object" && value !== null && "value" in value && "source" in value);
 
-export function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
+function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
     || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)) {
     throw new Error("Unreadable fund facts response");
@@ -41,25 +41,25 @@ export const loadFundFacts = (ticker: string, force = false) =>
   loadCloudResource(fundFactsCache, cacheKey(ticker), () => fetchFundFacts(ticker), { force, validate: validateFundFacts });
 
 /** A fee as the prospectus states it: two decimals at least, four when it has them (0.0945%). */
-export function formatFeePercent(value: number): string {
+function formatFeePercent(value: number): string {
   return `${value.toFixed(4).replace(/0{1,2}$/, "")}%`;
 }
 
-export function formatPremiumPercent(value: number): string {
+function formatPremiumPercent(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return `${rounded > 0 ? "+" : ""}${(rounded === 0 ? 0 : rounded).toFixed(2)}%`;
 }
 
-export function formatNav(value: number): string {
+function formatNav(value: number): string {
   return `$${value.toFixed(value < 1 ? 4 : 2)}`;
 }
 
-export function formatNetAssets(value: number): string {
+function formatNetAssets(value: number): string {
   return `$${formatCompact(value)}`;
 }
 
 /** A trust charges a sponsor fee; a fund states an expense ratio, net or gross of waivers, which its detail says. */
-export function expenseRatioLabel(facts: Pick<FundFactsPayload, "expenseRatio" | "structure">): string {
+function expenseRatioLabel(facts: Pick<FundFactsPayload, "expenseRatio" | "structure">): string {
   return facts.expenseRatio?.kind === "sponsor-fee" || facts.structure === "trust" ? "Sponsor fee" : "Expense ratio";
 }
 

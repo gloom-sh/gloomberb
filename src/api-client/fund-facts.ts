@@ -1,13 +1,13 @@
 /** One published figure: when it is as of and who published it (the fund's sponsor, or Gloom Cloud for a computed one). */
-export interface FundFact<T> {
+interface FundFact<T> {
   value: T;
   asOf: string | null;
   source: string;
   url?: string;
 }
 
-export type FundStructure = "registered" | "trust";
-export type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
+type FundStructure = "registered" | "trust";
+type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
 
 /** GET /cloud/fund-facts/:ticker. Percent fields are in percent (0.03 is 0.03%). */
 export interface FundFactsPayload {
