@@ -983,7 +983,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 10px;
+  padding: 0 var(--gloom-space-sm);
   background: transparent;
   color: var(--gloom-text-bright);
   cursor: pointer;
@@ -999,7 +999,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-player-time {
   flex: none;
   align-self: center;
-  padding: 0 10px;
+  padding: 0 var(--gloom-space-sm);
   font-variant-numeric: tabular-nums;
   color: var(--gloom-text);
   white-space: nowrap;
@@ -1021,7 +1021,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-player-rail {
   width: 100%;
   height: 3px;
-  border-radius: 999px;
+  border-radius: var(--gloom-radius-full);
   background: var(--player-rail);
   overflow: hidden;
 }
@@ -1041,7 +1041,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-player-track:hover .gloom-player-thumb,
 .gloom-player-track[data-scrubbing="true"] .gloom-player-thumb { opacity: 1; }
 .gloom-player .gloom-qb-inline {
-  margin-left: 10px;
+  margin-left: var(--gloom-space-sm);
   box-shadow: inset 1px 0 0 var(--qb-hairline);
 }
 
@@ -1053,7 +1053,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-playback-line {
   --line-bg: transparent;
   position: relative;
-  border-radius: 3px;
+  border-radius: var(--gloom-radius-sm);
   cursor: pointer;
   background-color: var(--line-bg);
   box-shadow: 0 0 0 2px var(--line-bg), -3px 0 0 2px var(--line-bg), 3px 0 0 2px var(--line-bg);
@@ -1068,7 +1068,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  border-radius: 3px 0 0 3px;
+  border-radius: var(--gloom-radius-sm) 0 0 var(--gloom-radius-sm);
   background: var(--gloom-border-focused);
 }
 
@@ -1363,7 +1363,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb[data-search-only="true"] .gloom-qb-search { flex: 1 1 260px; max-width: 480px; }
 
 /* Band text starts one cell in, on the same edge as the table columns and
-   body text below it; segments after the first keep their 10px. */
+   body text below it; segments after the first keep their 8px (--gloom-space-sm). */
 .gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search, .gloom-player-toggle):first-child,
 .gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,

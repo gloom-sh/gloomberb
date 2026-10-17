@@ -170,7 +170,7 @@ function BrokerSignInDialog({
             height={Math.max(4, termHeight - DESKTOP_DIALOG_ROWS)}
             width={FORM_DIALOG_WIDTH - DESKTOP_DIALOG_INSET}
           />
-          <Box style={{ marginTop: 14 }}>
+          <Box style={{ marginTop: "var(--gloom-space-md)" }}>
             <DialogActions alignEnd hints={{ keys: [BROKER_CONNECT_NEW_LINK] }}>
               <Button label="Cancel" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
             </DialogActions>

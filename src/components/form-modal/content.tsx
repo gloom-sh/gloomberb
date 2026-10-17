@@ -568,7 +568,7 @@ export function FormModalContent({
         <Box width={width} maxWidth="calc(100vw - 72px)" maxHeight={DESKTOP_MODAL_MAX_HEIGHT} flexDirection="column">
           <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss} shrinkable>
             <ScrollBox scrollY style={{ overflowX: "hidden" }}>{stepBody}</ScrollBox>
-            <Box style={{ marginTop: 14 }}>
+            <Box style={{ marginTop: "var(--gloom-space-md)" }}>
               <DialogActions alignEnd hints={step.hints ? { keys: step.hints } : undefined}>
                 <Button label={t("Cancel")} desktopShortcut="Esc" variant="secondary" onPress={dismiss} />
               </DialogActions>
@@ -674,7 +674,7 @@ export function FormModalContent({
           {(route.error || (route.pending && route.pendingLabel)) && (
             <Box flexDirection="column" style={{ marginTop: 10 }}>{status}</Box>
           )}
-          <Box style={{ marginTop: 14 }}>{buttons}</Box>
+          <Box style={{ marginTop: "var(--gloom-space-md)" }}>{buttons}</Box>
         </DialogFrame>
       </Box>
     );
