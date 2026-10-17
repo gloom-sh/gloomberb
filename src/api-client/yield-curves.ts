@@ -33,7 +33,24 @@ export interface CloudCurveView {
     percentile1y: number | null;
     observations1y: number;
   }>;
+  /** Each tenor's 1D and 1W move ranked against its whole stored history; absent on servers older than it. */
+  moves?: CloudCurveMove[];
   checkedAt: string | null;
+}
+
+/** How big a tenor's move into the session was, against every move of the same horizon through it. */
+export interface CloudCurveMove {
+  tenor: string;
+  horizon: "1D" | "1W";
+  /** The session the move is measured from (the day before, or seven days before, within ten days). */
+  from: string | null;
+  /** Percentage points. */
+  change: number | null;
+  /** Midrank percentile of the move's size, 0 to 100; null below a year of moves. */
+  percentile: number | null;
+  observations: number;
+  /** The session the oldest ranked move ends on. */
+  since: string | null;
 }
 
 /** One tenor of a stored curve over time, oldest first (`GET /cloud/econ/curves/:curve/history`). */

@@ -1,5 +1,7 @@
 import { apiClient } from "../../../api-client";
-import type { CloudCurvePoint, CloudCurveId, CloudCurveView } from "../../../api-client/yield-curves";
+import type { CloudCurveMove, CloudCurvePoint, CloudCurveId, CloudCurveView } from "../../../api-client/yield-curves";
+import { TREASURY_CURVE_CUTOFF } from "../shared/treasury-cutoffs";
+import type { MoveHorizon } from "../shared/move-rank";
 import type { CurveBasis } from "./forward";
 import { yieldSpreads, type YieldLookbackCurves } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
@@ -54,6 +56,20 @@ export function parseCurveArgument(value: unknown, now = new Date()): { curve: C
   return { curve, date: yieldCurveDate(rest.join(" ") || null, now) };
 }
 
+/**
+ * When in the day a curve's yields are taken, for the curves where two
+ * numbers for one day are easily confused: Treasury's, which ^TNX quotes at
+ * an earlier close. Null for the others, which name only their date.
+ */
+export function curveCutoff(curve: CurveId): string | null {
+  return curve === "us" || curve === "us-real" || curve === "us-breakeven" ? TREASURY_CURVE_CUTOFF : null;
+}
+
+/** A tenor's ranked move over a horizon, when the curve brought one. */
+export function curveTenorMove(data: CurveData | null, tenor: string, horizon: MoveHorizon): CloudCurveMove | null {
+  return data?.moves?.find((move) => move.tenor === tenor && move.horizon === horizon && move.change != null) ?? null;
+}
+
 export interface CurveSpreadFigure {
   id: string;
   /** Long minus short, percentage points. */
@@ -73,6 +89,11 @@ export interface CurveData {
   lookbacks: YieldLookbackCurves | null;
   /** Null for the FRED fallback: its spreads follow from the points and look-backs. */
   spreads: CurveSpreadFigure[] | null;
+  /**
+   * Each tenor's 1D and 1W move ranked against its whole history, as Gloom
+   * Cloud ranks the stored curve. Null for the FRED fallback and older servers.
+   */
+  moves?: CloudCurveMove[] | null;
   /**
    * FRED `info.source` when these points are the constant-maturity fallback.
    * Null when that fallback came back without series info. Absent on a stored curve.
@@ -107,6 +128,7 @@ function curveDataFromView(view: CloudCurveView, requestedDate: string): CurveDa
     lookbacks: Object.fromEntries(view.lookbacks.map((lookback) => [lookback.id,
       lookback.points ? pointsAt(lookback.points, lookback.asOf) : null])),
     spreads: view.spreads.map(({ id, value, change1d, percentile1y }) => ({ id, value, change1d, percentile1y })),
+    moves: view.moves ?? null,
   };
 }
 
@@ -118,7 +140,7 @@ async function loadFredCurve(requestedDate: string, client: CurveClient): Promis
   const points = completeYieldCurve(requestedDate
     ? await loadHistoricalYieldCurve(requestedDate, (id, options) => client.getCloudFredSeries(id, options))
     : await loadYieldCurve(() => client.getCloudYieldCurve()));
-  return { curve: "us", requestedDate, basis: "par", couponsPerYear: 2, points, lookbacks: null, spreads: null,
+  return { curve: "us", requestedDate, basis: "par", couponsPerYear: 2, points, lookbacks: null, spreads: null, moves: null,
     seriesSource: fredSeriesSource(points) };
 }
 

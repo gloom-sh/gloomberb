@@ -1,43 +1,47 @@
 import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { AUCTION_HISTORY_DAYS } from "./client";
+import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, type AuctionHistoryWindow } from "./client";
 import type { TreasuryAuction } from "./types";
 
 /**
- * History windows in days, ascending: 30 days to 10 years. Fiscal Data keeps
- * auctions back to 1979, so these are our cap, and each one is walked as a
+ * History windows, shortest first: 30 days to 10 years in days, then ALL,
+ * every auction Fiscal Data holds back to 1979-10-31. Each is walked as a
  * paged query that stays inside the client's page bound.
  */
-export const AUCTION_HISTORY_WINDOWS = [30, 90, 120, 365, 1825, 3650] as const;
+export const AUCTION_HISTORY_WINDOWS: readonly AuctionHistoryWindow[] = [30, 90, 120, 365, 1825, 3650, AUCTION_HISTORY_ALL];
 
-const AUCTION_HISTORY_LABELS: Record<number, { label: string; phrase: string }> = {
+const AUCTION_HISTORY_LABELS: Record<string, { label: string; phrase: string }> = {
   30: { label: "30 days", phrase: "the last 30 days" },
   90: { label: "90 days", phrase: "the last 90 days" },
   120: { label: "120 days", phrase: "the last 120 days" },
   365: { label: "1 year", phrase: "the last year" },
   1825: { label: "5 years", phrase: "the last 5 years" },
   3650: { label: "10 years", phrase: "the last 10 years" },
+  [AUCTION_HISTORY_ALL]: { label: `All, since ${AUCTION_HISTORY_START.slice(0, 4)}`, phrase: `every auction since ${AUCTION_HISTORY_START}` },
 };
 
 /** The window as the settings menu names it: "120 days", "5 years". */
-export function auctionHistoryLabel(days: number): string {
-  return AUCTION_HISTORY_LABELS[days]?.label ?? `${days} days`;
+export function auctionHistoryLabel(window: AuctionHistoryWindow): string {
+  return AUCTION_HISTORY_LABELS[window]?.label ?? `${window} days`;
 }
 
 /** The window inside a sentence: "the last 120 days", "the last 5 years". */
-export function auctionHistoryPhrase(days: number): string {
-  return AUCTION_HISTORY_LABELS[days]?.phrase ?? `the last ${days} days`;
+export function auctionHistoryPhrase(window: AuctionHistoryWindow): string {
+  return AUCTION_HISTORY_LABELS[window]?.phrase ?? `the last ${window} days`;
 }
 
 /** The next longer window, or null when this one is already the longest. */
-export function nextAuctionHistoryWindow(days: number): number | null {
-  return AUCTION_HISTORY_WINDOWS.find((window) => window > days) ?? null;
+export function nextAuctionHistoryWindow(window: AuctionHistoryWindow): AuctionHistoryWindow | null {
+  if (window === AUCTION_HISTORY_ALL) return null;
+  return AUCTION_HISTORY_WINDOWS.find((next) => next === AUCTION_HISTORY_ALL || next > window) ?? null;
 }
 
 /** Pane settings arrive as unvalidated strings, so anything unknown falls back. */
-export function auctionHistoryDays(settings: Record<string, unknown> | undefined): number {
-  const value = Number(settings?.historyDays);
-  return (AUCTION_HISTORY_WINDOWS as readonly number[]).includes(value) ? value : AUCTION_HISTORY_DAYS;
+export function auctionHistoryWindow(settings: Record<string, unknown> | undefined): AuctionHistoryWindow {
+  const raw = settings?.historyDays;
+  if (typeof raw === "string" && raw.trim().toLowerCase() === AUCTION_HISTORY_ALL) return AUCTION_HISTORY_ALL;
+  const value = Number(raw);
+  return AUCTION_HISTORY_WINDOWS.includes(value) ? value : AUCTION_HISTORY_DAYS;
 }
 
 /** What the search box understands, for empty results and the box's own prompt. */
@@ -349,8 +353,8 @@ export function firstAuctionSortDirection(columnId: AuctionColumnId): SortDirect
  * "Oct 13" is ambiguous once a window spans years, so a window past a year
  * dates its rows in full (2026-10-13), the way the search takes a date.
  */
-export function auctionDatesShowYear(historyDays: number): boolean {
-  return historyDays > 365;
+export function auctionDatesShowYear(window: AuctionHistoryWindow): boolean {
+  return window === AUCTION_HISTORY_ALL || window > 365;
 }
 
 /**

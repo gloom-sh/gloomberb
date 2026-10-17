@@ -1,4 +1,5 @@
 import { formatNumber } from "../../../utils/format";
+import { TREASURY_CURVE_CUTOFF } from "../shared/treasury-cutoffs";
 import type { StatDef } from "./defs";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -392,6 +393,7 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: DAILY,
     note: "Daily effective overnight rate; the FOMC sets a separate target range.",
+    rankMoves: true,
   }),
   stat({
     id: "ten-year",
@@ -406,6 +408,8 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: DAILY,
     note: "The benchmark long rate that discounts almost everything else.",
+    rankMoves: true,
+    cutoff: TREASURY_CURVE_CUTOFF,
   }),
   stat({
     id: "two-year",
@@ -420,6 +424,8 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: DAILY,
     note: "The short end, which tracks where policy is expected to go.",
+    rankMoves: true,
+    cutoff: TREASURY_CURVE_CUTOFF,
   }),
   stat({
     id: "curve-spread",
@@ -437,6 +443,8 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "inversion" },
     staleAfterMs: DAILY,
     note: "The curve spread. Below zero it has preceded every modern recession.",
+    rankMoves: true,
+    cutoff: TREASURY_CURVE_CUTOFF,
   }),
   stat({
     id: "real-ten-year",
@@ -452,6 +460,8 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "zero" },
     staleAfterMs: DAILY,
     note: "The inflation-protected long rate, the real cost of money.",
+    rankMoves: true,
+    cutoff: TREASURY_CURVE_CUTOFF,
   }),
   stat({
     id: "m2-yoy",

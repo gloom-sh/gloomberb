@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   AUCTION_HISTORY_WINDOWS,
   DEFAULT_AUCTION_SORT,
-  auctionHistoryDays,
+  auctionHistoryWindow,
   auctionSize,
   dealerPct,
   directPct,
@@ -262,16 +262,17 @@ describe("search", () => {
 });
 
 describe("history windows", () => {
-  test("the next window names where older auctions are, and the longest has none", () => {
+  test("the next window names where older auctions are, and ALL, the whole history, has none", () => {
     expect(nextAuctionHistoryWindow(120)).toBe(365);
-    expect(nextAuctionHistoryWindow(365)).toBe(1825);
     expect(nextAuctionHistoryWindow(1825)).toBe(3650);
-    expect(nextAuctionHistoryWindow(3650)).toBeNull();
+    expect(nextAuctionHistoryWindow(3650)).toBe("all");
+    expect(nextAuctionHistoryWindow("all")).toBeNull();
   });
 
   test("a saved pane setting reaches every window and falls back on a value that is not one", () => {
-    for (const days of AUCTION_HISTORY_WINDOWS) expect(auctionHistoryDays({ historyDays: String(days) })).toBe(days);
-    expect(auctionHistoryDays({ historyDays: "7300" })).toBe(120);
-    expect(auctionHistoryDays(undefined)).toBe(120);
+    for (const window of AUCTION_HISTORY_WINDOWS) expect(auctionHistoryWindow({ historyDays: String(window) })).toBe(window);
+    expect(auctionHistoryWindow({ historyDays: "ALL" })).toBe("all");
+    expect(auctionHistoryWindow({ historyDays: "7300" })).toBe(120);
+    expect(auctionHistoryWindow(undefined)).toBe(120);
   });
 });

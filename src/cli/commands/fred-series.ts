@@ -1,3 +1,4 @@
+import { seriesMoves, type MoveHorizon } from "../../plugins/builtin/shared/move-rank";
 import { ICE_SPREAD_SERIES } from "../../time-series/ice-credit";
 import { toBasisPoints } from "../../utils/basis-points";
 import { parseReportTime } from "../../utils/utc-time";
@@ -184,6 +185,73 @@ export function fredHistoryNotes(input: {
   return input.startGiven
     ? []
     : [`Showing from ${input.startDate}; earlier: --start YYYY-MM-DD (series begins ${seriesStart}).`];
+}
+
+/**
+ * `--change 1D|1W`, in any case: the horizon each row's change is over, or
+ * null for anything else. 1D is from the previous observation, 1W from the
+ * last one on or before the same day a week earlier, each within ten days, so
+ * a holiday is skipped (shared/move-rank.ts).
+ */
+export function parseFredChange(value: string | undefined): MoveHorizon | null {
+  const horizon = value?.trim().toUpperCase();
+  return horizon === "1D" || horizon === "1W" ? horizon : null;
+}
+
+/**
+ * Where a `--change` fetch starts: a week and the ten-day window before
+ * `--start`, so the first row shown has the observation it is measured from.
+ */
+export function fredChangeFetchStart(startDate: string): string {
+  return new Date(Date.parse(`${startDate}T00:00:00Z`) - 17 * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Why a series has no changes over a horizon: a 1D change of a weekly series is a week's, and longer intervals have neither. Null when it has them. */
+export function fredChangeMismatch(seriesId: string, interval: string | null, horizon: MoveHorizon): string | null {
+  if (interval == null || interval === "daily" || (interval === "weekly" && horizon === "1W")) return null;
+  return interval === "weekly"
+    ? `${seriesId} is weekly, so its changes are 1W.`
+    : `${seriesId} is ${interval}: --change works on daily and weekly series.`;
+}
+
+/**
+ * The change column's header, in the series' own unit: basis points for a
+ * spread (its values print in bp), percentage points for a percent, else
+ * FRED's units.
+ */
+export function fredChangeHeader(seriesId: string, horizon: MoveHorizon, info: { units?: string | null } | null | undefined): string {
+  if (isSpreadSeries(seriesId)) return `${horizon} chg (bp)`;
+  const units = info?.units?.trim();
+  if (!units) return `${horizon} chg`;
+  return `${horizon} chg (${/^percent\b/i.test(units) ? "pp" : units})`;
+}
+
+/**
+ * A change as its column prints it: signed, a spread's basis points to a
+ * tenth, anything else at the series' decimals (`fredDecimals`), as its values.
+ */
+export function fredChangeCell(spread: boolean, decimals: number): (value: unknown) => string {
+  const format = spread ? basisPointsCell : fredValueCell(decimals);
+  return (value) => {
+    const text = format(value);
+    return typeof value === "number" && Number(text) > 0 ? `+${text}` : text.replace(/^-(?=0(\.0+)?$)/, "");
+  };
+}
+
+/**
+ * Each observation's change over the horizon, in the unit it exports in, and
+ * the date it is measured from, by observation date. A holiday's blank and an
+ * observation with nothing within ten days before have none.
+ */
+export function fredChanges(
+  seriesId: string,
+  observations: ReadonlyArray<{ date: string; value: number | null }>,
+  horizon: MoveHorizon,
+): Map<string, { change: number | null; changeFrom: string }> {
+  const ascending = [...observations].sort((a, b) => a.date.localeCompare(b.date));
+  return new Map(seriesMoves(ascending, horizon).map((move) => [
+    move.date, { change: fredExportValue(seriesId, move.change), changeFrom: move.from },
+  ]));
 }
 
 /** What `fred` says when nothing falls on or after `--start`: where the series actually ends. */

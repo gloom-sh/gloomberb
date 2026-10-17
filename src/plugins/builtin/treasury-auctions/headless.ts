@@ -3,20 +3,21 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatCompact } from "../../../utils/format";
-import { fetchTreasuryAuctions } from "./client";
+import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
 import type { TreasuryAuction } from "./types";
 import {
   AUCTION_HISTORY_WINDOWS,
   AUCTION_SEARCH_FIELDS,
-  auctionHistoryLabel,
   auctionHistoryPhrase,
+  auctionHistoryWindow,
   auctionSize,
   dealerPct,
   DEFAULT_AUCTION_SORT,
   directPct,
   formatAuctionRate,
   indirectPct,
+  isPendingAuction,
   nextAuctionHistoryWindow,
   rateQualifier,
   rateValue,
@@ -25,11 +26,19 @@ import {
   type AuctionFilter,
 } from "./model";
 
-const formatPercent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(1)}%`;
+/**
+ * A completed auction's missing bid-to-cover or bidder split is a blank cell:
+ * the source has none for nearly all auctions before 2000. "-" stays for an
+ * announced auction whose results are not out yet.
+ */
+const missing = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction) ? "-" : "";
+const formatPercent = (value: unknown, row: Record<string, unknown>) => value == null ? missing(row) : `${Number(value).toFixed(1)}%`;
 
 /** Why the stop-out column is not a tail; the docs page says the same at length. */
 const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
+
+const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction, as for nearly all before 2000; - is a result not out yet.";
 
 /** The rate as the table prints it; a TIPS or FRN row says what its number is (`2.653% real`, `4.0bp spread`). */
 const rateCell = (value: unknown, row: Record<string, unknown>) => {
@@ -50,7 +59,10 @@ const COLUMNS = [
     textFormat: rateCell,
   },
   { key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(1) },
-  { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(2) },
+  {
+    key: "bidToCoverRatio", header: "B/C", align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? missing(row) : Number(value).toFixed(2),
+  },
   { key: "indirectPercent", header: "Indirect", align: "right" as const, format: formatPercent },
   { key: "directPercent", header: "Direct", align: "right" as const, format: formatPercent },
   { key: "dealerPercent", header: "Dealer", align: "right" as const, format: formatPercent },
@@ -59,15 +71,15 @@ const COLUMNS = [
 ];
 
 interface TreasuryAuctionsHeadlessDependencies {
-  load(args: HeadlessPaneLoadArgs, historyDays: number): Promise<TreasuryAuctionsResult>;
+  load(args: HeadlessPaneLoadArgs, window: AuctionHistoryWindow): Promise<TreasuryAuctionsResult>;
 }
 
 const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
-  load: (_args, historyDays) => loadTreasuryAuctions(false, fetchTreasuryAuctions, historyDays),
+  load: (_args, window) => loadTreasuryAuctions(false, fetchTreasuryAuctions, window),
 };
 
 /** An empty table says what was searched, in which window, and what the search understands. */
-function emptyNote(query: string, filter: AuctionFilter, historyDays: number): string {
+function emptyNote(query: string, filter: AuctionFilter, historyDays: AuctionHistoryWindow): string {
   const searched = query.trim() ? `match "${query.trim()}"` : "found";
   const group = filter === "all" ? "" : ` in the ${filter} group`;
   return `No auctions ${searched}${group} in ${auctionHistoryPhrase(historyDays)}. Search by ${AUCTION_SEARCH_FIELDS}.`;
@@ -90,7 +102,7 @@ function createTreasuryAuctionsHeadless(
         key: "historyDays",
         aliases: ["history"],
         settingKey: "historyDays",
-        description: "Auction history window in days, up to 3650 (10 years).",
+        description: `Auction history window in days, up to 3650 (10 years), or all: every auction since ${AUCTION_HISTORY_START}.`,
         type: "enum",
         values: AUCTION_HISTORY_WINDOWS.map((days) => ({ value: String(days) })),
         defaultValue: "120",
@@ -104,9 +116,12 @@ function createTreasuryAuctionsHeadless(
       },
     ],
     columns: COLUMNS,
-    describe: (args) => `Treasury Auctions | ${String(args.options.historyDays)} days | ${String(args.options.filter)}`,
+    describe: (args) => {
+      const window = auctionHistoryWindow({ historyDays: args.options.historyDays });
+      return `Treasury Auctions | ${window === AUCTION_HISTORY_ALL ? "all" : `${window} days`} | ${String(args.options.filter)}`;
+    },
     async load(args) {
-      const historyDays = Number(args.options.historyDays);
+      const historyDays = auctionHistoryWindow({ historyDays: args.options.historyDays });
       const filter = args.options.filter as AuctionFilter;
       const result = await dependencies.load(args, historyDays);
       const query = typeof args.argument === "string" ? args.argument : "";
@@ -118,10 +133,10 @@ function createTreasuryAuctionsHeadless(
       const nextWindow = nextAuctionHistoryWindow(historyDays);
       const notes = [
         ...(auctions.length === 0 ? [emptyNote(query, filter, historyDays)] : []),
-        nextWindow
-          ? `Older auctions: use --historyDays ${nextWindow}.`
-          : `Auctions older than ${auctionHistoryLabel(historyDays)} are not loaded.`,
+        // ALL is the whole history: nothing older to point to.
+        ...(nextWindow ? [`Older auctions: use --historyDays ${nextWindow}.`] : []),
         ...(auctions.length > 0 ? [STOP_OUT_NOTE] : []),
+        ...(auctions.some((auction) => auction.bidToCoverRatio == null && !isPendingAuction(auction)) ? [MISSING_METRICS_NOTE] : []),
       ];
       return {
         complete: !result.refreshError,

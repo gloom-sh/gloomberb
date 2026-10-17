@@ -167,6 +167,25 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "JGB", aliases: ["jgbs", "japanese government bond"], functions: ["GC"],
     definition: "A Japanese government bond.",
   },
+  // When in the day a US 10-year yield is taken: GC and ECST name it beside their date, `quote ^TNX` in its source line.
+  {
+    term: "Treasury end of day", aliases: ["15:30 et", "treasury close", "treasury cut-off", "dgs10 cut-off", "par curve cut-off", "cut-off"],
+    functions: ["GC", "ECST"], shown: ["15:30 ET"],
+    definition: "When the Treasury's daily par yield curve is taken: bid-side quotes the New York Fed collects near 15:30 ET. "
+      + "GC's US curves and FRED's constant-maturity yields (DGS10, DGS2, DFII10, T10Y2Y) come from it, so they name that time beside their date.",
+  },
+  {
+    term: "^TNX", aliases: ["cboe 10-year yield index", "10-year yield index", "cboe close", "15:00 et close"], functions: ["GC", "ECST"],
+    definition: "The Cboe 10-year Treasury yield index, the yield in percent, which closes at 15:00 ET. The Treasury curve and DGS10 are taken "
+      + "near 15:30 ET, so a late move can leave the two 10-year yields for one day a basis point or two apart; neither is wrong.",
+  },
+  {
+    term: "Move pctl", aliases: ["move rank", "move percentile", "1d pctl", "1w pctl", "big day"], functions: ["GC", "ECST"],
+    shown: ["1D pctl", "1W pctl", "pctl since"],
+    definition: "How big a 1D or 1W move was against every move of the same horizon in the series' history, by size in either direction: "
+      + "the share of them that were smaller, ties counted half, so 95 is bigger than 95% of them. The year after since (GC: Since) is where that history starts. "
+      + "A 1W move is from the last observation on or before the same day a week earlier.",
+  },
   // Money markets (BTMM).
   {
     term: "SOFR", aliases: ["secured overnight financing rate", "repo rate"], functions: ["BTMM", "WIRP"],

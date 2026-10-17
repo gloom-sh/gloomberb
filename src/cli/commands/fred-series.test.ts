@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import {
   basisPointsCell,
   filterFredSeries,
+  fredChangeFetchStart,
+  fredChangeMismatch,
+  fredChanges,
   fredEmptyAdvice,
   fredEmptyMessage,
   fredDecimals,
@@ -14,6 +17,7 @@ import {
   fredValueCell,
   isSpreadSeries,
   laggingSeriesNote,
+  parseFredChange,
 } from "./fred-series";
 
 test("a table prints every observation at the series' precision, which FRED's dropped zeros and float noise do not lower or raise", () => {
@@ -23,6 +27,26 @@ test("a table prints every observation at the series' precision, which FRED's dr
   expect(fredDecimals([0.9499999999999886, 16.532])).toBe(3);
   expect(fredDecimals([32563.03, 31906.274])).toBe(3);
   expect(fredDecimals([null])).toBe(0);
+});
+
+test("--change takes 1D or 1W in any case, and a daily or weekly series", () => {
+  expect(["1D", "1w", " 1W ", "2D", "1M", "", undefined].map(parseFredChange)).toEqual(["1D", "1W", "1W", null, null, null, null]);
+  expect(fredChangeMismatch("WALCL", "weekly", "1W")).toBeNull();
+  expect(fredChangeMismatch("WALCL", "weekly", "1D")).toBe("WALCL is weekly, so its changes are 1W.");
+  expect(fredChangeMismatch("UNRATE", "monthly", "1W")).toMatch(/^UNRATE is monthly/);
+  // A week and the ten-day window before the start, across a month end.
+  expect(fredChangeFetchStart("2026-10-01")).toBe("2026-09-14");
+});
+
+test("a spread's changes come in basis points and a holiday keeps no change", () => {
+  const spread = fredChanges("T10Y2Y", [
+    { date: "2026-10-13", value: 0.42 },
+    { date: "2026-10-12", value: null },
+    { date: "2026-10-09", value: 0.44 },
+  ], "1D");
+  expect([...spread]).toEqual([["2026-10-13", { change: -2, changeFrom: "2026-10-09" }]]);
+  expect(fredChanges("DGS10", [{ date: "2026-10-15", value: 5.1 }, { date: "2026-10-16", value: 5.09 }], "1D").get("2026-10-16"))
+    .toEqual({ change: -0.01, changeFrom: "2026-10-15" });
 });
 
 test("spreads export in basis points, FRED's other series as they come", () => {

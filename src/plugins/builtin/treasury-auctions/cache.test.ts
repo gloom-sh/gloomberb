@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { fetchAuctionPages } from "./client";
+import { AUCTION_ARCHIVE_PAGE_SIZE, auctionArchiveBoundary, fetchAuctionPages, type AuctionQuery } from "./client";
 import {
   attachTreasuryAuctionsPersistence,
   loadTreasuryAuctions,
@@ -190,6 +190,26 @@ describe("loadTreasuryAuctions", () => {
       status: "connected",
       lastOperation: "fetchAuctions",
     });
+  });
+
+  test("ALL joins the recent side and the archive, and a refresh leaves the archive alone", async () => {
+    const persistence = new MemoryPluginPersistence();
+    attachTreasuryAuctionsPersistence(persistence);
+    const queries: AuctionQuery[] = [];
+    const loader = async (query: AuctionQuery) => {
+      queries.push(query);
+      // The board on the boundary day comes back from both walks once.
+      return query.before ? [auctionFixture("boundary"), auctionFixture("1979")] : [auctionFixture("recent"), auctionFixture("boundary")];
+    };
+    const boundary = auctionArchiveBoundary();
+    const all = await loadTreasuryAuctions(false, loader, "all");
+    expect(all.auctions.map((auction) => auction.id)).toEqual(["recent", "boundary", "1979"]);
+    expect(queries).toEqual(expect.arrayContaining([
+      { from: boundary },
+      { from: "1979-10-31", before: boundary, pageSize: AUCTION_ARCHIVE_PAGE_SIZE },
+    ]));
+    await loadTreasuryAuctions(true, loader, "all");
+    expect(queries.slice(2)).toEqual([{ from: boundary }]);
   });
 
   test("works with no persistence attached at all", async () => {

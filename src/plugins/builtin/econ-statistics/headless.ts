@@ -12,6 +12,7 @@ import {
   type StatsBundle,
 } from "./client";
 import { historyStartNotice } from "../shared/history-span";
+import { formatMoveRank } from "../shared/move-rank";
 import { formatSigma } from "../shared/trend";
 import { STAT_CATEGORIES } from "./defs";
 import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
@@ -22,7 +23,8 @@ function reportFormat(stat: StatDef): (value: number) => string {
   return stat.basisPoints ? (value) => formatBasisPoints(value) : stat.formatValue;
 }
 
-function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
+/** `cutoffShown`: the status line names when in the day the reading was taken, so the period does not repeat it. */
+function detailEntries(view: StatViewModel, cutoffShown: boolean): HeadlessPaneEntry[] {
   const format = reportFormat(view.stat);
   return [
     { label: "Latest", value: view.latest.value, formatted: format(view.latest.value) },
@@ -57,8 +59,18 @@ function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
       value: view.low,
       formatted: `${format(view.low.value)} ${view.low.date}`,
     },
+    // A daily rate's last moves, in bp, ranked by size against every move since the series began.
+    ...view.moves.map((move): HeadlessPaneEntry => ({
+      label: `${move.horizon} move`,
+      value: {
+        date: move.date, from: move.from, change: move.change, changeBasisPoints: toBasisPoints(move.change),
+        percentile: move.percentile, observations: move.observations, since: move.since,
+      },
+      formatted: [formatBasisPoints(move.change), formatMoveRank(move)].filter(Boolean).join(" · "),
+    })),
     // FRED dates a monthly reading at the month's first day; the text says which period it is.
-    { label: "Period", value: view.latest.date, formatted: view.reading },
+    // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
+    { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.reading },
     { label: "Source", value: `FRED ${view.stat.seriesId}` },
   ];
 }
@@ -129,15 +141,22 @@ export function projectStatsHeadlessBundle(
   });
 
   const notice = selected ? historyStartNotice(selected.stat.label, range, selected.span) : null;
+  // Treasury yields alone (fn ECST 10Y) name when in the day they are taken, as GC does; a mixed table cannot.
+  const cutoffs = new Set(views.map((view) => view.stat.cutoff));
+  const cutoff = cutoffs.size === 1 ? [...cutoffs][0] : undefined;
   return {
+    ...(cutoff ? { freshness: { ...ECST_FRESHNESS, schedule: cutoff } } : {}),
     sections: [
       ...sections,
-      ...(selected ? [{ title: selected.stat.label, entries: detailEntries(selected) }] : []),
+      ...(selected ? [{ title: selected.stat.label, entries: detailEntries(selected, cutoff != null) }] : []),
     ],
     errors: bundle.errors,
     notes: [
       `%ile is the share of past readings at or below the latest one, over ${PERCENTILE_WINDOW[range]}.`
       + (range === "ALL" ? "" : " Full history: --range ALL."),
+      ...(selected?.moves.length
+        ? ["A move's pctl is the share of all 1D (or 1W) moves since that year that were smaller, ties counted half; --range does not change it."]
+        : []),
     ],
     metadata: {
       fetchedAt: bundle.fetchedAt,
@@ -151,10 +170,12 @@ export function projectStatsHeadlessBundle(
   };
 }
 
+// Each row checks its own release schedule and says when it is stale.
+const ECST_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published statistics" } as const;
+
 export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  // Each row checks its own release schedule and says when it is stale.
-  freshness: { source: "FRED", status: "not-a-feed", basis: "published statistics" },
+  freshness: ECST_FRESHNESS,
   argument: {
     kind: "free-text",
     placeholder: "statistic",

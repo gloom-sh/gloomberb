@@ -156,6 +156,7 @@ import {
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
 import { treasuryYieldLine, treasuryYieldTenor } from "../treasury-yields";
+import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
@@ -713,7 +714,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     ctx.printResult({
       data,
       warnings: notes.length > 0 ? notes : undefined,
-      freshness: quotesFreshness(data.map((row) => row.quote)),
+      // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
+      // close does not read as a contradiction of DGS10 or GC for the same day.
+      freshness: quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
     }, {
       rows: quoteRows,
       details: quoteDetailsText,
