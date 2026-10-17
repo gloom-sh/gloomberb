@@ -43,7 +43,7 @@ export const DEFAULT_INSIDER_SIGNALS_QUERY: InsiderSignalsQuery = {
 };
 
 /** The request for a query; what is at its default is left out. */
-export function insiderSignalsParams(query: InsiderSignalsQuery, limit: number): CloudInsiderSignalsParams {
+function insiderSignalsParams(query: InsiderSignalsQuery, limit: number): CloudInsiderSignalsParams {
   return {
     ...(query.side === "sell" ? { side: "sell" as const } : {}),
     window: query.window,

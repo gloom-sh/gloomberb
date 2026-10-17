@@ -231,7 +231,7 @@ const SELLING: InsiderSignalRow[] = [{
   ],
   buyers: [{ ...DIRECTOR, value: 4_200_000, buys: 2, lastBuy: "2026-10-13", shares: 80_000, stakeChangePct: -100, newPosition: false, exited: true }],
 }];
-function sided(window: number, params: CloudInsiderSignalsParams): InsiderSignalsPayload {
+async function sided(window: number, params: CloudInsiderSignalsParams): Promise<InsiderSignalsPayload> {
   const side = params.side ?? "buy";
   return { ...payload(window, side === "sell" ? SELLING : BUYING), side, marketCaps: "unavailable" };
 }
@@ -308,7 +308,7 @@ test("Buying and Selling switch in the query bar, with the side's own words, and
 });
 
 test("the filters narrow the request, and an empty answer says it is the filters", async () => {
-  await mount(async (window, params) => params.cluster ? { ...sided(window, params), rows: [] } : sided(window, params));
+  await mount(async (window, params) => params.cluster ? { ...(await sided(window, params)), rows: [] } : sided(window, params));
   await tui.clickFrameText("Cluster");
   await settle();
   expect(asked.at(-1)).toEqual({ window: 30, limit: 100, cluster: true });
@@ -330,7 +330,7 @@ test("the cap filter shows only where the server stores market values", async ()
   await mount(sided);
   expect(tui.frame()).not.toContain("Cap");
   insiderSignalsCache.reset();
-  await mount(async (window, params) => ({ ...sided(window, params), marketCaps: "stored" }));
+  await mount(async (window, params) => ({ ...(await sided(window, params)), marketCaps: "stored" }));
   expect(tui.frame()).toContain("Cap");
 });
 

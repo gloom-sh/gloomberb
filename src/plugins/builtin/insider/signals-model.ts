@@ -8,7 +8,6 @@ import type {
   InsiderSignalRow,
   InsiderSignalSide,
   InsiderSignalsPayload,
-  InsiderWhySignal,
 } from "../../../api-client/insider-signals";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth, formatCompact } from "../../../utils/format";
@@ -75,7 +74,7 @@ export function insiderSideWords(side: InsiderSignalSide): InsiderSideWords {
 }
 
 /** A stored window the pane offers, or the default. */
-export function insiderSignalWindow(value: unknown): number {
+function insiderSignalWindow(value: unknown): number {
   const days = Number(value);
   return (INSIDER_SIGNAL_WINDOWS as readonly number[]).includes(days) ? days : DEFAULT_INSIDER_SIGNAL_WINDOW;
 }
@@ -180,7 +179,7 @@ const CHIP_CHROME = 2;
 const CHIP_GAP = 1;
 
 /** Cells the chips take side by side. */
-export function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): number {
+function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): number {
   return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? CHIP_GAP : 0), 0);
 }
 
@@ -275,11 +274,6 @@ export function insiderSignalDetailLines(row: InsiderSignalRow): InsiderSignalDe
     last: formatSignalDay(buyer.lastBuy),
     stake: formatInsiderStakeChange(buyer),
   }));
-}
-
-/** The facts the row's chips show, for a test or an export: kind and text. */
-export function insiderSignalFacts(row: InsiderSignalRow): Array<Pick<InsiderWhySignal, "kind" | "text">> {
-  return (row.whySignals ?? []).map(({ kind, text }) => ({ kind, text }));
 }
 
 /** Cells left and right of the columns, and between two of them. */

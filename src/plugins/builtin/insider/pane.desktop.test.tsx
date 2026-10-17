@@ -88,7 +88,7 @@ test("opens on 60 already-read Form 4 filings without a render per filing", asyn
 const RANKING_ID = "insider:ranking:desktop:test";
 let rankingState: AppState | null = null;
 function RankingPane() {
-  const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Buying" });
+  const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Activity" });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({
     ...createInitialState(initialConfig),
     focusedPaneId: RANKING_ID,
@@ -101,7 +101,7 @@ function RankingPane() {
       <WebInputHostProvider>
         <WebDialogHostProvider>
           <TestPaneFrame state={state} dispatch={dispatch} paneId={RANKING_ID} pluginId="insider" runtime={runtime} width={120} height={24} footerKeys>
-            {(body) => <PaneContent component={InsiderView} paneId={RANKING_ID} paneType="insider" title="Insider Buying" focused {...body} />}
+            {(body) => <PaneContent component={InsiderView} paneId={RANKING_ID} paneType="insider" title="Insider Activity" focused {...body} />}
           </TestPaneFrame>
         </WebDialogHostProvider>
       </WebInputHostProvider>

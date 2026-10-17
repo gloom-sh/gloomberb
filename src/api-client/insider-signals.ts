@@ -45,7 +45,7 @@ export interface InsiderSignalBuyer {
 }
 
 /** One fact behind a row, structured, strongest first. */
-export interface InsiderWhySignal {
+interface InsiderWhySignal {
   kind: "cluster" | "repeat" | "usual" | "stake" | "new" | "exited" | "size";
   /** cluster: insiders; repeat: the ordinal; usual: the multiple; stake: percent, negative sold; new, exited: 1; size: dollars. */
   value: number;
@@ -90,7 +90,7 @@ export interface InsiderSignalRow {
   marketCap?: number | null;
 }
 
-export interface InsiderSignalsFilters {
+interface InsiderSignalsFilters {
   role: InsiderSignalRoleGroup;
   minValue: number;
   cluster: boolean;

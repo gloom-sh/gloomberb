@@ -267,7 +267,7 @@ describe("createPaneTemplateOrThrow", () => {
     };
 
     // Bound to nothing, or the app would link it to the focused list.
-    expect(await open(null)).toEqual([{ binding: { kind: "none" }, title: "Insider Buying" }]);
+    expect(await open(null)).toEqual([{ binding: { kind: "none" }, title: "Insider Activity" }]);
     expect(await open("quote-monitor:1")).toMatchObject([{ binding: { kind: "fixed", symbol: "TSLA" }, title: "INS TSLA" }]);
   });
 
