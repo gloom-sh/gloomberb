@@ -12,7 +12,7 @@ import {
 import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
-import { answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
+import { answersToFutureName, answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
@@ -78,6 +78,8 @@ function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
     || parsePublicTickerKey(item.label).symbol === query.trim().toUpperCase()
     // IBOV is how the Ibovespa is typed; its own symbol is ^BVSP.
     || answersToIndexCode(item, query)
+    // "brent" and "oil" are how a benchmark future is typed; its own symbol is BZ=F or CL=F.
+    || answersToFutureName(item, query)
   ));
 }
 

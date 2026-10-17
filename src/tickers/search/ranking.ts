@@ -82,6 +82,12 @@ const ASSET_HINT_MAP: Record<string, TickerSearchInstrumentClass> = {
 
 const SAVED_MATCH_BONUS = 900;
 /**
+ * The symbol match rank of a benchmark future asked for by its commodity's name: above an exact symbol (4), so
+ * the future leads and the company or fund of that ticker follows it. Several answer one name ("oil" is WTI,
+ * then Brent) in the order the server sent them.
+ */
+const BENCHMARK_FUTURE_RANK = 5;
+/**
  * How many times more popular a company whose name only starts with the query
  * must be to lead one named exactly as typed. TSMC is searched about five
  * times as often as Taiwan Semiconductor Co.; Siemens Energy about as often as
@@ -388,6 +394,11 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
     const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
     const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
     if (bExactSymbolRank !== aExactSymbolRank) return bExactSymbolRank - aExactSymbolRank;
+    if (aExactSymbolRank === BENCHMARK_FUTURE_RANK) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+    }
     if (hasExplicitHint && b.explicitIntentScore !== a.explicitIntentScore) {
       return b.explicitIntentScore - a.explicitIntentScore;
     }
@@ -683,6 +694,32 @@ export function answersToIndexCode(
     && !!item.searchAliases?.some((alias) => code(alias) === typed);
 }
 
+/** Words a search adds to a commodity's name without asking for anything else: "gold futures" is "gold". */
+const FUTURES_QUERY_FILLER = new Set(["FUTURE", "FUTURES", "FUT", "CONTRACT", "CONTRACTS"]);
+
+function futuresNameKey(text: string): string {
+  return normalizeSearchText(text).split(" ").filter((word) => word && !FUTURES_QUERY_FILLER.has(word)).join(" ");
+}
+
+/**
+ * Whether the query is, word for word, a name the server sent a future with:
+ * "brent", "oil" and "natgas" are how the market asks for a benchmark
+ * (BZ=F, CL=F, NG=F), which the server lists first and names in
+ * `searchAliases`. Only a continuous future answers: a stock or a fund sent
+ * with the same word as an alias keeps the rank its own symbol gives it, and
+ * "gold etf" or "gold mining" name something else than the future.
+ */
+export function answersToFutureName(
+  item: Pick<TickerSearchRankableItem, "label"> & Partial<Pick<TickerSearchRankableItem, "symbol" | "searchAliases">>,
+  query: string,
+): boolean {
+  const symbol = normalizeTickerSymbol(item.symbol || item.label);
+  const typed = futuresNameKey(query);
+  return typed !== "" && /^[A-Z0-9]{1,6}=F$/.test(symbol) && !!item.searchAliases?.some((alias) => (
+    normalizeSearchText(alias) !== normalizeSearchText(symbol) && futuresNameKey(alias) === typed
+  ));
+}
+
 function scoreSymbolMatchRank(
   intent: SearchQueryIntent,
   item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
@@ -692,6 +729,9 @@ function scoreSymbolMatchRank(
   if (parsePublicTickerKey(item.symbol || item.label).symbol === normalizeTickerSymbol(intent.rawQuery)) return 4;
   // Below a real symbol of that name (SPX Technologies), above every partial match (IBOV11).
   if (answersToIndexCode(item, intent.rawQuery)) return 2;
+  // The benchmark future of a commodity named as such leads even the symbol of that name (GOLD is
+  // a company before it is a metal, and still follows right behind the future).
+  if (answersToFutureName(item, intent.rawQuery)) return BENCHMARK_FUTURE_RANK;
   if (isCryptoInstrumentType(item.instrumentType)) return 0;
   if (isExplicitMarketSymbol(item.symbol || item.label)) return 0;
   if (!intent.normalizedQuery && !intent.compactQuery) return 0;
