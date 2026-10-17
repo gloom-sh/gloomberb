@@ -46,6 +46,18 @@ describe("IPO calendar tabs and search", () => {
     expect(ids(filterIpoDeals(deals, "us", "tokyo"))).toEqual([]);
   });
 
+  test("a region's name lists its deals on whichever tab is open, and any other word reads as before", () => {
+    expect(ids(filterIpoDeals(deals, "all", "europe"))).toEqual(["csg"]);
+    for (const word of ["asia", " APAC ", "Asia-Pacific", "asia pacific"]) expect(ids(filterIpoDeals(deals, "all", word))).toEqual(["catl", "kioxia"]);
+    // The tab is not switched: it still narrows the region's deals, and a region word is no substring search.
+    expect(ids(filterIpoDeals(deals, "us", "europe"))).toEqual([]);
+    expect(ids(filterIpoDeals(deals, "europe", "europe"))).toEqual(["csg"]);
+    expect(ids(filterIpoDeals(deals, "all", "euro"))).toEqual([]);
+    // A US deal is found by its country as before, and a company's own name still counts.
+    expect(ids(filterIpoDeals(deals, "all", "us"))).toEqual(["arm"]);
+    expect(ids(filterIpoDeals([...deals, ipoDeal({ id: "named", company: "Europe Holdings" })], "all", "europe"))).toEqual(["csg", "named"]);
+  });
+
   test("pending lists the deals not priced yet, which no status is called", () => {
     const pipeline = [
       ipoDeal({ id: "filed", status: "filed" }),

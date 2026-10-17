@@ -108,14 +108,22 @@ function countryName(code: string): string {
 /** What `pending` searches for: a deal not priced yet. */
 const NOT_PRICED_STATUSES: readonly IpoStatus[] = ["filed", "upcoming"];
 
+/** The words that name a region, as a tab does; a US deal is already found by its country. */
+const REGION_WORDS: Partial<Record<IpoRegion, readonly string[]>> = {
+  europe: ["europe"],
+  apac: ["apac", "asia", "asia-pacific"],
+};
+
 /**
  * Company in either script, symbol, venue, country code or name, and status.
  * The word `pending` is no status of its own: it is every deal not priced yet.
+ * A region's name (`europe`, `asia`) lists the region's deals, on whichever tab is open.
  */
 function matchesIpoQuery(deal: IpoDeal, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   if (needle === "pending") return NOT_PRICED_STATUSES.includes(deal.status);
+  if (REGION_WORDS[deal.region]?.includes(needle.replace(/\s+/g, "-"))) return true;
   return [
     deal.company, deal.companyLocal, deal.symbol, deal.venue, deal.mic, deal.exchange,
     deal.country, countryName(deal.country), deal.segment, deal.status,
