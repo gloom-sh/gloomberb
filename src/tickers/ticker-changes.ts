@@ -1,6 +1,6 @@
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
-import type { TickerChangeHop, TickerChanges } from "../types/ticker-changes";
+import type { FormerIssuerRecord, TickerChangeHop, TickerChanges } from "../types/ticker-changes";
 import { isCryptoPairSymbol } from "../utils/crypto-pair";
 import { canonicalExchange, isUsListingExchange } from "../utils/exchanges";
 import { sameCompany, shortCompanyName } from "./company-name";
@@ -82,16 +82,35 @@ function tickerChangeSymbol(symbol: string, exchange?: string | null): string | 
   return PLAIN_SYMBOL.test(plain) && !isCryptoPairSymbol(plain) && isUsSymbolVenue(exchange) ? plain : null;
 }
 
+/** A merged issuer as the service sent it; null for anything incomplete. */
+function readFormerIssuer(value: unknown): FormerIssuerRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<FormerIssuerRecord>;
+  const successor = record.successor;
+  if (typeof record.symbol !== "string" || typeof record.name !== "string" || !record.name.trim()
+    || typeof record.until !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(record.until)
+    || !successor || typeof successor.symbol !== "string" || !successor.symbol.trim()) return null;
+  return {
+    symbol: record.symbol,
+    name: record.name,
+    until: record.until.slice(0, 10),
+    successor: { symbol: successor.symbol.trim().toUpperCase(), name: typeof successor.name === "string" && successor.name.trim() ? successor.name : null },
+    source: typeof record.source === "string" && record.source ? record.source : null,
+  };
+}
+
 function readPayload(value: unknown): TickerChanges | null {
   if (!value || typeof value !== "object") return null;
   const payload = value as Partial<TickerChanges>;
   if (typeof payload.symbol !== "string" || !Array.isArray(payload.changes)) return null;
+  const formerIssuer = readFormerIssuer(payload.formerIssuer);
   return {
     symbol: payload.symbol,
     moved: payload.moved && Array.isArray(payload.moved.hops) && payload.moved.hops.length > 0 ? payload.moved : null,
     formerly: Array.isArray(payload.formerly) && payload.formerly.length > 0 ? payload.formerly : null,
     listedName: typeof payload.listedName === "string" && payload.listedName.trim() ? payload.listedName : null,
     changes: payload.changes,
+    ...formerIssuer ? { formerIssuer } : {},
   };
 }
 
@@ -227,4 +246,56 @@ export function describeTickerChange(
     return { symbol, kind: "formerly", note, changes: [...formerly].reverse() };
   }
   return null;
+}
+
+/**
+ * The company that last held a symbol and merged into another one, as a
+ * command says it beside whatever lists under the symbol now: "GOGL was
+ * Golden Ocean Group until 2025, now Cmb.Tech: CMBT". `--json` carries it as
+ * `formerIssuer`, next to `tickerChange`.
+ */
+export interface FormerIssuer extends FormerIssuerRecord {
+  /** The line a command prints. */
+  note: string;
+}
+
+/** A line still trading this long after its company merged away is not that company's. */
+const MERGED_LINE_GRACE_MS = 7 * 24 * 60 * 60_000;
+
+/** BRK.B and BRK-B are one symbol. */
+function sameSymbol(left: string, right: string): boolean {
+  return left.trim().toUpperCase().replace(/-/g, ".") === right.trim().toUpperCase().replace(/-/g, ".");
+}
+
+/**
+ * The note for a symbol whose last issuer merged into another company.
+ * `current` is what the command found trading under the symbol: null when
+ * nothing does, left out when it did not look. Nothing when the company it
+ * merged into took the symbol or is what lists there now, or when what lists
+ * there is the merged company itself, trading well after the merger (the
+ * record is then not about this line).
+ */
+export function describeFormerIssuer(
+  typed: string,
+  payload: TickerChanges | null,
+  current?: CurrentListing | null,
+): FormerIssuer | null {
+  const record = payload?.formerIssuer;
+  if (!record) return null;
+  const symbol = typed.trim().toUpperCase();
+  const { successor } = record;
+  if (sameSymbol(successor.symbol, symbol) || sameCompany(current?.name, successor.name)) return null;
+  if (current?.name && sameCompany(current.name, record.name)
+    && current.lastTraded != null && current.lastTraded > day(record.until) + MERGED_LINE_GRACE_MS) return null;
+  return { ...record, note: formerIssuerLine(symbol, record, successor) };
+}
+
+/** "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT": a merged issuer and the company it merged into. */
+export function formerIssuerLine(
+  symbol: string,
+  former: Pick<FormerIssuerRecord, "name" | "until">,
+  successor: { symbol: string; name?: string | null },
+): string {
+  const into = successor.name?.trim() ? `${shortCompanyName(successor.name)}: ${successor.symbol}` : successor.symbol;
+  return `${symbol} was ${shortCompanyName(former.name)} until ${former.until.slice(0, 4)}, now ${into}`;
 }

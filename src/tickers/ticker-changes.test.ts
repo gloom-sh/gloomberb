@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerChanges } from "../types/ticker-changes";
-import { describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "./ticker-changes";
+import { describeFormerIssuer, describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "./ticker-changes";
 
 const FB: TickerChanges = {
   symbol: "FB",
@@ -76,6 +76,45 @@ describe("describeTickerChange", () => {
     });
     expect(formerly("AAMCF", null)).toBeNull();
     expect(describeTickerChange("AAPL", null)).toBeNull();
+  });
+});
+
+describe("describeFormerIssuer", () => {
+  // Golden Ocean merged into CMB.Tech in 2025; a fund lists under GOGL now.
+  const GOGL: TickerChanges = {
+    symbol: "GOGL", moved: null, formerly: null, listedName: null, changes: [],
+    formerIssuer: {
+      symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20",
+      successor: { symbol: "CMBT", name: "Cmb.Tech NV" }, source: "https://www.sec.gov/Archives/edgar/data/1029145/x-index.htm",
+    },
+  };
+  const fund = { name: "Corgi GOOGL 2x Daily ETF", lastTraded: Date.parse("2026-10-16T20:00:00Z") };
+
+  test("a symbol whose company merged away names it and what the company it merged into trades as", () => {
+    expect(describeFormerIssuer("gogl", GOGL, fund)).toEqual({
+      ...GOGL.formerIssuer!,
+      note: "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT",
+    });
+    expect(describeFormerIssuer("GOGL", GOGL, null)?.note).toBe("GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT");
+    expect(describeFormerIssuer("GOGL", { ...GOGL, formerIssuer: { ...GOGL.formerIssuer!, successor: { symbol: "CMBT", name: null } } })?.note)
+      .toBe("GOGL was Golden Ocean Group until 2025, now CMBT");
+  });
+
+  test("nothing when the successor is what lists there, took the symbol, or the line is the company's own long after", () => {
+    expect(describeFormerIssuer("GOGL", GOGL, { name: "CMB.TECH NV" })).toBeNull();
+    expect(describeFormerIssuer("CMBT", { ...GOGL, symbol: "CMBT" }, null)).toBeNull();
+    // Its own line, trading a year after the record says it merged: the record is not about this listing.
+    expect(describeFormerIssuer("GOGL", GOGL, { name: "Golden Ocean Group Limited", lastTraded: Date.parse("2026-09-01T20:00:00Z") })).toBeNull();
+    // Its old line's last print, days around the merger, is still the merged company.
+    expect(describeFormerIssuer("GOGL", GOGL, { name: "Golden Ocean Group Limited", lastTraded: Date.parse("2025-08-19T20:00:00Z") })?.symbol).toBe("GOGL");
+    expect(describeFormerIssuer("FB", FB, fund)).toBeNull();
+  });
+
+  test("the service's record is read only when whole", async () => {
+    const lookup = (payload: unknown) => startTickerChangeLookup({ getTickerChanges: async () => payload as TickerChanges }, "GOGL").settle();
+    expect((await lookup(GOGL))?.formerIssuer?.successor.symbol).toBe("CMBT");
+    const partial = await lookup({ ...GOGL, symbol: "EGLE", formerIssuer: { symbol: "EGLE", name: "Eagle Bulk Shipping Inc.", successor: { symbol: "SBLK" } } });
+    expect(partial && "formerIssuer" in partial).toBe(false);
   });
 });
 

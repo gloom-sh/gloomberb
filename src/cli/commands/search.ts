@@ -19,7 +19,7 @@ import {
 import { initMarketData, withMarketData } from "../context";
 import { loadListingFate } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
-import { startTickerChangeLookup, tickerChangeLine, type TickerChangeLookup } from "../../tickers/ticker-changes";
+import { formerIssuerLine, startTickerChangeLookup, tickerChangeLine, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
@@ -176,9 +176,25 @@ async function searchFate(
       note: fate.note,
     }
     : null;
-  // The row says when a listing stopped; a company that left the symbol is a line of its own.
-  const changed = tickerChangeLine(fate.change);
+  // The row says when a listing stopped; a company that left the symbol, or merged away from it (GOGL), is a line of its own.
+  const changed = tickerChangeLine(fate.change) ?? fate.formerIssuer?.note;
   return { stopped, notes: changed ? [changed] : fate.note && !stopped ? [fate.note] : [] };
+}
+
+/**
+ * A row search found by the old name of a company that merged into it
+ * ("Golden Ocean" finds CMB.Tech's CMBT): the line `quote GOGL` prints.
+ */
+function formerIssuerNote(candidate: TickerSearchCandidate): string | null {
+  const former = candidate.result?.formerIssuer;
+  if (!former?.symbol || !former.name || !former.until || former.symbol.toUpperCase() === candidate.symbol.toUpperCase()) return null;
+  return formerIssuerLine(former.symbol, former, { symbol: candidate.label, name: resolveSearchName(candidate) });
+}
+
+/** The merged companies' lines, once each, unless the symbol's own line already says it. */
+function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: SearchFate): string[] {
+  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? []));
+  return [...notes].filter((note) => !fate.notes.some((line) => line.split(" ")[0] === note.split(" ")[0]));
 }
 
 /** A query that is a bare symbol (CAR, BRK.B), not a name or a phrase. */
@@ -340,6 +356,8 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
     source: searchSourceLabel(candidate),
     providerId: candidate.result?.providerId ?? "",
     saved: candidate.kind === "ticker",
+    // The company that merged into this one, whose old name the query is.
+    ...candidate.result?.formerIssuer ? { formerIssuer: candidate.result.formerIssuer } : {},
   }));
 }
 
@@ -385,7 +403,7 @@ function searchNotes(
   const setting = commandPointer(query);
   const empty = candidates.length === 0 && !fate.stopped;
   // A gap line that names the index (TNX's yield line names ^TNX) says it once.
-  return [...fate.notes, gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
+  return [...fate.notes, ...formerIssuerNotes(candidates, fate), gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
     empty && !gap && !bank && !setting && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
 }
@@ -426,7 +444,8 @@ export function buildSearchReport({
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
   if (readAs) lines.push("", readAs);
-  if (fate.notes.length > 0) lines.push("", ...fate.notes);
+  const notes = [...fate.notes, ...formerIssuerNotes(candidates, fate)];
+  if (notes.length > 0) lines.push("", ...notes);
   const gap = knownGapMessage(query);
   const indexNote = gap ? null : indexRootNote(query, candidates);
   if (indexNote) lines.push("", indexNote);

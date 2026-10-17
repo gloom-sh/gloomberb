@@ -3,12 +3,14 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
 import {
+  describeFormerIssuer,
   describeTickerChange,
   movedAwayChange,
   quotedListing,
   startTickerChangeLookup,
   tickerChangeLine,
   type CurrentListing,
+  type FormerIssuer,
   type MovedTickerChange,
   type TickerChange,
   type TickerChangeLookup,
@@ -80,10 +82,16 @@ export interface ListingFate {
    * quote to tell by.
    */
   moved: MovedTickerChange | null;
+  /**
+   * The company that last held the symbol merged into another one, read as
+   * `quote` reads it ("GOGL was Golden Ocean Group until 2025, now Cmb.Tech:
+   * CMBT"); null when none is on record, or for a listing abroad.
+   */
+  formerIssuer: FormerIssuer | null;
 }
 
 /** Nothing became of the symbol, or nothing could be told. */
-export const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null };
+export const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null, formerIssuer: null };
 /** How long a fate waits for a change lookup it started late, or for a stopped line's. */
 export const LATE_CHANGE_WAIT_MS = 2_000;
 
@@ -118,9 +126,11 @@ export function describeListingFate(
   const endedOn = quote ? endedTradingDate(quote, now) : null;
   // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
   const abroad = !!quote && !!bareListingNote({ symbol, request: { exchange: listing.exchange ?? "" } }, quote);
-  const change = abroad ? null : describeTickerChange(symbol, changes, tradingListing(quote, now));
+  const current = tradingListing(quote, now);
+  const change = abroad ? null : describeTickerChange(symbol, changes, current);
   const note = tickerChangeLine(change) ?? (endedOn ? `${symbol} stopped trading ${endedOn}; no history or options served` : null);
-  return { endedOn, change, note, moved: quote ? movedAwayChange(change) : null };
+  const formerIssuer = abroad ? null : describeFormerIssuer(symbol, changes, current);
+  return { endedOn, change, note, moved: quote ? movedAwayChange(change) : null, formerIssuer };
 }
 
 /**

@@ -465,6 +465,8 @@ interface OtherListingsMessage {
   heading: string;
   /** SAN:EPA, for each other listing. */
   listings: string[];
+  /** Several companies list the symbol, so it went to none of them and the message asks which. */
+  choose: boolean;
 }
 
 /**
@@ -513,6 +515,7 @@ function describeOtherListings(
     details: lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n"),
     heading,
     listings: [...others.map((venue) => `${listing.symbol}:${venue.exchange}`), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
+    choose,
   };
 }
 
@@ -620,6 +623,41 @@ export async function quoteBareListing(
     quote: quotes[found]!,
     note: chosenListingNote(listing.symbol, answer.exchange, others, without),
   };
+}
+
+/** A bare symbol as `quote` reads it (`readBareListing`). */
+export interface ReadListing {
+  symbol: string;
+  /** The venue it was read on: the one it is saved on, or the listing that quoted it; empty when its own quote answered on none named. */
+  exchange: string;
+  /** The listing's company, from its quote. */
+  name: string | null;
+}
+
+/**
+ * A bare symbol read as `quote` reads it, for a command that draws its data
+ * without asking for a quote (a chart's series): its own quote answers it, a
+ * symbol no source quotes is read on the first of its listings that has one
+ * (`quoteBareListing`), and a code several companies list (BDI is Black
+ * Diamond Group in Toronto and B. D. Industries in Pune) fails asking which,
+ * with `quote`'s message and each listing's retry. Null when nothing better
+ * than the symbol itself is known, so the command's own request speaks.
+ */
+export async function readBareListing(
+  symbol: string,
+  deps: ListingDeps,
+  request: ListingDataRequest,
+  { refresh = false }: { refresh?: boolean } = {},
+): Promise<ReadListing | null> {
+  const listing = await resolveCliListing(symbol, null, deps);
+  if (listing.exchange) return null;
+  const answer = await loadListingQuoteAnswer(deps.dataProvider, listing);
+  if (answer.quote) return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null };
+  if (!isNoProviderError(answer.error)) return null;
+  const other = await quoteBareListing(listing, deps, request, { refresh });
+  if (other?.kind === "quoted") return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null };
+  if (other?.choose) throw new ListingArgError(other.message, other.details);
+  return null;
 }
 
 /**
