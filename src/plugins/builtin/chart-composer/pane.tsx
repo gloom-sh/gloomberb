@@ -1,6 +1,7 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { usePaneSharePreparation } from "../../../shares/prepare";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
   ChoiceDialog,
@@ -56,8 +57,10 @@ import { chartComposerSemanticMetadata } from "./semantic";
 import {
   canToggleChartSeries,
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
+  parseSharedPinnedMoment,
   parseChartSpecOr,
   projectVisibleChartSeries,
   toggleChartSeries,
@@ -310,6 +313,19 @@ function ChartComposerSurface({
     CHART_INTERACTION_VIEWPORT_SETTING_KEY,
     null,
   );
+  // A link shared while its sender's crosshair was pinned opens on that
+  // moment: the chart pins its tab there once, then forgets it, so a restart
+  // does not pin it again. The value came from a link: anything but a
+  // plausible time is dropped without pinning. This handle only sets the
+  // pin; the chart it opens on is what shows and keeps it.
+  const [pinnedMoment, setPinnedMoment] = usePaneSettingValue<unknown>(CHART_PINNED_MOMENT_SETTING_KEY, null);
+  const momentLink = useTabCursorLink(paneId ? `${paneId}:moment` : null, { viewer: false });
+  useEffect(() => {
+    if (pinnedMoment == null || !momentLink?.pin) return;
+    const moment = parseSharedPinnedMoment(pinnedMoment);
+    if (moment !== null) momentLink.pin(moment);
+    setPinnedMoment(undefined);
+  }, [momentLink, pinnedMoment, setPinnedMoment]);
   const persistedInteractionViewport = useMemo(
     () => parseChartInteractionViewport(storedInteractionViewport),
     [storedInteractionViewport],

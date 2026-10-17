@@ -13,6 +13,7 @@ export function buildPaneSharePayload(
   paneState: Record<string, unknown> = {},
   resolvedTicker?: string | null,
   tickers?: ReadonlyMap<string, TickerRecord>,
+  pinnedTime?: number | null,
 ): Extract<SharePayload, { kind: "pane" }> | null {
   const def = pluginRegistry.panes.get(pane.paneId);
   if (!def) return null;
@@ -22,7 +23,7 @@ export function buildPaneSharePayload(
       paneState,
       pluginRegistry.panes,
       resolvedTicker,
-      { tickers },
+      { tickers, pinnedTime },
     );
     const instance = layout.layout.instances[0]!;
     const description = [...pluginRegistry.paneTemplates.values()]

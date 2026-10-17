@@ -75,6 +75,13 @@ export interface PaneHint {
   title?: string;
   onPress?: (event?: PaneFooterPressEvent) => void;
   disabled?: boolean;
+  /**
+   * For a hint a shared component adds to whatever pane hosts it, such as a
+   * chart's `p` pin: the pane's own hints and keys come first. While another
+   * one in the pane takes the same key, this one leaves the footer and is
+   * listed in the pane menu without a key.
+   */
+  yieldsKey?: boolean;
 }
 
 export interface CombinedPaneFooter {
@@ -227,8 +234,20 @@ export function combinePaneFooterRegistrations(registrations: Map<string, PaneFo
     }
   }
 
-  if (info.length === 0 && hints.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
-  return { info, hints, menu, keys };
+  // A key a pane holds but has turned off does nothing, so it takes nothing.
+  const taken = new Set([...hints, ...keys].flatMap((hint) => hint.yieldsKey || hint.disabled ? [] : [hint.key]));
+  const yielded = hints.filter((hint) => hint.yieldsKey && taken.has(hint.key));
+  if (yielded.length > 0) {
+    if (menu.length > 0) menu.push({ type: "divider", id: "yielded-hints:divider" });
+    for (const hint of yielded) {
+      const onPress = hint.onPress;
+      if (!hint.disabled && onPress) menu.push({ id: `pane-hint:${hint.id}`, label: paneHintTitle(hint), onSelect: () => onPress() });
+    }
+  }
+  const shown = yielded.length > 0 ? hints.filter((hint) => !yielded.includes(hint)) : hints;
+
+  if (info.length === 0 && shown.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
+  return { info, hints: shown, menu, keys };
 }
 
 function sameFooterParts(left: PaneFooterPart[], right: PaneFooterPart[]): boolean {

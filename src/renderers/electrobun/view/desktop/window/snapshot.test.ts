@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
-import { detachedSnapshotKey } from "./snapshot";
+import { createDetachedSnapshotFilter, detachedSnapshotKey } from "./snapshot";
 
 function createSnapshot(): DesktopSharedStateSnapshot {
   const config = createDefaultConfig("/tmp/gloomberb-test");
@@ -51,5 +51,30 @@ describe("detached desktop snapshots", () => {
         "portfolio-list:main": { cursorSymbol: "MSFT", collectionId: "main" },
       },
     }, "ticker-detail:main")).not.toBe(key);
+  });
+
+  test("drops a state that changes only the tabs or font size, then takes the next one its pane changed, whole", () => {
+    const snapshot = createSnapshot();
+    const take = createDetachedSnapshotFilter("ticker-detail:main", snapshot);
+    const retabbed: DesktopSharedStateSnapshot = {
+      ...snapshot,
+      config: {
+        ...snapshot.config,
+        fontSize: 15,
+        layouts: [...snapshot.config.layouts, { ...snapshot.config.layouts[0]!, name: "Added" }],
+      },
+    };
+    const ownChange: DesktopSharedStateSnapshot = {
+      ...retabbed,
+      paneState: { ...retabbed.paneState, "ticker-detail:main": { activeTabId: "financials" } },
+    };
+
+    expect(take(retabbed)).toBeNull();
+    const taken = take(ownChange);
+    expect(taken?.config.fontSize).toBe(15);
+    expect(taken?.config.layouts.at(-1)?.name).toBe("Added");
+    expect(taken?.focusedPaneId).toBe("ticker-detail:main");
+    // The same state again is dropped: the filter moved on with it.
+    expect(take(ownChange)).toBeNull();
   });
 });

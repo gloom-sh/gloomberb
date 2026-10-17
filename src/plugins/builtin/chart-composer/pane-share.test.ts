@@ -3,6 +3,7 @@ import { createTestTemplateContext } from "../../../test-support/headless";
 import { chartComposerModule } from "./index";
 import {
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
   parseChartSpec,
@@ -15,6 +16,7 @@ import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 import { applyChartComposerPaneSetting, CHART_SETTING_KEYS } from "./settings";
 import { buildPaneSharePayload } from "../../../shares/pane";
+import { publishableMarketplaceLayout } from "../../../shares/portable-layout";
 import type { PluginRegistry } from "../../registry";
 import type { ChartStudySpec } from "../../../time-series/types";
 import type { TickerRecord } from "../../../types/ticker";
@@ -60,6 +62,41 @@ describe("chart pane sharing", () => {
     expect(security?.kind === "security" ? security.instrument.exchange : null).toBe("LSE");
     expect(parseChartDrawings(instance.settings?.[CHART_DRAWINGS_SETTING_KEY])).toEqual(drawings);
     expect(parseChartInteractionViewport(instance.settings?.[CHART_INTERACTION_VIEWPORT_SETTING_KEY])).toEqual(viewport);
+  });
+
+  test("a chart shared while its tab's crosshair is pinned carries that moment, and one shared unpinned carries none", () => {
+    const registry = {
+      panes: new Map(chartComposerModule.panes!.map((pane) => [pane.id, pane])),
+      paneTemplates: new Map(),
+    } as unknown as PluginRegistry;
+    const pane = {
+      instanceId: "chart-composer:1",
+      paneId: "chart-composer",
+      title: "G SPY",
+      settings: { [CHART_SPEC_SETTING_KEY]: buildPriceChartPreset("SPY") },
+    };
+    const moment = Date.parse("2026-10-15T12:30:00.000Z");
+    const shared = (pinnedTime: number | null) => {
+      const payload = buildPaneSharePayload(registry, pane, {}, "SPY", new Map(), pinnedTime);
+      if (payload?.data.version !== 2) throw new Error("expected a portable pane share");
+      return payload.data.layout.layout.instances[0]!.settings ?? {};
+    };
+    expect(shared(moment)[CHART_PINNED_MOMENT_SETTING_KEY]).toBe(moment);
+    expect(CHART_PINNED_MOMENT_SETTING_KEY in shared(null)).toBe(false);
+    // The sender's own pane keeps no moment: the share rewrites a copy.
+    expect(CHART_PINNED_MOMENT_SETTING_KEY in pane.settings).toBe(false);
+    // A pane opened from a pinned link and shared on before it pinned passes
+    // no stale moment: as a link, with a spec this terminal cannot read, or
+    // in a layout published to the gallery, which has no ticker records.
+    const opened = (spec: unknown) => ({ ...pane, settings: { [CHART_SPEC_SETTING_KEY]: spec, [CHART_PINNED_MOMENT_SETTING_KEY]: moment } });
+    const reshared = buildPaneSharePayload(registry, opened(pane.settings[CHART_SPEC_SETTING_KEY]), {}, "SPY", new Map(), null);
+    const unreadable = buildPaneSharePayload(registry, opened({ version: 99 }), {}, "SPY", new Map(), null);
+    const gallery = publishableMarketplaceLayout({ dockRoot: { kind: "pane", instanceId: pane.instanceId }, instances: [opened(pane.settings[CHART_SPEC_SETTING_KEY])], floating: [], detached: [] }, {}, registry.panes);
+    for (const instance of [reshared?.data.version === 2 ? reshared.data.layout.layout.instances[0] : null,
+      unreadable?.data.version === 2 ? unreadable.data.layout.layout.instances[0] : null, gallery.layout.instances[0]]) {
+      expect(instance).toBeTruthy();
+      expect(CHART_PINNED_MOMENT_SETTING_KEY in (instance!.settings ?? {})).toBe(false);
+    }
   });
 
   test("persisted and shared authored formulas survive toggling another formula", async () => {

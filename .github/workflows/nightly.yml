@@ -2,11 +2,16 @@ name: Nightly
 
 # A prerelease of main for the nightly update channel, once a day. It builds
 # only when main moved since the last nightly build, and publishes only a
-# commit Verify and Verify Windows passed on. It never commits (the version is
-# set in each runner, see build-release-assets.yml), never moves a stable tag,
-# and never becomes the latest release: the stable updater, install.sh,
-# Homebrew and npm read releases/latest or their own registries, and GitHub
-# leaves prereleases out of that. scripts/nightly.ts holds the decisions.
+# commit Verify and Verify Windows passed on: the newest such commit among
+# main's last 30, so a run that fires hours late, while the head is still being
+# verified, builds the newest verified ancestor instead of skipping the day.
+# The plan job outputs the commit it chose; the build, the version, the notes
+# and the release target all follow it, not the commit this run started on. It
+# never commits (the version is set in each runner, see
+# build-release-assets.yml), never moves a stable tag, and never becomes the
+# latest release: the stable updater, install.sh, Homebrew and npm read
+# releases/latest or their own registries, and GitHub leaves prereleases out of
+# that. scripts/nightly.ts holds the decisions.
 on:
   schedule:
     # 04:40 UTC, after the day's merges in Europe and America.
@@ -84,9 +89,11 @@ jobs:
       NIGHTLY_TAG: v${{ needs.plan.outputs.version }}
       NIGHTLY_PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
     steps:
+      # The commit this run started on, not the one that was built: the plan
+      # may have chosen an older commit, and the release is cut with --target,
+      # which needs no checkout of it. This job only runs scripts/nightly.ts,
+      # which must be the version the plan ran.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.plan.outputs.sha }}
 
       - uses: ./.github/actions/setup-bun
         with:

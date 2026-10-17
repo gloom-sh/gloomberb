@@ -73,6 +73,7 @@ export function useCompositeChartKeyboard({
   scene,
   cursorDate,
   updateCursor,
+  pin,
   onActivate,
   timePick,
   levels,
@@ -101,6 +102,8 @@ export function useCompositeChartKeyboard({
   scene: CompositeChartScene | null;
   cursorDate: CompositeChartProps["cursorDate"];
   updateCursor: (date: Date | null) => void;
+  /** The tab's crosshair pin, when there is a cursor to pin or a pin to lift. */
+  pin: { pinned: boolean; toggle: () => void } | null;
   onActivate: CompositeChartProps["onActivate"];
   timePick: CompositeChartProps["timePick"];
   levels: CompositeChartProps["levels"];
@@ -217,7 +220,8 @@ export function useCompositeChartKeyboard({
   const leaveChart = () => {
     setEntered(false);
     setLegendKeyboardIndex(null);
-    if (!clearableCursor) return;
+    // Stepping out to the strip leaves a pinned crosshair where it is.
+    if (!clearableCursor || pin?.pinned) return;
     keyboardCursorDateRef.current = null;
     updateCursor(null);
   };
@@ -473,6 +477,14 @@ export function useCompositeChartKeyboard({
       setLegendKeyboardIndex(null);
       return;
     }
+    // Then Esc lifts a pin, whether or not the pinned moment is on this
+    // chart's bars, and before an owner that holds the cursor (a pane's
+    // selected date) gets it: the pin shows over that cursor until it goes.
+    if (pin?.pinned && isPlainKey(event, "escape")) {
+      consume();
+      pin.toggle();
+      return;
+    }
     // Whatever a tool or a pick held is gone by now, so Esc steps out to the
     // strip, and so does Up: the strip sits above. Consumed, so leaving never
     // counts toward a double-Esc close.
@@ -583,6 +595,7 @@ export function useCompositeChartKeyboard({
       armTool(tool);
     },
     leave: leaveChart,
+    togglePin: () => pin?.toggle(),
   };
   const chartActionsRef = useRef(chartActions);
   chartActionsRef.current = chartActions;
@@ -600,6 +613,7 @@ export function useCompositeChartKeyboard({
   const levelActionHint = selectedLevel?.actionable && levels?.action ? levels.action : null;
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
   const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable;
+  const pinState = pin ? pin.pinned : null;
   usePaneFooter(keyboardId, () => {
     if (!keyboardActive || !scene) return null;
     const hints: PaneHint[] = [];
@@ -617,6 +631,18 @@ export function useCompositeChartKeyboard({
         label: levelActionHint.label,
         title: levelActionHint.title,
         onPress: () => chartActionsRef.current.levelAction(),
+      });
+    }
+    if (pinState !== null) {
+      hints.push({
+        id: "chart-pin",
+        key: "p",
+        // "[p]in", and "[p] unpin" for the word that does not start with its key.
+        label: pinState ? " unpin" : "in",
+        title: pinState ? "Unpin Crosshair" : "Pin Crosshair",
+        // A pane whose own `p` means something else keeps it.
+        yieldsKey: true,
+        onPress: () => chartActionsRef.current.togglePin(),
       });
     }
     if (legendKeysActive && legendEntryToggleable) {
@@ -686,6 +712,7 @@ export function useCompositeChartKeyboard({
     canDeleteLevel,
     levelsEditable,
     toolsActive,
+    pinState,
   ]);
 
   return {

@@ -35,6 +35,7 @@ import {
   compositeCursorAsOf,
   compositeLinkedCursorTime,
   resizeCompositePanel,
+  resolveAdjacentCompositeCursorDate,
 } from "./scene";
 import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
 import type {
@@ -348,10 +349,12 @@ function ThemedCompositeChart({
   // pane's layout tab, its siblings in the pane included: each chart is its
   // own source, so they never take turns. A chart that stops taking the
   // pointer for a while (under a dialog) keeps its place, so a cursor it
-  // holds stays shared.
+  // holds stays shared. Only an interactive chart shows the tab's pin and
+  // lifts it, so only one counts toward keeping it.
   const chartId = useId();
   const tabLink = useTabCursorLink(
     cursorLink === undefined && !xAxis && paneInstanceId !== null ? `${paneInstanceId}${chartId}` : null,
+    { viewer: interactive },
   );
   const link = xAxis ? undefined
     : cursorLink === undefined ? interactive ? tabLink : undefined
@@ -369,6 +372,7 @@ function ThemedCompositeChart({
     return time === null || !baseScene ? null : compositeLinkedCursorTime(baseScene, time);
   }, [baseScene, sharedTime]));
   const holdsSharedCursor = useSyncExternalStore(subscribeToLink, link?.held ?? holdsNothing);
+  const pinnedCursor = useSyncExternalStore(subscribeToLink, link?.pinned ?? holdsNothing);
   const publishCursor = link?.publish;
   const scene = useMemo(() => {
     if (!baseScene) return null;
@@ -405,10 +409,51 @@ function ThemedCompositeChart({
     updateCursor(null);
   }, [cursorDate, holdsSharedCursor, link, updateCursor]);
   // Esc on a chart showing another chart's cursor clears it, as on that chart.
+  // While the tab's cursor is pinned the arrows move the pin and Esc unpins it.
   const updateKeyboardCursor = useCallback((date: Date | null) => {
+    if (link?.pinned?.()) {
+      link.pin?.(date && baseScene ? compositeCursorAsOf(baseScene, date) : null);
+      return;
+    }
     if (date === null && showsSharedCursor) link?.clear();
     updateCursor(date);
-  }, [link, showsSharedCursor, updateCursor]);
+  }, [baseScene, link, showsSharedCursor, updateCursor]);
+  // `p` pins the crosshair where it is, this chart's own or another's, so
+  // every chart in the tab holds that moment after the pointer leaves.
+  // Another chart's is pinned at its own moment, not at the bar it lands on
+  // here, so a daily chart pins an intraday chart's minute. With no crosshair
+  // it pins the last one shown (the pointer leaves the plot on its way to the
+  // footer's pin), and before any, the latest bar, where the arrows start.
+  // The last time sits in a ref, so a moving crosshair costs no extra render,
+  // and the footer's pin is there from the start: a hint appearing mid-hover
+  // would move the plot under the pointer.
+  const cursorAt = scene?.cursorDate?.getTime() ?? null;
+  const lastCursorAtRef = useRef<{ time: number; shared: boolean } | null>(null);
+  if (cursorAt !== null) {
+    const shared = showsSharedCursor ? sharedTime?.() ?? null : null;
+    lastCursorAtRef.current = shared !== null ? { time: shared, shared: true } : { time: cursorAt, shared: false };
+  }
+  const pinnable = !!link?.pin;
+  const togglePin = useCallback(() => {
+    if (!link?.pin) return;
+    if (link.pinned?.()) {
+      link.pin(null);
+      return;
+    }
+    const live = link.time();
+    if (live !== null) {
+      link.pin(live);
+      return;
+    }
+    if (!baseScene) return;
+    const last = lastCursorAtRef.current;
+    if (last?.shared) {
+      link.pin(last.time);
+      return;
+    }
+    const date = last ? new Date(last.time) : resolveAdjacentCompositeCursorDate(baseScene, null, -1);
+    if (date) link.pin(compositeCursorAsOf(baseScene, date));
+  }, [baseScene, link]);
 
   const {
     armedTool,
@@ -429,6 +474,7 @@ function ThemedCompositeChart({
     scene,
     cursorDate,
     updateCursor: updateKeyboardCursor,
+    pin: pinnable ? { pinned: pinnedCursor, toggle: togglePin } : null,
     onActivate,
     timePick,
     levels,

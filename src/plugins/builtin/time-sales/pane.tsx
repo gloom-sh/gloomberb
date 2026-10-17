@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableColumn } from "../../../components";
@@ -9,7 +9,8 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeVenue, tradeKey, type TapeDigits } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeAfter, tapeMomentKey, tapeRowAtOrBefore, tapeVenue, tradeKey, type TapeDigits } from "./model";
+import { usePinnedMoment } from "../../../components/use-pinned-moment";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
@@ -60,6 +61,26 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   const rows: TapeRow[] = useMemo(() => !data ? [] : tab === "quotes"
     ? newestFirst(data.quotes).map((quote) => ({ id: quoteKey(quote), quote }))
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
+  // A crosshair pinned in the tab picks the print at that moment out of the
+  // tape and mutes the later ones, on the same nanosecond comparison; a
+  // moment before the tape's window says so. The selection follows the pin
+  // when it moves or the tab changes, not on each new print, so a streaming
+  // tape never pulls away a row the user picked (another listing remounts).
+  const pinnedAt = usePinnedMoment("time-sales:pin", { enabled: !detail });
+  const pinKey = useMemo(() => pinnedAt === null ? null : tapeMomentKey(pinnedAt), [pinnedAt]);
+  const rowTime = (row: TapeRow) => (row.trade ?? row.quote)!.timestamp;
+  const pinnedRow = useMemo(() => pinKey === null ? null : tapeRowAtOrBefore(rows, rowTime, pinKey), [pinKey, rows]);
+  const pinnedRowId = pinnedRow?.id ?? null;
+  const followedPinRef = useRef<string | null>(null);
+  useEffect(() => {
+    const follow = pinKey === null ? null : `${tab}:${pinKey}`;
+    if (follow === null) followedPinRef.current = null;
+    if (follow === null || pinnedRowId === null || followedPinRef.current === follow) return;
+    followedPinRef.current = follow;
+    setSelected(pinnedRowId);
+  }, [pinKey, pinnedRowId, tab]);
+  const pinnedBeforeTape = pinKey !== null && rows.length > 0 && pinnedRow === null;
+  const laterThanPin = (row: TapeRow) => pinKey !== null && tapeAfter(rowTime(row), pinKey);
   const spreads = useMemo(() => {
     const quotes = data?.quotes ?? [];
     const bps = quotes.map((quote) => quoteSpread(quote)).filter((spread) => spread.state === "normal" && spread.bps != null).map((spread) => spread.bps!).sort((a, b) => a - b);
@@ -83,7 +104,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     if (event.name === "r") { event.preventDefault(); reload(); }
   });
   usePaneFooter("time-sales:actions", () => ({ hints: [{ id: "pause", key: "space", label: frozen ? "resume" : "pause", onPress: freeze }] }), [frozen, resource.data, resource.epoch]);
-  usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : [])] });
+  usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : []),
+    ...(pinnedBeforeTape ? [`The pinned moment is before this tape's first ${tab === "quotes" ? "quote" : "print"}, ${tapeStampNewYork(rowTime(rows.at(-1)!))}.`] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
     info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
@@ -120,14 +142,14 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
               : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? tapeVenue(trade.exchange)
               : column.id === "conditions" ? tapeConditionWords(trade.conditions) : trade.tape,
               // Price by tick, as on a tape; a block print lights the rest of its row.
-              color: column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
+              color: laterThanPin(row) ? colors.textMuted : column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
                 : trade.size >= 10_000 ? colors.warning : colors.textMuted };
           }
           const quote = row.quote!, spread = quoteSpread(quote);
           return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
             : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
             : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
-            : spread.bps == null ? "--" : spread.bps.toFixed(2), color: spread.state === "normal" ? colors.text : colors.warning };
+            : spread.bps == null ? "--" : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
         }} emptyStateTitle="No observations in this window." /> : null}
     </PaneStatusBody>
   </Box>;

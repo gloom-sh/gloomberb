@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fitPaneFooterInfo, layoutPaneFooterHintRow, type CombinedPaneFooter, type PaneFooterSegment, type PaneHint } from "./model";
+import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -52,5 +52,25 @@ describe("footer hint row", () => {
     const row = layoutPaneFooterHintRow(footer([{ id: "loading", parts: [{ text: "loading" }] }]), 120);
     expect(row.overflow).toEqual([]);
     expect(row.hints.map((hint) => hint.id)).toEqual(hints.map((hint) => hint.id));
+  });
+});
+
+describe("combining footer registrations", () => {
+  // A chart's `p` pin joins every pane that hosts a chart, so a pane's own
+  // `p`, drawn or only bound, keeps the key and the pin moves to the menu,
+  // unless the pane's `p` is turned off.
+  test("a hint that yields its key gives it up to the pane's own hint or key", () => {
+    const pin: PaneHint = { id: "chart-pin", key: "p", label: "in", title: "Pin Crosshair", yieldsKey: true, onPress: () => {} };
+    const combine = (pane: PaneFooterRegistration) => combinePaneFooterRegistrations(new Map([
+      ["chart", { order: 10, hints: [pin] }],
+      ["pane", pane],
+    ]));
+    expect(combine({ hints: [{ id: "open", key: "o", label: "pen" }] }).hints.map((hint) => hint.id)).toEqual(["open", "chart-pin"]);
+    expect(combine({ hints: [{ id: "pop-out", key: "p", label: "op out" }] }).hints.map((hint) => hint.id)).toEqual(["pop-out"]);
+    // A `p` the pane has turned off does nothing, so the pin keeps it.
+    expect(combine({ hints: [{ id: "portfolio", key: "p", label: "ortfolio", disabled: true }] }).hints.map((hint) => hint.id)).toEqual(["portfolio", "chart-pin"]);
+    const bound = combine({ keys: [{ id: "window", key: "p", label: "eriod" }] });
+    expect(bound.hints).toEqual([]);
+    expect(bound.menu.map((item) => item.type === "divider" ? null : [item.label, item.accelerator ?? null])).toEqual([["Pin Crosshair", null]]);
   });
 });

@@ -935,6 +935,65 @@ describe("CompositeChart", () => {
     expect(cursors()).toEqual({ a: null, b: null });
   });
 
+  // A pinned cursor holds every chart in the tab at one moment: no pointer
+  // moves it or takes it away, the arrows move the pin and Esc lifts it.
+  test("a pinned cursor stays when the pointer leaves, moves with the arrows and lifts with Escape", async () => {
+    const shortcuts: Record<string, (event: KeyEventLike) => void> = {};
+    const links: Record<string, ReturnType<typeof useTabCursorLink>> = {};
+    const hostFor = (id: string): InputHost => ({
+      useShortcut(handler) { shortcuts[id] = handler; },
+      useBeforeShortcut() {},
+      useViewport: () => ({ width: 80, height: 24 }),
+    });
+    const hosts = { a: hostFor("a"), b: hostFor("b") };
+    const chartSeries = [series("price", "main", "left", "USD", [100, 103, 101])];
+    const panels = [{ id: "main" }];
+    function LinkedChart({ id, focused }: { id: "a" | "b"; focused: boolean }) {
+      const link = useTabCursorLink(id);
+      links[id] = link;
+      return (
+        <InputHostProvider host={hosts[id]}>
+          <CompositeChart width={60} height={12} focused={focused} series={chartSeries} panels={panels} cursorLink={link} />
+        </InputHostProvider>
+      );
+    }
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-pinned-cursor")))}>
+        <Box flexDirection="column">
+          <LinkedChart id="a" focused />
+          <LinkedChart id="b" focused={false} />
+        </Box>
+      </AppContext>,
+      { width: 62, height: 24 },
+    );
+    const settle = () => act(async () => tui.setup().renderOnce());
+    const cursors = () => {
+      const rows = tui.frame().split("\n");
+      const day = (text: string) => text.match(/2025-01-0\d/)?.[0] ?? null;
+      return { a: day(rows.slice(0, 12).join("\n")), b: day(rows.slice(12, 24).join("\n")) };
+    };
+    await settle();
+
+    await act(async () => links.a!.pin!(Date.parse("2025-01-02T23:59:59.999Z")));
+    await settle();
+    expect(links.a!.pinned!()).toBe(true);
+    expect(cursors()).toEqual({ a: "2025-01-02", b: "2025-01-02" });
+    // A pointer leaving either chart, or hovering B, does not move the pin.
+    await act(async () => { links.a!.publish(null); links.b!.publish(Date.parse("2025-01-03T00:00:00Z")); links.b!.publish(null); });
+    await settle();
+    expect(cursors()).toEqual({ a: "2025-01-02", b: "2025-01-02" });
+
+    await act(async () => shortcuts.a?.(keyEvent("right")));
+    await settle();
+    expect(links.a!.pinned!()).toBe(true);
+    expect(cursors()).toEqual({ a: "2025-01-03", b: "2025-01-03" });
+
+    await act(async () => shortcuts.a?.(keyEvent("escape")));
+    await settle();
+    expect(links.a!.pinned!()).toBe(false);
+    expect(cursors()).toEqual({ a: null, b: null });
+  });
+
   // Panes do not wire the link: every interactive time chart in a pane joins
   // its tab's. Two charts in one pane are two sources, so either follows the
   // other, and an owner's resting cursor (a table's selected row) gives way
@@ -986,6 +1045,47 @@ describe("CompositeChart", () => {
     expect(cursors()).toEqual({ a: "2025-01-02", b: "2025-01-02", c: "2025-01-02" });
     await press("escape");
     expect(cursors()).toEqual({ a: null, b: null, c: "2025-01-01" });
+  });
+
+  // A chart that is not interactive shows no pin and cannot lift it, so it
+  // does not keep one alive once the last interactive chart is gone.
+  test("the tab's pin goes with its last interactive chart, whatever static charts stay", async () => {
+    const chartSeries = [series("price", "main", "left", "USD", [100, 103, 101])];
+    const panels = [{ id: "main" }];
+    let probe: ReturnType<typeof useTabCursorLink>;
+    let showInteractive: (shown: boolean) => void = () => {};
+    function Probe() {
+      probe = useTabCursorLink("probe", { viewer: false });
+      return null;
+    }
+    function Tab() {
+      const [shown, setShown] = useState(true);
+      showInteractive = setShown;
+      return (
+        <Box flexDirection="column">
+          <Probe />
+          {shown ? (
+            <PaneInstanceProvider paneId="chart:closing">
+              <CompositeChart width={60} height={8} series={chartSeries} panels={panels} />
+            </PaneInstanceProvider>
+          ) : null}
+          <PaneInstanceProvider paneId="overview:closed">
+            <CompositeChart width={60} height={8} series={chartSeries} panels={panels} interactive={false} />
+          </PaneInstanceProvider>
+        </Box>
+      );
+    }
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-pin-viewers")))}>
+        <Tab />
+      </AppContext>,
+      { width: 62, height: 18 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    await act(async () => probe!.pin!(Date.parse("2025-01-02T23:59:59.999Z")));
+    await act(async () => showInteractive(false));
+    await act(async () => { await tui.setup().renderOnce(); await Promise.resolve(); });
+    expect(probe!.pinned!()).toBe(false);
   });
 
   test("zooms with plus and resets the interaction viewport with zero", async () => {

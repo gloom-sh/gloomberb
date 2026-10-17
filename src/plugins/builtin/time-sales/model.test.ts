@@ -3,7 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { tapeFixture } from "./test-fixture";
 import { fetchTape, validateTape } from "./client";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapeClockNewYork, tapeConditionWords, tapePrice, tapeStatistics, tapeTicks, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapeClockNewYork, tapeConditionWords, tapeAfter, tapeMomentKey, tapePrice, tapeRowAtOrBefore, tapeStatistics, tapeTicks, tradeKey } from "./model";
 
 
 test("lossless IDs and nanosecond order determine latest print and weighted observed statistics", () => {
@@ -105,4 +105,20 @@ test("tape rows read in New York time and conditions in words, regular sales uns
   expect(tapeConditionWords(["@", "F", "T", "I"])).toBe("ISO · ext hours · odd lot");
   expect(tapeConditionWords(["@"])).toBe("");
   expect(tapeConditionWords(["@", "?"])).toBe("?");
+});
+
+test("the row at a pinned moment is the newest printed at or before it, and the rows muted after it are the ones above it, nanoseconds kept", () => {
+  const rows = newestFirst([
+    { timestamp: "2026-09-28T14:30:00.000000002Z", id: "c" },
+    { timestamp: "2026-09-28T14:30:00.000000001Z", id: "b" },
+    { timestamp: "2026-09-28T14:29:59.500000000Z", id: "a" },
+  ]);
+  const at = (iso: string) => {
+    const key = tapeMomentKey(Date.parse(iso));
+    return { row: tapeRowAtOrBefore(rows, (row) => row.timestamp, key)?.id ?? null, after: rows.filter((row) => tapeAfter(row.timestamp, key)).map((row) => row.id) };
+  };
+  // A moment inside the millisecond still lands at or before it: 14:30:00.000 is before both nanosecond prints.
+  expect(at("2026-09-28T14:30:00.000Z")).toEqual({ row: "a", after: ["c", "b"] });
+  expect(at("2026-09-28T14:30:00.001Z")).toEqual({ row: "c", after: [] });
+  expect(at("2026-09-28T14:29:59.000Z")).toEqual({ row: null, after: ["c", "b", "a"] });
 });

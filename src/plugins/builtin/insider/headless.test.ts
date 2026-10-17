@@ -10,6 +10,8 @@ import type { InsiderSignalsPayload } from "../../../api-client/insider-signals"
 import { insiderSignalsCache } from "./signals-client";
 import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { setCliWidthOverride } from "../../../utils/cli-output";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -211,11 +213,17 @@ describe("insider report without a ticker", () => {
     );
     try {
       const report = await load(30);
-      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Buyers", "Bought", "Last Buy", "Filed", "Insiders"]);
+      expect(report.columns?.map((column) => column.header))
+        .toEqual(["Ticker", "Company", "Score", "Role", "Nth", "Vs Usual", "Stake", "Buyers", "Bought", "Last Buy", "Filed", "Insiders"]);
       expect(report.rows[0]).toMatchObject({
         ticker: "NWBI",
         score: 78,
-        // A server that predates structured signals: the reasons.
+        // A server that predates structured signals: the lead's role and how many others, no figures.
+        role: "CEO +2",
+        nth: null,
+        vsUsual: null,
+        stake: null,
+        // Why stays in the rows as the server's sentences.
         why: "3 insiders, $1.2M in 14 days · CFO raised stake 56%",
         filingDate: "2026-10-14",
         buyers: "Ana Rivera (CEO) $496k; Ben Okafor (Director) $354k",
@@ -235,6 +243,7 @@ describe("insider report without a ticker", () => {
       whySignals: [
         { kind: "cluster", value: 3, text: "3 insiders", insider: null },
         { kind: "stake", value: -40, text: "-40%", insider: { name: "Rivera Ana", role: "CEO" } },
+        { kind: "repeat", value: 2, text: "2nd sale", insider: { name: "Rivera Ana", role: "CEO" } },
       ],
       buyers: [
         { name: "Rivera Ana", role: "CEO", value: 2_400_000, buys: 2, lastBuy: "2026-10-13", shares: 60_000, stakeChangePct: -40, newPosition: false, exited: false },
@@ -253,13 +262,20 @@ describe("insider report without a ticker", () => {
     try {
       const report = await load({ role: "officers", minValue: 1_000_000, cluster: true, exited: true });
       expect(asked[0]).toEqual({ side: "sell", window: 30, limit: 20, role: "officers", minValue: 1_000_000, cluster: true, position: "exited" });
-      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Sellers", "Sold", "Last Sale", "Filed", "Insiders"]);
-      // Why stays whole on a narrow table: the company gives way, then moves under the row with the filing day.
-      expect(report.columns?.find((column) => column.key === "why")).toMatchObject({ minWidth: 46 });
-      expect(report.columns?.filter((column) => column.stackPriority).map((column) => [column.key, column.stackPriority])).toEqual([["company", 2], ["filingDate", 1]]);
+      expect(report.columns?.map((column) => column.header))
+        .toEqual(["Ticker", "Company", "Score", "Role", "Nth", "Vs Usual", "Stake", "Sellers", "Sold", "Last Sale", "Filed", "Insiders"]);
+      // On a narrow table the size against usual moves under the row first, then the nth sale, the company and the filing day.
+      expect(report.columns?.filter((column) => column.stackPriority).map((column) => [column.key, column.stackPriority]))
+        .toEqual([["company", 2], ["nth", 3], ["vsUsual", 4], ["filingDate", 1]]);
       expect(report.rows[0]).toMatchObject({
         ticker: "TRNT",
-        why: "3 insiders · CEO -40%",
+        role: "CEO +2",
+        // The lead's nth sale from the why facts of a server that predates the buyer's own.
+        nth: 2,
+        vsUsual: null,
+        stake: -40,
+        stakeBothWays: false,
+        why: "3 insiders, $4.2M in 5 days · CEO sold 40% of stake",
         reasons: ["3 insiders, $4.2M in 5 days", "CEO sold 40% of stake"],
         marketCap: 1.2e9,
         buyers: "Ana Rivera (CEO) $2.4M -40%; Ben Okafor (Director) $1.8M EXITED",
@@ -275,6 +291,70 @@ describe("insider report without a ticker", () => {
   });
 });
 
+test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row; --company opens one", async () => {
+  // Invented company and people.
+  const rows: InsiderSignalsPayload["rows"] = [{
+    ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Incorporated", score: 78, reasons: ["3 insiders, $1.2M in 14 days"],
+    insiders: 3, buys: 3, value: 1_152_500, shares: 95_000, firstBuy: "2026-10-01", lastBuy: "2026-10-14", lastFiled: "2026-10-14",
+    signals: { clusterInsiders: 3, repeatBuys: 12, usualRatio: 100, stakeIncreasePct: 2415, newPosition: false },
+    buyers: [
+      { name: "Rivera Ana", role: "10% owner", value: 796_000, buys: 4, lastBuy: "2026-10-01", stakeChangePct: 2415, repeatBuys: 12, usualRatio: 100 },
+      { name: "Okafor Ben", role: "Director", value: 356_500, buys: 1, lastBuy: "2026-10-14", newPosition: true, repeatBuys: 1, usualRatio: null },
+    ],
+  }, {
+    ticker: "TRNT", issuerCik: "9900002", company: "Tailspin Toys", score: 40, reasons: ["CFO bought $496k"],
+    insiders: 1, buys: 2, value: 496_000, shares: 9_000, firstBuy: "2026-10-01", lastBuy: "2026-10-04", lastFiled: "2026-10-05",
+    signals: { clusterInsiders: 1, repeatBuys: 1, usualRatio: null, stakeIncreasePct: 12.4, newPosition: false },
+    buyers: [{ name: "Chen Li", role: "CFO", value: 496_000, buys: 2, lastBuy: "2026-10-04", stakeChangePct: 12.4, twoWay: true, repeatBuys: null, usualRatio: null }],
+  }];
+  const apiClient = { getCloudSecInsiderSignals: async (): Promise<InsiderSignalsPayload> => ({
+    window: 30, through: "2026-10-15", asOf: "2026-10-14", coverage: { from: "2026-08-31", through: "2026-10-14" }, rows,
+  }) } as never;
+  const headless = createInsiderHeadless();
+  const args = { rawArgument: "", argument: "", symbols: [], options: { name: "", limit: 20, window: 30 } };
+  try {
+    const result = await headless.load(args, createTestHeadlessContext({ apiClient }));
+    const text = (width: number) => {
+      setCliWidthOverride(width);
+      return renderHeadlessPaneText(headless, result, args, "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    };
+    const wide = text(120);
+    expect(wide).toContain("Ticker  Company                        Score  Role           Nth  Vs Usual   Stake  Buyers  Bought  Last Buy  Filed");
+    // Every column stays; a long company name is cut.
+    expect(wide).toContain("NWBI    Northwind Biologics Incorpor\u2026     78  10% owner +2  12th     100x+     25x       3  $1.15M  10/14/26  2026-10-14");
+    // Traded both ways: dashes for the nth trade and size, the stake marked.
+    expect(wide).toContain("TRNT    Tailspin Toys                     40  CFO             --        --  +12% \u00b1       1   $496k  10/4/26   2026-10-05");
+    // Each row's insiders are the opened company's, as in the pane; the exports keep them.
+    expect(wide.join("\n")).not.toContain("Ana Rivera");
+    expect(result.rows[0]!.buyers).toBe("Ana Rivera (10% owner) $796k 25x; Ben Okafor (Director) $356.5k NEW");
+    expect(Math.max(...wide.map((line) => line.length))).toBeLessThanOrEqual(120);
+    const narrow = text(80);
+    expect(narrow).toContain("Ticker  Score  Role           Stake  Buyers  Bought  Last Buy  Filed");
+    expect(narrow).toContain("TRNT       40  CFO           +12% \u00b1       1   $496k  10/4/26   2026-10-05");
+    expect(narrow).toContain("  Company Northwind Biologics Incorporated  Nth 12th  Vs Usual 100x+");
+    expect(Math.max(...narrow.map((line) => line.length))).toBeLessThanOrEqual(80);
+
+    // --company: one ranked company, as Enter opens it in the pane. Its figures once, then its insiders in the ranking's columns.
+    const openArgs = { ...args, options: { ...args.options, company: "nwbi" } };
+    const opened = await headless.load(openArgs, createTestHeadlessContext({ apiClient }));
+    expect(typeof headless.describe === "function" ? headless.describe(openArgs, opened) : null).toBe("Insider Activity | Buying | NWBI \u00b7 Northwind Biologics Incorporated");
+    setCliWidthOverride(120);
+    const company = renderHeadlessPaneText(headless, opened, openArgs, "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(company).toContain("Insider     Role        Nth  Vs Usual  Stake   Bought  Last Buy");
+    expect(company).toContain("Ana Rivera  10% owner  12th     100x+    25x    $796k  10/1/26");
+    expect(company).toContain("Ben Okafor  Director    1st        --    NEW  $356.5k  10/14/26");
+    expect(company.join("\n")).toContain("Score 78 \u00b7 Bought $1.15M (95k shares) \u00b7 Buyers 3 (3 buy days) \u00b7 Window 30D (first buy 10/1/26) \u00b7 Last Buy 10/14/26 (filed 10/14/26)");
+    expect(company.join("\n")).toContain("fn INS NWBI lists each trade as filed.");
+    expect(opened.metadata?.company).toMatchObject({ ticker: "NWBI", score: 78 });
+    const missing = await headless.load({ ...args, options: { ...args.options, company: "MSFT" } }, createTestHeadlessContext({ apiClient }));
+    expect(missing.rows).toEqual([]);
+    expect(missing.empty).toBe("MSFT is not among the companies ranked for buying in the last 30 days.");
+  } finally {
+    setCliWidthOverride(null);
+    insiderSignalsCache.reset();
+  }
+});
+
 test("the catalog's examples for the ranking run without a ticker and read as the options they name", () => {
   const options = createInsiderHeadless().options;
   const capability = { id: "insider", botSafe: true, options } as unknown as PaneFunctionCapability;
@@ -283,6 +363,7 @@ test("the catalog's examples for the ranking run without a ticker and read as th
     ["--side sell --min-value 250000", true],
     ["--role directors --cluster --window 90", true],
     ["--side sell --exited", true],
+    ["--side sell --company ESTC", true],
   ]);
   const read = (example: string) => {
     const parsed = parsePaneFunctionArgs(["INS", ...example.split(" ")]);
@@ -293,4 +374,6 @@ test("the catalog's examples for the ranking run without a ticker and read as th
   expect(read(examples[0]![0] as string)).toMatchObject({ side: "sell", window: 30, role: "all", minValue: 250_000 });
   expect(read(examples[1]![0] as string)).toMatchObject({ side: "buy", window: 90, role: "directors", cluster: true });
   expect(read(examples[2]![0] as string)).toMatchObject({ side: "sell", exited: true });
+  const parsed = parsePaneFunctionArgs(["INS", ...(examples[3]![0] as string).split(" ")]);
+  expect(normalizeCapabilityOptions(capability, parsed.options, { code: "INS" })).toMatchObject({ side: "sell", company: "ESTC" });
 });

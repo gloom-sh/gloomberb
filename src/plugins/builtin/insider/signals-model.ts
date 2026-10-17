@@ -11,10 +11,21 @@ import type {
 } from "../../../api-client/insider-signals";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth, formatCompact } from "../../../utils/format";
+import type { SortComparableValue } from "../../../utils/sort-values";
 import { formatInsiderName } from "./display";
 import { DEFAULT_INSIDER_SIGNAL_WINDOW, DEFAULT_INSIDER_SIGNALS_QUERY, INSIDER_SIGNAL_WINDOWS, type InsiderSignalsQuery } from "./signals-client";
 
-export type InsiderSignalColumnId = "ticker" | "company" | "score" | "why" | "insiders" | "value" | "lastBuy";
+export type InsiderSignalColumnId =
+  | "ticker"
+  | "company"
+  | "score"
+  | "role"
+  | "nth"
+  | "usual"
+  | "stake"
+  | "insiders"
+  | "value"
+  | "lastBuy";
 
 export interface InsiderSignalColumn extends DataTableColumn {
   id: InsiderSignalColumnId;
@@ -224,24 +235,53 @@ export function insiderSignalsFiltered(query: InsiderSignalsQuery): boolean {
   return query.role !== "all" || query.minValue > 0 || query.cluster || query.position || query.cap !== null;
 }
 
-/** A chip in the why column: a fact, in the tone its kind takes. */
-export interface InsiderSignalChip {
-  label: string;
-  tone: "neutral" | "accent" | "positive" | "negative";
-  variant: "subtle" | "solid";
-  /**
-   * Starts a group: the row's insiders (a cluster, or how many traded), or
-   * an insider's role followed by their facts. Groups stand further apart
-   * than chips; the terminal joins a group's chips with spaces and the
-   * groups with " · ".
-   */
-  lead: boolean;
+/** What a cell shows without a fact: no history, no balance, or a book traded both ways. */
+export const INSIDER_SIGNAL_NONE = "--";
+/**
+ * After a stake counted on the net of an insider's buys and sales, drawn
+ * muted: bought and sold. One cell in every monospace font; an arrow pair
+ * falls back to a font that draws it a fraction of the size.
+ */
+export const INSIDER_BOTH_WAYS_MARK = "\u00b1";
+
+/**
+ * What a column says about one insider: its words, the figure it sorts and
+ * exports by, and how it reads. `weight` keeps the colour roles the why
+ * chips had: "signal" in the side's tone for a fact the ranking counts (a
+ * 2nd trade or more in 90 days, twice the usual size or more) and in its
+ * sign's tone for a change in the holding, "strong" for NEW and EXITED,
+ * "plain" for a figure the ranking does not count (a 1st trade, a size
+ * under twice the usual), "none" for the dash.
+ */
+export interface InsiderSignalFact {
+  text: string;
+  /** Larger reads stronger; null without a fact, which sorts last either way. */
+  sort: number | null;
+  /** What an export writes: the figure (12, 2.8, 29), NEW or EXITED; null for the dash. */
+  value: number | string | null;
+  weight: "strong" | "signal" | "plain" | "none";
+  /** Which way a holding moved, so a stake reads in the buy or sell tone by its sign, not the side's. */
+  sign?: 1 | -1;
+  /** Counted on the net of buys and sales: the stake carries INSIDER_BOTH_WAYS_MARK. */
+  bothWays?: boolean;
 }
 
-/** Insiders named inline; the detail strip lists up to five, largest first. */
-const MAX_INSIDER_GROUPS = 2;
+/** From where the ranking counts a repeat (repeatPoints) and a size against the usual (usualMinRatio). */
+const REPEAT_COUNTED_FROM = 2;
+const USUAL_COUNTED_FROM = 2;
+/** The ranking holds a size against the usual at most this many times ("100x+"). */
+const USUAL_CAP = 100;
 /** A stake raise above this, in percent, is said as the holding's multiple. */
 const STAKE_MULTIPLE_ABOVE = 300;
+
+const NO_FACT: InsiderSignalFact = { text: INSIDER_SIGNAL_NONE, sort: null, value: null, weight: "none" };
+
+/** 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st. */
+function ordinal(value: number): string {
+  const tens = value % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[value % 10] ?? "th";
+  return `${value}${suffix}`;
+}
 
 /** A raise in percent as the holding's multiple: +500% is "6x". */
 function stakeMultiple(pct: number): string {
@@ -249,108 +289,138 @@ function stakeMultiple(pct: number): string {
   return multiple >= 10 ? `${Math.round(multiple)}x` : `${(Math.round(multiple * 10) / 10).toString()}x`;
 }
 
-/**
- * The why column's chips from the row's structured signals. A row of
- * several insiders opens with them: the cluster in the accent, else how
- * many traded. Then up to two insiders, each their role and every fact
- * about them (4th buy, 5x usual, +56%, 6x stake, both ways), NEW or EXITED
- * in the side's solid tone, in the order of their strongest fact. Dollars
- * are the value column's, not a chip; a lone insider whose only reason is
- * dollars is named by role. Null when the server sent no structured
- * signals (it predates them): the reasons are the text.
- */
-export function insiderSignalChips(row: InsiderSignalRow, side: InsiderSignalSide): InsiderSignalChip[] | null {
-  if (!Array.isArray(row.whySignals)) return null;
-  const tone = side === "sell" ? "negative" : "positive";
-  const role = (who: { role: InsiderSignalRole }): InsiderSignalChip => ({ label: who.role, tone: "neutral", variant: "subtle", lead: true });
-  let together: InsiderSignalChip | null = null;
-  const groups: InsiderSignalChip[][] = [];
-  const byInsider = new Map<string, InsiderSignalChip[]>();
-  for (const signal of row.whySignals) {
-    if (signal.kind === "size") continue;
-    if (!signal.insider) {
-      together ??= { label: signal.text, tone: "accent", variant: "subtle", lead: true };
-      continue;
-    }
-    let group = byInsider.get(signal.insider.name);
-    if (!group) {
-      if (groups.length === MAX_INSIDER_GROUPS) continue;
-      group = [role(signal.insider)];
-      byInsider.set(signal.insider.name, group);
-      groups.push(group);
-    }
-    const label = signal.kind === "stake" && signal.value > STAKE_MULTIPLE_ABOVE ? `${stakeMultiple(signal.value)} stake` : signal.text;
-    group.push({
-      label,
-      tone: signal.kind === "both" ? "neutral" : tone,
-      variant: signal.kind === "new" || signal.kind === "exited" ? "solid" : "subtle",
-      lead: false,
-    });
-  }
-  if (!together && row.insiders > 1) together = { label: `${row.insiders} insiders`, tone: "neutral", variant: "subtle", lead: true };
-  if (together) return [together, ...groups.flat()];
-  if (groups.length) return groups.flat();
-  // Only dollars: who traded them.
-  const top = row.buyers[0];
-  return top ? [role(top)] : [{ label: `${row.insiders} insiders`, tone: "neutral", variant: "subtle", lead: true }];
+const known = (value: number | null | undefined): value is number => value != null && Number.isFinite(value);
+
+/** An insider's nth trade in 90 days: "12th"; the dash without one. */
+export function formatInsiderNth(nth: number | null | undefined): string {
+  return known(nth) && nth >= 1 ? ordinal(Math.round(nth)) : INSIDER_SIGNAL_NONE;
 }
 
-/** The chips in their groups, as they are drawn and read. */
-function insiderSignalChipGroups(chips: readonly InsiderSignalChip[]): InsiderSignalChip[][] {
-  const groups: InsiderSignalChip[][] = [];
-  for (const chip of chips) {
-    if (chip.lead || groups.length === 0) groups.push([chip]);
-    else groups[groups.length - 1]!.push(chip);
-  }
-  return groups;
+/** A size against the usual: "2.8x", "5x", "22x", "100x+", "<0.1x" (the server says it to a tenth); the dash without history. */
+export function formatInsiderUsual(ratio: number | null | undefined): string {
+  if (!known(ratio) || ratio < 0) return INSIDER_SIGNAL_NONE;
+  if (ratio >= USUAL_CAP) return `${USUAL_CAP}x+`;
+  if (ratio >= 10) return `${Math.round(ratio)}x`;
+  if (ratio < 0.1) return "<0.1x";
+  return `${(Math.round(ratio * 10) / 10).toString()}x`;
 }
 
-/** The chips as one line of text: the terminal's why, and the CLI's. */
-export function insiderSignalChipsText(chips: readonly InsiderSignalChip[]): string {
-  return insiderSignalChipGroups(chips).map((group) => group.map((chip) => chip.label).join(" ")).join(" · ");
-}
+/** What a holding did: the change in percent, NEW or EXITED, or null without balances. */
+export type InsiderStakeValue = number | "NEW" | "EXITED" | null;
 
-/** Why, as text: the chips' words, or the reasons from a server that predates them. */
-export function insiderSignalWhy(row: InsiderSignalRow, side: InsiderSignalSide = "buy"): string {
-  const chips = insiderSignalChips(row, side);
-  return chips ? insiderSignalChipsText(chips) : row.reasons.join(" · ");
-}
-
-/** A badge is its label plus one cell of padding on each side, one cell from the next in its group and two from the next group. */
-const CHIP_CHROME = 2;
-const CHIP_GAP = 1;
-const INSIDER_SIGNAL_GROUP_GAP = 2;
-
-const chipGap = (chip: InsiderSignalChip) => (chip.lead ? INSIDER_SIGNAL_GROUP_GAP : CHIP_GAP);
-
-/**
- * Cells the chips take side by side: what the why column asks for when the
- * table shares out its width, as every column gives its width in cells.
- */
-function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): number {
-  return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? chipGap(chip) : 0), 0);
-}
-
-/** Chips that stay together on the desktop's wrapping row, and the room before them. */
-export interface InsiderSignalChipUnit {
-  chips: InsiderSignalChip[];
-  /** Cells before the unit: two before a group, one before another fact; none first. */
-  gap: number;
+/** An insider's stake as its value: what the stake column sorts, exports and prints from. */
+export function insiderStakeValue(buyer: InsiderSignalBuyer): InsiderStakeValue {
+  if (buyer.exited) return "EXITED";
+  if (buyer.newPosition) return "NEW";
+  const pct = buyer.stakeChangePct;
+  return known(pct) && pct !== 0 ? pct : null;
 }
 
 /**
- * The chips as the desktop's one-line row wraps them, strongest first: the
- * browser moves a unit that does not fit whole to the hidden line, with
- * every unit after it. An insider's role goes with their first fact, so a
- * role never shows without a fact about them.
+ * A stake as text: NEW or EXITED, +29%, -58%, 6x above +300%, a decimal
+ * under 1% so a small trade does not read as none, the dash without
+ * balances. Counted on the net of buys and sales, it ends in the both-ways
+ * mark.
  */
-export function insiderSignalChipUnits(chips: readonly InsiderSignalChip[]): InsiderSignalChipUnit[] {
-  const units: InsiderSignalChipUnit[] = [];
-  for (const [lead, first, ...rest] of insiderSignalChipGroups(chips)) {
-    units.push({ chips: first ? [lead!, first] : [lead!], gap: units.length ? INSIDER_SIGNAL_GROUP_GAP : 0 });
-    for (const chip of rest) units.push({ chips: [chip], gap: CHIP_GAP });
+export function formatInsiderStake(stake: InsiderStakeValue, bothWays = false): string {
+  let text: string;
+  if (typeof stake === "string") text = stake;
+  else if (!known(stake) || stake === 0) text = INSIDER_SIGNAL_NONE;
+  else if (stake > STAKE_MULTIPLE_ABOVE) text = stakeMultiple(stake);
+  else {
+    const rounded = Math.abs(stake) < 1 ? Math.round(stake * 10) / 10 : Math.round(stake);
+    text = `${rounded > 0 ? "+" : ""}${rounded}%`;
   }
-  return units;
+  return bothWays ? `${text} ${INSIDER_BOTH_WAYS_MARK}` : text;
+}
+
+/** A server that predates the buyer's own figures said them only as the insider's why facts. */
+function whyFigure(row: InsiderSignalRow | undefined, buyer: InsiderSignalBuyer, kind: "repeat" | "usual"): number | null {
+  const signal = row?.whySignals?.find((candidate) => candidate.kind === kind && candidate.insider?.name === buyer.name);
+  return signal ? signal.value : null;
+}
+
+/** The insider's nth buy (sale) in 90 days, from the buyer or, from an older server, the row's why facts. */
+export function insiderNth(buyer: InsiderSignalBuyer, row?: InsiderSignalRow): number | null {
+  const nth = buyer.repeatBuys === undefined ? whyFigure(row, buyer, "repeat") : buyer.repeatBuys;
+  return known(nth) && nth >= 1 ? nth : null;
+}
+
+/** The insider's largest day against their usual size, from the buyer or, from an older server, the row's why facts. */
+export function insiderUsualRatio(buyer: InsiderSignalBuyer, row?: InsiderSignalRow): number | null {
+  const ratio = buyer.usualRatio === undefined ? whyFigure(row, buyer, "usual") : buyer.usualRatio;
+  return known(ratio) && ratio >= 0 ? ratio : null;
+}
+
+/** The insider's nth buy (sale) in 90 days: "12th"; the dash for a book traded both ways. */
+function insiderNthFact(buyer: InsiderSignalBuyer, row?: InsiderSignalRow): InsiderSignalFact {
+  const nth = insiderNth(buyer, row);
+  if (nth == null) return NO_FACT;
+  return { text: formatInsiderNth(nth), sort: nth, value: nth, weight: nth >= REPEAT_COUNTED_FROM ? "signal" : "plain" };
+}
+
+/** The insider's largest day against their usual size: "2.8x", "100x+"; the dash without the history. */
+function insiderUsualFact(buyer: InsiderSignalBuyer, row?: InsiderSignalRow): InsiderSignalFact {
+  const ratio = insiderUsualRatio(buyer, row);
+  if (ratio == null) return NO_FACT;
+  return { text: formatInsiderUsual(ratio), sort: ratio, value: ratio, weight: ratio >= USUAL_COUNTED_FROM ? "signal" : "plain" };
+}
+
+/**
+ * The insider's change in the holding, with the both-ways mark when it was
+ * counted on the net of buys and sales. Sorted by how far the holding
+ * moved: NEW above every raise (buying), EXITED as a 100% cut (selling).
+ */
+export function insiderStakeFact(buyer: InsiderSignalBuyer): InsiderSignalFact {
+  const stake = insiderStakeValue(buyer);
+  const bothWays = buyer.twoWay === true;
+  const text = formatInsiderStake(stake, bothWays);
+  const marked = bothWays ? { bothWays } : {};
+  if (stake === null) return { ...NO_FACT, text, ...marked };
+  if (typeof stake === "string") {
+    const isNew = stake === "NEW";
+    return { text, sort: isNew ? Number.MAX_SAFE_INTEGER : 100, value: stake, weight: "strong", sign: isNew ? 1 : -1, ...marked };
+  }
+  return { text, sort: Math.abs(stake), value: stake, weight: "signal", sign: stake > 0 ? 1 : -1, ...marked };
+}
+
+/**
+ * Why, as the server's sentences: what exports and scripts read as `why`.
+ * The pane and the text report say it as columns.
+ */
+export function insiderSignalWhy(row: Pick<InsiderSignalRow, "reasons">): string {
+  return row.reasons.join(" · ");
+}
+
+/** The insider a row's columns speak for: the one with the most dollars (the ranking lists them largest first). */
+export function insiderSignalLead(row: InsiderSignalRow): InsiderSignalBuyer | null {
+  return row.buyers[0] ?? null;
+}
+
+/** The lead insider's role, and how many others traded: "Director +1". */
+export function insiderSignalRoleText(row: InsiderSignalRow): string {
+  const lead = insiderSignalLead(row);
+  if (!lead) return INSIDER_SIGNAL_NONE;
+  const others = Math.max(0, row.insiders - 1);
+  return others ? `${lead.role} +${others}` : lead.role;
+}
+
+/** The row's insider columns: the lead insider's role, nth trade, size against usual and stake. */
+export interface InsiderSignalRowFacts {
+  role: string;
+  nth: InsiderSignalFact;
+  usual: InsiderSignalFact;
+  stake: InsiderSignalFact;
+}
+
+export function insiderSignalRowFacts(row: InsiderSignalRow): InsiderSignalRowFacts {
+  const lead = insiderSignalLead(row);
+  return {
+    role: insiderSignalRoleText(row),
+    nth: lead ? insiderNthFact(lead, row) : NO_FACT,
+    usual: lead ? insiderUsualFact(lead, row) : NO_FACT,
+    stake: lead ? insiderStakeFact(lead) : NO_FACT,
+  };
 }
 
 const DAY_MS = 86_400_000;
@@ -396,35 +466,147 @@ export function insiderSignalsEmptyTitle(window: number, side: InsiderSignalSide
     : `No open-market insider ${activity} in the last ${window} days.`;
 }
 
-/** An insider's change in the holding: NEW, EXITED, +56%, -39%, 6x above +300%, or "--" without balances. */
-export function formatInsiderStakeChange(buyer: InsiderSignalBuyer): string {
-  if (buyer.exited) return "EXITED";
-  if (buyer.newPosition) return "NEW";
-  const pct = buyer.stakeChangePct;
-  if (pct == null || !Number.isFinite(pct) || pct === 0) return "--";
-  if (pct > STAKE_MULTIPLE_ABOVE) return stakeMultiple(pct);
-  // Under 1% keeps a decimal, so a small trade does not read as none.
-  const rounded = Math.abs(pct) < 1 ? Math.round(pct * 10) / 10 : Math.round(pct);
-  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+/** The opened company's title: its ticker and name, said once. */
+export function insiderSignalDetailTitle(row: Pick<InsiderSignalRow, "ticker" | "company">): string {
+  return `${row.ticker} \u00b7 ${row.company}`;
 }
 
-/** One line of the selected company's detail: an insider and what they traded. */
+/** One figure of the opened company, for its `StatGrid` and the CLI's line over its insiders. */
+export interface InsiderSignalFigure {
+  id: string;
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: "positive" | "negative";
+}
+
+/**
+ * The opened company's figures, each said once: its score, the dollars and
+ * shares, how many insiders on how many days, the window and the first
+ * trade in it, the last trade and when it was filed, and the market value where
+ * the server stores it. What each insider did is the table under them.
+ */
+export function insiderSignalFigures(row: InsiderSignalRow, window: number, side: InsiderSignalSide): InsiderSignalFigure[] {
+  const words = insiderSideWords(side);
+  const days = `${row.buys} ${side === "sell" ? "sale" : "buy"} ${row.buys === 1 ? "day" : "days"}`;
+  return [
+    { id: "score", label: "Score", value: String(row.score) },
+    {
+      id: "value",
+      label: words.traded,
+      value: formatSignalValue(row.value),
+      detail: `${formatCompact(Math.round(row.shares))} shares`,
+      tone: side === "sell" ? "negative" : "positive",
+    },
+    { id: "insiders", label: words.insiders, value: String(row.insiders), detail: days },
+    { id: "window", label: "Window", value: `${window}D`, detail: `first ${side === "sell" ? "sale" : "buy"} ${formatSignalDay(row.firstBuy)}` },
+    { id: "last", label: words.last, value: formatSignalDay(row.lastBuy), detail: `filed ${formatSignalDay(row.lastFiled)}` },
+    ...(row.marketCap != null && row.marketCap > 0 ? [{
+      id: "cap",
+      label: "Market cap",
+      value: formatSignalValue(row.marketCap),
+      detail: `${formatSharePct(row.value / row.marketCap)} ${words.traded.toLowerCase()}`,
+    }] : []),
+  ];
+}
+
+/** A part of a company, in percent: 0.42%, 3.1%, 12%, and <0.01% for less than rounds to. */
+function formatSharePct(ratio: number): string {
+  const pct = ratio * 100;
+  if (pct < 0.01) return "<0.01%";
+  return `${pct < 1 ? pct.toFixed(2) : pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`;
+}
+
+/** One line of the opened company's insiders: an insider, in the ranking's columns. */
 export interface InsiderSignalDetailLine {
+  buyer: InsiderSignalBuyer;
   name: string;
   role: InsiderSignalRole;
+  nth: InsiderSignalFact;
+  usual: InsiderSignalFact;
+  stake: InsiderSignalFact;
   value: string;
   last: string;
-  stake: string;
 }
 
 export function insiderSignalDetailLines(row: InsiderSignalRow): InsiderSignalDetailLine[] {
   return row.buyers.map((buyer) => ({
+    buyer,
     name: formatInsiderName(buyer.name),
     role: buyer.role,
+    nth: insiderNthFact(buyer, row),
+    usual: insiderUsualFact(buyer, row),
+    stake: insiderStakeFact(buyer),
     value: formatSignalValue(buyer.value),
     last: formatSignalDay(buyer.lastBuy),
-    stake: formatInsiderStakeChange(buyer),
   }));
+}
+
+export type InsiderSignalDetailColumnId = "name" | "role" | "nth" | "usual" | "stake" | "value" | "lastBuy";
+export type InsiderSignalDetailColumn = DataTableColumn & { id: InsiderSignalDetailColumnId };
+
+/**
+ * The opened company's insider columns, the ranking's in the same order:
+ * name, role, nth trade, size against usual, stake, dollars and last trade
+ * day. The name takes the room left; below 12 cells the size against usual
+ * goes, then the nth trade, then the last trade day, as the ranking drops
+ * them, so a phone keeps the dollars whole.
+ */
+export function buildInsiderSignalDetailColumns(
+  width: number,
+  lines: readonly InsiderSignalDetailLine[],
+  { side = "buy" }: { side?: InsiderSignalSide } = {},
+): InsiderSignalDetailColumn[] {
+  const words = insiderSideWords(side);
+  const widths = {
+    role: fitWidth(lines.map((line) => line.role), "Role", 16),
+    nth: fitWidth(lines.map((line) => line.nth.text), "Nth", 6),
+    usual: fitWidth(lines.map((line) => line.usual.text), "Vs Usual", 6),
+    stake: fitWidth(lines.map((line) => line.stake.text), "Stake", 10),
+    value: fitWidth(lines.map((line) => line.value), words.traded, 8),
+    lastBuy: fitWidth(lines.map((line) => line.last), words.last, 8),
+  };
+  const show = { usual: true, nth: true, lastBuy: true };
+  const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
+  const room = () => available - [
+    widths.role,
+    show.nth ? widths.nth : 0,
+    show.usual ? widths.usual : 0,
+    widths.stake,
+    widths.value,
+    show.lastBuy ? widths.lastBuy : 0,
+  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
+  for (const drop of ["usual", "nth", "lastBuy"] as const) {
+    if (room() >= COMPANY_MIN) break;
+    show[drop] = false;
+  }
+  return [
+    { id: "name", label: "Insider", width: Math.max(COMPANY_MIN, room()), align: "left", flexGrow: 1 },
+    { id: "role", label: "Role", width: widths.role, align: "left" },
+    ...(show.nth ? [{ id: "nth" as const, label: "Nth", width: widths.nth, align: "right" as const }] : []),
+    ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
+    { id: "stake", label: "Stake", width: widths.stake, align: "right" },
+    { id: "value", label: words.traded, width: widths.value, align: "right" },
+    ...(show.lastBuy ? [{ id: "lastBuy" as const, label: words.last, width: widths.lastBuy, align: "right" as const }] : []),
+  ];
+}
+
+/** What an insider column sorts by, as the ranking's columns do. */
+export function insiderSignalDetailSortValue(line: InsiderSignalDetailLine, columnId: InsiderSignalDetailColumnId): SortComparableValue {
+  switch (columnId) {
+    case "name": return line.name.toLocaleLowerCase("en-US");
+    case "role": return line.role;
+    case "nth": return line.nth.sort;
+    case "usual": return line.usual.sort;
+    case "stake": return line.stake.sort;
+    case "value": return line.buyer.value;
+    case "lastBuy": return line.buyer.lastBuy;
+  }
+}
+
+/** Names and roles sort A to Z first, figures and dates largest first. */
+export function insiderSignalDetailFirstDirection(columnId: InsiderSignalDetailColumnId): "asc" | "desc" {
+  return columnId === "name" || columnId === "role" ? "asc" : "desc";
 }
 
 /** Cells left and right of the columns, and between two of them. */
@@ -432,95 +614,102 @@ const TABLE_PADDING = 2;
 const COLUMN_GAP = 1;
 /** The kit widens a column to fit its header plus the sort arrow. */
 const HEADER_EXTRA = 2;
-/** The reasons are the point of the view; below this they would read as noise. */
-const WHY_MIN = 24;
-/**
- * As chips, the reasons want room for the insiders together and one insider
- * after them ("2 insiders  Director -58%"): the count column says the same
- * as that first chip, so it goes before they get less.
- */
-const WHY_MIN_CHIPS = 32;
+/** Below this the company names read as stubs: the column goes instead. */
+const COMPANY_MIN = 12;
 
 function fitWidth(texts: readonly string[], label: string, max: number): number {
   const widest = texts.reduce((width, value) => Math.max(width, displayWidth(value)), 0);
   return Math.max(displayWidth(label) + HEADER_EXTRA, Math.min(max, widest));
 }
 
+/** The columns a narrow pane gives up, first to last: the lead insider's size against usual and nth trade, then as before. */
+const NARROW_DROPS = ["usual", "nth", "company", "insiders", "lastBuy"] as const;
+
 /**
  * The columns that fit `width` cells (the desktop passes its width in the
- * same cells and lets the reasons fill the rest). The reasons keep at least
- * 24 cells, 32 as chips: when the pane runs short the company goes first,
- * then the insider count and the last trade day, so a narrow pane still
- * reads ticker, score, why and dollars. Room the reasons do not need widens
- * the company. `chips` sizes the reasons as chips (the desktop and the
- * web), else as their text.
+ * same cells): ticker, company, score, then the lead insider's role, nth
+ * trade, size against usual and stake, then the insiders, dollars and last
+ * trade day. When the pane runs short, the size against usual goes first,
+ * then the nth trade, then the company (below 12 cells), the insider count
+ * and the last trade day, so a narrow pane still reads ticker, score, role,
+ * stake and dollars. The company takes the room left, the role when the
+ * company is gone.
  */
 export function buildInsiderSignalColumns(
   width: number,
   rows: readonly InsiderSignalRow[],
-  { side = "buy", chips = false }: { side?: InsiderSignalSide; chips?: boolean } = {},
+  { side = "buy" }: { side?: InsiderSignalSide } = {},
 ): InsiderSignalColumn[] {
   const words = insiderSideWords(side);
+  const facts = rows.map(insiderSignalRowFacts);
   const widths = {
     ticker: fitWidth(rows.map((row) => row.ticker), "Ticker", 8),
-    company: fitWidth(rows.map((row) => row.company), "Company", 20),
     score: fitWidth(rows.map((row) => String(row.score)), "Score", 5),
+    role: fitWidth(facts.map((fact) => fact.role), "Role", 16),
+    nth: fitWidth(facts.map((fact) => fact.nth.text), "Nth", 6),
+    usual: fitWidth(facts.map((fact) => fact.usual.text), "Vs Usual", 6),
+    stake: fitWidth(facts.map((fact) => fact.stake.text), "Stake", 10),
     insiders: fitWidth(rows.map((row) => String(row.insiders)), words.insiders, 4),
     value: fitWidth(rows.map((row) => formatSignalValue(row.value)), words.traded, 8),
     lastBuy: fitWidth(rows.map((row) => formatSignalDay(row.lastBuy)), words.last, 8),
   };
-  const show = { company: true, insiders: true, lastBuy: true };
+  const show = { usual: true, nth: true, company: true, insiders: true, lastBuy: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
   const fixed = () => [
     widths.ticker,
-    show.company ? widths.company : 0,
     widths.score,
+    widths.role,
+    show.nth ? widths.nth : 0,
+    show.usual ? widths.usual : 0,
+    widths.stake,
     show.insiders ? widths.insiders : 0,
     widths.value,
     show.lastBuy ? widths.lastBuy : 0,
-  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
-  const whyMin = chips ? WHY_MIN_CHIPS : WHY_MIN;
-  for (const drop of ["company", "insiders", "lastBuy"] as const) {
-    if (available - fixed() - COLUMN_GAP >= whyMin) break;
+  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0) - COLUMN_GAP;
+  const room = () => available - fixed() - (show.company ? COLUMN_GAP : 0);
+  for (const drop of NARROW_DROPS) {
+    if (room() >= (show.company ? COMPANY_MIN : 0)) break;
     show[drop] = false;
   }
-  let why = Math.max(8, available - fixed() - COLUMN_GAP);
-  // Room the reasons do not need goes to the company names cut at 20.
-  if (show.company) {
-    const needs = rows.map((row) => {
-      const rowChips = insiderSignalChips(row, side);
-      return chips && rowChips ? insiderSignalChipsWidth(rowChips) : displayWidth(insiderSignalWhy(row, side));
-    });
-    const whyNeed = Math.max(displayWidth("Why") + HEADER_EXTRA, ...needs);
-    const grow = Math.max(0, Math.min(why - whyNeed, fitWidth(rows.map((row) => row.company), "Company", 32) - widths.company));
-    widths.company += grow;
-    why -= grow;
-  }
+  const left = Math.max(0, room());
+  const company = Math.max(COMPANY_MIN, left);
+  // Wider than the names need, the company still takes the rest, so the figures sit at the pane's right edge.
+  const role = show.company ? widths.role : widths.role + left;
   return [
     { id: "ticker", label: "Ticker", width: widths.ticker, align: "left" },
-    ...(show.company ? [{ id: "company" as const, label: "Company", width: widths.company, align: "left" as const }] : []),
+    ...(show.company ? [{ id: "company" as const, label: "Company", width: company, align: "left" as const, flexGrow: 1 }] : []),
     { id: "score", label: "Score", width: widths.score, align: "right" },
-    { id: "why", label: "Why", width: why, align: "left", flexGrow: 1 },
+    { id: "role", label: "Role", width: role, align: "left", ...(show.company ? {} : { flexGrow: 1 }) },
+    ...(show.nth ? [{ id: "nth" as const, label: "Nth", width: widths.nth, align: "right" as const }] : []),
+    ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
+    { id: "stake", label: "Stake", width: widths.stake, align: "right" },
     ...(show.insiders ? [{ id: "insiders" as const, label: words.insiders, width: widths.insiders, align: "right" as const }] : []),
     { id: "value", label: words.traded, width: widths.value, align: "right" },
     ...(show.lastBuy ? [{ id: "lastBuy" as const, label: words.last, width: widths.lastBuy, align: "right" as const }] : []),
   ];
 }
 
-/** The ranking's own order breaks ties, so a sort never shuffles equal rows. */
-export function compareInsiderSignalRows(a: InsiderSignalRow, b: InsiderSignalRow, columnId: InsiderSignalColumnId, side: InsiderSignalSide = "buy"): number {
+/** What a column sorts a row by: the shared sort puts a missing fact last either way, and the ranking's order breaks ties. */
+export function insiderSignalSortValue(row: InsiderSignalRow, columnId: InsiderSignalColumnId): SortComparableValue {
   switch (columnId) {
-    case "ticker": return a.ticker.localeCompare(b.ticker, "en-US");
-    case "company": return a.company.localeCompare(b.company, "en-US", { sensitivity: "base" });
-    case "score": return a.score - b.score;
-    case "why": return insiderSignalWhy(a, side).localeCompare(insiderSignalWhy(b, side), "en-US", { sensitivity: "base" });
-    case "insiders": return a.insiders - b.insiders;
-    case "value": return a.value - b.value;
-    case "lastBuy": return a.lastBuy.localeCompare(b.lastBuy);
+    case "ticker": return row.ticker;
+    case "company": return row.company.toLocaleLowerCase("en-US");
+    case "score": return row.score;
+    // By role, then by how many others traded: Director, Director +1, Director +12.
+    case "role": {
+      const lead = insiderSignalLead(row);
+      return lead ? `${lead.role} ${String(Math.max(0, row.insiders - 1)).padStart(4, "0")}` : null;
+    }
+    case "nth": return insiderSignalRowFacts(row).nth.sort;
+    case "usual": return insiderSignalRowFacts(row).usual.sort;
+    case "stake": return insiderSignalRowFacts(row).stake.sort;
+    case "insiders": return row.insiders;
+    case "value": return row.value;
+    case "lastBuy": return row.lastBuy;
   }
 }
 
 /** Text columns sort A to Z first, figures and dates largest first. */
 export function insiderSignalFirstDirection(columnId: InsiderSignalColumnId): "asc" | "desc" {
-  return columnId === "ticker" || columnId === "company" || columnId === "why" ? "asc" : "desc";
+  return columnId === "ticker" || columnId === "company" || columnId === "role" ? "asc" : "desc";
 }

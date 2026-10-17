@@ -22,6 +22,7 @@ import {
 } from "./catalog-inventory";
 import {
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
   parseChartSpec,
@@ -140,14 +141,21 @@ function pinChartSpecListings(spec: ChartSpec, tickers: ReadonlyMap<string, Tick
 
 function prepareChartPaneForShare(
   pane: PaneInstanceConfig,
-  { tickers }: { tickers: ReadonlyMap<string, TickerRecord> },
+  { tickers, pinnedTime }: { tickers: ReadonlyMap<string, TickerRecord>; pinnedTime?: number },
 ): PaneInstanceConfig {
+  // A crosshair pinned in the sender's tab travels with the link, so it opens
+  // on that moment. A moment the pane still holds from a link it was opened
+  // from is never passed on, whatever else the pane holds.
+  const { [CHART_PINNED_MOMENT_SETTING_KEY]: held, ...settings } = pane.settings ?? {};
   const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
-  if (!spec) return pane;
+  if (!spec) return held === undefined ? pane : { ...pane, settings };
   const pinned = pinChartSpecListings(spec, tickers);
-  return pinned === spec
-    ? pane
-    : { ...pane, settings: { ...pane.settings, [CHART_SPEC_SETTING_KEY]: pinned } };
+  if (pinned === spec && pinnedTime === undefined && held === undefined) return pane;
+  return { ...pane, settings: {
+    ...settings,
+    [CHART_SPEC_SETTING_KEY]: pinned,
+    ...(pinnedTime !== undefined ? { [CHART_PINNED_MOMENT_SETTING_KEY]: pinnedTime } : {}),
+  } };
 }
 
 interface SharedChartState {

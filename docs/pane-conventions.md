@@ -331,6 +331,9 @@ back button or clicking Back pops it. Rules:
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.
+- A row that is shown but does not apply right now (an exited holder, a story
+  or print after the tab's pinned moment) reads in `textMuted` and plain
+  weight across the row, its value colours included, and stays selectable.
 - A row's DES (`d`, a menu entry, a linked ticker) opens through
   `useOpenDescription` (`shared/open-description.ts`), which brings forward
   the DES already open for that listing instead of opening a second one.

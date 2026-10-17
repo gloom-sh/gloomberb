@@ -5,6 +5,7 @@ import {
   QueryBar,
   StatGrid,
   statGridRows,
+  usePaneFooter,
   usePaneNoticeFooter,
   usePaneStatusFooter,
   type CompositeAxisDomain,
@@ -54,36 +55,18 @@ export {
   buildRelationshipGraphSettingsDef
 } from "./model";
 
-type RelationshipGraphShortcut =
-  | "range"
-  | "window"
-  | "correlation"
-  | "regression"
-  | { range: RelationshipRange };
-
 /**
- * [t]ime range cycles and 1-6 pick a range, [p]eriod cycles the correlation
- * window, [c]orr and [f]it toggle their panels. The query bar shows all four,
- * so none needs a footer hint. Plain `r` is the pane refresh key.
+ * 1-6 pick a range. [t]ime range cycles, [p]eriod cycles the correlation
+ * window, [c]orr and [f]it toggle their panels: footer keys, bound but not
+ * drawn, since the query bar shows all four, and a chart's own `p` gives way
+ * to them. Plain `r` is the pane refresh key.
  */
-function resolveRelationshipGraphShortcut(
+function resolveRelationshipRangeKey(
   event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "shift" | "alt" | "meta" | "super">,
-): RelationshipGraphShortcut | null {
+): RelationshipRange | null {
   if (event.ctrl || event.shift || event.alt || event.meta || event.super) return null;
-
-  const key = (event.name ?? event.key ?? "").toLowerCase();
-  switch (key) {
-    case "t":
-      return "range";
-    case "p":
-      return "window";
-    case "c":
-      return "correlation";
-    case "f":
-      return "regression";
-  }
-  const range = /^[1-9]$/.test(key) ? RELATIONSHIP_RANGES[Number(key) - 1] : undefined;
-  return range ? { range } : null;
+  const key = event.name ?? event.key ?? "";
+  return (/^[1-9]$/.test(key) ? RELATIONSHIP_RANGES[Number(key) - 1] : undefined) ?? null;
 }
 
 const RANGE_OPTIONS = RELATIONSHIP_RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
@@ -238,29 +221,18 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       event.stopPropagation();
       return;
     }
-    const shortcut = resolveRelationshipGraphShortcut(event);
-    if (!shortcut) return;
+    const range = resolveRelationshipRangeKey(event);
+    if (!range) return;
     event.preventDefault();
     event.stopPropagation();
-    if (typeof shortcut === "object") {
-      setRange(shortcut.range);
-      return;
-    }
-    switch (shortcut) {
-      case "range":
-        cycleRange();
-        return;
-      case "window":
-        cycleWindow();
-        return;
-      case "correlation":
-        toggleCorrelation();
-        return;
-      case "regression":
-        toggleRegression();
-        return;
-    }
+    setRange(range);
   });
+  usePaneFooter("relationship-keys", () => ({ keys: [
+    { id: "range", key: "t", label: "ime range", onPress: cycleRange },
+    { id: "window", key: "p", label: "eriod", title: "Correlation Window", onPress: cycleWindow },
+    { id: "correlation", key: "c", label: "orr", onPress: toggleCorrelation },
+    { id: "regression", key: "f", label: "it", onPress: toggleRegression },
+  ] }), [cycleRange, cycleWindow, toggleCorrelation, toggleRegression]);
 
   usePaneNoticeFooter({
     registrationId: "relationship-warnings", focused,

@@ -6,6 +6,7 @@ import { paneScreenshotScale, PANE_SCREENSHOT_MIN_WIDTH } from "../../../../remo
 import { base64Bytes, formatCaptureStamp, type PaneImageCapture } from "../../../../shares/pane-image";
 import { capturedPersonalData, panePersonalData } from "../../../../shares/personal-pane";
 import { resolveTickerForPane, useAppStateRef } from "../../../../state/app/context";
+import { pinnedTabTime } from "../../../../state/app/tab-cursor";
 import type { LayoutConfig } from "../../../../types/config";
 import { useRendererHost, useUiCapabilities, type NativeRendererHost } from "../../../../ui";
 import { buildPaneSharePayload } from "../../../../shares/pane";
@@ -80,6 +81,7 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
         state.paneState[paneId] ?? {},
         resolveTickerForPane(state, paneId),
         state.tickers,
+        pinnedTabTime(state),
       ) : null,
       personalData: panePersonalData({ registry: current.pluginRegistry, state, layout: current.layout, pane }),
     };

@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import {
-  Badge,
-  ColumnGrid,
-  DataTableView,
-  Divider,
+  DataTableStackView,
   PaneStatusBody,
   QueryBar,
+  usePaneFooter,
   usePaneNoticeFooter,
   usePaneStatusFooter,
-  type ColumnGridColumn,
   type DataTableCell,
   type QueryBarFilter,
 } from "../../../components";
@@ -18,16 +15,15 @@ import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { displayWidth } from "../../../utils/format";
+import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import type { CloudResource } from "../shared/cloud-resource";
-import { listingCell } from "../shared/research-cells";
+import { listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedInsiderSignals, DEFAULT_INSIDER_SIGNAL_WINDOW, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
 import {
   buildInsiderSignalColumns,
-  compareInsiderSignalRows,
   formatSignalDay,
   formatSignalValue,
   INSIDER_SIGNAL_CAP_OPTIONS,
@@ -36,38 +32,33 @@ import {
   INSIDER_SIGNAL_SIDE_OPTIONS,
   INSIDER_SIGNAL_SIDE_SHORT,
   INSIDER_SIGNAL_WINDOW_OPTIONS,
+  INSIDER_SIGNAL_NONE,
   insiderSideWords,
-  insiderSignalChips,
-  insiderSignalChipsText,
-  insiderSignalChipUnits,
   insiderSignalOnly,
   insiderSignalOnlyOptions,
-  insiderSignalDetailLines,
+  insiderSignalDetailTitle,
   insiderSignalFirstDirection,
   insiderSignalsCoverageNotice,
   insiderSignalsEmptyTitle,
   insiderSignalsFiltered,
   insiderSignalsQueryFrom,
   insiderSignalsBarFit,
-  insiderSignalWhy,
+  insiderSignalRowFacts,
+  insiderSignalSortValue,
   type InsiderSignalColumn,
   type InsiderSignalColumnId,
   type InsiderSignalOnly,
 } from "./signals-model";
+import { factCell } from "./signals-cells";
+import { InsiderSignalCompanyDetail } from "./signals-detail";
 
 interface InsiderSignalsViewProps {
   width: number;
   height: number;
   focused: boolean;
-  /** Opens the company's insider transactions in this pane. */
-  onOpen: (ticker: string) => void;
+  /** Opens the company's own INS, its trades as filed, in its own pane. */
+  onOpenIns: (ticker: string) => void;
 }
-
-/** The selected company's insiders under the table, until the pane is too short to spare the rows. */
-const DETAIL_MIN_PANE_HEIGHT = 16;
-/** Insiders the detail lists, largest first; the ranking keeps up to ten. */
-const DETAIL_MAX_INSIDERS = 5;
-const DETAIL_GAP = 2;
 
 /** A ranking with the query it answers, so rows another query left on screen are told from this one's. */
 interface InsiderSignalsAnswer {
@@ -77,13 +68,15 @@ interface InsiderSignalsAnswer {
 
 /**
  * INS without a ticker: the companies whose insiders bought, or sold, their
- * own shares in the open market lately, ranked, each with why as chips (the
- * terminal: the same facts as text). Filters narrow by role, size, clusters,
- * new positions or whole stakes sold, and market value. Enter or a double
- * click opens the company's own INS in the same pane; the selected company's
- * insiders are listed under the table.
+ * own shares in the open market lately, ranked, each with why as columns:
+ * the lead insider's role, nth trade, size against usual and stake. Filters
+ * narrow by role, size, clusters, new positions or whole stakes sold, and
+ * market value. Enter or a click opens a company here, as other tables open
+ * a row: its figures and its insiders in the same columns, and Back or Esc
+ * returns to the same row. `i` opens the company's own INS, its trades as
+ * filed, in its own pane, from the table or the opened company.
  */
-export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSignalsViewProps) {
+export function InsiderSignalsView({ width, height, focused, onOpenIns }: InsiderSignalsViewProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const session = useResearchCloudSession();
@@ -107,6 +100,8 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   const side = query.side;
   const words = insiderSideWords(side);
   const [selectedTicker, setSelectedTicker] = usePluginPaneState<string | null>("insider:signals:selected", null);
+  // The opened company, by ticker, with the selected row, so a reload or a shared layout lands on it.
+  const [openTicker, setOpenTicker] = usePluginPaneState<string | null>("insider:signals:open", null);
   const [sort, setSort] = useState<{ columnId: InsiderSignalColumnId; direction: "asc" | "desc" }>({ columnId: "score", direction: "desc" });
 
   const loader = useCallback(
@@ -147,15 +142,24 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   const rows = data?.rows ?? [];
   const sortedRows = useMemo(() => {
     const order = new Map(rows.map((row, index) => [row.ticker, index]));
-    const sign = sort.direction === "asc" ? 1 : -1;
+    // The shared sort: a missing fact last either way, the ranking's order between equals.
     return [...rows].sort((a, b) => (
-      sign * compareInsiderSignalRows(a, b, sort.columnId, dataSide) || order.get(a.ticker)! - order.get(b.ticker)!
+      compareSortValues(insiderSignalSortValue(a, sort.columnId), insiderSignalSortValue(b, sort.columnId), sort.direction)
+      || order.get(a.ticker)! - order.get(b.ticker)!
     ));
-  }, [dataSide, rows, sort]);
-  const columns = useMemo(
-    () => buildInsiderSignalColumns(width, rows, { side: dataSide, chips: !!nativePaneChrome }),
-    [dataSide, nativePaneChrome, rows, width],
-  );
+  }, [rows, sort]);
+  const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
+  const openRow = openTicker ? rows.find((row) => row.ticker === openTicker) ?? null : null;
+  const detailOpen = !!openRow;
+  // A company this query no longer ranks closes, once the query has answered.
+  useEffect(() => {
+    if (openTicker && answered && !answered.payload.rows.some((row) => row.ticker === openTicker)) setOpenTicker(null);
+  }, [answered, openTicker, setOpenTicker]);
+  const selectedRow = sortedRows.find((row) => row.ticker === selectedTicker) ?? sortedRows[0] ?? null;
+  const insTarget = openRow ?? selectedRow;
+  usePaneFooter("insider:signals:ins", () => (insTarget ? {
+    hints: [{ id: "insider-ins", key: "i", label: "ns", title: "Insider transactions (INS)", onPress: () => onOpenIns(insTarget.ticker) }],
+  } : null), [insTarget, onOpenIns]);
 
   usePaneStatusFooter({
     registrationId: "insider:signals",
@@ -170,6 +174,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   usePaneNoticeFooter({
     registrationId: "insider:signals:notices",
     focused,
+    enabled: !detailOpen,
     notices: [
       ...(coverageNotice ? [coverageNotice] : []),
       ...(shown?.refreshError ? [shown.refreshError] : []),
@@ -181,41 +186,21 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       case "ticker": return listingCell(row.ticker, colors, state.selected);
       case "company": return { text: row.company, color: colors.textMuted };
       case "score": return { text: String(row.score), value: row.score, color: colors.textBright };
-      case "why": {
-        const chips = insiderSignalChips(row, dataSide);
-        if (!chips) return { text: insiderSignalWhy(row, dataSide), color: colors.text };
-        const text = insiderSignalChipsText(chips);
-        // The terminal reads the same facts as text; CSV export reads the text either way.
-        if (!nativePaneChrome) return { text, color: colors.text };
-        return {
-          text,
-          content: (
-            // One line that wraps, clipped: the browser moves a chip that does not fit whole, and every
-            // chip after it, to the hidden line. Nothing wide stands first, so that goes for the first chip too.
-            <Box flexDirection="row" flexWrap="wrap" width="100%" minWidth={0} height={1} overflow="hidden">
-              <Box width={0} height={1} flexShrink={0} />
-              {insiderSignalChipUnits(chips).map((unit, unitIndex) => (
-                <Box key={unitIndex} flexDirection="row" gap={1} height={1} flexShrink={0} marginLeft={unit.gap}>
-                  {unit.chips.map((chip, chipIndex) => (
-                    <Badge key={`${chip.label}:${chipIndex}`} label={chip.label} tone={chip.tone} variant={chip.variant} />
-                  ))}
-                </Box>
-              ))}
-            </Box>
-          ),
-        };
+      case "role": {
+        const role = insiderSignalRowFacts(row).role;
+        // Muted, as a role reads in INS's trades and the opened company's insiders.
+        return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.textMuted };
       }
+      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected);
+      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected);
+      // The terminal sets content in the column's own cells; the desktop's cell aligns it.
+      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width);
       case "insiders": return { text: String(row.insiders), value: row.insiders, color: colors.text };
       // Every row is buying, or selling, drawn as INS draws a buy or a sale.
       case "value": return { text: formatSignalValue(row.value), value: row.value, color: dataSide === "sell" ? colors.negative : colors.positive };
       case "lastBuy": return { text: formatSignalDay(row.lastBuy), value: row.lastBuy, color: colors.textDim };
     }
   }, [colors, dataSide, nativePaneChrome]);
-
-  const selectedRow = sortedRows.find((row) => row.ticker === selectedTicker) ?? sortedRows[0] ?? null;
-  const detail = selectedRow && height >= DETAIL_MIN_PANE_HEIGHT
-    ? <InsiderSignalDetail row={selectedRow} side={dataSide} width={width} />
-    : undefined;
 
   if (!data && isCloudSessionRequired(resource.error)) {
     return <SignInWall placement="insider-signals-signin" width={width} height={height} action="view insider activity" needsVerification={session.needsVerification} />;
@@ -315,12 +300,17 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   }
 
   return (
-    <DataTableView<InsiderSignalRow, InsiderSignalColumn>
+    <DataTableStackView<InsiderSignalRow, InsiderSignalColumn>
       focused={focused}
+      detailOpen={detailOpen}
+      onBack={() => setOpenTicker(null)}
+      detailTitle={openRow ? insiderSignalDetailTitle(openRow) : undefined}
+      detailContent={openRow
+        ? <InsiderSignalCompanyDetail key={openRow.ticker} row={openRow} side={dataSide} window={data.window} width={width} focused={focused} />
+        : null}
       rootWidth={width}
       rootHeight={height}
       rootBefore={queryBar}
-      rootAfter={detail}
       columns={columns}
       items={sortedRows}
       getItemKey={(row) => row.ticker}
@@ -331,80 +321,18 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
         onChange: (ticker) => setSelectedTicker(ticker),
       }}
       onActivate={(row) => {
-        onOpen(row.ticker);
         setSelectedTicker(row.ticker);
+        setOpenTicker(row.ticker);
       }}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
-      onHeaderClick={(columnId) => setSort((current) => {
-        const id = columnId as InsiderSignalColumnId;
-        if (current.columnId !== id) return { columnId: id, direction: insiderSignalFirstDirection(id) };
-        return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
-      })}
+      onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as InsiderSignalColumnId, {
+        firstDirection: insiderSignalFirstDirection,
+      }))}
       renderCell={renderCell}
       selectedTextOverridesCellColor
       showHorizontalScrollbar={false}
       emptyStateTitle={insiderSignalsEmptyTitle(data.window, dataSide, insiderSignalsFiltered(query))}
     />
-  );
-}
-
-/**
- * The selected company's insiders, largest first: name, role, dollars, last
- * trade day and the change in their holding (NEW, EXITED, +56%, -39%).
- */
-function InsiderSignalDetail({ row, side, width }: { row: InsiderSignalRow; side: InsiderSignalSide; width: number }) {
-  const colors = useThemeColors();
-  const words = insiderSideWords(side);
-  const lines = insiderSignalDetailLines(row).slice(0, DETAIL_MAX_INSIDERS);
-  if (!lines.length) return null;
-  const inner = Math.max(1, width - 2);
-  const fit = (texts: string[], label: string) => Math.max(displayWidth(label), ...texts.map(displayWidth));
-  const role = fit(lines.map((line) => line.role), "Role");
-  const value = fit(lines.map((line) => line.value), words.traded);
-  const last = fit(lines.map((line) => line.last), "Last");
-  const stake = fit(lines.map((line) => line.stake), "Stake");
-  // Names as wide as the longest, so the figures sit beside them; cut only when the pane is short of room.
-  const name = Math.max(8, Math.min(
-    fit(lines.map((line) => line.name), row.ticker),
-    inner - role - value - last - stake - DETAIL_GAP * 4,
-  ));
-  const gridColumns: ColumnGridColumn[] = [
-    { width: name },
-    { width: role, gapBefore: DETAIL_GAP },
-    { width: value, gapBefore: DETAIL_GAP, align: "right" },
-    { width: last, gapBefore: DETAIL_GAP, align: "right" },
-    { width: stake, gapBefore: DETAIL_GAP, align: "right" },
-  ];
-  const stakeColor = (text: string) => text === "--"
-    ? colors.textDim
-    : side === "sell" ? colors.negative : colors.positive;
-  return (
-    <Box flexDirection="column" flexShrink={0}>
-      <Divider />
-      <Box paddingX={1} flexDirection="column">
-        <ColumnGrid
-          columns={gridColumns}
-          width={inner}
-          role="insider-signal-detail"
-          rows={[
-            [
-              { text: row.ticker, color: colors.textBright },
-              { text: "Role", color: colors.textDim },
-              { text: words.traded, color: colors.textDim },
-              { text: "Last", color: colors.textDim },
-              { text: "Stake", color: colors.textDim },
-            ],
-            ...lines.map((line) => [
-              { text: line.name, color: colors.text },
-              { text: line.role, color: colors.textMuted },
-              { text: line.value, color: colors.text },
-              { text: line.last, color: colors.textDim },
-              { text: line.stake, color: stakeColor(line.stake) },
-            ]),
-          ]}
-        />
-      </Box>
-    </Box>
   );
 }

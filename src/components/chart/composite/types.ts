@@ -243,6 +243,10 @@ interface CompositeCursorLink {
   publish(time: number | null): void;
   /** Clears the shared cursor wherever it is, as Esc on a chart showing it does. */
   clear(): void;
+  /** Whether the shared cursor is pinned; a link without pins never is. */
+  pinned?(): boolean;
+  /** Pins the shared cursor at a time no pointer moves, or unpins it with null. */
+  pin?(time: number | null): void;
 }
 
 export interface CompositeChartProps {

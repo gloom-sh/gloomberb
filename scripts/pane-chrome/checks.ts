@@ -1256,6 +1256,59 @@ const steps: Step[] = [
     },
   },
   {
+    name: "chart composer: pin in the footer holds both charts at the crosshair's moment after the pointer leaves, the arrows move the pin and Esc lifts it",
+    scenario: "cmp&linked=1",
+    async run(cdp) {
+      const state = (paneId: string) => `(() => {
+        const pane = __check.pane(${JSON.stringify(paneId)});
+        return { line: !!pane?.querySelector("[data-gloom-role=chart-crosshair-x]"),
+          time: pane?.querySelector("[data-gloom-role=chart-time-axis]")?.getAttribute("data-gloom-cursor") ?? null };
+      })()`;
+      type State = { line: boolean; time: string | null };
+      const both = `({ a: ${state("chart-composer:a")}, b: ${state("chart-composer:b")} })`;
+      const pinHint = (label: string) => `(() => {
+        const footer = __check.pane("chart-composer:a")?.querySelector("[data-gloom-role=pane-footer]");
+        const hit = [...(footer?.querySelectorAll("*") ?? [])].filter((node) => node.textContent?.trim().endsWith(${JSON.stringify(label)}))
+          .sort((x, y) => x.textContent.length - y.textContent.length)[0];
+        return hit ? __check.rect(hit) : null;
+      })()`;
+      const press = async (key: string, code: string, keyCode: number) => {
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: keyCode });
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: keyCode });
+      };
+      await loadedChartPlot(cdp);
+      if (!await waitFor(cdp, `document.querySelectorAll("[data-gloom-role=composite-chart-panel] canvas").length >= 2`, 10_000)) fail("the daily chart did not load its bars");
+      await click(cdp, await pointOf(cdp, "chart-composer:a", "title"));
+      const intraday = await plotRect(cdp, "chart-composer:a");
+      await mouse(cdp, "mouseMoved", intraday.x + intraday.width * 0.4, intraday.y + intraday.height * 0.5, false);
+      const hovered = await waitFor<{ a: State; b: State } | null>(cdp, `(() => { const s = ${both}; return s.a.line && s.b.line && s.b.time ? s : null; })()`)
+        ?? fail("the daily chart did not follow the hovered crosshair", await evaluate(cdp, both));
+      // The pointer leaves the plot for the footer's pin: the last crosshair is the one pinned.
+      const pin = await waitFor<Rect | null>(cdp, pinHint("[p]in")) ?? fail("the focused chart's footer has no pin", await evaluate(cdp, `__check.pane("chart-composer:a")?.querySelector("[data-gloom-role=pane-footer]")?.textContent`));
+      await click(cdp, { x: pin.x + pin.width / 2, y: pin.y + pin.height / 2 });
+      const pinned = await waitFor<{ a: State; b: State } | null>(cdp, `(() => { const s = ${both}; return s.a.line && s.b.line && s.b.time === ${JSON.stringify(hovered.b.time)} ? s : null; })()`)
+        ?? fail("the charts did not hold the crosshair's moment once pinned and the pointer left", { hovered, now: await evaluate(cdp, both) });
+      if (!await waitFor(cdp, `!!${pinHint("unpin")}`)) fail("the footer does not offer unpin while pinned");
+      await press("ArrowRight", "ArrowRight", 39);
+      const moved = await waitFor<{ a: State; b: State } | null>(cdp, `(() => { const s = ${both}; return s.a.line && s.b.line && s.a.time !== ${JSON.stringify(pinned.a.time)} ? s : null; })()`)
+        ?? fail("the arrow did not move the pin", { pinned, now: await evaluate(cdp, both) });
+      if ((moved.a.time ?? "") <= (pinned.a.time ?? "")) fail("the right arrow moved the pin back", { pinned, moved });
+      await press("Escape", "Escape", 27);
+      if (!await waitFor(cdp, `(() => { const s = ${both}; return !s.a.line && !s.b.line; })()`)) fail("Esc did not lift the pin from both charts", await evaluate(cdp, both));
+      // `p` under the pointer pins the same way, and the pointer leaving the plot keeps it.
+      await mouse(cdp, "mouseMoved", intraday.x + intraday.width * 0.6, intraday.y + intraday.height * 0.5, false);
+      const underPointer = await waitFor<{ a: State; b: State } | null>(cdp, `(() => { const s = ${both}; return s.a.line && s.b.line && s.b.time ? s : null; })()`)
+        ?? fail("the daily chart did not follow the hovered crosshair again", await evaluate(cdp, both));
+      await pressKey(cdp, "p");
+      await mouse(cdp, "mouseMoved", intraday.x + intraday.width * 0.5, intraday.y - 60, false);
+      if (!await waitFor(cdp, `(() => { const s = ${both}; return s.a.line && s.b.line && s.b.time === ${JSON.stringify(underPointer.b.time)}; })()`)) {
+        fail("p did not pin the crosshair under the pointer", { underPointer, now: await evaluate(cdp, both) });
+      }
+      await pressKey(cdp, "p");
+      if (!await waitFor(cdp, `(() => { const s = ${both}; return !s.a.line && !s.b.line; })()`)) fail("p again did not lift the pin", await evaluate(cdp, both));
+    },
+  },
+  {
     name: "chart composer: IV history, a monthly macro series and Fear & Greed's charts in one tab follow its crosshair and each other's, each reading its own series, and clear with it",
     scenario: "cmp&linked=mixed",
     async run(cdp) {

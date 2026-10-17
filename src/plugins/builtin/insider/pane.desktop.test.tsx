@@ -87,6 +87,8 @@ test("opens on 60 already-read Form 4 filings without a render per filing", asyn
 
 const RANKING_ID = "insider:ranking:desktop:test";
 let rankingState: AppState | null = null;
+/** Panes the ranking asked the app to open: a company's own INS, from `i`. */
+const createdPanes: Array<{ templateId: string; symbol: string | null }> = [];
 function RankingPane() {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Activity" });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({
@@ -95,7 +97,9 @@ function RankingPane() {
     tickers: new Map(RANKING.rows.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)])),
   }));
   rankingState = state;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime({
+    createPaneFromTemplate: async (templateId, options) => { createdPanes.push({ templateId, symbol: options?.symbol ?? null }); },
+  }), []);
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
@@ -115,7 +119,8 @@ const RANKING: InsiderSignalsPayload = {
   rows: [["NWBI", "Northwind Biologics Inc", "3 insiders, $1.2M in 14 days"], ["CTSO", "Contoso Energy Corp", "CEO's 4th buy in 90 days, 4.9x usual size"]].map(([ticker, company, reason], index) => ({
     ticker: ticker!, issuerCik: `990000${index}`, company: company!, score: 78 - index * 6, reasons: [reason!], insiders: 1, buys: 1, value: 500_000,
     shares: 10_000, firstBuy: "2026-10-01", lastBuy: "2026-10-14", lastFiled: "2026-10-14",
-    signals: { clusterInsiders: 1, repeatBuys: 1, usualRatio: null, stakeIncreasePct: null, newPosition: false }, buyers: [],
+    signals: { clusterInsiders: 1, repeatBuys: 1, usualRatio: null, stakeIncreasePct: null, newPosition: false },
+    buyers: [{ name: "Rivera Ana", role: index ? "CFO" : "CEO", value: 500_000, buys: 1, lastBuy: "2026-10-14", repeatBuys: index + 1, usualRatio: null }],
   })),
 };
 
@@ -123,7 +128,7 @@ async function until(done: () => boolean) {
   for (let i = 0; i < 100 && !done(); i++) await act(async () => { await Bun.sleep(20); });
 }
 
-test("the ranking opens a company in the same pane by keyboard and by double click", async () => {
+test("the ranking opens a company in its detail by keyboard and by click, Back returns, and i opens its INS", async () => {
   spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => RANKING);
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
   const pane = () => findPaneInstance(rankingState!.config.layout, RANKING_ID)!;
@@ -154,18 +159,32 @@ async function withViewport(run: () => Promise<void>) {
 async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & object, press: (key: string) => Promise<void>) {
   const container = await dom.render(<RankingPane />);
   await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
-  expect(container.textContent).toContain("3 insiders, $1.2M in 14 days");
+  expect(container.textContent).toContain("2nd");
   expect(container.textContent).toContain("as of Oct 14, 2026");
 
+  createdPanes.length = 0;
+  // The stack's title, ticker and company, shows only while a company is open.
+  const opened = () => !!container.textContent?.includes(" \u00b7 ");
   await press("ArrowDown");
   await press("Enter");
-  await until(() => pane().binding?.kind === "fixed");
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "CTSO" });
-  expect(pane().title).toBe("INS CTSO");
+  await until(opened);
+  // The company named once, in the stack's title; the pane stays the ranking.
+  expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  expect(container.textContent).not.toContain("Northwind Biologics Inc");
+  expect(pane().binding?.kind ?? "none").toBe("none");
+  expect(container.textContent).toContain("Ana Rivera");
+  await press("i");
+  expect(createdPanes).toEqual([{ templateId: "insider-pane", symbol: "CTSO" }]);
 
   await press("Escape");
   await until(() => !!container.textContent?.includes("Northwind Biologics Inc"));
-  expect(pane().binding).toEqual({ kind: "none" });
+  expect(opened()).toBe(false);
+  // Back lands on the row it opened.
+  await press("Enter");
+  await until(opened);
+  expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  await press("Escape");
+  await until(() => !opened());
 
   const row = [...container.querySelectorAll("[data-gloom-role='data-table-row']")].find((element) => element.textContent?.includes("NWBI"));
   expect(row).toBeDefined();
@@ -173,44 +192,72 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
     row!.dispatchEvent(new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 }) as unknown as Event);
     await Bun.sleep(10);
   });
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "NWBI" });
+  await until(opened);
+  expect(container.textContent).toContain("NWBI \u00b7 Northwind Biologics Inc");
 }
 
-test("the why chips wrap on one clipped row, a role with its first fact, so the browser drops whole chips", async () => {
+test("why is columns on the desktop: figures right in the side's tone, NEW bold, the both-ways mark muted, each column sorted from its header", async () => {
   const director = { name: "Okafor Ben", role: "Director" } as const;
+  const base = RANKING.rows[0]!;
   spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => ({
     ...RANKING,
     side: "buy",
-    rows: [{
-      ...RANKING.rows[0]!,
-      insiders: 3,
-      whySignals: [
-        { kind: "cluster", value: 3, text: "3 insiders", insider: null },
-        { kind: "stake", value: 58, text: "+58%", insider: director },
-        { kind: "repeat", value: 2, text: "2nd buy", insider: director },
-      ],
-    }],
+    rows: [
+      { ...base, insiders: 3, buyers: [
+        { ...director, value: 400_000, buys: 2, lastBuy: "2026-10-14", stakeChangePct: 58, repeatBuys: 2, usualRatio: 3.1 },
+        { name: "Rivera Ana", role: "CEO", value: 100_000, buys: 1, lastBuy: "2026-10-13", newPosition: true, repeatBuys: 1, usualRatio: null },
+      ] },
+      { ...base, ticker: "CTSO", company: "Contoso Energy Corp", score: 60, buyers: [
+        { ...director, value: 300_000, buys: 1, lastBuy: "2026-10-12", newPosition: true, repeatBuys: 1, usualRatio: null },
+      ] },
+      { ...base, ticker: "WWIM", company: "Wide World Importers", score: 50, buyers: [
+        { ...director, value: 200_000, buys: 3, lastBuy: "2026-10-11", stakeChangePct: 4, twoWay: true, repeatBuys: null, usualRatio: null },
+      ] },
+    ],
   }));
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
-  await withViewport(() => checkChipRow());
+  await withViewport(() => checkColumns());
 });
 
-async function checkChipRow() {
+async function checkColumns() {
   const container = await dom.render(<RankingPane />);
-  await until(() => container.querySelectorAll("[data-gloom-ui='badge']").length > 0);
-  const badges = [...container.querySelectorAll("[data-gloom-ui='badge']")];
-  expect(badges.map((badge) => badge.textContent)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
-  // Badge > its holder > the unit > the row.
-  const unit = (label: string) => badges.find((badge) => badge.textContent === label)!.parentElement!.parentElement as HTMLElement;
-  const row = unit("3 insiders").parentElement as HTMLElement;
-  expect(row.style.flexWrap).toBe("wrap");
-  expect(row.style.overflow).toBe("hidden");
-  expect(row.style.height).toBe("18px");
-  expect(row.style.width).toBe("100%");
-  // Nothing wide first, so a first chip too wide for the column wraps away too.
-  expect((row.firstElementChild as HTMLElement).style.width).toBe("0px");
-  expect(unit("Director")).toBe(unit("+58%"));
-  expect(unit("2nd buy")).not.toBe(unit("+58%"));
-  // Two cells before a group, one before another fact.
-  expect([unit("3 insiders"), unit("Director"), unit("2nd buy")].map((element) => element.style.marginLeft)).toEqual(["0px", "16px", "8px"]);
+  await until(() => !!container.textContent?.includes("Wide World Importers"));
+  const headers = () => [...container.querySelectorAll("[data-gloom-role='data-table-header-cell']")] as HTMLElement[];
+  expect(headers().map((header) => header.textContent?.replace(/[▲▼]/g, "").trim().toUpperCase()))
+    .toEqual(["TICKER", "COMPANY", "SCORE", "ROLE", "NTH", "VS USUAL", "STAKE", "BUYERS", "BOUGHT", "LAST BUY"]);
+  expect(container.querySelector("[data-gloom-ui='badge']")).toBeNull();
+  const cells = (ticker: string) => [...[...container.querySelectorAll("[data-gloom-role='data-table-row']")]
+    .find((row) => row.textContent?.includes(ticker))!
+    .querySelectorAll("[data-gloom-role='data-table-cell']")] as HTMLElement[];
+  const column = (label: string) => headers().findIndex((header) => header.textContent?.toUpperCase().includes(label));
+  const text = (ticker: string, label: string) => cells(ticker)[column(label)]!.textContent;
+  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("NWBI", label))).toEqual(["Director +2", "2nd", "3.1x", "+58%"]);
+  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("CTSO", label))).toEqual(["Director", "1st", "--", "NEW"]);
+  // The figure and its mark are two runs: the mark in the muted tone, never the figure's.
+  const both = cells("WWIM")[column("STAKE")]!;
+  const runs = [...both.querySelectorAll("span")].filter((span) => span.children.length === 0 && span.textContent?.trim());
+  expect(runs.map((span) => span.textContent?.trim())).toEqual(["+4%", "\u00b1"]);
+  expect(runs[0]!.style.color).not.toBe(runs[1]!.style.color);
+  const fresh = [...cells("CTSO")[column("STAKE")]!.querySelectorAll("span")].find((span) => span.textContent === "NEW") as HTMLElement;
+  expect(fresh.style.fontWeight).toBe("700");
+  // Numbers right-aligned: plain cells by the column, the marked one by its content.
+  expect((cells("NWBI")[column("STAKE")]!.querySelector("span") as HTMLElement).style.textAlign).toBe("right");
+  expect((both.firstElementChild as HTMLElement).style.justifyContent).toBe("flex-end");
+
+  // A header sorts its column, largest first: NEW above any raise; the dash last.
+  const order = () => [...container.querySelectorAll("[data-gloom-role='data-table-row']")].map((row) => row.textContent?.slice(0, 4));
+  const click = async (label: string) => {
+    await act(async () => {
+      headers()[column(label)]!.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }) as unknown as Event);
+      await Bun.sleep(10);
+    });
+  };
+  await click("STAKE");
+  expect(order()).toEqual(["CTSO", "NWBI", "WWIM"]);
+  await click("VS USUAL");
+  expect(order()).toEqual(["NWBI", "CTSO", "WWIM"]);
+  await click("VS USUAL");
+  expect(order()).toEqual(["NWBI", "CTSO", "WWIM"]);
+  await click("NTH");
+  expect(order()).toEqual(["NWBI", "CTSO", "WWIM"]);
 }

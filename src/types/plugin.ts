@@ -100,11 +100,16 @@ export interface PanePortableShareDef {
     state?: PaneSharePrivateFields;
   };
   /**
-   * Rewrites the instance before it leaves the device. The receiver has none
-   * of the sender's local ticker records, so anything resolved through them
-   * (a listing's venue, for example) must be pinned into the instance here.
+   * Rewrites the instance before it leaves the device, on every publish. The
+   * receiver has none of the sender's local ticker records, so anything
+   * resolved through them (a listing's venue, for example) must be pinned into
+   * the instance here; a layout published to the gallery passes none.
    */
-  prepare?(pane: PaneInstanceConfig, context: { tickers: ReadonlyMap<string, TickerRecord> }): PaneInstanceConfig;
+  prepare?(pane: PaneInstanceConfig, context: {
+    tickers: ReadonlyMap<string, TickerRecord>;
+    /** The moment the pane's layout tab has its crosshair pinned at, so a link opens there. */
+    pinnedTime?: number;
+  }): PaneInstanceConfig;
 }
 
 /** What covers a pane when a report of it is refused: see `PaneDef.reportLockNote`. */

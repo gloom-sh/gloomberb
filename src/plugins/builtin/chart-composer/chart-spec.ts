@@ -10,6 +10,21 @@ import { isRecord } from "../../../utils/guards";
 
 export const CHART_SPEC_SETTING_KEY = "chartSpec";
 export const CHART_INTERACTION_VIEWPORT_SETTING_KEY = "chartInteractionViewport";
+/** A shared link's pinned crosshair: the chart pins its tab there once on open, then drops it. */
+export const CHART_PINNED_MOMENT_SETTING_KEY = "chartPinnedMoment";
+/** The earliest history a chart reads (FRED series from 1900), and how far ahead one runs. */
+const EARLIEST_SHARED_MOMENT = Date.UTC(1900, 0, 1);
+const SHARED_MOMENT_LEAD_MS = 366 * 86_400_000;
+
+/**
+ * A link's pinned moment, read as untrusted: a time no earlier than the
+ * oldest history a chart here shows and no later than a year from now, or
+ * null for anything else (a string, a number past the Date range).
+ */
+export function parseSharedPinnedMoment(value: unknown, now = Date.now()): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    && value >= EARLIEST_SHARED_MOMENT && value <= now + SHARED_MOMENT_LEAD_MS ? value : null;
+}
 export const MAX_CHART_COMPOSER_SERIES = MAX_CHART_SERIES;
 
 export interface ChartInteractionViewport {
