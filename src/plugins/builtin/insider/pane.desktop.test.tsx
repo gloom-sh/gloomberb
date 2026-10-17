@@ -87,6 +87,8 @@ test("opens on 60 already-read Form 4 filings without a render per filing", asyn
 
 const RANKING_ID = "insider:ranking:desktop:test";
 let rankingState: AppState | null = null;
+/** Panes the ranking asked the app to open: a company's own INS, from `i`. */
+const createdPanes: Array<{ templateId: string; symbol: string | null }> = [];
 function RankingPane() {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Activity" });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({
@@ -95,7 +97,9 @@ function RankingPane() {
     tickers: new Map(RANKING.rows.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)])),
   }));
   rankingState = state;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime({
+    createPaneFromTemplate: async (templateId, options) => { createdPanes.push({ templateId, symbol: options?.symbol ?? null }); },
+  }), []);
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
@@ -124,7 +128,7 @@ async function until(done: () => boolean) {
   for (let i = 0; i < 100 && !done(); i++) await act(async () => { await Bun.sleep(20); });
 }
 
-test("the ranking opens a company in the same pane by keyboard and by double click", async () => {
+test("the ranking opens a company in its detail by keyboard and by click, Back returns, and i opens its INS", async () => {
   spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => RANKING);
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
   const pane = () => findPaneInstance(rankingState!.config.layout, RANKING_ID)!;
@@ -158,15 +162,29 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
   expect(container.textContent).toContain("2nd");
   expect(container.textContent).toContain("as of Oct 14, 2026");
 
+  createdPanes.length = 0;
+  // The stack's title, ticker and company, shows only while a company is open.
+  const opened = () => !!container.textContent?.includes(" \u00b7 ");
   await press("ArrowDown");
   await press("Enter");
-  await until(() => pane().binding?.kind === "fixed");
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "CTSO" });
-  expect(pane().title).toBe("INS CTSO");
+  await until(opened);
+  // The company named once, in the stack's title; the pane stays the ranking.
+  expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  expect(container.textContent).not.toContain("Northwind Biologics Inc");
+  expect(pane().binding?.kind ?? "none").toBe("none");
+  expect(container.textContent).toContain("Ana Rivera");
+  await press("i");
+  expect(createdPanes).toEqual([{ templateId: "insider-pane", symbol: "CTSO" }]);
 
   await press("Escape");
   await until(() => !!container.textContent?.includes("Northwind Biologics Inc"));
-  expect(pane().binding).toEqual({ kind: "none" });
+  expect(opened()).toBe(false);
+  // Back lands on the row it opened.
+  await press("Enter");
+  await until(opened);
+  expect(container.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
+  await press("Escape");
+  await until(() => !opened());
 
   const row = [...container.querySelectorAll("[data-gloom-role='data-table-row']")].find((element) => element.textContent?.includes("NWBI"));
   expect(row).toBeDefined();
@@ -174,7 +192,8 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
     row!.dispatchEvent(new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 }) as unknown as Event);
     await Bun.sleep(10);
   });
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "NWBI" });
+  await until(opened);
+  expect(container.textContent).toContain("NWBI \u00b7 Northwind Biologics Inc");
 }
 
 test("why is columns on the desktop: figures right in the side's tone, NEW bold, the both-ways mark muted, each column sorted from its header", async () => {

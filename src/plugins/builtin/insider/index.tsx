@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { PaneProps } from "../../../types/plugin";
-import { useShortcut } from "../../../react/input";
-import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
-import { useAppDispatch, useAppStateRef, usePaneInstance, useUpdatePaneInstance } from "../../../state/app/context";
-import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tickers/open-target";
-import { getSharedRegistry } from "../../registry";
+import { usePaneInstance } from "../../../state/app/context";
 import {
   useResolvedEntryValue,
   useSecFilingsQuery,
@@ -22,7 +18,6 @@ import {
   sortStackItems,
   useExternalLinkFooter,
   usePaneFooter,
-  usePaneMenuItems,
   usePaneNoticeFooter,
   useTableLoadMore,
   type StackSortPreference,
@@ -130,12 +125,10 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
   return items;
 }
 
-function InsiderView({ width, height, focused, onBack }: {
+function InsiderView({ width, height, focused }: {
   width: number;
   height: number;
   focused: boolean;
-  /** Back to the ranking this company was opened from, when it was. */
-  onBack?: () => void;
 }) {
   const { ticker } = usePaneTickerIdentity();
   const tickerKey = ticker?.metadata.ticker ?? "none";
@@ -341,18 +334,6 @@ function InsiderView({ width, height, focused, onBack }: {
     ],
   } : null), [focused, openAdjacent, openIndex, sortedRows.length]);
 
-  // Opened from the ranking: Esc, Backspace or the mouse back button returns
-  // to it once no transaction is open, and the pane menu lists it.
-  useShortcut((event) => {
-    if (!focused || !onBack || openRow || !isDetailBackNavigationKey(event)) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    onBack();
-  });
-  usePaneMenuItems("insider:back", () => onBack ? [
-    { id: "insider-back", label: `Back to ${INSIDER_SIGNALS_TITLE}`, accelerator: "Esc", onSelect: onBack },
-  ] : null, [onBack]);
-
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
     ...(pendingLabel ? [{ id: "pending", parts: [{ text: pendingLabel, tone: "muted" as const }] }] : []),
@@ -482,61 +463,25 @@ function InsiderView({ width, height, focused, onBack }: {
 
 /**
  * INS on a ticker is that company's insider transactions; without one it is
- * the ranking of companies whose insiders are buying, or selling. A row of
- * the ranking opens its company here, and Back returns to the ranking.
+ * the ranking of companies whose insiders are buying, or selling. A ranked
+ * company opens in the ranking's own detail; `i` opens its INS in a pane of
+ * its own.
  */
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
   const instance = usePaneInstance();
-  const updateInstance = useUpdatePaneInstance();
-  const [fromRanking, setFromRanking] = usePluginPaneState<boolean>("insider:signals:return", false);
-  const stateRef = useAppStateRef();
-  const dispatch = useAppDispatch();
-  const { notify } = usePluginAppActions();
-  // The layout first: saving it restores the pane state it was saved with, so
-  // pane state written before it would be lost.
-  const showCompany = useCallback((symbol: string) => {
-    updateInstance((current) => ({ ...current, binding: { kind: "fixed", symbol }, title: `INS ${symbol}` }));
-    setFromRanking(true);
-  }, [setFromRanking, updateInstance]);
-  // A company the app has not seen yet is looked up first, as the command bar does for `INS CTSO`.
-  const openCompany = useCallback(async (symbol: string) => {
-    if (stateRef.current.tickers.has(symbol)) {
-      showCompany(symbol);
-      return;
-    }
-    const registry = getSharedRegistry();
-    try {
-      const target = registry ? await resolveTickerOpenTarget({
-        query: symbol,
-        tickers: stateRef.current.tickers,
-        dataProvider: registry.marketData,
-        tickerRepository: registry.tickerRepository,
-      }) : null;
-      if (!registry || !target) {
-        notify({ body: tickerOpenFailureMessage(symbol), type: "error" });
-        return;
-      }
-      dispatch({ type: "UPDATE_TICKER", ticker: target.ticker });
-      if (target.created) registry.events.emit("ticker:added", { symbol: target.symbol, ticker: target.ticker });
-      showCompany(target.symbol);
-    } catch (error) {
-      notify({ body: error instanceof Error ? error.message : tickerOpenFailureMessage(symbol), type: "error" });
-    }
-  }, [dispatch, notify, showCompany, stateRef]);
-  const backToRanking = useCallback(() => {
-    updateInstance((current) => ({ ...current, binding: { kind: "none" }, title: INSIDER_SIGNALS_TITLE }));
-    setFromRanking(false);
-  }, [setFromRanking, updateInstance]);
+  const { createPaneFromTemplate } = usePluginAppActions();
+  // As the command bar opens `INS CTSO`, which looks the company up when the app has not seen it.
+  const onOpenIns = useCallback((symbol: string) => {
+    void createPaneFromTemplate("insider-pane", { symbol });
+  }, [createPaneFromTemplate]);
 
   // No ticker at all is the ranking; a pane linked to a list keeps its own
   // empty state while the list has nothing selected.
   if (!paneSymbol && instance?.binding?.kind !== "follow") {
-    return <InsiderSignalsView width={width} height={height} focused={focused} onOpen={(symbol) => void openCompany(symbol)} />;
+    return <InsiderSignalsView width={width} height={height} focused={focused} onOpenIns={onOpenIns} />;
   }
-  // Only while the pane still shows the company it opened; linked or retargeted, it is an ordinary INS.
-  const canGoBack = fromRanking && instance?.binding?.kind === "fixed";
-  return <InsiderView width={width} height={height} focused={focused} onBack={canGoBack ? backToRanking : undefined} />;
+  return <InsiderView width={width} height={height} focused={focused} />;
 }
 
 export const insiderModule: PluginModule = {

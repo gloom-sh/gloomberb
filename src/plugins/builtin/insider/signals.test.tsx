@@ -16,9 +16,12 @@ import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
 import {
   buildInsiderSignalColumns,
+  buildInsiderSignalDetailColumns,
   formatInsiderStake,
   formatInsiderUsual,
   insiderSignalDetailLines,
+  insiderSignalDetailTitle,
+  insiderSignalFigures,
   insiderSignalRowFacts,
   insiderSignalSortValue,
   insiderSignalsCoverageNotice,
@@ -62,7 +65,9 @@ function Harness({ width, height }: { width: number; height: number }) {
     return initial;
   });
   state = current;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime({
+    createPaneFromTemplate: async (templateId, options) => { created.push({ templateId, symbol: options?.symbol ?? null }); },
+  }), []);
   return <TestPaneFrame state={current} dispatch={dispatch} paneId={PANE_ID} pluginId="insider" runtime={runtime} width={width} height={height} footerKeys>
     {(body) => <InsiderPane paneId={PANE_ID} paneType="insider" focused {...body} />}
   </TestPaneFrame>;
@@ -87,14 +92,17 @@ async function mount(load: (window: number, params: CloudInsiderSignalsParams) =
   return windows;
 }
 const asked: CloudInsiderSignalsParams[] = [];
+/** Panes the view asked the app to open: INS for a company, from `i`. */
+const created: Array<{ templateId: string; symbol: string | null }> = [];
 
 afterEach(() => {
   insiderSignalsCache.reset();
   setSharedMarketDataCoordinator(null);
   seed = {};
+  created.length = 0;
 });
 
-test("ranks companies with the reasons; Enter opens one here and Esc comes back to the same row", async () => {
+test("ranks companies; Enter opens one in the pane's detail, Esc comes back to the same row, and i opens its INS", async () => {
   await mount(async (window) => payload(window));
   let frame = tui.frame();
   // A server from before the structured facts: the lead's role and how many others, the rest dashes.
@@ -105,24 +113,44 @@ test("ranks companies with the reasons; Enter opens one here and Esc comes back 
   // Footers follow the conventions: no generic key hints for Enter or Esc.
   expect(frame).not.toContain("[Enter]");
 
+  // i opens the selected company's own INS, in a pane of its own; the ranking stays.
+  expect(frame).toContain("[i]ns");
+
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "CTSO" });
-  expect(pane().title).toBe("INS CTSO");
+  // The detail: the company named once, in the stack's title, then its figures and insiders.
   frame = tui.frame();
+  expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
+  expect(frame).toMatch(/Score\s+72/);
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT/);
   expect(frame).not.toContain("Northwind Biologics");
+  // The pane stays the ranking: no ticker, no new title.
+  expect(pane().binding?.kind ?? "none").toBe("none");
+  expect(pane().title ?? "Insider Activity").toBe("Insider Activity");
+  await tui.emitKeypress({ name: "i", sequence: "i" }, { trackPropagation: true });
+  await settle();
+  expect(created).toEqual([{ templateId: "insider-pane", symbol: "CTSO" }]);
 
   await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
   await settle();
-  expect(pane().binding).toEqual({ kind: "none" });
-  expect(pane().title).toBe("Insider Activity");
   frame = tui.frame();
   expect(frame).toContain("Northwind Biologics");
-  // Back lands on the row it opened: Enter opens CTSO again.
+  expect(frame).not.toContain("\u2190 Back");
+  // Back lands on the row it opened: Enter opens CTSO again, and i from the table opens the selected row's INS.
   await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "CTSO" });
+  expect(tui.frame()).toContain("\u2190 Back CTSO");
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+  await settle();
+  await tui.emitKeypress({ name: "up", sequence: "\u001b[A" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "i", sequence: "i" }, { trackPropagation: true });
+  await settle();
+  expect(created.at(-1)).toEqual({ templateId: "insider-pane", symbol: "NWBI" });
+  // The opened company is pane state: a reload lands on it.
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:open": "NWBI", "insider:signals:selected": "NWBI" });
 });
 
 test("the window is a query-bar choice and a double click opens a row", async () => {
@@ -134,7 +162,12 @@ test("the window is a query-bar choice and a double click opens a row", async ()
   await tui.clickFrameText("Fabrikam Bancorp");
   await tui.clickFrameText("Fabrikam Bancorp");
   await settle();
-  expect(pane().binding).toEqual({ kind: "fixed", symbol: "FBKM" });
+  expect(tui.frame()).toContain("\u2190 Back FBKM \u00b7 Fabrikam Bancorp");
+  // Clicking Back returns to the table.
+  await tui.clickFrameText("\u2190 Back");
+  await settle();
+  expect(tui.frame()).toContain("Fabrikam Bancorp");
+  expect(tui.frame()).not.toContain("\u2190 Back");
 });
 
 test("an empty window, a failure and a refused session each say so in the body", async () => {
@@ -327,19 +360,34 @@ test("every column sorts: NEW above any raise, EXITED as a whole stake, the dash
   expect([role(13), role(1), role(3)].sort()).toEqual([role(1), role(3), role(13)]);
 });
 
-test("Buying and Selling switch in the query bar, with the side's own words, and the selected company's insiders under the table", async () => {
+test("Buying and Selling switch in the query bar, with the side's own words, in the table and the opened company", async () => {
   await mount(sided, 140, 24);
   let frame = tui.frame();
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610k/);
   expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720k/);
-  // No why column: its facts are the columns.
+  // No why column: its facts are the columns. No strip under the table: the insiders are the opened company.
   expect(frame).not.toMatch(/\bWHY\b/);
-  // The first company is selected: its insiders in the table's columns, largest first.
-  expect(frame).toMatch(/NWBI\s+Role\s+Nth\s+Vs Usual\s+Stake\s+Bought\s+Last/);
+  expect(frame).not.toContain("Ana Rivera");
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  frame = tui.frame();
+  // Each figure once: the score, dollars and shares, insiders and days, the window, the last trade and its filing.
+  expect(frame).toMatch(/Score\s+78\s+Bought\s+\$1\.15M\s+10k shares\s+Buyers\s+3\s+2 buy days/);
+  expect(frame).toMatch(/Window\s+30D\s+first buy 10\/1\/26\s+Last Buy\s+10\/14\/26\s+filed 10\/14\/26/);
+  // Its insiders in the ranking's columns, largest first.
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+LAST BUY/);
   expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496k\s+10\/1\/26/);
   expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+10\/9\/26/);
   expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+10\/14\/26/);
+  // The headers sort, as the ranking's do: stake largest first puts NEW on top.
+  await tui.clickFrameText("STAKE");
+  await settle();
+  frame = tui.frame();
+  expect(frame.indexOf("Ben Okafor")).toBeLessThan(frame.indexOf("Li Chen"));
+  expect(frame.indexOf("Li Chen")).toBeLessThan(frame.indexOf("Ana Rivera"));
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+  await settle();
 
   await tui.clickFrameText("Selling");
   await settle();
@@ -349,10 +397,19 @@ test("Buying and Selling switch in the query bar, with the side's own words, and
   expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director\s+2nd\s+100x\+\s+EXITED\s+1\s+\$4\.2M/);
   // Bought and sold: counted on the net, marked, with no nth sale or size against usual.
   expect(frame).toMatch(/WWIM\s+Wide World Importers\s+40\s+CFO \+1\s+--\s+--\s+-22% \u00b1\s+2\s+\$900k/);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+2nd\s+100x\+\s+EXITED\s+\$4\.2M\s+10\/13\/26/);
   // The position filter says what it does on this side.
   expect(frame).toContain("Exited");
   expect(frame).not.toMatch(/\bNew\b/);
+  await tui.clickFrameText("Wide World Importers");
+  await tui.clickFrameText("Wide World Importers");
+  await settle();
+  frame = tui.frame();
+  expect(frame).toContain("\u2190 Back WWIM \u00b7 Wide World Importers");
+  expect(frame).toMatch(/Sold\s+\$900k/);
+  expect(frame).toMatch(/Sellers\s+2/);
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+SOLD ▼\s+LAST SALE/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+\$700k\s+10\/12\/26/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+\$200k\s+10\/10\/26/);
 });
 
 test("the filters narrow the request, and an empty answer says it is the filters", async () => {
@@ -387,20 +444,64 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   let frame = tui.frame();
   expect(frame).toMatch(/TICKER\s+COMPANY\s+SCORE ▼\s+ROLE\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
   expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
-  // The detail keeps every column while the names fit.
-  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+10\/9\/26/);
-  // The keyboard is as before: the arrows move the selection, the detail follows.
+  // The opened company keeps every column while the names fit, its figures two to a row.
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
   await settle();
   frame = tui.frame();
-  expect(frame).toMatch(/CTSO\s+Role\s+Nth\s+Vs Usual\s+Stake/);
+  expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+LAST BUY/);
   expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k/);
+  expect(frame).toContain("[i]ns");
 });
 
-test("a short pane leaves the insiders out and keeps the rows", async () => {
-  await mount(sided, 140, 14);
-  expect(tui.frame()).toContain("Northwind Biologics");
-  expect(tui.frame()).not.toMatch(/Role\s+Nth\s+Vs Usual\s+Stake/);
+test("an opened company's columns drop the size against usual, then the nth trade, as the ranking's do", () => {
+  const lines = insiderSignalDetailLines(BUYING[0]!);
+  const ids = (width: number) => buildInsiderSignalDetailColumns(width, lines).map((column) => column.id);
+  expect(ids(80)).toEqual(["name", "role", "nth", "usual", "stake", "value", "lastBuy"]);
+  expect(ids(64)).toEqual(["name", "role", "nth", "stake", "value", "lastBuy"]);
+  expect(ids(52)).toEqual(["name", "role", "stake", "value", "lastBuy"]);
+  expect(buildInsiderSignalDetailColumns(140, lines, { side: "sell" }).map((column) => column.label)).toEqual([
+    "Insider", "Role", "Nth", "Vs Usual", "Stake", "Sold", "Last Sale",
+  ]);
+  // A company with a market value says what part of it traded; a ranking that keeps the largest of more insiders says so.
+  const capped = { ...BUYING[0]!, marketCap: 230_000_000, insiders: 14 };
+  expect(insiderSignalFigures(capped, 30, "buy").map((figure) => [figure.label, figure.value, figure.detail ?? ""])).toEqual([
+    ["Score", "78", ""],
+    ["Bought", "$1.15M", "10k shares"],
+    ["Buyers", "14", "2 buy days"],
+    ["Window", "30D", "first buy 10/1/26"],
+    ["Last Buy", "10/14/26", "filed 10/14/26"],
+    ["Market cap", "$230M", "0.50% bought"],
+  ]);
+  // A part too small to round to a hundredth of a percent says so, never 0.00%.
+  expect(insiderSignalFigures({ ...capped, marketCap: 13_530_000_000, value: 656_500 }, 30, "buy").at(-1)?.detail).toBe("<0.01% bought");
+  expect(insiderSignalDetailTitle(capped)).toBe("NWBI \u00b7 Northwind Biologics Inc");
+});
+
+test("an opened company comes back opened, and closes once the ranking answers without it", async () => {
+  seed = { "insider:signals:open": "CTSO", "insider:signals:selected": "CTSO" };
+  await mount(async (window) => payload(window), 140, 24);
+  expect(tui.frame()).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
+  insiderSignalsCache.reset();
+
+  // A shared layout, or a refresh, whose ranking no longer has it: the table, on the first row.
+  seed = { "insider:signals:open": "CTSO", "insider:signals:selected": "CTSO" };
+  await mount(async (window) => payload(window, [ROWS[0]!, ROWS[2]!]), 140, 24);
+  expect(tui.frame()).toContain("Fabrikam Bancorp");
+  expect(tui.frame()).not.toContain("\u2190 Back");
+  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:open": null });
+});
+
+test("a ranking that keeps the largest of more insiders says so under the opened company", async () => {
+  await mount(async (window) => payload(window, [{ ...BUYING[0]!, insiders: 14 }]), 140, 24);
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  // The notice sits behind the footer's mark, as the coverage notices do.
+  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+  await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+  await settle();
+  expect(tui.frame()).not.toContain("[!]");
 });
 
 

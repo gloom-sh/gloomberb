@@ -291,7 +291,7 @@ describe("insider report without a ticker", () => {
   });
 });
 
-test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row", async () => {
+test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row; --company opens one", async () => {
   // Invented company and people.
   const rows: InsiderSignalsPayload["rows"] = [{
     ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Incorporated", score: 78, reasons: ["3 insiders, $1.2M in 14 days"],
@@ -324,13 +324,31 @@ test("the ranking's text fits 120 columns whole, and on 80 the size against usua
     expect(wide).toContain("NWBI    Northwind Biologics Incorpor\u2026     78  10% owner +2  12th     100x+     25x       3  $1.15M  10/14/26  2026-10-14");
     // Traded both ways: dashes for the nth trade and size, the stake marked.
     expect(wide).toContain("TRNT    Tailspin Toys                     40  CFO             --        --  +12% \u00b1       1   $496k  10/4/26   2026-10-05");
-    expect(wide).toContain("  Ana Rivera (10% owner) $796k 25x; Ben Okafor (Director) $356.5k NEW");
+    // Each row's insiders are the opened company's, as in the pane; the exports keep them.
+    expect(wide.join("\n")).not.toContain("Ana Rivera");
+    expect(result.rows[0]!.buyers).toBe("Ana Rivera (10% owner) $796k 25x; Ben Okafor (Director) $356.5k NEW");
     expect(Math.max(...wide.map((line) => line.length))).toBeLessThanOrEqual(120);
     const narrow = text(80);
     expect(narrow).toContain("Ticker  Score  Role           Stake  Buyers  Bought  Last Buy  Filed");
     expect(narrow).toContain("TRNT       40  CFO           +12% \u00b1       1   $496k  10/4/26   2026-10-05");
     expect(narrow).toContain("  Company Northwind Biologics Incorporated  Nth 12th  Vs Usual 100x+");
     expect(Math.max(...narrow.map((line) => line.length))).toBeLessThanOrEqual(80);
+
+    // --company: one ranked company, as Enter opens it in the pane. Its figures once, then its insiders in the ranking's columns.
+    const openArgs = { ...args, options: { ...args.options, company: "nwbi" } };
+    const opened = await headless.load(openArgs, createTestHeadlessContext({ apiClient }));
+    expect(typeof headless.describe === "function" ? headless.describe(openArgs, opened) : null).toBe("Insider Activity | Buying | NWBI \u00b7 Northwind Biologics Incorporated");
+    setCliWidthOverride(120);
+    const company = renderHeadlessPaneText(headless, opened, openArgs, "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(company).toContain("Insider     Role        Nth  Vs Usual  Stake   Bought  Last Buy");
+    expect(company).toContain("Ana Rivera  10% owner  12th     100x+    25x    $796k  10/1/26");
+    expect(company).toContain("Ben Okafor  Director    1st        --    NEW  $356.5k  10/14/26");
+    expect(company.join("\n")).toContain("Score 78 \u00b7 Bought $1.15M (95k shares) \u00b7 Buyers 3 (3 buy days) \u00b7 Window 30D (first buy 10/1/26) \u00b7 Last Buy 10/14/26 (filed 10/14/26)");
+    expect(company.join("\n")).toContain("fn INS NWBI lists each trade as filed.");
+    expect(opened.metadata?.company).toMatchObject({ ticker: "NWBI", score: 78 });
+    const missing = await headless.load({ ...args, options: { ...args.options, company: "MSFT" } }, createTestHeadlessContext({ apiClient }));
+    expect(missing.rows).toEqual([]);
+    expect(missing.empty).toBe("MSFT is not among the companies ranked for buying in the last 30 days.");
   } finally {
     setCliWidthOverride(null);
     insiderSignalsCache.reset();
@@ -345,6 +363,7 @@ test("the catalog's examples for the ranking run without a ticker and read as th
     ["--side sell --min-value 250000", true],
     ["--role directors --cluster --window 90", true],
     ["--side sell --exited", true],
+    ["--side sell --company ESTC", true],
   ]);
   const read = (example: string) => {
     const parsed = parsePaneFunctionArgs(["INS", ...example.split(" ")]);
@@ -355,4 +374,6 @@ test("the catalog's examples for the ranking run without a ticker and read as th
   expect(read(examples[0]![0] as string)).toMatchObject({ side: "sell", window: 30, role: "all", minValue: 250_000 });
   expect(read(examples[1]![0] as string)).toMatchObject({ side: "buy", window: 90, role: "directors", cluster: true });
   expect(read(examples[2]![0] as string)).toMatchObject({ side: "sell", exited: true });
+  const parsed = parsePaneFunctionArgs(["INS", ...(examples[3]![0] as string).split(" ")]);
+  expect(normalizeCapabilityOptions(capability, parsed.options, { code: "INS" })).toMatchObject({ side: "sell", company: "ESTC" });
 });
