@@ -740,7 +740,7 @@ A broker portfolio's header leads with `Net Liq`, the account's equity, then `Gr
 
 ## Dividend income and DRIP
 
-`gloomberb portfolio show <name>` adds Income and Yield after Weight for a portfolio of shares or funds: a year of trailing dividends on the shares held, in the portfolio's currency, and that over the holding's value (on TOTAL, over the whole portfolio, cash included). A holding whose dividends could not be read shows `—`, and so does the total, never $0.
+`gloomberb portfolio show <name>` adds Income and Yield for a portfolio of shares or funds, after Weight, or after Trade Value when targets are set: a year of trailing dividends on the shares held, in the portfolio's currency, and that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative. The dividends come from the cache when they were read in the last six hours, and all the reads together wait at most four seconds. A holding whose income is unknown shows `—`, and so does the total, never $0, with one line under the table naming the cause (no dividend history, no exchange rate, or not read: signed out, offline or past the deadline); when none is known the columns are left out and that line says why.
 
 ```bash
 gloomberb portfolio show Income                                  # Income and Yield columns
@@ -748,7 +748,7 @@ gloomberb portfolio show Income --drip --years 3 --withholding 20 # reinvested s
 gloomberb fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
 ```
 
-`--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year, in the portfolio's currency. Today's dividends, prices and exchange rates are held flat and reinvested once a year. `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).
+`--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year, in the portfolio's currency. Today's dividends, prices and exchange rates are held flat and reinvested once a year; a short owes its dividend in full each year and reinvests nothing. `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).
 
 ## Importing a manager's 13F as a portfolio
 

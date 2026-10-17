@@ -123,7 +123,7 @@ test("cash growth and payout text use percentages while JSON and CSV keep fracti
   }
 });
 
-test("several symbols are one table ranked by trailing yield, with gaps as dashes and a failed read last", async () => {
+test("several symbols are one table ranked by trailing yield; a read without its history or summary is marked incomplete, never a non-payer", async () => {
   const withYield = (trailingYield: number | null, extra: Partial<DividendData> = {}): DividendData => ({ ...fixture, ...extra,
     metrics: { ...fixture.metrics, trailingYield, payoutRatio: null, nextPayDate: null,
       ...trailingYield == null ? { forwardYield: null, growth1Y: null, growth3Y: null } : {} } });
@@ -132,6 +132,8 @@ test("several symbols are one table ranked by trailing yield, with gaps as dashe
     "SBK.JO": withYield(0.0578, { currency: "ZAR", declared: [{ exDate: "2030-03-10", amount: 9.5, payDate: "2030-04-01" }] }),
     KO: withYield(0.0224, { currency: "USD" }),
     NEW: withYield(null, { currency: "USD" }),
+    HALF: withYield(null, { currency: "USD", historyError: "Incomplete cash history; totals unavailable." }),
+    NOSUM: withYield(0.031, { currency: "USD", summaryError: "Dividend summary unavailable." }),
   };
   const definition = createDividendYieldHeadless({
     loadData: async (symbol) => {
@@ -139,16 +141,24 @@ test("several symbols are one table ranked by trailing yield, with gaps as dashe
       return data[symbol]!;
     },
   });
-  const request = { rawArgument: "NEW KO GONE SBK.JO", argument: ["NEW", "KO", "GONE", "SBK.JO"], symbols: ["NEW", "KO", "GONE", "SBK.JO"], options: { type: "all", limit: 40 } };
+  const symbols = ["NEW", "KO", "GONE", "HALF", "SBK.JO", "NOSUM"];
+  const request = { rawArgument: symbols.join(" "), argument: symbols, symbols, options: { type: "all", limit: 40 } };
   const result = await definition.load(request, context);
   expect(result.sections).toHaveLength(1);
   const rows = result.sections[0]!.rows!;
-  expect(rows.map((row) => row.symbol)).toEqual(["SBK.JO", "KO", "NEW", "GONE"]);
-  expect(rows[0]).toMatchObject({ trailingYield: 0.0578, payDate: "2030-04-01", payoutRatio: null });
-  expect(result).toMatchObject({ complete: false, unavailableSymbols: ["GONE"] });
+  expect(rows.map((row) => row.symbol)).toEqual(["SBK.JO", "NOSUM", "KO", "NEW", "HALF", "GONE"]);
+  expect(rows[0]).toMatchObject({ trailingYield: 0.0578, payDate: "2030-04-01", payoutRatio: null, note: null });
+  expect(result).toMatchObject({ complete: false, unavailableSymbols: ["GONE", "HALF", "NOSUM"] });
   const text = renderHeadlessPaneText(definition, result, request, "DVD");
   const line = (symbol: string) => text.split("\n").find((entry) => entry.startsWith(`${symbol} `))!;
   expect(line("SBK.JO")).toContain("5.78%");
-  expect(line("NEW")).not.toMatch(/\d\.\d\d%/);
-  expect(line("GONE")).toContain("—");
+  // A non-payer and a ticker with no history both have no yield; only the second says why.
+  expect(line("NEW")).not.toMatch(/\d\.\d\d%|no cash history/);
+  expect(line("HALF")).toContain("no cash history");
+  expect(line("NOSUM")).toMatch(/3\.10%.*no summary/);
+  expect(line("GONE")).toContain("not read");
+
+  // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
+  await expect(definition.load({ ...request, options: { type: "special", limit: 40 } }, context)).rejects.toThrow("--type filters one ticker's payment history");
+  await expect(definition.load({ ...request, options: { type: "all", limit: 5 } }, context)).rejects.toThrow("--limit filters");
 });

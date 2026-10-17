@@ -26,9 +26,6 @@ import {
 import { createTestTicker } from "../test-support/ticker";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { createTestCliContext } from "../test-support/cli-context";
-import { answerDividendReadsOffline } from "../plugins/builtin/portfolio-list/test-fixture";
-
-answerDividendReadsOffline();
 
 function createBrokerInstance(): BrokerInstanceConfig {
   return {

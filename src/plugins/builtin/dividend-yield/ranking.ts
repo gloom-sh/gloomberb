@@ -22,6 +22,26 @@ function declaredPayDate(data: Pick<DividendData, "declared" | "metrics">, now =
 }
 
 /**
+ * What a row is missing, as its Note says: a read that failed, or one that
+ * came back without its cash history or its summary (forward rate, payout,
+ * pay date). Null for a whole read, which a non-payer's is too.
+ */
+function incompleteNote(entry: DividendRankingEntry): string | null {
+  if ("error" in entry) return "not read";
+  const { historyError, summaryError } = entry.data;
+  if (historyError && summaryError) return "no cash history or summary";
+  if (historyError) return "no cash history";
+  return summaryError ? "no summary" : null;
+}
+
+/** What a row is missing, in full, for the report's errors; null for a whole read. */
+function incompleteReason(entry: DividendRankingEntry): string | null {
+  if ("error" in entry) return entry.error;
+  const reasons = [entry.data.historyError, entry.data.summaryError].filter((reason): reason is string => !!reason);
+  return reasons.length > 0 ? reasons.join(" ") : null;
+}
+
+/**
  * Rows ranked by trailing yield, highest first; a symbol without one, then
  * one that failed, last, in the order typed. Yield and growth are ratios, so
  * listings in different currencies rank together.
@@ -30,7 +50,7 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
   const rows = entries.map((entry, index) => {
     if ("error" in entry) {
       return { index, failed: true, row: { symbol: entry.symbol, currency: null, price: null, trailingYield: null, forwardYield: null, payoutRatio: null,
-        growth1Y: null, growth3Y: null, lastExDate: null, payDate: null, frequency: null, error: entry.error } };
+        growth1Y: null, growth3Y: null, lastExDate: null, payDate: null, frequency: null, note: incompleteNote(entry), error: entry.error } };
     }
     const { data } = entry;
     const metrics = data.metrics;
@@ -49,7 +69,8 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
-        error: data.historyError ?? null,
+        note: incompleteNote(entry),
+        error: incompleteReason(entry),
       },
     };
   });
@@ -84,19 +105,27 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     description: "Pay date of the next declared distribution; past distributions carry ex-dates only." },
 ];
 
+/** Shown once a row is incomplete, so a missing figure never reads as a non-payer's. */
+const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "",
+  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date)." };
+
 /** `fn DVD A B C`: one table of every symbol, ranked by trailing yield. */
 export function projectDividendRanking(entries: readonly DividendRankingEntry[], now = new Date()): HeadlessBundleResult {
   const rows = rankDividendEntries(entries, now);
-  const failed = entries.filter((entry) => "error" in entry);
+  // A failed read, or one without its cash history or summary, is as incomplete as single-ticker DVD says it is.
+  const incomplete = entries.flatMap((entry) => {
+    const reason = incompleteReason(entry);
+    return reason ? [{ symbol: entry.symbol, reason }] : [];
+  });
   return {
-    ...(failed.length > 0 ? {
+    ...(incomplete.length > 0 ? {
       complete: false,
-      unavailableSymbols: failed.map((entry) => entry.symbol),
-      errors: failed.map((entry) => `${entry.symbol}: ${"error" in entry ? entry.error : ""}`),
+      unavailableSymbols: incomplete.map((entry) => entry.symbol),
+      errors: incomplete.map((entry) => `${entry.symbol}: ${entry.reason}`),
     } : {}),
     sections: [{
       title: "Ranked by trailing yield; payout is over TTM diluted EPS",
-      columns: RANKING_COLUMNS,
+      columns: incomplete.length > 0 ? [...RANKING_COLUMNS, NOTE_COLUMN] : RANKING_COLUMNS,
       rows,
     }],
     metadata: {

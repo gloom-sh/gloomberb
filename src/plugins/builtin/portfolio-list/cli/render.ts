@@ -71,8 +71,7 @@ import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
-import { loadHoldingDividends, projectDrip, type DripYear, type HoldingDividend } from "../income";
-import type { fetchDividendData } from "../../dividend-yield/client";
+import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -185,8 +184,8 @@ export interface ShowCollectionOptions {
   basis?: PortfolioValuationBasis;
   /** `--drip`: project reinvested dividends this many years, with this percent withheld from each. */
   drip?: { years: number; withholding: number };
-  /** Reads a holding's dividends; DVD's own read unless a test supplies one. */
-  loadDividends?: typeof fetchDividendData;
+  /** How long every holding's dividend read may take together; a test shortens it. */
+  dividendDeadlineMs?: number;
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -555,7 +554,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, loadDividends }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -630,25 +629,17 @@ async function showCollectionWithMarketData(
     const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
     // What each holding pays a year: trailing dividends per share times its shares, in the portfolio's currency.
     const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker === ticker && entry.position));
-    const dividends = await loadHoldingDividends(held, quotes, loadDividends);
-    const incomeUnavailable = new Set<string>();
-    const lotIncome = await Promise.all(valued.map(async (entry) => {
-      const dividend = entry.position && entry.metrics ? dividends.get(entry.ticker.metadata.ticker) : undefined;
-      if (!dividend || !entry.metrics) return null;
-      if (dividend.perShare == null || !dividend.currency) {
-        incomeUnavailable.add(entry.ticker.metadata.ticker);
-        return null;
-      }
-      const income = await toBase(entry.metrics.totalShares * dividend.perShare, dividend.currency);
-      if (!Number.isFinite(income)) {
-        incomeUnavailable.add(entry.ticker.metadata.ticker);
-        return null;
-      }
-      const value = entry.row.marketValue;
-      return { income, yield: typeof value === "number" && value > 0 ? (income / value) * 100 : null, dividend };
-    }));
-    const totalIncome = incomeUnavailable.size > 0 ? null : lotIncome.reduce((sum, lot) => sum + (lot?.income ?? 0), 0);
+    const { dividends } = await loadHoldingDividends(held, quotes, dataProvider, { deadlineMs: dividendDeadlineMs });
+    // Lots without a position or shares are no lot of income; a row of their own keeps its place with none.
+    const income = await portfolioIncome(valued.map((entry) => ({
+      symbol: entry.position && entry.metrics ? entry.ticker.metadata.ticker : "",
+      shares: entry.metrics?.totalShares ?? 0,
+      value: typeof entry.row.marketValue === "number" ? entry.row.marketValue : null,
+    })), dividends, toBase);
+    const lotIncome = income.lots;
+    const totalIncome = income.totalIncome;
     const portfolioYield = totalIncome != null && allocation.total != null && allocation.total > 0 ? (totalIncome / allocation.total) * 100 : null;
+    const incomeUnavailable = [...income.gaps].map(([symbol, gap]) => ({ symbol, ...gap }));
     const showTargets = allocation.targetSum != null;
     // Never dropped on a narrow terminal, so --explain reads the terms off them.
     const allocationHeaders = showTargets ? ["Weight", "Target", "Drift", "Trade", "Trade Value"] : ["Weight"];
@@ -671,11 +662,12 @@ async function showCollectionWithMarketData(
         drift: figures?.drift ?? null,
         tradeShares: figures?.tradeUnits ?? null,
         tradeValue: figures?.tradeValue ?? null,
+        ...entry.valuation,
+        // After the valuation fields, so every column an export had keeps its place.
         dividendPerShare: dividend?.perShare ?? null,
         dividendCurrency: dividend?.currency ?? null,
         annualIncome: lotIncome[index]?.income ?? null,
         incomeYield: lotIncome[index]?.yield ?? null,
-        ...entry.valuation,
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
@@ -693,7 +685,7 @@ async function showCollectionWithMarketData(
       drift: allocation.cash.drift, tradeValue: allocation.cash.tradeValue,
     } : null;
 
-    // `--drip`: each long holding with a known dividend and a price to buy shares at, its lots together.
+    // `--drip`: each holding with a known income and a price, its lots netted: a long reinvests, a short owes.
     const dripNotProjected = new Set<string>();
     const dripProjections: DripProjection[] = [];
     if (drip) {
@@ -701,14 +693,16 @@ async function showCollectionWithMarketData(
         const symbol = ticker.metadata.ticker;
         const dividend = dividends.get(symbol);
         if (!dividend) continue;
-        const shares = valued.filter((entry) => entry.ticker === ticker && entry.metrics && entry.metrics.totalShares > 0)
+        const shares = valued.filter((entry) => entry.ticker === ticker && entry.position && entry.metrics)
           .reduce((sum, entry) => sum + entry.metrics!.totalShares, 0);
-        if (shares <= 0) continue;
-        if (dividend.perShare == null || !dividend.currency || dividend.price == null || !(dividend.price > 0)) {
+        if (shares === 0) continue;
+        // Income the table could not show is not projected either; the note under it says why.
+        if (income.gaps.has(symbol) || dividend.perShare == null || !dividend.currency) continue;
+        if (dividend.perShare === 0) continue;
+        if (dividend.price == null || !(dividend.price > 0)) {
           dripNotProjected.add(symbol);
           continue;
         }
-        if (dividend.perShare === 0) continue;
         const rate = await toBase(1, dividend.currency);
         if (!Number.isFinite(rate) || rate <= 0) {
           dripNotProjected.add(symbol);
@@ -723,7 +717,7 @@ async function showCollectionWithMarketData(
     }
     const dripAsOf = isoDateToday();
     const dripMethod = drip
-      ? `Trailing twelve-month dividends per share, share prices and exchange rates as of ${dripAsOf} held flat; ${drip.withholding}% withheld from each dividend; what is left buys shares once a year, at the year's end.`
+      ? `Trailing twelve-month dividends per share, share prices and exchange rates as of ${dripAsOf} held flat; ${drip.withholding}% withheld from each dividend; what is left buys shares once a year, at the year's end. A short owes each dividend in full, every year, and reinvests nothing.`
       : null;
 
     const accountingBasis = "Unrealized P&L on current positions; excludes realized trades, distributions and cash flows. This is not account investment return.";
@@ -741,8 +735,10 @@ async function showCollectionWithMarketData(
       ctx.printResult({ data: rows, metadata: {
         portfolioId: id, portfolioName: displayName, baseCurrency: currency,
         years: drip.years, withholdingPercent: drip.withholding, asOf: dripAsOf, method: dripMethod,
-        annualIncome: totalIncome, portfolioYield,
-        notProjectedSymbols: [...dripNotProjected],
+        annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
+        incomeComplete: income.gaps.size === 0, incomeUnavailable,
+        notProjectedSymbols: [...dripNotProjected, ...income.gaps.keys()],
+        complete: income.gaps.size === 0 && dripNotProjected.size === 0,
       }, freshness });
       return;
     }
@@ -762,9 +758,10 @@ async function showCollectionWithMarketData(
         ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
-        annualIncome: totalIncome, portfolioYield, incomeUnavailableSymbols: [...incomeUnavailable],
-        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; portfolio yield is that over the total value.",
-        complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0,
+        annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
+        incomeComplete: income.gaps.size === 0, incomeUnavailable,
+        incomeBasis: "Trailing twelve-month dividends per share times shares held, in the portfolio's currency; a short owes the dividend, so its income is negative. Portfolio yield is the total over the total value; annualIncome is null when any holding's income is unknown, and knownAnnualIncome sums the holdings that have one.",
+        complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0,
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
@@ -794,8 +791,8 @@ async function showCollectionWithMarketData(
       return [weight, target, drift, trade, tradeValue];
     };
 
-    // Income and its yield, once the portfolio holds a share or fund; a coin or bond book has none to show.
-    const showIncome = dividends.size > 0;
+    // Income and its yield, once any share or fund has one; with none known, the note under the table says why.
+    const showIncome = income.knownHoldings > 0;
     const incomeCells = (income: number | null | undefined, yieldPercent: number | null | undefined): string[] =>
       showIncome ? [money(income), formatIncomeYield(yieldPercent)] : [];
     const extendedSessions = extendedSessionsOf(valued.map(({ extended }) => extended?.session));
@@ -894,13 +891,15 @@ async function showCollectionWithMarketData(
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
     if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unavailableCost)}.`));
     if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unavailablePnl)}.`));
-    if (incomeUnavailable.size > 0) notes.push(cliStyles.muted(`Income unavailable for ${named(incomeUnavailable)}: no complete dividend history.`));
+    const incomeNote = incomeGapNote(income, { name: named, money: (value) => money(value), deadlineMs: dividendDeadlineMs });
+    if (incomeNote) notes.push(cliStyles.muted(incomeNote));
     for (const note of notes) console.log(note);
     if (drip) {
       console.log("");
       console.log(renderSection(`DRIP projection, ${drip.years} year${drip.years === 1 ? "" : "s"}`));
       if (dripProjections.length === 0) {
-        console.log(cliStyles.muted(dividends.size === 0 ? "No shares or funds to project." : "No holding paid a dividend in the past year."));
+        console.log(cliStyles.muted(dividends.size === 0 ? "No shares or funds to project."
+          : income.gaps.size > 0 ? "Nothing to project: the income above is unavailable." : "No holding paid a dividend in the past year."));
       } else {
         const yearNumbers = Array.from({ length: drip.years }, (_, index) => index + 1);
         const finalYear = `Shares Y${drip.years}`;
@@ -924,9 +923,14 @@ async function showCollectionWithMarketData(
           ],
           dripRows,
         ));
-        console.log(cliStyles.muted(`As of ${dripAsOf}: trailing dividends, prices and FX held flat; ${drip.withholding}% withheld; reinvested once a year.`));
+        const shorts = dripProjections.some((entry) => entry.shares < 0) ? "; shorts owe each dividend in full" : "";
+        console.log(cliStyles.muted(`As of ${dripAsOf}: trailing dividends, prices and FX held flat; ${drip.withholding}% withheld; reinvested once a year${shorts}.`));
       }
-      if (dripNotProjected.size > 0) console.log(cliStyles.muted(`Not projected: ${named(dripNotProjected)} (no dividend or price to reinvest at).`));
+      const unprojected = [
+        ...(income.gaps.size > 0 && dripProjections.length > 0 ? [`${named([...income.gaps.keys()])} (income unavailable above)`] : []),
+        ...(dripNotProjected.size > 0 ? [`${named(dripNotProjected)} (no price to reinvest at)`] : []),
+      ];
+      if (unprojected.length > 0) console.log(cliStyles.muted(`Not projected: ${unprojected.join("; ")}.`));
     }
   } else {
     const watched = await valueWatchlistRows({ tickers: filtered, quotes, dataProvider, currency, toBase });

@@ -13,9 +13,6 @@ import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import type { CliCommandDef } from "../../../../types/plugin";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
-import { answerDividendReadsOffline } from "../test-fixture";
-
-answerDividendReadsOffline();
 
 const persistences: AppPersistence[] = [];
 const dataDirs: string[] = [];

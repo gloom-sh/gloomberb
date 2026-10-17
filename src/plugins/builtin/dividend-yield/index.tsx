@@ -70,7 +70,7 @@ function createDividendYieldModule({
           paneId: "dividend-yield",
           label: "Dividend Yield",
           description: "Cash distribution history, trailing and forward yield, payout and growth; gloomberb fn DVD with several tickers ranks them by yield. Future payments are not forecast.",
-          keywords: ["dividend", "yield", "dvd", "income", "payout", "ex-date", "distribution", "dividend income", "income investing",
+          keywords: ["dividend", "dividends", "yield", "dvd", "income", "payout", "ex-date", "distribution", "dividend income", "income investing",
             "dividend growth", "payout ratio", "drip", "reinvest", "reinvestment", "dividend reinvestment", "rank dividend payers"],
           shortcut: "DVD",
         }),

@@ -15,9 +15,6 @@ import { MemoryResourceStore } from "../../../../data/memory-resource-store";
 import { persistBrokerAccounts } from "../../../../brokers/account-cache";
 import type { BrokerAdapter } from "../../../../types/broker";
 import type { BrokerAccount } from "../../../../types/trading";
-import { answerDividendReadsOffline } from "../test-fixture";
-
-answerDividendReadsOffline();
 
 const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
   portfolios: ["main"],

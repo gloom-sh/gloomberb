@@ -27,6 +27,7 @@ import { TerminalControlSection } from "./terminal-relay/connect-section";
 import { terminalRelayGrants } from "./terminal-relay/grants";
 import { TerminalRelayStatusWidget } from "./terminal-relay/indicator";
 import { thesisModule } from "./thesis/module";
+import { askgLockNote } from "./askg/lock-note";
 
 function createCloudDataModule(): PluginModule {
   return {
@@ -88,6 +89,7 @@ const askgModule: PluginModule = {
   panes: [{
     id: ASKG_PANE_ID,
     reportFreshness: { status: "not-a-feed", basis: "generated answer" },
+    reportLockNote: askgLockNote,
     name: "Ask Gloom",
     personalData: "messages",
     icon: "K",
