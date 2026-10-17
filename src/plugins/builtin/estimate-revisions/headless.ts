@@ -44,6 +44,7 @@ export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
       instrument?.symbol ?? symbol,
       instrument?.exchange ?? "",
       ctx.apiClient,
+      ctx.marketData,
     ).catch((error: unknown) => {
       throw explainRefusal(error, estimateRevisionsLockNote, {
         symbol: args.symbols[0] ?? null,
