@@ -37,7 +37,15 @@ import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
-import { catalogCommandHits, functionCodeCommand, nearFunctionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import {
+  catalogCommandHits,
+  functionCodeCommand,
+  nearFunctionCodeCommand,
+  runPaneCatalog,
+  runPaneFunction,
+  runPaneFunctionHelp,
+  runPaneScreenshot,
+} from "./pane-functions";
 import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 
@@ -58,14 +66,16 @@ function createCoreCliCommands(
       description: "Show every command, or the usage, options, and examples for one",
       help: {
         group: CLI_COMMAND_GROUPS.app,
-        usage: ["help [command]", "<command> --help"],
-        examples: ["help", "help quote", "quote --help"],
+        usage: ["help [command]", "<command> --help", "help fn <function>", "fn <function> --help"],
+        examples: ["help", "help quote", "quote --help", "fn BT --help"],
       },
       execute: async (args, ctx) => {
         const topic = args[0];
         if (topic) {
           const command = lookupCommand(topic);
           if (!command) failUnknownCommand(topic, allCommands(), await unknownCommandPointers(ctx, topic, [], allCommands()));
+          // A command that runs a function is helped by that function's own options when one is named.
+          if (FUNCTION_COMMANDS.has(command.name) && args.length > 1 && await runPaneFunctionHelp(command.name, args.slice(1), ctx)) return;
           printCommandHelp(command, ctx);
           return;
         }
@@ -290,6 +300,9 @@ function createCoreCliCommands(
   ];
 }
 
+/** Commands whose first argument is a function, so `<command> <function> --help` is that function's help. */
+const FUNCTION_COMMANDS: ReadonlySet<string> = new Set(["fn", "shot"]);
+
 function requirePaneFunctionTarget(args: string[], commandName: string, ctx: CliCommandContext): void {
   let target: string;
   try {
@@ -428,7 +441,10 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   // plugin name, or a note to write.
   const helpOnly = parsed.help && resolved.command.name !== "help";
   const target = helpOnly ? registry.lookup.get("help")! : resolved;
-  const commandArgs = helpOnly ? [resolved.command.name] : parsed.args.slice(1);
+  // The words after a command that runs a function name the function whose help it is (`fn BT --help`).
+  const commandArgs = helpOnly
+    ? [resolved.command.name, ...FUNCTION_COMMANDS.has(resolved.command.name) ? parsed.args.slice(1) : []]
+    : parsed.args.slice(1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     const result = await target.command.execute(

@@ -8,6 +8,7 @@ import {
   filterPaneCatalogEntries,
   findFunctionCode,
   nearFunctionCodes,
+  renderFunctionHelp,
   renderPaneCatalogReport,
   selectPaneCatalogMatches,
   suggestPaneFunctions,
@@ -405,6 +406,41 @@ function runGlossary(term: string, ctx: CliCommandContext): void {
 }
 
 const GLOSSARY_ACTIONS = new Set(["glossary", "explain"]);
+
+/**
+ * The help of a command that runs a function (`fn BT --help`, `shot BT
+ * --help`, `help fn BT`): that function's options and examples, as
+ * `catalog BT` lists them. False when the first word is no function's code or
+ * alias, or the catalog cannot be read, so the command's own help prints instead.
+ */
+export async function runPaneFunctionHelp(command: string, args: string[], ctx: CliCommandContext): Promise<boolean> {
+  let target: string;
+  try {
+    target = parsePaneFunctionArgs(args).target.trim().toLowerCase();
+  } catch {
+    // Intentional ignore: help for arguments that do not parse is the command's own.
+    return false;
+  }
+  if (!target) return false;
+  try {
+    const entry = await withMarketData(ctx, async (context) => {
+      const registry = await createPaneCatalog(context, ctx.plugins);
+      try {
+        const entries = await buildPaneCatalogEntries(registry, context);
+        return entries.find((candidate) => candidate.token.toLowerCase() === target)
+          ?? entries.find((candidate) => candidate.aliases.some((alias) => alias.toLowerCase() === target));
+      } finally {
+        registry.destroy();
+      }
+    });
+    if (!entry) return false;
+    ctx.printResult({ data: entry }, { text: () => renderFunctionHelp(entry, command) });
+    return true;
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Read function help failed")(error);
+    return false;
+  }
+}
 
 export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {

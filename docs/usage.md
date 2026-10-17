@@ -1149,11 +1149,24 @@ scale with the strategy's drawdown below, beside return, CAGR, volatility,
 Sharpe, drawdown, time in market, the share of rolling one-year windows in which
 the rule beat buy-and-hold, and trade statistics. **Trades** lists each trade;
 an open position is marked at the last close. `v` switches views and `r`
-refreshes history.
+refreshes history. A session still forming, and any session served without a
+positive close, is left out and named under the pane's data warnings (`!`),
+which also say when the ticker is a rolled futures continuation such as
+`CL=F`. **Export CSV** writes the daily curve, as `--csv --equity` prints it,
+and says where the file went.
+
+From the command line, `--end YYYY-MM-DD` stops the run at that session, so the
+same command gives the same curve, trades and statistics later.
+`--include-partial` keeps a session still forming, whose close moves until the
+day ends. `--equity` reports the daily curve instead of the summary: each
+session's close in the listing's currency, the position (1 long, 0 flat), the
+strategy's and buy-and-hold's growth of 1 and the drawdown in percent, every
+digit in `--csv` and `--json`. `gloomberb fn BT --help` lists every option.
 
 ```sh
 gloomberb fn BT AAPL --json
 gloomberb fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
+gloomberb fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
 gloomberb shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
 

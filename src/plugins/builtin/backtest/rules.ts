@@ -7,6 +7,8 @@ export interface BacktestBar {
   high: number | null;
   low: number | null;
   close: number;
+  /** The bar's day had not ended when it was served: its close is the latest price. */
+  partial?: true;
 }
 
 export type Operand =

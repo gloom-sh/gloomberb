@@ -1167,7 +1167,14 @@ explicit unavailable state.
 ## Backtests (BT)
 
 BT runs on the ticker's daily history from the market data coordinator (all
-available sessions, one bar per UTC date). Indicators use the chart studies'
+available sessions, one bar per UTC date). A session served without a positive
+close cannot carry a return and is left out; a session still forming (a coin's
+UTC day, a future's trade date or a US session before its close) is left out
+unless `--include-partial` keeps it. Each is warned with its date, and the run
+is dated by the last session it tested, which `--end` fixes. A futures
+continuation (`CL=F`, or a generic such as `CL2`) is not one contract: unless
+adjusted, each roll is a jump between two contracts' prices that the returns
+include, and the report says so. Indicators use the chart studies'
 formulas: simple and exponential moving averages seeded by a simple average,
 Wilder RSI, MACD as the fast minus slow EMA with an EMA signal line, and
 Bollinger bands from the simple average plus or minus k population standard

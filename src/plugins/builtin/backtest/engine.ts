@@ -32,7 +32,11 @@ export interface BacktestResult {
   sessions: number;
   /** What volatility and Sharpe are annualised at, and how long a one-year window is: 365 for a 24/7 series, 252 for exchange sessions. */
   barsPerYear: BarsPerYear;
-  equity: Array<{ date: string; strategy: number; benchmark: number; drawdownPct: number }>;
+  /**
+   * One row per session tested: its close, the position held over its close
+   * (1 long, 0 flat), each line's growth of 1 and the strategy's drawdown in percent.
+   */
+  equity: Array<{ date: string; close: number; position: 0 | 1; strategy: number; benchmark: number; drawdownPct: number }>;
   trades: BacktestTrade[];
   strategy: PerformanceStats & {
     exposurePct: number;
@@ -104,7 +108,7 @@ export function runBacktest(
 
   let cash = 1, shares = 0, entryIndex = -1, entryPrice = 0, inMarket = 0;
   const trades: BacktestTrade[] = [];
-  const strategy: number[] = [], benchmark: number[] = [], dates: string[] = [];
+  const strategy: number[] = [], benchmark: number[] = [], dates: string[] = [], positions: Array<0 | 1> = [];
   const benchmarkShares = 1 / (fill(Math.min(start + 1, clean.length - 1)) * (1 + cost));
   for (let index = start; index < clean.length; index += 1) {
     const bar = clean[index]!;
@@ -126,6 +130,7 @@ export function runBacktest(
       }
     }
     if (shares > 0) inMarket += 1;
+    positions.push(shares > 0 ? 1 : 0);
     strategy.push(cash + shares * bar.close);
     benchmark.push(index === start ? 1 : benchmarkShares * bar.close);
     dates.push(bar.date);
@@ -148,7 +153,10 @@ export function runBacktest(
   let peak = strategy[0]!;
   const equity = dates.map((date, index) => {
     peak = Math.max(peak, strategy[index]!);
-    return { date, strategy: strategy[index]!, benchmark: benchmark[index]!, drawdownPct: (strategy[index]! / peak - 1) * 100 };
+    return {
+      date, close: clean[start + index]!.close, position: positions[index]!,
+      strategy: strategy[index]!, benchmark: benchmark[index]!, drawdownPct: (strategy[index]! / peak - 1) * 100,
+    };
   });
   // A one-year window is as many bars as the series has in a year, so it spans a calendar year for 24/7 assets too.
   const yearBars = barsPerYear(dates);

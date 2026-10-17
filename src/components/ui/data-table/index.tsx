@@ -34,7 +34,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     if (!paneId || !renderer.saveTextFile) return;
     return registerPaneTableExporter(paneId, (filename) => renderer.saveTextFile!({
       name: filename,
-      text: createDataTableCsv(propsRef.current),
+      text: propsRef.current.exportCsv?.() ?? createDataTableCsv(propsRef.current),
       mimeType: "text/csv;charset=utf-8",
     }));
   }, [paneId, renderer]);

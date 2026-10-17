@@ -3,12 +3,15 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { backtestHeadless } from "./headless";
 import { BacktestPane } from "./pane";
 import { BACKTEST_PRESETS, LOOKBACK_OPTIONS } from "./presets";
+import { BACKTEST_FRESHNESS } from "./report";
 
 export const backtestModule: PluginModule = {
   panes: [{
     id: "backtest", name: "Backtest", icon: "B", component: BacktestPane,
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 120, height: 34 },
     tableExport: true,
+    // A capture is dated as `fn BT` dates the run, by its last session, never by the ticker's live quote.
+    reportFreshness: { status: BACKTEST_FRESHNESS.status, basis: BACKTEST_FRESHNESS.basis },
     settings: { title: "Backtest Rules", fields: [
       { key: "preset", label: "Strategy", type: "select",
         options: [...BACKTEST_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })), { value: "custom", label: "Custom rules" }] },

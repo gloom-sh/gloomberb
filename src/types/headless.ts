@@ -354,6 +354,8 @@ export type HeadlessBundleSection =
      * which every exported row names in `currency_or_unit`.
      */
     unit?: string;
+    /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
+    interval?: string;
     entries?: never;
     textEntries?: never;
   }
@@ -372,6 +374,7 @@ export type HeadlessBundleSection =
     textColumns?: never;
     textRows?: never;
     unit?: never;
+    interval?: never;
   };
 
 export interface HeadlessBundleResult extends HeadlessPaneResultBase {

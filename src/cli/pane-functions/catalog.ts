@@ -604,6 +604,17 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
 }
 
 /**
+ * `fn <function> --help` and `shot <function> --help`: the function's own
+ * card, as `catalog <function>` prints it, then where the options every
+ * function takes are listed, since the card names only the function's.
+ */
+export function renderFunctionHelp(entry: PaneCatalogEntry, command: string): string {
+  const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
+  const note = `The options every function takes, and the output formats, are in gloomberb help ${command}.`;
+  return [renderCatalogEntry(entry), "", ...wrapText(note, width).map((line) => cliStyles.muted(line))].join("\n");
+}
+
+/**
  * The glossary part of a search: the meaning of a term the query names, or
  * the terms that hold its words, to look up next.
  */

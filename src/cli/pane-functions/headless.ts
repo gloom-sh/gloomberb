@@ -288,6 +288,7 @@ function serializeBundleSection(
       columns: serializableColumns(columns),
       rows: section.rows,
       ...(section.unit ? { unit: section.unit } : {}),
+      ...(section.interval ? { interval: section.interval } : {}),
       ...(section.empty && section.rows.length === 0 ? { empty: section.empty } : {}),
     };
   }
@@ -640,7 +641,11 @@ export function headlessReportTables(
       tables = (result as HeadlessBundleResult).sections.map((section) => {
         if (!("rows" in section && section.rows)) return exportEntriesTable(section.title, section.entries);
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows);
-        return section.unit?.trim() ? { ...table, identity: { currencyOrUnit: section.unit.trim() } } : table;
+        const identity = {
+          ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
+          ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
+        };
+        return Object.keys(identity).length > 0 ? { ...table, identity } : table;
       });
       break;
     case "series": {

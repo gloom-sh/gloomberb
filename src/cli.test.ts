@@ -84,6 +84,19 @@ describe("CLI watchlist commands", () => {
     expect(stdout).toContain("gloomberb watchlist create <name>");
   });
 
+  test("a help flag after a function prints that function's options, not fn's", async () => {
+    await createCliFixture({ watchlists: [] });
+
+    const own = await captureConsole(() => runCli(["fn", "BT", "--preset", "trend-200", "--help"]));
+    expect(own.stdout).toContain("--include-partial <boolean>");
+    expect(own.stdout).toContain("gloomberb fn BT <ticker> --csv --equity");
+    expect(own.stdout).not.toContain("Run a market function");
+    // Without a function, or with a word that names none, the command's own help stands.
+    for (const args of [["fn", "--help"], ["fn", "NOTAFUNCTION", "--help"]]) {
+      expect((await captureConsole(() => runCli(args))).stdout).toContain("Run a market function and print its report");
+    }
+  });
+
   test("creates a watchlist and persists the generated id", async () => {
     const { dataDir } = await createCliFixture({ watchlists: [] });
 
