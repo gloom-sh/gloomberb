@@ -5,6 +5,8 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import {
   attachEarningsCallsPersistence,
+  callAudioExpired,
+  loadCallAudioWithClient,
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
   resetEarningsCallsPersistence,
@@ -277,3 +279,41 @@ for (const status of [401, 402, 403, 503]) {
     else await expect(refresh).rejects.toThrow("Controlled failure");
   });
 }
+
+test("a call's recording address is reused until shortly before it expires, and a call without one is not asked again at once", async () => {
+  const now = Date.UTC(2026, 7, 2, 12);
+  const asked: string[] = [];
+  const client = {
+    getCloudEarningsCallAudio: async (id: string) => {
+      asked.push(id);
+      if (id === "silent") throw new ApiRequestError("No recording for this call.", 404);
+      return { kind: "recording" as const, url: `https://media.example.invalid/${asked.length}.mp3`, expiresAt: new Date(now + 3_600_000).toISOString(), durationSeconds: 600 };
+    },
+  };
+  const first = await loadCallAudioWithClient(client, "spoken", { now });
+  expect((await loadCallAudioWithClient(client, "spoken", { now: now + 50 * 60_000 }))?.url).toBe(first!.url);
+  // Inside the last minutes of its signature the address is asked for again,
+  // so a player is never handed one that runs out mid-call.
+  expect((await loadCallAudioWithClient(client, "spoken", { now: now + 56 * 60_000 }))?.url).not.toBe(first!.url);
+
+  expect(await loadCallAudioWithClient(client, "silent", { now })).toBeNull();
+  expect(await loadCallAudioWithClient(client, "silent", { now: now + 60_000 })).toBeNull();
+  expect(asked).toEqual(["spoken", "spoken", "silent"]);
+  await expect(loadCallAudioWithClient({ getCloudEarningsCallAudio: async () => { throw new ApiRequestError("Server error", 500); } }, "broken", { now }))
+    .rejects.toThrow("Server error");
+});
+
+test("a refused recording is no recording and is asked for again next time, a failing server throws, and an unreadable expiry is not an expired one", async () => {
+  const now = Date.UTC(2026, 7, 2, 12);
+  for (const status of [401, 402, 403]) {
+    let asked = 0;
+    const client = { getCloudEarningsCallAudio: async () => { asked += 1; throw new ApiRequestError("Refused", status); } };
+    expect(await loadCallAudioWithClient(client, `refused-${status}`, { now })).toBeNull();
+    expect(await loadCallAudioWithClient(client, `refused-${status}`, { now: now + 60_000 })).toBeNull();
+    expect(asked).toBe(2);
+  }
+  const audio = { kind: "recording" as const, url: "https://media.example.invalid/a.mp3", durationSeconds: 60 };
+  expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 30_000).toISOString() }, now)).toBe(true);
+  expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 600_000).toISOString() }, now)).toBe(false);
+  expect(callAudioExpired({ ...audio, expiresAt: "not a date" }, now)).toBe(false);
+});

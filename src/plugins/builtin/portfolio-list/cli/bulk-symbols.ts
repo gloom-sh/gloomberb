@@ -2,7 +2,7 @@ import type { CliCommandContext } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import { loadSavedListing, parseListingArg } from "../../../../cli/listing-arg";
 import { StagedTickerRepository } from "../../../../cli/staged-tickers";
-import { splitSymbolArgs, symbolInputKey } from "../../../../cli/symbol-args";
+import { splitSymbolWords, symbolInputKey } from "../../../../cli/symbol-args";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
 import {
@@ -31,15 +31,21 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas or newlines that has spaces in it is a company's name when search finds one, read as its US listing first with a line under it saying which, and otherwise the symbols it holds. A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
   ],
 };
 
-/** A row's line, and under it the coin hint when a bare coin ticker was read as something else. */
+/**
+ * A row's line, and under it the listing a company's name was read as, and
+ * the coin hint when a bare coin ticker was read as something else.
+ */
 function rowLines(row: SymbolRow, verb: Verb): string {
-  const line = rowLine(row, verb);
-  return row.hint ? `${line}\n  ${cliStyles.warning(row.hint)}` : line;
+  return [
+    rowLine(row, verb),
+    ...row.readAs ? [`  ${cliStyles.muted(row.readAs)}`] : [],
+    ...row.hint ? [`  ${cliStyles.warning(row.hint)}`] : [],
+  ].join("\n");
 }
 
 function rowLine(row: SymbolRow, verb: Verb): string {
@@ -98,19 +104,27 @@ export function retryNotice(ctx: CliCommandContext): (count: number, waitMs: num
   };
 }
 
-/** The symbols an add or remove was given, failing the command when there are none or the file cannot be read. */
+/**
+ * The symbols an add or remove was given, failing the command when there are
+ * none or the file cannot be read. An add reads a typed company's name with
+ * `readNameEntries`; without it (a remove) every entry is its words.
+ */
 export async function requireSymbolList(
   ctx: CliCommandContext,
   args: readonly string[],
   file: string | undefined,
   usage: string,
+  readEntries?: (entries: string[]) => Promise<string[]>,
 ): Promise<{ symbols: string[]; repeated: number; strays: string[]; single: string | null }> {
   try {
-    const list = await readSymbolList({ args, file });
+    let typed: string[] = [];
+    const list = await readSymbolList({ args, file, readEntries: async (entries) => {
+      typed = readEntries ? await readEntries(entries) : splitSymbolWords(entries);
+      return typed;
+    } });
     if (list.symbols.length === 0) ctx.fail(usage);
     // One symbol typed alone keeps the single-symbol output and errors. It goes as typed, so a separator
     // left on it (`UPST;`) is named by the listing it resolves to.
-    const typed = splitSymbolArgs(args);
     const single = file == null && !args.includes("-") && typed.length === 1 ? (args.length === 1 ? args[0]!.trim() : typed[0]!) : null;
     return { ...list, single };
   } catch (error) {

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { alignTimeSeries } from "./alignment";
 import { extractFredSeries } from "./economic";
-import { deriveQuarterlyStatements, extractFundamentalSeries, fundamentalSeriesUsesAvailabilityFallback } from "./fundamentals";
+import {
+  deriveQuarterlyStatements,
+  extractFundamentalSeries,
+  fundamentalSeriesUsesAvailabilityFallback,
+  unreportedStatementPeriod,
+} from "./fundamentals";
 import type { ResolvedSeries, SecuritySeriesSource } from "./types";
 
 function financials(
@@ -44,6 +49,32 @@ describe("fundamental series extraction", () => {
       expect(point).toMatchObject({ value: entry.value, periodLabel: entry.label, observedAt: new Date(entry.date), availableAt: new Date(entry.filed) });
       expect(point?.date).toEqual(new Date(entry.filed));
     }
+  });
+
+  test("names each period as FA's columns do, from the year end of the annual statements", () => {
+    // A June year end: the September quarter opens the next fiscal year.
+    const annualJune: FinancialStatement[] = [{ date: "2024-06-30", totalRevenue: 200 }, { date: "2025-06-30", totalRevenue: 240 }];
+    const quarterlyJune: FinancialStatement[] = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"]
+      .map((date) => ({ date, totalRevenue: 60 }));
+    const snapshot = financials(quarterlyJune, annualJune);
+    const names = (period: SecuritySeriesSource["period"]) => extractFundamentalSeries(snapshot, source("fundamental.totalRevenue", period))
+      .map((point) => point.fiscalPeriod);
+    expect(names("annual")).toEqual(["FY2024", "FY2025"]);
+    expect(names("quarterly")).toEqual(["Q3 FY25", "Q4 FY25", "Q1 FY26", "Q2 FY26"]);
+    expect(names("ttm")).toEqual(["TTM Q2 FY26"]);
+    // Without annual statements there is no fiscal calendar, so the period end stands in.
+    expect(extractFundamentalSeries(financials(quarterlyJune, []), source("fundamental.totalRevenue"))[0]?.fiscalPeriod).toBe("2025-03-31");
+  });
+
+  test("a company with annual figures and no quarterly ones is told apart from one with neither", () => {
+    // A semi-annual reporter's quarterly rows carry balance-sheet lines only.
+    const semiAnnual = financials([{ date: "2026-06-30", shareIssued: 5 }], [{ date: "2025-12-31", totalRevenue: 100 }]);
+    const revenue = (period: SecuritySeriesSource["period"]) => source("fundamental.totalRevenue", period);
+    expect(extractFundamentalSeries(semiAnnual, revenue("quarterly"))).toEqual([]);
+    expect(unreportedStatementPeriod(semiAnnual, revenue("quarterly"))).toBe("quarterly");
+    expect(unreportedStatementPeriod(semiAnnual, revenue("annual"))).toBeNull();
+    expect(unreportedStatementPeriod(semiAnnual, source("valuation.trailingPE", "quarterly"))).toBeNull();
+    expect(unreportedStatementPeriod(financials([], []), revenue("quarterly"))).toBeNull();
   });
 
   const quarters: FinancialStatement[] = [
@@ -386,6 +417,19 @@ describe("fundamental series extraction", () => {
     expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-02-01");
   });
 
+  test("a multiple names the period its earnings come from: the trailing quarters, or the fiscal year", () => {
+    const quarterly = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31", "2025-03-31"]
+      .map((date) => ({ date, availableAt: date, eps: 1 }));
+    const annual = [{ date: "2024-06-30", availableAt: "2024-08-01", eps: 4 }];
+    const history = [...quarterly.map(({ date }) => date), "2024-06-30"]
+      .map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 100 }));
+    const snapshot = financials(quarterly, annual, history);
+    const names = (period: SecuritySeriesSource["period"]) => extractFundamentalSeries(snapshot, source("valuation.trailingPE", period))
+      .map((point) => point.fiscalPeriod);
+    expect(names("quarterly").at(-1)).toBe("TTM Q3 FY25");
+    expect(names("annual")).toEqual(["FY2024"]);
+  });
+
   test("deduplicates annual provider aliases before calculating valuation points", () => {
     const points = extractFundamentalSeries(
       financials([], [
@@ -538,6 +582,76 @@ describe("fundamental series extraction", () => {
     expect(points[0]?.value).toBe(10.3);
     expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-02-20");
   });
+});
+
+describe("AAPL's quarterly trailing multiples across fiscal year ends", () => {
+  // AAPL as served: 10-Q quarters dated by their filings. No 10-K has stated
+  // a quarter since 2021, so the fiscal Q4 rows carry cash flow only, except
+  // FY2025's, which another source reports without a publication date.
+  const quarter = (date: string, eps: number, dilutedShares: number, filed: string): FinancialStatement => ({
+    date, eps, dilutedShares, fieldAvailability: { eps: filed, dilutedShares: filed },
+  });
+  const quarterly: FinancialStatement[] = [
+    quarter("2022-12-31", 1.88, 15_955_718_000, "2023-02-03"),
+    quarter("2023-04-01", 1.52, 15_847_050_000, "2023-05-05"),
+    quarter("2023-07-01", 1.26, 15_775_021_000, "2023-08-04"),
+    { date: "2023-09-30", operatingCashFlow: 21_598_000_000, fieldAvailability: { operatingCashFlow: "2023-11-03" } },
+    quarter("2023-12-30", 2.18, 15_576_641_000, "2024-02-02"),
+    quarter("2024-03-30", 1.53, 15_464_709_000, "2024-05-03"),
+    quarter("2024-06-29", 1.4, 15_348_175_000, "2024-08-02"),
+    { date: "2024-09-28", operatingCashFlow: 26_811_000_000, fieldAvailability: { operatingCashFlow: "2024-11-01" } },
+    quarter("2024-12-28", 2.4, 15_150_865_000, "2025-01-31"),
+    quarter("2025-03-29", 1.65, 15_056_133_000, "2025-05-02"),
+    quarter("2025-06-28", 1.57, 14_948_179_000, "2025-08-01"),
+    { date: "2025-09-27", eps: 1.85, dilutedShares: 14_863_609_000, fieldAvailability: { operatingCashFlow: "2025-10-31" } },
+    quarter("2025-12-27", 2.84, 14_810_356_000, "2026-01-30"),
+    quarter("2026-03-28", 2.01, 14_725_873_000, "2026-05-01"),
+    quarter("2026-06-27", 2.02, 14_714_676_000, "2026-07-31"),
+  ];
+  const annual = [
+    quarter("2023-09-30", 6.13, 15_812_547_000, "2023-11-03"),
+    quarter("2024-09-28", 6.08, 15_408_095_000, "2024-11-01"),
+    quarter("2025-09-27", 7.46, 15_004_697_000, "2025-10-31"),
+  ];
+  const prices = Array.from({ length: 1_400 }, (_, day) => ({ date: new Date(Date.UTC(2022, 11, 1) + day * 86_400_000), close: 100 }));
+  const day = (date: Date | undefined) => date?.toISOString().slice(0, 10);
+
+  test("a gap kept in the line raises no missing-date warning; an undated value does", () => {
+    // Every trailing four quarters across FY2023's or FY2024's fourth quarter
+    // has no EPS: no filing states it, and it is not rebuilt from the year.
+    const definition = source("valuation.trailingPE", "quarterly");
+    const datedFourth = quarterly.map((row) => row.date === "2025-09-27"
+      ? { ...row, fieldAvailability: { eps: "2025-10-30", dilutedShares: "2025-10-30" } } : row);
+    const dated = financials(datedFourth, annual, prices);
+    const historical = extractFundamentalSeries(dated, definition).filter((point) => point.periodLabel !== "Current");
+    expect(historical.filter((point) => point.value !== null).map((point) => day(point.observedAt)))
+      .toEqual(["2025-09-27", "2025-12-27", "2026-03-28", "2026-06-27"]);
+    expect(fundamentalSeriesUsesAvailabilityFallback(dated, definition)).toBe(false);
+    // As served, FY2025's fourth quarter has no publication date, so the four
+    // multiples it is in are placed at their period ends.
+    expect(fundamentalSeriesUsesAvailabilityFallback(financials(quarterly, annual, prices), definition)).toBe(true);
+  });
+});
+
+test("NVDA's split-restated EPS prices its P/E from the filing that first reported it", () => {
+  // FY2023 and FY2024 EPS restated for the June 2024 10-for-1 split carry the
+  // date of the 10-Q that evidenced it; the weekly closes are split-adjusted.
+  const restated = (date: string, eps: number, originalValue: number, originalFiled: string): FinancialStatement => ({
+    date, eps, fieldAvailability: { eps: "2024-08-28" },
+    epsBasis: { status: "split-adjusted", source: "sec", originalValue, originalFiled, basisDate: "2024-06-30", factor: 10, evidence: [] },
+  });
+  const annual = [
+    restated("2023-01-29", 0.174, 1.74, "2023-02-24"),
+    restated("2024-01-28", 1.193, 11.93, "2024-02-21"),
+    { date: "2025-01-26", eps: 2.94, fieldAvailability: { eps: "2025-02-26" } },
+  ];
+  const weeks = [["2023-02-20", 23.286], ["2024-02-19", 78.817], ["2024-08-26", 119.37], ["2025-02-24", 124.92]] as const;
+  const snapshot = financials([], annual, weeks.map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close })));
+  const points = extractFundamentalSeries(snapshot, source("valuation.trailingPE", "annual"));
+  // Not 686x and 100x, both on 2024-08-28.
+  expect(points.map((point) => [point.date.toISOString().slice(0, 10), Number(point.value!.toFixed(1))])).toEqual([
+    ["2023-02-24", 133.8], ["2024-02-21", 66.1], ["2025-02-26", 42.5],
+  ]);
 });
 
 describe("economic vintage extraction", () => {

@@ -14,7 +14,7 @@ import { formatSpotTime } from "../options/model-spot";
 import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
-import { NO_DIVIDEND_PAID } from "../../../market-data/model-dividend-yield";
+import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
 
 // Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
 const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
@@ -117,6 +117,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
       ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
     const currency = position ? currencyLabel(position.currency) : null;
+    const dividendNote = supplied(settings.dividendYield) ? null
+      : modelDividendYieldNote({ basis: market.dividendYieldBasis ?? "stated", lastPaid: market.dividendLastPaid });
     // Value, P&L, risk and the grid add every contract; entry prices and spot are per share.
     const valueUnit = position ? scenarioValueUnit(position) : null;
     const per = `${currency} ${valueUnit}`;
@@ -140,9 +142,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
           { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
           { key: "rate", label: "Rate", value: position!.rate, formatted: percent(position!.rate) },
-          // A yield read as 0 because no dividend was paid says so; a stated or typed one is the figure alone.
+          // A yield read as 0 because no dividend was paid, or the dividend stopped, says so; a stated or typed one is the figure alone.
           { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield)
-            + (!supplied(settings.dividendYield) && market.dividendYieldBasis === "none-paid" ? ` (${NO_DIVIDEND_PAID})` : "") },
+            + (dividendNote ? ` (${dividendNote})` : "") },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },
         ...(hedge ? [{ title: "Hedge budget", entries: hedgeReportEntries(hedge) }] : []),

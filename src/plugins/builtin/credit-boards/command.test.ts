@@ -60,4 +60,14 @@ describe("folded pane commands", () => {
     });
     expect(sovereign?.params?.tabAt).toMatch(/^\d+$/);
   });
+
+  test("CDX HY and SOVR Brazil hand the board what to open on, and a bare command names nothing so it never repeats an earlier one", async () => {
+    const cdx = open(creditBoardsModule.paneTemplates, "cdx-pane");
+    const sovr = open(creditBoardsModule.paneTemplates, "sovr-pane");
+    expect((await cdx(context(empty), { arg: " HY " }))?.params).toMatchObject({ view: "index", index: "HY" });
+    expect((await sovr(context(empty), { arg: "Brazil" }))?.params).toMatchObject({ view: "sovereign", country: "Brazil" });
+    // The reused pane keeps its params, so a bare command overwrites the last one's with nothing.
+    expect((await cdx(context(empty)))?.params).toMatchObject({ view: "index", index: "" });
+    expect((await sovr(context(empty)))?.params).toMatchObject({ view: "sovereign", country: "" });
+  });
 });

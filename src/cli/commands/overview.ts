@@ -49,6 +49,12 @@ import {
   basisPointsCell,
   DEFAULT_FRED_START,
   filterFredSeries,
+  fredChangeCell,
+  fredChangeFetchStart,
+  fredChangeHeader,
+  fredChangeMismatch,
+  fredChanges,
+  fredDecimals,
   fredEmptyAdvice,
   fredEmptyMessage,
   fredExportValue,
@@ -58,9 +64,11 @@ import {
   fredProvenance,
   fredPublicationTime,
   fredUnit,
+  fredValueCell,
   fredValueHeader,
   isSpreadSeries,
   laggingSeriesNote,
+  parseFredChange,
 } from "./fred-series";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
@@ -358,7 +366,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   });
 }
 
-const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc]";
+const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc] [--change 1D|1W]";
 const FRED_LIST_USAGE = "fred --list [filter]";
 
 /** A year or a month stands for the first day of it. */
@@ -407,29 +415,46 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const list = takeFlag(args, "--list");
   const start = takeOption(args, "--start");
   const sort = takeOption(args, "--sort");
+  const changeGiven = args.some((arg) => arg === "--change" || arg.startsWith("--change="));
+  const change = changeGiven ? takeOption(args, "--change") : undefined;
   if (list) {
-    if (start != null || sort != null) ctx.fail("--list takes a filter, not --start or --sort.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
+    if (start != null || sort != null || changeGiven) {
+      ctx.fail("--list takes a filter, not --start, --sort or --change.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
+    }
     return runFredList(args.join(" ").trim(), ctx);
   }
   const startDate = parseStartDate(start, ctx);
   const sortOrder = (sort ?? "desc").trim().toLowerCase();
   if (sortOrder !== "asc" && sortOrder !== "desc") ctx.fail(`Unknown sort order "${sort}".`, "Use desc (newest first) or asc.");
+  const horizon = changeGiven ? parseFredChange(change) : null;
+  if (changeGiven && !horizon) {
+    ctx.fail(change ? `Unknown change "${change}".` : "--change needs 1D or 1W.", "Use 1D (from the previous observation) or 1W (from a week before).");
+  }
   const seriesId = requireOneArg(args, FRED_USAGE, "series", ctx).toUpperCase();
-  const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder }).catch((error: unknown) => {
+  // A change needs the observation it is measured from: the fetch reaches back before the first row shown.
+  const fetchStart = horizon ? fredChangeFetchStart(startDate) : startDate;
+  const data = await apiClient.getCloudFredSeries(seriesId, { startDate: fetchStart, sortOrder }).catch((error: unknown) => {
     if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloomberb fred --list`);
     throw error;
   });
   // Every observation exports as `value`, a spread in basis points; its unit goes in the `currency_or_unit` column.
   const unit = fredUnit(seriesId, data.info);
   const interval = fredInterval(data.info?.frequency);
+  const mismatch = horizon ? fredChangeMismatch(seriesId, interval, horizon) : null;
+  if (mismatch) ctx.fail(mismatch);
+  // Each row's change in the unit its value exports in, and the date it is from; a holiday's stays blank.
+  const changes = horizon ? fredChanges(seriesId, data.observations, horizon) : null;
   // A value FRED does not list yet carries its publisher and when it published, in every export.
   const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string }) => ({
     date: observation.date,
     value: fredExportValue(seriesId, observation.value),
+    ...(changes ? { change: changes.get(observation.date)?.change ?? null, changeFrom: changes.get(observation.date)?.changeFrom ?? null } : {}),
     ...(observation.publisher?.trim() ? { publisher: observation.publisher.trim(), ...(observation.publishedAt ? { publishedAt: observation.publishedAt } : {}) } : {}),
   });
   // A --start before the series begins comes back padded with blank days: the rows start at its first observation.
-  const rows = fredObservationsFromStart(data.observations, data.info?.observationStart).map(exportRow);
+  const rows = fredObservationsFromStart(data.observations, data.info?.observationStart)
+    .filter((observation) => !horizon || observation.date >= startDate)
+    .map(exportRow);
   // The default start hides older history and a start before the series begins is moved up silently: say where it really starts.
   const notes = [
     ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
@@ -453,6 +478,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     data: rows,
     metadata: {
       info: data.info, seriesId, startDate, sortOrder, unit, interval,
+      ...(horizon ? { change: horizon } : {}),
       ...(notes.length ? { notes } : {}),
       ...(latest ? { latestObservation: exportRow(latest) } : {}),
     },
@@ -472,7 +498,11 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)
         ? { key: "value", header: "Value (bp)", align: "right", format: basisPointsCell }
-        : { key: "value", header: fredValueHeader(data.info), align: "right" },
+        : { key: "value", header: fredValueHeader(data.info), align: "right", format: fredValueCell(fredDecimals(rows.map((row) => row.value))) },
+      ...(horizon ? [{
+        key: "change", header: fredChangeHeader(seriesId, horizon, data.info), align: "right" as const,
+        format: fredChangeCell(isSpreadSeries(seriesId), fredDecimals(rows.map((row) => row.value))),
+      }] : []),
     ],
   });
 }
@@ -645,6 +675,10 @@ export const overviewCliCommands: CliCommandDef[] = [
         START_OPTION,
         { flags: "--sort <order>", description: "desc for newest first (default) or asc" },
         { flags: "--list", description: "List the series Gloom Cloud serves (ID, title, group); words after it filter the list" },
+        {
+          flags: "--change <1D|1W>",
+          description: "Add each observation's change in the series' unit (bp for a spread, pp for a percent): 1D from the previous observation, 1W from the last one a week before; holidays stay blank",
+        },
       ],
       sections: [{
         title: "Series",
@@ -652,7 +686,7 @@ export const overviewCliCommands: CliCommandDef[] = [
           "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred --list prints them; any other ID fails with that pointer.",
         ],
       }],
-      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred --list", "fred --list fx"],
+      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred --list", "fred --list fx"],
     },
     execute: runFred,
   },

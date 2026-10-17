@@ -1,5 +1,6 @@
 import {
   apiClient,
+  type CloudEarningsCallAudioPayload,
   type CloudEarningsCallListPayload,
   type CloudEarningsCallPayload,
   type CloudEarningsTranscriptPayload,
@@ -82,6 +83,7 @@ export function resetEarningsCallsPersistence(): void {
   persistence = null;
   activeListFetches.clear();
   activeTranscriptFetches.clear();
+  heldAudio.clear();
 }
 
 export function statusOf(error: unknown): number | undefined {
@@ -317,4 +319,53 @@ export function loadTranscript(
   options?: { force?: boolean },
 ): Promise<CloudEarningsTranscriptPayload> {
   return loadTranscriptWithClient(apiClient, callId, options);
+}
+
+/**
+ * A call's audio, held in memory only: its address is signed and expires, so
+ * it is never written to the cache. One with a few minutes left, or a call
+ * known to have none, is answered without asking again.
+ */
+const heldAudio = new Map<string, { audio: CloudEarningsCallAudioPayload | null; until: number }>();
+const AUDIO_EXPIRY_MARGIN_MS = 5 * 60 * 1000;
+const NO_AUDIO_RECHECK_MS = 10 * 60 * 1000;
+
+/** True once a signed address has run out, or is about to. */
+export function callAudioExpired(audio: CloudEarningsCallAudioPayload, now = Date.now()): boolean {
+  return now >= Date.parse(audio.expiresAt) - 60_000;
+}
+
+type CallAudioClient = { getCloudEarningsCallAudio(id: string): Promise<CloudEarningsCallAudioPayload> };
+
+/** The recording to play beside a call's transcript, or null when it has none. */
+export function loadCallAudio(
+  callId: string,
+  options: { force?: boolean } = {},
+): Promise<CloudEarningsCallAudioPayload | null> {
+  return loadCallAudioWithClient(apiClient, callId, options);
+}
+
+export async function loadCallAudioWithClient(
+  client: CallAudioClient,
+  callId: string,
+  options: { force?: boolean; now?: number } = {},
+): Promise<CloudEarningsCallAudioPayload | null> {
+  const now = options.now ?? Date.now();
+  const held = heldAudio.get(callId);
+  if (!options.force && held && held.until > now) return held.audio;
+  try {
+    const audio = await client.getCloudEarningsCallAudio(callId);
+    const expires = Date.parse(audio.expiresAt);
+    heldAudio.set(callId, { audio, until: Number.isFinite(expires) ? expires - AUDIO_EXPIRY_MARGIN_MS : now });
+    return audio;
+  } catch (error) {
+    const status = statusOf(error);
+    // Signed out, unverified or without Pro is no player, like a call with no
+    // recording, and says nothing: only a failing server or network does. A
+    // refusal is not held, so signing in or upgrading plays on the next look.
+    if (status === 401 || status === 402 || status === 403) return null;
+    if (status !== 404) throw error;
+    heldAudio.set(callId, { audio: null, until: now + NO_AUDIO_RECHECK_MS });
+    return null;
+  }
 }

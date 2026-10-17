@@ -173,6 +173,30 @@ describe("scenario headless inputs", () => {
     } finally { setSystemTime(); }
   });
 
+  test("a dividend that stopped is valued at 0% and the Inputs line says so; a current payer keeps its yield", async () => {
+    // 2026-10-16: WHR paid quarterly until 2026-02-27 and Gloom Cloud has withdrawn its forward yield; KO paid on 2026-09-15.
+    const at = Date.UTC(2026, 9, 16, 14);
+    const actions = (symbol: string, exDates: string[]) => ({ symbol, coverage: { dividends: "available" as const },
+      dividends: exDates.map((exDate) => ({ exDate, amount: 1 })), splits: [], earnings: [] });
+    const run = (symbol: string, fundamentals: TickerFinancials["fundamentals"], exDates: string[]) => optionsScenarioHeadless.load({
+      symbols: [symbol], rawArgument: symbol, argument: symbol, options: { legs: "put,30,2027-01-15,1,2,40" } }, {
+      marketData: { id: "scenario-test", getQuote: async () => ({ ...quote, symbol, lastUpdated: at }),
+        getTickerFinancials: async () => ({ ...financials, quote: { ...quote, symbol }, fundamentals }),
+        getOptionsChain: async () => ({ ...chain, underlyingSymbol: symbol }), getCorporateActions: async () => actions(symbol, exDates) } as unknown as DataProvider,
+      signal: new AbortController().signal, apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
+    const dividendLine = (result: Awaited<ReturnType<typeof run>>) =>
+      result.sections.find((section) => section.title === "Inputs")?.entries?.find((item) => item.key === "dividendYield")?.formatted;
+    setSystemTime(at);
+    try {
+      const whr = await run("WHR", { exDividendDate: "2026-02-27" }, ["2025-05-23", "2025-08-15", "2025-11-21", "2026-02-27"]);
+      expect(whr.metadata).toMatchObject({ position: { dividendYield: 0 }, market: { dividendYieldBasis: "stopped", dividendLastPaid: "2026-02-27" } });
+      expect(dividendLine(whr)).toBe("0.00% (no current dividend, last paid 2026-02-27)");
+      const ko = await run("KO", { dividendYield: 0.0226, dividendYieldBasis: "forward", exDividendDate: "2026-09-15" }, ["2026-03-13", "2026-06-15", "2026-09-15"]);
+      expect(ko.metadata).toMatchObject({ position: { dividendYield: 0.0226 }, market: { dividendYieldBasis: "stated" } });
+      expect(dividendLine(ko)).toBe("2.26%");
+    } finally { setSystemTime(); }
+  });
+
   test("strict numeric and calendar parsing rejects silent coercion", () => {
     for (const bad of ["0x10", "Infinity", "100usd", " "]) {
       expect(() => scenarioPositionFromSettings({ ...explicit, symbol: "AAPL", spot: bad })).toThrow("spot must be a finite number");

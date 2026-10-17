@@ -15,6 +15,7 @@ import {
   WebSegmentedControl,
   WebTextField,
 } from "./desktop/controls";
+import { WebAudioPlayer } from "./desktop/audio-player";
 import { WebDialogActions } from "./desktop/dialog-actions";
 import { WebPopover } from "./desktop/popover";
 import { WebQueryBar } from "./desktop/query-bar";
@@ -124,6 +125,7 @@ export function createDomUiHost(
       );
     },
     MediaSurface: WebMediaSurface,
+    AudioPlayer: WebAudioPlayer,
     SpinnerMark: ({ color, ...props }) => (
       <span
         {...cleanDomProps(props)}

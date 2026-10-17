@@ -45,6 +45,7 @@ import {
 } from "./field-catalog";
 import {
   fundamentalSeriesUsesAvailabilityFallback,
+  unreportedStatementPeriod,
   valuationCurrencyWarning,
   valuationPriceIssues,
   valuationSeriesUsesLiveQuote,
@@ -1177,6 +1178,7 @@ function baseSecuritySeries(
   const field = getTimeSeriesField(spec.source.fieldId);
   if (!field) return null;
   const points = extractSecuritySeries(financials, spec.source);
+  const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
   const symbol = instrumentLabel(spec.source);
   const statementCurrency = field.id.startsWith("fundamental.") && field.unit.startsWith("currency")
     ? reportingCurrencySeries(points, financials.financialCurrency) : null;
@@ -1241,6 +1243,7 @@ function baseSecuritySeries(
       ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source),
     nativeFrequency: marketField ? marketSeriesFrequency(spec.source, marketResolution)
       : spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency,
+    ...(unreportedPeriod ? { unreportedPeriod } : {}),
     ...(marketField ? { historyResolution: marketResolution } : {}),
     timestampMode: spec.source.timestampMode,
     dataShape: field.dataShape,
@@ -2297,8 +2300,10 @@ async function resolveChartSpecPass(
   ];
   for (const entry of resolved) {
     if (entry.warning) warnings.push(`${entry.label}: ${entry.warning}`);
-    // A currency mismatch already explains an empty valuation series.
-    if (entry.points.length === 0 && !entry.warning?.startsWith(VALUATION_CURRENCY_WARNING_PREFIX)) {
+    if (entry.points.length === 0 && entry.unreportedPeriod) {
+      warnings.push(`${entry.label}: no ${entry.unreportedPeriod} figures are reported; annual figures are available.`);
+    } else if (entry.points.length === 0 && !entry.warning?.startsWith(VALUATION_CURRENCY_WARNING_PREFIX)) {
+      // A currency mismatch already explains an empty valuation series.
       warnings.push(`${entry.label}: no observations in the selected date range.`);
     }
   }

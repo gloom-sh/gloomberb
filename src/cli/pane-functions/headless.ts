@@ -38,7 +38,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
-import { splitSymbolArgs } from "../symbol-args";
+import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
@@ -76,7 +76,8 @@ function normalizeSymbol(value: string): string {
 function normalizeSymbolList(value: string): string[] {
   const symbols: string[] = [];
   const seen = new Set<string>();
-  for (const part of splitSymbolArgs([value])) {
+  // Read after applyListingArgument, which has resolved a company's name to its listing key.
+  for (const part of splitSymbolWords([value])) {
     const symbol = normalizeSymbol(part);
     if (!symbol || seen.has(symbol)) continue;
     seen.add(symbol);
@@ -484,6 +485,11 @@ function renderBundle(
   ]);
 }
 
+/** A series' observations: its points with a value. A gap kept to break the line is not one. */
+function observationCount(series: HeadlessSeries): number {
+  return series.points.filter((point) => point.value != null || point.close != null).length;
+}
+
 function renderSeries(result: HeadlessSeriesResult): string[] {
   const rows = result.series.map((series) => {
     const latest = [...series.points].reverse().find((point) => (
@@ -494,7 +500,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       latest: latest ? seriesPointDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() || null,
-      points: series.points.length,
+      points: observationCount(series),
     };
   });
   const columns: HeadlessPaneColumn[] = [
@@ -756,7 +762,7 @@ function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPane
         count + ("rows" in section && section.rows ? section.rows.length : section.entries.length)
       ), 0);
     case "series":
-      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + series.points.length, 0);
+      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + observationCount(series), 0);
     case "snapshot":
       return (result as HeadlessSnapshotResult).items.length;
     default: {

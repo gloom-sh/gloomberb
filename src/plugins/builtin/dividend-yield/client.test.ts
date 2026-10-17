@@ -3,7 +3,7 @@ import { buildDividendMetrics, dividendReferencePrice, fetchDividendData, repric
 import type { DividendPayment } from "./types";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
-import { createDividendYieldHeadless } from "./headless";
+import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { chartResponse, marketTransport, summaryFields } from "./test-fixture";
 
 afterEach(() => setHttpFetchTransport(null));
@@ -123,17 +123,38 @@ describe("cash distribution calculations", () => {
     expect(repriceDividendMetrics(metrics, NaN).trailingYield).toBeNull();
   });
 
-  test("normalizes pence cash into pounds and suppresses unverifiable summary rate units", () => {
-    const payments = [payment("2026-06-04", 2.0301435, "GBp"), payment("2025-11-20", 1.9512, "GBp")];
-    const fields = summaryFields({ summaryDetail: {
-      currency: "GBp", trailingAnnualDividendRate: { raw: 0.046 }, forwardAnnualDividendRate: { raw: 0.04 },
-    } });
-    const metrics = buildDividendMetrics(payments, fields, 1.28725, { now, summaryRatesComparable: false });
-    expect(payments[0]).toMatchObject({ currency: "GBP", amount: 0.020301435 });
-    expect(metrics.trailingRate).toBeCloseTo(0.039813435, 12);
-    expect(metrics.trailingYield).toBeCloseTo(0.0309290619, 9);
-    expect(metrics.forwardRate).toBeNull();
-    expect(metrics.forwardYield).toBeNull();
+  test("a sub-unit history is read in the major unit, and its forward rate annualizes the latest distribution", async () => {
+    // SBK as Gloom Cloud serves it: cash in ZAc with single-precision noise, the summary in rand.
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const cash = (latest: number) => [
+      { exDate: day(latest - 147), amount: 878 }, { exDate: day(latest), amount: 902.00006 },
+    ];
+    const serve = (dividends: unknown[], summary: Record<string, unknown>, declaredDividends: unknown[] = []) => setHttpFetchTransport(async () => Response.json({
+      status: "success", data: {
+        actions: { symbol: "SBK", currency: "ZAc", coverage: { dividends: "available" }, dividends, declaredDividends, splits: [], earnings: [] },
+        quote: { symbol: "SBK", currency: "ZAR", price: 307.87, lastUpdated: Date.now() },
+        summary: { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null, exDividendDate: null,
+          dividendDate: null, ...summary },
+      },
+    }));
+    serve(cash(-37), { currency: "ZAR", forwardAnnualDividendRate: 18.04, forwardRateAsOf: day(-37) }, [{ exDate: day(30), amount: 950.00006 }]);
+    const data = await fetchDividendData("SBK.JO", null, "JSE");
+    expect(data.currency).toBe("ZAR");
+    expect(data.payments.map((row) => [row.amount, row.currency])).toEqual([[9.02, "ZAR"], [8.78, "ZAR"]]);
+    expect(data.declared).toMatchObject([{ amount: 9.5 }]);
+    expect(data.metrics).toMatchObject({ trailingRate: 17.8, forwardRate: 18.04, forwardRateAsOf: day(-37) });
+    expect(data.metrics.forwardYield).toBeCloseTo(18.04 / 307.87, 12);
+    const entries = projectDividendYieldHeadless(data, { rawArgument: "SBK.JO", argument: "SBK.JO", symbols: ["SBK.JO"], options: {} })
+      .sections[0]!.entries!;
+    expect(entries.filter((entry) => entry.label.endsWith("rate")).map((entry) => entry.formatted?.replace(/\s/g, " "))).toEqual(["ZAR 17.80", "ZAR 18.04"]);
+    // An older server stated the summary in ZAc, beside rates in an unstated unit (17.8 was rand): none is read.
+    serve(cash(-37), { currency: "ZAc", trailingAnnualDividendRate: 17.8, forwardAnnualDividendRate: 1804 });
+    expect((await fetchDividendData("SBK.JO", null, "JSE")).metrics).toMatchObject({ trailingRate: 17.8, forwardRate: null });
+    // A semiannual dividend last paid two years ago has stopped, whatever rate is still stated for it.
+    serve(cash(-730), { currency: "ZAR", forwardAnnualDividendRate: 18.04, forwardRateAsOf: day(-730) });
+    expect((await fetchDividendData("SBK.JO", null, "JSE")).metrics).toMatchObject({
+      forwardRate: null, forwardYield: null, lapse: { lastPaid: day(-730) },
+    });
   });
 
   test("distinguishes no reported cash from unavailable history and does not advertise past payment dates", () => {

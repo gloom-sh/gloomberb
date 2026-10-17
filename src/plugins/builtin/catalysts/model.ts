@@ -1,4 +1,4 @@
-import type { CatalystEvent, CatalystFilters, CatalystType } from "../../../api-client/catalysts";
+import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn } from "../../../components";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { humanLabel, type StateTone } from "../shared/research-cells";
@@ -187,6 +187,23 @@ export function catalystQuery(options: Record<string, unknown>, symbol?: string,
     ...(options.tab !== "changes" && (options.upcoming === true || options.upcoming === "true") ? { upcoming: true } : {}),
     ...(options.tab === "changes" ? { changed: true, dateField: "observed" as const } : { dateField: (options.dateField as CatalystFilters["dateField"]) ?? "any" }),
   };
+}
+
+const FILTER_KEYS = ["type", "agency", "country", "sector", "status", "source", "search", "from", "to", "upcoming"] as const;
+
+/**
+ * Why a list is empty: a filter the reader set, or nothing linked to the
+ * company. Litigation also says which court dockets are not collected, since
+ * an empty list there otherwise reads as a company with no cases.
+ */
+export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | null | undefined, query: CatalystFilters, changes: boolean): string {
+  if (data?.coverage.totalEvents === 0) return "Catalyst history is collecting.";
+  if (changes) return "No observed status or date changes match.";
+  const filtered = FILTER_KEYS.some((key) => !!query[key]) || (query.dateField ?? "any") !== "any";
+  if (filtered || !query.symbol) return "No events match these filters.";
+  if (!query.litigation) return `No events linked to ${query.symbol} yet.`;
+  const courts = [...new Set(data?.coverage.sources.filter((source) => !source.enabled && /court/i.test(source.agency)).map((source) => `${source.jurisdiction} court dockets`) ?? [])];
+  return `No cases linked to ${query.symbol}.${courts.length ? ` ${courts.join(" and ")} are not collected yet, so only agency and regulator actions show.` : ""}`;
 }
 
 export function catalystDateBasis(event: CatalystEvent, field: CatalystFilters["dateField"] = "any"): string {

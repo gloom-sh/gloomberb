@@ -1041,11 +1041,14 @@ function ChartComposerSurface({
     }]
     : [];
 
+  // A company that reports no quarterly figures says so, and where its annual ones are.
+  const unreported = legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
     : resolution.loading
       ? "Loading chart data"
-      : statusErrorNotice ?? comparisonUnavailable ?? "No observations in this range";
+      : statusErrorNotice ?? comparisonUnavailable
+        ?? (unreported ? `${unreported.label} has no ${unreported.unreportedPeriod} figures. Set Period to Annual in Series.` : "No observations in this range");
 
   return (
     <Box flexDirection="column" width={width} height={height}>

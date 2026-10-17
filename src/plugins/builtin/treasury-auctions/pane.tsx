@@ -25,6 +25,8 @@ import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values"
 import { usePluginPaneState } from "../../runtime";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useCommandValue } from "../shared/command-tab";
+import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,
@@ -32,8 +34,8 @@ import {
   AUCTION_SORT_COLUMN_IDS,
   DEFAULT_AUCTION_SORT,
   auctionDatesShowYear,
-  auctionHistoryDays,
   auctionHistoryPhrase,
+  auctionHistoryWindow,
   auctionSize,
   buildAuctionColumns,
   dealerPct,
@@ -42,6 +44,7 @@ import {
   formatAuctionRate,
   indirectPct,
   isPendingAuction,
+  nextAuctionHistoryWindow,
   nextFilter,
   rateLabel,
   rateValue,
@@ -61,12 +64,19 @@ function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;
 }
 
-function formatRatio(value: number | null): string {
-  return value == null ? "—" : value.toFixed(2);
+/**
+ * A metric a completed auction does not have is blank: Treasury's data has
+ * bid-to-cover regularly from late 1999 and the bidder split only from
+ * 2008-04-07. "—" stays for an announced auction whose results are not out yet.
+ */
+function formatRatio(value: number | null, auction?: TreasuryAuction): string {
+  if (value == null) return auction && !isPendingAuction(auction) ? "" : "—";
+  return value.toFixed(2);
 }
 
-function formatPct(value: number | null): string {
-  return value == null ? "—" : `${value.toFixed(1)}%`;
+function formatPct(value: number | null, auction?: TreasuryAuction): string {
+  if (value == null) return auction && !isPendingAuction(auction) ? "" : "—";
+  return `${value.toFixed(1)}%`;
 }
 
 /** The stop-out against the average reads in basis points, like an FRN margin. */
@@ -128,13 +138,13 @@ function renderAuctionCell(
     case "stopOut":
       return { text: formatBp(stopOutVsAverageBp(auction)), color: selected ?? colors.text };
     case "btc":
-      return { text: formatRatio(auction.bidToCoverRatio), color: selected ?? colors.text };
+      return { text: formatRatio(auction.bidToCoverRatio, auction), color: selected ?? colors.text };
     case "indirect":
-      return { text: formatPct(indirectPct(auction)), color: selected ?? colors.text };
+      return { text: formatPct(indirectPct(auction), auction), color: selected ?? colors.text };
     case "direct":
-      return { text: formatPct(directPct(auction)), color: selected ?? colors.text };
+      return { text: formatPct(directPct(auction), auction), color: selected ?? colors.text };
     case "dealer":
-      return { text: formatPct(dealerPct(auction)), color: selected ?? colors.text };
+      return { text: formatPct(dealerPct(auction), auction), color: selected ?? colors.text };
     case "size":
       return { text: formatMoney(auctionSize(auction)), color: dimmed };
   }
@@ -182,7 +192,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
 const NO_AUCTIONS: TreasuryAuction[] = [];
 
 export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
-  const historyDays = auctionHistoryDays(usePaneInstance()?.settings);
+  const historyDays = auctionHistoryWindow(usePaneInstance()?.settings);
   const loadAuctions = useCallback(
     (force: boolean) => loadTreasuryAuctions(force, undefined, historyDays),
     [historyDays],
@@ -200,7 +210,13 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [sortPreference, setSortPreference] = useState<AuctionSortPreference>(DEFAULT_AUCTION_SORT);
-  const [searchQuery, setSearchQuery] = useState("");
+  // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
+  const [searchQuery, setSearchQuery] = useCommandValue(
+    FIXED_INCOME_PANE_ID,
+    "search",
+    (params) => params.view === "auctions" ? params.search ?? "" : null,
+    "",
+  );
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   // The cache decides whether a tick becomes a request; only [r] forces it.
@@ -389,7 +405,8 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         getItemKey={auctionKey}
         renderCell={renderAuctionRow}
         emptyStateTitle={searchQuery.trim() ? "No matching auctions." : "No recent auctions."}
-        emptyStateHint={`${searchQuery.trim() ? "Searched" : "Showing"} ${auctionHistoryPhrase(historyDays)}; older auctions are in the History window setting. Search by ${AUCTION_SEARCH_FIELDS}.`}
+        emptyStateHint={`${searchQuery.trim() ? "Searched" : "Showing"} ${auctionHistoryPhrase(historyDays)}`
+          + `${nextAuctionHistoryWindow(historyDays) ? "; older auctions are in the History window setting" : ""}. Search by ${AUCTION_SEARCH_FIELDS}.`}
       />
     </Box>
   );

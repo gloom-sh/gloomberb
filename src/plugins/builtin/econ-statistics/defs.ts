@@ -59,6 +59,13 @@ export interface StatDef {
   /** Concise measurement identity that must remain beside the values. */
   measurementBasis?: string;
   /**
+   * A daily market rate: its detail ranks the 1D and 1W move, in basis
+   * points, against every move since the series began (shared/move-rank.ts).
+   */
+  rankMoves?: boolean;
+  /** When in the day a reading is taken, named beside its date: "15:30 ET" for Treasury yields. */
+  cutoff?: string;
+  /**
    * Stats this one is computed from. Its newest print is held to their common
    * date, so a published spread never runs ahead of the legs shown beside it.
    */

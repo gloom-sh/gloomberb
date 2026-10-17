@@ -173,7 +173,7 @@ export function CompositeLegend({
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
   const valueDates = legendValueDates(series, scene, cursorValueById);
-  const entries = series.map((entry) => {
+  const buildEntries = (withFiscalPeriods: boolean) => series.map((entry) => {
     const cue = lineCues.get(entry.id) ?? null;
     const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : DOT_MARKER;
     const markerWidth = isDesktopWeb ? cue ? DOM_LINE_CELLS : DOM_DOT_CELLS : displayWidth(marker);
@@ -190,7 +190,9 @@ export function CompositeLegend({
     const carried = !!scene?.cursorDate && !!cursorValue?.carried && cursorValue.value != null;
     // What a futures price counts, beside its number as FUT prints it.
     const statedUnit = entry.points.length > 0 && !formatValue && entry.statedUnit ? ` ${entry.statedUnit}` : "";
-    const valueTail = `${ownDate ? ` ${ownDate}` : ""}${changeText}`;
+    // A statement value names the fiscal period it reports, as FA's columns do.
+    const fiscalPeriod = withFiscalPeriods && cursorValue?.value != null ? cursorValue.point?.fiscalPeriod : undefined;
+    const valueTail = `${ownDate ? ` ${ownDate}` : ""}${fiscalPeriod ? ` ${fiscalPeriod}` : ""}${changeText}`;
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
       : `${formatLegendSeriesValue(
@@ -222,11 +224,13 @@ export function CompositeLegend({
       valueText,
       statedUnit,
       valueTail,
+      fiscalPeriod,
       toggleable,
       tooltip,
       carried,
     };
   });
+  let entries = buildEntries(true);
   type LegendEntry = (typeof entries)[number];
   const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number) => {
     target.label = label;
@@ -254,11 +258,18 @@ export function CompositeLegend({
   // The value (including its sign/unit) always stays intact. If the row cannot
   // fit even with every name at a readable fragment, it keeps the old 30-cell
   // entries and scrolls.
-  const minimumSeriesWidth = entries.reduce((total, entry, index) => {
+  const minimumWidthOf = (list: LegendEntry[]) => list.reduce((total, entry, index) => {
     const text = [truncateToDisplayWidth(entry.compactLabel, Math.min(8, displayWidth(entry.compactLabel))), entry.valueText]
       .filter(Boolean).join(" ");
     return total + Math.max(1, displayWidth(text)) + entry.markerWidth + (index > 0 ? 1 : 0);
   }, 0);
+  // A fiscal period is context beside a value. Where it would push the row past
+  // what fits with every name at a fragment, the row reads as it did without
+  // them (the tooltip keeps the period's dates) and does not scroll a value away.
+  if (entries.some(({ fiscalPeriod }) => fiscalPeriod) && minimumWidthOf(entries) > widthBeforeAccessory) {
+    entries = buildEntries(false);
+  }
+  const minimumSeriesWidth = minimumWidthOf(entries);
   if (minimumSeriesWidth <= widthBeforeAccessory) {
     while (measureSeriesWidth() > widthBeforeAccessory) {
       const shrinkable = entries

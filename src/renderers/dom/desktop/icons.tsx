@@ -68,6 +68,14 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M19 5 5 19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </g>
   ),
+  // A media player's play and pause, solid so they read at the size of text.
+  play: <path d="M3.6 2.2v7.6a.5.5 0 0 0 .76.43l6.1-3.8a.5.5 0 0 0 0-.86l-6.1-3.8a.5.5 0 0 0-.76.43Z" fill="currentColor" />,
+  pause: (
+    <>
+      <rect x="2.9" y="2.3" width="2.3" height="7.4" rx=".6" fill="currentColor" />
+      <rect x="6.8" y="2.3" width="2.3" height="7.4" rx=".6" fill="currentColor" />
+    </>
+  ),
   user: (
     <g transform="scale(0.5)">
       <circle cx="12" cy="8.5" r="3.4" stroke="currentColor" strokeWidth="1.8" />

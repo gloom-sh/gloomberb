@@ -3,7 +3,7 @@ import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { splitSymbolArgs } from "../../../cli/symbol-args";
+import { splitSymbolWords } from "../../../cli/symbol-args";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { type SettlementFloatStatistics, settlementPercentFloat } from "./model";
 import type { ShortInterestRecord } from "./types";
@@ -213,7 +213,7 @@ const DASHED_CLASS_SHARE = /^([A-Z]{1,5})-([A-Z])$/;
 export function customUniverse(text: string): ShortWatchUniverse {
   const symbols: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
-  for (const entry of splitSymbolArgs([text]).map((value) => value.replace(/^\$+/, "").toUpperCase())) {
+  for (const entry of splitSymbolWords([text]).map((value) => value.replace(/^\$+/, "").toUpperCase())) {
     // A listing abroad (SAN:EPA) is not its symbol's US line, which can be another company's.
     if (listingAbroadVenue(entry) != null) {
       skipped.push({ name: entry, reason: NOT_US_LISTED });

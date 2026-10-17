@@ -62,6 +62,22 @@ describe("headless pane printer", () => {
     });
   });
 
+  test("a series counts its observations as points, not the gaps kept to break its line", async () => {
+    // GE AAPL's quarterly P/E as it was served with gaps across fiscal year ends.
+    const definition: HeadlessPaneDefinition<"series"> = {
+      shape: "series", argument: { kind: "none" }, options: [],
+      load: () => ({ series: [{ id: "pe", label: "AAPL P/E", points: [
+        { date: "2024-11-01", value: null }, { date: "2025-08-01", value: null },
+        { date: "2025-10-31", value: 36.2 }, { date: "2026-07-31", value: 35.4 },
+      ] }] }),
+    };
+    const report = await buildHeadlessFunctionReport({
+      headless: definition, token: "GE", label: "Valuation Graph", options: {}, instance: {}, capability: { id: "valuation-series" },
+    } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-points") } as MarketContext, "");
+    expect(report.data).toMatchObject({ rowCount: 2, empty: false });
+    expect(report.text.split("\n").find((line) => line.startsWith("AAPL P/E"))?.trimEnd()).toMatch(/ 2$/);
+  });
+
   test("--width wraps the notes, errors and source line under a table, and a column marked whole is never cut", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [],

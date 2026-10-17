@@ -8,6 +8,7 @@ import {
   formatIpoPrice,
   formatIpoReturn,
   formatIpoSize,
+  ipoBoardStatus,
   ipoTableWidth,
   ipoTickerKey,
   marketColumnWidth,
@@ -45,6 +46,36 @@ describe("IPO calendar tabs and search", () => {
     // The tab still applies under a search.
     expect(ids(filterIpoDeals(deals, "us", "tokyo"))).toEqual([]);
   });
+
+  test("a region's name lists its deals on whichever tab is open, and any other word reads as before", () => {
+    expect(ids(filterIpoDeals(deals, "all", "europe"))).toEqual(["csg"]);
+    for (const word of ["asia", " APAC ", "Asia-Pacific", "asia pacific"]) expect(ids(filterIpoDeals(deals, "all", word))).toEqual(["catl", "kioxia"]);
+    // The tab is not switched: it still narrows the region's deals, and a region word is no substring search.
+    expect(ids(filterIpoDeals(deals, "us", "europe"))).toEqual([]);
+    expect(ids(filterIpoDeals(deals, "europe", "europe"))).toEqual(["csg"]);
+    expect(ids(filterIpoDeals(deals, "all", "euro"))).toEqual([]);
+    // A US deal is found by its country as before, and a company's own name still counts.
+    expect(ids(filterIpoDeals(deals, "all", "us"))).toEqual(["arm"]);
+    expect(ids(filterIpoDeals([...deals, ipoDeal({ id: "named", company: "Europe Holdings" })], "all", "europe"))).toEqual(["csg", "named"]);
+  });
+
+  test("pending lists the deals not priced yet, which no status is called", () => {
+    const pipeline = [
+      ipoDeal({ id: "filed", status: "filed" }),
+      ipoDeal({ id: "upcoming", status: "upcoming" }),
+      ipoDeal({ id: "priced", status: "priced" }),
+      ipoDeal({ id: "listed", status: "listed" }),
+      ipoDeal({ id: "postponed", status: "postponed" }),
+      ipoDeal({ id: "withdrawn", status: "withdrawn" }),
+      // The word is the status's, not a company's: a name that holds it is not a pending deal.
+      ipoDeal({ id: "pending-co", company: "Pending Holdings", status: "listed" }),
+    ];
+    expect(ids(filterIpoDeals(pipeline, "all", " Pending "))).toEqual(["filed", "upcoming"]);
+    expect(ids(filterIpoDeals(pipeline, "all", "pend"))).toEqual(["pending-co"]);
+    expect(ids(filterIpoDeals(pipeline, "all", "upcoming"))).toEqual(["upcoming"]);
+    // The tab still applies.
+    expect(ids(filterIpoDeals([...pipeline, ipoDeal({ id: "tokyo", venue: "Tokyo", region: "apac" })], "apac", "pending"))).toEqual(["tokyo"]);
+  });
 });
 
 describe("IPO calendar order", () => {
@@ -54,25 +85,59 @@ describe("IPO calendar order", () => {
     ipoDeal({ id: "upcoming-later", listingDate: "2026-10-20" }),
     ipoDeal({ id: "filed", status: "filed", filedDate: "2026-09-15" }),
     ipoDeal({ id: "priced", status: "priced", listingDate: "2026-09-30" }),
-    // Still book building: the subscription window stands in for the listing date.
+    // A book still to open: its window stands in for the listing date.
     ipoDeal({ id: "upcoming-bookbuild", subscriptionOpen: "2026-10-01", subscriptionClose: "2026-10-03" }),
     ipoDeal({ id: "upcoming-undated" }),
-    // Two weeks past its date and still not listed: after what is next.
-    ipoDeal({ id: "upcoming-late", subscriptionOpen: "2026-09-14" }),
-    // A few days past its date: still next.
-    ipoDeal({ id: "upcoming-due", listingDate: "2026-09-24", dateKind: "expected" }),
+    // In its offer since mid-month, no listing date named: under way now.
+    ipoDeal({ id: "offering", subscriptionOpen: "2026-09-14" }),
+    // Past its listing day and not priced: after everything still ahead, the latest first.
+    ipoDeal({ id: "overdue-old", listingDate: "2026-09-10" }),
+    ipoDeal({ id: "overdue", listingDate: "2026-09-24", dateKind: "expected" }),
     ipoDeal({ id: "listed-new", status: "listed", listingDate: "2026-09-25" }),
     // Priced with no listing date yet: its book dates it, not the foot of the board.
     ipoDeal({ id: "priced-undated", status: "priced", subscriptionOpen: "2026-09-26", subscriptionClose: "2026-09-26" }),
   ];
 
-  test("upcoming deals come soonest first, late ones last, then priced and listed most recent first, then filings, then stopped deals", () => {
-    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, "2026-09-29"))).toEqual([
-      "upcoming-due", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "upcoming-late",
+  test("books open now, then upcoming soonest first, overdue last, then priced and listed most recent first, then filings, then stopped deals", () => {
+    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, new Date("2026-09-29T15:00:00Z")))).toEqual([
+      "offering", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "overdue", "overdue-old",
       "priced", "priced-undated", "listed-new", "listed-old",
       "filed",
       "withdrawn",
     ]);
+  });
+
+  test("an upcoming deal is overdue once its listing day is over at its own venue, and offering once its book opened with no listing date", () => {
+    // 16:00 in New York is already the next morning in Tokyo and Hong Kong.
+    const now = new Date("2026-10-16T20:00:00Z");
+    const tokyo = { mic: "XTKS", exchange: "JPX", venue: "Tokyo", country: "JP", region: "apac", timezone: "Asia/Tokyo" } as const;
+    const hongKong = { mic: "XHKG", exchange: "HKEX", venue: "HKEX", country: "HK", region: "apac", timezone: "Asia/Hong_Kong" } as const;
+    const board = [
+      ipoDeal({ id: "nasdaq-today", listingDate: "2026-10-16", dateKind: "expected" }),
+      ipoDeal({ id: "tokyo-yesterday", ...tokyo, listingDate: "2026-10-16", dateKind: "confirmed" }),
+      ipoDeal({ id: "nasdaq-missed", listingDate: "2026-10-15", dateKind: "expected" }),
+      ipoDeal({ id: "hk-book", ...hongKong, subscriptionOpen: "2026-10-17" }),
+      ipoDeal({ id: "hk-book-later", ...hongKong, subscriptionOpen: "2026-10-18" }),
+      ipoDeal({ id: "nasdaq-next", listingDate: "2026-10-20" }),
+      // Priced is the venue's word for it, whatever the date.
+      ipoDeal({ id: "priced-past", status: "priced", listingDate: "2026-10-15" }),
+    ];
+    expect(Object.fromEntries(board.map((deal) => [deal.id, ipoBoardStatus(deal, now)]))).toEqual({
+      "nasdaq-today": "upcoming",
+      "tokyo-yesterday": "overdue",
+      "nasdaq-missed": "overdue",
+      "hk-book": "offering",
+      "hk-book-later": "upcoming",
+      "nasdaq-next": "upcoming",
+      "priced-past": "priced",
+    });
+    expect(ids(sortIpoDeals(board, DEFAULT_IPO_SORT, now))).toEqual([
+      "hk-book", "nasdaq-today", "hk-book-later", "nasdaq-next", "tokyo-yesterday", "nasdaq-missed", "priced-past",
+    ]);
+    // Search reads the word the row shows; pending is still every deal not priced yet.
+    expect(ids(filterIpoDeals(board, "all", "overdue", now))).toEqual(["tokyo-yesterday", "nasdaq-missed"]);
+    expect(ids(filterIpoDeals(board, "all", "upcoming", now))).toEqual(["nasdaq-today", "hk-book-later", "nasdaq-next"]);
+    expect(ids(filterIpoDeals(board, "all", "pending", now))).toHaveLength(6);
   });
 
   test("PRICE sorts across currencies in US dollars, at the rate the deal size was converted at", () => {

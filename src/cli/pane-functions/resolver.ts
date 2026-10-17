@@ -13,6 +13,7 @@ import { slugifyName } from "../../utils/slugify";
 import { ListingArgError, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
 import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
+import { readNameEntries } from "../name-entries";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -23,6 +24,7 @@ import {
   type PaneFunctionCatalog,
 } from "./catalog";
 import {
+  argumentNamesTicker,
   buildCreateOptions,
   cleanTickerInput,
   normalizeLookupToken,
@@ -63,15 +65,12 @@ async function buildPaneInstance(
 ): Promise<PaneInstanceConfig> {
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
-  const shortcutArgKind = resolved.template?.shortcut?.argKind;
   const headlessArgKind = resolved.headless?.argument.kind;
-  const fallbackSymbol = headlessArgKind === "free-text" || headlessArgKind === "none"
+  const fallbackSymbol = !argumentNamesTicker(resolved.template, resolved.headless)
     ? null
     : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
       ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\s]+/)[0] ?? ""))
-      : shortcutArgKind === "text"
-        ? null
-        : normalizeTickerInput(null, cleanTickerInput(target));
+      : normalizeTickerInput(null, cleanTickerInput(target));
   const primarySymbol = resolved.createOptions?.symbol
     ?? resolved.createOptions?.symbols?.[0]
     ?? fallbackSymbol;
@@ -138,7 +137,8 @@ export async function applyListingArgument(
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
-  const typed = takesOneTicker ? [args.arg] : splitSymbolArgs([args.arg]);
+  // A list entry with spaces is a company's name search finds, or the symbols it holds.
+  const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
   if (typed.length === 0) return args;
   let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.

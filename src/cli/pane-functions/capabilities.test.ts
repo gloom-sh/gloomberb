@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
+import { buildFundamentalChartPreset, buildValuationChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
 import { paneSchemas as researchSchemas } from "../../plugins/builtin/research/headless-schema";
 import { optionsPositioningHeadless } from "../../plugins/builtin/options-positioning/headless";
@@ -76,6 +77,21 @@ describe("pane function capabilities", () => {
       period: "annual",
     });
     expect(capabilityPluginState(capability, options)).toEqual({});
+  });
+
+  // A read applies its period over the template, so a default that differs changes what it shows.
+  test("GF and GE read the period their app templates open on, with the other one option away", () => {
+    for (const [id, build, period, other] of [
+      ["fundamental-graph-pane", buildFundamentalChartPreset, "quarterly", "annual"],
+      ["valuation-graph-pane", buildValuationChartPreset, "annual", "quarterly"],
+    ] as const) {
+      const capability = capabilityFor(id);
+      for (const symbols of [["AAPL"], ["AAPL", "MSFT"]]) {
+        expect(build(symbols).series.map((series) => series.source)).toEqual(symbols.map(() => expect.objectContaining({ period })));
+      }
+      expect(normalizeCapabilityOptions(capability, {}).period).toBe(period);
+      expect(normalizeCapabilityOptions(capability, { period: other }).period).toBe(other);
+    }
   });
 
   test("exposes custom G as a bot-safe mixed-series capability", () => {

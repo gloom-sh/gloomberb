@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AUCTION_ARCHIVE_PAGE_SIZE,
   AUCTION_MAX_PAGES,
+  auctionArchiveBoundary,
+  auctionWindowQuery,
   buildAuctionsUrl,
   fetchAuctionPages,
   normalizeAuction,
@@ -129,15 +132,26 @@ describe("parseTreasuryAuctionsPayload", () => {
 
 describe("buildAuctionsUrl", () => {
   test("requests a bounded window with encoded pagination brackets", () => {
-    const url = buildAuctionsUrl(30, Date.parse("2026-08-18T00:00:00Z"));
-    expect(url).toContain("filter=auction_date:gte:2026-07-19");
+    const url = buildAuctionsUrl(auctionWindowQuery(30, Date.parse("2026-08-18T00:00:00Z")));
+    expect(url).toContain("filter=auction_date:gte:2026-07-19&");
     expect(url).toContain("sort=-auction_date");
-    expect(url).toContain("page%5Bsize%5D=");
+    expect(url).toContain("page%5Bsize%5D=1000&");
     expect(url).toContain("page%5Bnumber%5D=1");
     expect(url).not.toContain("page[size]");
     expect(url).not.toContain("page[number]");
-    expect(buildAuctionsUrl(30, Date.parse("2026-08-18T00:00:00Z"), 3))
+    expect(buildAuctionsUrl(auctionWindowQuery(30, Date.parse("2026-08-18T00:00:00Z")), 3))
       .toContain("page%5Bnumber%5D=3");
+  });
+
+  test("ALL's archive ends where its recent side begins, in pages Fiscal Data accepts", () => {
+    // The boundary is 1 January of last year, so the recent side never spans more than two years.
+    expect(auctionArchiveBoundary(Date.parse("2026-01-01T00:00:00Z"))).toBe("2025-01-01");
+    expect(auctionArchiveBoundary(Date.parse("2026-12-31T23:59:59Z"))).toBe("2025-01-01");
+    const archive = buildAuctionsUrl({ from: "1979-10-31", before: "2025-01-01", pageSize: AUCTION_ARCHIVE_PAGE_SIZE }, 2);
+    expect(archive).toContain("filter=auction_date:gte:1979-10-31,auction_date:lt:2025-01-01&");
+    expect(archive).toContain("page%5Bsize%5D=5000&page%5Bnumber%5D=2");
+    // Fiscal Data answers 400 to a page over 10,000 rows.
+    expect(buildAuctionsUrl({ from: "1979-10-31", pageSize: 20_000 })).toContain("page%5Bsize%5D=10000&");
   });
 });
 

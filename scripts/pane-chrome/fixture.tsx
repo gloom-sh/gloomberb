@@ -1440,7 +1440,7 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 if (scenario === "cmp" && params.get("linked") === "mixed") await loadFearGreed(true, async () => recentFearGreed());
-if (scenario === "layout") installLayoutFetches();
+if (scenario === "layout") installLayoutFetches(params);
 if (scenario === "header") {
   installHeaderPlatform(platform);
   installHeaderClock();

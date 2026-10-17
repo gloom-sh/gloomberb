@@ -5,7 +5,7 @@ import { CHART_COMPOSER_PANE_ID, LEGACY_TICKER_DETAIL_PANE_ID } from "../../type
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import type { MarketContext } from "../types";
-import { cleanTickerInput } from "./options";
+import { argumentNamesTicker, cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
@@ -237,7 +237,7 @@ export function collectShotSymbols(resolved: ResolvedPaneFunction, rawArg: strin
     }
   }
   // A text argument is a phrase, not a symbol, so it must never be looked up as one.
-  const argIsTicker = resolved.template?.shortcut?.argKind !== "text";
+  const argIsTicker = argumentNamesTicker(resolved.template, resolved.headless);
   let symbols = resolved.createOptions?.symbols?.length
     ? resolved.createOptions.symbols
     : [

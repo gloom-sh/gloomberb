@@ -1,4 +1,5 @@
 import { historySpan, type HistorySpan } from "../shared/history-span";
+import { latestMoveRank, MOVE_HORIZONS, type MoveRank } from "../shared/move-rank";
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
 import type { StatBuild } from "./client";
@@ -35,11 +36,28 @@ export interface StatViewModel {
   visible: StatPoint[];
   /** The dates the chart shows: the whole history when the range reaches past its start. */
   span: HistorySpan | null;
+  /**
+   * A daily rate's 1D and 1W moves into its latest reading, each ranked against
+   * the whole loaded history whatever the range; empty for other statistics.
+   */
+  moves: MoveRank[];
   observationStale: boolean;
   fetchedAt: number | null;
   cacheStale: boolean | null;
   cacheSource: NonNullable<StatBuild["cache"]>["source"] | null;
   refreshError: string | null;
+}
+
+// Ranking reads the whole history; a range change keeps the same points, so it does not rank again.
+const rankedMoves = new WeakMap<readonly StatPoint[], MoveRank[]>();
+
+function statMoves(points: readonly StatPoint[]): MoveRank[] {
+  let moves = rankedMoves.get(points);
+  if (!moves) {
+    moves = MOVE_HORIZONS.flatMap((horizon) => latestMoveRank(points, horizon) ?? []);
+    rankedMoves.set(points, moves);
+  }
+  return moves;
 }
 
 function sliceByRange(
@@ -129,6 +147,7 @@ export function projectStat(
     low: extreme(visible, "low"),
     visible,
     span: historySpan(points[0]!.date, visible, STAT_RANGE_WINDOWS_MS[range]),
+    moves: stat.rankMoves ? statMoves(points) : [],
     observationStale: nowMs - Date.parse(latest.date) > stat.staleAfterMs,
     fetchedAt: build.cache?.fetchedAt ?? null,
     cacheStale: build.cache?.stale ?? null,

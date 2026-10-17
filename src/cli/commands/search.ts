@@ -23,7 +23,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
-import { knownGapMessage, settingsPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany, sameCompany } from "../../tickers/company-name";
@@ -378,9 +378,10 @@ function searchNotes(
 ): string[] {
   const gap = knownGapMessage(query);
   const bank = searchedCentralBank(query);
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   const empty = candidates.length === 0 && !fate.stopped;
-  return [...fate.notes, indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
+  // A gap line that names the index (TNX's yield line names ^TNX) says it once.
+  return [...fate.notes, gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
     empty && !gap && !bank && !setting && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
 }
@@ -403,6 +404,7 @@ export function buildSearchReport({
   series = [],
   functions = [],
   fate = NO_SEARCH_FATE,
+  pointToCatalog = false,
 }: {
   query: string;
   candidates: TickerSearchCandidate[];
@@ -412,16 +414,18 @@ export function buildSearchReport({
   functions?: readonly SearchFunctionMatch[];
   /** What became of the symbol searched for: a listing that stopped trading, a company that left it. */
   fate?: SearchFate;
+  /** End with the catalog hint whatever search found: `quote` searched a phrase the user did not ask to search. */
+  pointToCatalog?: boolean;
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
   if (fate.notes.length > 0) lines.push("", ...fate.notes);
-  const indexNote = indexRootNote(query, candidates);
-  if (indexNote) lines.push("", indexNote);
   const gap = knownGapMessage(query);
+  const indexNote = gap ? null : indexRootNote(query, candidates);
+  if (indexNote) lines.push("", indexNote);
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", centralBankLine(bank));
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
@@ -434,7 +438,8 @@ export function buildSearchReport({
   if (candidates.length === 0) {
     if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
-    else if (!gap && !bank && !setting && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    else if (!gap && !bank && !setting && !charted) return [...lines, cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))].join("\n");
+    if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -467,8 +472,34 @@ export function buildSearchReport({
     ));
   }
   if (charted && !seriesFirst) lines.push("", charted);
+  if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
 
   return lines.join("\n");
+}
+
+/** The functions a search lists when it found no ticker, unless a known gap or a central bank already says where to look. */
+function searchedFunctions(
+  query: string,
+  candidates: readonly TickerSearchCandidate[],
+  fate: SearchFate,
+  plugins: GloomPlugin[] | undefined,
+  context: MarketContext,
+): Promise<SearchFunctionMatch[]> {
+  return candidates.length === 0 && !fate.stopped && !knownGapMessage(query) && !searchedCentralBank(query) && plugins
+    ? searchFunctionsForCli(query, plugins, context)
+    : Promise.resolve([]);
+}
+
+/**
+ * What `quote "10 year yield"` prints for a phrase that is no ticker and no
+ * company's name: what `search` finds for it, then the catalog, where the
+ * functions and data series are found by what they do.
+ */
+export async function phraseSearchReport(phrase: string, context: MarketContext, plugins?: GloomPlugin[]): Promise<string> {
+  const candidates = await searchCandidatesForCli({ query: phrase, tickers: await context.store.loadAllTickers(), dataProvider: context.dataProvider });
+  const series = findCatalogSeries(plugins ?? [], phrase, "names");
+  const functions = await searchedFunctions(phrase, candidates, NO_SEARCH_FATE, plugins, context);
+  return buildSearchReport({ query: phrase, candidates, series, functions, pointToCatalog: true });
 }
 
 export async function search(query: string, dependencies: SearchCommandDependencies = {}) {
@@ -498,10 +529,8 @@ export async function search(query: string, dependencies: SearchCommandDependenc
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
     const bank = searchedCentralBank(trimmedQuery);
-    // A query that names no ticker may name what a function does; a known gap or a central bank already says where to look.
-    const functions = candidates.length === 0 && !fate.stopped && !knownGapMessage(trimmedQuery) && !bank && dependencies.plugins
-      ? await searchFunctionsForCli(trimmedQuery, dependencies.plugins, context)
-      : [];
+    // A query that names no ticker may name what a function does.
+    const functions = await searchedFunctions(trimmedQuery, candidates, fate, dependencies.plugins, context);
     if (dependencies.printResult) {
       const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({

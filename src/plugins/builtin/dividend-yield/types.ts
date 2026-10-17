@@ -1,3 +1,5 @@
+import type { DividendLapse } from "../../../utils/forward-dividend";
+
 export interface DividendPayment {
   exDate: Date;
   recordDate: Date | null;
@@ -15,6 +17,8 @@ export interface DividendMetrics {
   forwardRate: number | null;
   /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD. */
   forwardRateAsOf: string | null;
+  /** Set once the dividend has stopped (lapsedDividend), when there is no forward rate or yield. */
+  lapse?: DividendLapse | null;
   payoutRatio: number | null;
   growth1Y: number | null;
   growth3Y: number | null;

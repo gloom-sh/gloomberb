@@ -442,6 +442,34 @@ test("pulls remote changes on later syncs instead of only once per session", asy
   expect(applied).toEqual([{ value: 1 }, { value: 2 }]);
 });
 
+// The cloud copy's signature is kept between polls (GLO-925); another write
+// that comes back under a revision number seen before must not reuse it.
+test("a cloud copy written again under a revision number seen before is compared as written", async () => {
+  let local: unknown = { value: 1 };
+  const contributor: SyncContributor = { id: "test.data", schemaVersion: 1, collect: () => local };
+  let remote = remoteSnapshot("test.data", { value: 1 }, "2026-08-27T00:00:00.000Z", "device-a");
+  let pushes = 0;
+  const transport: SyncTransport = {
+    id: "same-revision",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: remote, revision: 7, updatedAt: remote.createdAt }),
+    pushSnapshot: async () => {
+      pushes += 1;
+      return { revision: 8, updatedAt: "2026-08-27T00:00:02.000Z" };
+    },
+  };
+  const controller = startController({ transport, contributors: [contributor] });
+
+  await controller.requestSync({ reason: "startup" });
+  await controller.requestSync({ reason: "poll" });
+  // Another account's copy at the same revision, which this device already holds.
+  remote = remoteSnapshot("test.data", { value: 2 }, "2026-08-27T00:00:01.000Z", "device-b");
+  local = { value: 2 };
+  await controller.requestSync({ reason: "poll" });
+
+  expect(pushes).toBe(0);
+});
+
 test("a broker profile removed on one device stays removed after another device that synced it since syncs", async () => {
   // One cloud document, written whole by each device after it pulls.
   let cloud: { snapshot: SyncSnapshot | null; revision: number } = { snapshot: null, revision: 0 };

@@ -43,6 +43,19 @@ export function sameCompany(left: string | null | undefined, right: string | nul
   return [...fewer].every((word) => more.has(word));
 }
 
+/**
+ * How many words a listing's name has beyond a company name typed for it,
+ * which it must have every word of: 0 for the same name however each spells
+ * its legal form ("Whirlpool Corp" for "Whirlpool Corporation"), 2 for
+ * "Whirlpool of India Ltd.". Null when it lacks a word, or nothing was typed.
+ */
+export function companyNameExtraWords(typed: string, name: string | null | undefined): number | null {
+  const wanted = companyWords(typed);
+  const words = companyWords(name);
+  if (wanted.size === 0 || ![...wanted].every((word) => words.has(word))) return null;
+  return words.size - wanted.size;
+}
+
 /** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
 export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
   const groups: T[][] = [];

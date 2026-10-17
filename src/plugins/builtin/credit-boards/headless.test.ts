@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import type { CdxBoardIndex, CdxBoardPayload } from "../../../api-client/credit-boards";
+import type { CdxBoardIndex, CdxBoardPayload, SovrBoardPayload, SovrBoardSovereign } from "../../../api-client/credit-boards";
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
-import { cdxHeadless } from "./headless";
+import { cdxHeadless, sovrHeadless } from "./headless";
+import { findIndex, findSovereign } from "./model";
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
@@ -57,4 +58,41 @@ test("a named index adds its daily levels newest first, which do not date the bo
   const freshness = deriveHeadlessFreshness(cdxHeadless, result);
   expect([freshness.asOf, freshness.oldest]).toEqual(["2026-10-09", undefined]);
   await expect(cdxHeadless.load({ ...args, rawArgument: "itraxx", argument: "itraxx" }, context)).rejects.toThrow("Use one of: IG, HY.");
+});
+
+const sovereign = (id: string, name: string, currency: string, level: number): SovrBoardSovereign => ({
+  id, name, currency, date: "2026-10-09", maturity: "2031-12-20", level, prints: 40, reported: 30, change1W: 1, change1M: 2,
+  points: [{ date: "2026-10-09", maturity: "2031-12-20", level, prints: 40 }],
+});
+
+const sovrPayload: SovrBoardPayload = {
+  source: "DTCC PPD",
+  asOf: "2026-10-10T00:00:00.000Z",
+  tenor: "5Y",
+  sovereigns: [sovereign("BR", "Brazil", "BRL", 119.7), sovereign("CI", "Ivory Coast", "XOF", 246.7), sovereign("ZA", "South Africa", "ZAR", 132.5)],
+};
+
+test("an index or a country is named by its code or name in any case, the same way for fn and for the board that opens on it", () => {
+  const indexes = [...payload.indexes, index("MAIN", "iTraxx Main", "spread", 63, 0, 0), index("XOVER", "iTraxx Crossover", "spread", 312, 0, 0)];
+  expect(["ig", "CDX hy", "itraxx-main", "MAIN", "Crossover", "xover", "itraxx", ""].map((query) => findIndex(indexes, query)?.id ?? null))
+    .toEqual(["IG", "HY", "MAIN", "MAIN", "XOVER", "XOVER", null, null]);
+  // A country is its whole name or its code; a last word could be another country's.
+  expect(["brazil", "BR", " ivory-coast ", "IVORY COAST", "south africa", "africa", "Narnia", ""]
+    .map((query) => findSovereign(sovrPayload.sovereigns, query)?.id ?? null))
+    .toEqual(["BR", "BR", "CI", "CI", "ZA", null, null, null]);
+});
+
+test("SOVR lists one country's row when a country is named, and says which countries it has when it is not one", async () => {
+  const context = {
+    apiClient: { getCloudSovrBoard: async () => sovrPayload },
+    marketData: { getPriceHistory: async () => [] },
+  } as unknown as HeadlessPaneContext;
+  const names = async (argument: string | null) => {
+    const result = await sovrHeadless.load({ ...args, rawArgument: argument ?? "", argument }, context);
+    return (result as { rows: HeadlessPaneRow[] }).rows.map((row) => row.name);
+  };
+  expect(await names(null)).toEqual(["Brazil", "Ivory Coast", "South Africa"]);
+  expect(await names("ivory coast")).toEqual(["Ivory Coast"]);
+  expect(await names("za")).toEqual(["South Africa"]);
+  await expect(names("Narnia")).rejects.toThrow("No sovereign Narnia. Use one of: Brazil, Ivory Coast, South Africa.");
 });

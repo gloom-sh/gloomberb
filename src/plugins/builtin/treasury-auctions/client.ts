@@ -31,15 +31,36 @@ const FIELDS = [
 ].join(",");
 
 export const AUCTION_HISTORY_DAYS = 120;
+/** The ALL window: every auction Fiscal Data holds, from its first. */
+export const AUCTION_HISTORY_ALL = "all";
+/** A history window: days back from today, or ALL. */
+export type AuctionHistoryWindow = number | typeof AUCTION_HISTORY_ALL;
+/** The first auction in Fiscal Data's auction history. */
+export const AUCTION_HISTORY_START = "1979-10-31";
+
 /**
  * The feed holds roughly 400 auctions a year, so the default 120 days is one
- * page and the longest window (10 years, ~4,000 auctions) is four. One large
- * page costs about the same as a small one, so fewer, larger pages keep a
- * ten-year walk to a few seconds inside the throttle.
+ * page and a 10-year window (~4,000 auctions) is four, a few seconds inside
+ * the throttle.
  */
 const AUCTION_PAGE_SIZE = 1000;
-/** Three times the longest window's pages; the bound only exists so bad metadata cannot loop. */
+/**
+ * The archive behind ALL (1979 to last year, ~10,400 auctions) walks in pages
+ * of 5,000: three requests of about 3 MB and 5 seconds each, half Fiscal
+ * Data's 10,000-row page limit, so each stays well inside the request timeout.
+ */
+export const AUCTION_ARCHIVE_PAGE_SIZE = 5000;
+/** Fiscal Data answers 400 to a larger page. */
+const FISCAL_DATA_MAX_PAGE_SIZE = 10_000;
+/** Three times the longest walk's pages; the bound only exists so bad metadata cannot loop. */
 export const AUCTION_MAX_PAGES = 12;
+
+/** One walk: auctions on or after `from` and, when set, before `before`. */
+export interface AuctionQuery {
+  from: string;
+  before?: string;
+  pageSize?: number;
+}
 
 const TREASURY_FETCH = createThrottledFetch({
   requestsPerMinute: 20,
@@ -53,15 +74,30 @@ function isoDateDaysAgo(days: number, now = Date.now()): string {
   return new Date(now - days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** The walk for a window of the last `days` days. */
+export function auctionWindowQuery(days: number, now = Date.now()): AuctionQuery {
+  return { from: isoDateDaysAgo(days, now) };
+}
+
+/**
+ * Where ALL splits its archive from its recent auctions: 1 January of last
+ * year (UTC). Results that old do not change, so the archive caches for weeks
+ * under this date and the recent side, at most two years, refreshes hourly.
+ */
+export function auctionArchiveBoundary(now = Date.now()): string {
+  return `${new Date(now).getUTCFullYear() - 1}-01-01`;
+}
+
 /** `page[size]` brackets are percent-encoded; the API rejects some proxies otherwise. */
-export function buildAuctionsUrl(sinceDays: number, now = Date.now(), page = 1): string {
+export function buildAuctionsUrl(query: AuctionQuery, page = 1): string {
+  const filters = [`auction_date:gte:${query.from}`, ...(query.before ? [`auction_date:lt:${query.before}`] : [])];
   const params = [
     `fields=${FIELDS}`,
-    `filter=auction_date:gte:${isoDateDaysAgo(sinceDays, now)}`,
+    `filter=${filters.join(",")}`,
     // The CUSIP breaks ties inside a date, so a page boundary that falls in the
     // middle of a day's auctions cannot repeat or skip one on the next page.
     "sort=-auction_date,-cusip",
-    `page%5Bsize%5D=${AUCTION_PAGE_SIZE}`,
+    `page%5Bsize%5D=${Math.min(query.pageSize ?? AUCTION_PAGE_SIZE, FISCAL_DATA_MAX_PAGE_SIZE)}`,
     `page%5Bnumber%5D=${page}`,
   ];
   return `${BASE_URL}?${params.join("&")}`;
@@ -182,11 +218,10 @@ export async function fetchAuctionPages(
 }
 
 export async function fetchTreasuryAuctions(
-  sinceDays: number = AUCTION_HISTORY_DAYS,
+  query: AuctionQuery = auctionWindowQuery(AUCTION_HISTORY_DAYS),
 ): Promise<TreasuryAuction[]> {
-  const requestedAt = Date.now();
   return fetchAuctionPages(async (page) => {
-    const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(sinceDays, requestedAt, page));
+    const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(query, page));
     if (!response.ok) {
       throw new Error(`Treasury Fiscal Data request failed (${response.status})`);
     }

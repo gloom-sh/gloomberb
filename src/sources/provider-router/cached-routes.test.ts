@@ -44,6 +44,25 @@ describe("shared cached market queries", () => {
       expect(actionCalls).toBe(2);
     } finally { persistence.close(); }
   });
+  test("a sub-unit cash history reaches every reader in the major unit, divided once", async () => {
+    const persistence = new AppPersistence(":memory:");
+    let calls = 0;
+    // SBK as its source states it: ZAc, with single-precision noise.
+    const provider = createTestDataProvider({ id: "jse", getCorporateActions: async () => {
+      calls++;
+      return { symbol: "SBK", currency: "ZAc", coverage: { dividends: "available" as const, splits: "available" as const, earnings: "available" as const },
+        dividends: [{ exDate: "2026-09-09", amount: 902.00006 }], declaredDividends: [{ exDate: "2027-04-14", amount: 950.00006 }],
+        splits: [], earnings: [] };
+    } });
+    try {
+      const fresh = await new AssetDataRouter(provider, [], persistence.resources).getCorporateActions("SBK", "JSE");
+      expect(fresh).toMatchObject({ currency: "ZAR", dividends: [{ amount: 9.02 }], declaredDividends: [{ amount: 9.5 }] });
+      // Read back from the cache, it is the same figure, not divided again.
+      const cached = await new AssetDataRouter(provider, [], persistence.resources).getCorporateActions("SBK", "JSE");
+      expect(cached).toMatchObject({ currency: "ZAR", dividends: [{ amount: 9.02 }] });
+      expect(calls).toBe(1);
+    } finally { persistence.close(); }
+  });
   test("preserves stale FX age, shares refreshes, notifies consumers, and unsubscribes on destroy", async () => {
     // FX quotes stay fresh while the market is closed, so a weekend run would
     // never see this two-hour-old rate as stale. Pin a Wednesday afternoon.

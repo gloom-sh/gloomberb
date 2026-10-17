@@ -1099,6 +1099,8 @@ export interface CloudTranscriptTurnPayload {
   isQa: boolean;
   /** Offset into the recording; null when the company published the transcript as a document. */
   startSeconds: number | null;
+  /** Where each of `paragraphs` starts in the recording, in seconds; absent without timings or on older servers. */
+  paragraphStarts?: number[];
 }
 
 interface CloudTranscriptKeyFigurePayload {
@@ -1143,6 +1145,20 @@ export interface CloudEarningsTranscriptPayload {
   wordCount: number | null;
   asrModel: string | null;
   updatedAt: string | null;
+}
+
+/**
+ * A call's audio to play beside its transcript. `kind` names what it is; a
+ * stored recording is the only kind so far.
+ */
+export interface CloudEarningsCallAudioPayload {
+  kind: "recording";
+  /** A signed address that plays until `expiresAt`, seeking included. */
+  url: string;
+  expiresAt: string;
+  durationSeconds: number | null;
+  bytes?: number;
+  contentType?: string;
 }
 
 export type CloudSearchDocType = "transcript" | "news" | "filing";

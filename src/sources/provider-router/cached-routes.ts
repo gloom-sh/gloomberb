@@ -2,6 +2,7 @@ import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/ex
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
+import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { canonicalExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import { noProviderError, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
@@ -211,7 +212,9 @@ export class ProviderRouterCachedRoutes {
         error: `No analyst research provider available for ${ticker}`,
       };
       case "getCorporateActions": return {
-        ...tickerRoute("corporateActions-v3", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        ...tickerRoute("corporateActions-v4", "corporateActions"),
+        // Cash in the major unit as it arrives from any source, so no reader divides a sub-unit out again.
+        request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra)?.then(cashInMajorUnits),
         rank: (data: CorporateActionsData) => !hasCorporateActionsValue(data) ? 0 : data.stale || Object.values(data.coverage ?? {}).includes("unavailable") ? 1 : 2,
         acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,

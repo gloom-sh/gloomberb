@@ -1,7 +1,7 @@
 import { enrollmentSeries } from "./history";
 import { describe, expect, test } from "bun:test";
-import { catalystFixture } from "./test-fixture";
-import { catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystParties, catalystQuery, catalystStatusTone } from "./model";
+import { catalystFixture, catalystPayload } from "./test-fixture";
+import { catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystEmptyTitle, catalystParties, catalystQuery, catalystStatusTone } from "./model";
 import { validateCatalystDetail, validateCatalysts } from "./client";
 import { catalystMatches } from "../alerts/catalysts";
 import { createEventAlert, readEventAlerts } from "../alerts/events";
@@ -92,4 +92,14 @@ test("enrollment history uses observation times, keeps missing counts as gaps an
   expect(series.map((entry) => entry.points.map((point) => point.value))).toEqual([[200, null, null], [null, 190, null]]);
   expect(series[0]!.points[0]!.date.toISOString()).toBe(first.observedAt);
   expect(series[0]!.unit).toBe("participants");
+});
+
+test("an empty litigation list says nothing is linked, and which court dockets are not collected, unless a filter emptied it", () => {
+  const courts = { ...catalystPayload(), coverage: { ...catalystPayload().coverage, totalEvents: 19_113, sources: [
+    { id: "courtlistener", name: "CourtListener court dockets", agency: "US courts", jurisdiction: "US", country: "US", enabled: false, homepage: "https://example.com", cadenceMinutes: 60, coverage: "", state: null, events: 0 },
+  ] } };
+  const query = catalystQuery({}, "MSFT", true);
+  expect(catalystEmptyTitle(courts, query, false)).toBe("No cases linked to MSFT. US court dockets are not collected yet, so only agency and regulator actions show.");
+  expect(catalystEmptyTitle(courts, catalystQuery({ search: "antitrust" }, "MSFT", true), false)).toBe("No events match these filters.");
+  expect(catalystEmptyTitle(courts, catalystQuery({}, "PFE"), false)).toBe("No events linked to PFE yet.");
 });

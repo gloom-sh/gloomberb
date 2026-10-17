@@ -80,6 +80,24 @@ describe("computeBeta", () => {
     expect(computeDatedBeta(portfolio, market)).toBeCloseTo(1.6, 5);
   });
 
+  // The holdings are lined up once per list of series (GLO-925): new weights,
+  // another list or a series extended in place must still count.
+  test("weighs the holdings it is given now, not the ones it lined up before", () => {
+    const market = datedReturns([-0.010, 0.015, 0.004, -0.006, 0.011, 0.008, -0.012, 0.009, 0.013, -0.007]);
+    const double = market.map((point) => ({ ...point, value: point.value * 2 }));
+    const flat = market.map((point) => ({ ...point, value: 0 }));
+    const beta = (series: Array<{ weight: number; returns: DatedReturn[] }>) => computeDatedBeta(computeWeightedPortfolioReturns(series), market);
+
+    expect(beta([{ weight: 80, returns: double }, { weight: 20, returns: flat }])).toBeCloseTo(1.6, 5);
+    expect(beta([{ weight: 50, returns: double }, { weight: 50, returns: flat }])).toBeCloseTo(1, 5);
+    expect(beta([{ weight: 50, returns: double }])).toBeCloseTo(2, 5);
+    // A day the flat holding lacks drops out of the weighted series until it has it.
+    double.push({ startDateKey: "2024-01-10", dateKey: "2024-01-11", value: 0.5 });
+    expect(computeWeightedPortfolioReturns([{ weight: 50, returns: double }, { weight: 50, returns: flat }])).toHaveLength(10);
+    flat.push({ startDateKey: "2024-01-10", dateKey: "2024-01-11", value: 0 });
+    expect(computeWeightedPortfolioReturns([{ weight: 50, returns: double }, { weight: 50, returns: flat }]).at(-1)!.value).toBeCloseTo(0.25, 10);
+  });
+
   test("computes dated returns from closing prices", () => {
     const { returns } = resolveDatedReturns([
       { date: new Date("2024-01-01T00:00:00Z"), close: 100 },

@@ -26,6 +26,53 @@ export function isIpoTab(value: unknown): value is IpoTab {
 export const IPO_STATUSES: readonly IpoStatus[] = ["filed", "upcoming", "priced", "listed", "postponed", "withdrawn"];
 
 /**
+ * What the board says a deal is: its status, except for an upcoming deal
+ * whose dates have come. One whose book has opened with no listing date named
+ * yet is `offering`; one whose listing day has passed at its venue with no
+ * pricing or first session reported is `overdue` (pulled, postponed, or late
+ * to be reported). Neither is a status the server sends.
+ */
+export type IpoBoardStatus = IpoStatus | "offering" | "overdue";
+
+/** Every word the board shows, in the order a deal moves through them. */
+const IPO_BOARD_STATUSES: readonly IpoBoardStatus[] = [
+  "filed", "upcoming", "offering", "overdue", "priced", "listed", "postponed", "withdrawn",
+];
+
+const venueDays = new Map<string, Intl.DateTimeFormat | null>();
+
+/** Today where the board is read, YYYY-MM-DD. */
+function localToday(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** Today at a venue, YYYY-MM-DD; where the board is read when the zone is not one this runtime knows. */
+function venueToday(timeZone: string, now = new Date()): string {
+  let format = venueDays.get(timeZone);
+  if (format === undefined) {
+    try {
+      format = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    } catch {
+      format = null;
+    }
+    venueDays.set(timeZone, format);
+  }
+  if (!format) return localToday(now);
+  const parts = Object.fromEntries(format.formatToParts(now).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function ipoBoardStatus(deal: IpoDeal, now = new Date()): IpoBoardStatus {
+  if (deal.status !== "upcoming") return deal.status;
+  const today = venueToday(deal.timezone, now);
+  if (deal.listingDate) return deal.listingDate < today ? "overdue" : "upcoming";
+  const opened = deal.subscriptionOpen ?? deal.subscriptionClose;
+  return opened && opened <= today ? "offering" : "upcoming";
+}
+
+/**
  * The market each venue answers to when its data is behind. A venue the
  * server adds later reads as its MIC until it has a name here.
  */
@@ -105,18 +152,34 @@ function countryName(code: string): string {
   return name;
 }
 
-/** Company in either script, symbol, venue, country code or name, and status. */
-function matchesIpoQuery(deal: IpoDeal, query: string): boolean {
+/** What `pending` searches for: a deal not priced yet. */
+const NOT_PRICED_STATUSES: readonly IpoStatus[] = ["filed", "upcoming"];
+
+/** The words that name a region, as a tab does; a US deal is already found by its country. */
+const REGION_WORDS: Partial<Record<IpoRegion, readonly string[]>> = {
+  europe: ["europe"],
+  apac: ["apac", "asia", "asia-pacific"],
+};
+
+/**
+ * Company in either script, symbol, venue, country code or name, and the
+ * status the board shows. The word `pending` is no status of its own: it is
+ * every deal not priced yet, offering and overdue ones included.
+ * A region's name (`europe`, `asia`) lists the region's deals, on whichever tab is open.
+ */
+function matchesIpoQuery(deal: IpoDeal, query: string, now: Date): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
+  if (needle === "pending") return NOT_PRICED_STATUSES.includes(deal.status);
+  if (REGION_WORDS[deal.region]?.includes(needle.replace(/\s+/g, "-"))) return true;
   return [
     deal.company, deal.companyLocal, deal.symbol, deal.venue, deal.mic, deal.exchange,
-    deal.country, countryName(deal.country), deal.segment, deal.status,
+    deal.country, countryName(deal.country), deal.segment, ipoBoardStatus(deal, now),
   ].some((value) => !!value && value.toLowerCase().includes(needle));
 }
 
-export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = ""): IpoDeal[] {
-  return deals.filter((deal) => (tab === "all" || deal.region === tab) && matchesIpoQuery(deal, query));
+export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = "", now = new Date()): IpoDeal[] {
+  return deals.filter((deal) => (tab === "all" || deal.region === tab) && matchesIpoQuery(deal, query, now));
 }
 
 export type IpoColumnId = "ticker" | "company" | "market" | "date" | "status" | "price" | "size" | "return";
@@ -153,34 +216,17 @@ export function calendarDate(deal: IpoDeal): string | null {
   }
 }
 
-/** Upcoming deals soonest first; everything after them most recent first. */
-/** Days past its date before an upcoming deal counts as late rather than next. */
-const LATE_AFTER_DAYS = 7;
-
-/** Today's date where the board is read, YYYY-MM-DD. */
-function localToday(now = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function daysBefore(date: string, days: number): string {
-  const day = new Date(`${date}T00:00:00Z`);
-  day.setUTCDate(day.getUTCDate() - days);
-  return day.toISOString().slice(0, 10);
-}
-
 /**
- * Upcoming deals: the ones still ahead soonest first, then undated ones, then
- * the ones a week or more past their date and still not listed (a pending
- * HKEX listing, a book listing elsewhere), most recent first, so the board
- * opens on what is next. Everything after them most recent first.
+ * Upcoming deals: the ones in their offer now, then the ones still ahead
+ * soonest first, then undated ones, then the overdue ones most recent first,
+ * so the board opens on what is next. Everything after them most recent first.
  */
-function calendarOrder(today: string): (a: IpoDeal, b: IpoDeal) => number {
-  const lateBefore = daysBefore(today, LATE_AFTER_DAYS);
+function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus): (a: IpoDeal, b: IpoDeal) => number {
   const upcomingRank = (deal: IpoDeal) => {
-    const date = calendarDate(deal);
-    return date === null ? 1 : date < lateBefore ? 2 : 0;
+    const status = boardStatus(deal);
+    if (status === "offering") return 0;
+    if (status === "overdue") return 3;
+    return calendarDate(deal) === null ? 2 : 1;
   };
   return (a, b) => {
     const group = calendarGroup(a.status) - calendarGroup(b.status);
@@ -188,7 +234,7 @@ function calendarOrder(today: string): (a: IpoDeal, b: IpoDeal) => number {
     const upcoming = a.status === "upcoming";
     const rank = upcoming ? upcomingRank(a) - upcomingRank(b) : 0;
     if (rank !== 0) return rank;
-    const ascending = upcoming && upcomingRank(a) === 0;
+    const ascending = upcoming && upcomingRank(a) < 3;
     const date = compareSortValues(calendarDate(a), calendarDate(b), ascending ? "asc" : "desc");
     return date || a.company.localeCompare(b.company) || a.id.localeCompare(b.id);
   };
@@ -204,25 +250,27 @@ function usdPrice(deal: IpoDeal): number | null {
   return price * (deal.offerSizeUsd / deal.offerSize);
 }
 
-function sortValue(columnId: IpoColumnId, deal: IpoDeal): string | number | null {
+function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus): string | number | null {
   switch (columnId) {
     case "ticker": return deal.symbol;
     case "company": return deal.company;
     case "market": return deal.venue;
     case "date": return calendarDate(deal);
-    case "status": return IPO_STATUSES.indexOf(deal.status);
+    case "status": return IPO_BOARD_STATUSES.indexOf(status);
     case "price": return usdPrice(deal);
     case "size": return deal.offerSizeUsd;
     case "return": return deal.firstDay?.returnPct ?? null;
   }
 }
 
-export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference, today = localToday()): IpoDeal[] {
+export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference, now = new Date()): IpoDeal[] {
   const { columnId } = sort;
-  const order = calendarOrder(today);
+  const statuses = new Map(deals.map((deal) => [deal, ipoBoardStatus(deal, now)]));
+  const boardStatus = (deal: IpoDeal) => statuses.get(deal)!;
+  const order = calendarOrder(boardStatus);
   if (!columnId) return [...deals].sort(order);
   return [...deals].sort((a, b) => (
-    compareSortValues(sortValue(columnId, a), sortValue(columnId, b), sort.direction) || order(a, b)
+    compareSortValues(sortValue(columnId, a, boardStatus(a)), sortValue(columnId, b, boardStatus(b)), sort.direction) || order(a, b)
   ));
 }
 

@@ -391,6 +391,39 @@ export interface MediaSurfaceHandle {
   toggle(): Promise<void>;
   toggleMuted(): boolean;
 }
+export type AudioPlaybackState = "idle" | "loading" | "playing" | "paused" | "ended" | "error";
+/** What a pane does to its audio player: the keys and lines that drive it. */
+export interface AudioPlayerHandle {
+  play(): Promise<void>;
+  pause(): void;
+  toggle(): Promise<void>;
+  /** Moves to `seconds`; `play` also starts it from there. */
+  seek(seconds: number, options?: { play?: boolean }): void;
+  seekBy(deltaSeconds: number): void;
+  currentTime(): number;
+}
+/**
+ * A transport bar over one audio source (play, the elapsed and total time, a
+ * seek track, the speed), drawn by hosts that can play media. The pane owns
+ * the source and the speed and hears where playback is.
+ */
+export interface HostAudioPlayerProps {
+  src: string;
+  /** Says which recording `src` is: a new address for the same one keeps the position and whether it plays. */
+  sourceKey: string;
+  /** Accessible name of the player. */
+  label: string;
+  /** Length known before the media loads, in seconds. */
+  durationSeconds?: number | null;
+  rates: readonly number[];
+  rate: number;
+  onRateChange(rate: number): void;
+  handleRef?: Ref<AudioPlayerHandle | null>;
+  /** Called as playback moves, a few times a second, and on every seek. */
+  onTimeUpdate?(seconds: number): void;
+  onStateChange?(state: AudioPlaybackState): void;
+  onError?(message: string): void;
+}
 interface SpinnerMarkProps extends BoxProps {
   name?: string;
   color?: string;
@@ -630,6 +663,8 @@ export interface UiHost {
   Surface3D?: ComponentType<Surface3DHostProps>;
   ImageSurface: ComponentType<ImageSurfaceProps>;
   MediaSurface: ComponentType<MediaSurfaceProps>;
+  /** Hosts that play audio draw it; the terminal has none and draws nothing. */
+  AudioPlayer?: ComponentType<HostAudioPlayerProps>;
   SpinnerMark: ComponentType<SpinnerMarkProps>;
   AsciiText: ComponentType<AsciiTextProps>;
   Button?: ComponentType<any>;

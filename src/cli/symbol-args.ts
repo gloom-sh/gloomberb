@@ -2,17 +2,56 @@
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
 const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
 
+/** What separates the entries of a list: a comma, a semicolon, a tab (a sheet's cells) or a line. */
+const LIST_SEPARATOR = /[,;\t\r\n]/;
+
 /**
- * Symbols given as command arguments, each of which may hold several split by
- * commas, semicolons, spaces, tabs or newlines (a pasted list), with the blanks
- * dropped, the quote marks around each entry removed and the typed case kept.
- * Every command that takes a symbol list splits its arguments here, and
- * `not-a-ticker` reads the typed spelling back from them.
+ * The entries of command arguments, each of which may hold several (a pasted
+ * list), with the blanks dropped, the quote marks around each entry removed
+ * and the typed case kept. An argument with commas, semicolons, tabs or lines
+ * in it is split on those, so an entry may be a company's name (`WHR,
+ * Whirlpool Corporation, BRK.B`) or several symbols with spaces between them
+ * (`brk.b bf-b` on a pasted line); one without them is split on spaces (`JNK
+ * EMB BRK.B`). Which an entry with a space is takes a search: a command that
+ * resolves its symbols reads them with `readNameEntries`, and a parser that
+ * looks nothing up takes `splitSymbolWords`.
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
   return args
-    .flatMap((arg) => arg.replace(/^\uFEFF/, "").split(/[\s,;]+/))
-    .map((entry) => entry.replace(QUOTE_EDGES, ""))
+    .flatMap((arg) => {
+      const text = arg.replace(/^\uFEFF/, "");
+      return LIST_SEPARATOR.test(text) ? text.split(LIST_SEPARATOR) : text.split(/\s+/);
+    })
+    .map((entry) => entry.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+/**
+ * The one argument a command was given, when the user quoted words with
+ * spaces and no list separator into it: `quote "10 year yield"`, `quote
+ * "Apple Inc"` or a pasted line `quote "AAPL MSFT"`. Which of those it is
+ * takes a lookup (`readPhraseArgument`); `splitSymbolArgs` would split it
+ * into words, each a symbol (10, YEAR, YIELD). Null for anything else:
+ * several arguments, one word, or a list with commas.
+ */
+export function quotedPhrase(args: readonly string[]): string | null {
+  if (args.length !== 1) return null;
+  const text = args[0]!.replace(/^\uFEFF/, "");
+  if (LIST_SEPARATOR.test(text)) return null;
+  const phrase = text.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " ");
+  return phrase.includes(" ") ? phrase : null;
+}
+
+/**
+ * Symbols given as command arguments, split on commas, semicolons, spaces,
+ * tabs and lines in any mix, each without its quote marks and in its typed
+ * case: `"GME", 'AMC'\nBF.B brk.b` is GME, AMC, BF.B and brk.b. The split of
+ * a parser that looks nothing up, and of an entry search finds no company for.
+ */
+export function splitSymbolWords(args: readonly string[]): string[] {
+  return splitSymbolArgs(args)
+    .flatMap((entry) => entry.split(" "))
+    .map((word) => word.replace(QUOTE_EDGES, ""))
     .filter(Boolean);
 }
 
@@ -33,7 +72,7 @@ export function stripStrayEdges(text: string): { text: string; notes: string[] }
   const rest = text.slice(leading.length);
   const trailing = rest.match(new RegExp(`${junk}+$`))?.[0] ?? "";
   const inner = rest.slice(0, rest.length - trailing.length);
-  const entries = splitSymbolArgs([inner]);
+  const entries = splitSymbolWords([inner]);
   const [first, last] = [entries[0], entries.at(-1)];
   const before = separatorsIn(leading);
   const after = separatorsIn(trailing);

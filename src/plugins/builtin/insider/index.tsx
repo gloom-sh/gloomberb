@@ -100,9 +100,10 @@ const TYPE_FILTER_LABELS: Record<InsiderTypeFilter, string> = {
 
 /**
  * The 90-day buy and sale totals as figures: one cell per side, and per
- * security when there are several. A side with no trades says so. Buys read
- * in the gain colour and sales in the loss colour, as in the table; when the
- * Type filter hides open-market trades the figures dim and say so.
+ * security when there are several. A side with no trades shows 0 shares,
+ * muted. Buys read in the gain colour and sales in the loss colour, as in
+ * the table; when the Type filter hides open-market trades the figures dim
+ * and say so.
  */
 function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter): StatItem[] {
   const securities = new Set(figures.totals.map((total) => total.security));
@@ -111,7 +112,7 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
   for (const side of ["P", "S"] as const) {
     const label = side === "P" ? "90d buys" : "90d sales";
     const totals = figures.totals.filter((total) => total.side === side);
-    if (totals.length === 0) items.push({ id: side, label, value: "None", tone: "muted" });
+    if (totals.length === 0) items.push({ id: side, label, value: "0 shares", tone: "muted" });
     for (const total of totals) {
       items.push({
         id: `${total.security}:${side}`,
@@ -481,8 +482,8 @@ function InsiderView({ width, height, focused, onBack }: {
 
 /**
  * INS on a ticker is that company's insider transactions; without one it is
- * the ranking of companies whose insiders are buying. A row of the ranking
- * opens its company here, and Back returns to the ranking.
+ * the ranking of companies whose insiders are buying, or selling. A row of
+ * the ranking opens its company here, and Back returns to the ranking.
  */
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
@@ -559,11 +560,11 @@ export const insiderModule: PluginModule = {
         id: "insider-pane",
         paneId: "insider",
         label: "Insider",
-        description: "Insider transactions for a ticker; alone, the companies whose insiders are buying.",
-        keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "cluster buying"],
+        description: "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.",
+        keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "insider selling", "insider activity", "cluster buying"],
         shortcut: "INS",
         canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
-        // Typed alone with no active ticker it ranks the market's insider buying.
+        // Typed alone with no active ticker it ranks the market's insider buying or selling.
         withoutTickerTitle: INSIDER_SIGNALS_TITLE,
       }),
       headless: insiderHeadless,

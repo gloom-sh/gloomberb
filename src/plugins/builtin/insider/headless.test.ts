@@ -8,6 +8,8 @@ import type { ParsedInsiderFiling } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import { insiderSignalsCache } from "./signals-client";
+import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
+import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -209,10 +211,11 @@ describe("insider report without a ticker", () => {
     );
     try {
       const report = await load(30);
-      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Buyers", "Bought", "Last Buy", "Filed", "Top Buyers"]);
+      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Buyers", "Bought", "Last Buy", "Filed", "Insiders"]);
       expect(report.rows[0]).toMatchObject({
         ticker: "NWBI",
         score: 78,
+        // A server that predates structured signals: the reasons.
         why: "3 insiders, $1.2M in 14 days · CFO raised stake 56%",
         filingDate: "2026-10-14",
         buyers: "Ana Rivera (CEO) $496k; Ben Okafor (Director) $354k",
@@ -223,4 +226,71 @@ describe("insider report without a ticker", () => {
       insiderSignalsCache.reset();
     }
   });
+
+  test("ranks selling with --side sell and the filters, the facts as text and each insider's stake under the row", async () => {
+    const asked: unknown[] = [];
+    const sale: InsiderSignalsPayload["rows"][number] = {
+      ...row,
+      ticker: "TRNT", company: "Tailspin Toys Inc", score: 61, reasons: ["3 insiders, $4.2M in 5 days", "CEO sold 40% of stake"],
+      whySignals: [
+        { kind: "cluster", value: 3, text: "3 insiders", insider: null },
+        { kind: "stake", value: -40, text: "-40%", insider: { name: "Rivera Ana", role: "CEO" } },
+      ],
+      buyers: [
+        { name: "Rivera Ana", role: "CEO", value: 2_400_000, buys: 2, lastBuy: "2026-10-13", shares: 60_000, stakeChangePct: -40, newPosition: false, exited: false },
+        { name: "Okafor Ben", role: "Director", value: 1_800_000, buys: 1, lastBuy: "2026-10-09", shares: 45_000, stakeChangePct: -100, newPosition: false, exited: true },
+      ],
+      marketCap: 1.2e9,
+    };
+    const apiClient = { getCloudSecInsiderSignals: async (params: Record<string, unknown>) => {
+      asked.push(params);
+      return { ...signals(Number(params.window ?? 30), params.cap === "large" ? [] : [sale]), side: "sell", marketCaps: "stored" };
+    } } as never;
+    const load = (options: Record<string, string | number | boolean>) => createInsiderHeadless().load(
+      { rawArgument: "", argument: "", symbols: [], options: { name: "", limit: 20, window: 30, side: "sell", role: "all", ...options } },
+      createTestHeadlessContext({ apiClient }),
+    );
+    try {
+      const report = await load({ role: "officers", minValue: 1_000_000, cluster: true, exited: true });
+      expect(asked[0]).toEqual({ side: "sell", window: 30, limit: 20, role: "officers", minValue: 1_000_000, cluster: true, position: "exited" });
+      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Sellers", "Sold", "Last Sale", "Filed", "Insiders"]);
+      // Why stays whole on a narrow table: the company gives way, then moves under the row with the filing day.
+      expect(report.columns?.find((column) => column.key === "why")).toMatchObject({ minWidth: 46 });
+      expect(report.columns?.filter((column) => column.stackPriority).map((column) => [column.key, column.stackPriority])).toEqual([["company", 2], ["filingDate", 1]]);
+      expect(report.rows[0]).toMatchObject({
+        ticker: "TRNT",
+        why: "3 insiders · CEO -40%",
+        reasons: ["3 insiders, $4.2M in 5 days", "CEO sold 40% of stake"],
+        marketCap: 1.2e9,
+        buyers: "Ana Rivera (CEO) $2.4M -40%; Ben Okafor (Director) $1.8M EXITED",
+      });
+      expect(report.metadata).toMatchObject({ side: "sell", marketCaps: "stored" });
+      expect((await load({ cap: "large" })).empty).toBe("No insider selling in the last 30 days matches these filters.");
+      // A position filter belongs to one side.
+      await expect(load({ new: true })).rejects.toThrow("--new is a buying filter");
+      await expect(load({ side: "buy", exited: true })).rejects.toThrow("--exited is a selling filter");
+    } finally {
+      insiderSignalsCache.reset();
+    }
+  });
+});
+
+test("the catalog's examples for the ranking run without a ticker and read as the options they name", () => {
+  const options = createInsiderHeadless().options;
+  const capability = { id: "insider", botSafe: true, options } as unknown as PaneFunctionCapability;
+  const examples = options.filter((option) => option.example).map((option) => [option.example!, option.exampleWithoutArgument]);
+  expect(examples).toEqual([
+    ["--side sell --min-value 250000", true],
+    ["--role directors --cluster --window 90", true],
+    ["--side sell --exited", true],
+  ]);
+  const read = (example: string) => {
+    const parsed = parsePaneFunctionArgs(["INS", ...example.split(" ")]);
+    expect(parsed.arg).toBe("");
+    const { side, window, role, minValue, cluster, exited } = normalizeCapabilityOptions(capability, parsed.options, { code: "INS" });
+    return { side, window, role, minValue, cluster, exited };
+  };
+  expect(read(examples[0]![0] as string)).toMatchObject({ side: "sell", window: 30, role: "all", minValue: 250_000 });
+  expect(read(examples[1]![0] as string)).toMatchObject({ side: "buy", window: 90, role: "directors", cluster: true });
+  expect(read(examples[2]![0] as string)).toMatchObject({ side: "sell", exited: true });
 });

@@ -3,8 +3,8 @@ import type {
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
 import {
-  compareDate, CURVE_OPTIONS, curveIdOf, curveOption, curveSpreadFigures, loadComparePoints, loadCurveData, parseCompareInput,
-  parseCurveArgument, type CurveData, type CurveId,
+  compareDate, curveCutoff, CURVE_OPTIONS, curveIdOf, curveOption, curveSpreadFigures, curveTenorMove, loadComparePoints,
+  loadCurveData, parseCompareInput, parseCurveArgument, type CurveData, type CurveId,
 } from "./curves";
 import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
 import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
@@ -32,6 +32,22 @@ const COLUMNS = [
   { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
   AS_OF_COLUMN,
 ];
+const percentile = (value: unknown) => value == null ? "-" : Number(value).toFixed(0);
+/**
+ * With Gloom Cloud's move ranks: each tenor's 1D and 1W move, how big it was
+ * against every move of its kind (a percentile), and the year that history
+ * starts, which differs by tenor (the 6W bill began in 2025).
+ */
+const RANKED_COLUMNS = [
+  ...MATURITY_COLUMNS,
+  { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
+  { key: "move1dPercentile", header: "1D pctl", align: "right" as const, format: percentile },
+  { key: "change1wBasisPoints", header: "1W bp", align: "right" as const, format: basisPoints },
+  { key: "move1wPercentile", header: "1W pctl", align: "right" as const, format: percentile },
+  { key: "movesSince", header: "Since", format: (value: unknown) => typeof value === "string" ? value.slice(0, 4) : "-" },
+  AS_OF_COLUMN,
+];
+const RANK_NOTE = "pctl is the share of the tenor's 1D (or 1W) moves since the year in Since that were smaller, ties counted half.";
 /** Both curves and the difference; the compare curve's own session heads its column, as it may be a day or a year back. */
 const compareColumns = (compareAsOf: string | null) => [
   ...MATURITY_COLUMNS,
@@ -154,7 +170,7 @@ export function createYieldCurveHeadless(
       const compareAt = (maturity: string) => comparePoints?.find((point) => point.maturity === maturity)?.yield ?? null;
       // The stored curve brings its look-backs; the FRED fallback's load after it, and a failure leaves the move blank.
       const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
-      const change1d = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row.change1d]));
+      const tenorRows = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row]));
       const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
       const missing = points.filter((point) => point.yield == null);
       const missingTenors = missing.map((point) => point.maturity);
@@ -172,20 +188,36 @@ export function createYieldCurveHeadless(
           if (source) fredNames.add(source);
         }
       }
+      // Gloom Cloud ranks the stored curve's moves; the FRED fallback and older servers bring none.
+      const ranked = !comparePoints && (data.moves?.some((move) => move.change != null) ?? false);
       const seriesSource = fredNames.size > 0 ? [...fredNames].join(", ")
         : data.seriesSource ? data.seriesSource
         : data.seriesSource === null ? "FRED" : CURVE_PUBLISHERS[curve];
+      const cutoff = curveCutoff(curve);
       return {
         // A stored curve cites its publisher. FRED's fallback cites info.source, not that publisher.
+        // A Treasury curve names when in the day it was taken, beside its date.
         freshness: { source: seriesSource, status: "not-a-feed", tradingDayMarket: CURVE_MARKETS[curve],
+          ...(cutoff ? { schedule: cutoff } : {}),
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
-        ...(comparePoints ? { columns: compareColumns(compareAsOf) } : {}),
+        ...(comparePoints ? { columns: compareColumns(compareAsOf) } : ranked ? { columns: RANKED_COLUMNS } : {}),
+        ...(ranked ? { notes: [RANK_NOTE] } : {}),
         rows: rows.map((point) => {
           const compare = compareAt(point.maturity);
-          const change = change1d.get(point.maturity) ?? null;
+          const change = tenorRows.get(point.maturity)?.change1d ?? null;
+          const change1w = tenorRows.get(point.maturity)?.change1w ?? null;
+          const day = ranked ? curveTenorMove(data, point.maturity, "1D") : null;
+          const week = ranked ? curveTenorMove(data, point.maturity, "1W") : null;
           return {
             ...point,
             change1dBasisPoints: change == null ? null : toBasisPoints(change, 1),
+            ...(ranked ? {
+              change1wBasisPoints: change1w == null ? null : toBasisPoints(change1w, 1),
+              move1dPercentile: day?.percentile ?? null,
+              move1wPercentile: week?.percentile ?? null,
+              // Both horizons' histories start within a week of each other; the day's names the year.
+              movesSince: day?.since ?? week?.since ?? null,
+            } : {}),
             ...(comparePoints
               ? { compare, changeBasisPoints: point.yield != null && compare != null ? (point.yield - compare) * 100 : null }
               : {}),

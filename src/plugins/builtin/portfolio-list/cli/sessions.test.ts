@@ -156,9 +156,10 @@ describe("what a portfolio is priced at and when each row's price is from", () =
 
     const csv = await showExport(["show", "Main", "--close"], "csv");
     const [header, ...lines] = csv.split("\n");
-    // The valuation fields come last before the five fixed columns every export ends with.
-    expect(header!.split(",").slice(-8)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
-    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z,XLK,[^,]*,,[^,]+,2026-10-09T20:00:00\.000Z$/);
+    // The valuation fields keep their place; the dividend fields come after them, before the five fixed columns every export ends with.
+    expect(header!.split(",").slice(-12)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf",
+      "dividendPerShare", "dividendCurrency", "annualIncome", "incomeYield", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z,,,,,XLK,[^,]*,,[^,]+,2026-10-09T20:00:00\.000Z$/);
     expect(csv).toMatch(/# Source: .* · priced at the regular close\n/);
     expect(csv).toContain("# Observation date: 2026-10-09T20:00:00.000Z\n# Oldest observation: 2026-10-09T15:38:00.000Z\n");
 

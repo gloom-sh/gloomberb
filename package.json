@@ -88,6 +88,7 @@
     "check:pane-rest": "bun run scripts/pane-chrome/rest-diff.ts",
     "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
     "audit:ui": "bun run scripts/pane-chrome/ui-audit.ts",
+    "check:call-player": "bun run scripts/pane-chrome/call-player.ts",
     "benchmark:pane-drag:compare": "bun run scripts/pane-chrome/frame-budget.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"

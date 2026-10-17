@@ -23,9 +23,19 @@ import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import type { InsiderSignalsPayload } from "../../../api-client/insider-signals";
-import { loadInsiderSignals } from "./signals-client";
-import { formatSignalDay, formatSignalValue, insiderSignalsEmptyTitle, insiderSignalWhy } from "./signals-model";
+import type { InsiderSignalRoleGroup, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
+import { DEFAULT_INSIDER_SIGNALS_QUERY, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
+import {
+  formatInsiderStakeChange,
+  formatSignalDay,
+  formatSignalValue,
+  INSIDER_SIGNAL_CAP_OPTIONS,
+  INSIDER_SIGNALS_TITLE,
+  insiderSideWords,
+  insiderSignalsEmptyTitle,
+  insiderSignalsFiltered,
+  insiderSignalWhy,
+} from "./signals-model";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -74,26 +84,35 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
 ];
 
-/** The ranking without a ticker: the pane's columns, then each row's biggest buyers under it. */
-const SIGNAL_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "ticker", header: "Ticker" },
-  { key: "company", header: "Company" },
-  { key: "score", header: "Score", align: "right" },
-  { key: "why", header: "Why" },
-  { key: "insiders", header: "Buyers", align: "right" },
-  { key: "value", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
-  { key: "lastBuy", header: "Last Buy", format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
-  { key: "filingDate", header: "Filed", format: (value) => typeof value === "string" ? value : "-" },
-  { key: "buyers", header: "Top Buyers", underRow: true, format: (value) => typeof value === "string" ? value : "" },
-];
+/**
+ * The ranking without a ticker: the pane's columns in the side's words, why
+ * as the chips' facts in text, then each row's insiders under it with what
+ * their holding did.
+ */
+function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
+  const words = insiderSideWords(side);
+  return [
+    { key: "ticker", header: "Ticker" },
+    // Why is the point: the company gives way first, and on a narrow table moves under the row before why is cut.
+    { key: "company", header: "Company", stackPriority: 2 },
+    { key: "score", header: "Score", align: "right" },
+    { key: "why", header: "Why", minWidth: 46 },
+    { key: "insiders", header: words.insiders, align: "right" },
+    { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
+    { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
+    { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : "-" },
+    { key: "buyers", header: "Insiders", underRow: true, format: (value) => typeof value === "string" ? value : "" },
+  ];
+}
 
-function signalRows(payload: InsiderSignalsPayload): HeadlessPaneRow[] {
+function signalRows(payload: InsiderSignalsPayload, side: InsiderSignalSide): HeadlessPaneRow[] {
   return payload.rows.map((row) => ({
     ticker: row.ticker,
     company: row.company,
     score: row.score,
-    why: insiderSignalWhy(row),
+    why: insiderSignalWhy(row, side),
     reasons: row.reasons,
+    whySignals: row.whySignals ?? null,
     insiders: row.insiders,
     buys: row.buys,
     value: row.value,
@@ -101,9 +120,32 @@ function signalRows(payload: InsiderSignalsPayload): HeadlessPaneRow[] {
     firstBuy: row.firstBuy,
     lastBuy: row.lastBuy,
     filingDate: row.lastFiled,
-    buyers: row.buyers.map((buyer) => `${formatInsiderName(buyer.name)} (${buyer.role}) ${formatSignalValue(buyer.value)}`).join("; "),
+    marketCap: row.marketCap ?? null,
+    buyers: row.buyers.map((buyer) => {
+      const stake = formatInsiderStakeChange(buyer);
+      return `${formatInsiderName(buyer.name)} (${buyer.role}) ${formatSignalValue(buyer.value)}${stake === "--" ? "" : ` ${stake}`}`;
+    }).join("; "),
     signals: row.signals,
   }));
+}
+
+const SIGNAL_OPTION_STATE = (key: string) => ({ pluginId: "ticker-research", key: `insider:signals:${key}` });
+
+/** The ranking's query from the options; a position that belongs to the other side is an error. */
+function signalQuery(options: HeadlessPaneLoadArgs["options"]): InsiderSignalsQuery {
+  const side: InsiderSignalSide = options.side === "sell" ? "sell" : "buy";
+  if (side === "sell" && options.new === true) throw new Error("--new is a buying filter; with --side sell, use --exited.");
+  if (side === "buy" && options.exited === true) throw new Error("--exited is a selling filter; use it with --side sell.");
+  const cap = typeof options.cap === "string" && options.cap !== "all" ? options.cap as InsiderSignalsQuery["cap"] : null;
+  return {
+    side,
+    window: Number(options.window) || DEFAULT_INSIDER_SIGNALS_QUERY.window,
+    role: (typeof options.role === "string" ? options.role : "all") as InsiderSignalRoleGroup,
+    minValue: Number(options.minValue) || 0,
+    cluster: options.cluster === true,
+    position: options.new === true || options.exited === true,
+    cap,
+  };
 }
 
 /** What a Form 4/A says about itself, for its last row in the report. */
@@ -113,7 +155,7 @@ function amendmentNote(entry: ParsedInsiderFiling): string {
 }
 
 export interface InsiderHeadlessDependencies {
-  loadSignals?(window: number, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
+  loadSignals?(query: InsiderSignalsQuery, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
   loadParsed(
     symbol: string,
     limit: number,
@@ -123,7 +165,7 @@ export interface InsiderHeadlessDependencies {
 }
 
 const defaultDependencies: InsiderHeadlessDependencies = {
-  loadSignals: async (window, limit, ctx) => (await loadInsiderSignals(window, {
+  loadSignals: async (query, limit, ctx) => (await loadInsiderSignals(query, {
     limit,
     force: ctx.refresh === true,
     client: ctx.apiClient,
@@ -156,7 +198,7 @@ export function createInsiderHeadless(
       kind: "ticker",
       optional: true,
       placeholder: "ticker",
-      description: "US equity ticker; omit for the companies whose insiders are buying in the open market.",
+      description: "US equity ticker; omit for the companies whose insiders are buying, or selling, in the open market.",
     },
     options: [
       {
@@ -189,31 +231,104 @@ export function createInsiderHeadless(
       {
         key: "window",
         aliases: ["days"],
-        description: "Without a ticker: days of open-market buying to rank, 1 to 90.",
+        description: "Without a ticker: days of open-market buying or selling to rank, 1 to 90.",
         type: "integer",
         defaultValue: 30,
         minimum: 1,
         maximum: 90,
+        pluginState: SIGNAL_OPTION_STATE("window"),
+      },
+      {
+        key: "side",
+        description: "Without a ticker: rank insider buying (open-market purchases) or selling (sales an insider chose: not under a Rule 10b5-1 plan, to cover tax, out of an option exercise or in an offering).",
+        type: "enum",
+        defaultValue: "buy",
+        values: [
+          { value: "buy", aliases: ["buys", "buying", "purchases"] },
+          { value: "sell", aliases: ["sells", "selling", "sales"] },
+        ],
+        example: "--side sell --min-value 250000",
+        exampleWithoutArgument: true,
+        pluginState: SIGNAL_OPTION_STATE("side"),
+      },
+      {
+        key: "role",
+        description: "Without a ticker: whose trades to rank: all, officers (CEO, CFO and other officers), directors or owners (10% owners).",
+        type: "enum",
+        defaultValue: "all",
+        values: [
+          { value: "all" },
+          { value: "officers", aliases: ["officer", "executives"] },
+          { value: "directors", aliases: ["director"] },
+          { value: "owners", aliases: ["owner", "10%"] },
+        ],
+        example: "--role directors --cluster --window 90",
+        exampleWithoutArgument: true,
+        pluginState: SIGNAL_OPTION_STATE("role"),
+      },
+      {
+        key: "minValue",
+        aliases: ["min-value", "min"],
+        description: "Without a ticker: least US dollars a company's insiders traded in the window.",
+        type: "integer",
+        minimum: 0,
+        pluginState: SIGNAL_OPTION_STATE("minValue"),
+      },
+      {
+        key: "cluster",
+        description: "Without a ticker: only companies where two insiders or more traded within a few weeks.",
+        type: "boolean",
+        pluginState: SIGNAL_OPTION_STATE("cluster"),
+      },
+      {
+        key: "new",
+        description: "Without a ticker, buying: only companies where an insider opened a new position.",
+        type: "boolean",
+        pluginState: SIGNAL_OPTION_STATE("position"),
+      },
+      {
+        key: "exited",
+        description: "Without a ticker, with --side sell: only companies where an insider sold their whole stake.",
+        type: "boolean",
+        example: "--side sell --exited",
+        exampleWithoutArgument: true,
+        pluginState: SIGNAL_OPTION_STATE("position"),
+      },
+      {
+        key: "cap",
+        description: "Without a ticker: market value, micro (under $300M), small ($300M to $2B), mid ($2B to $10B) or large; where the server stores market values.",
+        type: "enum",
+        values: INSIDER_SIGNAL_CAP_OPTIONS.map((option) => ({ value: option.value })),
+        pluginState: SIGNAL_OPTION_STATE("cap"),
       },
     ],
     columns: INSIDER_COLUMNS,
-    describe: (args) => args.symbols[0] ? `Insider Transactions | ${args.symbols[0]}` : "Insider Buying",
+    describe: (args) => args.symbols[0]
+      ? `Insider Transactions | ${args.symbols[0]}`
+      : `${INSIDER_SIGNALS_TITLE} | ${args.options.side === "sell" ? "Selling" : "Buying"}`,
     async load(args, ctx) {
       const symbol = args.symbols[0];
       if (!symbol) {
-        const window = Number(args.options.window) || 30;
-        const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(window, Number(args.options.limit), ctx);
+        const query = signalQuery(args.options);
+        const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, Number(args.options.limit), ctx);
+        const side = payload.side ?? "buy";
         return {
-          columns: SIGNAL_COLUMNS,
-          rows: signalRows(payload),
-          ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window) } : {}),
+          columns: signalColumns(side),
+          rows: signalRows(payload, side),
+          ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
           metadata: {
+            side,
             window: payload.window,
+            filters: payload.filters ?? null,
+            marketCaps: payload.marketCaps ?? null,
             through: payload.through,
             asOf: payload.asOf,
             coverage: payload.coverage,
             limitations: [
-              "Open-market purchases (Form 4 code P) by officers, directors and 10% owners only; forms a company files as an owner of another issuer are left out.",
+              side === "sell"
+                ? "Open-market sales (Form 4 code S) an officer, director or 10% owner chose to make only: sales under a Rule 10b5-1 plan, to cover tax, of shares exercised that day, in an offering, into a deal or in a private sale are left out, as are forms a company files as an owner of another issuer."
+                : "Open-market purchases (Form 4 code P) by officers, directors and 10% owners only; forms a company files as an owner of another issuer are left out.",
+              ...(query.cap && payload.marketCaps === "unavailable" ? ["The server stores no market values, so the cap filter leaves nothing."] : []),
             ],
           },
         };

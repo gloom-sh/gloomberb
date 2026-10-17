@@ -13,6 +13,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
+import { findListingOfCompanyName, isCompanyNameInput } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -798,7 +799,9 @@ export async function resolveCliListing(
   deps: ListingDeps,
   options: { ownExchangeWins?: boolean } = {},
 ): Promise<CliListing> {
-  let parsed = parseListingArg(raw, exchangeOption, options);
+  // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
+  const named = await companyNameListingArg(raw, deps);
+  let parsed = named ?? parseListingArg(raw, exchangeOption, options);
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
@@ -822,6 +825,21 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/**
+ * The listing a company's name typed where a symbol goes stands for
+ * (`findListingOfCompanyName`), saying which one it was read as; null for a
+ * symbol, and for a name search finds no listing for, which then fails as a
+ * symbol would.
+ */
+async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
+  const typed = stripStrayEdges(raw).text || raw;
+  if (!isCompanyNameInput(typed)) return null;
+  const found = await findListingOfCompanyName(deps.dataProvider, typed);
+  if (!found) return null;
+  const key = `${found.symbol}:${found.exchange}`;
+  return { ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).` };
 }
 
 /** `resolveCliListing` for a command: a bad exchange fails the command with its message. */

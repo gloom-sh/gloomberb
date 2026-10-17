@@ -48,7 +48,7 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
-  cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, loadForwardYieldDeclarations, renderFundamentalsReport,
+  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadForwardYieldDistributions, renderFundamentalsReport,
 } from "./ticker";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
@@ -155,14 +155,19 @@ import {
 } from "../listing-arg";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
+import { treasuryYieldLine, treasuryYieldTenor } from "../treasury-yields";
+import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
-import { splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
+import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
+import { isCompanyNameInput } from "../../tickers/company-name-listing";
+import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { subMinuteDataMessage } from "../known-gaps";
+import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { looksLikeCurrencyPair } from "../../utils/currency-pair";
@@ -244,12 +249,27 @@ function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined
 }
 
 /**
- * The symbols of a command's arguments, one each however they were separated
- * (spaces, commas or pasted lines), and each security once however its case or
- * share class was written: `AAPL aapl BRK.B BRK-B` is AAPL and BRK.B.
+ * The entries of a command's arguments (`splitSymbolArgs`), each once however
+ * its case or share class was written: `AAPL aapl BRK.B BRK-B` is AAPL and
+ * BRK.B. An entry with a space, from a comma list or pasted lines, keeps its
+ * case: it may be a company's name, which `readSymbols` says.
  */
 function normalizeSymbols(args: string[]): string[] {
-  return uniqueSecuritySymbols(splitSymbolArgs(args).map((symbol) => symbol.toUpperCase()));
+  return uniqueEntries(splitSymbolArgs(args));
+}
+
+/** Each entry once, a symbol upper-cased and a company's name in its typed case. */
+function uniqueEntries(entries: readonly string[]): string[] {
+  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) ? entry : entry.toUpperCase()));
+}
+
+/**
+ * The symbols to resolve: each entry with a space read as a company's name
+ * when search finds one, else as its words, each a symbol (`readNameEntries`),
+ * with the repeats that leaves dropped. A name found stays whole.
+ */
+async function readSymbols(symbols: readonly string[], dataProvider: Parameters<typeof readNameEntries>[1]): Promise<string[]> {
+  return uniqueEntries(await readNameEntries(symbols, dataProvider));
 }
 
 /** What JSON metadata says about the listing a command resolved. */
@@ -604,10 +624,17 @@ function quoteChangeLine(change: TickerChange | null | undefined): string | null
 async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
-  const symbols = normalizeSymbols(args);
-  if (symbols.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
+  const entries = normalizeSymbols(args);
+  if (entries.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
+  // One quoted argument with spaces is a company's name, a pasted line of tickers, or a phrase to search for.
+  const phrase = exchange ? null : quotedPhrase(args);
 
   await withMarketData(ctx, async (market) => {
+    const read = phrase ? await readPhraseArgument(phrase, market.dataProvider) : null;
+    if (read?.kind === "phrase") return answerPhrase(read.phrase, market, ctx);
+    const symbols = read?.kind === "name" ? [read.name]
+      : read?.kind === "symbols" ? uniqueEntries(read.symbols)
+      : await readSymbols(entries, market.dataProvider);
     // With several symbols, --exchange is for the ones that name no exchange of their own.
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
       symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
@@ -687,7 +714,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     ctx.printResult({
       data,
       warnings: notes.length > 0 ? notes : undefined,
-      freshness: quotesFreshness(data.map((row) => row.quote)),
+      // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
+      // close does not read as a contradiction of DGS10 or GC for the same day.
+      freshness: quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
     }, {
       rows: quoteRows,
       details: quoteDetailsText,
@@ -697,6 +726,24 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // The table names each symbol it found nothing for; with none found, the exit status says so too.
     if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
   });
+}
+
+/**
+ * `quote "10 year yield"`: a phrase that is no ticker and no company's name
+ * is answered with what search finds for it and the catalog, never quoted
+ * word by word (10, YEAR, YIELD). A script asked for a quote, so structured
+ * output fails with where to look instead.
+ */
+async function answerPhrase(phrase: string, market: MarketContext, ctx: Parameters<CliCommandDef["execute"]>[1]): Promise<void> {
+  const said = `"${phrase}" is not a ticker or a company's name.`;
+  if (ctx.cliOptions.format !== "text") {
+    ctx.fail(said, [knownGapMessage(phrase), `Search for it: gloomberb search "${phrase}"`, `Functions and data: gloomberb catalog "${phrase}"`]
+      .filter(Boolean).join("\n"));
+  }
+  process.exitCode = CLI_EXIT_CODES.error;
+  if (ctx.cliOptions.quiet) return;
+  console.error(`${cliStyles.warning("warning:")} ${said} What search finds for it:`);
+  console.log(await phraseSearchReport(phrase, market, ctx.plugins));
 }
 
 /**
@@ -801,8 +848,10 @@ async function answerQuote(
     };
   }
   // Other listings already name a futures board code's future (GC=F); with none, it is named here.
+  // A Treasury yield's root (TNX) names its FRED series and the curve beside its index.
+  const yieldTenor = root ? treasuryYieldTenor(listing.symbol) : null;
   const tryLines = [
-    root ? indexRootTryLine(root, request.command) : null,
+    yieldTenor ? treasuryYieldLine(yieldTenor) : root ? indexRootTryLine(root, request.command) : null,
     other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
   ].filter((line): line is string => !!line);
   if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
@@ -1021,6 +1070,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
+    // A forward yield dated ahead names the declared distribution it annualizes (not in JSON), and one whose
+    // dividend stopped says so; read beside the listing notes.
+    const distributions = view === "statements" ? null : loadForwardYieldDistributions(
+      market.dataProvider, listing.request, financials.fundamentals, { declared: ctx.cliOptions.format !== "json" });
     const identity = listingIdentity(listing, financials.quote);
     const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
     const data: FinancialsCliData = {
@@ -1035,10 +1088,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
       const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
-      // A forward yield dated ahead names the declared distribution it annualizes, in the text and tables.
-      const report = ctx.cliOptions.format === "json" ? data : {
-        ...data, declaredDividends: await loadForwardYieldDeclarations(market.dataProvider, listing.request, financials.fundamentals),
-      };
+      const report = { ...data, distributions: await distributions };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1048,7 +1098,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCap: capitalization?.value ?? null,
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
-          fundamentals: exportedFundamentals(priced.fundamentals),
+          fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, report.distributions),
         },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -1583,9 +1633,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const expirationGiven = expiration != null || rawArgs.some((arg) => arg === "--expiration" || arg.startsWith("--expiration="));
     const criteria = parseLeapsCriteria({ ...leapsOptions.raw, ...expirationGiven ? { "--expiration": expiration ?? "" } : {} });
     if ("error" in criteria) ctx.fail(criteria.error, `Usage: gloomberb ${LEAPS_USAGE}`);
-    const symbols = normalizeSymbols(args);
-    if (symbols.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloomberb ${LEAPS_USAGE}`);
-    await withMarketData(ctx, (market) => runLeapsScreen(symbols, exchangeOption, criteria, market, ctx));
+    const entries = normalizeSymbols(args);
+    if (entries.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloomberb ${LEAPS_USAGE}`);
+    await withMarketData(ctx, async (market) => runLeapsScreen(await readSymbols(entries, market.dataProvider), exchangeOption, criteria, market, ctx));
     return;
   }
   if (leapsOptions.given.length > 0) {
@@ -1810,9 +1860,10 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
 async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
-  const symbols = normalizeSymbols(args);
-  if (symbols.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
+  const entries = normalizeSymbols(args);
+  if (entries.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
   await withCliServices(ctx, async (services) => {
+    const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
       symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
     )));

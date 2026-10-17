@@ -20,7 +20,7 @@ import { listingCell, toneColor } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystCell, catalystColumns, catalystLabel, catalystQuery, catalystSection, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
+import { catalystAgency, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystQuery, catalystSection, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
 
 type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
 const rowKey = (row: Row) => row.key;
@@ -157,7 +157,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
           onActivate={(row) => row.kind === "locked" ? openUpgrade() : isEventRow(row) ? setOpenId(row.item.id) : undefined}
           renderCell={renderCell}
           scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={JSON.stringify(query)} showHorizontalScrollbar selectedTextOverridesCellColor
-          emptyStateTitle={data?.coverage.totalEvents === 0 ? "Catalyst history is collecting." : tab === "changes" ? "No observed status or date changes match." : "No events match these filters."}
+          emptyStateTitle={catalystEmptyTitle(data, query, tab === "changes")}
           bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" /> : undefined} />}
       />
     </PaneStatusBody>

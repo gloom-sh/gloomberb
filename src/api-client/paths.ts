@@ -361,6 +361,10 @@ export function cloudEarningsTranscriptPath(id: string): string {
   return `/cloud/transcripts/${encodeURIComponent(id)}`;
 }
 
+export function cloudEarningsCallAudioPath(id: string): string {
+  return `${cloudEarningsTranscriptPath(id)}/audio`;
+}
+
 /**
  * An issuer read's path: a US listing or a bare symbol keeps its US ticker
  * and sends nothing else; a listing abroad sends its bare symbol with its
@@ -445,11 +449,17 @@ export function cloudSecBeneficialOwnersPath(params: CloudBeneficialOwnersParams
   return appendQuery("/cloud/sec/beneficial-owners", search);
 }
 
-/** Companies ranked by recent open-market insider buying. */
+/** Companies ranked by recent open-market insider buying or selling. Defaults are left out of the query. */
 export function cloudSecInsiderSignalsPath(params: CloudInsiderSignalsParams = {}): string {
   const search = new URLSearchParams();
+  if (params.side === "sell") search.set("side", "sell");
   if (params.window != null) search.set("window", String(params.window));
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.role && params.role !== "all") search.set("role", params.role);
+  if (params.minValue) search.set("minValue", String(params.minValue));
+  if (params.cluster) search.set("cluster", "true");
+  if (params.position) search.set("position", params.position);
+  if (params.cap) search.set("cap", params.cap);
   return appendQuery("/cloud/sec/insider-signals", search);
 }
 

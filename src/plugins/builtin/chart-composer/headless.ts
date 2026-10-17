@@ -201,7 +201,9 @@ export async function loadChartPaneModel(
         })),
       };
     }),
-    errors: chart.errors,
+    // A company with no quarterly figures says so, not that GF does not cover it.
+    errors: [...chart.errors, ...chart.series.filter((series) => series.unreportedPeriod && series.points.length === 0)
+      .map((series) => `${series.label}: no ${series.unreportedPeriod} figures are reported; use --period annual.`)],
     unavailableSymbols: spec.series.filter((series) => series.visible !== false).flatMap((series) => {
       if (chart.series.some((output) => output.id === series.id && output.points.some((point) => point.value !== null && Number.isFinite(point.value)))) return [];
       const source = series.source;

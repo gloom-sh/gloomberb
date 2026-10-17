@@ -55,6 +55,8 @@ export interface CliTicker {
   notes: string[];
   /** Of those, the one saying the listing stopped trading; null while it trades. */
   ended: string | null;
+  /** How the input was read, when not as typed: a company's name as the listing it names (`listingReadNotes`). */
+  readAs: string | null;
   /** The symbol changed (FB became META); when its company left it, the line leads `notes`. */
   change: TickerChange | null;
   /**
@@ -197,15 +199,16 @@ export async function resolveCliTicker(
  * --exchange) asked for that listing on purpose and gets no coin note, as in `quote`.
  */
 async function withChange(
-  listing: Pick<CliListing, "symbol" | "exchange">,
+  listing: Pick<CliListing, "symbol" | "exchange" | "readAs">,
   lookup: TickerChangeLookup | null,
-  resolved: Omit<CliTicker, "change" | "coinNote">,
+  resolved: Omit<CliTicker, "change" | "coinNote" | "readAs">,
   current: CurrentListing | null | undefined,
 ): Promise<CliTicker> {
   const change = describeTickerChange(listing.symbol, await lookup?.settle() ?? null, current);
   const line = tickerChangeLine(change);
   const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
-  return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, coinNote };
+  return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, coinNote,
+    readAs: listing.readAs ?? null };
 }
 
 /**

@@ -989,15 +989,15 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CDS"],
   },
   CDX: {
-    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D, 1W and 1M moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Naming an index adds its daily history. Sovereign CDS is the other tab.",
+    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D, 1W and 1M moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Naming an index opens the board on it, and `fn` adds its daily history. Sovereign CDS is the other tab.",
     usage: ["CDX", "CDX XOVER"],
     keys: [TABS, OPEN],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["CDX"],
   },
   SOVR: {
-    summary: "The CDS pane on Sovereign: 5Y CDS ranked by the month's move, beside the local currency's move against the dollar, with each country's year of history.",
-    usage: ["SOVR"],
+    summary: "The CDS pane on Sovereign: 5Y CDS ranked by the month's move, beside the local currency's move against the dollar, with each country's year of history. Naming a country opens the board on it.",
+    usage: ["SOVR", "SOVR Brazil"],
     keys: [TABS, OPEN],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["SOVR", "WCDS"],
@@ -1068,7 +1068,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["13F"],
   },
   INS: {
-    summary: "Insider buys, sells, awards and gifts from Form 4 filings, with insider name, size and price. US equities. Alone it ranks the companies whose insiders are buying in the open market, with why.",
+    summary: "Insider buys, sells, awards and gifts from Form 4 filings, with insider name, size and price. US equities. Alone it ranks the companies whose insiders are buying, or selling, in the open market, with why, filtered by role, size, cluster, new or exited positions and market cap.",
     usage: ["INS NVDA", "INS"],
     keys: [OPEN, key("f", "ilter")],
     data: AS_FILED,

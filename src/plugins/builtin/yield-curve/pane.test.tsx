@@ -96,6 +96,22 @@ test("the chart names the curve and its look-backs, and the tenors show how far 
   expect(historySpy).toHaveBeenCalledTimes(TREASURY_MATURITIES.length);
 });
 
+test("a stored curve from a server that does not rank moves shows its spreads and no move figures", async () => {
+  const points = (offset: number) => TREASURY_MATURITIES.map(({ maturity, years }, index) => ({ tenor: maturity, years, yield: 4 + offset + index / 10 }));
+  // No `moves`: the response of a server from before move ranks.
+  storedSpy?.mockResolvedValue({
+    curve: { id: "us", label: "US Treasury", country: "US", basis: "par", couponsPerYear: 2 },
+    requestedDate: null, asOf: "2026-09-24", points: points(0),
+    lookbacks: [{ id: "1D", requestedDate: "2026-09-23", asOf: "2026-09-23", points: points(-0.05) }],
+    spreads: [{ id: "2s10s", short: "2Y", long: "10Y", value: 0.6, change1d: 0, percentile1y: 50, observations1y: 250 }],
+    checkedAt: null,
+  });
+  await renderLatest(90, 28);
+  expect(lines()[2]).toMatch(/2s10s \+60bp +0bp 1D · 50 pctl 1Y/);
+  expect(tui.frame()).not.toMatch(/pctl since|1M 1D|1M 1W/);
+  expect(tui.frame()).toMatch(/1M +4\.00% +\+5bp/);
+});
+
 test("the selected tenor is the curve's point, from the table and from the chart", async () => {
   await renderLatest(90, 28);
   await tui.emitKeypress({ name: "down" });

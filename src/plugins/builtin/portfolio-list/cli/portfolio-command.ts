@@ -59,6 +59,8 @@ import {
   takeCollectionName,
 } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { readNameEntries } from "../../../../cli/name-entries";
+import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
 const ADD_USAGE = "Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]";
 const REMOVE_USAGE = "Usage: gloomberb portfolio remove <portfolio> <symbols...> [--file <path>]";
@@ -194,7 +196,7 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
-    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE);
+    const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
       await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
       return;
@@ -747,6 +749,15 @@ const VALUE_HELP = {
   ],
 };
 
+/** What `portfolio show` says a portfolio pays, in its help. */
+const INCOME_HELP = {
+  title: "Income",
+  lines: [
+    "Income is a year of trailing dividends on the shares held: what each share or fund paid per share over the past twelve months, as DVD reads it, times the shares, in the portfolio's currency. Yield is that over the holding's value; on the TOTAL row, over the whole portfolio, cash included.",
+    `--drip projects reinvested dividends for --years (1 to ${DRIP_MAX_YEARS}, default ${DRIP_DEFAULT_YEARS}), net of --withholding percent (default 0): today's dividends, prices and exchange rates held flat, reinvested once a year.`,
+  ],
+};
+
 const AMOUNTS_HELP = {
   title: "Amounts",
   lines: [
@@ -766,7 +777,7 @@ export const portfolioCliCommand: CliCommandDef = {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
       "portfolio [list]",
-      "portfolio show <name> [--close] [--explain]",
+      "portfolio show <name> [--close] [--explain] [--drip [--years 1-5] [--withholding <pct>]]",
       "portfolio create <name>",
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
@@ -783,6 +794,9 @@ export const portfolioCliCommand: CliCommandDef = {
       EXCHANGE_OPTION,
       FILE_OPTION,
       { flags: "--close", description: "show: value the book at the regular close, not the latest print" },
+      { flags: "--drip", description: "show: project the shares and income reinvested dividends add, year by year" },
+      { flags: "--years <1-5>", description: `show --drip: how many years to project (default ${DRIP_DEFAULT_YEARS})` },
+      { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
       { flags: "--13f <CIK|name>", description: "portfolio import: the 13F manager whose latest filing to import" },
       { flags: "--top <n>", description: `portfolio import: how many of its largest common-stock lines (default ${IMPORT_DEFAULT_TOP}, at most ${IMPORT_MAX_TOP})` },
       { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
@@ -802,9 +816,10 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio show Research --close",
       "portfolio show Research --csv",
       "portfolio show Research --explain",
+      "portfolio show Research --drip --years 3 --withholding 15",
       "portfolio import --13f 0001067983 --top 10",
     ],
-    sections: [VALUE_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
+    sections: [VALUE_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
@@ -817,6 +832,11 @@ export const portfolioCliCommand: CliCommandDef = {
     const exchange = takeOption(args, "--exchange");
     const explain = takeFlag(args, "--explain");
     const close = takeFlag(args, "--close");
+    const dripFlag = takeFlag(args, "--drip");
+    const hasYears = args.some((arg) => arg === "--years" || arg.startsWith("--years="));
+    const hasWithholding = args.some((arg) => arg === "--withholding" || arg.startsWith("--withholding="));
+    const yearsText = hasYears ? takeOption(args, "--years") ?? "" : undefined;
+    const withholdingText = hasWithholding ? takeOption(args, "--withholding") ?? "" : undefined;
     // A bare name shows the portfolio, as `show` does.
     const shows = action === "show" || (action != null && !KNOWN_ACTIONS.has(action));
     if (explain && !shows) {
@@ -826,6 +846,17 @@ export const portfolioCliCommand: CliCommandDef = {
       );
     }
     if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloomberb portfolio show <name> --close");
+    const dripUsage = "Usage: gloomberb portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
+    if ((dripFlag || hasYears || hasWithholding) && !shows) {
+      ctx.fail(`${dripFlag ? "--drip" : hasYears ? "--years" : "--withholding"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, dripUsage);
+    }
+    if ((hasYears || hasWithholding) && !dripFlag) ctx.fail(`${hasYears ? "--years" : "--withholding"} sets the --drip projection; add --drip.`, dripUsage);
+    let drip: { years: number; withholding: number } | undefined;
+    try {
+      drip = dripFlag ? { years: parseDripYears(yearsText), withholding: parseWithholding(withholdingText) } : undefined;
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : String(error), dripUsage);
+    }
     const basis = close ? "regular-close" as const : "latest-print" as const;
     const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
     const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
@@ -843,8 +874,8 @@ export const portfolioCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio show <name> [--close] [--explain]");
-      await showCollection(name, ctx, { explain, basis });
+      if (!name) ctx.fail("Usage: gloomberb portfolio show <name> [--close] [--explain] [--drip]");
+      await showCollection(name, ctx, { explain, basis, drip });
       return;
     }
 
@@ -916,6 +947,6 @@ export const portfolioCliCommand: CliCommandDef = {
       ctx.fail(TARGET_USAGE);
     }
 
-    await showCollection(args.join(" "), ctx, { explain, basis });
+    await showCollection(args.join(" "), ctx, { explain, basis, drip });
   },
 };
