@@ -440,7 +440,7 @@ export async function discardStagedUpdate(): Promise<string | null> {
     const { renameSync, unlinkSync } = getRuntimeProcess()!.getBuiltinModule("fs");
     try {
       unlinkSync(discardedPath);
-    } catch {}
+    } catch { /* Intentional ignore: The discarded binary may not exist; a failed rename is reported by discardStagedUpdate. */ }
     renameSync(swap.execPath, discardedPath);
     try {
       renameSync(swap.previousPath, swap.execPath);
@@ -451,7 +451,7 @@ export async function discardStagedUpdate(): Promise<string | null> {
     stagedSwap = null;
     try {
       unlinkSync(discardedPath);
-    } catch {}
+    } catch { /* Intentional ignore: The original binary is restored; removing the discarded download is best-effort cleanup. */ }
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : "the previous version could not be put back";
@@ -573,7 +573,7 @@ export async function performUpdate(
     stagedSwap = null;
     try {
       unlinkSync(oldPath);
-    } catch {}
+    } catch { /* Intentional ignore: The old binary may not exist; a failed swap is reported through update progress. */ }
     renameSync(execPath, oldPath);
     try {
       renameSync(updatePath, execPath);
@@ -589,7 +589,7 @@ export async function performUpdate(
     } else {
       try {
         unlinkSync(oldPath);
-      } catch {}
+      } catch { /* Intentional ignore: The new binary is installed; removing its backup is best-effort cleanup. */ }
     }
 
     // The new binary is in place; the running process keeps the old one until
@@ -599,7 +599,7 @@ export async function performUpdate(
     // Clean up temp file on failure
     try {
       unlinkUpdatePath?.(updatePath);
-    } catch {}
+    } catch { /* Intentional ignore: Remove a partial update download while the original failure is reported through update progress. */ }
     onProgress({
       phase: "error",
       error: err instanceof Error ? err.message : "Update failed",

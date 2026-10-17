@@ -6,6 +6,7 @@
  * restart everywhere) so the directory still lists them offline. The desktop's
  * Bun half never fetches; it picks up the list the view saved.
  */
+import { logFailure } from "../../utils/log-failure";
 import type { PluginPersistence } from "../../types/plugin";
 import { listSignedInBrokers, type SignedInBroker } from "./client";
 
@@ -102,7 +103,7 @@ export function createSignedInBrokerCatalog(
           persistence?.setState(STATE_KEY, { brokers: next, fetchedAt }, { schemaVersion: SCHEMA_VERSION });
         })
         // Offline or Cloud down: the last list stays, and the next open retries.
-        .catch(() => {})
+        .catch(logFailure("signed-in-brokers", "Broker catalog refresh failed"))
         .finally(() => {
           inFlight = null;
         });

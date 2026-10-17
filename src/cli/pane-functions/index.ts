@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
@@ -121,7 +122,8 @@ export async function functionCodeCommand(
     if (!found) return null;
     const code = word.replace(/^\$/, "").toUpperCase();
     return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Resolve function code command failed")(error);
     return null;
   }
 }
@@ -152,7 +154,8 @@ export async function nearFunctionCodeCommand(
     if (near.length !== 1) return null;
     const { code, label } = near[0]!;
     return { code, label, command: ["gloomberb fn", code, ...args.map(commandWord)].join(" ") };
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Find nearby function code command failed")(error);
     return null;
   }
 }
@@ -183,7 +186,8 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
         registry.destroy();
       }
     });
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Find catalog command suggestions failed")(error);
     return [];
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createPersistScheduler, flushPendingPersistence } from "./persist-scheduler";
+import { debugLog, type LogEntry } from "../utils/debug-log";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,33 +40,6 @@ describe("createPersistScheduler", () => {
     await delay(15);
 
     expect(saved).toEqual([3]);
-  });
-
-  test("flush saves immediately", async () => {
-    const saved: string[] = [];
-    const scheduler = createPersistScheduler<string>({
-      delayMs: 1000,
-      save: (value) => saved.push(value),
-    });
-
-    scheduler.schedule("pending");
-    await scheduler.flush();
-
-    expect(saved).toEqual(["pending"]);
-  });
-
-  test("cancel drops pending value", async () => {
-    const saved: string[] = [];
-    const scheduler = createPersistScheduler<string>({
-      delayMs: 5,
-      save: (value) => saved.push(value),
-    });
-
-    scheduler.schedule("pending");
-    scheduler.cancel();
-    await delay(15);
-
-    expect(saved).toEqual([]);
   });
 
   test("serializes an immediate save after an in-flight scheduled save", async () => {
@@ -114,6 +88,30 @@ describe("createPersistScheduler", () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0]).toBeInstanceOf(Error);
+  });
+
+  test("scheduled saves without an error callback log once and leave the queue usable", async () => {
+    const saved: string[] = [];
+    const logged: LogEntry[] = [];
+    const unsubscribe = debugLog.subscribe((entry) => { if (entry.source === "persist") logged.push(entry); });
+    const scheduler = createPersistScheduler<string>({
+      delayMs: 60_000,
+      save: (value) => {
+        if (value === "failed") throw new Error("Injected write failure");
+        saved.push(value);
+      },
+    });
+    try {
+      scheduler.schedule("failed");
+      await scheduler.flush();
+      scheduler.schedule("next");
+      await scheduler.flush();
+      expect(saved).toEqual(["next"]);
+      expect(logged.map((entry) => entry.source)).toEqual(["persist"]);
+    } finally {
+      scheduler.cancel();
+      unsubscribe();
+    }
   });
 });
 

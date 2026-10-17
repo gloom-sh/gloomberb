@@ -4,6 +4,7 @@
  * says what Pro adds, what today costs and when the first charge lands, and
  * only then opens checkout.
  */
+import { logFailure } from "../utils/log-failure";
 import { useCallback, useEffect, useState } from "react";
 import { apiClient, type CloudAccountPlan, type CloudPricing } from "../api-client";
 import { Button } from "../components/ui/button";
@@ -179,7 +180,10 @@ function UpgradeDialog({
   useEffect(() => {
     let live = true;
     void loadOffer()
-      .catch((): UpgradeOffer => ({ pricing: null, trialAvailable: null, paymentFailed: false }))
+      .catch((error): UpgradeOffer => {
+        logFailure("account-upgrade", "Upgrade offer request failed")(error);
+        return { pricing: null, trialAvailable: null, paymentFailed: false };
+      })
       .then((loaded) => {
         if (live) setOffer(loaded);
       });
@@ -277,6 +281,6 @@ export async function promptCloudUpgrade(
         />
       ),
     })
-    .catch(() => null);
+    .catch(logFailure("account-upgrade", "Upgrade prompt failed", null));
   return interval ?? null;
 }

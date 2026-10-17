@@ -13,6 +13,7 @@ function systemTimeZone(): string | null {
   try {
     return reportableTimeZone(new Intl.DateTimeFormat().resolvedOptions().timeZone);
   } catch {
+    // Intentional ignore: Runtimes without timezone metadata have no reportable local offset.
     return null;
   }
 }
@@ -23,6 +24,7 @@ export function utcOffsetMinutesAt(timeZone: string, utcMs: number): number | nu
   try {
     return Math.round((zonedWallClockMs(utcMs, timeZone) - utcMs) / 60_000);
   } catch {
+    // Intentional ignore: Unknown timezone names are represented by null.
     return null;
   }
 }

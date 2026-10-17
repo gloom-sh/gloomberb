@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "../../time-series/range";
 import type { LayoutConfig, PaneBinding } from "../../types/config";
 import type {
@@ -146,7 +147,8 @@ function parsedChartSpec(value: unknown): ChartSpec | null {
   if (typeof value === "string") {
     try {
       decoded = JSON.parse(value);
-    } catch {
+    } catch (error) {
+      logFailure("data.config.chart-settings", "Reading stored chart settings failed")(error);
       return null;
     }
   }

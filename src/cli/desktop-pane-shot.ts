@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
@@ -541,7 +542,7 @@ async function capturePageScreenshot({
   } finally {
     session?.close();
     proc.kill();
-    await proc.exited.catch(() => {});
+    await proc.exited.catch(() => { /* Intentional ignore: The screenshot browser was killed during cleanup; preserve the capture result. */ });
   }
 }
 
@@ -885,7 +886,7 @@ async function waitForPageWebSocket(port: number, targetUrl: string): Promise<st
         if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
       }
     } catch {
-      // Chrome is still starting.
+      // Intentional ignore: Chrome may still be starting; the polling deadline reports failure.
     }
     await sleep(100);
   }
@@ -976,7 +977,8 @@ class CdpSession {
     let response: CdpResponse;
     try {
       response = JSON.parse(await stringifyWebSocketMessage(data)) as CdpResponse;
-    } catch {
+    } catch (error) {
+      logFailure("cli.screenshot", "Decode screenshot browser response failed")(error);
       return;
     }
     if (!response.id) return;

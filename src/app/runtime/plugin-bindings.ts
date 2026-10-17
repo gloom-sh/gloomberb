@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { Dispatch } from "react";
 import {
   clearPersistedBrokerAccounts,
@@ -136,7 +137,7 @@ export function bindPluginRegistryRuntimeAccess({
       const broker = pluginRegistry.brokers.get(instance.brokerType);
       if (!broker) throw new Error(`Broker "${instance.brokerType}" is not available.`);
 
-      const valid = await broker.validate(instance).catch(() => false);
+      const valid = await broker.validate(instance).catch(logFailure("app.runtime.plugin-bindings", "Broker setup validation failed", false));
       if (!valid) throw new Error(`${broker.name} setup is incomplete.`);
 
       await broker.connect?.(instance);
@@ -272,7 +273,7 @@ export function bindPluginRegistryRuntimeAccess({
       pluginRegistry.events.emit("config:changed", { config: nextConfig });
       // The profile that kept a portfolio fills in what the removed one held there.
       for (const heirId of new Set(heirs.values())) {
-        void importBrokerPositions(heirId).catch(() => {});
+        void importBrokerPositions(heirId).catch(logFailure("app.runtime.plugin-bindings", "Replacement broker positions import failed"));
       }
     },
   });

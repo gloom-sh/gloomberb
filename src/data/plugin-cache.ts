@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { CachePolicy } from "../types/persistence";
 import type { PluginPersistence } from "../types/plugin";
 import { CachedQuery, type CachedValue } from "./cached-query";
@@ -31,7 +32,10 @@ export function createPluginCache<T, Stored = T>(options: {
     if (!record) return null;
     let value: T;
     try { value = options.decode ? options.decode(record.value) : record.value as unknown as T; }
-    catch { return null; } // A corrupt cache entry must not prevent a fresh load.
+    catch (error) {
+      logFailure("data.plugin-cache", "Decoding a cached resource failed")(error);
+      return null;
+    } // A corrupt cache entry must not prevent a fresh load.
     return {
       value,
       fetchedAt: record.fetchedAt,

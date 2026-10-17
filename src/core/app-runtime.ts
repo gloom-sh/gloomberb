@@ -105,7 +105,7 @@ export function createAppRuntime({
     disposeConfigured = configure?.(modules);
     newsService.start();
   } catch (error) {
-    try { destroy(); } catch { /* Preserve the startup failure. */ }
+    try { destroy(); } catch { /* Intentional ignore: destroy attempts all disposers; preserve the startup error rethrown to the caller. */ }
     throw error;
   }
   registering = true;
@@ -127,7 +127,7 @@ export function createAppRuntime({
     if (destroyed) cleanup?.();
     else disposeReady = cleanup;
   }).catch((error) => {
-    try { destroy(); } catch { /* Preserve the startup failure. */ }
+    try { destroy(); } catch { /* Intentional ignore: destroy attempts all disposers; preserve the startup error rethrown to the caller. */ }
     throw error;
   });
   return { persistence, tickerRepository, dataProvider, ...modules, ready, destroy };

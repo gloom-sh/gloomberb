@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import { quoteTradingExchange } from "../market-data/quotes/metadata";
 import type { TickerRecord } from "../types/ticker";
@@ -91,7 +92,8 @@ export async function quotedOnVenue(listing: { symbol: string; exchange: string 
     const quote = await dataProvider.getQuote(`${listing.symbol}:${listing.exchange}`, listing.exchange);
     // A KOSDAQ code asked for on KRX is answered as KRX from its KOSDAQ line: it trades on KOSDAQ only.
     return Number.isFinite(quote.price) && quote.price !== 0 && quoteTradingExchange(quote) === listing.exchange;
-  } catch {
+  } catch (error) {
+    logFailure("tickers-listing-venues", "Could not verify listing venue")(error);
     return false;
   }
 }
@@ -111,8 +113,8 @@ export async function readAmbiguousCurrencyPair(typed: string, { store, dataProv
     const exchange = !resolved ? undefined : resolved.kind === "local" ? resolved.ticker.metadata.exchange : resolved.result.exchange;
     const listed = resolved ? currencyPairSpelling(resolved.symbol, exchange) : null;
     return listed && !listed.ambiguous && listed.symbol === pair.symbol ? pair.symbol : null;
-  } catch {
-    // Several listings under those letters, or no search: the letters stay a symbol.
+  } catch (error) {
+    logFailure("tickers-listing-venues", "Could not resolve currency pair listing")(error);
     return null;
   }
 }
@@ -139,7 +141,7 @@ export type SharedCodeReading =
  */
 export async function readSharedCode(symbol: string, code: string, deps: ListingDeps): Promise<SharedCodeReading> {
   const meanings = exchangeCodeVenues(code);
-  const venues = await listingVenues(symbol, deps).catch(() => []);
+  const venues = await listingVenues(symbol, deps).catch(logFailure("tickers-listing-venues", "Could not load listing venues", []));
   let traded = meanings.filter((venue) => venues.some((entry) => entry.exchange === venue));
   if (traded.length === 0) {
     const quoted = await Promise.all(meanings.map((exchange) => quotedOnVenue({ symbol, exchange }, deps)));

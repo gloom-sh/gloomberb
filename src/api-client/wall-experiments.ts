@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { EXPERIMENTS_STORAGE_KEY, storedExperimentAssignments, type ExperimentAnswer, type StorageLike } from "./web-experiments";
 
 export type WallExperiment = "wall_teaser" | "wall_teaser_signin";
@@ -25,11 +26,11 @@ function unit(context: WallExperimentContext, experiment: WallExperiment): strin
 }
 
 function read(storage: StorageLike | undefined, key: string): string | null {
-  try { return storage?.getItem(key) ?? null; } catch { return null; }
+  try { return storage?.getItem(key) ?? null; } catch { /* Intentional ignore: Private browsing may deny optional experiment storage. */ return null; }
 }
 
 function write(storage: StorageLike | undefined, key: string, value: string): void {
-  try { storage?.setItem(key, value); } catch { /* Storage is optional in private browsing. */ }
+  try { storage?.setItem(key, value); } catch { /* Intentional ignore: Private browsing may deny optional experiment storage. */ }
 }
 
 function isVariant(value: unknown): value is WallTeaserVariant {
@@ -77,7 +78,8 @@ export function createWallExperimentSession(experiment: WallExperiment = "wall_t
 
       const request = (async () => {
         let answer: ExperimentAnswer;
-        try { answer = await ask(storedVariant(context.local, experiment)); } catch {
+        try { answer = await ask(storedVariant(context.local, experiment)); } catch (error) {
+          logFailure("cloud-experiments", "Experiment exposure request failed")(error);
           // An older API (422), offline connection or timeout is not an exposure.
           return null;
         }

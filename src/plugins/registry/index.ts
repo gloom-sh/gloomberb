@@ -43,6 +43,7 @@ import type {
   TickerResearchTabDef,
 } from "../../types/plugin";
 import { debugLog } from "../../utils/debug-log";
+import { logFailure } from "../../utils/log-failure";
 import { EventBus, type HostEvents } from "../event-bus";
 import { isReservedBuiltinPluginId } from "../ownership";
 import { createPluginPersistence } from "../plugin-persistence";
@@ -544,7 +545,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
     try {
       const target = this.resolvePaneTarget(paneId);
       return !!target && this.getLayout().floating.some((entry) => entry.instanceId === target);
-    } catch {
+    } catch (error) {
+      logFailure("plugin-registry", "Floating pane query failed")(error);
       return false;
     }
   }

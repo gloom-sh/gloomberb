@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import {
   apiClient,
   type TeamNotification,
@@ -221,8 +222,8 @@ export class TeamStore {
       try {
         const [teams, invitations, notifications] = await Promise.all([
           this.client.listTeams(),
-          this.client.listMyTeamInvitations().catch(() => [] as TeamReceivedInvitation[]),
-          this.client.getTeamNotifications().catch(() => null),
+          this.client.listMyTeamInvitations().catch(logFailure("team.store", "Loading team invitations failed", [] as TeamReceivedInvitation[])),
+          this.client.getTeamNotifications().catch(logFailure("team.store", "Loading team notifications failed", null)),
         ]);
         this.update({
           teams: [...teams].sort((a, b) => a.name.localeCompare(b.name)),
@@ -256,8 +257,8 @@ export class TeamStore {
     markNotificationLogReadByRef(ids.map(teamNotificationRefId));
     try {
       await this.client.markChatNotificationsDelivered([...ids]);
-    } catch {
-      /* The next refresh brings them back if the server never heard. */
+    } catch (error) {
+      logFailure("team.store", "Dismissing team notifications failed")(error);
     }
   }
 

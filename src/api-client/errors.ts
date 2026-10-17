@@ -97,6 +97,7 @@ export function parseApiErrorDetails(body: string): Readonly<Record<string, unkn
     const parsed = JSON.parse(body) as unknown;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
   } catch {
+    // Intentional ignore: Non-JSON error responses retain their HTTP status and original body.
     return undefined;
   }
 }
@@ -107,6 +108,7 @@ export function parseApiErrorCode(body: string): string | undefined {
     const parsed = JSON.parse(body) as Record<string, unknown> | null;
     return typeof parsed?.error === "string" && parsed.error ? parsed.error : undefined;
   } catch {
+    // Intentional ignore: Non-JSON error responses retain their HTTP status and original body.
     return undefined;
   }
 }

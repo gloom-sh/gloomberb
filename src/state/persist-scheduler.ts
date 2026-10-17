@@ -1,3 +1,5 @@
+import { logFailure } from "../utils/log-failure";
+
 export const CONFIG_SAVE_DEBOUNCE_MS = 500;
 /** For config fields that change on every cursor move (recent tickers, the live pane-state mirror). */
 export const LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS = 5_000;
@@ -51,7 +53,10 @@ export function createPersistScheduler<T>({
       try {
         await save(value);
       } catch (error) {
-        if (reportError) onError?.(error);
+        if (reportError) {
+          if (onError) onError(error);
+          else logFailure("persist", "Scheduled persistence failed")(error);
+        }
         throw error;
       }
     });
@@ -64,7 +69,7 @@ export function createPersistScheduler<T>({
     );
     // Keep the serialization chain usable after a failed immediate save while
     // still returning that failure to its caller.
-    inFlight = saveTask.catch(() => {});
+    inFlight = saveTask.catch(() => { /* Intentional ignore: The returned saveTask reports to the caller; this rejection only keeps the queue usable. */ });
     return saveTask;
   };
 
@@ -76,7 +81,7 @@ export function createPersistScheduler<T>({
     const value = pendingValue as T;
     pendingValue = undefined;
     hasPendingValue = false;
-    return enqueueSave(value, true).catch(() => {});
+    return enqueueSave(value, true).catch(() => { /* Intentional ignore: enqueueSave reports scheduled errors before this drain consumes them. */ });
   };
 
   return {

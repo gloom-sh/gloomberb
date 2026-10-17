@@ -13,6 +13,7 @@
  * later milestone as `experiments`, which the API turns into `exp_<key>` and
  * saves to the account once they sign in.
  */
+import { logFailure } from "../utils/log-failure";
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -75,6 +76,7 @@ function read(storage: StorageLike, key: string): string | null {
   try {
     return storage.getItem(key);
   } catch {
+    // Intentional ignore: Private browsing may deny optional experiment storage.
     return null;
   }
 }
@@ -83,7 +85,7 @@ function write(storage: StorageLike, key: string, value: string): void {
   try {
     storage.setItem(key, value);
   } catch {
-    /* Private browsing still runs the terminal; the arm is just not remembered. */
+    // Intentional ignore: Private browsing may deny optional experiment storage.
   }
 }
 
@@ -112,7 +114,8 @@ export function exposeExperiment(experiment: string, env: WebExperimentEnvironme
     let answer: ExperimentAnswer;
     try {
       answer = await env.ask({ experiment, variant: assignments.get(experiment) });
-    } catch {
+    } catch (error) {
+      logFailure("cloud-experiments", "Experiment exposure request failed")(error);
       // Not counted, so the next page load in this session may ask again.
       return null;
     }

@@ -8,11 +8,13 @@ import { resolveUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import { VERSION } from "../../version";
 import { debugLog, type LogEntry } from "../../utils/debug-log";
 import { useAppUpdateRuntime } from "./update";
+import { setConfigStoreHost, type ConfigStoreHost } from "../../data/config/store";
 
 const tui = createOpenTuiTestHarness();
 
 afterEach(() => {
   setUpdateHost(null);
+  setConfigStoreHost(null);
 });
 
 const release: ReleaseInfo = {
@@ -91,6 +93,28 @@ async function mountRuntime(options: { detached?: boolean; initial?: Partial<App
   await settle();
   return { runtime: () => runtime, state: () => current.state, dispatch: (action: AppAction) => current.dispatch(action), settle };
 }
+
+test("a failed launch-version save is logged while the runtime keeps its config update", async () => {
+  installFakeHost();
+  const saved: unknown[] = [];
+  setConfigStoreHost({
+    saveConfig: async (config) => {
+      saved.push(config);
+      throw new Error("Injected config write failure");
+    },
+  } as ConfigStoreHost);
+  const logged: LogEntry[] = [];
+  const unsubscribe = debugLog.subscribe((entry) => { if (entry.source === "update") logged.push(entry); });
+  try {
+    const app = await mountRuntime({ initial: { config: createDefaultConfig("unused") } });
+    expect(app.state().config.lastLaunchedVersion).toBe(VERSION);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ lastLaunchedVersion: VERSION });
+    expect(logged.map((entry) => entry.source)).toEqual(["update"]);
+  } finally {
+    unsubscribe();
+  }
+});
 
 test("downloads in the background, stops at ready, and restarts only when asked", async () => {
   const host = installFakeHost();

@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/history-result";
@@ -335,8 +336,8 @@ export class MarketDataCoordinator {
 
   prefetchTicker(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
-    void this.loadSnapshot(instrument).catch(() => {});
-    void this.loadChart(createBaselineChartRequest(instrument)).catch(() => {});
+    void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
+    void this.loadChart(createBaselineChartRequest(instrument)).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
   }
 
   /**
@@ -348,11 +349,11 @@ export class MarketDataCoordinator {
   warmTickerGaps(instrument: InstrumentRef | null | undefined): void {
     if (!instrument) return;
     if (resolveEntryData(this.getSnapshotEntry(instrument)) == null) {
-      void this.loadSnapshot(instrument).catch(() => {});
+      void this.loadSnapshot(instrument).catch(logFailure("market-data.coordinator.index", "Loading a financial snapshot failed"));
     }
     const chartRequest = createBaselineChartRequest(instrument);
     if (resolveEntryData(this.getChartEntry(chartRequest)) == null) {
-      void this.loadChart(chartRequest).catch(() => {});
+      void this.loadChart(chartRequest).catch(logFailure("market-data.coordinator.index", "Loading chart data failed"));
     }
   }
 

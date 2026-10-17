@@ -171,9 +171,7 @@ function resolveSecArchiveUrl(href: string, filingUrl: string): string | null {
       return new URL(ixviewerDocument, "https://www.sec.gov").toString();
     }
     return url.toString();
-  } catch {
-    return null;
-  }
+  } catch { /* Intentional ignore: Malformed document hrefs are not usable archive links. */ return null; }
 }
 
 function isHtmlResponse(body: string): boolean {

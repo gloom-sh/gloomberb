@@ -1,3 +1,4 @@
+import { logFailure } from "./log-failure";
 import { type NativeRendererHost as CliRenderer } from "../ui";
 import { type KeyEventLike as KeyEvent } from "../react/input";
 
@@ -22,7 +23,8 @@ function readTextFromSystemClipboard(): string | null {
       return null;
     }
     return result.stdout.toString().replace(/\r\n/g, "\n");
-  } catch {
+  } catch (error) {
+    logFailure("utils-selection-clipboard", "Could not read system clipboard")(error);
     return null;
   }
 }
@@ -39,7 +41,8 @@ function copyTextToSystemClipboard(text: string): boolean {
       stderr: "ignore",
     });
     return result.success;
-  } catch {
+  } catch (error) {
+    logFailure("utils-selection-clipboard", "Could not write system clipboard")(error);
     return false;
   }
 }

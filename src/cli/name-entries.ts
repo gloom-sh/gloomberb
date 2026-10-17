@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import { findListingOfCompanyName, isCompanyNameInput } from "../tickers/company-name-listing";
 import { isNotATickerMessage } from "./not-a-ticker";
@@ -43,7 +44,7 @@ export async function readPhraseArgument(
   const [named, results] = await Promise.all([
     findListingOfCompanyName(dataProvider, phrase),
     asked.length > 0 && dataProvider.getQuotesBatch
-      ? dataProvider.getQuotesBatch(asked.map((symbol) => ({ symbol, exchange: "" }))).catch(() => [])
+      ? dataProvider.getQuotesBatch(asked.map((symbol) => ({ symbol, exchange: "" }))).catch(logFailure("cli.name-entries", "Read quote names failed", []))
       : [],
   ]);
   if (named) return { kind: "name", name: phrase };

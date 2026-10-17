@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   apiClient,
@@ -92,7 +93,7 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
       for (const collection of collections) {
         const localId = teamCollectionLocalId(collection.teamId, collection.id);
         collectionsRef.current.set(localId, collection);
-        const detail = await apiClient.getTeamCollection(collection.teamId, collection.id).catch(() => null);
+        const detail = await apiClient.getTeamCollection(collection.teamId, collection.id).catch(logFailure("team.collections-sync", "Loading a team collection failed", null));
         if (!detail) continue;
         const items = new Map(detail.items.map((item) => [item.symbol, item]));
         known.current.set(localId, items);
@@ -110,7 +111,7 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
     if (!apiClient.isVerified()) return;
     const currentTeams = teamStore.getSnapshot().teams;
     const teamIds = currentTeams.map((team) => team.id);
-    const lists = await Promise.all(currentTeams.map((team) => apiClient.listTeamCollections(team.id).catch(() => [] as TeamCollection[])));
+    const lists = await Promise.all(currentTeams.map((team) => apiClient.listTeamCollections(team.id).catch(logFailure("team.collections-sync", "Listing team collections failed", [] as TeamCollection[]))));
     await applyCollections(teamIds, lists.flat());
   };
 

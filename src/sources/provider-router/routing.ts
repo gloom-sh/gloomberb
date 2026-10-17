@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { buildVariantKey } from "./cache";
@@ -35,7 +36,7 @@ export function scheduleRouterRevalidation(
 ): void {
   if (inFlight.has(key)) return;
   const promise = task()
-    .catch(() => {})
+    .catch(logFailure("sources.provider-router.routing", "Refreshing a cached provider result failed"))
     .finally(() => {
       inFlight.delete(key);
     });

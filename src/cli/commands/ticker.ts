@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
@@ -104,7 +105,7 @@ export async function cliFuturesContract(
   instrumentType: string | undefined,
   load: (symbol: string) => Promise<FuturesContractTermsPayload | null> = loadFuturesContractTerms,
 ): Promise<FuturesContractTermsPayload | null> {
-  return isFuturesInstrument(symbol, instrumentType) ? load(symbol).catch(() => null) : null;
+  return isFuturesInstrument(symbol, instrumentType) ? load(symbol).catch(logFailure("cli.commands-ticker", "Read futures contract details failed", null)) : null;
 }
 
 /** The Contract block as `ticker` and `quote` print it; a contract past first notice is in the warning colour. */
@@ -384,7 +385,8 @@ export async function loadForwardYieldDistributions(
     const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
     return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}),
       history: distributionHistory(actions, now) };
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-ticker", "Read forward dividend distributions failed")(error);
     return null;
   }
 }

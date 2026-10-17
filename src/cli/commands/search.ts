@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -68,7 +69,8 @@ export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[
     const entries = await buildPaneCatalogEntries(registry, context);
     const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, SEARCH_FUNCTION_LIMIT);
     return loose ? [] : shown.map(({ token, label, description }) => ({ token, label, description }));
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-search", "Discover plugin functions for search failed")(error);
     // A plugin that cannot set up for discovery leaves the search as it was.
     return [];
   } finally {
@@ -78,7 +80,7 @@ export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[
 
 /** A bare symbol's quote, asked as `quote SYM` asks it: on the venue a saved row of the symbol is on, else the bare symbol. */
 function loadSearchedQuote(symbol: string, savedExchange: string, dataProvider: DataProvider): Promise<Quote | null> {
-  return Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(() => null);
+  return Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(logFailure("cli.commands-search", "Read searched symbol quote failed", null));
 }
 
 export async function searchCandidatesForCli({
@@ -121,7 +123,8 @@ export async function searchCandidatesForCli({
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
     return withQuotedNames(symbol, withHomeListingPrimary(symbol, withPrimaryListingFirst(symbol, candidates, quote)), quote).slice(0, totalLimit);
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-search", "Search ticker candidates failed")(error);
     return [];
   }
 }

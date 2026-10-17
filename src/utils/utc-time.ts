@@ -67,6 +67,7 @@ export function canonicalTimeZone(value: string): string | null {
   try {
     return new Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone;
   } catch {
+    // Intentional ignore: Unknown timezone names are represented by null.
     return null;
   }
 }

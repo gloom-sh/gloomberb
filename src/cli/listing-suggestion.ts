@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import { LISTING_SEARCH_LIMIT, searchTickerCandidates, type TickerSearchCandidate } from "../tickers/search";
@@ -114,7 +115,8 @@ async function searchCandidates(query: string, deps: SuggestionDeps): Promise<Ti
       Promise.resolve().then(() => (deps.search ?? ((text: string) => searchAsCommand(text, deps)))(query)),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), deps.timeoutMs ?? SUGGESTION_TIMEOUT_MS); }),
     ]);
-  } catch {
+  } catch (error) {
+    logFailure("cli.listing-suggestion", "Search listing suggestions failed")(error);
     return null;
   } finally {
     if (timer) clearTimeout(timer);
@@ -133,7 +135,7 @@ async function searchCandidates(query: string, deps: SuggestionDeps): Promise<Ti
 export async function suggestUsTicker(typed: string, deps: SuggestionDeps): Promise<ListingSuggestion | null> {
   const wanted = compact(typed);
   if (wanted.length < MIN_TYPO_LENGTH) return null;
-  const saved = (await deps.store.loadAllTickers().catch(() => [])).filter((ticker) => isUsListingExchange(ticker.metadata.exchange));
+  const saved = (await deps.store.loadAllTickers().catch(logFailure("cli.listing-suggestion", "Read saved tickers for suggestions failed", []))).filter((ticker) => isUsListingExchange(ticker.metadata.exchange));
   const near = new Set([...STARTER_SYMBOLS, ...saved.map((ticker) => ticker.metadata.ticker)]
     .map((symbol) => symbol.trim().toUpperCase())
     .filter((symbol) => compact(symbol).length >= MIN_TYPO_LENGTH && typoDistance(wanted, compact(symbol)) === 1));

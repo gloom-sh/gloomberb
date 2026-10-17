@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 
+import { logFailure } from "./log-failure";
 import { cssUrl, splitTopLevel } from "./dom-screenshot-css";
 
 /**
@@ -190,6 +191,7 @@ function readable(source: CanvasImageSource): boolean {
     context.getImageData(0, 0, 1, 1);
     return true;
   } catch {
+    // Intentional ignore: A tainted canvas is an expected failed readability probe.
     return false;
   }
 }
@@ -261,7 +263,7 @@ export async function prepareImages(
       if (element instanceof SVGSVGElement) {
         // A nested SVG is painted with the outer one.
         if (element.ownerSVGElement) return;
-        const raster = await rasterizeSvg(element).catch(() => null);
+        const raster = await rasterizeSvg(element).catch(logFailure("utils-dom-screenshot-rasters", "Could not rasterize screenshot image", null));
         if (raster) elements.set(element, raster);
       } else if (element instanceof HTMLImageElement) {
         if (element.complete && element.naturalWidth > 0 && readable(element)) elements.set(element, element);

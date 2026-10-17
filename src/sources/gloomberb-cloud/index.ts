@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
@@ -163,8 +164,8 @@ async function loadCloudHistory(
     if (response.status === "success" || response.status === "partial" || response.status === "empty") {
       return { response, extendedHours: response.session === "extended" };
     }
-  } catch {
-    // The regular session below.
+  } catch (error) {
+    logFailure("sources.gloomberb-cloud.index", "Loading extended-hours history failed")(error);
   }
   return { response: await load(), extendedHours: false };
 }
@@ -319,7 +320,10 @@ function matchCloudBatchItems<T extends { symbol: string; exchange?: string }, I
   const requested = new Set(pending.keys());
   const responses = items.flatMap((item) => {
     try { return [{ item, key: quoteTargetKey(item.symbol, item.exchange) }]; }
-    catch { return []; }
+    catch (error) {
+      logFailure("sources.gloomberb-cloud.index", "Matching a cloud batch response failed")(error);
+      return [];
+    }
   });
   for (const { item, key: responseKey } of responses) {
     const key = cloudResponseTargetKey(responseKey, requested);
@@ -566,7 +570,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
     // Perpetual markets are listings too, asked for beside the others. They are optional: a failed lookup leaves the
     // other results, and a keystroke waits for them only briefly once the listings are in, unless the query names one.
-    const pending = searchPerpetualMarkets(query).catch(() => [] as InstrumentSearchResult[]);
+    const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
     const listings = await withCloudFallback(
       () => apiClient.searchInstruments(query, context?.limit ?? 10),
       "Cloud search is unavailable",
@@ -600,7 +604,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       const quote = await this.getQuote(ticker, venue);
       const quoteVenue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
       return quoteVenue === venue ? quote.name?.trim() || null : null;
-    } catch {
+    } catch (error) {
+      logFailure("sources.gloomberb-cloud.index", "Loading the filing listing name failed")(error);
       return null;
     }
   }
@@ -801,7 +806,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const { valid } = cloudBatchTargets(splitPerpetualTargets(targets).others);
     if (!valid.length) return () => {};
     // No-op without a session credential; covers browser cookie sessions too.
-    void apiClient.ensureVerifiedSession().catch(() => {});
+    void apiClient.ensureVerifiedSession().catch(logFailure("sources.gloomberb-cloud.index", "Verifying the quote streaming session failed"));
     const targetMap = new Map<string, QuoteSubscriptionTarget[]>();
     for (const { target } of valid) {
       const key = quoteTargetKey(target.symbol, target.exchange);
@@ -822,7 +827,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       (target, quote) => {
         let key: string;
         try { key = quoteTargetKey(target.symbol, target.exchange); }
-        catch { return; }
+        catch (error) {
+          logFailure("sources.gloomberb-cloud.index", "Matching a streamed quote failed")(error);
+          return;
+        }
         const matchedKey = cloudResponseTargetKey(key, requested);
         const matches = matchedKey ? targetMap.get(matchedKey) ?? [] : [];
         const mappedQuote = mapQuote(quote);

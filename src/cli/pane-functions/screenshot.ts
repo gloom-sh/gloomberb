@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
@@ -265,7 +266,8 @@ async function collectShotStatSeries(
       const result = await defaultStatLoader(def);
       const observations = Array.isArray(result) ? result : result.observations;
       return [def.seriesId, observations] as [string, DatedObservation[]];
-    } catch {
+    } catch (error) {
+      logFailure("cli.screenshot", "Read screenshot statistics series failed")(error);
       return null;
     }
   }));
@@ -284,7 +286,8 @@ async function collectShotValuationSeries(
     try {
       const series = await defaultValuationSeriesLoader(def);
       return [def.key, series.observations] as [string, DatedObservation[]];
-    } catch {
+    } catch (error) {
+      logFailure("cli.screenshot", "Read screenshot valuation series failed")(error);
       return null;
     }
   }));
@@ -826,7 +829,8 @@ async function reportShotFreshness(
   try {
     const loaded = await loadModel();
     return deriveHeadlessFreshness(loaded.definition, loaded.result, now);
-  } catch {
+  } catch (error) {
+    logFailure("cli.screenshot", "Read screenshot report freshness failed")(error);
     return undefined;
   }
 }
@@ -853,7 +857,8 @@ export async function reportShotCoverage(
     const { complete, unavailableSymbols } = reportCoverage(loaded);
     const gaps = reportGaps(loaded, deriveHeadlessFreshness(loaded.definition, loaded.result));
     return { complete, unavailableSymbols, ...(gaps ? { gaps } : {}) };
-  } catch {
+  } catch (error) {
+    logFailure("cli.screenshot", "Read screenshot report coverage failed")(error);
     return undefined;
   }
 }

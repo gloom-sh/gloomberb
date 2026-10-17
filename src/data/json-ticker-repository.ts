@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { TickerMetadata, TickerRecord } from "../types/ticker";
@@ -13,7 +14,8 @@ function normalizeSymbol(symbol: string): string {
 function hydrate(metadata: TickerMetadata): TickerRecord | null {
   try {
     return { metadata: hydrateTickerMetadata(metadata as unknown as Record<string, unknown>) };
-  } catch {
+  } catch (error) {
+    logFailure("data.json-ticker-repository", "Hydrating a stored ticker failed")(error);
     return null;
   }
 }

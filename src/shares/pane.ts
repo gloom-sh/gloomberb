@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import {
   publishableMarketplacePane,
 } from "./portable-layout";
@@ -36,7 +37,8 @@ export function buildPaneSharePayload(
       },
     });
     return payload?.kind === "pane" ? payload : null;
-  } catch {
+  } catch (error) {
+    logFailure("shares.pane", "Building a pane share failed")(error);
     return null;
   }
 }

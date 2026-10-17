@@ -49,7 +49,7 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
     await writeRemoteEndpointFiles(options.dataDir, endpoint);
   } catch (error) {
     await closeHttpServer(httpServer);
-    await removeRemoteEndpointFiles(options.dataDir, endpoint).catch(() => {});
+    await removeRemoteEndpointFiles(options.dataDir, endpoint).catch(() => { /* Intentional ignore: Remove partial endpoint files while preserving the startup error rethrown below. */ });
     throw error;
   }
 

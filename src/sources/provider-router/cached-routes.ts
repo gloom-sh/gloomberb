@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
@@ -105,7 +106,9 @@ export class ProviderRouterCachedRoutes {
               try {
                 const value = await candidate.broker.getOptionsChain(ticker, candidate.instance, exchange, expiration, context?.instrument ?? null);
                 return store(value, this.deps.brokerSourceKey(candidate), this.deps.resolveBrokerPolicy(route.policy, candidate.broker));
-              } catch { /* Try the next broker, then the provider chain. */ }
+              } catch (error) {
+                logFailure("sources.provider-router.cached-routes", "Loading broker options failed")(error);
+              }
             }
             return null;
           })());
@@ -192,7 +195,7 @@ export class ProviderRouterCachedRoutes {
           request: (provider) => provider.getExchangeRateSnapshot?.(currency) ?? provider.getExchangeRate(currency),
           rank: (value: any, fetchedAt) => {
             try { exchangeRateMetadata(value, currency, Date.now(), fetchedAt); return 2; }
-            catch { return -1; }
+            catch { /* Intentional ignore: Invalid exchange-rate metadata receives the rejecting rank and is not served. */ return -1; }
           },
           decode: (data: any) => typeof data === "number" ? data : data.rate,
           encode: (data: any) => typeof data === "number" ? { rate: data } : data,

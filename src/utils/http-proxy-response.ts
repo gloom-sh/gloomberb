@@ -88,6 +88,7 @@ export function decodeBase64(
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
     return bytes;
   } catch {
+    // Intentional ignore: Invalid base64 is represented by undefined for the envelope validator.
     return undefined;
   }
 }
@@ -198,7 +199,7 @@ export function encodeResponseBody(bytes: Uint8Array): Pick<HttpProxyResponseEnv
     try {
       return { body: STRICT_UTF8.decode(bytes) };
     } catch {
-      // Not UTF-8, so it goes as base64.
+      // Intentional ignore: Non-UTF-8 bodies are encoded as base64 below.
     }
   }
   return { body: "", bodyBase64: encodeBase64(bytes) };

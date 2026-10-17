@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
@@ -462,7 +463,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   ].filter((note): note is string => note != null);
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
   const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
-    .then((payload) => payload.observations[0] ?? null).catch(() => null);
+    .then((payload) => payload.observations[0] ?? null).catch(logFailure("cli.commands-overview", "Read latest economic series observation failed", null));
   // CSV and NDJSON are rows alone: an empty one would read as a series with no data, so it fails and says where the series ends.
   if (rows.length === 0 && (ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson")) {
     ctx.fail(`No ${seriesId} observations on or after ${startDate}.`, fredEmptyAdvice(seriesId, latest));

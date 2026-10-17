@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { chartSeriesResolveRequestSchema } from "../capabilities/chart-series";
 import type { CapabilityInvoker } from "../capabilities/types";
 import type { GloomPlugin } from "../types/plugin";
@@ -23,8 +24,8 @@ export function standaloneSeriesInvoker(
       for (const definition of definitions) {
         try {
           built.register(pluginId, definition);
-        } catch {
-          // The app logs a definition it refuses; a report charts the rest.
+        } catch (error) {
+          logFailure("series.standalone", "Registering a standalone series failed")(error);
         }
       }
     };

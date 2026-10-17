@@ -660,9 +660,7 @@ export function isTimestampStaleForExchangeSession(
 ): boolean {
   try {
     return isTimestampStaleForExchangeSessionUnsafe(timestampMs, exchange, now, marketState, weekendDays);
-  } catch {
-    return true;
-  }
+  } catch { /* Intentional ignore: Invalid session dates are conservatively stale, never fresh. */ return true; }
 }
 
 function isTimestampStaleForExchangeSessionUnsafe(

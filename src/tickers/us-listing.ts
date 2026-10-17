@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { sameCompany } from "./company-name";
@@ -22,7 +23,7 @@ export async function findUsListingOfCompany(
 ): Promise<UsListing | null> {
   const name = company?.trim();
   if (!name) return null;
-  const results = await dataProvider.search(name, { limit: LISTING_SEARCH_LIMIT }).catch(() => []);
+  const results = await dataProvider.search(name, { limit: LISTING_SEARCH_LIMIT }).catch(logFailure("tickers-us-listing", "Could not search US listing", []));
   for (const result of results) {
     const exchange = canonicalExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange);
     const kind = classifyInstrumentKind(result.brokerContract?.secType || result.type);

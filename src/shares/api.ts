@@ -143,7 +143,5 @@ export function parseShareId(pathname: string): string | null {
   try {
     const id = decodeURIComponent(match[1] ?? "");
     return SHARE_ID.test(id) ? id : null;
-  } catch {
-    return null;
-  }
+  } catch { /* Intentional ignore: Malformed percent encoding is an invalid share id. */ return null; }
 }

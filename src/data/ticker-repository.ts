@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { TickerRecord, TickerMetadata } from "../types/ticker";
 import type { TickerStore } from "./ticker-store";
 import { hydrateTickerMetadata } from "../tickers/metadata";
@@ -13,7 +14,8 @@ export class TickerRepository {
     return this.tickers.getAll().flatMap((row) => {
       try {
         return [{ metadata: parseTickerMetadata(row.metadata) }];
-      } catch {
+      } catch (error) {
+        logFailure("data.ticker-repository", "Reading stored ticker metadata failed")(error);
         return [];
       }
     });
@@ -24,7 +26,8 @@ export class TickerRepository {
     if (!json) return null;
     try {
       return { metadata: parseTickerMetadata(json) };
-    } catch {
+    } catch (error) {
+      logFailure("data.ticker-repository", "Reading stored ticker metadata failed")(error);
       return null;
     }
   }

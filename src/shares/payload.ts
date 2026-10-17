@@ -193,7 +193,7 @@ function parsePaneData(value: unknown): PaneShareData | null {
 export function parseSharePayload(value: unknown): SharePayload | null {
   if (!isRecord(value) || !shortString(value.kind, 20) || !("data" in value)) return null;
   let json: string;
-  try { json = JSON.stringify(value); } catch { return null; }
+  try { json = JSON.stringify(value); } catch { /* Intentional ignore: Circular or unserializable input is not a valid share payload. */ return null; }
   if (new TextEncoder().encode(json).byteLength > MAX_SHARE_BYTES) return null;
   if (value.kind === "table" && isTableData(value.data)) return value as unknown as SharePayload;
   if (value.kind === "chart" && isChartData(value.data)) return value as unknown as SharePayload;

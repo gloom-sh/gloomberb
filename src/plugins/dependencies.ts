@@ -23,6 +23,7 @@ function declaredDependencies(packageDir: string): string[] {
     const dependencies = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).dependencies;
     return dependencies && typeof dependencies === "object" ? Object.keys(dependencies) : [];
   } catch {
+    // Intentional ignore: Plugins may have no package manifest; the loader reports import failures.
     return [];
   }
 }

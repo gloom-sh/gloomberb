@@ -295,7 +295,7 @@ function requirePaneFunctionTarget(args: string[], commandName: string, ctx: Cli
   try {
     target = parsePaneFunctionArgs(args).target;
   } catch {
-    // Invalid options are reported by the runner, with its error code.
+    // Intentional ignore: The pane function runner reports invalid options with its error code.
     return;
   }
   if (!target) ctx.fail(`Usage: gloomberb ${commandName} <function> [argument] [options]`);
@@ -453,7 +453,7 @@ export async function failUnknownCliCommand(args: string[], options: DispatchCli
     parsed = parseCliGlobalArgs(args);
     token = parsed.args[0] ?? token;
   } catch {
-    // dispatchCli already reported flags that do not parse.
+    // Intentional ignore: dispatchCli already reports invalid flags.
   }
   const registry = await createRegistry(options);
   const commands = listedCommands(registry).map((entry) => entry.command);

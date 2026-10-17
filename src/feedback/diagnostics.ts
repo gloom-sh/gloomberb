@@ -36,9 +36,7 @@ function connectionError(message: string): string {
     try {
       const parsed = JSON.parse(message) as { on?: unknown };
       return `validation failed (${typeof parsed.on === "string" ? parsed.on : "request"})`;
-    } catch {
-      return "validation failed";
-    }
+    } catch { /* Intentional ignore: Malformed validation details retain the redacted validation failure description. */ return "validation failed"; }
   }
   return clip(redactText(message), MAX_DATA_CHARS);
 }
@@ -122,9 +120,7 @@ function safeData(data: unknown): string {
       : JSON.stringify(data, (_key, value) => (typeof value === "bigint" ? value.toString() : value));
     if (!serialized) return "";
     return serialized.length > MAX_DATA_CHARS ? `${serialized.slice(0, MAX_DATA_CHARS)}...` : serialized;
-  } catch {
-    return "[unserializable]";
-  }
+  } catch { /* Intentional ignore: Diagnostic data may contain cycles; the report marks it unserializable. */ return "[unserializable]"; }
 }
 
 function formatEntry(entry: LogEntry): string {

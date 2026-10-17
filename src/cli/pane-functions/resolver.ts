@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { PaneInstanceConfig } from "../../types/config";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
 import type {
@@ -213,7 +214,7 @@ async function unknownPaneFunctionError(
 ): Promise<UnknownPaneFunctionError> {
   const near = nearFunctionCodes(registry, name);
   // A catalog that cannot be read still leaves the pointer to it.
-  const closest = (await suggestPaneFunctions(registry, context, name).catch(() => []))
+  const closest = (await suggestPaneFunctions(registry, context, name).catch(logFailure("cli.pane-functions-resolver", "Find pane function suggestions failed", [])))
     .filter((entry) => !near.some(({ code }) => code === entry.token));
   const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
   const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);

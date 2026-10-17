@@ -5,6 +5,7 @@
  * attach their brokerage to it. The connection itself lives in the Cloud
  * account, shared by every device and by the user's agents.
  */
+import { logFailure } from "../../utils/log-failure";
 import { ApiRequestError } from "../../api-client/errors";
 import {
   fetchSignedInBrokerConnection,
@@ -148,7 +149,7 @@ export class BrokerSignInController {
     // first. A failed read leaves the first poll to stand in for it: no
     // sign-in finishes within a poll interval.
     if (this.renew && !this.before) {
-      const read = await this.io.fetchConnection(this.broker.id).catch(() => null);
+      const read = await this.io.fetchConnection(this.broker.id).catch(logFailure("broker-signin", "Broker connection refresh failed", null));
       if (stale()) return;
       this.before ??= read;
     }

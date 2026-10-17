@@ -99,9 +99,7 @@ export function getCurrencySymbol(currency: string): string {
       maximumFractionDigits: 0,
     });
     symbol = formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? normalizedCurrency;
-  } catch {
-    // A malformed code (free text typed as a position currency) has no symbol.
-  }
+  } catch { /* Intentional ignore: A user-entered currency code rejected by Intl retains the code as its symbol. */ }
   currencySymbols.set(normalizedCurrency, symbol);
   return symbol;
 }
@@ -467,9 +465,7 @@ export function currencyMinorDigits(currency: string | undefined): number {
   let digits = 2;
   try {
     digits = new Intl.NumberFormat("en-US", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    // A code Intl rejects reads with two decimals.
-  }
+  } catch { /* Intentional ignore: A currency code rejected by Intl uses the documented two-decimal fallback. */ }
   currencyMinorDigitsByCode.set(code, digits);
   return digits;
 }

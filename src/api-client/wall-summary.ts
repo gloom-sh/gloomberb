@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { withDeadline } from "../utils/async-deadline";
 import { canonicalExchange } from "../utils/exchanges";
 import { CloudApiRequestTransport } from "./request";
@@ -43,7 +44,8 @@ export async function getWallSummary(wall: string, symbol: string, exchange?: st
       signal: controller.signal,
     }), 3_000, "Wall summary request timed out", (error) => controller.abort(error));
     return parseWallSummary(result);
-  } catch {
+  } catch (error) {
+    logFailure("cloud-wall-summary", "Wall summary request failed")(error);
     return null;
   }
 }

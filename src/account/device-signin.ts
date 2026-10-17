@@ -4,6 +4,7 @@
  * adopted through the same persistence and API-client path boot restoration
  * uses, so the rest of the app sees a normal signed-in session.
  */
+import { logFailure } from "../utils/log-failure";
 import {
   apiClient,
   type AuthUser,
@@ -83,7 +84,7 @@ const defaultIo: DeviceSignInIo = {
     chatController.adoptSession(sessionToken, user);
     // Validate and pick up realtime wiring; the session is already persisted,
     // so a transient failure here must not surface as a sign-in failure.
-    await chatController.refreshSession().catch(() => {});
+    await chatController.refreshSession().catch(logFailure("account-device-signin", "Session refresh after device authentication failed"));
   },
   now: () => Date.now(),
   delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),

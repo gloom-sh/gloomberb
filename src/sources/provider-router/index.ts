@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { PriceHistoryResult } from "../../types/price-history";
 import type { ResourceStore } from "../../data/resource-store";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
@@ -174,8 +175,8 @@ export class AssetDataRouter implements DataProvider {
         if (!provider.canProvide || await provider.canProvide(ticker, exchange, context)) {
           return true;
         }
-      } catch {
-        // continue through provider chain
+      } catch (error) {
+        logFailure("sources.provider-router.index", "Checking provider availability failed")(error);
       }
     }
     return false;
@@ -252,7 +253,9 @@ export class AssetDataRouter implements DataProvider {
           known = mergeQuoteMetadata(known, metadata);
           if (known?.currency && known.instrumentType) return known;
         }
-      } catch { /* Optional listing metadata must not prevent historical research. */ }
+      } catch (error) {
+        logFailure("sources.provider-router.index", "Loading listing metadata failed")(error);
+      }
     }
     return known ?? null;
   }

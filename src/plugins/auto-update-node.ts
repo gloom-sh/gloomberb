@@ -31,6 +31,7 @@ function readJson(path: string): Record<string, unknown> | null {
     const value = JSON.parse(readFileSync(path, "utf-8"));
     return value && typeof value === "object" ? value as Record<string, unknown> : null;
   } catch {
+    // Intentional ignore: Missing or invalid optional metadata starts with no cached update state.
     return null;
   }
 }
