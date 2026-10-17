@@ -39,9 +39,12 @@ export const ipoCalendarPlugin: GloomPlugin = {
       label: "IPO Calendar",
       description: "Upcoming and recent IPOs in the US, Asia-Pacific and Europe: offer price, deal size and first-day return.",
       keywords: ["ipo", "ipos", "initial", "public", "offering", "new", "listing", "listings", "debut", "flotation", "float"],
-      shortcut: { prefix: "IPO" },
+      shortcut: { prefix: "IPO", argKind: "text", argOptional: true, argPlaceholder: "company, ticker or market" },
       headless: ipoCalendarHeadless,
-      createInstance: () => ({ placement: "floating" }),
+      createInstance: (_context, options) => {
+        const search = options?.arg?.trim();
+        return { placement: "floating", ...(search ? { params: { search } } : {}) };
+      },
     },
   ],
 };

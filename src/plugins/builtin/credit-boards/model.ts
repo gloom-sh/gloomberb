@@ -93,6 +93,24 @@ export function formatContract(maturity: string | null): string {
     : date.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+const boardKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * `IG`, `cdx hy`, `itraxx main`, `crossover`: an index by its code, its name or the name's last word. `fn CDX`
+ * and the board's own selection (`CDX HY` opens on it) read the argument through this.
+ */
+export function findIndex<T extends { id: string; name: string }>(indexes: readonly T[], query: string): T | null {
+  const wanted = boardKey(query) === "crossover" ? "xover" : boardKey(query);
+  return indexes.find((index) => [index.id, index.name, index.name.split(" ").at(-1) ?? ""]
+    .some((name) => boardKey(name) === wanted)) ?? null;
+}
+
+/** `Brazil`, `br`, `ivory coast`: a sovereign by its name or its country code, in any case. */
+export function findSovereign<T extends { id: string; name: string }>(sovereigns: readonly T[], query: string): T | null {
+  const wanted = boardKey(query);
+  return wanted ? sovereigns.find((sovereign) => [sovereign.id, sovereign.name].some((name) => boardKey(name) === wanted)) ?? null : null;
+}
+
 export interface CdxRow extends MarketBoardRow {
   index: CdxBoardIndex;
   year: YearStatistics;

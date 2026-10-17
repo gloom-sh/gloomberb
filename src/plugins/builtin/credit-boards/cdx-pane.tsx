@@ -20,10 +20,13 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import { formatAsOf } from "../cds/model";
+import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
+import { useCommandValue } from "../shared/command-tab";
 import { getCachedCdxBoard, loadCdxBoard } from "./client";
 import {
   axisFormatter,
   cdxRows,
+  findIndex,
   formatContract,
   formatLevel,
   formatMove,
@@ -83,7 +86,13 @@ export function CdxPane({ focused, width, height }: PaneProps) {
   const { loading, load: refresh, reload } = resource;
   const payload = resource.data?.payload ?? null;
   const rows = useMemo(() => payload ? cdxRows(payload.indexes, payload.asOf) : EMPTY_ROWS, [payload]);
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("cdx:selected", null);
+  // `CDX HY` opens on that index, named as `fn CDX HY` names it; a later `CDX IG` replaces it.
+  const [selectedId, setSelectedId] = useCommandValue<string | null>(
+    FIXED_INCOME_PANE_ID,
+    "cdx:selected",
+    (params) => params.view === "index" && params.index ? params.index : null,
+    null,
+  );
   const [openId, setOpenId] = usePluginPaneState<string | null>("cdx:open", null);
   useAutoRefresh(resource.updatedAt, refresh);
   usePaneRefreshKey(reload, { focused, enabled: !loading });
@@ -136,13 +145,15 @@ export function CdxPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  // The selected index's history sits above the board; the legend names it.
-  const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
+  // The selected index's history sits above the board; the legend names it. What a command named (`HY`, `itraxx
+  // main`) is read like `fn` reads it, and one the board does not have leaves the board on its first.
+  const named = selectedId ? findIndex(payload?.indexes ?? [], selectedId) : null;
+  const selected = rows.find((row) => row.id === selectedId) ?? rows.find((row) => row.id === named?.id) ?? rows[0];
   return (
     <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
       rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
         tableColumns={columns} chart={selected ? historyChart(selected) : null} />}
-      selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} signedChange extraColumns={extraColumns}
       renderDetail={(row) => <IndexDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
   );

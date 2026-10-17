@@ -23,6 +23,7 @@ import { Box, TextAttributes } from "../../../ui";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
+import { useCommandValue } from "../shared/command-tab";
 import { getCachedIpoCalendar, loadIpoCalendar } from "./client";
 import {
   buildIpoColumns,
@@ -75,7 +76,8 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   const tab = isIpoTab(storedTab) ? storedTab : "all";
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<IpoSortPreference>(DEFAULT_IPO_SORT);
-  const [query, setQuery] = useState("");
+  // `IPO japan` opens on that search, as `fn IPO japan` reads it.
+  const [query, setQuery] = useCommandValue(IPO_CALENDAR_PANE_ID, "query", (params) => params.search ?? null, "");
   const { active: searching, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   useAutoRefresh(resource.updatedAt, resource.load);

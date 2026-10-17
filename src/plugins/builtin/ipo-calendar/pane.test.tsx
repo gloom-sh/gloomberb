@@ -7,9 +7,10 @@ import { appReducer, createInitialState, type AppAction } from "../../../state/a
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import type { PinTickerOptions } from "../../../types/plugin";
+import type { PaneTemplateContext, PinTickerOptions } from "../../../types/plugin";
 import { displayWidth } from "../../../utils/format";
 import { ipoCalendarCache } from "./client";
+import { ipoCalendarPlugin } from "./index";
 import { IpoCalendarPane } from "./pane";
 import { ipoDeal } from "./test-fixture";
 
@@ -40,11 +41,11 @@ afterEach(() => {
   ipoCalendarCache.reset();
 });
 
-async function mount(width = 110, height = 10) {
+async function mount(width = 110, height = 10, params?: Record<string, string>) {
   ipoCalendarCache.attach(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async () => Response.json(board));
   const id = "ipo-calendar";
-  const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {} }));
+  const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {}, ...(params ? { params } : {}) }));
   const pins: { symbol: string; options?: PinTickerOptions }[] = [];
   function Harness() {
     const [state, setState] = useState(initial);
@@ -58,7 +59,7 @@ async function mount(width = 110, height = 10) {
     );
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
-  await tui.waitForFrameToContain("3750");
+  await tui.waitForFrameToContain(params?.search ? "ARM" : "3750");
   return { pins };
 }
 
@@ -86,4 +87,18 @@ test("Enter opens a Hong Kong code on its own exchange, never a US ticker of the
   await act(async () => tui.setup().mockInput.pressEnter());
   await settleFrame(tui.setup(), 10);
   expect(pins.map((pin) => pin.symbol)).toEqual(["3750:XHKG"]);
+});
+
+test("IPO opens on the search the command names, as fn IPO reads it, and on the whole board when it names none", async () => {
+  const create = ipoCalendarPlugin.paneTemplates![0]!.createInstance!;
+  const opened = async (arg?: string) => (await create({} as PaneTemplateContext, arg === undefined ? undefined : { arg }))?.params;
+  expect(await opened()).toBeUndefined();
+  expect(await opened("  ")).toBeUndefined();
+  const params = await opened(" arm ");
+  expect(params).toEqual({ search: "arm" });
+  await mount(110, 10, params);
+  const frame = tui.frame();
+  expect(frame).toContain("/ arm");
+  expect(frame).toContain("ARM");
+  expect(frame).not.toContain("3750");
 });

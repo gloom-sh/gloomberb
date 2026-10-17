@@ -12,7 +12,7 @@ A new trade counts only as an execution. Swaption exercises (which print at the 
 
 CDX IG, iTraxx Main and Crossover trade on spread and show in basis points. CDX HY and CDX EM trade on price and show as the price, as quoted. Moves and ranges stay in the same unit: basis points for the spread indexes, points of price for HY and EM. Wider spreads and lower prices are the adverse direction and show in red.
 
-`gloomberb fn CDX --json` gives each level and move as a number with its unit beside it: `level` with `unit` (`bp` or `price`) and `change1D`, `change1W` with `changeUnit` (`bp` or `pts`). `--csv` writes the numbers with a `5Y unit`, `1D unit` and `1W unit` column. `fn SOVR` does the same, every row in `bp`.
+`gloomberb fn CDX --json` gives each level and move as a number with its unit beside it: `level` with `unit` (`bp` or `price`) and `change1D`, `change1W` with `changeUnit` (`bp` or `pts`). `--csv` writes the numbers with a `5Y unit`, `1D unit` and `1W unit` column. `fn SOVR` does the same, every row in `bp`; `fn SOVR Brazil` lists that country's row alone, named by its name or code (`BR`), and `SOVR Brazil` in the app opens the board on it.
 
 Reporters disagree on the unit of the same field. Percentage notation is mostly written as a decimal fraction (0.0058 for 58bp, 0.0107 for a price of 107) and sometimes as a true percentage (0.58, or 1.07 for 107); basis-point notation is read as basis points and monetary notation as a price. A print whose value fits no unit (a spread outside 0.5bp to 5,000bp, a price outside 20 to 200) is dropped.
 
@@ -36,7 +36,7 @@ The chart and the 1Y percentile follow the contract that was on the run each day
 
 ## History export
 
-`gloomberb fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, the prints behind it and the contract on the run that day. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
+`gloomberb fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, the prints behind it and the contract on the run that day. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name; `CDX XOVER` in the app opens the board on that index. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
 
 ## Sovereigns and currencies
 

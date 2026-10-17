@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
 import { earningsCallsHeadless } from "../../plugins/builtin/earnings-calls/headless";
+import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
@@ -106,4 +108,21 @@ test("a code one slip from a function's (swapped, missing or extra letter) names
   // Two letters off, or a name too short to tell, is no suggestion.
   expect((await unknown(["RDXX", "PLTR"]))?.message).toBe('Unknown function or pane "RDXX".');
   expect((await unknown(["WE", "PLTR"]))?.message).toBe('Unknown function or pane "WE".');
+});
+
+test("shot hands CDX, SOVR (or its alias WCDS) and IPO their argument as the params their pane opens on, never as a ticker", async () => {
+  const templates = [...creditBoardsModule.paneTemplates ?? [], ...ipoCalendarPlugin.paneTemplates ?? []];
+  const boards: PaneFunctionCatalog = {
+    panes: new Map(["fixed-income", "ipo-calendar"].map((id) => [id, pane(id)])),
+    paneTemplates: new Map(templates.map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const shot = async (target: string, arg: string) => {
+    const resolved = await resolvePaneFunction(boards, context, parsePaneFunctionArgs([target, arg]), { command: "shot" });
+    return { params: resolved.instance.params, binding: resolved.instance.binding };
+  };
+  expect(await shot("CDX", "HY")).toEqual({ params: expect.objectContaining({ tab: "credit", view: "index", index: "HY" }), binding: { kind: "none" } });
+  // WCDS is SOVR's alias, and the country keeps the spelling it was typed in.
+  expect(await shot("WCDS", "Ivory Coast")).toEqual({ params: expect.objectContaining({ tab: "credit", view: "sovereign", country: "Ivory Coast" }), binding: { kind: "none" } });
+  expect(await shot("IPO", "pending")).toEqual({ params: { search: "pending" }, binding: { kind: "none" } });
 });

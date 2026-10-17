@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import type { CdxBoardIndex, CreditIndexQuote } from "../../../api-client/credit-boards";
 import { CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
-import { cdxRows, formatContract, formatCurrencyMove, formatLevel, formatMove, quoteUnits, sovrRows } from "./model";
+import { cdxRows, findIndex, findSovereign, formatContract, formatCurrencyMove, formatLevel, formatMove, quoteUnits, sovrRows } from "./model";
 
 const percentile = (value: unknown) => value == null ? "--" : Number(value).toFixed(0);
 const numberOrNull = (value: unknown) => typeof value === "number" ? value : null;
@@ -25,14 +25,6 @@ const moveColumn = (key: string, header: string, unitKey: string): HeadlessPaneC
 /** The publisher a board's payload names, spelled out: `DTCC PPD` is DTCC's public price dissemination. */
 function boardPublisher(source: string | null | undefined): string | undefined {
   return source?.trim().replace(/\bPPD\b/, "Public Price Dissemination") || undefined;
-}
-
-/** `IG`, `cdx hy`, `itraxx main`, `crossover`: an index by its code, its name or the name's last word. */
-function findIndex(indexes: readonly CdxBoardIndex[], query: string): CdxBoardIndex | null {
-  const key = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const wanted = key(query) === "crossover" ? "xover" : key(query);
-  return indexes.find((index) => [index.id, index.name, index.name.split(" ").at(-1) ?? ""]
-    .some((name) => key(name) === wanted)) ?? null;
 }
 
 /**
@@ -119,7 +111,8 @@ export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
     limitations: ["Daily 5Y levels from public DTCC prints; thinly traded names can miss days."] },
   shape: "rows",
   freshness: { source: "DTCC", status: "not-a-feed", basis: "daily levels of public trades", cadence: "daily", observedKey: "date" },
-  argument: { kind: "none" },
+  argument: { kind: "free-text", optional: true, placeholder: "country",
+    description: "A country (Brazil, BR) to list its row alone; omit for every sovereign." },
   options: [],
   columns: [
     { key: "name", header: "Sovereign" },
@@ -130,13 +123,17 @@ export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
     { key: "date", header: "As of" },
   ],
   describe: "Sovereign CDS",
-  async load(_args, ctx) {
+  async load(args, ctx) {
     const payload = await fetchSovrBoard(ctx.apiClient);
-    const moves = await loadCurrencyMoves(payload.sovereigns.map((row) => row.currency),
+    const query = typeof args.argument === "string" ? args.argument.trim() : "";
+    const country = query ? findSovereign(payload.sovereigns, query) : null;
+    if (query && !country) throw new Error(`No sovereign ${query}. Use one of: ${payload.sovereigns.map((entry) => entry.name).join(", ")}.`);
+    const sovereigns = country ? [country] : payload.sovereigns;
+    const moves = await loadCurrencyMoves(sovereigns.map((row) => row.currency),
       (symbol) => ctx.marketData.getPriceHistory(symbol, "", "3M"));
     const publisher = boardPublisher(payload.source);
     return {
-      rows: sovrRows(payload.sovereigns, payload.asOf, moves).map((row) => ({
+      rows: sovrRows(sovereigns, payload.asOf, moves).map((row) => ({
         name: row.label,
         level: row.sovereign.level,
         unit: quoteUnits("spread").level,

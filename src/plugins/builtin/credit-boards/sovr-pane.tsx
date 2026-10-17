@@ -21,8 +21,11 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import { formatAsOf } from "../cds/model";
+import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
+import { useCommandValue } from "../shared/command-tab";
 import { getCachedSovrBoard, loadCurrencyMoves, loadSovrBoard } from "./client";
 import {
+  findSovereign,
   formatContract,
   formatCurrencyMove,
   formatLevel,
@@ -82,7 +85,13 @@ export function SovrPane({ focused, width, height }: PaneProps) {
   const resource = useAsyncResource(loadSovrBoard, { initialData: getCachedSovrBoard });
   const { loading, load: refresh, reload } = resource;
   const payload = resource.data?.payload ?? null;
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("sovr:selected", null);
+  // `SOVR Brazil` opens on that country, named as `fn SOVR Brazil` names it; a later `SOVR Chile` replaces it.
+  const [selectedId, setSelectedId] = useCommandValue<string | null>(
+    FIXED_INCOME_PANE_ID,
+    "sovr:selected",
+    (params) => params.view === "sovereign" && params.country ? params.country : null,
+    null,
+  );
   const [openId, setOpenId] = usePluginPaneState<string | null>("sovr:open", null);
   useAutoRefresh(resource.updatedAt, refresh);
 
@@ -131,12 +140,14 @@ export function SovrPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  const selected = rows.find((row) => row.id === selectedId) ?? rows[0];
+  // A country the command named that the board does not have leaves the board on its first.
+  const named = selectedId ? findSovereign(payload?.sovereigns ?? [], selectedId) : null;
+  const selected = rows.find((row) => row.id === selectedId) ?? rows.find((row) => row.id === named?.id) ?? rows[0];
   return (
     <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
       rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
         tableColumns={columns} chart={selected ? historyChart(selected) : null} />}
-      selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="SOVEREIGN" labelWidth={18} valueLabel="5Y" valueWidth={9} changeLabel="1M" signedChange
       extraColumns={extraColumns}
       renderDetail={(row) => <SovereignDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
