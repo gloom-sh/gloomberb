@@ -10,6 +10,7 @@ import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
+import { t, tf } from "../../../i18n";
 import { EmptyState, FeedDataTableStackView, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
 import { displayWidth } from "../../../utils/format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
@@ -505,9 +506,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (!forms && error && formFilings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
   if (!forms && formFilings.length === 0) return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`);
   const symbol = ticker.metadata.ticker;
-  const fundEmptyTitle = error ? "SEC filings unavailable." : `No fund filings for ${symbol}.`;
+  const fundEmptyTitle = error ? t("SEC filings unavailable.") : tf("No fund filings for {symbol}.", { symbol });
   // A trust (IBIT, GLD) files 10-Ks and 10-Qs, not fund forms.
-  const fundEmptyHint = error ?? (issuerFilings.length > 0 ? `Its other filings: SEC ${symbol}.` : undefined);
+  const fundEmptyHint = error ?? (issuerFilings.length > 0 ? tf("Its other filings: SEC {symbol}.", { symbol }) : undefined);
   if (forms && facts?.covered && formFilings.length === 0 && !error) {
     // A trust with facts (IBIT, GLD) files 10-Ks, not fund forms: the facts are the view, and one line says where its filings are.
     return (

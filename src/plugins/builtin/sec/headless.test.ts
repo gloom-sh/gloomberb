@@ -168,7 +168,8 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   // JSON keeps each raw number.
   expect(facts!.entries!.find((entry) => entry.key === "netAssets")!.value).toBe(712_340_000_000);
   expect(filed!.rows!.map((row) => row.form)).toEqual(["485BPOS"]);
-  expect(result.freshness).toMatchObject({ source: "State Street and SEC EDGAR", asOf: "2026-10-15" });
+  // The report's source is the facts' publisher, named the same way for every fund.
+  expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street", asOf: "2026-10-15" });
   expect(result.complete).toBe(true);
 });
 
@@ -177,7 +178,18 @@ test("a computed premium says it is the closing price against the NAV and who co
   const result = await createFundHeadless({ loadFacts: async () => computed, loadFilings: async () => [] }).load(fundArgs("SPY"), createTestHeadlessContext());
   expect(result.sections[0]!.entries!.find((entry) => entry.key === "premiumDiscountPercent")!.formatted)
     .toBe("-0.01% · 2026-10-15 · closing price vs NAV · Gloom Cloud");
-  expect(result.freshness).toMatchObject({ source: "State Street, Gloom Cloud and SEC EDGAR", publisher: "State Street and Gloom Cloud" });
+  expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street" });
+});
+
+test("month-end net assets say so, and a stale NAV adds the note saying since when", async () => {
+  const vanguard: FundFactsPayload = {
+    ...SPY_FACTS, ticker: "VOO", stale: true,
+    nav: { value: 701.68, asOf: "2026-10-01", source: "Vanguard" },
+    netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" },
+  };
+  const result = await createFundHeadless({ loadFacts: async () => vanguard, loadFilings: async () => [] }).load(fundArgs("VOO"), createTestHeadlessContext());
+  expect(result.sections[0]!.entries!.find((entry) => entry.key === "netAssets")!.formatted).toBe("$1T · 2026-09-30 month-end · Vanguard");
+  expect(result.notes).toEqual(["VOO's newest NAV is from 2026-10-01; its sponsor has not published one since."]);
 });
 
 test("a grantor trust without facts says why once, and its filings line says where its filings are", async () => {

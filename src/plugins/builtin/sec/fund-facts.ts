@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
+import { t, tf } from "../../../i18n";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
@@ -30,6 +31,12 @@ export const FUND_FACTS_UNAVAILABLE = "Fund facts are not available on this serv
 export function fundFactsErrorText(error: unknown): string {
   const message = errorMessage(error);
   return message === FUND_FACTS_UNAVAILABLE ? message : `Fund facts unavailable: ${message}`;
+}
+
+/** The same line, translated for the pane. */
+export function fundFactsErrorLine(error: unknown): string {
+  const message = errorMessage(error);
+  return message === FUND_FACTS_UNAVAILABLE ? t(FUND_FACTS_UNAVAILABLE) : tf("Fund facts unavailable: {message}", { message });
 }
 
 export async function fetchFundFacts(ticker: string, client: Client = apiClient): Promise<FundFactsPayload> {
@@ -75,43 +82,96 @@ function feeBasis(facts: FundFactsPayload): "net" | "gross" | null {
 const BENCHMARK_LABEL = "Benchmark";
 
 /**
+ * How each dated figure reads beside the NAV, the date the sheet is about.
+ * Every figure says its own date. One that is older than it looks is marked:
+ * every figure once the NAV is stale, a premium of another day than the NAV,
+ * a day's net assets older than it. Vanguard's net assets are a month end's
+ * and say so, which is their normal cadence rather than a lag. A fee is dated
+ * by the page or prospectus it was read from and is marked only when stale.
+ */
+interface DatedFigure {
+  /** The date, with what it is when that is not plain: `2026-10-16 close`, `2026-09-30 month-end`. */
+  detail?: string;
+  /** Older than the NAV beside it, or the NAV is stale. */
+  marked: boolean;
+}
+
+function datedFigures(facts: FundFactsPayload): Record<"nav" | "premium" | "fee" | "netAssets", DatedFigure> {
+  const nav = facts.nav?.asOf ?? null;
+  const premium = facts.premiumDiscount;
+  const assets = facts.netAssets;
+  const monthEnd = assets?.period === "month-end";
+  const basis = feeBasis(facts);
+  const feeDate = facts.expenseRatio?.asOf ?? null;
+  return {
+    nav: { detail: nav ? (facts.stale ? tf("{date} stale", { date: nav }) : nav) : undefined, marked: facts.stale },
+    premium: {
+      detail: premium?.asOf ? (premium.basis === "computed" ? tf("{date} close", { date: premium.asOf }) : premium.asOf) : undefined,
+      marked: facts.stale || (!!premium?.asOf && !!nav && premium.asOf !== nav),
+    },
+    fee: {
+      detail: feeDate ? (basis === "gross" ? tf("gross {date}", { date: feeDate }) : basis === "net" ? tf("net {date}", { date: feeDate }) : feeDate) : basis ?? undefined,
+      marked: facts.stale,
+    },
+    netAssets: {
+      detail: assets?.asOf ? (monthEnd ? tf("{date} month-end", { date: assets.asOf }) : assets.asOf) : undefined,
+      marked: facts.stale || (!monthEnd && !!assets?.asOf && !!nav && assets.asOf < nav),
+    },
+  };
+}
+
+/**
  * The facts as a pane's summary sheet: each figure with its own date beside
- * it. A premium computed from the consolidated close says so, a gross fee says
- * gross; who published the figures is the footer's.
+ * it, a marked one in the warning tone. A premium computed from the
+ * consolidated close says so, a fee says net or gross; who published the
+ * figures is the footer's.
  */
 export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   const items: StatItem[] = [];
-  if (facts.nav) items.push({ id: "nav", label: "NAV", value: formatNav(facts.nav.value), ...(facts.nav.asOf ? { detail: facts.nav.asOf } : {}) });
-  if (facts.premiumDiscount) {
-    const date = facts.premiumDiscount.asOf ?? "";
-    items.push({ id: "premium", label: "Premium/discount", value: formatPremiumPercent(facts.premiumDiscount.value),
-      detail: facts.premiumDiscount.basis === "computed" ? `${date} close`.trim() : date || undefined });
-  }
-  if (facts.expenseRatio) {
-    const basis = feeBasis(facts);
-    items.push({ id: "fee", label: expenseRatioLabel(facts), value: formatFeePercent(facts.expenseRatio.value), ...(basis ? { detail: basis } : {}) });
-  }
-  if (facts.netAssets) items.push({ id: "assets", label: "Net assets", value: formatNetAssets(facts.netAssets.value), ...(facts.netAssets.asOf ? { detail: facts.netAssets.asOf } : {}) });
+  const dated = datedFigures(facts);
+  const cell = (id: string, label: string, value: string, figure: DatedFigure): StatItem => ({
+    id, label, value, ...(figure.detail ? { detail: figure.detail } : {}), ...(figure.marked ? { tone: "warning" as const } : {}),
+  });
+  if (facts.nav) items.push(cell("nav", "NAV", formatNav(facts.nav.value), dated.nav));
+  if (facts.premiumDiscount) items.push(cell("premium", "Premium/discount", formatPremiumPercent(facts.premiumDiscount.value), dated.premium));
+  if (facts.expenseRatio) items.push(cell("fee", expenseRatioLabel(facts), formatFeePercent(facts.expenseRatio.value), dated.fee));
+  if (facts.netAssets) items.push(cell("assets", "Net assets", formatNetAssets(facts.netAssets.value), dated.netAssets));
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
   if (facts.index) items.push({ id: "index", label: BENCHMARK_LABEL, value: facts.index.value, wide: true });
   return items;
 }
 
+/** A DES figure: `warn` when it is older than it looks, which DES draws in the warning colour. */
+interface FundFactOverviewField {
+  label: string;
+  value: string;
+  /** Its date, longest first: a narrow column takes the shorter form or none, and the colour still marks it. */
+  detail?: string[];
+  warn?: boolean;
+}
+
 /**
  * The facts in the overview's Fundamentals style, short Title Case labels
- * beside a company's `Mkt Cap` and `Div Yield`: price-side figures with their
- * dates, then the fee and inception. Sponsor and index stay in ETF.
+ * beside a company's `Mkt Cap` and `Div Yield`: price-side figures, then the
+ * fee and inception, each dated and marked as the ETF pane marks them.
+ * Sponsor and index stay in ETF.
  */
-export function fundFactOverviewFields(facts: FundFactsPayload): { label: string; value: string; detail?: string }[] {
-  const fields: { label: string; value: string; detail?: string }[] = [];
-  if (facts.nav) fields.push({ label: "NAV", value: formatNav(facts.nav.value), ...(facts.nav.asOf ? { detail: facts.nav.asOf } : {}) });
-  if (facts.premiumDiscount) fields.push({ label: "Prem/Disc", value: formatPremiumPercent(facts.premiumDiscount.value) });
-  if (facts.netAssets) fields.push({ label: "Net Assets", value: formatNetAssets(facts.netAssets.value) });
+export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOverviewField[] {
+  const fields: FundFactOverviewField[] = [];
+  const dated = datedFigures(facts);
+  // A narrow column takes the date without its year (`10-16 close`), then the bare date, before none.
+  const withoutYear = (text: string) => text.replace(/\b\d{4}-(\d{2}-\d{2})\b/, "$1");
+  const field = (label: string, value: string, figure: DatedFigure, short?: string): FundFactOverviewField => {
+    const forms = figure.detail ? [figure.detail, withoutYear(figure.detail), ...(short ? [short, withoutYear(short)] : [])] : [];
+    return { label, value, ...(forms.length ? { detail: [...new Set(forms)] } : {}), ...(figure.marked ? { warn: true } : {}) };
+  };
+  if (facts.nav) fields.push(field("NAV", formatNav(facts.nav.value), dated.nav));
+  if (facts.premiumDiscount) fields.push(field("Prem/Disc", formatPremiumPercent(facts.premiumDiscount.value), dated.premium, facts.premiumDiscount.asOf ?? undefined));
+  if (facts.netAssets) fields.push(field("Net Assets", formatNetAssets(facts.netAssets.value), dated.netAssets));
   if (facts.expenseRatio) {
     const fee = facts.expenseRatio.kind === "sponsor-fee" || facts.structure === "trust";
-    fields.push({ label: fee ? "Sponsor Fee" : "Exp Ratio", value: formatFeePercent(facts.expenseRatio.value),
-      ...(!fee && facts.expenseRatio.kind === "gross" ? { detail: "gross" } : {}) });
+    fields.push(field(fee ? "Sponsor Fee" : "Exp Ratio", formatFeePercent(facts.expenseRatio.value), dated.fee, facts.expenseRatio.asOf ?? undefined));
   }
   if (facts.inception) fields.push({ label: "Inception", value: facts.inception.value });
   return fields;
@@ -149,7 +209,8 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   }
   if (facts.netAssets) {
     const scope = facts.netAssets.scope === "fund" && facts.structure !== "trust" ? "all share classes" : null;
-    add("netAssets", "Net assets", facts.netAssets.value, provenance(formatNetAssets(facts.netAssets.value), facts.netAssets.asOf, scope, facts.netAssets.source), "USD");
+    const date = facts.netAssets.asOf && facts.netAssets.period === "month-end" ? `${facts.netAssets.asOf} month-end` : facts.netAssets.asOf;
+    add("netAssets", "Net assets", facts.netAssets.value, provenance(formatNetAssets(facts.netAssets.value), date, scope, facts.netAssets.source), "USD");
   }
   if (facts.sponsor) add("sponsor", "Sponsor", facts.sponsor.value, facts.sponsor.value);
   if (facts.inception) add("inception", "Inception", facts.inception.value, facts.inception.value);
@@ -164,10 +225,24 @@ export function listNames(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-/** Everyone the figures cite, in the order they appear: `iShares`, `Vanguard, Gloom Cloud`. */
+/**
+ * Who published the fund's figures: its sponsor, as every fund's footer and
+ * report source name it (`iShares`, `State Street`). A premium computed from
+ * the consolidated close cites Gloom Cloud on its own line, not here.
+ */
 export function fundFactPublishers(facts: FundFactsPayload): string[] {
-  return [...new Set([facts.nav, facts.premiumDiscount, facts.expenseRatio, facts.netAssets, facts.index]
+  return [...new Set([facts.nav, facts.expenseRatio, facts.netAssets, facts.index]
     .flatMap((value) => value ? [value.source] : []))];
+}
+
+/** The newest NAV is stale: one line saying since when, as the report's note says it. */
+export function fundFactsStaleNote(symbol: string, facts: FundFactsPayload): string | null {
+  return facts.covered && facts.stale && facts.nav?.asOf ? `${symbol}'s newest NAV is from ${facts.nav.asOf}; its sponsor has not published one since.` : null;
+}
+
+/** The stale note, translated for the pane. */
+export function fundFactsStaleText(symbol: string, facts: FundFactsPayload): string | null {
+  return fundFactsStaleNote(symbol, facts) ? tf("{symbol}'s newest NAV is from {date}; its sponsor has not published one since.", { symbol, date: facts.nav!.asOf! }) : null;
 }
 
 /**
@@ -177,4 +252,17 @@ export function fundFactPublishers(facts: FundFactsPayload): string[] {
 export function fundFactsEmpty(symbol: string, facts: FundFactsPayload | null, pointToSec = true): string {
   const reason = facts?.reason ?? `No fund facts for ${symbol} yet.`;
   return pointToSec ? `${reason} Its SEC filings: fn SEC ${symbol}.` : reason;
+}
+
+/**
+ * The pane's line for a fund without facts, translated: why, from what the
+ * SEC's lists make of it, as the server's reason says it in English.
+ */
+export function fundFactsEmptyText(symbol: string, facts: FundFactsPayload | null): string {
+  if (!facts) return tf("No fund facts for {symbol} yet.", { symbol });
+  if (facts.structure === "trust") {
+    return tf("{symbol} files with the SEC as a trust or pool, not as an open-end fund; its sponsor's daily figures are not collected yet.", { symbol });
+  }
+  if (facts.structure === "registered") return tf("{symbol}'s sponsor does not publish fund data Gloom collects yet.", { symbol });
+  return tf("No fund facts for {symbol}: it is not on the SEC's lists of US-listed funds.", { symbol });
 }

@@ -11,7 +11,7 @@ import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
-import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, listNames } from "./fund-facts";
+import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -152,10 +152,10 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ...(factsResult.status === "rejected" ? [fundFactsErrorText(factsResult.reason)] : []),
           ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
         ],
-        notes: facts?.covered && facts.stale && facts.nav?.asOf
-          ? [`${symbol}'s newest NAV is from ${facts.nav.asOf}; its sponsor has not published one since.`] : [],
+        notes: facts ? [fundFactsStaleNote(symbol, facts)].filter((note): note is string => !!note) : [],
+        // The facts' publisher is the source, named the same way for every fund; without facts it is the SEC.
         freshness: {
-          source: listNames([...publishers, ...(filingsResult.status === "fulfilled" ? ["SEC EDGAR"] : [])]) || "SEC EDGAR",
+          source: listNames(publishers) || "SEC EDGAR",
           ...(publishers.length ? { publisher: listNames(publishers) } : {}),
           status: "not-a-feed",
           basis: publishers.length ? "published fund data" : "filed data",

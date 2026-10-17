@@ -137,9 +137,29 @@ test("a US-listed fund's overview shows its fund facts where a company's fundame
     const frame = tui.frame();
     expect(facts).toHaveBeenCalledWith("IVV");
     expect(frame).toContain("Fund Facts");
-    expect(frame).toMatch(/Exp Ratio\s+0\.03%/);
     expect(frame).toMatch(/NAV\s+\$766\.76\s+2026-10-16/);
-    expect(frame).toMatch(/Net Assets\s+\$712\.34B/);
+    // Every figure is dated; a narrow column takes the date without its year.
+    expect(frame).toMatch(/Net Assets\s+\$712\.34B\s+(?:2026-)?10-16/);
+    expect(frame).toMatch(/Exp Ratio\s+0\.03%\s+net (?:2026-)?10-16/);
+
+    // Vanguard's month-end net assets read as month end; a stale NAV says so.
+    fundFactsCache.reset();
+    facts.mockImplementation(async () => ({
+      ticker: "IVV", covered: true, name: "Vanguard S&P 500 ETF", structure: "registered",
+      expenseRatio: { value: 0.03, asOf: "2026-04-28", source: "Vanguard", kind: "net" },
+      nav: { value: 701.68, asOf: "2026-10-01", source: "Vanguard" },
+      closingPrice: null, premiumDiscount: null,
+      netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" },
+      sponsor: null, inception: null, index: null, stale: true, fetchedAt: null,
+    }));
+    await act(async () => {
+      await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={etf} financials={financials} width={160} />
+      </AppContext>, { width: 160, height: 40 });
+    });
+    await settleFrame(tui.setup(), 10);
+    expect(tui.frame()).toMatch(/NAV\s+\$701\.68\s+2026-10-01 stale/);
+    expect(tui.frame()).toMatch(/Net Assets\s+\$1T\s+2026-09-30 month-end/);
 
     facts.mockClear();
     await act(async () => {

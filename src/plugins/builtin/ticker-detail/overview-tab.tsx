@@ -138,7 +138,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // A US-listed fund's facts (fee, NAV, premium, net assets) stand where a company's fundamentals would; each opens ETF.
   const fundFactsSymbol = resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
   const fundFacts = useFundFacts(fundFactsSymbol).data?.payload;
-  const fundFactFields = fundFacts?.covered ? fundFactOverviewFields(fundFacts).map((field) => ({ ...field, link: FUND_FACTS_LINK })) : [];
+  // Each figure dated; one older than it looks takes the warning colour, as in ETF.
+  const fundFactFields: StatField[] = fundFacts?.covered
+    ? fundFactOverviewFields(fundFacts).map(({ warn, ...field }) => ({ ...field, ...(warn ? { valueColor: colors.warning } : {}), link: FUND_FACTS_LINK }))
+    : [];
 
   const contentWidth = Math.max((width || Math.floor(termWidth * 0.5)) - (fractionalViewport ? 2 : 4), 20);
   const chartWidth = contentWidth;

@@ -311,12 +311,14 @@ test("the fund view leads with the fund's facts, each dated, and cites who publi
     await settleFrame(tui.setup(), 8);
     const shown = frame();
     expect(facts).toHaveBeenCalledWith("IVV");
-    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "Net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
+    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "net 2026-10-16", "Net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
       expect(shown).toContain(text);
     }
     // The filings stay below the facts.
     expect(shown.indexOf("$766.76")).toBeLessThan(shown.indexOf("485BPOS"));
-    expect(JSON.stringify(footer)).toContain("iShares and Gloom Cloud");
+    // The footer names the sponsor, as every fund's does; the computed premium cites its close on its own line.
+    expect(JSON.stringify(footer)).toContain('{"text":"iShares","tone":"value"}');
+    expect(JSON.stringify(footer)).not.toContain("Gloom Cloud");
   } finally {
     facts.mockRestore();
   }
@@ -357,6 +359,31 @@ test("a trust with facts but no fund forms keeps its facts as the view and says 
     expect(shown).toContain("Sponsor fee 0.25%");
     expect(shown).toContain("No fund filings for IBIT. Its other filings: SEC IBIT.");
     expect(shown).not.toContain("FILING");
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a stale NAV marks the figures and says since when; month-end net assets read as month end", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "VOO";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ...IVV_FACTS, ticker: "VOO", stale: true,
+    nav: { value: 701.68, asOf: "2026-10-01", source: "Vanguard", url: "https://investor.vanguard.com/investment-products/etfs/profile/voo" },
+    premiumDiscount: { value: -0.01, asOf: "2026-10-01", source: "Vanguard", basis: "computed" },
+    expenseRatio: { value: 0.03, asOf: "2026-04-28", source: "Vanguard", kind: "net" },
+    netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" },
+    index: null,
+  }));
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "485BPOS" }] }));
+    await settleFrame(tui.setup(), 8);
+    const shown = frame().replace(/\s+/g, " ");
+    expect(shown).toContain("2026-10-01 stale");
+    expect(shown).toContain("2026-09-30 month-end");
+    expect(shown).toContain("net 2026-04-28");
+    expect(shown).toContain("VOO's newest NAV is from 2026-10-01; its sponsor has not published one since.");
+    expect(JSON.stringify(footer)).toContain('{"text":"Vanguard","tone":"value"}');
   } finally {
     facts.mockRestore();
   }
