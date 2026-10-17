@@ -1,4 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
+import type { CloudInsiderSignalsParams, InsiderSignalRow } from "../../../api-client/insider-signals";
+import { insiderSignalsCache } from "./signals-client";
 import { act, useMemo, useReducer } from "react";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
@@ -55,6 +58,24 @@ async function mountWindow(inWindow: number) {
 }
 afterEach(() => {
   setSharedMarketDataCoordinator(null);
+  insiderSignalsCache.reset();
+});
+
+/** INS on a ticker asks the server for the company itself, on each side: its row with every insider, ranked or not. */
+function answerCompany(rows: Record<"buy" | "sell", InsiderSignalRow[]>) {
+  const asked: CloudInsiderSignalsParams[] = [];
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => {
+    asked.push(params);
+    const side = params.side ?? "buy";
+    return { side, ticker: params.ticker, window: params.window ?? 30, through: "2026-10-15", asOf: "2026-10-14", coverage: { from: "2026-08-01", through: "2026-10-14" }, rows: rows[side] };
+  });
+  return asked;
+}
+// Invented people, at a company too small to rank.
+const companyRow = (buyers: InsiderSignalRow["buyers"]): InsiderSignalRow => ({
+  ticker: "CONTROL", issuerCik: "999", company: "Control Inc", score: 12, reasons: ["Director bought $1k"], insiders: buyers.length, buys: 1,
+  value: buyers.reduce((sum, buyer) => sum + buyer.value, 0), shares: 100, firstBuy: "2026-10-01", lastBuy: "2026-10-14", lastFiled: "2026-10-14",
+  signals: { clusterInsiders: 1, repeatBuys: 1, usualRatio: null, stakeIncreasePct: null, newPosition: false }, buyers,
 });
 
 test("narrow actual amendment detail retains corrected shares, explanation, status and the existing Open action", async () => {
@@ -188,4 +209,52 @@ test("the pane opens on open-market buys and sells, with the other lines one cli
   frame = tui.frame();
   expect(frame).not.toContain("Timothy D. Cook");
   expect(frame).toContain("not in this view");
+});
+
+test("Trades and Insiders are a choice in INS's query bar; Insiders lists each insider as the ranking counts them, ranked or not, and Enter shows their trades", async () => {
+  const asked = answerCompany({
+    buy: [companyRow([{ name: "SMITH ANNA B", role: "Director", value: 1_000, buys: 1, lastBuy: "2026-10-14", shares: 100, stakeChangePct: 12, newPosition: false, exited: false, repeatBuys: 3, usualRatio: 2.5 }])],
+    sell: [companyRow([{ name: "JONES BOB", role: "CFO", value: 52_000, buys: 2, lastBuy: "2026-10-09", shares: 4_000, stakeChangePct: -40, newPosition: false, exited: false, repeatBuys: 2, usualRatio: null }])],
+  });
+  await mount(120);
+  let frame = tui.frame();
+  // Trades first: the filings as filed, the view a choice at the bar's end.
+  expect(frame).toMatch(/Insider\s+All.*Trades\s+Insiders/);
+  expect(asked).toEqual([]);
+  await tui.clickFrameText("Insiders");
+  await settle();
+  frame = tui.frame();
+  expect(asked).toEqual([{ window: 30, ticker: "CONTROL" }, { side: "sell", window: 30, ticker: "CONTROL" }]);
+  expect(frame).toMatch(/Window\s+7D\s+30D\s+90D/);
+  expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
+  // Each on the side their trades net to: the buyer's dollars first, the seller's after.
+  expect(frame).toMatch(/Anna B\. Smith\s+Director\s+3rd\s+2\.5x\s+\+12%\s+\$1k\s+--\s+10\/14\/26/);
+  expect(frame).toMatch(/Bob Jones\s+CFO\s+2nd\s+--\s+-40%\s+--\s+\$52k\s+10\/9\/26/);
+  expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
+  // The sold column sorts the sellers first.
+  await tui.clickFrameText("SOLD");
+  await settle();
+  frame = tui.frame();
+  expect(frame.indexOf("Bob Jones")).toBeLessThan(frame.indexOf("Anna B. Smith"));
+  await tui.clickFrameText("90D");
+  await settle();
+  expect(asked.slice(-2)).toEqual([{ window: 90, ticker: "CONTROL" }, { side: "sell", window: 90, ticker: "CONTROL" }]);
+
+  // Enter on an insider: their trades, the Insider filter set to them.
+  await tui.clickFrameText("Anna B. Smith");
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  frame = tui.frame();
+  expect(frame).toMatch(/Insider\s+Anna B\. Smith/);
+  expect(frame).toMatch(/Trades\s+Insiders/);
+  expect(frame).not.toContain("Bob Jones");
+});
+
+test("a company whose insiders did not trade in the open market in the window says so in Insiders", async () => {
+  answerCompany({ buy: [], sell: [] });
+  await mount(120);
+  await tui.clickFrameText("Insiders");
+  await settle();
+  expect(tui.frame()).toContain("No open-market insider buying or selling in the last 30 days.");
+  expect(tui.frame()).toContain("Trades lists every Form 4 the company's insiders filed.");
 });

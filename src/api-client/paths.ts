@@ -460,6 +460,7 @@ export function cloudSecInsiderSignalsPath(params: CloudInsiderSignalsParams = {
   if (params.cluster) search.set("cluster", "true");
   if (params.position) search.set("position", params.position);
   if (params.cap) search.set("cap", params.cap);
+  if (params.ticker) search.set("ticker", params.ticker);
   return appendQuery("/cloud/sec/insider-signals", search);
 }
 

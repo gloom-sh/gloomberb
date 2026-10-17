@@ -18,6 +18,7 @@ export const DEFAULT_INSIDER_SIGNAL_WINDOW = 30;
 /** Companies the pane ranks: a ranking is read from the top, and the server scores every company anyway. */
 const INSIDER_SIGNAL_PANE_ROWS = 100;
 const INSIDER_SIGNALS_NOT_AVAILABLE = "Insider activity is not available yet.";
+const INSIDERS_NOT_AVAILABLE = "Insiders are not available yet.";
 
 /** What a ranking reads: a side, a window, and the filters. */
 export interface InsiderSignalsQuery {
@@ -110,4 +111,78 @@ export async function loadInsiderSignals(
     }),
     { force, validate: validateInsiderSignals },
   );
+}
+
+/** One company's insiders over a window: what INS on a ticker lists in its Insiders view. */
+export interface InsiderCompanyQuery {
+  /** The listing's symbol: BORR, BRK.B. */
+  ticker: string;
+  window: number;
+}
+
+/** The company's row on each side: every insider is on the one their trades net to. */
+export interface InsiderCompanyActivity {
+  buy: InsiderSignalsPayload;
+  sell: InsiderSignalsPayload;
+}
+
+function companyCacheKey(query: InsiderCompanyQuery, side: InsiderSignalSide): string {
+  return ["company", query.ticker.toUpperCase(), side, query.window].join(":");
+}
+
+/** The company's answer; a server that predates the question answers the ranking, which is no answer. */
+function companyValidator(ticker: string) {
+  return (payload: InsiderSignalsPayload): InsiderSignalsPayload => {
+    const valid = validateInsiderSignals(payload);
+    if (valid.ticker?.toUpperCase() !== ticker.toUpperCase()) throw new Error(INSIDERS_NOT_AVAILABLE);
+    return valid;
+  };
+}
+
+function bothSides(buy: CloudResource<InsiderSignalsPayload>, sell: CloudResource<InsiderSignalsPayload>): CloudResource<InsiderCompanyActivity> {
+  return {
+    payload: { buy: buy.payload, sell: sell.payload },
+    stale: buy.stale || sell.stale,
+    refreshError: buy.refreshError ?? sell.refreshError,
+  };
+}
+
+const SIDES = ["buy", "sell"] as const;
+
+export function cachedInsiderCompany(query: InsiderCompanyQuery): CloudResource<InsiderCompanyActivity> | null {
+  const [buy, sell] = SIDES.map((side) => cachedCloudResource(insiderSignalsCache, companyCacheKey(query, side), companyValidator(query.ticker)));
+  return buy && sell ? bothSides(buy, sell) : null;
+}
+
+/**
+ * The company's insiders on both sides over the window, each scored as the
+ * ranking scores them (the server's `ticker`), so an insider reads the same
+ * here as in the ranking. Two requests, side by side.
+ */
+export async function loadInsiderCompany(
+  query: InsiderCompanyQuery,
+  {
+    force = false,
+    client = apiClient,
+    signal,
+  }: {
+    force?: boolean;
+    client?: Pick<HeadlessPaneApiClient, "getCloudSecInsiderSignals">;
+    signal?: AbortSignal;
+  } = {},
+): Promise<CloudResource<InsiderCompanyActivity>> {
+  const [buy, sell] = await Promise.all(SIDES.map((side) => loadCloudResource(
+    insiderSignalsCache,
+    companyCacheKey(query, side),
+    () => client.getCloudSecInsiderSignals({
+      ...(side === "sell" ? { side } : {}),
+      window: query.window,
+      ticker: query.ticker,
+    }, { signal }).catch((error: unknown) => {
+      if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
+      throw unavailableOnServer(error, INSIDERS_NOT_AVAILABLE);
+    }),
+    { force, validate: companyValidator(query.ticker) },
+  )));
+  return bothSides(buy!, sell!);
 }
