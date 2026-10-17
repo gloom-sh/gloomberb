@@ -485,6 +485,11 @@ function renderBundle(
   ]);
 }
 
+/** A series' observations: its points with a value. A gap kept to break the line is not one. */
+function observationCount(series: HeadlessSeries): number {
+  return series.points.filter((point) => point.value != null || point.close != null).length;
+}
+
 function renderSeries(result: HeadlessSeriesResult): string[] {
   const rows = result.series.map((series) => {
     const latest = [...series.points].reverse().find((point) => (
@@ -495,7 +500,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       latest: latest ? seriesPointDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() || null,
-      points: series.points.length,
+      points: observationCount(series),
     };
   });
   const columns: HeadlessPaneColumn[] = [
@@ -757,7 +762,7 @@ function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPane
         count + ("rows" in section && section.rows ? section.rows.length : section.entries.length)
       ), 0);
     case "series":
-      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + series.points.length, 0);
+      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + observationCount(series), 0);
     case "snapshot":
       return (result as HeadlessSnapshotResult).items.length;
     default: {
