@@ -256,6 +256,9 @@ function FooterContent({
     <Box
       height={1}
       flexGrow={1}
+      // A box with a height does not shrink on the desktop unless it says so: this row has to follow
+      // the pane's edge between two layouts, with the hints against it and the status giving way.
+      flexShrink={nativePaneChrome ? 1 : undefined}
       flexDirection="row"
       justifyContent="space-between"
       overflow="hidden"

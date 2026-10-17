@@ -359,7 +359,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
         {perpetuals && <PaneLinkMenu>{perpetuals}</PaneLinkMenu>}
 
         {(hasDayRange || yearRange) && quote && (
-          <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>
+          <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={nativePaneChrome ? undefined : contentWidth}>
             {hasDayRange && (
               <CompactRangeBar
                 current={sessionQuote?.price ?? quote.price}
@@ -370,6 +370,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
+                grow={rangeInline}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
               />
@@ -384,6 +385,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
+                grow={rangeInline}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
               />

@@ -18,7 +18,8 @@ import { serveFixturePage, type FixturePage } from "./page";
  * back and forth (`cmp`), the divider beside a chat whose messages wrap
  * to its width, with the first page of messages and with 500 loaded, and the
  * divider beside DES's overview, with three accounts and with nine and a
- * description three times as long (`des`). It
+ * description three times as long (`des`), with the range bars and the footer's
+ * hint tracked. It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -173,6 +174,18 @@ const desDividerDrag = (name: string, fixture: string): Scenario => ({
   track: { frame: rightOf(pane("des:a")), content: DES_LAST_COLUMN },
 });
 
+/** The last range bar's right edge, found by its track so a branch that draws the row another way finds it too. */
+const DES_RANGE_END = `(() => { const tracks = document.querySelectorAll("[data-gloom-pane-id='des:a'] [data-gloom-role=range-track]"); return tracks[tracks.length - 1].parentElement.parentElement.getBoundingClientRect().right; })()`;
+/** DES with its footer's hint and the long names a docked pane cuts: the range bars and the hint keep to the pane's edge. */
+const desLinesDrag = (name: string, track: string): Scenario => ({
+  name,
+  fixture: "des&long=1&footer=1",
+  ready: `!!document.querySelector("[data-gloom-pane-id='des:a'] [data-gloom-role=pane-hint]")`,
+  grab: (cdp) => evaluate(cdp, dividerRightOf("des:a")),
+  path: (start, t) => ({ x: start.x - Math.sin(t * Math.PI * 2) * 200, y: start.y }),
+  track: { frame: rightOf(pane("des:a")), content: track },
+});
+
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
 const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
   name,
@@ -292,6 +305,8 @@ const SCENARIOS: Scenario[] = [
   desDividerDrag("DES divider drag", "des"),
   // Three times the accounts and the description.
   desDividerDrag("DES divider drag, 3x", "des&positions=9&scale=3"),
+  desLinesDrag("DES divider drag, range bars", DES_RANGE_END),
+  desLinesDrag("DES divider drag, footer hint", rightOf(`${pane("des:a")} [data-gloom-role=pane-hint]`)),
   {
     name: "table column drag",
     fixture: "resize",

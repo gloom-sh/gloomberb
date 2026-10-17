@@ -39,6 +39,7 @@ const LAYOUTS: Array<{ name: string; query: string }> = [
   { name: "chat beside a plain pane", query: "scenario=chat" },
   { name: "long chat with replies", query: "scenario=chat&count=500&loaded=500&replies=1&solo=1" },
   { name: "DES overview beside a plain pane", query: "scenario=des" },
+  { name: "DES with its footer hint, long names and a narrow pane", query: "scenario=des&long=1&footer=1&ratio=0.38" },
 ];
 
 interface PaneRect { id: string; x: number; y: number; width: number; height: number }

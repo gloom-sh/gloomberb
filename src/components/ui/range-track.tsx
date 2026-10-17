@@ -6,6 +6,12 @@ export interface RangeTrackProps {
   position: number;
   /** Cells the track spans. */
   width: number;
+  /**
+   * The desktop and the web: the track takes the room its box gives it, so it
+   * follows the box's edges between two layouts, not `width` cells. The
+   * terminal always draws `width`.
+   */
+  fill?: boolean;
   markerColor: string;
   /**
    * Mark a value past either end with an arrow at that end (a square on the
@@ -20,7 +26,7 @@ export interface RangeTrackProps {
  * a rule with a dot on it. The caller draws the endpoints. The terminal draws
  * a box-drawing rule; the desktop draws a real line and dot, never glyphs.
  */
-export function RangeTrack({ position, width, markerColor, outside = false }: RangeTrackProps) {
+export function RangeTrack({ position, width, markerColor, outside = false, fill = false }: RangeTrackProps) {
   const colors = useThemeColors();
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const past = !outside ? null : position < 0 ? "below" : position > 1 ? "above" : null;
@@ -28,7 +34,14 @@ export function RangeTrack({ position, width, markerColor, outside = false }: Ra
   if (width <= 0) return null;
   if (isDesktopWeb) {
     return (
-      <Box width={width} height={1} flexShrink={0} style={{ position: "relative", justifyContent: "center" }} data-gloom-role="range-track">
+      <Box
+        width={fill ? undefined : width}
+        height={1}
+        flexShrink={fill ? 1 : 0}
+        minWidth={fill ? 0 : undefined}
+        style={{ position: "relative", justifyContent: "center" }}
+        data-gloom-role="range-track"
+      >
         <Box style={{ position: "absolute", left: 0, right: 0, height: "2px", borderRadius: "1px", backgroundColor: colors.border }} />
         <Box style={{
           position: "absolute",

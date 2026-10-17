@@ -35,6 +35,8 @@ on:
       - "src/components/ui/tabs.tsx"
       - "src/components/ui/icon.tsx"
       - "src/components/ui/column-grid.tsx"
+      - "src/components/ui/range-track.tsx"
+      - "src/components/price-performance.tsx"
       - "src/components/ui/data-table/**"
       - "src/components/ui/detail-scroll-body.tsx"
       - "src/components/ui/prose.tsx"

@@ -59,6 +59,7 @@ export function CompactRangeBar({
   labelWidth,
   endpointWidth,
   width,
+  grow = false,
   currency,
   priceOptions,
 }: {
@@ -72,11 +73,15 @@ export function CompactRangeBar({
   /** Shared by ranges drawn together, so their values line up. */
   labelWidth: number;
   endpointWidth: number;
+  /** Cells on the terminal, and what the label and track are chosen from. */
   width: number;
+  /** The desktop, beside another bar in a row: take an equal share of it. Alone in a column the row fills it anyway. */
+  grow?: boolean;
   currency: string;
   /** The quote's live price options, so the endpoints keep the price's decimals. */
   priceOptions: MarketFormatOptions;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const range = high - low;
   if (range <= 0) return null;
   const position = Math.max(0, Math.min(1, (current - low) / range));
@@ -88,8 +93,20 @@ export function CompactRangeBar({
   const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
   const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth));
 
+  // The desktop and the web size the row and its track by CSS, so the high end keeps to the pane's edge on every frame of a
+  // resize; the label, the endpoints and which of them show are still worked out from `width`, at each catch-up.
   return (
-    <Box flexDirection="row" height={1} width={width} flexShrink={0} overflow="hidden">
+    <Box
+      flexDirection="row"
+      height={1}
+      width={nativePaneChrome ? undefined : width}
+      flexShrink={nativePaneChrome && grow ? 1 : 0}
+      flexGrow={nativePaneChrome && grow ? 1 : undefined}
+      flexBasis={nativePaneChrome && grow ? 0 : undefined}
+      minWidth={nativePaneChrome ? 0 : undefined}
+      overflow="hidden"
+      data-gloom-role="range-row"
+    >
       <Box width={shownLabelWidth + 1} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{shownLabel}</Text>
       </Box>
@@ -97,8 +114,15 @@ export function CompactRangeBar({
       <Box flexDirection="row" width={endpointWidth} flexShrink={0} justifyContent="flex-end" overflow="hidden">
         <Text fg={colors.text}>{lowText}</Text>
       </Box>
-      <Box marginLeft={1} marginRight={1} flexShrink={0}>
-        <RangeTrack width={barWidth} position={position} markerColor={colors.textBright} />
+      <Box
+        marginLeft={1}
+        marginRight={1}
+        flexShrink={nativePaneChrome ? 1 : 0}
+        flexGrow={nativePaneChrome ? 1 : undefined}
+        flexBasis={nativePaneChrome ? 0 : undefined}
+        minWidth={nativePaneChrome ? 0 : undefined}
+      >
+        <RangeTrack width={barWidth} position={position} markerColor={colors.textBright} fill={nativePaneChrome} />
       </Box>
       <Box width={endpointWidth} flexShrink={0} overflow="hidden">
         <Text fg={colors.text}>{highText}</Text>

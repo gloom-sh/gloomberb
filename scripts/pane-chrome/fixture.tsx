@@ -60,6 +60,7 @@ import type { MetricTreemapItem } from "../../src/components/metric-treemap/layo
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
 import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
+import { usePaneFooter } from "../../src/components/layout/pane/footer/registration";
 import { Shell } from "../../src/components/layout/shell";
 import { Header } from "../../src/components/layout/header";
 import { StatusBar } from "../../src/components/layout/status-bar";
@@ -701,6 +702,9 @@ function OverviewPane({ width, height, focused }: PaneProps) {
  * repeats the description, `long=1` gives it long account names, long
  * classification and site names, dated figures with their muted detail and a
  * book with large sizes, and `float=1` floats the pane over a plain one.
+ * `footer=1` gives it the status and hint of a delayed quote,
+ * `ratio=<0 to 1>` is how much of the width the docked pane starts with, and
+ * `fw=<cells>` how wide the floating one is.
  */
 const DES_LONG = params.get("long") === "1";
 /** Account names from 4 to 44 characters, several near the length a column at rest holds, so a name ends close to its track whatever the width. */
@@ -712,7 +716,8 @@ const DES_ACCOUNTS = DES_LONG
 const desDay = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 const desPositions = Number(params.get("positions") ?? 3);
 const DES_DESCRIPTION = Array.from({ length: Number(params.get("scale") ?? 1) }, () => "Example Industries builds small instruments for imaginary observatories. The team assembles each device in a bright studio beside the river, checks the lenses twice, and sends a hand written guide with every order. Longer runs use the same tools, but the instruments travel to classrooms, research stations and libraries across several regions.").join(" ");
-const DES_TICKER = createTestTicker("EXMPL", "Example Industries", {
+const DES_NAME = DES_LONG ? "Example Industries of the Invented Archipelago and Associated Holdings Limited" : "Example Industries";
+const DES_TICKER = createTestTicker("EXMPL", DES_NAME, {
   exchange: "NASDAQ",
   assetCategory: "STK",
   portfolios: DES_ACCOUNTS.slice(0, desPositions),
@@ -723,7 +728,8 @@ const DES_TICKER = createTestTicker("EXMPL", "Example Industries", {
 const DES_FINANCIALS = createTestFinancials({
   financialCurrency: "USD",
   quote: createTestQuote({
-    symbol: "EXMPL", name: "Example Industries", price: 105.25, change: 1.25, changePercent: 1.2, previousClose: 104, lastUpdated: Date.UTC(2026, 0, 2),
+    symbol: "EXMPL", name: DES_NAME, price: 105.25, change: 1.25, changePercent: 1.2, previousClose: 104, lastUpdated: Date.UTC(2026, 0, 2),
+    ...(DES_LONG ? { exchangeName: "NASDAQ" } : {}),
     bid: 105.2, ask: 105.3, bidSize: DES_LONG ? 12_345_678 : 300, askSize: DES_LONG ? 98_765_432 : 500, high: 106, low: 103, high52w: 140, low52w: 80, volume: 1_200_000, marketCap: 5e9, marketState: "CLOSED",
   }),
   priceHistory: inventedSeries(120, 100, 18),
@@ -749,7 +755,13 @@ const DES_FINANCIALS = createTestFinancials({
     }
     : { description: DES_DESCRIPTION, sector: "Industrials", industry: "Instruments", employees: 12_345, website: "https://example.invalid", fiscalYearEnd: "12-31" },
 });
+const DES_FOOTER = params.get("footer") === "1";
 function DesPane({ width, height, focused }: PaneProps) {
+  // The status and the one hint the pane's real footer carries for a delayed quote.
+  usePaneFooter("des-fixture", () => DES_FOOTER ? {
+    info: [{ id: "quote", parts: [{ text: "Stale quote 2026-01-02", tone: "muted" }, { text: "15m delayed", tone: "warning" }] }],
+    hints: [{ id: "upgrade", key: "$", label: "upgrade", onPress: () => {} }],
+  } : null, []);
   return <OverviewTab ticker={DES_TICKER} financials={DES_FINANCIALS} width={width} height={height} focused={focused} />;
 }
 
@@ -759,12 +771,12 @@ function desLayout(): LayoutConfig {
     return {
       dockRoot: leaf("plain:a"),
       instances: [instance("des:a"), instance("plain:a")],
-      floating: [{ instanceId: "des:a", x: 10, y: 2, width: 112, height: 44, zIndex: 50 }],
+      floating: [{ instanceId: "des:a", x: 10, y: 2, width: Number(params.get("fw") ?? 112), height: 44, zIndex: 50 }],
       detached: [],
     };
   }
   return {
-    dockRoot: { kind: "split", axis: "horizontal", ratio: 0.66, first: leaf("des:a"), second: leaf("plain:a") },
+    dockRoot: { kind: "split", axis: "horizontal", ratio: Number(params.get("ratio") ?? 0.66), first: leaf("des:a"), second: leaf("plain:a") },
     instances: [instance("des:a"), instance("plain:a")],
     floating: [],
     detached: [],

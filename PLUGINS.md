@@ -1301,7 +1301,7 @@ Choose the existing control that owns the interaction you need:
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
 | A few rows of figures under their headers, or label and value pairs in columns, inside a section | `ColumnGrid` (`ColumnGridColumn`: cells, `growFrom`, `align`, `gapBefore`), `ColumnGridPair` |
-| Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high) |
+| Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high; `fill` on the desktop takes the width of the box it is in, so it follows a resize) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
 | External links | `ExternalLink`, `ExternalLinkText` |

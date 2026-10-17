@@ -1,4 +1,4 @@
-import { Box, Text } from "../ui";
+import { Box, Text, useUiCapabilities } from "../ui";
 import { colors, priceColor } from "../theme/colors";
 import { displayWidth, formatPercent } from "../utils/format";
 import type { PriceReturnField } from "../market-data/performance";
@@ -49,8 +49,24 @@ export function PriceReturnStrip({
   fields: PriceReturnField[];
   width: number;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   if (!hasAnyReturn(fields)) return null;
-  const rows = packPairs(fields.map((field) => ({ field, value: formatReturnValue(field.value) })), width);
+  const pairs = fields.map((field) => ({ field, value: formatReturnValue(field.value) }));
+  if (nativePaneChrome) {
+    // The desktop and the web wrap the pairs where the pane's own edge is, whole, so a resize re-wraps them
+    // on every frame instead of in the steps of the cells the terminal counts.
+    return (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={PAIR_GAP} data-gloom-role="price-return-strip">
+        {pairs.map(({ field, value }) => (
+          <Box key={field.id} flexDirection="row" gap={1} flexShrink={0}>
+            <Text fg={colors.textDim}>{field.label}</Text>
+            <Text fg={returnValueColor(field.value)}>{value}</Text>
+          </Box>
+        ))}
+      </Box>
+    );
+  }
+  const rows = packPairs(pairs, width);
 
   return (
     <Box flexDirection="column" width={width}>
