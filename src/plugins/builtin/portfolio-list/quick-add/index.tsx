@@ -348,8 +348,9 @@ export function QuickAddTickerInput({
         symbol: result.ticker.metadata.ticker,
         collection: collectionName,
       });
-      // As `watchlist add` prints it: FB now lists another security, Meta trades as META.
-      const change = tickerChangeLine(currentValidation.change);
+      // As `watchlist add` prints it: FB now lists another security, Meta trades as META;
+      // GOGL was Golden Ocean, now CMB.Tech's CMBT.
+      const change = tickerChangeLine(currentValidation.change) ?? currentValidation.formerIssuer?.note;
       notify({ type: "success", body: change ? `${added} ${change}.` : added });
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());

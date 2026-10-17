@@ -23,4 +23,23 @@ export interface TickerChanges {
   listedName: string | null;
   /** Every change on either side of the symbol, newest first. */
   changes: TickerChangeHop[];
+  /**
+   * The issuer that last held the symbol merged into another company: GOGL
+   * was Golden Ocean Group Ltd until 2025-08-20, and CMB.Tech, which it merged
+   * into, trades as CMBT. Null or absent when none is on record.
+   */
+  formerIssuer?: FormerIssuerRecord | null;
+}
+
+/** A merged issuer as Gloom Cloud records it, from the SEC filings that name both companies. */
+export interface FormerIssuerRecord {
+  /** What it traded as: GOGL. */
+  symbol: string;
+  name: string;
+  /** YYYY-MM-DD: the day its shares were removed from the exchange. */
+  until: string;
+  /** The company it merged into, as it trades today. */
+  successor: { symbol: string; name: string | null };
+  /** The filing that names both. */
+  source: string | null;
 }

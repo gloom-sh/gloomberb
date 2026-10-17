@@ -20,7 +20,7 @@ import {
 } from "../helpers";
 import type { CommandBarRoute } from "../workflow/types";
 import { AmbiguousCollectionTickerError, resolveCollectionTicker } from "../workflow/collection-ticker";
-import { describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "../../../tickers/ticker-changes";
+import { describeFormerIssuer, describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "../../../tickers/ticker-changes";
 import { addPastedListToWatchlist, pastedSymbolList } from "./collection-list";
 
 type WorkflowDeps = Parameters<typeof resolveTickerInput>[3];
@@ -266,7 +266,8 @@ function notifyTickerChange(
 ): void {
   const { ticker: symbol, exchange, name } = ticker.metadata;
   void startTickerChangeLookup(dataProvider, symbol, exchange).settle(CHANGE_TOAST_WAIT_MS).then((payload) => {
-    const line = tickerChangeLine(describeTickerChange(symbol, payload, { name }));
+    // Else the company that merged away from it: GOGL was Golden Ocean, now CMB.Tech's CMBT.
+    const line = tickerChangeLine(describeTickerChange(symbol, payload, { name })) ?? describeFormerIssuer(symbol, payload, { name })?.note;
     if (line) notify(line, { type: "info" });
   });
 }

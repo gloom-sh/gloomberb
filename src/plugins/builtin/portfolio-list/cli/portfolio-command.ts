@@ -174,13 +174,14 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
   try {
     rejectCashSymbol(symbol, exchange, portfolio.name);
     // A bare symbol is stored on the listing `quote` reads it as, and the notes say which, as `watchlist add` does.
-    const { ticker, notes, change } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
+    const { ticker, notes, change, formerIssuer } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
       retry: (key) => `gloomberb portfolio add ${portfolio.name} ${key}`,
     });
     const result = addTickerToPortfolio(ticker, portfolio.id);
     // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
     const saved = savedListingName(ticker);
-    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name, ...change ? { tickerChange: change } : {} };
+    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name,
+      ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {} };
     const warnings = notes.length > 0 ? notes : undefined;
     if (!result.changed) {
       ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${portfolio.name}".`) });
