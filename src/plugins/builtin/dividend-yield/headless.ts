@@ -13,6 +13,15 @@ import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
+import { mapWithConcurrency } from "../../../utils/concurrency";
+import { projectDividendRanking, type DividendRankingEntry } from "./ranking";
+
+/** Symbols one `fn DVD` ranks at most, and how many it reads at once. */
+const MAX_RANKED_SYMBOLS = 25;
+const RANKING_CONCURRENCY = 4;
+/** The history options' defaults: a ranking lists no history, so only these leave it unchanged. */
+const DEFAULT_TYPE = "all";
+const DEFAULT_LIMIT = 40;
 
 const PAYMENT_COLUMNS = [
   { key: "exDate", header: "Ex-date" },
@@ -156,9 +165,10 @@ export function createDividendYieldHeadless(
     shape: "bundle",
     freshness: { status: "not-a-feed", basis: "distribution history" },
     argument: {
-      kind: "ticker",
-      placeholder: "ticker",
-      description: "Company symbol.",
+      kind: "tickers",
+      placeholder: "tickers",
+      description: "Company symbol, or several to rank in one table by trailing yield.",
+      maximum: MAX_RANKED_SYMBOLS,
     },
     options: [
       {
@@ -172,24 +182,39 @@ export function createDividendYieldHeadless(
           { value: "stock" },
           { value: "unknown" },
         ],
-        defaultValue: "all",
+        defaultValue: DEFAULT_TYPE,
       },
       {
         key: "limit",
         description: "Maximum historical payments to return.",
         type: "integer",
-        defaultValue: 40,
+        defaultValue: DEFAULT_LIMIT,
         minimum: 1,
         maximum: 200,
       },
     ],
-    describe: (args) => `Dividend Yield | ${String(args.argument)}`,
+    describe: (args) => `Dividend Yield | ${args.symbols.join(", ")}`,
     async load(args, context) {
-      const symbol = String(args.argument);
-      return projectDividendYieldHeadless(
-        await dependencies.loadData(symbol, context),
-        args,
-      );
+      // One symbol is its full report; several are one table ranked by yield.
+      if (args.symbols.length <= 1) {
+        return projectDividendYieldHeadless(await dependencies.loadData(args.symbols[0] ?? String(args.argument), context), args);
+      }
+      // They choose rows of one ticker's payment history, which a ranking does not list: refused rather than dropped.
+      const historyOptions = [
+        ...(String(args.options.type ?? DEFAULT_TYPE) !== DEFAULT_TYPE ? ["--type"] : []),
+        ...(Number(args.options.limit ?? DEFAULT_LIMIT) !== DEFAULT_LIMIT ? ["--limit"] : []),
+      ];
+      if (historyOptions.length > 0) {
+        throw new Error(`${historyOptions.join(" and ")} ${historyOptions.length === 1 ? "filters" : "filter"} one ticker's payment history, and a ranking of several lists none. Drop ${historyOptions.length === 1 ? "it" : "them"}, or run DVD on one ticker.`);
+      }
+      const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
+        try {
+          return { symbol, data: await dependencies.loadData(symbol, context) };
+        } catch (error) {
+          return { symbol, error: error instanceof Error ? error.message : String(error) };
+        }
+      });
+      return projectDividendRanking(entries);
     },
   };
 }

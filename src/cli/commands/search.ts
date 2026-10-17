@@ -24,7 +24,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
-import { knownGapMessage, settingsPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany, sameCompany } from "../../tickers/company-name";
@@ -381,7 +381,7 @@ function searchNotes(
 ): string[] {
   const gap = knownGapMessage(query);
   const bank = searchedCentralBank(query);
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   const empty = candidates.length === 0 && !fate.stopped;
   // A gap line that names the index (TNX's yield line names ^TNX) says it once.
   return [...fate.notes, gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
@@ -428,7 +428,7 @@ export function buildSearchReport({
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", centralBankLine(bank));
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to

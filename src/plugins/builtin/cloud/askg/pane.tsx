@@ -123,6 +123,8 @@ const MIN_DETAIL_HEIGHT = 8;
 const MAX_COMPOSER_LINES = 6;
 /** The daily allowance is news only once it runs low. */
 const LOW_QUOTA = 20;
+/** What unlocks Ask Gloom: a free account with a verified email; a paid plan only changes the model. */
+const ASKG_WALL_HINT = "Free with a verified Gloom account.";
 
 function clientKind(): "tui" | "desktop" | "web" {
   const target = getCurrentPluginTarget();
@@ -1570,6 +1572,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         placement="gp-signin"
         action="ask questions about anything on screen"
         needsVerification={planAccess.signedIn}
+        hint={ASKG_WALL_HINT}
       />
     );
   }
