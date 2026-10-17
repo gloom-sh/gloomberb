@@ -100,9 +100,10 @@ const TYPE_FILTER_LABELS: Record<InsiderTypeFilter, string> = {
 
 /**
  * The 90-day buy and sale totals as figures: one cell per side, and per
- * security when there are several. A side with no trades says so. Buys read
- * in the gain colour and sales in the loss colour, as in the table; when the
- * Type filter hides open-market trades the figures dim and say so.
+ * security when there are several. A side with no trades shows 0 shares,
+ * muted. Buys read in the gain colour and sales in the loss colour, as in
+ * the table; when the Type filter hides open-market trades the figures dim
+ * and say so.
  */
 function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter): StatItem[] {
   const securities = new Set(figures.totals.map((total) => total.security));
@@ -111,7 +112,7 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
   for (const side of ["P", "S"] as const) {
     const label = side === "P" ? "90d buys" : "90d sales";
     const totals = figures.totals.filter((total) => total.side === side);
-    if (totals.length === 0) items.push({ id: side, label, value: "None", tone: "muted" });
+    if (totals.length === 0) items.push({ id: side, label, value: "0 shares", tone: "muted" });
     for (const total of totals) {
       items.push({
         id: `${total.security}:${side}`,
