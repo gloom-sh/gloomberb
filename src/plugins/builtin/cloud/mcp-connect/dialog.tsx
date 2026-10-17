@@ -88,7 +88,8 @@ function SnippetBlock({ text, secret, width }: { text: string; secret: string | 
       width={width}
       paddingX={1}
       backgroundColor={nativePaneChrome ? colors.bg : colors.panel}
-      style={nativePaneChrome ? { padding: "8px 10px", borderRadius: 4 } : undefined}
+      // A block of code is sunken, as a field is: what is in it is to be copied out.
+      style={nativePaneChrome ? { padding: "var(--gloom-space-sm) var(--gloom-space-md)", borderRadius: "var(--gloom-radius-md)", backgroundColor: "var(--gloom-surface-sunken)" } : undefined}
       data-gloom-role="mcp-connect-snippet"
       data-gloom-selectable="true"
     >

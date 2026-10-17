@@ -89,24 +89,27 @@ column under 480px steps every reading level down together (13.2px body).
 
 | Family | The convention (component) |
 |---|---|
-| Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. |
+| Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
 | Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Title-bar tabs, sub-tabs and segmented choices are the same. |
-| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. |
+| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
 | Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. |
-| Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border. In a query bar they are its segments. |
+| Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
 | Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
 | Links (`ExternalLinkText`) | The text around them, underlined; bright under the pointer or focus. |
 | Toolbars (`QueryBar`) | The band: 20px, hairline under it, segments split by hairlines with 8px padding, the first one at the inset. |
 | Tables (`DataTable`) | Header 20px, bold dim on a fill; rows 18px, cell padding 0 8px; hover fill on rows; selection fill on the chosen row. No zebra. A table inside a column of prose (HELP's Basics) drops its cell padding so its rows line up with the text. |
 | Key-value rows (`KeyValueRow`, `StatGrid`, `FieldGrid`) | 18px rows, label dim, value regular or bold; no rule between rows. Grid bands keep their hairline below and between cells. |
 | Section headings (`SectionHeading`) | 12px bold bright in data panes; 16px in readers. |
-| Cards (`Card`) | Raised surface, 1px hairline, `md` radius, 8px inside; chosen, the accent border. For a unit of content (a quote tile), never for rows. |
-| States (`EmptyState`, `PaneStatusBody`, `Spinner`, `Notice`, walls) | At the inset (8px from each edge); the message dim, an error in negative, actions under it. Loading is the one spinner and "Loading …". Locked: the lock in the locked colour, the action bright. |
+| Cards (`Card`, `cardSurfaceStyle`) | Raised surface, 1px hairline, `md` radius, 8px inside; chosen, the accent border. For a unit of content (a quote tile, a flow step, a company to pick), never for rows. A card that belongs to a colour (a relationship's role, a series) takes `accent`: a 2px rule down its left edge and the fill tinted toward it. A card that must be its own positioned box (a diagram node) draws `cardSurfaceStyle` and keeps its own rows. |
+| Quotes (`quoteBlockStyle`) | A quoted passage (a filing, a disclosure): the 2px rule of the colour it belongs to (the accent by default), a faint tint of it, 4 by 12px inside. |
+| Tooltips (`TOOLTIP_SURFACE_STYLE`) | What the pointer is over on a chart, map or heat map: the floating surface at its small size, raised fill, control border, `lg` radius, the elevation, 4 by 8px inside, 12px text. It never takes the pointer. |
+| Lists (`ListView`) | Rows 18px, `md` radius, 8px padding, hover fill. The chosen row is filled; a list a dialog's keyboard walks also rings it in the accent (`selection="frame"`, the default), one inside the command bar is filled alone, as the command bar's rows are (`selection="fill"`). |
+| States (`EmptyState`, `PaneStatusBody`, `Spinner`, `Notice`, walls) | At the inset (8px from each edge); the message dim, an error in negative, actions under it. Loading is the one spinner and "Loading …". Locked: the lock in the locked colour, the action bright. An `EmptyState` that finds itself flush with its pane's edge (a tab body with no padding of its own) takes the inset itself, so a pane that already pads it is not padded twice. |
 | Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
 | Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
-| Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items 24px, `md` radius, hover fill. |
+| Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items a row with 4px above and below (26px), `md` radius, hover fill. |
 | Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14 at line height 1.6, metadata and label and value facts 12. One paragraph gap (0.9em) after every block; a section heading 0.9em of its size above and 0.4em below. Every prose bullet (an article's key facts and lists, markdown and Docs lists) is body text: 14, a dim dot, the text hanging 2ch in, no space between items. The pane chrome check `readers:` holds the three to this. |
-| Chart chrome | Legends and axes 12px dim. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. |
+| Chart chrome | Legends and axes 12px dim; a legend over a map or chart sits at the inset. A chart drawn as a stretched SVG puts its labels in HTML over it, so they keep the app's type. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. |
 
 ### Exceptions
 
@@ -127,8 +130,8 @@ The count can only go down: `bun scripts/update-ui-literals-allowlist.ts`
 lowers it after a cleanup and lists files that still need a reason. A
 reviewer accepts a reason when the value belongs to the data rather than to
 the chrome: data marks (bars, swatches, flags, markers), labels fitted to a
-chart's shapes, pages drawn without the app's styles. A pane that has not
-moved onto the kit yet says so and names GLO-768. Chat has its own owner.
+chart's shapes, pages drawn without the app's styles. Every pane is on the
+kit; chat has its own owner and its entries say so.
 
 ### Seeing it
 

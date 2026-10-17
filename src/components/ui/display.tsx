@@ -196,7 +196,9 @@ export interface BadgeProps {
  * row runs into the one below in a column of chips), the small-mark radius,
  * regular weight. Ticker chips keep bold (ticker/badge).
  */
-const NATIVE_BADGE_STYLE = { height: "calc(100% - 2px)", borderRadius: "var(--gloom-radius-sm)" };
+export const NATIVE_BADGE_STYLE = { height: "calc(100% - 2px)", borderRadius: "var(--gloom-radius-sm)" };
+/** How far a subtle chip's fill is tinted toward its tone. */
+export const BADGE_TINT = 0.28;
 const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
 
 export function Badge({ label, tone = "neutral", color, variant = "subtle" }: BadgeProps) {
@@ -206,7 +208,7 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle" }: Ba
   const solid = variant === "solid";
   const neutral = solid && tone === "neutral" && !color;
   const chip = (
-    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28)}
+    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, BADGE_TINT)}
       data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined} style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
       <Text fg={neutral ? colors.selectedText : solid ? colors.bg : accent} attributes={TextAttributes.BOLD} style={nativePaneChrome ? NATIVE_BADGE_TEXT_STYLE : undefined}>{t(label)}</Text>
     </Box>

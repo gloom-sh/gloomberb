@@ -4,6 +4,7 @@ import { Button, ChartTableHeader, DataTableStackView, DetailScrollBody, Externa
 import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { quoteBlockStyle } from "../../../components/ui/quote";
 import { fetchCreditInstrument } from "./client";
 import { comparatorSymbol, covenantNumber, covenantTerms, creditPercent, factColumns, factValue, fieldLabel, hasAmendments, headroomTone, NO_VALUE, sentence, structuredFields } from "./model";
 
@@ -14,7 +15,7 @@ const MATCH = { exact: "Exact", whitespace: "Whitespace normalized", nfkc_whites
 function Quote({ text, width }: { text: string; width: number }) {
   const colors = useThemeColors(), desktop = useUiCapabilities().nativePaneChrome === true;
   return <Box paddingLeft={1} border={desktop ? undefined : ["left"]} borderColor={colors.borderFocused}
-    style={desktop ? { borderLeft: `2px solid ${colors.borderFocused}`, paddingLeft: "calc(1.5 * var(--cell-w))" } : undefined} data-gloom-role="credit-quote">
+    style={desktop ? quoteBlockStyle() : undefined} data-gloom-role="credit-quote">
     <Text width={Math.max(1, width - 2)} wrapMode="word" wrapText fg={colors.textBright}>{text}</Text>
   </Box>;
 }

@@ -292,6 +292,7 @@ export const UI_AUDIT_MEASURE = (scope: string | null) => `(() => {
   const has = (el, re) => re.test(rootOf(el));
   const role = (el) => el.getAttribute("data-gloom-role") ?? el.getAttribute("data-gloom-ui") ?? "";
   const R = (...names) => (el) => names.includes(role(el));
+  const drawsMark = (el) => { const s = css(el); return !transparent(s.backgroundColor) || ["Top", "Right", "Bottom", "Left"].some((side) => px(s["border" + side + "Width"]) > 0); };
   const FAMILY_RULES = [
     ["pane-title-bar", R("pane-header")],
     ["pane-footer", R("pane-footer")],
@@ -330,8 +331,11 @@ export const UI_AUDIT_MEASURE = (scope: string | null) => `(() => {
     ["toggle", (el) => /^(Checkbox|Toggle|Switch)$/.test(nearest(el)) || /^(switch|checkbox|radio)$/.test(el.getAttribute("role") ?? "") || (el.tagName === "INPUT" && /^(checkbox|radio)$/.test(el.type))],
     ["link", (el) => el.tagName === "A" || el.getAttribute("role") === "link"],
     ["keycap", (el) => /^(WebKeycap|Keycap|Kbd)$/.test(rootOf(el, true)) || el.tagName === "KBD" || el.classList.contains("gloom-qb-kbd")],
+    // A chip is a mark: the box that draws a fill or a border. The box around one, or a word
+    // a component happens to call a chip (a status bar item, a query bar segment), is not one.
+    // A chip that opens something (a ticker) is still a chip: this comes before buttons.
+    ["chip", (el) => (has(el, /^\\w*(Badge|Chip|Pill|Tag|Pip)$/) || /chip|badge/.test(role(el))) && drawsMark(el)],
     ["button", (el) => el.tagName === "BUTTON" || el.getAttribute("role") === "button" || R("desktop-button", "icon-button", "pane-action", "pane-close", "pane-restore", "data-table-section-action", "pane-sidebar-action")(el)],
-    ["chip", (el) => has(el, /^\\w*(Badge|Chip|Pill|Tag|Pip)$/) || /chip|badge/.test(role(el)) || el.classList.contains("gloom-qb-chip")],
     ["legend", (el) => /legend/.test(role(el))],
     ["axis", (el) => /axis/.test(role(el))],
   ];

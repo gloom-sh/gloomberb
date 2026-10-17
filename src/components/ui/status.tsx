@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
@@ -132,12 +132,54 @@ function retryNote(retry: StatusRetry, status: "empty" | "error", checkedAt: num
   return retry.unchanged ? `${checked} ${t(retry.unchanged)}` : checked;
 }
 
-export function EmptyState(props: EmptyStateProps) {
-  const feedback = useRetryFeedback(props.retry, props.retry ? props.status ?? "empty" : null);
-  return <EmptyStateBody {...props} feedback={feedback} />;
+/**
+ * Desktop and web: whether a state sits flush against its pane's left edge,
+ * read from the laid-out page. A pane often returns a bare EmptyState as its
+ * whole body ("Select a ticker."); the state then takes the pane's inset
+ * itself. One a container already placed (a table's empty slot, a sign-in
+ * wall, a padded box) is left where it is, so the inset is never doubled.
+ */
+function useFlushInPane(enabled: boolean) {
+  // A Box ref is cell geometry, not the element: the state finds itself by its DOM id.
+  const id = `gloom-state-${useId()}`;
+  const [flush, setFlush] = useState(false);
+  useLayoutEffect(() => {
+    if (!enabled || typeof document === "undefined") return;
+    const element = document.getElementById(id);
+    const pane = element?.closest("[data-gloom-role=pane-window], [data-gloom-role=detached-pane-window]");
+    if (!element || !pane) return;
+    // The inset is padding, so it never moves the edge this reads and the answer settles.
+    const measure = () => {
+      const box = element.getBoundingClientRect();
+      // Not laid out yet (a tab mounted hidden): wait until it has a size.
+      if (box.width === 0 && box.height === 0) return;
+      setFlush(box.left - pane.getBoundingClientRect().left < STATE_FLUSH_PX);
+    };
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [enabled, id]);
+  return { id: enabled ? id : undefined, flush };
 }
 
-function EmptyStateBody({ title, message, hint, actions, retry, status = "empty", feedback }: EmptyStateProps & { feedback: RetryFeedback }) {
+/** Closer to the pane's edge than this, a state has not been placed by anything. */
+const STATE_FLUSH_PX = 4;
+
+export function EmptyState(props: EmptyStateProps) {
+  const feedback = useRetryFeedback(props.retry, props.retry ? props.status ?? "empty" : null);
+  const { nativePaneChrome } = useUiCapabilities();
+  const { id, flush } = useFlushInPane(nativePaneChrome === true);
+  return <EmptyStateBody {...props} feedback={feedback} domId={id} inset={flush} />;
+}
+
+function EmptyStateBody({ title, message, hint, actions, retry, status = "empty", feedback, domId, inset = false }: EmptyStateProps & {
+  feedback: RetryFeedback;
+  domId?: string;
+  /** Desktop: take the pane's state inset (see useFlushInPane). */
+  inset?: boolean;
+}) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const retryButton = retry ? (
@@ -150,7 +192,13 @@ function EmptyStateBody({ title, message, hint, actions, retry, status = "empty"
   ) : null;
   // Provider messages must wrap at narrow pane widths rather than lose their tail.
   return (
-    <Box flexDirection="column" data-gloom-status={status} data-gloom-ui="empty-state">
+    <Box
+      id={domId}
+      flexDirection="column"
+      data-gloom-status={status}
+      data-gloom-ui="empty-state"
+      style={inset ? NATIVE_STATE_INSET : undefined}
+    >
       <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
       {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
       {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}

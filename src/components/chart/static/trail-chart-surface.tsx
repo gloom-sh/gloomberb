@@ -348,8 +348,9 @@ export function ScatterTrailSurface({
   const axisRows = renderCompositeAxisText(domain, plotHeight, gutterLabelWidth, "right", axisValue)
     .map((row, index) => (centerRow !== null && Math.abs(index - centerRow) <= 1)
       || (cursorRow !== null && Math.abs(index - cursorRow) <= 1) ? "" : row);
+  // Desktop: a name at the plot's left edge (a quadrant's) starts at the pane's inset, as the right ones end a cell short.
   const at = (x: number, y: number) => isDesktop
-    ? { left: `${(x / plotWidth) * 100}%`, top: `${(y / plotHeight) * 100}%` }
+    ? { left: x === 0 ? "var(--gloom-inset)" : `${(x / plotWidth) * 100}%`, top: `${(y / plotHeight) * 100}%` }
     : { left: x, top: y };
 
   return (
