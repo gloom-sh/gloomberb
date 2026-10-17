@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { normalizeWizardFields } from "../../../components/command-bar/workflow/fields";
 import { validateRequiredWorkflowFields } from "../../../components/command-bar/workflow/submit";
 import { createTestTemplateContext } from "../../../test-support/headless";
-import { CHART_SPEC_SETTING_KEY, parseChartSpec } from "./chart-spec";
+import { CHART_SPEC_SETTING_KEY, parseChartSpec, parseChartSpecOr } from "./chart-spec";
 import { chartComposerModule } from "./index";
+import { buildEmptyChartPreset } from "./presets";
 
 const template = chartComposerModule.paneTemplates!.find((entry) => entry.id === "chart-composer-pane")!;
 
@@ -31,5 +32,20 @@ describe("Custom Chart wizard", () => {
   test("an empty series with no active ticker opens an empty chart", async () => {
     const instance = await template.createInstance!(createTestTemplateContext(), { values: { series: "" } });
     expect(parseChartSpec(instance?.settings?.[CHART_SPEC_SETTING_KEY])?.series).toEqual([]);
+  });
+});
+
+describe("Valuation Graph", () => {
+  const valuation = chartComposerModule.paneTemplates!.find((entry) => entry.id === "valuation-graph-pane")!;
+  const periods = (spec: ReturnType<typeof parseChartSpec>) => spec?.series.map((series) => series.source.kind === "security" ? series.source.period : null);
+
+  test("a new GE pane opens on fiscal years; a pane saved on quarters reopens on quarters", async () => {
+    const instance = await valuation.createInstance!(createTestTemplateContext(), { symbols: ["AAPL", "MSFT"] });
+    const created = parseChartSpec(instance?.settings?.[CHART_SPEC_SETTING_KEY]);
+    expect(periods(created)).toEqual(["annual", "annual"]);
+    // A pane saved before the default changed, read the way the pane reads its settings.
+    const saved = { ...created!, series: created!.series.map((series) => series.source.kind === "security"
+      ? { ...series, source: { ...series.source, period: "quarterly" as const } } : series) };
+    expect(periods(parseChartSpecOr(JSON.parse(JSON.stringify(saved)), buildEmptyChartPreset()))).toEqual(["quarterly", "quarterly"]);
   });
 });

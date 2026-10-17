@@ -209,9 +209,15 @@ export function buildValuationChartPreset(
 ): ChartSpec {
   const resolvedField = resolveChartFieldAlias(fieldId);
   const normalized = symbols.map((symbol) => normalizeInstrument(symbol, true)).filter((entry): entry is NonNullable<typeof entry> => entry !== null).slice(0, MAX_CHART_COMPOSER_SERIES);
-  return chartSpec(normalized.map((instrument, index) => buildSeriesSpec(
-    { kind: "security", ...instrument, fieldId: resolvedField },
-    index,
-    { style: normalized.length === 1 ? "line" : "columns", axis: "left" },
-  )));
+  return chartSpec(normalized.map((instrument, index) => {
+    const series = buildSeriesSpec(
+      { kind: "security", ...instrument, fieldId: resolvedField },
+      index,
+      { style: normalized.length === 1 ? "line" : "columns", axis: "left" },
+    );
+    // Fiscal years: most US filers report no Q4 EPS, which charts do not
+    // reconstruct, so a quarterly trailing multiple has only its latest few
+    // quarters. Quarterly is the series' Period control away.
+    return series.source.kind === "security" ? { ...series, source: { ...series.source, period: "annual" } } : series;
+  }));
 }

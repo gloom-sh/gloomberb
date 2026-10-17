@@ -79,19 +79,19 @@ describe("pane function capabilities", () => {
     expect(capabilityPluginState(capability, options)).toEqual({});
   });
 
-  test("GF opens on the period its app template builds, with annual one option away", () => {
-    const capability = capabilityFor("fundamental-graph-pane");
-    expect(buildFundamentalChartPreset(["AAPL"]).series[0]!.source).toMatchObject({ period: "quarterly" });
-    expect(normalizeCapabilityOptions(capability, {}).period).toBe("quarterly");
-    expect(normalizeCapabilityOptions(capability, { period: "annual" }).period).toBe("annual");
-  });
-
-  test("GE reads annual by default, unlike its quarterly app template, until quarterly TTM history is fixed", () => {
-    // The quarterly multiple has values for about the last year only; annual reads from 2021.
-    const capability = capabilityFor("valuation-graph-pane");
-    expect(buildValuationChartPreset(["AAPL"]).series[0]!.source).toMatchObject({ period: "quarterly" });
-    expect(normalizeCapabilityOptions(capability, {}).period).toBe("annual");
-    expect(normalizeCapabilityOptions(capability, { period: "quarterly" }).period).toBe("quarterly");
+  // A read applies its period over the template, so a default that differs changes what it shows.
+  test("GF and GE read the period their app templates open on, with the other one option away", () => {
+    for (const [id, build, period, other] of [
+      ["fundamental-graph-pane", buildFundamentalChartPreset, "quarterly", "annual"],
+      ["valuation-graph-pane", buildValuationChartPreset, "annual", "quarterly"],
+    ] as const) {
+      const capability = capabilityFor(id);
+      for (const symbols of [["AAPL"], ["AAPL", "MSFT"]]) {
+        expect(build(symbols).series.map((series) => series.source)).toEqual(symbols.map(() => expect.objectContaining({ period })));
+      }
+      expect(normalizeCapabilityOptions(capability, {}).period).toBe(period);
+      expect(normalizeCapabilityOptions(capability, { period: other }).period).toBe(other);
+    }
   });
 
   test("exposes custom G as a bot-safe mixed-series capability", () => {
