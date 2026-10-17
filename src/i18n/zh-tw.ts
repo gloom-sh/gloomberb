@@ -1058,6 +1058,7 @@ export const zhTW: Record<string, string> = {
   "Overnight": "夜盤",
   "mid": "中間價",
   "Price Return": "價格報酬",
+  "Fund Facts": "基金概況",
   "Fundamentals": "基本面",
   "Positions": "持倉",
   "Type": "類型",

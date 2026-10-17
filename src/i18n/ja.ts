@@ -1058,6 +1058,7 @@ export const ja: Record<string, string> = {
   "Overnight": "夜間取引",
   "mid": "仲値",
   "Price Return": "価格リターン",
+  "Fund Facts": "ファンド概要",
   "Fundamentals": "ファンダメンタルズ",
   "Positions": "ポジション",
   "Type": "種類",

@@ -1044,6 +1044,7 @@ export const es: Record<string, string> = {
   "Overnight": "Nocturno",
   "mid": "medio",
   "Price Return": "Retorno de precio",
+  "Fund Facts": "Datos del fondo",
   "Fundamentals": "Fundamentales",
   "Positions": "Posiciones",
   "Type": "Tipo",

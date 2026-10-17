@@ -1058,6 +1058,7 @@ export const zhCN: Record<string, string> = {
   "Overnight": "夜盘",
   "mid": "中间价",
   "Price Return": "价格收益",
+  "Fund Facts": "基金概况",
   "Fundamentals": "基本面",
   "Positions": "持仓",
   "Type": "类型",

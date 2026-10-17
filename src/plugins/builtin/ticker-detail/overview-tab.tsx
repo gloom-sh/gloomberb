@@ -1,4 +1,8 @@
 import { TrendingSummary } from "../attention/trending";
+import { fundFactOverviewFields } from "../sec/fund-facts";
+import { useFundFacts } from "../sec/fund-facts-view";
+import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
+import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import type { ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
@@ -90,6 +94,9 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
+/** Where a fund's facts open: the ETF function, its facts over its filings. */
+const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
+
 function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, forwardDividend }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
@@ -127,6 +134,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const metadataParts = [
     routingVenue && routingVenue !== listingVenue ? `route ${routingVenue}` : "",
   ].filter((part) => part.length > 0);
+
+  // A US-listed fund's facts (fee, NAV, premium, net assets) stand where a company's fundamentals would; each opens ETF.
+  const fundFactsSymbol = resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
+  const fundFacts = useFundFacts(fundFactsSymbol).data?.payload;
+  const fundFactFields = fundFacts?.covered ? fundFactOverviewFields(fundFacts).map((field) => ({ ...field, link: FUND_FACTS_LINK })) : [];
 
   const contentWidth = Math.max((width || Math.floor(termWidth * 0.5)) - (fractionalViewport ? 2 : 4), 20);
   const chartWidth = contentWidth;
@@ -429,6 +441,15 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           <Box flexDirection="column">
             <SectionHeading title={t("Price Return")} />
             <PriceReturnStrip fields={performanceFields} width={contentWidth} />
+          </Box>
+        )}
+
+        {fundFactFields.length > 0 && (
+          <Box flexDirection="column">
+            <SectionHeading title={t("Fund Facts")} />
+            <PaneLinkMenu>
+              <FundamentalsGrid fields={fundFactFields} width={contentWidth} onOpenLink={onOpenFunction} />
+            </PaneLinkMenu>
           </Box>
         )}
 

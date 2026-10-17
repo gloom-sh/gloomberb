@@ -249,18 +249,17 @@ test("share counts say ADR equivalent where the service puts them on the receipt
   expect(older).toContain("Diluted Shares 2.54B\n");
 });
 
-test("a fund's report says its fund facts are not available yet and where its SEC filings are; a stock's says nothing", async () => {
+test("a US fund's report points to its fund facts; a fund listed elsewhere says it has none; a stock's says nothing", async () => {
   const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
-  const note = "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT.";
+  const note = "Fund facts (fee, NAV, premium, net assets): fn ETF IBIT.";
   const ibit: TickerFinancials = { quote: { ...quote, symbol: "IBIT", instrumentType: "ETF", exchangeName: "NASDAQ" },
     annualStatements: [], quarterlyStatements: [], priceHistory: [] };
   expect(plain(renderFundamentalsReport({ ...ibit, symbol: "IBIT", exchange: "NASDAQ" }, "fundamentals")))
     .toContain(`No fundamentals reported for IBIT. ${note}`);
   expect(plain(await buildTickerReport({ symbol: "IBIT", tickerFile: null, financials: ibit, config, toBase: async value => value })))
     .toContain(note);
-  // A fund listed outside the US has no SEC filings to point at.
   const london: TickerFinancials = { ...ibit, quote: { ...ibit.quote!, symbol: "VUSA", exchangeName: "LSE" } };
   expect(plain(renderFundamentalsReport({ ...london, symbol: "VUSA", exchange: "LSE" }, "fundamentals")))
-    .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) are not available yet.");
+    .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) cover US-listed funds only.");
   expect(await report({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).not.toContain("Fund facts");
 });

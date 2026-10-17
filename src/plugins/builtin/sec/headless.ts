@@ -5,10 +5,13 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import type { SecFilingItem } from "../../../types/data-provider";
+import type { FundFactsPayload } from "../../../api-client/fund-facts";
+import { errorMessage } from "../../../utils/errors";
 import { loadSecFilings } from "./client";
-import { filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { ETF_FILING_FORMS, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
+import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, listNames } from "./fund-facts";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -37,44 +40,28 @@ const defaultDependencies: SecHeadlessDependencies = {
   loadFilings: (symbol, limit, _args, ctx) => loadSecFilings(ctx.marketData, symbol, limit),
 };
 
-export interface SecHeadlessOptions {
-  /** Keep only these forms, searched across every filing the service returns for the issuer. */
-  forms?: readonly string[];
-  title?: string;
-  argumentDescription?: string;
-  /**
-   * What the report says when none of the issuer's filings is one of `forms`,
-   * in place of "No data.": `searched` filings were read, all of them when `complete`.
-   */
-  empty?(symbol: string, searched: { count: number; complete: boolean }): string;
-}
-
-const FUND_FACTS_NOTE = "Fund facts (fee, NAV, premium) are not available yet";
-
 /**
- * ETF's empty report: a fund that files none of the fund forms, such as a
- * grantor trust (IBIT, GLD) filing 10-Qs, says so and where its filings are.
+ * The fund filings list's empty text: a fund that files none of the fund
+ * forms, such as a grantor trust (IBIT, GLD) filing 10-Ks and 10-Qs, says so
+ * and where its filings are.
  */
 export function fundFilingsEmpty(symbol: string, searched: { count: number; complete: boolean }): string {
-  if (searched.count === 0) return `No SEC filings found for ${symbol}. ${FUND_FACTS_NOTE}.`;
+  if (searched.count === 0) return `No SEC filings found for ${symbol}.`;
   const forms = "prospectus, shareholder reports, N-CEN, N-PORT";
   const none = searched.complete
     ? `${symbol} files none of the fund forms ETF lists (${forms}).`
     : `None of ${symbol}'s latest ${searched.count} SEC filings is a fund form ETF lists (${forms}).`;
-  return `${none} ${FUND_FACTS_NOTE}; try fn SEC ${symbol}.`;
+  return `${none} Its other filings: fn SEC ${symbol}.`;
 }
 
-export function createSecHeadless(
-  dependencies: SecHeadlessDependencies = defaultDependencies,
-  { forms, title = "SEC Filings", argumentDescription = "US equity ticker.", empty }: SecHeadlessOptions = {},
-): HeadlessPaneDefinition<"rows"> {
+export function createSecHeadless(dependencies: SecHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: { ...SEC_FILINGS, observedKey: "acceptedAt" },
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: argumentDescription,
+      description: "US equity ticker.",
     },
     options: [{
       key: "limit",
@@ -86,30 +73,100 @@ export function createSecHeadless(
       maximum: 200,
     }],
     columns: SEC_COLUMNS,
-    describe: (args) => `${title} | ${args.symbols[0]}`,
+    describe: (args) => `SEC Filings | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const limit = Number(args.options.limit);
-      if (!forms) {
-        const filings = await dependencies.loadFilings(symbol, limit, args, ctx);
-        return {
-          rows: buildSecFilingRows(filings).slice(0, limit),
-          metadata: { acceptanceNote: SEC_ACCEPTANCE_NOTE, symbol, returned: Math.min(filings.length, limit), issuers: secFilingIssuers(filings.slice(0, limit)) },
-        };
-      }
-      const issuerFilings = await dependencies.loadFilings(symbol, SEC_FILING_FETCH_LIMIT, args, ctx);
-      const filings = filterFilingsByForms(issuerFilings, forms).slice(0, limit);
-      // A full page of issuer filings can hide older matches past it.
-      const complete = issuerFilings.length < SEC_FILING_FETCH_LIMIT;
+      const filings = await dependencies.loadFilings(symbol, limit, args, ctx);
       return {
-        rows: buildSecFilingRows(filings),
-        ...(empty && filings.length === 0 ? { empty: empty(symbol, { count: issuerFilings.length, complete }) } : {}),
-        complete,
+        rows: buildSecFilingRows(filings).slice(0, limit),
+        metadata: { acceptanceNote: SEC_ACCEPTANCE_NOTE, symbol, returned: Math.min(filings.length, limit), issuers: secFilingIssuers(filings.slice(0, limit)) },
+      };
+    },
+  };
+}
+
+export const secHeadless = createSecHeadless();
+
+export interface FundHeadlessDependencies extends SecHeadlessDependencies {
+  loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
+}
+
+const defaultFundDependencies: FundHeadlessDependencies = {
+  ...defaultDependencies,
+  loadFacts: (symbol, ctx) => fetchFundFacts(symbol, ctx.apiClient),
+};
+
+/**
+ * ETF: a US-listed fund's facts (fee, NAV, premium or discount, net assets,
+ * sponsor, inception, index) as its sponsor publishes them, then its fund
+ * filings. Either part can fail or be empty without taking the other with it:
+ * signed out, the facts still load and the filings say why they do not.
+ */
+export function createFundHeadless(dependencies: FundHeadlessDependencies = defaultFundDependencies): HeadlessPaneDefinition<"bundle"> {
+  return {
+    shape: "bundle",
+    freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
+    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker." },
+    options: [{
+      key: "limit",
+      aliases: ["count", "rows"],
+      description: "Maximum recent fund filings.",
+      type: "integer",
+      defaultValue: 50,
+      minimum: 1,
+      maximum: 200,
+    }],
+    discovery: { limitations: ["Fund facts cover the sponsors Gloom collects; other funds point to their SEC filings."] },
+    describe: (args) => `ETF | ${args.symbols[0]}`,
+    async load(args, ctx) {
+      const symbol = args.symbols[0]!;
+      const limit = Number(args.options.limit);
+      const [factsResult, filingsResult] = await Promise.allSettled([
+        dependencies.loadFacts(symbol, ctx),
+        dependencies.loadFilings(symbol, SEC_FILING_FETCH_LIMIT, args, ctx),
+      ]);
+      if (factsResult.status === "rejected" && filingsResult.status === "rejected") throw filingsResult.reason;
+      const facts = factsResult.status === "fulfilled" ? factsResult.value : null;
+      const issuerFilings = filingsResult.status === "fulfilled" ? filingsResult.value : [];
+      const filings = filterFilingsByForms(issuerFilings, ETF_FILING_FORMS).slice(0, limit);
+      const searchedAll = issuerFilings.length < SEC_FILING_FETCH_LIMIT;
+      const filingsEmpty = filingsResult.status === "rejected"
+        ? `Fund filings unavailable: ${errorMessage(filingsResult.reason)}`
+        : fundFilingsEmpty(symbol, { count: issuerFilings.length, complete: searchedAll });
+      // The filings line already sends a fund without fund forms to SEC; the facts line does not say it twice.
+      const filingsPointToSec = filingsResult.status === "fulfilled" && filings.length === 0 && issuerFilings.length > 0;
+      const factsSection = facts?.covered
+        ? { title: "Fund facts", entries: fundFactEntries(facts) }
+        : { title: "Fund facts", rows: [], empty: factsResult.status === "rejected"
+          ? `Fund facts unavailable: ${errorMessage(factsResult.reason)}`
+          : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
+      const publishers = facts?.covered ? fundFactPublishers(facts) : [];
+      return {
+        sections: [
+          factsSection,
+          { title: "Fund filings", columns: SEC_COLUMNS, rows: buildSecFilingRows(filings), ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
+        ],
+        complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
+        errors: [
+          ...(factsResult.status === "rejected" ? [`Fund facts: ${errorMessage(factsResult.reason)}`] : []),
+          ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
+        ],
+        notes: facts?.covered && facts.stale && facts.nav?.asOf
+          ? [`${symbol}'s newest NAV is from ${facts.nav.asOf}; its sponsor has not published one since.`] : [],
+        freshness: {
+          source: listNames([...publishers, ...(filingsResult.status === "fulfilled" ? ["SEC EDGAR"] : [])]) || "SEC EDGAR",
+          ...(publishers.length ? { publisher: listNames(publishers) } : {}),
+          status: "not-a-feed",
+          basis: publishers.length ? "published fund data" : "filed data",
+          ...(facts?.nav?.asOf ? { asOf: facts.nav.asOf } : {}),
+        },
         metadata: {
-          acceptanceNote: SEC_ACCEPTANCE_NOTE,
           symbol,
+          fundFacts: facts,
+          acceptanceNote: SEC_ACCEPTANCE_NOTE,
           returned: filings.length,
-          forms: [...forms],
+          forms: [...ETF_FILING_FORMS],
           searchedFilings: issuerFilings.length,
           issuers: secFilingIssuers(filings),
         },
@@ -118,4 +175,4 @@ export function createSecHeadless(
   };
 }
 
-export const secHeadless = createSecHeadless();
+export const fundHeadless = createFundHeadless();

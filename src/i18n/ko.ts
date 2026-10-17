@@ -1056,6 +1056,7 @@ export const ko: Record<string, string> = {
   "Overnight": "야간",
   "mid": "중간가",
   "Price Return": "가격 수익률",
+  "Fund Facts": "펀드 정보",
   "Fundamentals": "펀더멘털",
   "Positions": "포지션",
   "Type": "유형",

@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
+import { fundFactsCache } from "../sec/fund-facts";
 import { act } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
@@ -108,5 +110,48 @@ test("quote-free reported capitalization retains source units, zero, and provena
     } else expect(text).not.toContain("Market Cap");
     expect(text).toContain("Quote unavailable.");
     expect(financials.fundamentals?.marketCap).toBe(marketCap);
+  }
+});
+
+test("a US-listed fund's overview shows its fund facts where a company's fundamentals would be; a fund listed elsewhere asks for none", async () => {
+  fundFactsCache.reset();
+  const etf = createTestTicker("IVV", "iShares Core S&P 500 ETF", { assetCategory: "ETF", exchange: "NYSE", currency: "USD" });
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ticker: "IVV", covered: true, name: "iShares Core S&P 500 ETF", structure: "registered",
+    expenseRatio: { value: 0.03, asOf: "2026-10-16", source: "iShares", kind: "net" },
+    nav: { value: 766.76, asOf: "2026-10-16", source: "iShares" },
+    closingPrice: null, premiumDiscount: null,
+    netAssets: { value: 712_340_000_000, asOf: "2026-10-16", source: "iShares", scope: "fund" },
+    sponsor: { value: "BlackRock (iShares)", asOf: null, source: "iShares" },
+    inception: { value: "2000-05-15", asOf: null, source: "iShares" },
+    index: null, stale: false, fetchedAt: null,
+  }));
+  try {
+    const financials: TickerFinancials = { quote: { ...quote, symbol: "IVV", currency: "USD" }, priceHistory: [], annualStatements: [], quarterlyStatements: [] };
+    await act(async () => {
+      await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={etf} financials={financials} width={100} />
+      </AppContext>, { width: 100, height: 40 });
+    });
+    await settleFrame(tui.setup(), 10);
+    const frame = tui.frame();
+    expect(facts).toHaveBeenCalledWith("IVV");
+    expect(frame).toContain("Fund Facts");
+    expect(frame).toMatch(/Exp Ratio\s+0\.03%/);
+    expect(frame).toMatch(/NAV\s+\$766\.76\s+2026-10-16/);
+    expect(frame).toMatch(/Net Assets\s+\$712\.34B/);
+
+    facts.mockClear();
+    await act(async () => {
+      await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={ticker} financials={{ quote, profile, priceHistory: [], annualStatements: [], quarterlyStatements: [] }} width={100} />
+      </AppContext>, { width: 100, height: 40 });
+    });
+    await settleFrame(tui.setup(), 10);
+    expect(facts).not.toHaveBeenCalled();
+    expect(tui.frame()).not.toContain("Fund Facts");
+  } finally {
+    facts.mockRestore();
+    fundFactsCache.reset();
   }
 });
