@@ -396,9 +396,13 @@ describe("pane catalog search", () => {
       entry("AAA", "Implied volatility surface and smiles."),
       entry("BBB", "Volatility index closes."),
       entry("CCC", "Surface temperature by ocean basin."),
+      entry("DDD", "Balance sheet and income statement for a ticker."),
     ];
     // BBB has "vol" and CCC "surf", but only AAA has both; a query that matches on its own is not cut.
     expect(filterPaneCatalogEntries(entries, "volsurf").map(({ token }) => token)).toEqual(["AAA"]);
+    // The two words are written in a row: "baltic" starts DDD's "balance" and "ticker" without being either word.
+    expect(filterPaneCatalogEntries(entries, "baltic")).toEqual([]);
+    expect(filterPaneCatalogEntries(entries, "balancesheet").map(({ token }) => token)).toEqual(["DDD"]);
     expect(filterPaneCatalogEntries(entries, "volatility").map(({ token }) => token)).toEqual(["AAA", "BBB"]);
     expect(filterPaneCatalogEntries(entries, "zzqxvb")).toEqual([]);
   });

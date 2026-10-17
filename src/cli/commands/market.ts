@@ -167,7 +167,7 @@ import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { knownGapForTicker, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
@@ -854,6 +854,8 @@ async function answerQuote(
   const tryLines = [
     yieldTenor ? treasuryYieldLine(yieldTenor) : root ? indexRootTryLine(root, request.command) : null,
     other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
+    // BDI asks which exchange (Black Diamond Group) and says nowhere that the Baltic Dry Index is not here.
+    listing.exchange ? null : knownGapForTicker(listing.symbol),
   ].filter((line): line is string => !!line);
   if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;

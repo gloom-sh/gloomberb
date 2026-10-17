@@ -332,8 +332,8 @@ function queryTerms(query: string): string[] {
   return named.length > 0 ? named : words;
 }
 
-/** What a function is called and says it does, apart from its flags. */
-function nameAndDescription(entry: PaneCatalogEntry): string {
+/** The texts that say what a function is called and does, apart from its flags, each on its own. */
+function nameAndDescriptionFields(entry: PaneCatalogEntry): string[] {
   return [
     entry.token,
     entry.label,
@@ -346,7 +346,12 @@ function nameAndDescription(entry: PaneCatalogEntry): string {
     ...entry.keywords,
     ...entry.capability.aliases,
     ...entry.capability.intents,
-  ].filter((value): value is string => !!value).join(" ").toLowerCase();
+  ].filter((value): value is string => !!value).map((value) => value.toLowerCase());
+}
+
+/** What a function is called and says it does, apart from its flags. */
+function nameAndDescription(entry: PaneCatalogEntry): string {
+  return nameAndDescriptionFields(entry).join(" ");
 }
 
 function flagText(entry: PaneCatalogEntry): string {
@@ -449,17 +454,31 @@ function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): Pan
 const FUSED_PART_MIN = 3;
 
 /**
+ * Whether one of the function's texts has `head` and `tail` as the starts of two words in a row ("vol surf" in
+ * "implied volatility surface"), the way a name typed without its space is written. The two words may sit
+ * anywhere in the name and description, but not apart: "baltic" cut into "bal" and "tic" is not the
+ * "balance sheet" and the "ticker" of Financial Analysis.
+ */
+function hasConsecutiveWordStarts(entry: PaneCatalogEntry, head: string, tail: string): boolean {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const consecutive = new RegExp(`(^|[^a-z0-9])${escape(head)}[a-z0-9]*[^a-z0-9]+${escape(tail)}`);
+  return nameAndDescriptionFields(entry).some((field) => consecutive.test(field));
+}
+
+/**
  * Two words typed as one ("volsurf" for Volatility Surface) match the functions that carry both
- * words, found by cutting the query into two word starts.
+ * words in a row, found by cutting the query into two word starts.
  */
 function fusedQueryMatches(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
   const word = query.trim().toLowerCase();
   if (/\s/.test(word)) return [];
   for (let cut = FUSED_PART_MIN; cut <= word.length - FUSED_PART_MIN; cut += 1) {
-    const split = `${word.slice(0, cut)} ${word.slice(cut)}`;
+    const [head, tail] = [word.slice(0, cut), word.slice(cut)];
+    const split = `${head} ${tail}`;
     const ranked = rankPaneCatalogEntries(entries, split);
     const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length);
-    if (shown.length > 0 && !loose) return shown;
+    const written = loose ? [] : shown.filter((entry) => hasConsecutiveWordStarts(entry, head, tail));
+    if (written.length > 0) return written;
   }
   return [];
 }

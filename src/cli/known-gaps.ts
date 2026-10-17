@@ -22,9 +22,14 @@ export function isSubMinuteInterval(value: string): boolean {
  * names one with this line instead of pointing at each other. One entry per
  * subject; every proxy named is a listing `gloomberb quote` answers (checked
  * 2026-10-11: CO2:LSE is the physical EUA ETC, while a bare CO2 is a Brent
- * future) or a function `fn` runs.
+ * future; BDRY, SBLK, GNK and DSX on 2026-10-17), a function `fn` runs, or a
+ * command that answers (`news "dry bulk"`).
+ *
+ * `tickers` are terms that are also a real ticker (BDI is Black Diamond Group):
+ * a query that is only that word still gets the line, but `quote` adds it only
+ * to the exchange question or the failure of the bare symbol, never to a quote.
  */
-const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; message: string }> = [
+const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly string[]; message: string }> = [
   {
     terms: ["EUA", "EUAs", "EU ETS", "EU allowance", "EU allowances", "EU carbon", "carbon", "carbon allowance", "carbon allowances",
       "carbon price", "carbon prices", "carbon credits", "emission allowances", "emissions allowances"],
@@ -39,6 +44,15 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; message: string }> =
     terms: ["tick", "ticks", "tick data", "tick bars", "tick by tick", "second", "seconds", "second bars", "1s", "1 second",
       "1 second bars", "sub-minute", "sub minute bars", "subsecond"],
     message: subMinuteDataMessage(),
+  },
+  {
+    terms: ["Baltic", "Baltic Dry", "Baltic Dry Index", "Baltic Exchange", "Baltic index", "Baltic indices", "BDI", "BDIY", "freight",
+      "freight rate", "freight rates", "freight index", "freight futures", "freight forward", "freight forwards", "freight forward agreement",
+      "freight forward agreements", "FFA", "FFAs", "capesize", "panamax", "supramax", "charter rate", "charter rates", "dry bulk",
+      "dry bulk rates", "dry bulk freight"],
+    tickers: ["BDI"],
+    message: "Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered. Traded proxies: BDRY (freight futures ETF), "
+      + "SBLK, GNK, DSX (dry-bulk shipowners); chokepoint transits: fn CHOKE; news \"dry bulk\".",
   },
 ];
 
@@ -134,6 +148,15 @@ export function commandPointer(query: string): string | null {
 /** Letters and digits only, lower case: `EU-ETS`, `eu ets` and `EUETS` are one lookup. */
 function lookupKey(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * The line for a symbol typed on its own that names a known subject as well as a ticker (BDI, the Baltic Dry Index
+ * and Black Diamond Group), for the answer that has no quote to show it; null for any other symbol.
+ */
+export function knownGapForTicker(symbol: string): string | null {
+  const key = lookupKey(symbol);
+  return key ? KNOWN_GAPS.find((gap) => gap.tickers?.some((ticker) => lookupKey(ticker) === key))?.message ?? null : null;
 }
 
 /**

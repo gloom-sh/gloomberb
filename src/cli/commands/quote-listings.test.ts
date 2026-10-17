@@ -113,6 +113,22 @@ test("a code several companies list is never quoted on one of them: it asks for 
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
 });
 
+test("BDI asks for an exchange and says the Baltic Dry Index is not covered; on an exchange it is Black Diamond Group's quote", async () => {
+  const quote = createTestQuote({ symbol: "BDI:TSX", currency: "CAD" });
+  const names = { TSX: "Black Diamond Group Limited", BSE: "B. D. Industries (Pune) Limited" };
+  const source = venueSource("BDI", ["TSX", "BSE"], { "BDI:TSX": quote }, names);
+
+  const bare = await runQuote(["BDI"], source);
+  expect(bare.failure?.message).toBe("Choose an exchange for BDI.");
+  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloomberb quote BDI:TSX)");
+  expect(bare.failure?.details).toContain("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
+
+  const named = await runQuote(["BDI:TSX"], source);
+  expect(named.failure).toBeNull();
+  expect(named.rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["BDI:TSX", false]]);
+  expect(named.warnings.join("\n")).not.toContain("Baltic");
+});
+
 test("a bare symbol the service read on its home listing abroad names the venue", async () => {
   const listed = (symbol: string, exchangeName: string, currency = "USD") => createTestQuote({ symbol, exchangeName, listingExchangeName: exchangeName, currency });
   const source = venueSource("SXR8", ["XETRA", "BUD"], {

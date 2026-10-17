@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
-import { commandPointer, knownGapMessage, topicPointer } from "./known-gaps";
+import { commandPointer, knownGapForTicker, knownGapMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
@@ -23,6 +23,21 @@ test("data a name search cannot find is pointed to, with its proxies, by search 
   expect(catalog).not.toContain("No functions match");
 });
 
+test("freight rates and the Baltic indices are said to be uncovered, naming what is; BDI alone is also a ticker", () => {
+  const gap = knownGapMessage("freight")!;
+  expect(gap).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
+  for (const proxy of ["BDRY", "SBLK", "GNK", "DSX", "fn CHOKE", "news \"dry bulk\""]) expect(gap).toContain(proxy);
+  for (const query of ["Baltic Dry", "dry-bulk", "Panamax", "freight rates", "FFA", "BDI", "charter rates"]) expect(knownGapMessage(query), query).toBe(gap);
+  // Only the whole query: a company, a sector or a ticker that merely carries the word is not the gap.
+  for (const query of ["baltic sea", "freight forwarder stocks", "BDIX", "BDRY", "ocean freight carriers"]) expect(knownGapMessage(query), query).toBeNull();
+  expect(knownGapForTicker("BDI")).toBe(gap);
+  for (const symbol of ["FFA", "freight", "BDRY", "EUA"]) expect(knownGapForTicker(symbol), symbol).toBeNull();
+
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["capesize"]), lookupGlossary("capesize"), knownGapMessage("capesize"));
+  expect(catalog).toContain("are not covered");
+  expect(catalog).not.toContain("No functions match");
+});
+
 test("a topic no function covers is answered with the nearest functions, wherever its words sit in the query", async () => {
   const pointer = topicPointer("defense budget")!;
   expect(pointer.message).toStartWith("defense budget: not in the terminal yet; closest: AWARDS (");
@@ -36,7 +51,9 @@ test("a topic no function covers is answered with the nearest functions, whereve
   const registry = await createPaneCatalog(context, getLoadablePlugins());
   try {
     const tokens = (await buildPaneCatalogEntries(registry, context)).map((entry) => entry.token);
-    for (const code of [...pointer.codes, ...topicPointer("borrow fee")!.codes]) expect(tokens, code).toContain(code);
+    const freightCodes = [...knownGapMessage("freight")!.matchAll(/\bfn ([A-Z]+)/g)].map((match) => match[1]!);
+    expect(freightCodes).toEqual(["CHOKE"]);
+    for (const code of [...pointer.codes, ...topicPointer("borrow fee")!.codes, ...freightCodes]) expect(tokens, code).toContain(code);
   } finally {
     registry.destroy();
   }
