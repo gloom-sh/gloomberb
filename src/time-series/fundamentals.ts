@@ -4,6 +4,7 @@ import type {
 } from "../types/financials";
 import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
 import { copyIncomeField, incomeFieldKnowledgeDate, incomeFieldOwner, isIncomeStatementField } from "../utils/income-statement";
+import { fiscalPeriodLabel, fiscalYearEndMonth, ttmPeriodLabel } from "../utils/fiscal-period";
 import { hasStatementGap, mergeStatementGaps } from "../utils/statement-gaps";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
@@ -650,6 +651,8 @@ function pointForStatement(
   period: "annual" | "quarterly" | "ttm",
   timestampMode: SecuritySeriesSource["timestampMode"],
   derived: boolean,
+  /** The month the issuer's fiscal year ends; null names the period by its end date. */
+  yearEndMonth: number | null,
 ): TimeSeriesPoint | null {
   const observedAt = validDate(statement.date);
   if (!observedAt) return null;
@@ -667,6 +670,8 @@ function pointForStatement(
     // Providers do not supply a reliable issuer fiscal-year/quarter identity.
     // Calendar-month numbering would mislabel non-calendar fiscal years.
     periodLabel: `${period === "annual" ? "Year" : period === "ttm" ? "TTM" : "Quarter"} ended ${statement.date}`,
+    // The period as FA's columns name it (`Q3 FY26`), which the legend prints beside the value.
+    fiscalPeriod: period === "ttm" ? ttmPeriodLabel(statement.date, yearEndMonth) : fiscalPeriodLabel(statement.date, period, yearEndMonth),
     provenance: {
       quality: derived || (metric === "eps" && statement.epsBasis?.factor !== undefined && statement.epsBasis.factor !== 1) ? "derived" : "reported",
       ...((metric === "eps" || metric === "trailingPE") && statement.epsBasis ? { secEpsBasis: statement.epsBasis } : {}),
@@ -916,6 +921,7 @@ export function extractFundamentalSeries(
   const [namespace, metric = ""] = canonicalId.split(".");
   if (namespace === "fundamental" && FUNDAMENTAL_IDS.has(metric)) {
     const selected = sourceStatements(financials, source.period);
+    const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
     let hasObservation = false;
     const points = selected.statements.flatMap((statement) => {
       const result = fundamentalValue(statement, metric);
@@ -927,6 +933,7 @@ export function extractFundamentalSeries(
         selected.period,
         source.timestampMode,
         result.derived,
+        yearEndMonth,
       );
       return point ? [point] : [];
     });
@@ -954,6 +961,7 @@ export function extractFundamentalSeries(
 
   const selected = sourceStatements(financials, source.period, metric);
   const currencies = createValuationCurrencyContext(financials);
+  const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   let hasHistoricalObservation = false;
   const historical = selected.statements.flatMap((statement) => {
     const historical = historicalValuation(financials, statement, metric, currencies);
@@ -965,6 +973,7 @@ export function extractFundamentalSeries(
       selected.period,
       source.timestampMode,
       true,
+      yearEndMonth,
     );
     if (point && historical?.integrity) point.provenance = { ...point.provenance, priceHistoryIntegrity: historical.integrity };
     if (point && historical?.issue) point.provenance = { ...point.provenance,
@@ -980,6 +989,20 @@ export function extractFundamentalSeries(
   return (current ? [...dedupedHistorical, current] : dedupedHistorical).sort((left, right) => (
     left.date.getTime() - right.date.getTime() || left.observedAt.getTime() - right.observedAt.getTime()
   ));
+}
+
+/**
+ * The period a fundamental series asks for that its company reports no figure
+ * of, though it reports annual ones: `quarterly` for an issuer that reports
+ * twice a year. Null for any other series, and when the annual figures are as
+ * missing as the quarterly ones.
+ */
+export function unreportedStatementPeriod(
+  financials: TickerFinancials,
+  source: SecuritySeriesSource,
+): "quarterly" | null {
+  if (source.period !== "quarterly" || !canonicalTimeSeriesFieldId(source.fieldId).startsWith("fundamental.")) return null;
+  return extractFundamentalSeries(financials, { ...source, period: "annual" }).length > 0 ? "quarterly" : null;
 }
 
 export function fundamentalSeriesUsesAvailabilityFallback(
@@ -1014,7 +1037,7 @@ export function valuationPriceIssues(financials: TickerFinancials, source: Secur
   const quoteIssue = valuationQuoteIssue(financials.quote);
   const issues = rows.flatMap((row) => {
     const price = valuationPriceAtOrBefore(financials.priceHistory, metricAvailability(row, metric) ?? row.date);
-    const date = pointForStatement(row, metric, null, selected.period, source.timestampMode, true)?.date;
+    const date = pointForStatement(row, metric, null, selected.period, source.timestampMode, true, null)?.date;
     return price?.issue && date ? [{ ...price.issue, affectedAt: date.toISOString() }] : [];
   });
   return [...(quoteIssue ? [quoteIssue] : []), ...new Map(issues.map((issue) => [JSON.stringify(issue), issue])).values()];

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { alignTimeSeries } from "./alignment";
 import { extractFredSeries } from "./economic";
-import { deriveQuarterlyStatements, extractFundamentalSeries, fundamentalSeriesUsesAvailabilityFallback } from "./fundamentals";
+import {
+  deriveQuarterlyStatements,
+  extractFundamentalSeries,
+  fundamentalSeriesUsesAvailabilityFallback,
+  unreportedStatementPeriod,
+} from "./fundamentals";
 import type { ResolvedSeries, SecuritySeriesSource } from "./types";
 
 function financials(
@@ -44,6 +49,32 @@ describe("fundamental series extraction", () => {
       expect(point).toMatchObject({ value: entry.value, periodLabel: entry.label, observedAt: new Date(entry.date), availableAt: new Date(entry.filed) });
       expect(point?.date).toEqual(new Date(entry.filed));
     }
+  });
+
+  test("names each period as FA's columns do, from the year end of the annual statements", () => {
+    // A June year end: the September quarter opens the next fiscal year.
+    const annualJune: FinancialStatement[] = [{ date: "2024-06-30", totalRevenue: 200 }, { date: "2025-06-30", totalRevenue: 240 }];
+    const quarterlyJune: FinancialStatement[] = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"]
+      .map((date) => ({ date, totalRevenue: 60 }));
+    const snapshot = financials(quarterlyJune, annualJune);
+    const names = (period: SecuritySeriesSource["period"]) => extractFundamentalSeries(snapshot, source("fundamental.totalRevenue", period))
+      .map((point) => point.fiscalPeriod);
+    expect(names("annual")).toEqual(["FY2024", "FY2025"]);
+    expect(names("quarterly")).toEqual(["Q3 FY25", "Q4 FY25", "Q1 FY26", "Q2 FY26"]);
+    expect(names("ttm")).toEqual(["TTM Q2 FY26"]);
+    // Without annual statements there is no fiscal calendar, so the period end stands in.
+    expect(extractFundamentalSeries(financials(quarterlyJune, []), source("fundamental.totalRevenue"))[0]?.fiscalPeriod).toBe("2025-03-31");
+  });
+
+  test("a company with annual figures and no quarterly ones is told apart from one with neither", () => {
+    // A semi-annual reporter's quarterly rows carry balance-sheet lines only.
+    const semiAnnual = financials([{ date: "2026-06-30", shareIssued: 5 }], [{ date: "2025-12-31", totalRevenue: 100 }]);
+    const revenue = (period: SecuritySeriesSource["period"]) => source("fundamental.totalRevenue", period);
+    expect(extractFundamentalSeries(semiAnnual, revenue("quarterly"))).toEqual([]);
+    expect(unreportedStatementPeriod(semiAnnual, revenue("quarterly"))).toBe("quarterly");
+    expect(unreportedStatementPeriod(semiAnnual, revenue("annual"))).toBeNull();
+    expect(unreportedStatementPeriod(semiAnnual, source("valuation.trailingPE", "quarterly"))).toBeNull();
+    expect(unreportedStatementPeriod(financials([], []), revenue("quarterly"))).toBeNull();
   });
 
   const quarters: FinancialStatement[] = [

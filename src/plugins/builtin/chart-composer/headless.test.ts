@@ -217,6 +217,28 @@ test("chart reports retain raw comparison endpoints and growth preceding a finan
   expect(financial.series[0]!.points[0]).toMatchObject({ value: 150, growth: 0.5 });
 });
 
+test("a company that reports no quarterly figures says so, where it would otherwise read as not covered", async () => {
+  const { buildFundamentalChartPreset } = await import("./presets");
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  // A semi-annual reporter: its quarterly rows carry balance-sheet lines, no revenue.
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({
+      annualStatements: [{ date: "2024-12-31", totalRevenue: 90 }, { date: "2025-12-31", totalRevenue: 100 }],
+      quarterlyStatements: [{ date: "2026-06-30", shareIssued: 5 }], priceHistory: [],
+    }),
+  });
+  const args = { argument: ["NESN:XSWX"], rawArgument: "NESN:XSWX", symbols: ["NESN:XSWX"], options: {} };
+  const load = (period: string) => chartHeadless("fundamental-graph-pane").load(args, { ...fixture().context, marketData: provider, settings: {
+    chartSpec: applyChartComposerCapabilityOptions(buildFundamentalChartPreset(["NESN:XSWX"]), "fundamental-series", { metric: "totalRevenue", period }),
+  } }) as Promise<ChartPaneModel>;
+  const quarterly = await load("quarterly");
+  expect(quarterly.errors).toEqual([expect.stringMatching(/Revenue: no quarterly figures are reported; use --period annual\.$/)]);
+  expect(quarterly.unavailableSymbols).toEqual(["NESN:XSWX"]);
+  const annual = await load("annual");
+  expect(annual.errors).toEqual([]);
+  expect(annual.series[0]!.points.map((point) => point.fiscalPeriod)).toEqual(["FY2024", "FY2025"]);
+});
+
 test("explicit financial periods replay available SEC history and expose actual cloud depth deficits", async () => {
   const actual = await import("./financial-periods.fixture.json");
   const { buildFundamentalChartPreset } = await import("./presets");

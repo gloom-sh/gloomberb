@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
+import { buildFundamentalChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
 import { paneSchemas as researchSchemas } from "../../plugins/builtin/research/headless-schema";
 import { optionsPositioningHeadless } from "../../plugins/builtin/options-positioning/headless";
@@ -76,6 +77,14 @@ describe("pane function capabilities", () => {
       period: "annual",
     });
     expect(capabilityPluginState(capability, options)).toEqual({});
+  });
+
+  test("GF opens on the period its app template builds, with annual one option away", () => {
+    const capability = capabilityFor("fundamental-graph-pane");
+    const opens = buildFundamentalChartPreset(["AAPL"]).series[0]!.source;
+    expect(opens).toMatchObject({ period: "quarterly" });
+    expect(normalizeCapabilityOptions(capability, {}).period).toBe("quarterly");
+    expect(normalizeCapabilityOptions(capability, { period: "annual" }).period).toBe("annual");
   });
 
   test("exposes custom G as a bot-safe mixed-series capability", () => {

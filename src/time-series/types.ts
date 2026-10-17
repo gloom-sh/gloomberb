@@ -122,6 +122,12 @@ export interface TimeSeriesPoint {
   close?: number | null;
   volume?: number | null;
   periodLabel?: string;
+  /**
+   * A financial statement period as the FA columns name it: `FY2025`, `Q3 FY26`,
+   * `TTM Q3 FY26`, or the period's end date off the issuer's fiscal calendar.
+   * The legend prints it beside the value.
+   */
+  fiscalPeriod?: string;
   provenance?: {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
@@ -169,6 +175,11 @@ export interface ResolvedSeries {
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;
+  /**
+   * Set on a series with nothing to draw because its company reports no
+   * figures of the period asked for, while its annual ones exist.
+   */
+  unreportedPeriod?: "quarterly";
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
   /**

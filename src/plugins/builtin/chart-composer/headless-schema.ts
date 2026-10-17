@@ -1,8 +1,15 @@
-import type { HeadlessPaneDefinition } from "../../../types/headless";
+import type { HeadlessPaneDefinition, HeadlessPaneOptionDef } from "../../../types/headless";
 import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-gaps";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
+
+/**
+ * GF opens on quarterly bars, as its catalog entry says and as the template
+ * builds them in the app; a default left at annual would override that for
+ * every `fn`, `shot` and agent read. Annual is `--period annual`.
+ */
+const FUNDAMENTAL_PERIOD_OPTION: HeadlessPaneOptionDef = { ...FINANCIAL_PERIOD_OPTION, defaultValue: "quarterly" };
 
 export const paneSchemas = {
   "chart-composer-pane": {
@@ -171,7 +178,7 @@ export const paneSchemas = {
         ],
         defaultValue: "totalRevenue",
       },
-      FINANCIAL_PERIOD_OPTION,
+      FUNDAMENTAL_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
     ],
     discovery: {

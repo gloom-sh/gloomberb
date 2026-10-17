@@ -14,6 +14,7 @@ import {
   type DataTableColumn,
 } from "../../../../components";
 import { colors, priceColor } from "../../../../theme/colors";
+import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { padTo } from "../../../../utils/format";
 import {
   FINANCIAL_COL_W,
@@ -25,7 +26,6 @@ import {
   collectGroupIds,
   computeGrowth,
   financialColumnLabel,
-  fiscalYearEndMonth,
   formatFinancialCell,
   financialStatementCurrency,
   financialStatementLimitations,

@@ -431,6 +431,47 @@ describe("CompositeChart", () => {
     expect(frame).toContain("$2.55");
   });
 
+  test("a statement value names the fiscal period under the cursor, and a market price names none", async () => {
+    const revenue = series("revenue", "main", "left", "USD", [90, 110, 100]);
+    revenue.points = revenue.points.map((entry, index) => ({ ...entry, fiscalPeriod: ["Q1 FY26", "Q2 FY26", "Q3 FY26"][index] }));
+    const render = async (cursorDate: string) => {
+      await tui.render(
+        <CompositeChart width={78} height={12} series={[series("price", "main", "left", "USD", [100, 103, 101]), revenue]}
+          panels={[{ id: "main" }]} cursorDate={new Date(`${cursorDate}T00:00:00.000Z`)} />,
+        { width: 80, height: 14 },
+      );
+      await act(async () => {
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n")[0]!;
+    };
+    const legend = await render("2025-01-02");
+    expect(legend).toMatch(/ACME Price \$103 \S OTHER Revenue \$110 Q2 FY26/);
+    expect(legend).not.toContain("Q1 FY26");
+    expect(await render("2025-01-03")).toContain("Q3 FY26");
+  });
+
+  test("a fiscal period that would push a value out of a crowded legend row is left off", async () => {
+    const revenues = ["a", "b", "c"].map((id) => {
+      const entry = series(`revenue-${id}`, "main", "left", "USD", [90, 110, 100]);
+      entry.points = entry.points.map((point) => ({ ...point, fiscalPeriod: "Q3 FY26" }));
+      return entry;
+    });
+    await tui.render(
+      <CompositeChart width={60} height={12} series={revenues} panels={[{ id: "main" }]}
+        cursorDate={new Date("2025-01-03T00:00:00.000Z")} />,
+      { width: 62, height: 14 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const legend = tui.frame().split("\n")[0]!;
+    expect(legend.match(/\$100/g)).toHaveLength(3);
+    expect(legend).not.toContain("Q3 FY26");
+  });
+
   test("keeps legend items compact and anchors an accessory to the right edge", async () => {
     await tui.render(
       <CompositeChart

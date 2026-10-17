@@ -389,7 +389,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     return (
       <SignInWall
         placement="estimate-revisions-signin"
-        action="view estimate revisions"
+        action={tab === "guidance" ? "view company guidance" : "view estimate revisions"}
         needsVerification={session.needsVerification}
       />
     );
