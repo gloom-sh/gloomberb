@@ -1,4 +1,3 @@
-import { logFailure } from "../utils/log-failure";
 /**
  * Geo layers, as GET /cloud/geo/* serves them: anything with a place (a ship,
  * a port, a pipeline) as map features, an entity table and chart series. The
@@ -10,6 +9,8 @@ import { logFailure } from "../utils/log-failure";
  * `geo_unavailable`. A layer that cannot serve still answers 200 with an
  * empty body and its `status` and `statusNote`.
  */
+import { logFailure } from "../utils/log-failure";
+
 type Lon = number;
 type Lat = number;
 

@@ -53,6 +53,7 @@ export class AttentionCounter {
       }
       return session !== null;
     } catch {
+      // Intentional ignore: Unreadable consent or session state disables attention collection.
       this.clear();
       this.session = null;
       return false;

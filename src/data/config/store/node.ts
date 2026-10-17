@@ -48,7 +48,7 @@ export async function getDataDir(): Promise<string | null> {
     if (recorded && dirs.kind !== "home" && !existsSync(recorded)) return dirs.data;
     return recorded;
   } catch (error) {
-    // Intentional ignore: an absent optional file or directory is expected.
+    // An absent optional file or directory is expected.
     if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.store.node", "Reading the configured data directory failed")(error);
     return null;
   }
@@ -66,7 +66,7 @@ function hasAbsorbedPluginCheckout(pluginId: string): boolean {
   try {
     entries = readdirSync(pluginsDir, { withFileTypes: true });
   } catch (error) {
-    // Intentional ignore: an absent optional file or directory is expected.
+    // An absent optional file or directory is expected.
     if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.store.node", "Reading installed plugins for migration failed")(error);
     return false;
   }

@@ -230,8 +230,8 @@ function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
     try {
       ensureDirLink(join(pluginDir, "node_modules", peer), join(pluginsDir, directory));
       linked.push(peer);
-    } catch {
-      // Intentional ignore: loadExternalPlugin reports the import failure if this peer link is needed.
+    } catch (error) {
+      logFailure("plugin-host-link", "Peer runtime link creation failed")(error);
     }
   }
   return linked;

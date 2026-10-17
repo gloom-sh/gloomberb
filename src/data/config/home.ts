@@ -60,7 +60,7 @@ function pathExists(path: string): boolean {
     lstatSync(path);
     return true;
   } catch (error) {
-    // Intentional ignore: an absent optional file or directory is expected.
+    // An absent optional file or directory is expected.
     if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.home", "Checking the existing config directory failed")(error);
     return false;
   }

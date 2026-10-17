@@ -23,8 +23,13 @@ export async function activateInstalledPlugin(
   // Registering it here, or where data calls run, would mix the new files
   // with modules this process already imported; the host keeps what runs.
   if (loaded.needsRestart) {
-    await host.activate(loaded).catch(logFailure("plugin-activation", "Pending-restart plugin activation failed"));
-    return { ok: true, pluginId: loaded.plugin.id, name, restart: true };
+    try {
+      await host.activate(loaded);
+      return { ok: true, pluginId: loaded.plugin.id, name, restart: true };
+    } catch (error) {
+      logFailure("plugin-activation", "Pending-restart plugin activation failed")(error);
+      return { ok: false, error: error instanceof Error ? error.message : String(error), name };
+    }
   }
   if (loaded.error) {
     await host.activate(loaded).catch(logFailure("plugin-activation", "Failed plugin registration failed"));

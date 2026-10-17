@@ -412,7 +412,8 @@ export function recordResearchActivity(
       views.add(key);
       try { sessionStorage.setItem(WALL_VIEWS_SESSION_KEY, JSON.stringify([...views])); } catch { /* Intentional ignore: Native sessions retain wall views in the in-memory set. */ }
     })
-    .catch(() => {
+    .catch((error) => {
+      logFailure("cloud-telemetry", "Research activity request failed")(error);
       sent.delete(key);
     });
 }

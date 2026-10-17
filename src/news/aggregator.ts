@@ -286,7 +286,8 @@ export class NewsService {
           continue;
         }
         return commitDetail(article);
-      } catch {
+      } catch (error) {
+        logFailure("news.aggregator", "Loading story detail failed")(error);
         failed = true;
         // Continue to lower-priority sources.
       }

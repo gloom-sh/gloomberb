@@ -1,4 +1,5 @@
 import { join } from "path";
+import { logFailure } from "../../utils/log-failure";
 import { VERSION } from "../../version";
 import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
@@ -156,7 +157,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
       let dataDir: string | null = null;
       try {
         dataDir = await resolveCliDataDir();
-      } catch {
+      } catch (error) {
+        logFailure("cli-system", "Resolve data directory failed")(error);
         dataDir = null;
       }
       ctx.printResult({
@@ -265,7 +267,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
         let current: string | null = null;
         try {
           current = await withConfigData(ctx, ({ config }) => config.theme);
-        } catch {
+        } catch (error) {
+          logFailure("cli-system", "Read current theme failed")(error);
           current = null;
         }
         ctx.printResult({ data: themeListRows(current) }, {

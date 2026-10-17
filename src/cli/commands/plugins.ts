@@ -322,6 +322,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
         version = pkg.version || "";
         description = pkg.description || "";
       } catch {
+        // Intentional ignore: The installed-plugin row reports the unreadable manifest.
         description = "Unreadable package.json";
       }
     }

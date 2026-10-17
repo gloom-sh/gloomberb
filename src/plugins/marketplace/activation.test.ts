@@ -34,3 +34,30 @@ test("a host registration failure is logged without replacing the original plugi
     unsubscribe();
   }
 });
+
+test("a rejected pending-restart registration reports activation failure and logs it", async () => {
+  const loaded: LoadedExternalPlugin = {
+    plugin: { id: "updated-plugin", name: "Updated plugin", version: "2.0.0" },
+    directory: "updated-plugin",
+    path: "updated-plugin",
+    needsRestart: true,
+  };
+  const failure = new Error("Could not record pending restart");
+  const entries: LogEntry[] = [];
+  const unsubscribe = debugLog.subscribe((entry) => {
+    if (entry.source === "plugin-activation") entries.push(entry);
+  });
+  try {
+    const outcome = await activateInstalledPlugin(loaded.directory, {
+      activate: async () => { throw failure; },
+    } as unknown as MarketplaceHost, {
+      load: async () => loaded,
+      activate: async () => { throw new Error("A pending restart must not reach backend activation"); },
+    } as PluginManager);
+
+    expect(outcome).toEqual({ ok: false, error: failure.message, name: loaded.plugin.name });
+    expect(entries.map((entry) => entry.source)).toEqual(["plugin-activation"]);
+  } finally {
+    unsubscribe();
+  }
+});

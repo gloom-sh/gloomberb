@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { logFailure } from "../utils/log-failure";
 import { linkHostPackages } from "./host-link";
 
 /**
@@ -22,8 +23,11 @@ function declaredDependencies(packageDir: string): string[] {
   try {
     const dependencies = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).dependencies;
     return dependencies && typeof dependencies === "object" ? Object.keys(dependencies) : [];
-  } catch {
-    // Intentional ignore: Plugins may have no package manifest; the loader reports import failures.
+  } catch (error) {
+    // A missing manifest is optional; malformed or unreadable manifests are failures.
+    if ((error as { code?: unknown } | null)?.code !== "ENOENT") {
+      logFailure("plugin-dependencies", "Dependency manifest read failed")(error);
+    }
     return [];
   }
 }
@@ -69,7 +73,8 @@ export async function installPluginDependencies(pluginDir: string): Promise<bool
       stderr: "ignore",
     });
     code = await child.exited;
-  } catch {
+  } catch (error) {
+    logFailure("plugin-dependencies", "Dependency installer launch failed")(error);
     code = null;
   }
   linkHostPackages(pluginDir);

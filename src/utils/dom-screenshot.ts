@@ -509,11 +509,14 @@ function drawRaster(
     if (element instanceof HTMLImageElement) {
       const fitted = objectFitRect(style.objectFit, local, { width: element.naturalWidth, height: element.naturalHeight });
       context.save();
-      context.beginPath();
-      context.rect(local.x, local.y, local.width, local.height);
-      context.clip();
-      context.drawImage(raster, fitted.x, fitted.y, fitted.width, fitted.height);
-      context.restore();
+      try {
+        context.beginPath();
+        context.rect(local.x, local.y, local.width, local.height);
+        context.clip();
+        context.drawImage(raster, fitted.x, fitted.y, fitted.width, fitted.height);
+      } finally {
+        context.restore();
+      }
     } else {
       context.drawImage(raster, local.x, local.y, local.width, local.height);
     }

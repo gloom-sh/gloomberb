@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { commands as builtInCommands, getCommandPrefixes } from "../../components/command-bar/commands/registry";
 import type { PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
@@ -231,7 +232,8 @@ async function buildTemplateCatalogEntry(
     try {
       const spec = await template.createInstance(buildTemplateContext(context, primarySymbol), createOptions);
       defaultSettings = spec?.settings ?? {};
-    } catch {
+    } catch (error) {
+      logFailure("cli-catalog", "Read template default settings failed")(error);
       defaultSettings = {};
     }
   }

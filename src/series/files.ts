@@ -80,7 +80,7 @@ export async function listSeriesFiles(dataDir: string): Promise<SeriesFolderFile
   try {
     names = (await readdir(folder)).filter((name) => name.toLowerCase().endsWith(".csv"));
   } catch (error) {
-    // Intentional ignore: an absent optional file or directory is expected.
+    // An absent optional file or directory is expected.
     if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("series.files", "Listing series files failed")(error);
     return [];
   }
@@ -90,7 +90,7 @@ export async function listSeriesFiles(dataDir: string): Promise<SeriesFolderFile
       const { mtimeMs } = await stat(path);
       return { name, mtimeMs, readText: () => readFile(path, "utf-8") };
     } catch (error) {
-      // Intentional ignore: an absent optional file or directory is expected.
+      // An absent optional file or directory is expected.
       if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("series.files", "Reading series file metadata failed")(error);
       return null;
     }

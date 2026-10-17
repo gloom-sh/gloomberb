@@ -1686,7 +1686,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // An unlisted date comes back as an empty chain; its own list of expiries, else the default chain's, says what to pick.
       const listed = loaded.expirationDates.length > 0 ? loaded.expirationDates : await market.dataProvider
         .getOptionsChain(symbol, exchange, undefined, { cacheMode: "default" })
-        .then((fallback) => fallback.expirationDates, () => []);
+        .then((fallback) => fallback.expirationDates, logFailure("cli-market", "Read available option expirations failed", []));
       const miss = missingExpiryMessage(listing.key, expirationDate, listed);
       ctx.fail(miss.message, miss.details);
     }

@@ -315,7 +315,7 @@ export class MarketDataCoordinator {
   async loadListingFate(instrument: InstrumentRef): Promise<ListingFate> {
     const listing = fateListing(instrument);
     if (!listing) return NO_FATE;
-    const quote = this.loadQuote(instrument).then(resolveEntryData, () => null);
+    const quote = this.loadQuote(instrument).then(resolveEntryData, logFailure("market-data.coordinator.index", "Loading a listing fate quote failed", null));
     return loadListingFate(listing, this.dataProvider, { quote, changes: this.lookupTickerChanges(instrument) });
   }
 

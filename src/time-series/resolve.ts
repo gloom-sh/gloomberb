@@ -1616,7 +1616,11 @@ async function resolveChartSpecPass(
           if (statementHistory && (!value.statementHistory || value.statementHistory.status === "retryable-failure")) cache.financialsByInstrument.delete(key);
           return value;
         })
-        .catch(() => { cache.financialsByInstrument.delete(key); return null; });
+        .catch((error) => {
+          logFailure("time-series-resolve", "Loading chart financials failed")(error);
+          cache.financialsByInstrument.delete(key);
+          return null;
+        });
       cache.financialsByInstrument.set(key, pending);
       cache.revision += 1;
     }
@@ -1632,7 +1636,11 @@ async function resolveChartSpecPass(
         : provider.getQuote(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source)).then(quoteMetadataFromQuote))
         .then((metadata) => metadata && quoteMetadataMatchesTarget(metadata, source.instrument.symbol, source.instrument.exchange) ? metadata : null)
         .then((metadata) => { if (!metadata) cache.quoteMetadataByInstrument.delete(key); return metadata; })
-        .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
+        .catch((error) => {
+          logFailure("time-series-resolve", "Loading chart quote metadata failed")(error);
+          cache.quoteMetadataByInstrument.delete(key);
+          return null;
+        });
       cache.quoteMetadataByInstrument.set(key, pending);
       cache.revision += 1;
     }

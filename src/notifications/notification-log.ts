@@ -89,7 +89,8 @@ function configureNotificationLog(nextStore: NotificationLogStore | null): void 
   let saved: readonly unknown[] = [];
   try {
     saved = nextStore?.get() ?? [];
-  } catch {
+  } catch (error) {
+    logFailure("notifications.notification-log", "Loading notification history failed")(error);
     saved = [];
   }
   const loaded = saved.map(normalizeEntry).filter((entry): entry is NotificationLogEntry => !!entry);

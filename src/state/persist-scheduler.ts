@@ -65,7 +65,10 @@ export function createPersistScheduler<T>({
     inFlightSaves.add(saveTask);
     void saveTask.then(
       () => { inFlightSaves.delete(saveTask); },
-      () => { inFlightSaves.delete(saveTask); },
+      () => {
+        // Intentional ignore: The returned saveTask or enqueueSave already reports this failure.
+        inFlightSaves.delete(saveTask);
+      },
     );
     // Keep the serialization chain usable after a failed immediate save while
     // still returning that failure to its caller.
