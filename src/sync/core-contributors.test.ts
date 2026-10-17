@@ -1135,6 +1135,37 @@ describe("core sync contributors", () => {
     expect(short.analyticsByPortfolio.main.spyBeta).toBeNull();
   });
 
+  // Each sync reuses a holding's returns while its bars are the same array
+  // (GLO-925); a bar revised or added in place must still reach the next one.
+  test("a holding's bars revised or extended in place reach the next sync's beta", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-test");
+    config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+    const state = createInitialState(config);
+    state.tickers = new Map([["AAPL", createTestTicker("AAPL", "Apple", {
+      portfolios: ["main"],
+      positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual", currency: "USD" }],
+    })]]);
+    const holding = priceHistoryFromReturns([0.03, -0.009, 0.036, 0.018, -0.012, 0.024, 0.009, -0.006, 0.021, 0.012, -0.003]);
+    const benchmark = priceHistoryFromReturns([0.01, -0.003, 0.012, 0.006, -0.004, 0.008, 0.003, -0.002, 0.007, 0.004, -0.001, 0.005]);
+    const quote = { symbol: "AAPL", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1 };
+    state.financials = new Map([
+      ["AAPL", createTestFinancials({ quote, priceHistory: holding })],
+      ["SPY", createTestFinancials({ priceHistory: benchmark })],
+    ]);
+    const beta = async () => ((await coreCollectionsSyncContributor.collect({ state })) as any).analyticsByPortfolio.main.spyBeta as number;
+
+    // The holding moves three times the benchmark each day.
+    expect(await beta()).toBeCloseTo(3, 5);
+    const close = holding.at(-1)!.close;
+    holding.at(-1)!.close = close * 1.05;
+    expect(await beta()).not.toBeCloseTo(3, 2);
+    holding.at(-1)!.close = close;
+    expect(await beta()).toBeCloseTo(3, 5);
+    // A day it moves five times the benchmark.
+    holding.push({ date: new Date(Date.UTC(2026, 5, 13, 20)), close: close * 1.025 });
+    expect(await beta()).not.toBeCloseTo(3, 2);
+  });
+
   test("values holdings in a non-USD base currency with the loaded exchange rates", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.baseCurrency = "EUR";
