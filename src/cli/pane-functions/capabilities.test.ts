@@ -79,17 +79,19 @@ describe("pane function capabilities", () => {
     expect(capabilityPluginState(capability, options)).toEqual({});
   });
 
-  test("GF and GE open on the period their app templates build, with annual one option away", () => {
-    const graphs = [
-      { paneId: "fundamental-graph-pane", preset: buildFundamentalChartPreset(["AAPL"]) },
-      { paneId: "valuation-graph-pane", preset: buildValuationChartPreset(["AAPL"]) },
-    ];
-    for (const { paneId, preset } of graphs) {
-      const capability = capabilityFor(paneId);
-      expect(preset.series[0]!.source).toMatchObject({ period: "quarterly" });
-      expect(normalizeCapabilityOptions(capability, {}).period).toBe("quarterly");
-      expect(normalizeCapabilityOptions(capability, { period: "annual" }).period).toBe("annual");
-    }
+  test("GF opens on the period its app template builds, with annual one option away", () => {
+    const capability = capabilityFor("fundamental-graph-pane");
+    expect(buildFundamentalChartPreset(["AAPL"]).series[0]!.source).toMatchObject({ period: "quarterly" });
+    expect(normalizeCapabilityOptions(capability, {}).period).toBe("quarterly");
+    expect(normalizeCapabilityOptions(capability, { period: "annual" }).period).toBe("annual");
+  });
+
+  test("GE reads annual by default, unlike its quarterly app template, until quarterly TTM history is fixed", () => {
+    // The quarterly multiple has values for about the last year only; annual reads from 2021.
+    const capability = capabilityFor("valuation-graph-pane");
+    expect(buildValuationChartPreset(["AAPL"]).series[0]!.source).toMatchObject({ period: "quarterly" });
+    expect(normalizeCapabilityOptions(capability, {}).period).toBe("annual");
+    expect(normalizeCapabilityOptions(capability, { period: "quarterly" }).period).toBe("quarterly");
   });
 
   test("exposes custom G as a bot-safe mixed-series capability", () => {
