@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import {
-  Badge,
   ColumnGrid,
   DataTableView,
   Divider,
@@ -16,18 +15,19 @@ import {
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box, useUiCapabilities } from "../../../ui";
+import type { ThemeColors } from "../../../theme/colors";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
+import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import type { CloudResource } from "../shared/cloud-resource";
-import { listingCell } from "../shared/research-cells";
+import { listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedInsiderSignals, DEFAULT_INSIDER_SIGNAL_WINDOW, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
 import {
   buildInsiderSignalColumns,
-  compareInsiderSignalRows,
   formatSignalDay,
   formatSignalValue,
   INSIDER_SIGNAL_CAP_OPTIONS,
@@ -36,10 +36,9 @@ import {
   INSIDER_SIGNAL_SIDE_OPTIONS,
   INSIDER_SIGNAL_SIDE_SHORT,
   INSIDER_SIGNAL_WINDOW_OPTIONS,
+  INSIDER_BOTH_WAYS_MARK,
+  INSIDER_SIGNAL_NONE,
   insiderSideWords,
-  insiderSignalChips,
-  insiderSignalChipsText,
-  insiderSignalChipUnits,
   insiderSignalOnly,
   insiderSignalOnlyOptions,
   insiderSignalDetailLines,
@@ -49,9 +48,11 @@ import {
   insiderSignalsFiltered,
   insiderSignalsQueryFrom,
   insiderSignalsBarFit,
-  insiderSignalWhy,
+  insiderSignalRowFacts,
+  insiderSignalSortValue,
   type InsiderSignalColumn,
   type InsiderSignalColumnId,
+  type InsiderSignalFact,
   type InsiderSignalOnly,
 } from "./signals-model";
 
@@ -77,11 +78,11 @@ interface InsiderSignalsAnswer {
 
 /**
  * INS without a ticker: the companies whose insiders bought, or sold, their
- * own shares in the open market lately, ranked, each with why as chips (the
- * terminal: the same facts as text). Filters narrow by role, size, clusters,
- * new positions or whole stakes sold, and market value. Enter or a double
- * click opens the company's own INS in the same pane; the selected company's
- * insiders are listed under the table.
+ * own shares in the open market lately, ranked, each with why as columns:
+ * the lead insider's role, nth trade, size against usual and stake. Filters
+ * narrow by role, size, clusters, new positions or whole stakes sold, and
+ * market value. Enter or a double click opens the company's own INS in the
+ * same pane; the selected company's insiders are listed under the table.
  */
 export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSignalsViewProps) {
   const colors = useThemeColors();
@@ -147,15 +148,13 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   const rows = data?.rows ?? [];
   const sortedRows = useMemo(() => {
     const order = new Map(rows.map((row, index) => [row.ticker, index]));
-    const sign = sort.direction === "asc" ? 1 : -1;
+    // The shared sort: a missing fact last either way, the ranking's order between equals.
     return [...rows].sort((a, b) => (
-      sign * compareInsiderSignalRows(a, b, sort.columnId, dataSide) || order.get(a.ticker)! - order.get(b.ticker)!
+      compareSortValues(insiderSignalSortValue(a, sort.columnId), insiderSignalSortValue(b, sort.columnId), sort.direction)
+      || order.get(a.ticker)! - order.get(b.ticker)!
     ));
-  }, [dataSide, rows, sort]);
-  const columns = useMemo(
-    () => buildInsiderSignalColumns(width, rows, { side: dataSide, chips: !!nativePaneChrome }),
-    [dataSide, nativePaneChrome, rows, width],
-  );
+  }, [rows, sort]);
+  const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
 
   usePaneStatusFooter({
     registrationId: "insider:signals",
@@ -181,30 +180,14 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       case "ticker": return listingCell(row.ticker, colors, state.selected);
       case "company": return { text: row.company, color: colors.textMuted };
       case "score": return { text: String(row.score), value: row.score, color: colors.textBright };
-      case "why": {
-        const chips = insiderSignalChips(row, dataSide);
-        if (!chips) return { text: insiderSignalWhy(row, dataSide), color: colors.text };
-        const text = insiderSignalChipsText(chips);
-        // The terminal reads the same facts as text; CSV export reads the text either way.
-        if (!nativePaneChrome) return { text, color: colors.text };
-        return {
-          text,
-          content: (
-            // One line that wraps, clipped: the browser moves a chip that does not fit whole, and every
-            // chip after it, to the hidden line. Nothing wide stands first, so that goes for the first chip too.
-            <Box flexDirection="row" flexWrap="wrap" width="100%" minWidth={0} height={1} overflow="hidden">
-              <Box width={0} height={1} flexShrink={0} />
-              {insiderSignalChipUnits(chips).map((unit, unitIndex) => (
-                <Box key={unitIndex} flexDirection="row" gap={1} height={1} flexShrink={0} marginLeft={unit.gap}>
-                  {unit.chips.map((chip, chipIndex) => (
-                    <Badge key={`${chip.label}:${chipIndex}`} label={chip.label} tone={chip.tone} variant={chip.variant} />
-                  ))}
-                </Box>
-              ))}
-            </Box>
-          ),
-        };
+      case "role": {
+        const role = insiderSignalRowFacts(row).role;
+        return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.text };
       }
+      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected);
+      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected);
+      // The terminal sets content in the column's own cells; the desktop's cell aligns it.
+      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width);
       case "insiders": return { text: String(row.insiders), value: row.insiders, color: colors.text };
       // Every row is buying, or selling, drawn as INS draws a buy or a sale.
       case "value": return { text: formatSignalValue(row.value), value: row.value, color: dataSide === "sell" ? colors.negative : colors.positive };
@@ -336,11 +319,9 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       }}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
-      onHeaderClick={(columnId) => setSort((current) => {
-        const id = columnId as InsiderSignalColumnId;
-        if (current.columnId !== id) return { columnId: id, direction: insiderSignalFirstDirection(id) };
-        return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
-      })}
+      onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as InsiderSignalColumnId, {
+        firstDirection: insiderSignalFirstDirection,
+      }))}
       renderCell={renderCell}
       selectedTextOverridesCellColor
       showHorizontalScrollbar={false}
@@ -350,8 +331,53 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
 }
 
 /**
- * The selected company's insiders, largest first: name, role, dollars, last
- * trade day and the change in their holding (NEW, EXITED, +56%, -39%).
+ * A fact's colour, the roles the why chips had: the side's tone for a fact
+ * the ranking counts, a holding's change in its sign's tone, NEW and EXITED
+ * too; plain text for a figure it does not count; the research panes' muted
+ * placeholder for the dash.
+ */
+function factColor(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors): string {
+  if (fact.weight === "none") return colors.textMuted;
+  if (fact.weight === "plain") return colors.text;
+  return (fact.sign ?? (side === "sell" ? -1 : 1)) < 0 ? colors.negative : colors.positive;
+}
+
+/**
+ * A fact as figures right-aligned in their cell: NEW and EXITED bold, a stake
+ * counted on the net with the both-ways mark after it, muted. `width` sets it
+ * in that many cells (the terminal's table); without it the content grows to
+ * its track.
+ */
+function FactFigures({ fact, side, selected, width }: { fact: InsiderSignalFact; side: InsiderSignalSide; selected: boolean; width?: number }) {
+  const colors = useThemeColors();
+  const figure = fact.bothWays ? fact.text.slice(0, -(INSIDER_BOTH_WAYS_MARK.length + 1)) : fact.text;
+  return (
+    <Box flexDirection="row" height={1} overflow="hidden" justifyContent="flex-end" flexGrow={1} width={width}>
+      <Text fg={selected ? colors.selectedText : factColor(fact, side, colors)} attributes={fact.weight === "strong" ? TextAttributes.BOLD : TextAttributes.NONE}>{figure}</Text>
+      {fact.bothWays ? <Text fg={selected ? colors.selectedText : colors.textMuted}>{` ${INSIDER_BOTH_WAYS_MARK}`}</Text> : null}
+    </Box>
+  );
+}
+
+/** A fact's table cell: plain text in its colour, or the figures with the both-ways mark. */
+function factCell(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors, selected: boolean, width?: number): DataTableCell {
+  if (fact.weight === "none" && !fact.bothWays) return missingCell(colors);
+  const cell: DataTableCell = {
+    text: fact.text,
+    value: fact.value,
+    color: factColor(fact, side, colors),
+    ...(fact.weight === "strong" ? { attributes: TextAttributes.BOLD } : {}),
+  };
+  return fact.bothWays ? { ...cell, content: <FactFigures fact={fact} side={side} selected={selected} width={width} /> } : cell;
+}
+
+/** Below this the detail's names read as stubs: the size against usual goes, then the nth trade, as in the table. */
+const DETAIL_NAME_MIN = 12;
+
+/**
+ * The selected company's insiders, largest first, in the table's columns:
+ * name, role, nth trade, size against usual, stake, dollars and last trade
+ * day.
  */
 function InsiderSignalDetail({ row, side, width }: { row: InsiderSignalRow; side: InsiderSignalSide; width: number }) {
   const colors = useThemeColors();
@@ -360,25 +386,35 @@ function InsiderSignalDetail({ row, side, width }: { row: InsiderSignalRow; side
   if (!lines.length) return null;
   const inner = Math.max(1, width - 2);
   const fit = (texts: string[], label: string) => Math.max(displayWidth(label), ...texts.map(displayWidth));
-  const role = fit(lines.map((line) => line.role), "Role");
-  const value = fit(lines.map((line) => line.value), words.traded);
-  const last = fit(lines.map((line) => line.last), "Last");
-  const stake = fit(lines.map((line) => line.stake), "Stake");
+  const widths = {
+    role: fit(lines.map((line) => line.role), "Role"),
+    nth: fit(lines.map((line) => line.nth.text), "Nth"),
+    usual: fit(lines.map((line) => line.usual.text), "Vs Usual"),
+    stake: fit(lines.map((line) => line.stake.text), "Stake"),
+    value: fit(lines.map((line) => line.value), words.traded),
+    last: fit(lines.map((line) => line.last), "Last"),
+  };
+  const show = { usual: true, nth: true };
+  const figures = () => widths.role + widths.stake + widths.value + widths.last + DETAIL_GAP * 4
+    + (show.nth ? widths.nth + DETAIL_GAP : 0) + (show.usual ? widths.usual + DETAIL_GAP : 0);
+  for (const drop of ["usual", "nth"] as const) {
+    if (inner - figures() >= DETAIL_NAME_MIN) break;
+    show[drop] = false;
+  }
   // Names as wide as the longest, so the figures sit beside them; cut only when the pane is short of room.
-  const name = Math.max(8, Math.min(
-    fit(lines.map((line) => line.name), row.ticker),
-    inner - role - value - last - stake - DETAIL_GAP * 4,
-  ));
+  const name = Math.max(8, Math.min(fit(lines.map((line) => line.name), row.ticker), inner - figures()));
   const gridColumns: ColumnGridColumn[] = [
     { width: name },
-    { width: role, gapBefore: DETAIL_GAP },
-    { width: value, gapBefore: DETAIL_GAP, align: "right" },
-    { width: last, gapBefore: DETAIL_GAP, align: "right" },
-    { width: stake, gapBefore: DETAIL_GAP, align: "right" },
+    { width: widths.role, gapBefore: DETAIL_GAP },
+    ...(show.nth ? [{ width: widths.nth, gapBefore: DETAIL_GAP, align: "right" as const }] : []),
+    ...(show.usual ? [{ width: widths.usual, gapBefore: DETAIL_GAP, align: "right" as const }] : []),
+    { width: widths.stake, gapBefore: DETAIL_GAP, align: "right" },
+    { width: widths.value, gapBefore: DETAIL_GAP, align: "right" },
+    { width: widths.last, gapBefore: DETAIL_GAP, align: "right" },
   ];
-  const stakeColor = (text: string) => text === "--"
-    ? colors.textDim
-    : side === "sell" ? colors.negative : colors.positive;
+  const factText = (fact: InsiderSignalFact) => fact.weight === "strong" || fact.bothWays
+    ? { content: <FactFigures fact={fact} side={side} selected={false} /> }
+    : { text: fact.text, color: factColor(fact, side, colors) };
   return (
     <Box flexDirection="column" flexShrink={0}>
       <Divider />
@@ -391,16 +427,20 @@ function InsiderSignalDetail({ row, side, width }: { row: InsiderSignalRow; side
             [
               { text: row.ticker, color: colors.textBright },
               { text: "Role", color: colors.textDim },
+              ...(show.nth ? [{ text: "Nth", color: colors.textDim }] : []),
+              ...(show.usual ? [{ text: "Vs Usual", color: colors.textDim }] : []),
+              { text: "Stake", color: colors.textDim },
               { text: words.traded, color: colors.textDim },
               { text: "Last", color: colors.textDim },
-              { text: "Stake", color: colors.textDim },
             ],
             ...lines.map((line) => [
               { text: line.name, color: colors.text },
               { text: line.role, color: colors.textMuted },
+              ...(show.nth ? [factText(line.nth)] : []),
+              ...(show.usual ? [factText(line.usual)] : []),
+              factText(line.stake),
               { text: line.value, color: colors.text },
               { text: line.last, color: colors.textDim },
-              { text: line.stake, color: stakeColor(line.stake) },
             ]),
           ]}
         />

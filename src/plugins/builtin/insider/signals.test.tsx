@@ -16,13 +16,15 @@ import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
 import {
   buildInsiderSignalColumns,
-  insiderSignalChips,
-  insiderSignalChipsText,
-  insiderSignalChipUnits,
-  formatInsiderStakeChange,
+  formatInsiderStake,
+  formatInsiderUsual,
+  insiderSignalDetailLines,
+  insiderSignalRowFacts,
+  insiderSignalSortValue,
   insiderSignalsCoverageNotice,
   insiderSignalsQueryFrom,
   insiderSignalsBarFit,
+  type InsiderSignalColumnId,
 } from "./signals-model";
 
 const InsiderPane = insiderModule.panes![0]!.component;
@@ -95,8 +97,10 @@ afterEach(() => {
 test("ranks companies with the reasons; Enter opens one here and Esc comes back to the same row", async () => {
   await mount(async (window) => payload(window));
   let frame = tui.frame();
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+3 insiders, \$1\.2M in 14 days · CFO raised stake 56%/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO's 4th buy in 90 days, 4\.9x usual size/);
+  // A server from before the structured facts: the lead's role and how many others, the rest dashes.
+  expect(frame).toMatch(/SCORE ▼\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+--\s+--\s+--\s+3\s+\$1\.15M/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610k/);
   expect(frame).toContain("as of Oct 14, 2026");
   // Footers follow the conventions: no generic key hints for Enter or Esc.
   expect(frame).not.toContain("[Enter]");
@@ -179,17 +183,25 @@ test("the footer warns when days in the window were left unread by an outage", a
   expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
 });
 
-test("a narrow pane keeps the reasons and drops the company, then the counts", () => {
-  const ids = (width: number) => buildInsiderSignalColumns(width, ROWS).map((column) => column.id);
-  expect(ids(110)).toEqual(["ticker", "company", "score", "why", "insiders", "value", "lastBuy"]);
-  expect(ids(80)).toEqual(["ticker", "score", "why", "insiders", "value", "lastBuy"]);
-  expect(ids(60)).toEqual(["ticker", "score", "why", "value"]);
-  expect(buildInsiderSignalColumns(60, ROWS).find((column) => column.id === "why")!.width).toBeGreaterThanOrEqual(24);
-  // As chips, the count goes sooner: it says what the first chip says.
-  const chipIds = (width: number) => buildInsiderSignalColumns(width, ROWS, { chips: true }).map((column) => column.id);
-  expect(chipIds(110)).toEqual(ids(110));
-  expect(chipIds(80)).toEqual(["ticker", "score", "why", "value", "lastBuy"]);
-  expect(buildInsiderSignalColumns(80, ROWS, { chips: true }).find((column) => column.id === "why")!.width).toBeGreaterThanOrEqual(32);
+test("a narrow pane drops the size against usual, then the nth trade, then the company and the counts", () => {
+  const ids = (width: number, rows = BUYING) => buildInsiderSignalColumns(width, rows).map((column) => column.id);
+  const all: InsiderSignalColumnId[] = ["ticker", "company", "score", "role", "nth", "usual", "stake", "insiders", "value", "lastBuy"];
+  expect(ids(140)).toEqual(all);
+  expect(ids(100)).toEqual(all);
+  expect(ids(90)).toEqual(all.filter((id) => id !== "usual"));
+  // 80 cells, the terminal's 80 columns and the desktop at 640 px: the company stays, the lead's figures without the history.
+  expect(ids(80)).toEqual(["ticker", "company", "score", "role", "stake", "insiders", "value", "lastBuy"]);
+  expect(ids(70)).toEqual(["ticker", "score", "role", "stake", "insiders", "value", "lastBuy"]);
+  expect(ids(56)).toEqual(["ticker", "score", "role", "stake", "value", "lastBuy"]);
+  expect(ids(50)).toEqual(["ticker", "score", "role", "stake", "value"]);
+  // Without the company the role takes the room left; with it the company does.
+  expect(buildInsiderSignalColumns(70, BUYING).find((column) => column.id === "role")).toMatchObject({ flexGrow: 1 });
+  expect(buildInsiderSignalColumns(140, BUYING).find((column) => column.id === "company")).toMatchObject({ flexGrow: 1 });
+  // Figures sit right, words left, in the side's words.
+  expect(buildInsiderSignalColumns(140, SELLING, { side: "sell" }).map((column) => [column.label, column.align])).toEqual([
+    ["Ticker", "left"], ["Company", "left"], ["Score", "right"], ["Role", "left"], ["Nth", "right"], ["Vs Usual", "right"],
+    ["Stake", "right"], ["Sellers", "right"], ["Sold", "right"], ["Last Sale", "right"],
+  ]);
 });
 
 // The same companies as a server with sides and structured signals sends them.
@@ -205,12 +217,13 @@ const BUYING: InsiderSignalRow[] = [
       { kind: "stake", value: 56, text: "+56%", insider: CFO },
     ],
     buyers: [
-      { ...CEO, value: 496_000, buys: 1, lastBuy: "2026-10-01", shares: 40_000, stakeChangePct: 12, newPosition: false, exited: false },
-      { ...CFO, value: 354_000, buys: 1, lastBuy: "2026-10-09", shares: 30_000, stakeChangePct: 56, newPosition: false, exited: false },
-      { ...DIRECTOR, value: 302_500, buys: 1, lastBuy: "2026-10-14", shares: 25_000, stakeChangePct: null, newPosition: true, exited: false },
+      { ...CEO, value: 496_000, buys: 1, lastBuy: "2026-10-01", shares: 40_000, stakeChangePct: 12, newPosition: false, exited: false, repeatBuys: 1, usualRatio: 1.4 },
+      { ...CFO, value: 354_000, buys: 1, lastBuy: "2026-10-09", shares: 30_000, stakeChangePct: 56, newPosition: false, exited: false, repeatBuys: 3, usualRatio: 2.8 },
+      { ...DIRECTOR, value: 302_500, buys: 1, lastBuy: "2026-10-14", shares: 25_000, stakeChangePct: null, newPosition: true, exited: false, repeatBuys: 1, usualRatio: null },
     ],
   },
   {
+    // A server from before the buyer's own figures: the CEO's are read from the why facts.
     ...ROWS[1]!,
     whySignals: [
       { kind: "repeat", value: 4, text: "4th buy", insider: CEO },
@@ -224,6 +237,7 @@ const BUYING: InsiderSignalRow[] = [
       { kind: "size", value: 720_000, text: "$720k", insider: DIRECTOR },
       { kind: "new", value: 1, text: "NEW", insider: DIRECTOR },
     ],
+    buyers: [{ ...DIRECTOR, value: 720_000, buys: 1, lastBuy: "2026-10-14", shares: 50_000, stakeChangePct: null, newPosition: true, exited: false, repeatBuys: 1, usualRatio: null }],
   },
 ];
 const SELLING: InsiderSignalRow[] = [{
@@ -239,99 +253,103 @@ const SELLING: InsiderSignalRow[] = [{
     { kind: "exited", value: 1, text: "EXITED", insider: DIRECTOR },
     { kind: "size", value: 4_200_000, text: "$4.2M", insider: DIRECTOR },
   ],
-  buyers: [{ ...DIRECTOR, value: 4_200_000, buys: 2, lastBuy: "2026-10-13", shares: 80_000, stakeChangePct: -100, newPosition: false, exited: true }],
+  buyers: [{ ...DIRECTOR, value: 4_200_000, buys: 2, lastBuy: "2026-10-13", shares: 80_000, stakeChangePct: -100, newPosition: false, exited: true, repeatBuys: 2, usualRatio: 140 }],
+}, {
+  ...ROWS[1]!,
+  ticker: "WWIM",
+  company: "Wide World Importers",
+  score: 40,
+  reasons: ["CFO sold $900k"],
+  insiders: 2,
+  value: 900_000,
+  whySignals: [{ kind: "both", value: 1, text: "both ways", insider: CFO }],
+  // Bought and sold: counted on the net, so no nth sale or size against usual, and the stake carries the mark.
+  buyers: [
+    { ...CFO, value: 700_000, buys: 3, lastBuy: "2026-10-12", shares: 20_000, stakeChangePct: -22, newPosition: false, exited: false, twoWay: true, repeatBuys: null, usualRatio: null },
+    { ...CEO, value: 200_000, buys: 1, lastBuy: "2026-10-10", shares: 5_000, stakeChangePct: -4, newPosition: false, exited: false, repeatBuys: 1, usualRatio: 0.6 },
+  ],
 }];
 async function sided(window: number, params: CloudInsiderSignalsParams): Promise<InsiderSignalsPayload> {
   const side = params.side ?? "buy";
   return { ...payload(window, side === "sell" ? SELLING : BUYING), side, marketCaps: "unavailable" };
 }
 
-test("why reads as chips' facts: the insiders together first, then each one's role and what they did; dollars stay in their column", () => {
-  const text = (row: InsiderSignalRow, side: "buy" | "sell" = "buy") => insiderSignalChipsText(insiderSignalChips(row, side)!);
-  expect(text(BUYING[0]!)).toBe("3 insiders · CFO +56%");
-  expect(text(BUYING[1]!)).toBe("CEO 4th buy 4.9x usual");
-  expect(text(BUYING[2]!)).toBe("Director NEW");
-  expect(text(SELLING[0]!, "sell")).toBe("Director EXITED");
-  // The cluster leads, whatever its rank, and an insider's facts stay together after their strongest one.
-  expect(text({
-    ...BUYING[0]!,
-    whySignals: [
-      { kind: "stake", value: 58, text: "+58%", insider: DIRECTOR },
-      { kind: "cluster", value: 2, text: "2 insiders", insider: null },
-      { kind: "repeat", value: 2, text: "2nd buy", insider: DIRECTOR },
-    ],
-  })).toBe("2 insiders · Director +58% 2nd buy");
-  // Several insiders without a cluster open with how many; two are named, the detail strip lists the rest.
-  expect(text({
-    ...BUYING[0]!,
-    whySignals: [
-      { kind: "stake", value: -18, text: "-18%", insider: CFO },
-      { kind: "repeat", value: 2, text: "2nd sale", insider: DIRECTOR },
-      { kind: "exited", value: 1, text: "EXITED", insider: CEO },
-    ],
-  }, "sell")).toBe("3 insiders · CFO -18% · Director 2nd sale");
-  // An insider who traded both ways, and a raise above +300% as the holding's multiple, even from a server that says the percent.
-  expect(text({
-    ...BUYING[1]!,
-    whySignals: [
-      { kind: "stake", value: 500, text: "+500%", insider: CEO },
-      { kind: "both", value: 1, text: "both ways", insider: CEO },
-    ],
-  })).toBe("CEO 6x stake both ways");
-  expect(insiderSignalChips({ ...BUYING[1]!, whySignals: [{ kind: "both", value: 1, text: "both ways", insider: CEO }] }, "sell")![1]).toMatchObject({ tone: "neutral" });
-  // A row whose only reason is its dollars names who traded.
-  expect(text({ ...BUYING[1]!, whySignals: [{ kind: "size", value: 610_000, text: "$610k", insider: CEO }] })).toBe("CEO");
-  expect(text({ ...BUYING[0]!, whySignals: [{ kind: "size", value: 1_152_500, text: "$1.2M", insider: null }] })).toBe("3 insiders");
-  // Tones: the side's colour for facts, solid for NEW and EXITED, the accent for a cluster, neutral roles.
-  expect(insiderSignalChips(BUYING[0]!, "buy")!.map((chip) => [chip.label, chip.tone, chip.variant])).toEqual([
-    ["3 insiders", "accent", "subtle"], ["CFO", "neutral", "subtle"], ["+56%", "positive", "subtle"],
-  ]);
-  expect(insiderSignalChips(SELLING[0]!, "sell")!.map((chip) => [chip.label, chip.tone, chip.variant])).toEqual([
-    ["Director", "neutral", "subtle"], ["EXITED", "negative", "solid"],
-  ]);
-  // A server without them: the reasons.
-  expect(insiderSignalChips(ROWS[0]!, "buy")).toBeNull();
-  // The desktop's row wraps units whole: a role always goes with its first fact, groups stand two cells apart.
-  const chips = insiderSignalChips({
-    ...BUYING[0]!,
-    whySignals: [
-      { kind: "cluster", value: 3, text: "3 insiders", insider: null },
-      { kind: "stake", value: 58, text: "+58%", insider: DIRECTOR },
-      { kind: "repeat", value: 2, text: "2nd buy", insider: DIRECTOR },
-    ],
-  }, "buy")!;
-  expect(insiderSignalChipUnits(chips).map((unit) => [unit.chips.map((chip) => chip.label), unit.gap])).toEqual([
-    [["3 insiders"], 0], [["Director", "+58%"], 2], [["2nd buy"], 1],
-  ]);
-  expect(insiderSignalChipUnits(insiderSignalChips(BUYING[1]!, "buy")!).map((unit) => unit.chips.map((chip) => chip.label)))
-    .toEqual([["CEO", "4th buy"], ["4.9x usual"]]);
-  // A role with nothing else to say stands alone.
-  expect(insiderSignalChipUnits(insiderSignalChips({ ...BUYING[1]!, whySignals: [{ kind: "size", value: 610_000, text: "$610k", insider: CEO }] }, "buy")!))
-    .toEqual([{ chips: [expect.objectContaining({ label: "CEO" })], gap: 0 }]);
-  // A holding's change: a decimal under 1%, the multiple above +300%, nothing said without balances.
-  const buyer = SELLING[0]!.buyers[0]!;
-  expect([-100, -38.6, -0.36, 0, null, 300, 350, 500, 2415, 70_821.5].map((stakeChangePct) => formatInsiderStakeChange({ ...buyer, exited: false, stakeChangePct })))
+test("why reads as columns: the lead insider's role and how many others, their nth trade, size against usual and stake", () => {
+  const facts = (row: InsiderSignalRow) => {
+    const { role, nth, usual, stake } = insiderSignalRowFacts(row);
+    return [role, nth.text, usual.text, stake.text];
+  };
+  // The insider with the most dollars leads; the others are a count.
+  expect(facts(BUYING[0]!)).toEqual(["CEO +2", "1st", "1.4x", "+12%"]);
+  // An older server's buyer has no figures: the lead's why facts say them.
+  expect(facts(BUYING[1]!)).toEqual(["CEO", "4th", "4.9x", "--"]);
+  expect(facts(BUYING[2]!)).toEqual(["Director", "1st", "--", "NEW"]);
+  expect(facts(SELLING[0]!)).toEqual(["Director", "2nd", "100x+", "EXITED"]);
+  // Traded both ways: no nth sale or size against usual, the stake marked.
+  expect(facts(SELLING[1]!)).toEqual(["CFO +1", "--", "--", "-22% \u00b1"]);
+  // A server without structured signals or buyer figures: dashes, the role still said.
+  expect(facts(ROWS[0]!)).toEqual(["CEO +2", "--", "--", "--"]);
+  expect(facts({ ...ROWS[0]!, buyers: [] })).toEqual(["--", "--", "--", "--"]);
+
+  // Tones keep the chips' roles: what the ranking counts in the side's colour, NEW and EXITED strong, a lone or small figure plain.
+  const weights = (row: InsiderSignalRow) => {
+    const { nth, usual, stake } = insiderSignalRowFacts(row);
+    return [nth.weight, usual.weight, stake.weight];
+  };
+  expect(weights(BUYING[0]!)).toEqual(["plain", "plain", "signal"]);
+  expect(weights(BUYING[1]!)).toEqual(["signal", "signal", "none"]);
+  expect(weights(SELLING[0]!)).toEqual(["signal", "signal", "strong"]);
+
+  // Figures: a size to a tenth, whole from 10x, capped at 100x+; a holding's change with a decimal under 1% and the multiple above +300%.
+  expect([0.04, 0.6, 2, 2.84, 9.96, 12.4, 99.9, 100, 140].map(formatInsiderUsual))
+    .toEqual(["<0.1x", "0.6x", "2x", "2.8x", "10x", "12x", "100x", "100x+", "100x+"]);
+  expect([-100, -38.6, -0.36, 0, null, 300, 350, 500, 2415, 70_821.5].map((pct) => formatInsiderStake(pct)))
     .toEqual(["-100%", "-39%", "-0.4%", "--", "--", "+300%", "4.5x", "6x", "25x", "709x"]);
-  expect(formatInsiderStakeChange(buyer)).toBe("EXITED");
+  expect(formatInsiderStake("NEW", true)).toBe("NEW \u00b1");
+
+  // The detail strip says the same for each insider, largest first.
+  expect(insiderSignalDetailLines(BUYING[0]!).map((line) => [line.name, line.role, line.nth.text, line.usual.text, line.stake.text, line.value]))
+    .toEqual([
+      ["Ana Rivera", "CEO", "1st", "1.4x", "+12%", "$496k"],
+      ["Li Chen", "CFO", "3rd", "2.8x", "+56%", "$354k"],
+      ["Ben Okafor", "Director", "1st", "--", "NEW", "$302.5k"],
+    ]);
+});
+
+test("every column sorts: NEW above any raise, EXITED as a whole stake, the dash last either way, the role by its count", () => {
+  const order = (rows: InsiderSignalRow[], column: Parameters<typeof insiderSignalSortValue>[1]) =>
+    rows.map((row) => insiderSignalSortValue(row, column));
+  expect(order(BUYING, "stake")).toEqual([12, null, Number.MAX_SAFE_INTEGER]);
+  expect(order(BUYING, "nth")).toEqual([1, 4, 1]);
+  expect(order(BUYING, "usual")).toEqual([1.4, 4.9, null]);
+  expect(order(SELLING, "stake")).toEqual([100, 22]);
+  const role = (insiders: number) => insiderSignalSortValue({ ...BUYING[0]!, insiders }, "role") as string;
+  expect([role(13), role(1), role(3)].sort()).toEqual([role(1), role(3), role(13)]);
 });
 
 test("Buying and Selling switch in the query bar, with the side's own words, and the selected company's insiders under the table", async () => {
   await mount(sided, 140, 24);
   let frame = tui.frame();
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+3 insiders · CFO \+56%/);
-  expect(frame).toMatch(/BUYERS\s+BOUGHT\s+LAST BUY/i);
-  // The first company is selected: its insiders, what each bought and did to their holding.
-  expect(frame).toMatch(/NWBI\s+Role\s+Bought\s+Last\s+Stake/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+\$496k\s+10\/1\/26\s+\+12%/);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+\$302\.5k\s+10\/14\/26\s+NEW/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610k/);
+  expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720k/);
+  // No why column: its facts are the columns.
+  expect(frame).not.toMatch(/\bWHY\b/);
+  // The first company is selected: its insiders in the table's columns, largest first.
+  expect(frame).toMatch(/NWBI\s+Role\s+Nth\s+Vs Usual\s+Stake\s+Bought\s+Last/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496k\s+10\/1\/26/);
+  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+10\/9\/26/);
+  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+10\/14\/26/);
 
   await tui.clickFrameText("Selling");
   await settle();
   expect(asked.at(-1)).toEqual({ side: "sell", window: 30, limit: 100 });
   frame = tui.frame();
-  expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director EXITED/);
-  expect(frame).toMatch(/SELLERS\s+SOLD\s+LAST SALE/i);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+\$4\.2M\s+10\/13\/26\s+EXITED/);
+  expect(frame).toMatch(/ROLE\s+NTH\s+VS USUAL\s+STAKE\s+SELLERS\s+SOLD\s+LAST SALE/);
+  expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director\s+2nd\s+100x\+\s+EXITED\s+1\s+\$4\.2M/);
+  // Bought and sold: counted on the net, marked, with no nth sale or size against usual.
+  expect(frame).toMatch(/WWIM\s+Wide World Importers\s+40\s+CFO \+1\s+--\s+--\s+-22% \u00b1\s+2\s+\$900k/);
+  expect(frame).toMatch(/Ben Okafor\s+Director\s+2nd\s+100x\+\s+EXITED\s+\$4\.2M\s+10\/13\/26/);
   // The position filter says what it does on this side.
   expect(frame).toContain("Exited");
   expect(frame).not.toMatch(/\bNew\b/);
@@ -364,10 +382,25 @@ test("the cap filter shows only where the server stores market values", async ()
   expect(tui.frame()).toContain("Cap");
 });
 
+test("an 80-column terminal keeps the role and stake, without the size against usual or the nth trade", async () => {
+  await mount(sided, 80, 24);
+  let frame = tui.frame();
+  expect(frame).toMatch(/TICKER\s+COMPANY\s+SCORE ▼\s+ROLE\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+10\/14\/26/);
+  // The detail keeps every column while the names fit.
+  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354k\s+10\/9\/26/);
+  // The keyboard is as before: the arrows move the selection, the detail follows.
+  await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
+  await settle();
+  frame = tui.frame();
+  expect(frame).toMatch(/CTSO\s+Role\s+Nth\s+Vs Usual\s+Stake/);
+  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610k/);
+});
+
 test("a short pane leaves the insiders out and keeps the rows", async () => {
   await mount(sided, 140, 14);
   expect(tui.frame()).toContain("Northwind Biologics");
-  expect(tui.frame()).not.toMatch(/Role\s+Bought\s+Last\s+Stake/);
+  expect(tui.frame()).not.toMatch(/Role\s+Nth\s+Vs Usual\s+Stake/);
 });
 
 

@@ -43,6 +43,18 @@ export interface InsiderSignalBuyer {
   newPosition?: boolean;
   /** Sold every share and unit the forms report. */
   exited?: boolean;
+  /**
+   * The insider's trade days in the 90 days ending on their last, the days
+   * before the window included: their nth buy (sale), 1 for a lone day. Null
+   * when they traded both ways. Left out by servers that predate it.
+   */
+  repeatBuys?: number | null;
+  /**
+   * Their largest day in the window against their usual size, to a tenth and
+   * at most 100 ("100x+"); null without enough history, or when they traded
+   * both ways. Left out by servers that predate it.
+   */
+  usualRatio?: number | null;
   /** Bought and sold in the window: the row counts the net, on the side it falls. */
   twoWay?: boolean;
 }

@@ -26,15 +26,23 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { InsiderSignalRoleGroup, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import { DEFAULT_INSIDER_SIGNALS_QUERY, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
 import {
-  formatInsiderStakeChange,
+  formatInsiderNth,
+  formatInsiderStake,
+  formatInsiderUsual,
   formatSignalDay,
   formatSignalValue,
   INSIDER_SIGNAL_CAP_OPTIONS,
   INSIDER_SIGNALS_TITLE,
+  insiderNth,
   insiderSideWords,
+  insiderSignalLead,
+  insiderSignalRoleText,
   insiderSignalsEmptyTitle,
   insiderSignalsFiltered,
   insiderSignalWhy,
+  insiderStakeFact,
+  insiderStakeValue,
+  insiderUsualRatio,
 } from "./signals-model";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
@@ -84,19 +92,35 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
 ];
 
+const figureOrDash = (value: unknown) => (typeof value === "number" ? value : null);
+
 /**
  * The ranking without a ticker: the pane's columns in the side's words, why
- * as the chips' facts in text, then each row's insiders under it with what
- * their holding did.
+ * as the lead insider's role, nth trade, size against usual and stake, then
+ * each row's insiders under it with what their holding did. On a narrow
+ * table the size against usual moves under the row first, then the nth
+ * trade, the company and the filing day, as the pane drops them.
  */
 function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
   const words = insiderSideWords(side);
   return [
     { key: "ticker", header: "Ticker" },
-    // Why is the point: the company gives way first, and on a narrow table moves under the row before why is cut.
-    { key: "company", header: "Company", stackPriority: 2 },
+    // The company is cut to 12 at the least, as the pane cuts it, and then moves under the row.
+    { key: "company", header: "Company", minWidth: 12, stackPriority: 2 },
     { key: "score", header: "Score", align: "right" },
-    { key: "why", header: "Why", minWidth: 46 },
+    { key: "role", header: "Role", shrink: false },
+    { key: "nth", header: "Nth", align: "right", stackPriority: 3, format: (value) => formatInsiderNth(figureOrDash(value)) },
+    { key: "vsUsual", header: "Vs Usual", align: "right", stackPriority: 4, format: (value) => formatInsiderUsual(figureOrDash(value)) },
+    {
+      key: "stake",
+      header: "Stake",
+      align: "right",
+      shrink: false,
+      format: (value, row) => formatInsiderStake(
+        typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
+        row.stakeBothWays === true,
+      ),
+    },
     { key: "insiders", header: words.insiders, align: "right" },
     { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
     { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
@@ -105,28 +129,41 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
   ];
 }
 
-function signalRows(payload: InsiderSignalsPayload, side: InsiderSignalSide): HeadlessPaneRow[] {
-  return payload.rows.map((row) => ({
-    ticker: row.ticker,
-    company: row.company,
-    score: row.score,
-    why: insiderSignalWhy(row, side),
-    reasons: row.reasons,
-    whySignals: row.whySignals ?? null,
-    insiders: row.insiders,
-    buys: row.buys,
-    value: row.value,
-    shares: row.shares,
-    firstBuy: row.firstBuy,
-    lastBuy: row.lastBuy,
-    filingDate: row.lastFiled,
-    marketCap: row.marketCap ?? null,
-    buyers: row.buyers.map((buyer) => {
-      const stake = formatInsiderStakeChange(buyer);
-      return `${formatInsiderName(buyer.name)} (${buyer.role}) ${formatSignalValue(buyer.value)}${stake === "--" ? "" : ` ${stake}`}`;
-    }).join("; "),
-    signals: row.signals,
-  }));
+/**
+ * A row's fields: the columns' figures (the lead insider's nth trade, size
+ * against usual and stake as numbers, NEW or EXITED), and `why` as the
+ * server's sentences for the exports that read it.
+ */
+function signalRows(payload: InsiderSignalsPayload): HeadlessPaneRow[] {
+  return payload.rows.map((row) => {
+    const lead = insiderSignalLead(row);
+    return {
+      ticker: row.ticker,
+      company: row.company,
+      score: row.score,
+      role: insiderSignalRoleText(row),
+      nth: lead ? insiderNth(lead, row) : null,
+      vsUsual: lead ? insiderUsualRatio(lead, row) : null,
+      stake: lead ? insiderStakeValue(lead) : null,
+      stakeBothWays: lead?.twoWay === true,
+      why: insiderSignalWhy(row),
+      reasons: row.reasons,
+      whySignals: row.whySignals ?? null,
+      insiders: row.insiders,
+      buys: row.buys,
+      value: row.value,
+      shares: row.shares,
+      firstBuy: row.firstBuy,
+      lastBuy: row.lastBuy,
+      filingDate: row.lastFiled,
+      marketCap: row.marketCap ?? null,
+      buyers: row.buyers.map((buyer) => {
+        const stake = insiderStakeFact(buyer);
+        return `${formatInsiderName(buyer.name)} (${buyer.role}) ${formatSignalValue(buyer.value)}${stake.sort == null ? "" : ` ${stake.text}`}`;
+      }).join("; "),
+      signals: row.signals,
+    };
+  });
 }
 
 const SIGNAL_OPTION_STATE = (key: string) => ({ pluginId: "ticker-research", key: `insider:signals:${key}` });
@@ -314,7 +351,7 @@ export function createInsiderHeadless(
         const side = payload.side ?? "buy";
         return {
           columns: signalColumns(side),
-          rows: signalRows(payload, side),
+          rows: signalRows(payload),
           ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
           metadata: {
             side,
