@@ -17,6 +17,7 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
 
 /**
@@ -54,7 +55,7 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   trailingPE: "P/E",
   forwardPE: "FWD P/E",
   enterpriseToRevenue: "EV/REV",
-  dividendYieldPercent: "FWD DIV%",
+  dividendYieldPercent: "DIV YLD%",
   revenueGrowthPercent: "FY REV GR%",
   earningsGrowthPercent: "FY EARN GR%",
   grossMarginPercent: "FY GROSS MGN%",
@@ -127,6 +128,19 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
 }
 
+/**
+ * A row's dividend yield basis, in the words `ticker` and `DVD` use. Gloom
+ * Cloud serves each row's statistics yield as it is stated, forward for most
+ * companies and trailing where only that is stated, and names it in the
+ * metric's reason; a row whose basis is not stated gets none.
+ */
+export function dividendYieldBasis(metric: ScreenMetric): string | null {
+  if (metric.value == null) return null;
+  if (/^forward yield\b/i.test(metric.reason ?? "")) return LATEST_DISTRIBUTION;
+  if (/^trailing yield\b/i.test(metric.reason ?? "")) return TRAILING_DIVIDEND_BASIS;
+  return null;
+}
+
 /** Source observation date, or the collection date when the provider gives none. */
 export function metricDate(metric: ScreenMetric): { text: string; collected: boolean } {
   if (metric.asOf) return { text: metric.asOf.slice(0, 10), collected: false };
@@ -194,7 +208,7 @@ export const screenLabel = (field: string) =>
     averageVolume20d: "20D average volume",
     changePercent: "Change %",
     daysToCover: "Days to cover",
-    dividendYieldPercent: "Fwd dividend yield %",
+    dividendYieldPercent: "Dividend yield %",
     xPostsPerDay: "X posts per day",
     xPostsVsMedian: "X posts vs median",
     wikiViewsPerDay: "Wikipedia views per day",
