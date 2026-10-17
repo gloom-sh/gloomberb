@@ -228,6 +228,84 @@ describe("ticker-search utilities", () => {
     expect(findExactTickerSearchMatch([{ label: "JPY/USD" }], "JPY=X")).toBeNull();
   });
 
+  describe("a commodity typed by its name", () => {
+    // /market/search, captured 2026-10-17: the server leads with the benchmark future and tags it with the names it answers to.
+    const future = (symbol: string, name: string, exchange: string, searchAliases: string[]) =>
+      makeSearchResult(symbol, name, { exchange, type: "FUTURE", currency: "USD", searchAliases });
+    const stock = (symbol: string, name: string, exchange: string, type = "Common Stock") => makeSearchResult(symbol, name, { exchange, type });
+    const gold = future("GC=F", "Gold", "CMX", ["Gold"]);
+    const wti = future("CL=F", "WTI Crude Oil", "NYM", ["WTI Crude Oil", "WTI", "WTI Crude", "Crude Oil", "Crude", "Oil"]);
+    const brent = future("BZ=F", "Brent Crude Oil", "NYM", ["Brent Crude Oil", "Brent", "Brent Crude", "Crude Oil", "Crude", "Oil"]);
+    const build = (query: string, providerResults: InstrumentSearchResult[], totalLimit = 30) =>
+      buildTickerSearchCandidates({ query, tickers: new Map(), providerResults, totalLimit });
+    const order = (query: string, providerResults: InstrumentSearchResult[]) =>
+      build(query, providerResults).map((candidate) => `${candidate.label}:${candidate.exchangeLabel}`);
+
+    test("the benchmark future is the first result, ahead of the ETCs, warrants and companies sharing the word", () => {
+      const bz = future("BZ=F", "Brent Crude Oil", "NYM", ["Brent Crude Oil", "Brent", "Brent Crude", "Crude Oil", "Crude", "Oil"]);
+      const brentRows = [bz,
+        stock("BRENT", "CoreShares Brent Oil ETC", "BIT", "ETF"), stock("BRENT", "Leonteq Brent Crude Oil ETP", "SWX", "ETF"),
+        stock("F96878", "Brent Crude Oil Future", "BIT", "Warrant"), stock("F96879", "Brent Crude Oil Future Call Warrant", "BIT", "Warrant")];
+      expect(order("brent", brentRows)[0]).toBe("BZ=F:NYM");
+      // Wherever the server put it.
+      expect(order("brent", [...brentRows.slice(1), bz])[0]).toBe("BZ=F:NYM");
+
+      const wtiRows = [wti, stock("WTI", "WTI Oil Exchange Traded Commodity", "LSE", "ETF"), stock("WTI", "W&T Offshore Inc", "NYSE"),
+        stock("WTII", "Water Technologies International,Inc.", "OTC")];
+      // The exact tickers follow in the order the server gave them.
+      expect(order("wti", wtiRows).slice(0, 3)).toEqual(["CL=F:NYM", "WTI:LSE", "WTI:NYSE"]);
+
+      const goldRows = [gold, stock("GOLD", "Gold.com, Inc.", "NYSE"), stock("GOLD", "GoldMining Inc.", "TSX"),
+        stock("GOLD", "Amundi Physical Gold ETC", "AMS", "ETF")];
+      expect(order("gold", goldRows).slice(0, 2)).toEqual(["GC=F:CMX", "GOLD:NYSE"]);
+      // The category says what it is: a derivative, listed first, and the company stays its listing.
+      expect(build("gold", goldRows).map((candidate) => [candidate.label, candidate.category]).slice(0, 2))
+        .toEqual([["GC=F", "Funds & Derivatives"], ["GOLD", "Primary Listing"]]);
+
+      const silverRows = [future("SI=F", "Silver", "CMX", ["Silver"]), stock("SILVER", "Aditya Birla Sun Life Silver ETF", "NSE", "ETF"),
+        stock("SLV", "iShares Silver Trust", "ARCA", "ETF")];
+      expect(order("silver", silverRows)[0]).toBe("SI=F:CMX");
+
+      const gasRows = [future("NG=F", "Natural Gas", "NYM", ["Natural Gas", "NatGas", "Nat Gas"]),
+        stock("NGS", "Natural Gas Services Group, Inc.", "NYSE"), stock("BNQ9", "Natural Gas ETC BNP Paribas", "XETRA", "ETF")];
+      for (const query of ["natural gas", "Natural Gas", "natgas", "nat gas"]) expect(order(query, gasRows)[0], query).toBe("NG=F:NYM");
+    });
+
+    test("oil and crude lead with WTI, then Brent, in the order the server sent them", () => {
+      const rows = [wti, brent, stock("OIL", "Oil India Limited", "BSE"), stock("OIL", "Onyx Spot Return Crude Oil", "LSE", "ETF")];
+      for (const query of ["oil", "OIL", "crude", "Crude Oil", "crude oil futures"]) {
+        expect(order(query, rows).slice(0, 2), query).toEqual(["CL=F:NYM", "BZ=F:NYM"]);
+        expect(order(query, [brent, wti, ...rows.slice(2)]).slice(0, 2), query).toEqual(["BZ=F:NYM", "CL=F:NYM"]);
+      }
+      expect(order("oil", rows).slice(2)).toEqual(expect.arrayContaining(["OIL:BSE"]));
+    });
+
+    test("an exact ticker keeps its company: AAPL is not a commodity, and GOLD still lists Gold.com right behind the metal", () => {
+      const apple = [stock("AAPL", "Apple Inc.", "NASDAQ"), stock("APLE", "Apple Hospitality REIT, Inc.", "NYSE")];
+      expect(order("AAPL", apple)).toEqual(["AAPL:NASDAQ"]);
+      expect(order("apple", [...apple, gold])).toEqual(["AAPL:NASDAQ", "APLE:NYSE"]);
+      const goldRows = [gold, stock("GOLD", "Gold.com, Inc.", "NYSE"), stock("GOLD", "GoldMining Inc.", "TSX")];
+      const candidates = build("GOLD", goldRows);
+      expect(candidates.map((candidate) => candidate.label).slice(0, 2)).toEqual(["GC=F", "GOLD"]);
+      expect(candidates.find((candidate) => candidate.label === "GOLD")).toMatchObject({ detail: expect.stringContaining("Gold.com"), category: "Primary Listing" });
+    });
+
+    test("only the name itself asks for the future: not another word, another kind of row, or a future typed by its symbol", () => {
+      const rows = [stock("GDX", "VanEck Gold Miners ETF", "ARCA", "ETF"), stock("GOLD", "Gold.com, Inc.", "NYSE"), gold];
+      for (const query of ["gold miners", "gold etf", "gold stock", "gol"]) {
+        expect(order(query, rows)[0], query).not.toBe("GC=F:CMX");
+      }
+      expect(order("GC=F", rows)).toEqual(["GC=F:CMX"]);
+      expect(order("gold futures", rows)[0]).toBe("GC=F:CMX");
+      expect(order("gold FUT", rows)).toEqual(["GC=F:CMX"]);
+      // A fund sent with the same name is not a future, and a server that sends no names changes nothing.
+      const mislabeled = makeSearchResult("GLD", "SPDR Gold Shares", { exchange: "ARCA", type: "ETF", searchAliases: ["Gold"] });
+      expect(order("gold", [mislabeled, stock("GOLD", "Gold.com, Inc.", "NYSE")])[0]).toBe("GOLD:NYSE");
+      const older = makeSearchResult("GC=F", "Gold", { exchange: "CMX", type: "FUTURE" });
+      expect(order("gold", [stock("GOLD", "Gold.com, Inc.", "NYSE"), older])).toEqual(["GOLD:NYSE", "GC=F:CMX"]);
+    });
+  });
+
   describe("an index typed by its code", () => {
     // /market/search?q=IBOV, captured 2026-10-12: the server leads with the index and tags it with the codes it answers to.
     const ibovespa = makeSearchResult("^BVSP", "Ibovespa", { exchange: "B3", type: "INDEX", searchAliases: ["IBOV", "IBOV Index"] });

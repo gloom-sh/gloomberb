@@ -82,6 +82,20 @@ test("an index typed by its code is the exact match; the fund named for it and a
   ]);
 });
 
+test("a commodity typed by its name is the exact match with its benchmark future first; a name search is not", () => {
+  const rows = (query: string) => mergeTickerSearchResultItems(query, [
+    { ...resultItem("future", "GC=F", "CMX", "search"), detail: "Gold", category: "Funds & Derivatives", instrumentType: "FUTURE", searchAliases: ["GC=F", "Gold"] },
+    { ...resultItem("company", "GOLD", "NYSE", "search"), detail: "Gold.com, Inc.", category: "Primary Listing", instrumentType: "Common Stock", searchAliases: ["GOLD"] },
+  ], []);
+  for (const query of ["gold", "Gold", "GOLD"]) {
+    expect(rows(query).map((item) => [item.id, item.category]), query).toEqual([["future", "Exact Match"], ["company", "Exact Match"]]);
+  }
+  expect(rows("gold futures").map((item) => [item.id, item.category])).toEqual([["future", "Exact Match"], ["company", "Primary Listing"]]);
+  expect(rows("gold miners").map((item) => item.category)).toEqual(["Funds & Derivatives", "Primary Listing"]);
+  const pane: ResultItem = { id: "pane:news", label: "News", detail: "", category: "Panes", kind: "action", action: () => {} };
+  expect(mergePlainRootTickerResults("gold", rows("gold"), [pane]).map((item) => item.id)).toEqual(["future", "company", "pane:news"]);
+});
+
 test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
   const pane: ResultItem = {
     id: "pane:news",
