@@ -39,9 +39,7 @@ export async function handleDesktopWorkspaceRequest(
       return null;
     case "desktop.replaceDetachedPaneState": {
       const paneId = requirePaneId(request.payload, request.method);
-      const snapshot = workspace.replaceDetachedPaneState(paneId, request.payload.paneState);
-      stateBroadcaster.notePaneState(rpc, paneId, snapshot);
-      stateBroadcaster.sendDesktopState(snapshot);
+      stateBroadcaster.sendDesktopState(workspace.replaceDetachedPaneState(paneId, request.payload.paneState));
       return null;
     }
     case "desktop.popOutPane": {

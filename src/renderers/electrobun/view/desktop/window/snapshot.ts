@@ -39,3 +39,21 @@ export function detachedSnapshotKey(snapshot: DesktopSharedStateSnapshot, paneId
     paneState: Object.fromEntries(paneStateIds.map((id) => [id, snapshot.paneState[id] ?? {}])),
   });
 }
+
+/**
+ * What a popped-out window takes of each state it is sent: nothing unless the
+ * part for its pane and the panes it follows changed, and then all of it,
+ * config included.
+ */
+export function createDetachedSnapshotFilter(
+  paneId: string,
+  initialSnapshot: DesktopSharedStateSnapshot | null,
+): (snapshot: DesktopSharedStateSnapshot) => DesktopSharedStateSnapshot | null {
+  let lastKey = initialSnapshot ? detachedSnapshotKey(initialSnapshot, paneId) : null;
+  return (snapshot) => {
+    const nextKey = detachedSnapshotKey(snapshot, paneId);
+    if (nextKey === lastKey) return null;
+    lastKey = nextKey;
+    return prepareDetachedSnapshot(snapshot, paneId);
+  };
+}
