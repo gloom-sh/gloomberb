@@ -46,6 +46,12 @@ export interface ListViewProps {
   rowGap?: number;
   rowHeight?: number;
   surface?: "framed" | "plain";
+  /**
+   * Desktop and web: how the chosen row shows. `frame`, the default, rings it
+   * in the accent as well as filling it (a list a dialog's keyboard walks);
+   * `fill` fills it alone, as the command bar's and a table's rows do.
+   */
+  selection?: "frame" | "fill";
   height?: number;
   flexGrow?: number;
   scrollable?: boolean;
@@ -174,6 +180,7 @@ export function ListView({
   rowGap,
   rowHeight,
   surface,
+  selection,
   height,
   flexGrow,
   scrollable = false,
@@ -243,6 +250,7 @@ export function ListView({
         rowGap={rowGap}
         rowHeight={rowHeight}
         surface={surface}
+        selection={selection}
         height={height}
         flexGrow={flexGrow}
         scrollable={scrollable}

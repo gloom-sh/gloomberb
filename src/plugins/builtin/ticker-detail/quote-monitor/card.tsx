@@ -59,7 +59,7 @@ function extendedLineParts(
   return candidates.find(({ label, figures }) => fits(`${label} ${figures}`)) ?? null;
 }
 
-const DESKTOP_DETAIL_TEXT_STYLE = { fontSize: "12px", lineHeight: "14px", whiteSpace: "nowrap" };
+const DESKTOP_DETAIL_TEXT_STYLE = { fontSize: "var(--gloom-type-ui)", lineHeight: "14px", whiteSpace: "nowrap" };
 
 function ExtendedSessionLine({
   parts,
@@ -203,9 +203,10 @@ export function QuoteMonitorCard({
     || height >= (stacked ? 3 : 2) + statusRows + terminalSparklineHeight;
   // Figures sit over the sparkline, so the desktop rings them in the card colour.
   const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
+  // The card's title: a heading over the app's 12px name, under the 20px price.
   const desktopSymbolStyle = nativePaneChrome
     ? {
-        fontSize: "15px",
+        fontSize: "var(--gloom-type-heading)",
         lineHeight: "18px",
       }
     : undefined;
@@ -237,12 +238,10 @@ export function QuoteMonitorCard({
         position: "relative",
         width: "100%",
         height: "100%",
-        paddingLeft: 10,
-        paddingRight: 10,
-        paddingTop: 6,
-        paddingBottom: 4,
-        borderRight: showRightDivider ? `1px solid ${colors.border}` : undefined,
-        borderBottom: showBottomDivider ? `1px solid ${colors.border}` : undefined,
+        padding: "var(--gloom-space-xs) var(--gloom-inset)",
+        // The rules between the board's cards are the app's hairline.
+        borderRight: showRightDivider ? "1px solid var(--gloom-hairline)" : undefined,
+        borderBottom: showBottomDivider ? "1px solid var(--gloom-hairline)" : undefined,
         outline: selected ? `1px solid ${colors.borderFocused}` : undefined,
         outlineOffset: selected ? -1 : undefined,
       } : undefined}
@@ -267,7 +266,7 @@ export function QuoteMonitorCard({
             // The name gives way first; the price keeps its natural width.
             gridTemplateColumns: "minmax(0, 1fr) auto",
             gridTemplateRows: "auto 1fr auto auto",
-            columnGap: 12,
+            columnGap: "var(--gloom-space-md)",
             width: "100%",
             height: "100%",
           }}
@@ -286,7 +285,7 @@ export function QuoteMonitorCard({
               {symbol}
             </Text>
             {quoteFailed && (
-              <Text fg={colors.negative} style={{ fontSize: "12px", lineHeight: "14px" }}>
+              <Text fg={colors.negative} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
                 {quoteStatus.text}
               </Text>
             )}
@@ -294,7 +293,7 @@ export function QuoteMonitorCard({
               <Text
                 fg={colors.textDim}
                 style={{
-                  fontSize: "12px",
+                  fontSize: "var(--gloom-type-ui)",
                   lineHeight: "14px",
                   maxWidth: "100%",
                   overflow: "hidden",
@@ -306,7 +305,7 @@ export function QuoteMonitorCard({
               </Text>
             )}
             {navAsOf && (
-              <Text fg={colors.textDim} style={{ fontSize: "12px", lineHeight: "14px" }}>
+              <Text fg={colors.textDim} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
                 {navAsOf}
               </Text>
             )}
@@ -320,9 +319,9 @@ export function QuoteMonitorCard({
               gridRow: "1",
               justifySelf: "end",
               backgroundColor: colors.bg,
-              borderRadius: 4,
+              borderRadius: "var(--gloom-radius-sm)",
               boxShadow: `0 0 0 2px ${colors.bg}`,
-              paddingLeft: 6,
+              paddingLeft: "var(--gloom-space-xs)",
               paddingBottom: 1,
             }}
           >
@@ -361,10 +360,10 @@ export function QuoteMonitorCard({
                 gridRow: "3",
                 justifySelf: "end",
                 alignSelf: "end",
-                fontSize: "11px",
-                lineHeight: "13px",
+                fontSize: "var(--gloom-type-ui)",
+                lineHeight: "14px",
                 backgroundColor: colors.bg,
-                paddingLeft: 6,
+                paddingLeft: "var(--gloom-space-xs)",
                 paddingRight: 2,
                 boxShadow: `0 0 0 2px ${colors.bg}`,
               }}
@@ -410,7 +409,7 @@ export function QuoteMonitorCard({
                   <Text
                     fg={colors.textDim}
                     style={{
-                      fontSize: "12px",
+                      fontSize: "var(--gloom-type-ui)",
                       lineHeight: "16px",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -449,7 +448,7 @@ export function QuoteMonitorCard({
               area={!nativePaneChrome}
             />
             {nativePaneChrome && rangeLabel && (
-              <Text fg={colors.textDim} style={{ fontSize: "11px", lineHeight: "14px" }}>
+              <Text fg={colors.textDim} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
                 {rangeLabel}
               </Text>
             )}

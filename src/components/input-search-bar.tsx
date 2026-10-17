@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
-import { Box, Input, Text, type InputRenderable } from "../ui";
+import { Box, Input, Text, useUiCapabilities, type InputRenderable } from "../ui";
 import { colors } from "../theme/colors";
+import { Icon } from "./ui/icon";
 import { useAppInputCapture } from "../state/app/input-capture";
 import { useShortcut } from "../react/input";
 import { isPlainArrowDown, stopSearchFocusNavigation } from "../utils/search-focus-navigation";
@@ -51,6 +52,10 @@ export function InputSearchBar({
   onStep?: (direction: 1 | -1) => void;
 }) {
   const [draft, setDraft] = useState(value);
+  const { nativePaneChrome } = useUiCapabilities();
+  // Desktop and web: a field standing on its own (a plugin's table search) reads as the
+  // query bar's search segment: the band, the pane's inset, the hairline under it.
+  const band = nativePaneChrome === true && appearance === "strip";
   useAppInputCapture(focused && active);
 
   useShortcut((event) => {
@@ -112,7 +117,10 @@ export function InputSearchBar({
       height={1}
       width={width}
       flexDirection="row"
-      backgroundColor={appearance === "plain" ? undefined : colors.panel}
+      backgroundColor={appearance === "plain" || band ? undefined : colors.panel}
+      data-gloom-role={band ? "search-strip" : undefined}
+      data-active={band && active ? "true" : undefined}
+      style={band ? SEARCH_STRIP_STYLE : undefined}
       onMouseDown={(event: any) => {
         event.preventDefault?.();
         event.stopPropagation?.();
@@ -120,8 +128,11 @@ export function InputSearchBar({
         inputRef.current?.focus?.();
       }}
     >
-      {appearance === "strip" && <Text fg={active ? colors.textBright : colors.textDim}>{glyph}</Text>}
-      {appearance === "strip" && <Box width={1} />}
+      {/* The band's search is the query bar's: the search icon, the accent while typing; a labelled strip keeps its label. */}
+      {band && glyph === "/"
+        ? <Box alignItems="center" style={SEARCH_ICON_STYLE}><Icon name="search" size={11} color={active ? colors.borderFocused : colors.textMuted} /></Box>
+        : appearance === "strip" && <Text fg={band ? colors.textMuted : active ? colors.textBright : colors.textDim}>{glyph}</Text>}
+      {appearance === "strip" && !(band && glyph === "/") && <Box width={1} />}
       <Input
         ref={inputRef}
         value={draft}
@@ -130,8 +141,8 @@ export function InputSearchBar({
         placeholderColor={colors.textDim}
         textColor={colors.text}
         focusedTextColor={colors.text}
-        backgroundColor={appearance === "plain" ? "transparent" : colors.panel}
-        focusedBackgroundColor={appearance === "plain" ? "transparent" : colors.panel}
+        backgroundColor={appearance === "plain" || band ? "transparent" : colors.panel}
+        focusedBackgroundColor={appearance === "plain" || band ? "transparent" : colors.panel}
         cursorColor={colors.textBright}
         flexGrow={1}
         onFocus={onFocus}
@@ -144,6 +155,16 @@ export function InputSearchBar({
     </Box>
   );
 }
+
+const SEARCH_ICON_STYLE = { marginRight: "var(--gloom-space-xs)" } as const;
+
+const SEARCH_STRIP_STYLE = {
+  paddingInline: "var(--gloom-inset)",
+  background: "var(--gloom-band)",
+  boxShadow: "inset 0 -1px 0 var(--gloom-hairline)",
+  boxSizing: "border-box",
+  cursor: "text",
+} as const;
 
 function identity(value: string): string {
   return value;

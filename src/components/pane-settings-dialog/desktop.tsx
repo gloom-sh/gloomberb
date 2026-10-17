@@ -4,6 +4,8 @@ import type { PaneSettingField } from "../../types/plugin";
 import { colors } from "../../theme/colors";
 import { SelectField, type SelectFieldHandle } from "../ui/select-field";
 import { Checkbox } from "../ui/checkbox";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/display";
 import { DialogFrame } from "../ui/frame";
 import { isPaneSettingDisabled, summarizePaneSettingValue } from "./value";
 
@@ -34,41 +36,6 @@ export function DesktopDialogSurface({
       <DialogFrame title={title} subtitle={subtitle} onClose={dismiss}>
         {children}
       </DialogFrame>
-    </Box>
-  );
-}
-
-/** A setting's value: the one chip (display.tsx Badge's look). */
-function DesktopValuePill({ value }: { value: string }) {
-  return (
-    <Box
-      flexDirection="row"
-      alignItems="center"
-      backgroundColor={colors.selected}
-      style={{
-        height: "calc(var(--cell-h) - 2px)",
-        borderRadius: "var(--gloom-radius-sm)",
-        padding: "0 var(--gloom-space-sm)",
-      }}
-    >
-      <Text fg={colors.textDim} style={desktopText()}>{value}</Text>
-    </Box>
-  );
-}
-
-/** What a row does when pressed: drawn as the secondary button. */
-function DesktopActionPill({ disabled, label }: { disabled: boolean; label: string }) {
-  return (
-    <Box
-      flexDirection="row"
-      alignItems="center"
-      style={{
-        border: "1px solid var(--gloom-control-border)",
-        borderRadius: "var(--gloom-radius-md)",
-        padding: "0 var(--gloom-space-sm)",
-      }}
-    >
-      <Text fg={disabled ? colors.textMuted : colors.text} style={desktopText()}>{label}</Text>
     </Box>
   );
 }
@@ -136,10 +103,11 @@ function DesktopSettingsRow({
       onChange={(value) => onApply(field, value)}
     />
   ) : field.type === "action" ? (
-    <DesktopActionPill disabled={disabled} label={summary} />
+    // The button says what pressing the row does, and presses it: the row's own press is not repeated.
+    <Button label={summary} variant="secondary" disabled={disabled} onPress={onEdit} stopPropagation />
   ) : (
     <Box flexDirection="row" alignItems="center" gap={1}>
-      <DesktopValuePill value={summary} />
+      <Badge label={summary} />
       <Text fg={colors.textMuted} style={desktopText()}>Edit</Text>
     </Box>
   );

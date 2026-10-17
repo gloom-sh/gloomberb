@@ -8,6 +8,9 @@ import { SelectField, openSelectField, type SelectFieldHandle } from "./select-f
 import { Button } from "./button";
 import { WEB_CELL_WIDTH } from "../../theme/font-scale";
 
+/** A form field's label on the desktop: bold, as TextField draws it. */
+const FORM_LABEL_STYLE = { fontWeight: "var(--gloom-weight-bold)" } as const;
+
 export interface SelectControl {
   open(): void;
 }
@@ -41,7 +44,13 @@ export interface SelectButtonProps<T extends string = string> {
   emphasized?: boolean;
   idPrefix?: string;
   showLabel?: boolean;
-  variant?: "inline" | "field";
+  /**
+   * `inline`: the label and the value in a row, in a toolbar. `field`: a
+   * bordered field. `form`: a field in a form of text fields; on the desktop
+   * and the web its label sits above it, bold, as a TextField's does; the
+   * terminal draws it inline.
+   */
+  variant?: "inline" | "field" | "form";
   width?: number;
   onFocus?: () => void;
   /**
@@ -131,14 +140,39 @@ export function SelectButton<T extends string = string>({
 
   useImperativeHandle(controlRef, () => ({ open: openDialog }), [openDialog]);
 
+  // The pane gives the width in cells, as it does the terminal's.
+  const fieldWidthPx = width === undefined ? undefined : width * WEB_CELL_WIDTH;
+  if (isDesktopWeb && variant === "form") {
+    return (
+      <Box flexDirection="column" gap={1} id={idPrefix ? `${idPrefix}:select` : undefined}>
+        {showLabel && (
+          <Box height={1}>
+            <Text fg={emphasized ? colors.textBright : colors.textDim} style={FORM_LABEL_STYLE}>{label}</Text>
+          </Box>
+        )}
+        <SelectField
+          label={label}
+          variant="field"
+          width={fieldWidthPx}
+          selectRef={(element) => { selectFieldRef.current = element; }}
+          onFocus={onFocus}
+          value={value}
+          options={options.map((option) => ({ value: option.value, label: option.label, disabled: option.disabled }))}
+          disabled={disabled}
+          onChange={selectValue}
+        />
+      </Box>
+    );
+  }
+
   if (isDesktopWeb) {
     return (
       <Box flexDirection="row" alignItems="center" gap={1} id={idPrefix ? `${idPrefix}:select` : undefined}>
         {showLabel && <Text fg={colors.textMuted}>{label}</Text>}
         <SelectField
           label={label}
-          variant={variant}
-          width={width === undefined ? undefined : width * WEB_CELL_WIDTH}
+          variant={variant === "form" ? "field" : variant}
+          width={fieldWidthPx}
           selectRef={(element) => { selectFieldRef.current = element; }}
           onFocus={onFocus}
           value={value}
@@ -154,6 +188,7 @@ export function SelectButton<T extends string = string>({
     );
   }
 
+  // The terminal draws a form select as it draws an inline one.
   if (variant === "field") {
     return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
   }

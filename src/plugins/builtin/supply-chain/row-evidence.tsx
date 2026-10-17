@@ -80,7 +80,8 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
   return <Box width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0}>
     <DetailScrollBody ref={scrollRef} resetScrollKey={row.id}>
       <StatGrid items={figures} width={width} />
-      <Box flexDirection="column" paddingX={1} paddingTop={1}>
+      {/* The desktop's detail body already holds the pane's inset. */}
+      <Box flexDirection="column" paddingX={desktop ? 0 : 1} paddingTop={1}>
         <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
           {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
         <KeyValueRow label="Reporting company" value={row.reportingEntity.name} labelWidth={20} />
