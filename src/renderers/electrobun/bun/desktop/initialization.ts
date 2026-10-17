@@ -108,6 +108,7 @@ export async function initializeDesktopBackend(
 ): Promise<ElectrobunBackendInit> {
   const windowTarget = normalizeInitWindowTarget(backend.rpcs.getRpcWindowKey(rpc), payload);
   backend.rpcs.markWindowRpcReady(rpc);
+  backend.stateBroadcaster.forgetWindowState(rpc);
 
   const currentConfig = backend.config;
   const currentServices = backend.services;

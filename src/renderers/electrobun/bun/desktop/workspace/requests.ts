@@ -1,5 +1,5 @@
 import type { DesktopWorkspaceRequest } from "../../../shared/protocol";
-import type { DesktopBackend } from "../backend";
+import type { DesktopBackend, DesktopRpc } from "../backend";
 
 type DockEdge = "left" | "right" | "top" | "bottom";
 
@@ -18,6 +18,7 @@ function normalizeDockEdge(edge: unknown): DockEdge | undefined {
 
 export async function handleDesktopWorkspaceRequest(
   backend: DesktopBackend,
+  rpc: DesktopRpc,
   request: DesktopWorkspaceRequest,
 ): Promise<null> {
   const workspace = backend.requireWorkspace();
@@ -27,6 +28,9 @@ export async function handleDesktopWorkspaceRequest(
       const snapshot = workspace.syncMainState(request.payload.snapshot);
       backend.setConfig(snapshot.config);
       detachedWindows.reconcile();
+      // The main window holds what it sent. It gets the state back only when
+      // this process changed it: a popped-out window's frame, a stale revision.
+      stateBroadcaster.noteWindowState(rpc, request.payload.snapshot);
       stateBroadcaster.sendDesktopState(snapshot);
       return null;
     }
@@ -35,7 +39,9 @@ export async function handleDesktopWorkspaceRequest(
       return null;
     case "desktop.replaceDetachedPaneState": {
       const paneId = requirePaneId(request.payload, request.method);
-      stateBroadcaster.sendDesktopState(workspace.replaceDetachedPaneState(paneId, request.payload.paneState));
+      const snapshot = workspace.replaceDetachedPaneState(paneId, request.payload.paneState);
+      stateBroadcaster.notePaneState(rpc, paneId, snapshot);
+      stateBroadcaster.sendDesktopState(snapshot);
       return null;
     }
     case "desktop.popOutPane": {

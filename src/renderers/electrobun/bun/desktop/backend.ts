@@ -470,7 +470,7 @@ export class DesktopBackend {
       case "desktop.dockDetachedPane":
       case "desktop.closeDetachedPane":
       case "desktop.focusDetachedPane":
-        return handleDesktopWorkspaceRequest(this, request);
+        return handleDesktopWorkspaceRequest(this, rpc, request);
       case "pluginState.setMany":
       case "pluginState.delete":
         return handleDesktopPluginStateRequest(this.requireServices().persistence.pluginState, request);
