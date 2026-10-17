@@ -79,3 +79,29 @@ test("the AST walk finds multiline constant fallbacks and requires an actual han
     { kind: "promise-catch", intentional: false },
   ]);
 });
+
+test("constant fallbacks include named literals without mistaking shadowed or mutable bindings", () => {
+  const constants = scanSilentCatches("src/example.ts", `
+    const NONE = { rows: [], failed: false };
+    try { work(); } catch { return NONE; }
+    job.catch(() => NONE);
+    try { work(); } catch { return Number.NaN; }
+    try { work(); } catch { return Number.POSITIVE_INFINITY; }
+    let mutable = null;
+    try { work(); } catch { return mutable; }
+    const first = second;
+    const second = first;
+    try { work(); } catch { return first; }
+    function elsewhere() { const scoped = null; }
+    try { work(); } catch { return scoped; }
+  `);
+  expect(constants.map(({ kind }) => kind)).toEqual(["catch", "promise-catch", "catch", "catch"]);
+  expect(scanSilentCatches("src/shadowed.ts", `
+    const NONE = null;
+    function read(NONE, Number) {
+      try { work(); } catch { return NONE; }
+      job.catch(() => Number.NaN);
+    }
+    job.catch((undefined) => undefined);
+  `)).toEqual([]);
+});

@@ -139,6 +139,7 @@ function encodedSize(value: unknown): number {
   try {
     return new TextEncoder().encode(JSON.stringify(value)).byteLength;
   } catch {
+    // Intentional ignore: Unserializable layouts fail the payload size validator.
     return Number.POSITIVE_INFINITY;
   }
 }

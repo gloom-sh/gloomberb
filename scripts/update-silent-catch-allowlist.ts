@@ -41,37 +41,79 @@ function unwrap(node: ts.Expression): ts.Expression {
   return node;
 }
 
-function constant(node: ts.Expression): boolean {
+type Constants = {
+  declarations: Set<string>;
+  bindings: Map<string, { initializer: ts.Expression; scope: ts.Node }>;
+};
+
+function constantBindings(source: ts.SourceFile): Constants {
+  const declarations = new Set<string>();
+  const duplicates = new Set<string>();
+  const bindings: Constants["bindings"] = new Map();
+  function visit(node: ts.Node): void {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)
+      || ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isClassDeclaration(node)
+      || ts.isClassExpression(node) || ts.isEnumDeclaration(node) || ts.isImportClause(node)
+      || ts.isImportSpecifier(node) || ts.isNamespaceImport(node)) {
+      if (node.name && ts.isIdentifier(node.name)) {
+        if (declarations.has(node.name.text)) duplicates.add(node.name.text);
+        declarations.add(node.name.text);
+        if (ts.isVariableDeclaration(node) && node.initializer && ts.isVariableDeclarationList(node.parent)
+          && (node.parent.flags & ts.NodeFlags.Const)) {
+          const scope = ts.findAncestor(node, (parent) => ts.isBlock(parent) || ts.isSourceFile(parent))!;
+          bindings.set(node.name.text, { initializer: node.initializer, scope });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  // Do not mistake a shadowed parameter or inner variable for the constant.
+  for (const name of duplicates) bindings.delete(name);
+  return { declarations, bindings };
+}
+
+function constant(node: ts.Expression, constants: Constants, seen = new Set<string>()): boolean {
   node = unwrap(node);
   if (ts.isLiteralExpression(node) || node.kind === ts.SyntaxKind.NullKeyword
     || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return true;
-  if (ts.isIdentifier(node)) return node.text === "undefined";
-  if (ts.isPrefixUnaryExpression(node)) return constant(node.operand);
-  if (ts.isVoidExpression(node)) return constant(node.expression);
-  if (ts.isArrayLiteralExpression(node)) return node.elements.every((element) => ts.isOmittedExpression(element) || constant(element));
+  if (ts.isIdentifier(node)) {
+    if (["undefined", "NaN", "Infinity"].includes(node.text) && !constants.declarations.has(node.text)) return true;
+    const binding = constants.bindings.get(node.text);
+    return !!binding && !seen.has(node.text) && node.pos >= binding.scope.pos && node.end <= binding.scope.end
+      && constant(binding.initializer, constants, new Set([...seen, node.text]));
+  }
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)
+    && node.expression.text === "Number" && !constants.declarations.has("Number")) {
+    return ["NaN", "POSITIVE_INFINITY", "NEGATIVE_INFINITY", "MAX_VALUE", "MIN_VALUE",
+      "MAX_SAFE_INTEGER", "MIN_SAFE_INTEGER", "EPSILON"].includes(node.name.text);
+  }
+  if (ts.isPrefixUnaryExpression(node)) return constant(node.operand, constants, seen);
+  if (ts.isVoidExpression(node)) return constant(node.expression, constants, seen);
+  if (ts.isArrayLiteralExpression(node)) return node.elements.every((element) => ts.isOmittedExpression(element) || constant(element, constants, seen));
   if (ts.isObjectLiteralExpression(node)) return node.properties.every((property) =>
-    ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name) && constant(property.initializer));
+    ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name) && constant(property.initializer, constants, seen));
   return false;
 }
 
-function discardedArgument(node: ts.Expression, parameters: Set<string>): boolean {
+function discardedArgument(node: ts.Expression, parameters: Set<string>, constants: Constants): boolean {
   node = unwrap(node);
   if (!ts.isVoidExpression(node)) return false;
   const expression = unwrap(node.expression);
-  return constant(expression) || (ts.isIdentifier(expression) && parameters.has(expression.text));
+  return constant(expression, constants) || (ts.isIdentifier(expression) && parameters.has(expression.text));
 }
 
-function silentBody(body: ts.ConciseBody, parameters: Set<string>): boolean {
+function silentBody(body: ts.ConciseBody, parameters: Set<string>, constants: Constants): boolean {
   function silentReturn(expression: ts.Expression | undefined): boolean {
     if (!expression) return true;
     expression = unwrap(expression);
-    if (discardedArgument(expression, parameters)) return true;
-    return constant(expression);
+    if (discardedArgument(expression, parameters, constants)) return true;
+    return constant(expression, constants);
   }
   if (!ts.isBlock(body)) return silentReturn(body);
   return body.statements.every((statement) => ts.isEmptyStatement(statement)
     || (ts.isReturnStatement(statement) && silentReturn(statement.expression))
-    || (ts.isExpressionStatement(statement) && discardedArgument(statement.expression, parameters)));
+    || (ts.isExpressionStatement(statement) && discardedArgument(statement.expression, parameters, constants)));
 }
 
 function hasIntent(body: ts.ConciseBody, source: ts.SourceFile): boolean {
@@ -87,6 +129,7 @@ function hasIntent(body: ts.ConciseBody, source: ts.SourceFile): boolean {
 
 export function scanSilentCatches(file: string, text: string): SilentCatch[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const constants = constantBindings(source);
   const sites: SilentCatch[] = [];
   const excluded = EXCLUDED.find((prefix) => prefix.endsWith("/") ? file.startsWith(prefix) : file === prefix);
   const folder = excluded ?? (file.split("/").length > 2 ? `${file.split("/").slice(0, 2).join("/")}/` : "src/");
@@ -108,7 +151,7 @@ export function scanSilentCatches(file: string, text: string): SilentCatch[] {
         kind = "promise-catch";
       }
     }
-    if (body && silentBody(body, parameters)) {
+    if (body && silentBody(body, parameters, constants)) {
       const position = source.getLineAndCharacterOfPosition(node.getStart(source));
       const code = node.getText(source);
       // Token text ignores formatting and comments while retaining literal contents.

@@ -154,7 +154,8 @@ export async function loadListingFate(
     // have moved, and then the answer decides whether the command serves anything at all.
     const changes = await lookup.settle(!options.changes || mayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
     return describeListingFate(listing, quote, changes);
-  } catch {
+  } catch (error) {
+    logFailure("tickers-listing-fate", "Could not resolve listing fate")(error);
     return NO_FATE;
   }
 }
