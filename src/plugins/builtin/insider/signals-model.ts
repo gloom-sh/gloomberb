@@ -314,6 +314,12 @@ const COLUMN_GAP = 1;
 const HEADER_EXTRA = 2;
 /** The reasons are the point of the view; below this they would read as noise. */
 const WHY_MIN = 24;
+/**
+ * As chips, the reasons want room for the insiders together and one insider
+ * after them ("2 insiders  Director -58%"): the count column says the same
+ * as that first chip, so it goes before they get less.
+ */
+const WHY_MIN_CHIPS = 32;
 
 function fitWidth(texts: readonly string[], label: string, max: number): number {
   const widest = texts.reduce((width, value) => Math.max(width, displayWidth(value)), 0);
@@ -323,11 +329,11 @@ function fitWidth(texts: readonly string[], label: string, max: number): number 
 /**
  * The columns that fit `width` cells (the desktop passes its width in the
  * same cells and lets the reasons fill the rest). The reasons keep at least
- * 24 cells: when the pane runs short the company goes first, then the
- * insider count and the last trade day, so a narrow pane still reads
- * ticker, score, why and dollars. Room the reasons do not need widens the
- * company. `chips` sizes the reasons as chips (the desktop and the web),
- * else as their text.
+ * 24 cells, 32 as chips: when the pane runs short the company goes first,
+ * then the insider count and the last trade day, so a narrow pane still
+ * reads ticker, score, why and dollars. Room the reasons do not need widens
+ * the company. `chips` sizes the reasons as chips (the desktop and the
+ * web), else as their text.
  */
 export function buildInsiderSignalColumns(
   width: number,
@@ -353,8 +359,9 @@ export function buildInsiderSignalColumns(
     widths.value,
     show.lastBuy ? widths.lastBuy : 0,
   ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
+  const whyMin = chips ? WHY_MIN_CHIPS : WHY_MIN;
   for (const drop of ["company", "insiders", "lastBuy"] as const) {
-    if (available - fixed() - COLUMN_GAP >= WHY_MIN) break;
+    if (available - fixed() - COLUMN_GAP >= whyMin) break;
     show[drop] = false;
   }
   let why = Math.max(8, available - fixed() - COLUMN_GAP);

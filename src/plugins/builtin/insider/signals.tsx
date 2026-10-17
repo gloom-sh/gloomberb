@@ -69,8 +69,8 @@ const DETAIL_GAP = 2;
  * INS without a ticker: the companies whose insiders bought, or sold, their
  * own shares in the open market lately, ranked, each with why as chips (the
  * terminal: the same facts as text). Filters narrow by role, size, clusters,
- * new positions or whole stakes sold, and market value. Enter or a click
- * opens the company's own INS in the same pane; the selected company's
+ * new positions or whole stakes sold, and market value. Enter or a double
+ * click opens the company's own INS in the same pane; the selected company's
  * insiders are listed under the table.
  */
 export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSignalsViewProps) {

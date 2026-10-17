@@ -181,6 +181,11 @@ test("a narrow pane keeps the reasons and drops the company, then the counts", (
   expect(ids(80)).toEqual(["ticker", "score", "why", "insiders", "value", "lastBuy"]);
   expect(ids(60)).toEqual(["ticker", "score", "why", "value"]);
   expect(buildInsiderSignalColumns(60, ROWS).find((column) => column.id === "why")!.width).toBeGreaterThanOrEqual(24);
+  // As chips, the count goes sooner: it says what the first chip says.
+  const chipIds = (width: number) => buildInsiderSignalColumns(width, ROWS, { chips: true }).map((column) => column.id);
+  expect(chipIds(110)).toEqual(ids(110));
+  expect(chipIds(80)).toEqual(["ticker", "score", "why", "value", "lastBuy"]);
+  expect(buildInsiderSignalColumns(80, ROWS, { chips: true }).find((column) => column.id === "why")!.width).toBeGreaterThanOrEqual(32);
 });
 
 // The same companies as a server with sides and structured signals sends them.
