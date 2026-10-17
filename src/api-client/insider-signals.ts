@@ -39,17 +39,20 @@ export interface InsiderSignalBuyer {
   shares?: number;
   /** The holding's change in the window, percent: positive bought, negative sold; null without balances. */
   stakeChangePct?: number | null;
+  /** Opened a position: held nothing before, or a holding worth under $10K or under 1% of what was bought. */
   newPosition?: boolean;
   /** Sold every share and unit the forms report. */
   exited?: boolean;
+  /** Bought and sold in the window: the row counts the net, on the side it falls. */
+  twoWay?: boolean;
 }
 
 /** One fact behind a row, structured, strongest first. */
 interface InsiderWhySignal {
-  kind: "cluster" | "repeat" | "usual" | "stake" | "new" | "exited" | "size";
-  /** cluster: insiders; repeat: the ordinal; usual: the multiple; stake: percent, negative sold; new, exited: 1; size: dollars. */
+  kind: "cluster" | "repeat" | "usual" | "stake" | "new" | "exited" | "size" | "both";
+  /** cluster: insiders; repeat: the ordinal; usual: the multiple; stake: percent, negative sold; new, exited, both: 1; size: dollars. */
   value: number;
-  /** A few characters: "3 insiders", "4th buy", "5x usual", "+56%", "NEW". */
+  /** A few characters: "3 insiders", "4th buy", "5x usual", "+56%", "6x stake", "NEW", "both ways". */
   text: string;
   /** The insider it is about; null for the company's (a cluster). */
   insider: { name: string; role: InsiderSignalRole } | null;

@@ -16,6 +16,7 @@ import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
 import {
   buildInsiderSignalColumns,
+  insiderSignalChipGroups,
   insiderSignalChips,
   insiderSignalChipsFit,
   insiderSignalChipsText,
@@ -236,13 +237,13 @@ async function sided(window: number, params: CloudInsiderSignalsParams): Promise
   return { ...payload(window, side === "sell" ? SELLING : BUYING), side, marketCaps: "unavailable" };
 }
 
-test("why reads as chips' facts: roles once, then what each did; dollars stay in their column", () => {
+test("why reads as chips' facts: the insiders together first, then each one's role and what they did; dollars stay in their column", () => {
   const text = (row: InsiderSignalRow, side: "buy" | "sell" = "buy") => insiderSignalChipsText(insiderSignalChips(row, side)!);
   expect(text(BUYING[0]!)).toBe("3 insiders · CFO +56%");
   expect(text(BUYING[1]!)).toBe("CEO 4th buy 4.9x usual");
   expect(text(BUYING[2]!)).toBe("Director NEW");
   expect(text(SELLING[0]!, "sell")).toBe("Director EXITED");
-  // An insider's facts stay together, after their strongest one: a cluster between them does not split them.
+  // The cluster leads, whatever its rank, and an insider's facts stay together after their strongest one.
   expect(text({
     ...BUYING[0]!,
     whySignals: [
@@ -250,7 +251,25 @@ test("why reads as chips' facts: roles once, then what each did; dollars stay in
       { kind: "cluster", value: 2, text: "2 insiders", insider: null },
       { kind: "repeat", value: 2, text: "2nd buy", insider: DIRECTOR },
     ],
-  })).toBe("Director +58% 2nd buy · 2 insiders");
+  })).toBe("2 insiders · Director +58% 2nd buy");
+  // Several insiders without a cluster open with how many; two are named, the detail strip lists the rest.
+  expect(text({
+    ...BUYING[0]!,
+    whySignals: [
+      { kind: "stake", value: -18, text: "-18%", insider: CFO },
+      { kind: "repeat", value: 2, text: "2nd sale", insider: DIRECTOR },
+      { kind: "exited", value: 1, text: "EXITED", insider: CEO },
+    ],
+  }, "sell")).toBe("3 insiders · CFO -18% · Director 2nd sale");
+  // An insider who traded both ways, and a raise above +300% as the holding's multiple, even from a server that says the percent.
+  expect(text({
+    ...BUYING[1]!,
+    whySignals: [
+      { kind: "stake", value: 500, text: "+500%", insider: CEO },
+      { kind: "both", value: 1, text: "both ways", insider: CEO },
+    ],
+  })).toBe("CEO 6x stake both ways");
+  expect(insiderSignalChips({ ...BUYING[1]!, whySignals: [{ kind: "both", value: 1, text: "both ways", insider: CEO }] }, "sell")![1]).toMatchObject({ tone: "neutral" });
   // A row whose only reason is its dollars names who traded.
   expect(text({ ...BUYING[1]!, whySignals: [{ kind: "size", value: 610_000, text: "$610k", insider: CEO }] })).toBe("CEO");
   expect(text({ ...BUYING[0]!, whySignals: [{ kind: "size", value: 1_152_500, text: "$1.2M", insider: null }] })).toBe("3 insiders");
@@ -273,15 +292,17 @@ test("why reads as chips' facts: roles once, then what each did; dollars stay in
     ],
   }, "buy")!;
   const labels = (width: number) => insiderSignalChipsFit(chips, width).map((chip) => chip.label);
-  // "3 insiders" takes 12 cells, then "Director" 11, "+58%" 7 and "2nd buy" 10, each with its gap.
-  expect(labels(40)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
-  expect(labels(30)).toEqual(["3 insiders", "Director", "+58%"]);
-  expect(labels(28)).toEqual(["3 insiders"]);
+  // "3 insiders" takes 12 cells, then "Director" 12 (two apart: another group), "+58%" 7 and "2nd buy" 10 (one apart).
+  expect(labels(41)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
+  expect(labels(40)).toEqual(["3 insiders", "Director", "+58%"]);
+  expect(labels(31)).toEqual(["3 insiders", "Director", "+58%"]);
+  expect(labels(30)).toEqual(["3 insiders"]);
   expect(labels(11)).toEqual([]);
-  // A holding's change: a decimal under 1%, nothing said without balances.
+  expect(insiderSignalChipGroups(chips).map((group) => group.map((chip) => chip.label))).toEqual([["3 insiders"], ["Director", "+58%", "2nd buy"]]);
+  // A holding's change: a decimal under 1%, the multiple above +300%, nothing said without balances.
   const buyer = SELLING[0]!.buyers[0]!;
-  expect([-100, -38.6, -0.36, 0, null].map((stakeChangePct) => formatInsiderStakeChange({ ...buyer, exited: false, stakeChangePct })))
-    .toEqual(["-100%", "-39%", "-0.4%", "--", "--"]);
+  expect([-100, -38.6, -0.36, 0, null, 300, 350, 500, 2415, 70_821.5].map((stakeChangePct) => formatInsiderStakeChange({ ...buyer, exited: false, stakeChangePct })))
+    .toEqual(["-100%", "-39%", "-0.4%", "--", "--", "+300%", "4.5x", "6x", "25x", "709x"]);
   expect(formatInsiderStakeChange(buyer)).toBe("EXITED");
 });
 

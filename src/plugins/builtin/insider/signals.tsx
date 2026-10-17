@@ -35,6 +35,8 @@ import {
   INSIDER_SIGNAL_SIDE_OPTIONS,
   INSIDER_SIGNAL_WINDOW_OPTIONS,
   insiderSideWords,
+  INSIDER_SIGNAL_GROUP_GAP,
+  insiderSignalChipGroups,
   insiderSignalChips,
   insiderSignalChipsFit,
   insiderSignalChipsText,
@@ -164,9 +166,13 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
         return {
           text,
           content: (
-            <Box flexDirection="row" gap={1} height={1} overflow="hidden">
-              {insiderSignalChipsFit(chips, column.width).map((chip, chipIndex) => (
-                <Badge key={`${chip.label}:${chipIndex}`} label={chip.label} tone={chip.tone} variant={chip.variant} />
+            <Box flexDirection="row" gap={INSIDER_SIGNAL_GROUP_GAP} height={1} overflow="hidden">
+              {insiderSignalChipGroups(insiderSignalChipsFit(chips, column.width)).map((group, groupIndex) => (
+                <Box key={groupIndex} flexDirection="row" gap={1} height={1} flexShrink={0}>
+                  {group.map((chip, chipIndex) => (
+                    <Badge key={`${chip.label}:${chipIndex}`} label={chip.label} tone={chip.tone} variant={chip.variant} />
+                  ))}
+                </Box>
               ))}
             </Box>
           ),

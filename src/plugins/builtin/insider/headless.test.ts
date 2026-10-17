@@ -252,6 +252,9 @@ describe("insider report without a ticker", () => {
       const report = await load({ role: "officers", minValue: 1_000_000, cluster: true, exited: true });
       expect(asked[0]).toEqual({ side: "sell", window: 30, limit: 20, role: "officers", minValue: 1_000_000, cluster: true, position: "exited" });
       expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Sellers", "Sold", "Last Sale", "Filed", "Insiders"]);
+      // Why stays whole on a narrow table: the company gives way, then moves under the row with the filing day.
+      expect(report.columns?.find((column) => column.key === "why")).toMatchObject({ minWidth: 46 });
+      expect(report.columns?.filter((column) => column.stackPriority).map((column) => [column.key, column.stackPriority])).toEqual([["company", 2], ["filingDate", 1]]);
       expect(report.rows[0]).toMatchObject({
         ticker: "TRNT",
         why: "3 insiders · CEO -40%",

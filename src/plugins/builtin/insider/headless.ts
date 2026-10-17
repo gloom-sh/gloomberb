@@ -93,13 +93,14 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
   const words = insiderSideWords(side);
   return [
     { key: "ticker", header: "Ticker" },
-    { key: "company", header: "Company" },
+    // Why is the point: the company gives way first, and on a narrow table moves under the row before why is cut.
+    { key: "company", header: "Company", stackPriority: 2 },
     { key: "score", header: "Score", align: "right" },
-    { key: "why", header: "Why" },
+    { key: "why", header: "Why", minWidth: 46 },
     { key: "insiders", header: words.insiders, align: "right" },
     { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
     { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
-    { key: "filingDate", header: "Filed", format: (value) => typeof value === "string" ? value : "-" },
+    { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : "-" },
     { key: "buyers", header: "Insiders", underRow: true, format: (value) => typeof value === "string" ? value : "" },
   ];
 }

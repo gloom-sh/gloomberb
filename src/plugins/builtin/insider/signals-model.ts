@@ -115,57 +115,84 @@ export interface InsiderSignalChip {
   tone: "neutral" | "accent" | "positive" | "negative";
   variant: "subtle" | "solid";
   /**
-   * Starts a group: a role, then that insider's facts; or the company's own
-   * fact (a cluster). The terminal joins a group's chips with spaces and
-   * the groups with " · ".
+   * Starts a group: the row's insiders (a cluster, or how many traded), or
+   * an insider's role followed by their facts. Groups stand further apart
+   * than chips; the terminal joins a group's chips with spaces and the
+   * groups with " · ".
    */
   lead: boolean;
 }
 
+/** Insiders named inline; the detail strip lists every one. */
+const MAX_INSIDER_GROUPS = 2;
+/** A stake raise above this, in percent, is said as the holding's multiple. */
+const STAKE_MULTIPLE_ABOVE = 300;
+
+/** A raise in percent as the holding's multiple: +500% is "6x". */
+function stakeMultiple(pct: number): string {
+  const multiple = 1 + pct / 100;
+  return multiple >= 10 ? `${Math.round(multiple)}x` : `${(Math.round(multiple * 10) / 10).toString()}x`;
+}
+
 /**
- * The why column's chips from the row's structured signals: each insider's
- * role once, then every fact about them (4th buy, 5x usual, +56%), NEW or
- * EXITED in the side's solid tone; the company's own fact (a cluster) in
- * the accent. Groups go in the order of their strongest fact, so the
- * strongest comes first. Dollars are the value column's, not a chip; a row
- * whose only reason is its dollars names who traded. Null when the server
- * sent no structured signals (it predates them): the reasons are the text.
+ * The why column's chips from the row's structured signals. A row of
+ * several insiders opens with them: the cluster in the accent, else how
+ * many traded. Then up to two insiders, each their role and every fact
+ * about them (4th buy, 5x usual, +56%, 6x stake, both ways), NEW or EXITED
+ * in the side's solid tone, in the order of their strongest fact. Dollars
+ * are the value column's, not a chip; a lone insider whose only reason is
+ * dollars is named by role. Null when the server sent no structured
+ * signals (it predates them): the reasons are the text.
  */
 export function insiderSignalChips(row: InsiderSignalRow, side: InsiderSignalSide): InsiderSignalChip[] | null {
   if (!Array.isArray(row.whySignals)) return null;
   const tone = side === "sell" ? "negative" : "positive";
   const role = (who: { role: InsiderSignalRole }): InsiderSignalChip => ({ label: who.role, tone: "neutral", variant: "subtle", lead: true });
+  let together: InsiderSignalChip | null = null;
   const groups: InsiderSignalChip[][] = [];
   const byInsider = new Map<string, InsiderSignalChip[]>();
   for (const signal of row.whySignals) {
     if (signal.kind === "size") continue;
     if (!signal.insider) {
-      groups.push([{ label: signal.text, tone: "accent", variant: "subtle", lead: true }]);
+      together ??= { label: signal.text, tone: "accent", variant: "subtle", lead: true };
       continue;
     }
     let group = byInsider.get(signal.insider.name);
     if (!group) {
+      if (groups.length === MAX_INSIDER_GROUPS) continue;
       group = [role(signal.insider)];
       byInsider.set(signal.insider.name, group);
       groups.push(group);
     }
-    group.push({ label: signal.text, tone, variant: signal.kind === "new" || signal.kind === "exited" ? "solid" : "subtle", lead: false });
+    const label = signal.kind === "stake" && signal.value > STAKE_MULTIPLE_ABOVE ? `${stakeMultiple(signal.value)} stake` : signal.text;
+    group.push({
+      label,
+      tone: signal.kind === "both" ? "neutral" : tone,
+      variant: signal.kind === "new" || signal.kind === "exited" ? "solid" : "subtle",
+      lead: false,
+    });
   }
+  if (!together && row.insiders > 1) together = { label: `${row.insiders} insiders`, tone: "neutral", variant: "subtle", lead: true };
+  if (together) return [together, ...groups.flat()];
   if (groups.length) return groups.flat();
   // Only dollars: who traded them.
   const top = row.buyers[0];
-  if (row.insiders > 1 || !top) return [{ label: `${row.insiders} insiders`, tone: "neutral", variant: "subtle", lead: true }];
-  return [role(top)];
+  return top ? [role(top)] : [{ label: `${row.insiders} insiders`, tone: "neutral", variant: "subtle", lead: true }];
+}
+
+/** The chips in their groups, as they are drawn and read. */
+export function insiderSignalChipGroups(chips: readonly InsiderSignalChip[]): InsiderSignalChip[][] {
+  const groups: InsiderSignalChip[][] = [];
+  for (const chip of chips) {
+    if (chip.lead || groups.length === 0) groups.push([chip]);
+    else groups[groups.length - 1]!.push(chip);
+  }
+  return groups;
 }
 
 /** The chips as one line of text: the terminal's why, and the CLI's. */
 export function insiderSignalChipsText(chips: readonly InsiderSignalChip[]): string {
-  const groups: string[][] = [];
-  for (const chip of chips) {
-    if (chip.lead || groups.length === 0) groups.push([chip.label]);
-    else groups[groups.length - 1]!.push(chip.label);
-  }
-  return groups.map((group) => group.join(" ")).join(" · ");
+  return insiderSignalChipGroups(chips).map((group) => group.map((chip) => chip.label).join(" ")).join(" · ");
 }
 
 /** Why, as text: the chips' words, or the reasons from a server that predates them. */
@@ -174,13 +201,16 @@ export function insiderSignalWhy(row: InsiderSignalRow, side: InsiderSignalSide 
   return chips ? insiderSignalChipsText(chips) : row.reasons.join(" · ");
 }
 
-/** A badge is its label plus one cell of padding on each side, one cell apart. */
+/** A badge is its label plus one cell of padding on each side, one cell from the next in its group and two from the next group. */
 const CHIP_CHROME = 2;
 const CHIP_GAP = 1;
+export const INSIDER_SIGNAL_GROUP_GAP = 2;
+
+const chipGap = (chip: InsiderSignalChip) => (chip.lead ? INSIDER_SIGNAL_GROUP_GAP : CHIP_GAP);
 
 /** Cells the chips take side by side. */
 function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): number {
-  return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? CHIP_GAP : 0), 0);
+  return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? chipGap(chip) : 0), 0);
 }
 
 /**
@@ -192,7 +222,7 @@ export function insiderSignalChipsFit(chips: readonly InsiderSignalChip[], width
   const shown: InsiderSignalChip[] = [];
   let used = 0;
   for (const chip of chips) {
-    const cells = displayWidth(chip.label) + CHIP_CHROME + (shown.length ? CHIP_GAP : 0);
+    const cells = displayWidth(chip.label) + CHIP_CHROME + (shown.length ? chipGap(chip) : 0);
     if (used + cells > width) break;
     shown.push(chip);
     used += cells;
@@ -246,12 +276,13 @@ export function insiderSignalsEmptyTitle(window: number, side: InsiderSignalSide
     : `No open-market insider ${activity} in the last ${window} days.`;
 }
 
-/** An insider's change in the holding: NEW, EXITED, +56%, -39%, or "--" without balances. */
+/** An insider's change in the holding: NEW, EXITED, +56%, -39%, 6x above +300%, or "--" without balances. */
 export function formatInsiderStakeChange(buyer: InsiderSignalBuyer): string {
   if (buyer.exited) return "EXITED";
   if (buyer.newPosition) return "NEW";
   const pct = buyer.stakeChangePct;
   if (pct == null || !Number.isFinite(pct) || pct === 0) return "--";
+  if (pct > STAKE_MULTIPLE_ABOVE) return stakeMultiple(pct);
   // Under 1% keeps a decimal, so a small trade does not read as none.
   const rounded = Math.abs(pct) < 1 ? Math.round(pct * 10) / 10 : Math.round(pct);
   return `${rounded > 0 ? "+" : ""}${rounded}%`;
