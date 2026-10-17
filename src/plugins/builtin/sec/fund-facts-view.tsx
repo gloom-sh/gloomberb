@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 import { loadingText, Notice, StatGrid } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
-import { errorMessage } from "../../../utils/errors";
 import { Box } from "../../../ui";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
-import { cachedFundFacts, fundFactItems, fundFactsEmpty, loadFundFacts } from "./fund-facts";
+import { cachedFundFacts, fundFactItems, fundFactsEmpty, fundFactsErrorText, loadFundFacts } from "./fund-facts";
 import type { CloudResource } from "../shared/cloud-resource";
 
 /** A fund's facts, served from the cache first and refreshed behind it; null asks for nothing. */
@@ -29,7 +28,7 @@ export function FundFactsSummary({ symbol, width, facts, loading, error }: {
   if (facts?.covered) return <StatGrid width={width} items={fundFactItems(facts)} />;
   const message = facts
     ? fundFactsEmpty(symbol, facts, false)
-    : error ? `Fund facts unavailable: ${errorMessage(error)}` : loading ? loadingText("fund facts") : null;
+    : error ? fundFactsErrorText(error) : loading ? loadingText("fund facts") : null;
   if (!message) return null;
   return <FundViewNotice lines={[message]} />;
 }

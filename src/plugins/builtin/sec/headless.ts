@@ -11,7 +11,7 @@ import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
-import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, listNames } from "./fund-facts";
+import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, listNames } from "./fund-facts";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -139,7 +139,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       const factsSection = facts?.covered
         ? { title: "Fund facts", entries: fundFactEntries(facts) }
         : { title: "Fund facts", rows: [], empty: factsResult.status === "rejected"
-          ? `Fund facts unavailable: ${errorMessage(factsResult.reason)}`
+          ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
       const publishers = facts?.covered ? fundFactPublishers(facts) : [];
       return {
@@ -149,7 +149,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
         ],
         complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
         errors: [
-          ...(factsResult.status === "rejected" ? [`Fund facts: ${errorMessage(factsResult.reason)}`] : []),
+          ...(factsResult.status === "rejected" ? [fundFactsErrorText(factsResult.reason)] : []),
           ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
         ],
         notes: facts?.covered && facts.stale && facts.nav?.asOf

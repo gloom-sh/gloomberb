@@ -4,6 +4,7 @@ import type { HeadlessBundleSection, HeadlessPaneLoadArgs } from "../../../types
 import { ETF_FILING_FORMS, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { createFundHeadless, createSecHeadless, fundFilingsEmpty } from "./headless";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
+import { FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 import { buildSecFilingRows, getFilingColumnText, secAcceptanceTimestamp } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -211,7 +212,12 @@ test("either half can fail without taking the other with it", async () => {
   const noFacts = createFundHeadless({ loadFacts: async () => { throw new Error("offline"); }, loadFilings: async () => [{ ...filings[1]!, form: "N-CSR" }] });
   const partial = await noFacts.load(fundArgs("SPY"), createTestHeadlessContext());
   expect(emptyOf(partial.sections[0])).toBe("Fund facts unavailable: offline");
+  expect(partial.errors).toEqual(["Fund facts unavailable: offline"]);
   expect(partial.sections[1]!.rows!.length).toBe(1);
+
+  // Before the server serves fund facts, the report says so once.
+  const notYet = createFundHeadless({ loadFacts: async () => { throw new Error(FUND_FACTS_UNAVAILABLE); }, loadFilings: async () => [] });
+  expect(emptyOf((await notYet.load(fundArgs("SPY"), createTestHeadlessContext())).sections[0])).toBe("Fund facts are not available on this server yet.");
 
   const neither = createFundHeadless({ loadFacts: async () => { throw new Error("offline"); }, loadFilings: async () => { throw new Error("down"); } });
   await expect(neither.load(fundArgs("SPY"), createTestHeadlessContext())).rejects.toThrow("down");

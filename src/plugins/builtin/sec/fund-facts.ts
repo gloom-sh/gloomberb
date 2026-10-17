@@ -3,6 +3,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
+import { errorMessage } from "../../../utils/errors";
 import { formatCompact } from "../../../utils/format";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
@@ -24,6 +25,12 @@ export function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
 }
 
 export const FUND_FACTS_UNAVAILABLE = "Fund facts are not available on this server yet.";
+
+/** A failed load as one line: the server-not-ready message as it is, anything else after "Fund facts unavailable:". */
+export function fundFactsErrorText(error: unknown): string {
+  const message = errorMessage(error);
+  return message === FUND_FACTS_UNAVAILABLE ? message : `Fund facts unavailable: ${message}`;
+}
 
 export async function fetchFundFacts(ticker: string, client: Client = apiClient): Promise<FundFactsPayload> {
   try { return validateFundFacts(await client.getFundFacts(ticker)); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
