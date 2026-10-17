@@ -2,7 +2,7 @@ import { appendFile, mkdir, readdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
-import { cacheDir, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { cacheDir, click, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
 import { pathName, visitAlternatives } from "./tab-visits";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
@@ -64,7 +64,12 @@ const HOVERED = new Set(["button", "tab", "link", "chip", "toggle", "input", "se
 function variantKeyOf(element: { family: string; shape: string; component: string; state: string }): string {
   return [element.family, element.shape, element.component, element.state].join("|");
 }
-const ENTRY_TIMEOUT_MS = 6 * 60_000;
+/**
+ * How long one function may take before it counts as stuck. T measures 34
+ * views at two widths and pictures them in two themes; on a busy host that
+ * passed six minutes without anything being stuck.
+ */
+const ENTRY_TIMEOUT_MS = 12 * 60_000;
 const debug = process.env.UI_AUDIT_DEBUG ? (message: string) => console.log(`  ${(performance.now() / 1000).toFixed(1)}s ${message}`) : () => {};
 
 interface AuditEntry extends CatalogEntry {
@@ -163,18 +168,19 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
   { id: "shell", layout: EMPTY_LAYOUT, async open() {} },
   { id: "command-bar", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await key(cdp, "p", "KeyP", 80, 2); } },
   { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "apple", { submit: false }); } },
-  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "TH"); } },
+  // "TH" and a space is the theme list; Enter would pick the highlighted theme and close it.
+  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "TH ", { submit: false }); } },
   { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "FB"); } },
   { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "PS"); } },
   {
     id: "pane-menu",
     layout: dock(SAMPLE_PANE),
     focused: SAMPLE_PANE.instanceId,
+    // The pane's actions button (its "more" icon) opens the pane menu.
     async open(cdp) {
-      const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-title]")?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
+      const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-action] > *")?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
       if (!at) return;
-      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: at.x, y: at.y, button: "right", buttons: 2, clickCount: 1 });
-      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: at.x, y: at.y, button: "right", buttons: 0, clickCount: 1 });
+      await click(cdp, at);
     },
   },
   { id: "onboarding", layout: EMPTY_LAYOUT, seed: { onboardingComplete: false }, async open() {} },

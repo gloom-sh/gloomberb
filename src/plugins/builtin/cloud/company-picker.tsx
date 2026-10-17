@@ -26,13 +26,13 @@ import {
   OnboardingTitle,
 } from "../../../components/onboarding/onboarding-frame";
 import { Button } from "../../../components/ui/button";
-import { TextField } from "../../../components/ui/fields";
+import { cardSurfaceStyle } from "../../../components/ui/card";
+import { TextField, fieldFrameStyle } from "../../../components/ui/fields";
 import { ListView, type ListViewItem } from "../../../components/ui/list-view";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut } from "../../../react/input";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../../state/app/context";
-import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { getSearchResultSymbol } from "../../../tickers/search/result";
 import { upsertTickerFromSearchResult } from "../../../tickers/search/upsert";
@@ -174,11 +174,12 @@ function LogoTile({ symbol, assetCategory, size }: { symbol: string; assetCatego
   const tile = {
     width: size,
     height: size,
-    borderRadius: 7,
+    borderRadius: "var(--gloom-radius-md)",
     flexShrink: 0,
     overflow: "hidden",
-    backgroundColor: blendHex(colors.panel, colors.textBright, 0.06),
+    backgroundColor: "var(--gloom-hover-fill)",
   } as const;
+  // The letter is a stand-in for a picture, fitted to the tile it fills.
   const letter = (
     <Text fg={colors.textMuted} attributes={TextAttributes.BOLD} style={{ fontSize: Math.round(size * 0.45) }}>
       {symbol.charAt(0)}
@@ -214,33 +215,28 @@ function CompanyCard({
       minWidth={0}
       onMouseDown={onToggle}
       data-gloom-role="company-card"
+      // A card you pick (docs/pane-conventions.md, "Design system"): picked, the accent
+      // frame and the raised fill tinted toward it; the keyboard's cursor is the focus ring.
       style={{
+        ...cardSurfaceStyle({ selected: picked, padding: "0 var(--gloom-space-md)" }),
         position: "relative",
-        gap: 10,
+        gap: "var(--gloom-space-md)",
         height: 54,
-        padding: "0 12px",
-        borderRadius: 9,
         cursor: "pointer",
-        boxSizing: "border-box",
-        backgroundColor: picked
-          ? `color-mix(in srgb, ${accent} 12%, ${blendHex(colors.panel, colors.bg, 0.12)})`
-          : blendHex(colors.panel, colors.textBright, 0.025),
-        boxShadow: picked
-          ? `inset 0 0 0 1.5px ${accent}`
-          : `inset 0 0 0 1px color-mix(in srgb, ${colors.textBright} 9%, transparent)`,
-        outline: cursor ? `2px solid color-mix(in srgb, ${accent} 70%, transparent)` : "none",
+        ...(picked ? { background: `color-mix(in srgb, var(--gloom-surface-raised) 88%, ${accent})` } : {}),
+        outline: cursor ? `2px solid ${accent}` : "none",
         outlineOffset: 2,
         transition: "background-color 120ms ease, box-shadow 120ms ease",
       }}
     >
       <LogoTile symbol={suggestion.ticker} assetCategory={suggestion.assetCategory} size={30} />
       <Box flexDirection="column" minWidth={0} flexGrow={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ fontSize: 13, lineHeight: "17px" }}>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ fontSize: "var(--gloom-type-body)", lineHeight: "18px" }}>
           {suggestion.ticker}
         </Text>
         <Text
           fg={colors.textMuted}
-          style={{ fontSize: 11, lineHeight: "15px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "16px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
         >
           {suggestion.name}
         </Text>
@@ -251,11 +247,11 @@ function CompanyCard({
           justifyContent="center"
           style={{
             position: "absolute",
-            top: 6,
-            right: 6,
+            top: "var(--gloom-space-xs)",
+            right: "var(--gloom-space-xs)",
             width: 16,
             height: 16,
-            borderRadius: 8,
+            borderRadius: "var(--gloom-radius-full)",
             backgroundColor: accent,
           }}
         >
@@ -420,14 +416,13 @@ export function CompanyPicker({
     <Box
       flexDirection="row"
       alignItems="center"
+      // The field look; the onboarding's search keeps its taller row.
       style={{
+        ...fieldFrameStyle(true),
         height: 38,
-        padding: "0 12px",
-        gap: 10,
-        borderRadius: 8,
+        padding: "0 var(--gloom-space-md)",
+        gap: "var(--gloom-space-sm)",
         boxSizing: "border-box",
-        backgroundColor: colors.bg,
-        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${colors.textBright} 14%, transparent)`,
       }}
     >
       <Icon name="search" size={13} color={colors.textMuted} />

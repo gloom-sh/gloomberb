@@ -19,8 +19,8 @@ function DesktopEditorField({
   width?: string;
 }) {
   return (
-    <Box flexDirection="column" width={width} minWidth="220px" style={{ gap: 4 }}>
-      <Text fg={colors.textDim} style={{ fontWeight: 600 }}>{label}</Text>
+    <Box flexDirection="column" width={width} minWidth="220px" style={{ gap: "var(--gloom-space-xs)" }}>
+      <Text fg={colors.textDim} style={{ fontWeight: "var(--gloom-weight-bold)" }}>{label}</Text>
       {children}
     </Box>
   );

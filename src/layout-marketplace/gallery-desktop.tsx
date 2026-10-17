@@ -47,6 +47,9 @@ function useCursorRowInView(selected: boolean) {
   return rowRef;
 }
 
+/** Every sidebar row starts at the pane's inset; the row's fill still runs to the edge. */
+const ROW_INSET = { paddingLeft: "var(--gloom-inset)", boxSizing: "border-box" } as const;
+
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({
   title,
@@ -61,12 +64,13 @@ function SidebarSection({
   width: number;
   onToggle: () => void;
 }) {
+  // The pane's inset before the marker, as every list row starts there.
   return (
-    <Box height={1} width={width} flexDirection="row" flexShrink={0}>
+    <Box height={1} width={width} flexDirection="row" flexShrink={0} style={ROW_INSET}>
       <ActionRow
         label={tf("{title} ({count})", { title: t(title), count: String(count) })}
         expanded={expanded}
-        width={width}
+        width={Math.max(1, width - 1)}
         onPress={onToggle}
       />
     </Box>
@@ -141,10 +145,10 @@ function EntryRow({
             event.stopPropagation?.();
             activate();
           }}
-          style={{ cursor: "pointer" }}
+          style={{ ...ROW_INSET, cursor: "pointer" }}
         >
           <Text fg={entry.active ? colors.borderFocused : foregroundColor} selectable={false}>
-            {entry.active ? " ● " : "   "}
+            {entry.active ? "● " : "  "}
           </Text>
           <Text
             fg={foregroundColor}
