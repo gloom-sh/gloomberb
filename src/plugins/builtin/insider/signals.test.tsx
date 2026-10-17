@@ -455,12 +455,14 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   expect(frame).toContain("[i]ns");
 });
 
-test("an opened company's columns drop the size against usual, then the nth trade, as the ranking's do", () => {
+test("an opened company's columns drop the size against usual, then the nth trade, then the last day, as the ranking's do", () => {
   const lines = insiderSignalDetailLines(BUYING[0]!);
   const ids = (width: number) => buildInsiderSignalDetailColumns(width, lines).map((column) => column.id);
   expect(ids(80)).toEqual(["name", "role", "nth", "usual", "stake", "value", "lastBuy"]);
   expect(ids(64)).toEqual(["name", "role", "nth", "stake", "value", "lastBuy"]);
   expect(ids(52)).toEqual(["name", "role", "stake", "value", "lastBuy"]);
+  // A 390 px phone, about 48 cells: the dollars stay whole and the last day goes.
+  expect(ids(44)).toEqual(["name", "role", "stake", "value"]);
   expect(buildInsiderSignalDetailColumns(140, lines, { side: "sell" }).map((column) => column.label)).toEqual([
     "Insider", "Role", "Nth", "Vs Usual", "Stake", "Sold", "Last Sale",
   ]);

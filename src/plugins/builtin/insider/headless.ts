@@ -303,7 +303,7 @@ export function createInsiderHeadless(
       {
         key: "limit",
         aliases: ["count", "rows"],
-        description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
+        description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank (--company always reads 200).",
         type: "integer",
         defaultValue: 20,
         minimum: 1,
@@ -377,7 +377,7 @@ export function createInsiderHeadless(
       },
       {
         key: "company",
-        description: "Without a ticker: open one ranked company, as Enter does in the pane: its figures and its insiders in the ranking's columns. fn INS <ticker> lists its trades as filed.",
+        description: "Without a ticker: open one ranked company, as Enter does in the pane: its figures and its insiders in the ranking's columns. It reads the ranking's 200 rows, the most the server sends, so --limit does not apply. fn INS <ticker> lists its trades as filed.",
         type: "string",
         example: "--side sell --company ESTC",
         exampleWithoutArgument: true,

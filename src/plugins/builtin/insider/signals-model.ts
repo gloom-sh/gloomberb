@@ -549,7 +549,8 @@ export type InsiderSignalDetailColumn = DataTableColumn & { id: InsiderSignalDet
  * The opened company's insider columns, the ranking's in the same order:
  * name, role, nth trade, size against usual, stake, dollars and last trade
  * day. The name takes the room left; below 12 cells the size against usual
- * goes, then the nth trade, as the ranking drops them.
+ * goes, then the nth trade, then the last trade day, as the ranking drops
+ * them, so a phone keeps the dollars whole.
  */
 export function buildInsiderSignalDetailColumns(
   width: number,
@@ -565,7 +566,7 @@ export function buildInsiderSignalDetailColumns(
     value: fitWidth(lines.map((line) => line.value), words.traded, 8),
     lastBuy: fitWidth(lines.map((line) => line.last), words.last, 8),
   };
-  const show = { usual: true, nth: true };
+  const show = { usual: true, nth: true, lastBuy: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
   const room = () => available - [
     widths.role,
@@ -573,9 +574,9 @@ export function buildInsiderSignalDetailColumns(
     show.usual ? widths.usual : 0,
     widths.stake,
     widths.value,
-    widths.lastBuy,
+    show.lastBuy ? widths.lastBuy : 0,
   ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
-  for (const drop of ["usual", "nth"] as const) {
+  for (const drop of ["usual", "nth", "lastBuy"] as const) {
     if (room() >= COMPANY_MIN) break;
     show[drop] = false;
   }
@@ -586,7 +587,7 @@ export function buildInsiderSignalDetailColumns(
     ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
     { id: "stake", label: "Stake", width: widths.stake, align: "right" },
     { id: "value", label: words.traded, width: widths.value, align: "right" },
-    { id: "lastBuy", label: words.last, width: widths.lastBuy, align: "right" },
+    ...(show.lastBuy ? [{ id: "lastBuy" as const, label: words.last, width: widths.lastBuy, align: "right" as const }] : []),
   ];
 }
 

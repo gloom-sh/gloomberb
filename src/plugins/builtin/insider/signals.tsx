@@ -188,7 +188,8 @@ export function InsiderSignalsView({ width, height, focused, onOpenIns }: Inside
       case "score": return { text: String(row.score), value: row.score, color: colors.textBright };
       case "role": {
         const role = insiderSignalRowFacts(row).role;
-        return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.text };
+        // Muted, as a role reads in INS's trades and the opened company's insiders.
+        return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.textMuted };
       }
       case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected);
       case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected);
