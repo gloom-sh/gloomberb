@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { PaneFooterBar, PaneFooterProvider, type CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { AppPersistence } from "../../../data/app-persistence";
@@ -12,6 +12,10 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
 import { Box } from "../../../ui";
 import { secHeadless, secModule } from "./index";
+import { apiClient } from "../../../api-client";
+import type { FundFactsPayload } from "../../../api-client/fund-facts";
+import { ETF_FORMS_SETTING } from "./forms";
+import { fundFactsCache } from "./fund-facts";
 
 const PANE_ID = "sec:test";
 const Pane = secModule.panes![0]!.component;
@@ -31,14 +35,17 @@ const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | null = null;
 let footer: CombinedPaneFooter;
 let selectCompany: (symbol: string) => void;
+let paneSettings: Record<string, unknown> | undefined;
+let firstSymbol = "ACME";
 
 function Harness() {
-  const [symbol, setSymbol] = useState("ACME");
+  const [symbol, setSymbol] = useState(firstSymbol);
   selectCompany = setSymbol;
   const config = createTestPaneConfig("/tmp/gloomberb-sec-test", {
     instanceId: PANE_ID,
     paneId: "sec",
     binding: { kind: "fixed", symbol },
+    ...(paneSettings ? { settings: paneSettings } : {}),
   });
   const state = createInitialState(config);
   state.tickers = new Map([[symbol, createTestTicker(symbol)]]);
@@ -75,6 +82,10 @@ async function press(name: string, sequence: string) {
 const frame = tui.frame;
 
 afterEach(() => {
+  // Fund facts are cached by ticker for the process; each test serves its own.
+  fundFactsCache.reset();
+  paneSettings = undefined;
+  firstSymbol = "ACME";
   coordinator?.destroy();
   coordinator = null;
   setSharedMarketDataCoordinator(null);
@@ -276,4 +287,104 @@ test("discovery refresh failure preserves the opened as-filed document and its s
   await settleFrame(tui.setup(), 8);
   expect(JSON.stringify(footer)).not.toContain("Discovery outage");
   expect(reads).toBe(1);
+});
+
+const IVV_FACTS: FundFactsPayload = {
+  ticker: "IVV", covered: true, name: "iShares Core S&P 500 ETF", structure: "registered",
+  expenseRatio: { value: 0.03, asOf: "2026-10-16", source: "iShares", kind: "net", url: "https://www.ishares.com/us/products/239726/" },
+  nav: { value: 766.76, asOf: "2026-10-16", source: "iShares", url: "https://www.ishares.com/us/products/239726/" },
+  closingPrice: { value: 766.8, asOf: "2026-10-16", source: "Gloom Cloud" },
+  premiumDiscount: { value: 0.005, asOf: "2026-10-16", source: "Gloom Cloud", basis: "computed" },
+  netAssets: { value: 712_340_000_000, asOf: "2026-10-16", source: "iShares", scope: "fund" },
+  sponsor: { value: "BlackRock (iShares)", asOf: null, source: "iShares" },
+  inception: { value: "2000-05-15", asOf: null, source: "iShares" },
+  index: { value: "S&P 500", asOf: null, source: "iShares" },
+  stale: false, fetchedAt: "2026-10-17T02:00:00.000Z",
+};
+
+test("the fund view leads with the fund's facts, each dated, and cites who published them until a filing is open", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "IVV";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => IVV_FACTS);
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "485BPOS", companyName: "iShares Trust" }] }));
+    await settleFrame(tui.setup(), 8);
+    const shown = frame();
+    expect(facts).toHaveBeenCalledWith("IVV");
+    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "net 2026-10-16", "Net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
+      expect(shown).toContain(text);
+    }
+    // The filings stay below the facts.
+    expect(shown.indexOf("$766.76")).toBeLessThan(shown.indexOf("485BPOS"));
+    // The footer names the sponsor, as every fund's does; the computed premium cites its close on its own line.
+    expect(JSON.stringify(footer)).toContain('{"text":"iShares","tone":"value"}');
+    expect(JSON.stringify(footer)).not.toContain("Gloom Cloud");
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a trust the fund view has no facts for says why once, above what its filings say", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "USO";
+  const reason = "USO files with the SEC as a trust or pool, not as an open-end fund; its sponsor's daily figures are not collected yet.";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ...IVV_FACTS, ticker: "USO", covered: false, reason, structure: "trust", expenseRatio: null, nav: null, closingPrice: null,
+    premiumDiscount: null, netAssets: null, sponsor: null, inception: null, index: null, name: null,
+  }));
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "10-Q" }] }));
+    await settleFrame(tui.setup(), 8);
+    const shown = frame().replace(/\s+/g, " ");
+    expect(shown).toContain("USO files with the SEC as a trust or pool");
+    expect(shown).toContain("No fund filings for USO.");
+    expect(shown).toContain("Its other filings: SEC USO.");
+    expect(shown.split("fn SEC").length).toBe(1);
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a trust with facts but no fund forms keeps its facts as the view and says in one line where its filings are", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "IBIT";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ...IVV_FACTS, ticker: "IBIT", structure: "trust", index: null,
+    expenseRatio: { value: 0.25, asOf: "2026-10-16", source: "iShares", kind: "sponsor-fee" },
+  }));
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "10-Q" }] }));
+    await settleFrame(tui.setup(), 8);
+    const shown = frame().replace(/\s+/g, " ");
+    expect(shown).toContain("Sponsor fee 0.25%");
+    expect(shown).toContain("No fund filings for IBIT. Its other filings: SEC IBIT.");
+    expect(shown).not.toContain("FILING");
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a stale NAV marks the figures and says since when; month-end net assets read as month end", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "VOO";
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ...IVV_FACTS, ticker: "VOO", stale: true,
+    nav: { value: 701.68, asOf: "2026-10-01", source: "Vanguard", url: "https://investor.vanguard.com/investment-products/etfs/profile/voo" },
+    premiumDiscount: { value: -0.01, asOf: "2026-10-01", source: "Vanguard", basis: "computed" },
+    expenseRatio: { value: 0.03, asOf: "2026-04-28", source: "Vanguard", kind: "net" },
+    netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" },
+    index: null,
+  }));
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "485BPOS" }] }));
+    await settleFrame(tui.setup(), 8);
+    const shown = frame().replace(/\s+/g, " ");
+    expect(shown).toContain("2026-10-01 stale");
+    expect(shown).toContain("2026-09-30 month-end");
+    expect(shown).toContain("net 2026-04-28");
+    expect(shown).toContain("VOO's newest NAV is from 2026-10-01; its sponsor has not published one since.");
+    expect(JSON.stringify(footer)).toContain('{"text":"Vanguard","tone":"value"}');
+  } finally {
+    facts.mockRestore();
+  }
 });

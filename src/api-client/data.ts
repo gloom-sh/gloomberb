@@ -210,6 +210,11 @@ export class CloudDataApi {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
   }
 
+  /** A US-listed fund's fee, NAV, premium and net assets as its sponsor publishes them. */
+  getFundFacts(ticker: string) {
+    return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`);
+  }
+
   getFundChanges(fund: string) {
     return this.request<import("./members").FundChangesPayload>(`/cloud/members/${encodeURIComponent(fund)}/changes`);
   }

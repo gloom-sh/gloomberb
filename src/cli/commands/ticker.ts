@@ -547,8 +547,9 @@ const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterpri
 type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string; distributions?: ForwardYieldDistributions | null };
 
 /**
- * What a fund's report cannot show yet, and for a US listing where its SEC
- * filings are. Only for a fund: a stock's report says nothing of it.
+ * Where a fund's facts are: for a US listing, the ETF function (fee, NAV,
+ * premium, net assets); a fund listed elsewhere has none yet. Only for a
+ * fund: a stock's report says nothing of it.
  */
 function fundFactsNote(
   symbol: string,
@@ -557,8 +558,9 @@ function fundFactsNote(
   tickerFile: TickerRecord | null = null,
 ): string | null {
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund") return null;
-  const note = "Fund facts (fee, NAV, premium) are not available yet";
-  return !exchange || isUsListingExchange(exchange) ? `${note}; try fn SEC ${symbol}.` : `${note}.`;
+  return !exchange || isUsListingExchange(exchange)
+    ? `Fund facts (fee, NAV, premium, net assets): fn ETF ${symbol}.`
+    : "Fund facts (fee, NAV, premium) cover US-listed funds only.";
 }
 
 /**
