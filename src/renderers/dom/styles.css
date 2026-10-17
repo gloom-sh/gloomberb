@@ -988,7 +988,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* A passage of a transcript that plays from where it starts. The one being
    heard is marked like the row under a table's cursor, with the accent's bar
    at its edge so it reads in themes whose cursor row is faint; the pointer
-   shows half the fill and no bar. The mark reaches a little past the text
+   shows the hover fill and no bar. The mark reaches a little past the text
    without moving it. */
 .gloom-playback-line {
   --line-bg: transparent;
