@@ -422,6 +422,19 @@ class GloomApiClient {
   }
 
   /**
+   * Ends the Pro trial and Pro now, unbilled. Call it only once the person
+   * confirmed a warning that says so. `endedNow` is false when the server
+   * scheduled the cancel at the period end instead: the subscription was no
+   * longer in its trial, or the server predates ending a trial early.
+   */
+  async endCloudTrial(): Promise<{ canceled: boolean; endedNow?: boolean }> {
+    return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
+      method: "POST",
+      body: JSON.stringify({ endTrialNow: true }),
+    });
+  }
+
+  /**
    * Asks which arm of an app experiment this account or web visitor is in, at the
    * moment it would show. The API counts the answer as the exposure.
    */

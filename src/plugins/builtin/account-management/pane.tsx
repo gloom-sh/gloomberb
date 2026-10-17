@@ -67,6 +67,7 @@ import {
   formatTrialOffer,
 } from "../../../account/billing";
 import { PasswordChangeDialog } from "./password-dialog";
+import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
@@ -89,7 +90,7 @@ import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
 
-type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;
+type AccountBusy = "profile" | "password" | "alerts" | "billing" | "trial" | "delete" | null;
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
   { label: "Profile", value: "profile" },
   { label: "Emails", value: "emails" },
@@ -124,7 +125,8 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   ],
   // Its actions are footer hints; the tab owns its footer.
   calendar: [],
-  pro: ["upgradeAction"],
+  // Cancel Trial shows only while a trial runs.
+  pro: ["upgradeAction", "cancelTrialAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
   // Remote assistants allowed to drive this terminal; a list with its own footer.
@@ -258,14 +260,15 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const bodyHeight = Math.max(5, height);
   // Chat's card settings show once the server keeps them; the desks only while showing them is on.
   const chatCardSupported = profile?.showLocalTime !== undefined;
+  const planAccess = useMemo(() => resolvePlanAccess(profile), [profile]);
   const fieldOrder = useMemo(() => ACCOUNT_TAB_FIELD_ORDER[activeTab].filter((field) => {
     if (field === "showLocalTime" || field === "showDesks") return chatCardSupported;
     if (field === "desks") return chatCardSupported && draft.showDesks;
+    if (field === "cancelTrialAction") return planAccess.isTrialActive;
     return true;
-  }), [activeTab, chatCardSupported, draft.showDesks]);
+  }), [activeTab, chatCardSupported, draft.showDesks, planAccess.isTrialActive]);
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
 
-  const planAccess = useMemo(() => resolvePlanAccess(profile), [profile]);
   const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);
   const trialOffer = useMemo(() => formatTrialOffer(pricing), [language, pricing]);
   const planStatusLabel = useMemo(() => {
@@ -741,6 +744,41 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }
   }, [busy, dialog]);
 
+  // Only after the warning that it ends the trial and Pro now (trial-cancel.ts).
+  const endTrial = useCallback(async () => {
+    setActiveField("cancelTrialAction");
+    if (busy) return;
+    try {
+      const result = await endTrialAfterWarning(
+        dialog,
+        planAccess.trialEndsAt,
+        () => apiClient.endCloudTrial(),
+        () => {
+          setBusy("trial");
+          setMessage({ tone: "info", text: t("Ending trial...") });
+        },
+      );
+      if (!result) return;
+      // The plan changed on the server: the session, the status bar and the tab follow it.
+      await chatController.refreshSession().catch(() => {});
+      const nextProfile = await apiClient.getAccountProfile().catch(() => null);
+      if (nextProfile) setProfile(nextProfile);
+      setMessage({
+        tone: "success",
+        text: result.endedNow
+          ? t("Trial ended. Pro is off and you won't be charged.")
+          : t("Cancelled. Pro stays on until the end of the billing period."),
+      });
+    } catch (error) {
+      setMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : t("Failed to cancel the trial."),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, dialog, planAccess.trialEndsAt]);
+
   useAccountManagementFooter({
     busy,
     // The Calendar and Agents tabs save nothing and show their own status.
@@ -755,6 +793,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     cyclePortfolio,
     deleteAccount,
     draftRef,
+    endTrial,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
     focused: focused && activeTab !== "teams" && activeTab !== "calendar" && activeTab !== "agents" && (hasSession || apiClient.isSignedIn()),
@@ -988,14 +1027,27 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 width={contentWidth}
                 activePlan={planAccess.hasProAccess ? "pro" : "free"}
               />
-              <Box ref={fieldNodeRef("upgradeAction")} flexDirection="row">
-                <Button
-                  label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
-                  variant={planAccess.isPayingPro ? "secondary" : "primary"}
-                  active={activeField === "upgradeAction"}
-                  onPress={openUpgrade}
-                  disabled={!!busy}
-                />
+              <Box flexDirection="row" gap={1}>
+                <Box ref={fieldNodeRef("upgradeAction")} flexDirection="row">
+                  <Button
+                    label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
+                    variant={planAccess.isPayingPro ? "secondary" : "primary"}
+                    active={activeField === "upgradeAction"}
+                    onPress={openUpgrade}
+                    disabled={!!busy}
+                  />
+                </Box>
+                {planAccess.isTrialActive ? (
+                  <Box ref={fieldNodeRef("cancelTrialAction")} flexDirection="row">
+                    <Button
+                      label={busy === "trial" ? t("Ending...") : t("Cancel Trial")}
+                      variant="danger"
+                      active={activeField === "cancelTrialAction"}
+                      onPress={() => { void endTrial(); }}
+                      disabled={!!busy}
+                    />
+                  </Box>
+                ) : null}
               </Box>
             </>
           ) : null}

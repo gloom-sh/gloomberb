@@ -34,6 +34,7 @@ export function useAccountManagementKeyboard({
   setActiveField,
   setDraftValue,
   deleteAccount,
+  endTrial,
   turnOffEmailAlerts,
 }: {
   activeField: AccountFieldKey;
@@ -52,6 +53,7 @@ export function useAccountManagementKeyboard({
   setActiveField: (field: AccountFieldKey) => void;
   setDraftValue: <K extends keyof AccountDraft>(key: K, value: AccountDraft[K]) => void;
   deleteAccount: () => Promise<void>;
+  endTrial: () => Promise<void>;
   turnOffEmailAlerts: () => Promise<void>;
 }): FieldRing<AccountFieldKey> {
   const actions: Partial<Record<AccountFieldKey, () => void>> = {
@@ -59,6 +61,7 @@ export function useAccountManagementKeyboard({
     desks: openDeskPicker,
     passwordAction: openPasswordDialog,
     upgradeAction: openUpgrade,
+    cancelTrialAction: () => { void endTrial(); },
     assistantsAction: openAssistants,
     deleteAccountAction: () => { void deleteAccount(); },
     emailAlertsOffAction: () => { void turnOffEmailAlerts(); },

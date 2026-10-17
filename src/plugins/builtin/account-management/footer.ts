@@ -15,7 +15,7 @@ export function useAccountManagementFooter({
   message,
   saveProfile,
 }: {
-  busy: "profile" | "password" | "alerts" | "billing" | "delete" | null;
+  busy: "profile" | "password" | "alerts" | "billing" | "trial" | "delete" | null;
   /** Off while a tab that owns its footer is showing. */
   enabled: boolean;
   hasSession: boolean;
