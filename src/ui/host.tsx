@@ -139,9 +139,11 @@ export interface BoxRenderable {
   /**
    * Desktop only: calls `listener` with the box's size in cells each time the
    * browser lays it out at a new one (a ResizeObserver, after layout and
-   * before paint). Returns the unsubscribe.
+   * before paint). A box that is not displayed (a hidden tab) reports
+   * nothing; the first size once it shows again comes with `revealed`.
+   * Returns the unsubscribe.
    */
-  observeSize?: (listener: (size: { width: number; height: number }) => void) => () => void;
+  observeSize?: (listener: (size: { width: number; height: number }, change: { revealed: boolean }) => void) => () => void;
   /**
    * Desktop only, for a surface root (a chart, a heat map): fills the box the
    * surface sits in where its cells leave a fraction of a cell, refits when

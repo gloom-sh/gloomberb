@@ -50,11 +50,17 @@ export function useCompositePanelBitmap({
   bitmapSize,
   colors,
   isDesktopWeb,
+  revealed = false,
 }: {
   panel: CompositePanelScene;
   bitmapSize: StaticChartBitmapSize | null;
   colors: CompositeChartColors;
   isDesktopWeb: boolean;
+  /**
+   * The plot took this size as it showed again (a tab coming back): nothing
+   * was painted at it, so it draws before that paint, not after the debounce.
+   */
+  revealed?: boolean;
 }): NativeChartBitmap | null {
   const [desktopBitmap, setDesktopBitmap] = useState<NativeChartBitmap | null>(null);
   const desktopBitmapRef = useRef<NativeChartBitmap | null>(null);
@@ -150,7 +156,7 @@ export function useCompositePanelBitmap({
       && renderedSize.pixelWidth === pixelWidth
       && renderedSize.pixelHeight === pixelHeight;
 
-    if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors || desktopUnpaintedRef.current) {
+    if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors || desktopUnpaintedRef.current || revealed) {
       cancelRender();
       render();
       return;
@@ -161,7 +167,7 @@ export function useCompositePanelBitmap({
       desktopCancelRenderRef.current = null;
       render();
     });
-  }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth]);
+  }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth, revealed]);
 
   useEffect(() => () => {
     desktopActiveRef.current = false;

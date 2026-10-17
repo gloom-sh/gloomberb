@@ -10,6 +10,11 @@ const sameSize = (a: CellSize | null, b: CellSize | null) => (
   a === b || (a !== null && b !== null && Math.abs(a.width - b.width) < SAME_CELLS && Math.abs(a.height - b.height) < SAME_CELLS)
 );
 
+/** A measured size; `revealed` when the box took it as it showed again after being hidden (a tab). */
+export interface MeasuredCellSize extends CellSize {
+  readonly revealed?: boolean;
+}
+
 /**
  * The size in cells the browser lays `box` out at, for content that draws for
  * one size: a chart's bitmap, at the pixels its plot really has. The box
@@ -22,15 +27,15 @@ const sameSize = (a: CellSize | null, b: CellSize | null) => (
  * with every other box measured in the meantime; the release renders the last
  * one in its own commit.
  */
-export function useMeasuredCells(box: RefObject<BoxRenderable | null>, laidOut: CellSize): CellSize {
-  const [measured, setMeasured] = useState<CellSize | null>(null);
+export function useMeasuredCells(box: RefObject<BoxRenderable | null>, laidOut: CellSize): MeasuredCellSize {
+  const [measured, setMeasured] = useState<MeasuredCellSize | null>(null);
   const laidOutRef = useRef(laidOut);
   laidOutRef.current = laidOut;
   useLayoutEffect(() => {
     const observe = box.current?.observeSize;
     if (!observe) return;
-    let pending: CellSize | null = null;
-    const show = (size: CellSize) => {
+    let pending: MeasuredCellSize | null = null;
+    const show = (size: MeasuredCellSize) => {
       pending = null;
       // Before anything differs, a measure the layout already gives is no
       // news (the box sized in cells); after, the measure is the truth.
@@ -44,9 +49,10 @@ export function useMeasuredCells(box: RefObject<BoxRenderable | null>, laidOut: 
       if (pending) startTransition(flush);
     });
     const stopEnd = onLiveResizeEnd(flush);
-    const stopObserve = observe((size) => {
-      if (isLiveResizing()) pending = size;
-      else show(size);
+    const stopObserve = observe((size, change) => {
+      const next = change.revealed ? { ...size, revealed: true } : size;
+      if (isLiveResizing()) pending = next;
+      else show(next);
     });
     return () => {
       stopCatchUp();

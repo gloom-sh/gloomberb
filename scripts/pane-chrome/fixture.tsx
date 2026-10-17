@@ -778,17 +778,28 @@ function desLayout(): LayoutConfig {
  */
 function PaintPane(props: PaneProps) {
   const [active, setActive] = useState("empty");
+  // Like the research pane: a tab opened once stays mounted, hidden while
+  // another one shows, so going back to it reveals the chart it drew.
+  const [mounted, setMounted] = useState<readonly string[]>(["empty"]);
+  const select = useCallback((tab: string) => {
+    setActive(tab);
+    setMounted((current) => (current.includes(tab) ? current : [...current, tab]));
+  }, []);
   const { strip, rows } = usePaneTabs({
     tabs: ["empty", "chart", "overview", "composer"].map((value) => ({ value, label: value })),
-    activeValue: active, onSelect: setActive,
+    activeValue: active, onSelect: select,
   });
   const body = { ...props, height: Math.max(4, props.height - rows) };
   return <Box flexDirection="column" flexGrow={1}>
     {strip}
-    {active === "chart" ? <ChartPane {...props} />
-      : active === "overview" ? <OverviewPane {...props} />
-      : active === "composer" ? <ChartComposerFixturePane {...body} />
-      : null}
+    {mounted.map((tab) => (
+      <Box key={tab} visible={tab === active} flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
+        {tab === "chart" ? <ChartPane {...body} />
+          : tab === "overview" ? <OverviewPane {...body} />
+          : tab === "composer" ? <ChartComposerFixturePane {...body} />
+          : null}
+      </Box>
+    ))}
   </Box>;
 }
 
