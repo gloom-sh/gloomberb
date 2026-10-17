@@ -26,8 +26,10 @@ export interface ScenarioMarketSnapshot {
   expirationDates: number[];
   rate: number | null;
   dividendYield: number | null;
-  /** Where `dividendYield` is from: the fundamentals, or a distribution history with none paid. Absent from older snapshots. */
+  /** Where `dividendYield` is from: the fundamentals, a distribution history with none paid, or one that stopped. Absent from older snapshots. */
   dividendYieldBasis?: ModelDividendYield["basis"] | null;
+  /** The last distribution's ex-date of a dividend that stopped (basis `stopped`). */
+  dividendLastPaid?: string | null;
   source: string | null;
   underlyingQuote: Quote | null;
   rateAsOf: string[];
@@ -41,7 +43,7 @@ export interface ScenarioLoaderDependencies {
   loadSnapshot(instrument: InstrumentRef, options?: { forceRefresh?: boolean }): Promise<QueryEntry<TickerFinancials>>;
   loadOptions(request: OptionsRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<OptionsChain>>;
   loadYieldCurve(): Promise<YieldPoint[]>;
-  /** The distribution history, read only when the fundamentals state no dividend yield. */
+  /** The distribution history, read when the fundamentals state no dividend yield or a forward one that may have stopped. */
   loadCorporateActions?(instrument: InstrumentRef): Promise<CorporateActionsData | null>;
   now?: () => number;
 }
@@ -107,9 +109,9 @@ export async function loadScenarioMarket(
   const financials = financialsEntry ? resolveEntryValue(financialsEntry) : null;
   const financialsSymbol = financials?.quote?.symbol ?? financials?.quoteMetadata?.symbol;
   const fundamentals = financials?.fundamentals;
-  // Only a current yield stated for this symbol; else, as the options chain, 0 for a history with no dividend paid.
+  // Only a current yield stated for this symbol; else, as the options chain, 0 for a history with no dividend paid. Either way 0 for one that stopped.
   const stated = symbolMatches(financialsSymbol, symbol) && !fundamentals?.stale && !financialsEntry?.error
-    ? fundamentals?.dividendYield : null;
+    ? fundamentals : null;
   const dividend = await loadModelDividendYield(stated, symbol,
     dependencies.loadCorporateActions ? () => dependencies.loadCorporateActions!(request.instrument) : null,
     { now, signal: request.signal }).catch((error: unknown) => {
@@ -160,6 +162,7 @@ export async function loadScenarioMarket(
     symbol, exchange: request.instrument.exchange, spot: quoteCurrent ? quote!.price : null, currency,
     asOf: quoteCurrent && positive(quote!.lastUpdated) ? quote!.lastUpdated : now,
     chain, expirationDates, rate: rate.rate, dividendYield: dividend?.value ?? null, dividendYieldBasis: dividend?.basis ?? null,
+    ...(dividend?.basis === "stopped" ? { dividendLastPaid: dividend.lastPaid ?? null } : {}),
     source: quoteCurrent ? quoteEntry?.source ?? quote!.providerId ?? null : null,
     underlyingQuote: quoteCurrent ? quote : null, rateAsOf: rate.asOf, warnings: [...new Set(warnings)],
     ...(missingExpiry ? { missingExpiry } : {}),
