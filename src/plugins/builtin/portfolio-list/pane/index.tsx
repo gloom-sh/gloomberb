@@ -189,7 +189,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio) }),
     [currentPortfolio, isPortfolioTab, paneSettings.columnIds],
   );
-  const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive);
+  const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
   const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
   const perpetuals = useListPerpetuals(tickers, showsPerpetuals);

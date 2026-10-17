@@ -1,4 +1,4 @@
-import type { CorporateActionsData, DeclaredDividendAction } from "../types/financials";
+import type { CorporateActionsData, DeclaredDividendAction, Fundamentals } from "../types/financials";
 import { declaredDividends } from "./declared-dividends";
 import { formatDistributionAmount } from "./format";
 
@@ -87,7 +87,9 @@ function dayNumber(day: string): number {
  * years up to the latest, as the nearest of monthly, quarterly, semiannual and
  * annual. The longest, so a special distribution between two regular ones
  * does not shorten it, and a payer that moved to a longer schedule is read on
- * the new one. Null with fewer than two ex-dates in that span.
+ * the new one. One gap alone may be a regular and a special distribution, so
+ * with two ex-dates it is at least quarterly. Null with fewer than two in that
+ * span.
  */
 function distributionIntervalDays(exDates: readonly (string | Date)[]): number | null {
   const days = [...new Set(exDates.flatMap((value) => {
@@ -99,8 +101,9 @@ function distributionIntervalDays(exDates: readonly (string | Date)[]): number |
   const recent = days.filter((day) => day >= latest - CADENCE_SPAN_DAYS).slice(-(CADENCE_GAPS + 1));
   if (recent.length < 2) return null;
   const longest = Math.max(...recent.slice(1).map((day, index) => day - recent[index]!));
-  return CADENCE_DAYS.reduce<number>((best, cadence) =>
+  const nearest = CADENCE_DAYS.reduce<number>((best, cadence) =>
     Math.abs(Math.log(longest / cadence)) < Math.abs(Math.log(longest / best)) ? cadence : best, CADENCE_DAYS[0]);
+  return recent.length < 3 ? Math.max(nearest, CADENCE_DAYS[1]) : nearest;
 }
 
 /** A dividend that has stopped: no forward yield, only the day the last distribution went ex. */
@@ -135,8 +138,9 @@ export function distributionHistory(actions: CorporateActionsData | null | undef
  * at least a month and at most three, so a monthly payer lapses about two
  * months after its last ex-date, a quarterly one after four and a half months,
  * a semiannual one after nine and an annual one after fifteen (the window
- * Gloom Cloud uses). The interval comes from the issuer's own history; without
- * one (fewer than two distributions, or no history) the annual window applies.
+ * Gloom Cloud uses). The interval comes from the issuer's own history, at
+ * least quarterly when it has only two distributions; without one (fewer than
+ * two distributions, or no history) the annual window applies.
  * A distribution declared and not yet ex, the rate's own or one in the
  * history, keeps it current. Null while current or when nothing is known.
  */
@@ -168,6 +172,17 @@ export function lapsedDividend(
 export function forwardDividendMayHaveLapsed(asOf: string | Date | null | undefined, now = new Date()): boolean {
   const rateDay = isoDay(asOf);
   return !rateDay || dayNumber(isoDay(now)!) - dayNumber(rateDay) > SHORTEST_WINDOW_DAYS;
+}
+
+/**
+ * Whether a listing's forward yield is old enough to have lapsed, so its
+ * distribution history is worth reading; never for a trailing yield or none.
+ */
+export function forwardYieldMayHaveLapsed(
+  fundamentals: Pick<Fundamentals, "dividendYieldBasis" | "exDividendDate"> | null | undefined,
+  now = new Date(),
+): boolean {
+  return fundamentals?.dividendYieldBasis === "forward" && forwardDividendMayHaveLapsed(fundamentals.exDividendDate, now);
 }
 
 export const NO_CURRENT_DIVIDEND = "no current dividend";

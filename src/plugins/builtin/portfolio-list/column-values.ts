@@ -32,7 +32,7 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
-import { distributionHistory, forwardDividendMayHaveLapsed, lapsedDividend } from "../../../utils/forward-dividend";
+import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../../../utils/forward-dividend";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
 import { currentListingName } from "../../../tickers/listing-name";
@@ -219,12 +219,12 @@ function currentDividendYield(
   ctx: ColumnContext,
 ): { pending: boolean; value: number | null } {
   const value = liveDividendYield(quote, fundamentals) ?? null;
-  if (value == null || fundamentals?.dividendYieldBasis !== "forward") return { pending: false, value };
   const now = new Date(ctx.now);
-  if (!forwardDividendMayHaveLapsed(fundamentals.exDividendDate, now)) return { pending: false, value };
+  // The rows the corporate actions are loaded for (usePortfolioSupplementalData).
+  if (value == null || !forwardYieldMayHaveLapsed(fundamentals, now)) return { pending: false, value };
   const actions = mapData(ctx.corporateActions, symbol);
   if (actions.pending) return { pending: true, value: null };
-  return { pending: false, value: lapsedDividend(fundamentals.exDividendDate, distributionHistory(actions.data, now), now) ? null : value };
+  return { pending: false, value: lapsedDividend(fundamentals!.exDividendDate, distributionHistory(actions.data, now), now) ? null : value };
 }
 
 function exDividendDate(symbol: string, ctx: ColumnContext): { pending: boolean; date: Date | null } {

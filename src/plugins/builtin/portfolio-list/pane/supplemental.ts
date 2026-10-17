@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { ColumnConfig } from "../../../../types/config";
-import type { AnalystResearchData, CorporateActionsData } from "../../../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, TickerFinancials } from "../../../../types/financials";
 import type { DataProvider, EarningsEvent } from "../../../../types/data-provider";
 import type { TickerRecord } from "../../../../types/ticker";
 import { useAssetData } from "../../../runtime";
 import { loadEarningsCalendar } from "../../earnings/data/cache";
+import { forwardYieldMayHaveLapsed } from "../../../../utils/forward-dividend";
 
 const SUPPLEMENTAL_BATCH_LIMIT = 6;
 const ANALYST_COLUMN_IDS = new Set(["target", "target_pct", "rating"]);
-// DIV% reads the distribution history to tell a forward yield whose dividend stopped.
-const CORPORATE_COLUMN_IDS = new Set(["ex_div", "next_earn", "dividend_yield"]);
+const CORPORATE_COLUMN_IDS = new Set(["ex_div", "next_earn"]);
+// DIV% reads the distribution history only of a forward yield old enough to have stopped.
+const DIVIDEND_YIELD_COLUMN_ID = "dividend_yield";
 const EARNINGS_COLUMN_IDS = new Set(["next_earn"]);
 
 interface SupplementalTarget {
@@ -261,9 +263,18 @@ export function usePortfolioSupplementalData(
   tickers: TickerRecord[],
   columns: ColumnConfig[],
   appActive: boolean,
+  financialsMap: ReadonlyMap<string, TickerFinancials>,
 ): PortfolioSupplementalData {
   const provider = useAssetData();
   const targets = useMemo(() => targetsFromTickers(tickers), [tickers]);
+  const allCorporate = needsAnyColumn(columns, CORPORATE_COLUMN_IDS);
+  const dividendYield = columns.some((column) => column.id === DIVIDEND_YIELD_COLUMN_ID);
+  // Every row for the ex-date and earnings columns; for DIV% alone, the rows whose yield may have lapsed.
+  const corporateTargets = useMemo(() => {
+    if (allCorporate || !dividendYield) return targets;
+    const now = new Date();
+    return targets.filter((target) => forwardYieldMayHaveLapsed(financialsMap.get(target.symbol)?.fundamentals, now));
+  }, [allCorporate, dividendYield, financialsMap, targets]);
   const [state, setState] = useState<SupplementalState>(() => ({
     analystResearch: new Map(),
     corporateActions: new Map(),
@@ -271,11 +282,11 @@ export function usePortfolioSupplementalData(
     version: 0,
   }));
   const needsAnalyst = appActive && needsAnyColumn(columns, ANALYST_COLUMN_IDS);
-  const needsCorporate = appActive && needsAnyColumn(columns, CORPORATE_COLUMN_IDS);
+  const needsCorporate = appActive && (allCorporate || dividendYield);
   const needsEarnings = appActive && needsAnyColumn(columns, EARNINGS_COLUMN_IDS);
 
   useAnalystSupplemental(provider, targets, needsAnalyst, state, setState);
-  useCorporateSupplemental(provider, targets, needsCorporate, state, setState);
+  useCorporateSupplemental(provider, corporateTargets, needsCorporate, state, setState);
   useEarningsSupplemental(provider, targets, needsEarnings, state, setState);
 
   return state;

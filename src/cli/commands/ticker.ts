@@ -364,20 +364,21 @@ export interface ForwardYieldDistributions {
 
 /**
  * The listing's distributions, read only for a forward yield whose ex-date is
- * still ahead (the one case its basis names a declared one) or long enough
- * past for its dividend to have stopped; null otherwise, and when they cannot
- * be read, which leaves the basis to its dates and the lapse to Gloom Cloud's
- * fifteen months.
+ * still ahead (the one case its basis names a declared one, which JSON does
+ * not print, so `declared: false` skips it) or long enough past for its
+ * dividend to have stopped; null otherwise, and when they cannot be read,
+ * which leaves the basis to its dates and the lapse to Gloom Cloud's fifteen
+ * months.
  */
 export async function loadForwardYieldDistributions(
   dataProvider: Pick<MarketContext["dataProvider"], "getCorporateActions">,
   listing: { symbol: string; exchange: string },
   fundamentals: TickerFinancials["fundamentals"],
-  now = new Date(),
+  { declared = true, now = new Date() }: { declared?: boolean; now?: Date } = {},
 ): Promise<ForwardYieldDistributions | null> {
   if (fundamentals?.dividendYieldBasis !== "forward" || fundamentals.dividendYield == null || !dataProvider.getCorporateActions) return null;
   const exDate = fundamentals.exDividendDate ?? "";
-  const declaredAhead = /^\d{4}-\d{2}-\d{2}$/.test(exDate) && exDate > now.toISOString().slice(0, 10);
+  const declaredAhead = declared && /^\d{4}-\d{2}-\d{2}$/.test(exDate) && exDate > now.toISOString().slice(0, 10);
   if (!declaredAhead && !forwardDividendMayHaveLapsed(exDate, now)) return null;
   try {
     const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
@@ -1085,7 +1086,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
     // The forward yield's distributions, read beside the rest when its basis or its lapse needs them; they never fail the report.
-    const distributions = loadForwardYieldDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals);
+    const distributions = loadForwardYieldDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals,
+      { declared: !dependencies.printResult });
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({

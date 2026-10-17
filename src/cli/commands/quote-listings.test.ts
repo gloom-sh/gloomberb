@@ -329,6 +329,23 @@ test("a pasted list is one row per symbol, in order, however it is separated, fo
   }
 });
 
+test("a company's name in a pasted list is quoted as its listing, never as its words", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /whirlpool/i.test(query)
+      ? [{ providerId: "test", symbol: "WHR", name: "Whirlpool Corp", exchange: "NYSE", type: "Common Stock", currency: "USD" }]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["WHR, Whirlpool Corporation, BRK.B"], cli.context);
+  expect(asked).toEqual([["WHR", "WHR:NYSE", "BRK.B"]]);
+  expect((cli.printed[0] as PrintedCliResult).result.warnings).toContain('Read "Whirlpool Corporation" as WHR:NYSE (Whirlpool Corp).');
+});
+
 test("quote and compare exit 1 when none of the symbols has a quote, 0 when some do, and print the same table either way", async () => {
   const dataProvider = createTestDataProvider({
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "AAPL"

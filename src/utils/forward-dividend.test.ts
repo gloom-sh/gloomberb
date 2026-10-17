@@ -38,6 +38,11 @@ test("a dividend lapses past its own usual interval plus grace, read from the is
   expect(lapsedDividend("2026-02-27", { exDates: quarterly }, at("2026-07-14"))).toEqual({ lastPaid: "2026-02-27" });
   // A special distribution between two quarters does not make the payer monthly.
   expect(lapsedDividend("2026-02-27", { exDates: [...quarterly, "2026-01-05"] }, at("2026-07-13"))).toBeNull();
+  // Nor does one beside the only regular distribution: with two dates the window is at least a quarter's,
+  // so the dividend is current until its next regular ex-date is a quarter and a half late.
+  expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-05-29"))).toBeNull();
+  expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-08-03"))).toBeNull();
+  expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-08-04"))).toEqual({ lastPaid: "2026-03-20" });
   // Monthly: a month and a month's grace (at least a month), so day 60 is current and day 61 is not.
   const monthly = ["2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30"];
   expect(lapsedDividend("2026-09-30", { exDates: monthly }, at("2026-11-29"))).toBeNull();

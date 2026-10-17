@@ -252,16 +252,21 @@ function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined
  * case: it may be a company's name, which `readSymbols` says.
  */
 function normalizeSymbols(args: string[]): string[] {
-  return uniqueSecuritySymbols(splitSymbolArgs(args).map((symbol) => isCompanyNameInput(symbol) ? symbol : symbol.toUpperCase()));
+  return uniqueEntries(splitSymbolArgs(args));
+}
+
+/** Each entry once, a symbol upper-cased and a company's name in its typed case. */
+function uniqueEntries(entries: readonly string[]): string[] {
+  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) ? entry : entry.toUpperCase()));
 }
 
 /**
  * The symbols to resolve: each entry with a space read as a company's name
  * when search finds one, else as its words, each a symbol (`readNameEntries`),
- * with the repeats that leaves dropped.
+ * with the repeats that leaves dropped. A name found stays whole.
  */
 async function readSymbols(symbols: readonly string[], dataProvider: Parameters<typeof readNameEntries>[1]): Promise<string[]> {
-  return normalizeSymbols(await readNameEntries(symbols, dataProvider));
+  return uniqueEntries(await readNameEntries(symbols, dataProvider));
 }
 
 /** What JSON metadata says about the listing a command resolved. */
@@ -1034,6 +1039,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
+    // A forward yield dated ahead names the declared distribution it annualizes (not in JSON), and one whose
+    // dividend stopped says so; read beside the listing notes.
+    const distributions = view === "statements" ? null : loadForwardYieldDistributions(
+      market.dataProvider, listing.request, financials.fundamentals, { declared: ctx.cliOptions.format !== "json" });
     const identity = listingIdentity(listing, financials.quote);
     const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
     const data: FinancialsCliData = {
@@ -1048,9 +1057,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
       const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
-      // A forward yield dated ahead names the declared distribution it annualizes, and one whose dividend stopped says so.
-      const distributions = await loadForwardYieldDistributions(market.dataProvider, listing.request, financials.fundamentals);
-      const report = { ...data, distributions };
+      const report = { ...data, distributions: await distributions };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1060,7 +1067,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCap: capitalization?.value ?? null,
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
-          fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, distributions),
+          fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, report.distributions),
         },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
