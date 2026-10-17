@@ -589,7 +589,7 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   if (capability.reportReadiness !== "unsupported") {
     lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
     for (const option of capability.options) {
-      if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${invocation} ${option.example}`, width));
+      if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
     }
   }
   lines.push(...wrapCommandLine(`gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`, width));

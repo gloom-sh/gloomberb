@@ -247,6 +247,8 @@ export function createInsiderHeadless(
           { value: "buy", aliases: ["buys", "buying", "purchases"] },
           { value: "sell", aliases: ["sells", "selling", "sales"] },
         ],
+        example: "--side sell --min-value 250000",
+        exampleWithoutArgument: true,
         pluginState: SIGNAL_OPTION_STATE("side"),
       },
       {
@@ -260,6 +262,8 @@ export function createInsiderHeadless(
           { value: "directors", aliases: ["director"] },
           { value: "owners", aliases: ["owner", "10%"] },
         ],
+        example: "--role directors --cluster --window 90",
+        exampleWithoutArgument: true,
         pluginState: SIGNAL_OPTION_STATE("role"),
       },
       {
@@ -286,6 +290,8 @@ export function createInsiderHeadless(
         key: "exited",
         description: "Without a ticker, with --side sell: only companies where an insider sold their whole stake.",
         type: "boolean",
+        example: "--side sell --exited",
+        exampleWithoutArgument: true,
         pluginState: SIGNAL_OPTION_STATE("position"),
       },
       {

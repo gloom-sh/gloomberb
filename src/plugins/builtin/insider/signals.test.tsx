@@ -16,13 +16,13 @@ import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
 import {
   buildInsiderSignalColumns,
-  insiderSignalChipGroups,
   insiderSignalChips,
-  insiderSignalChipsFit,
   insiderSignalChipsText,
+  insiderSignalChipUnits,
   formatInsiderStakeChange,
   insiderSignalsCoverageNotice,
   insiderSignalsQueryFrom,
+  insiderSignalsBarFit,
 } from "./signals-model";
 
 const InsiderPane = insiderModule.panes![0]!.component;
@@ -48,12 +48,15 @@ function payload(window: number, rows = ROWS): InsiderSignalsPayload {
 }
 
 let state: AppState | null = null;
+/** Pane state the next mount starts with: the query's parts, as `insider:signals:<part>`. */
+let seed: Record<string, unknown> = {};
 function Harness({ width, height }: { width: number; height: number }) {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-test"), { instanceId: PANE_ID, paneId: "insider", title: "Insider Activity" });
   const [current, dispatch] = useReducer(appReducer, config, (initialConfig) => {
     const initial = createInitialState(initialConfig);
     initial.tickers = new Map(ROWS.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)]));
     initial.focusedPaneId = PANE_ID;
+    initial.paneState[PANE_ID] = { pluginState: { insider: seed } };
     return initial;
   });
   state = current;
@@ -86,6 +89,7 @@ const asked: CloudInsiderSignalsParams[] = [];
 afterEach(() => {
   insiderSignalsCache.reset();
   setSharedMarketDataCoordinator(null);
+  seed = {};
 });
 
 test("ranks companies with the reasons; Enter opens one here and Esc comes back to the same row", async () => {
@@ -287,7 +291,7 @@ test("why reads as chips' facts: the insiders together first, then each one's ro
   ]);
   // A server without them: the reasons.
   expect(insiderSignalChips(ROWS[0]!, "buy")).toBeNull();
-  // A narrow column shows the chips that fit whole, and no role without a fact.
+  // The desktop's row wraps units whole: a role always goes with its first fact, groups stand two cells apart.
   const chips = insiderSignalChips({
     ...BUYING[0]!,
     whySignals: [
@@ -296,14 +300,14 @@ test("why reads as chips' facts: the insiders together first, then each one's ro
       { kind: "repeat", value: 2, text: "2nd buy", insider: DIRECTOR },
     ],
   }, "buy")!;
-  const labels = (width: number) => insiderSignalChipsFit(chips, width).map((chip) => chip.label);
-  // "3 insiders" takes 12 cells, then "Director" 12 (two apart: another group), "+58%" 7 and "2nd buy" 10 (one apart).
-  expect(labels(41)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
-  expect(labels(40)).toEqual(["3 insiders", "Director", "+58%"]);
-  expect(labels(31)).toEqual(["3 insiders", "Director", "+58%"]);
-  expect(labels(30)).toEqual(["3 insiders"]);
-  expect(labels(11)).toEqual([]);
-  expect(insiderSignalChipGroups(chips).map((group) => group.map((chip) => chip.label))).toEqual([["3 insiders"], ["Director", "+58%", "2nd buy"]]);
+  expect(insiderSignalChipUnits(chips).map((unit) => [unit.chips.map((chip) => chip.label), unit.gap])).toEqual([
+    [["3 insiders"], 0], [["Director", "+58%"], 2], [["2nd buy"], 1],
+  ]);
+  expect(insiderSignalChipUnits(insiderSignalChips(BUYING[1]!, "buy")!).map((unit) => unit.chips.map((chip) => chip.label)))
+    .toEqual([["CEO", "4th buy"], ["4.9x usual"]]);
+  // A role with nothing else to say stands alone.
+  expect(insiderSignalChipUnits(insiderSignalChips({ ...BUYING[1]!, whySignals: [{ kind: "size", value: 610_000, text: "$610k", insider: CEO }] }, "buy")!))
+    .toEqual([{ chips: [expect.objectContaining({ label: "CEO" })], gap: 0 }]);
   // A holding's change: a decimal under 1%, the multiple above +300%, nothing said without balances.
   const buyer = SELLING[0]!.buyers[0]!;
   expect([-100, -38.6, -0.36, 0, null, 300, 350, 500, 2415, 70_821.5].map((stakeChangePct) => formatInsiderStakeChange({ ...buyer, exited: false, stakeChangePct })))
@@ -364,4 +368,119 @@ test("a short pane leaves the insiders out and keeps the rows", async () => {
   await mount(sided, 140, 14);
   expect(tui.frame()).toContain("Northwind Biologics");
   expect(tui.frame()).not.toMatch(/Role\s+Bought\s+Last\s+Stake/);
+});
+
+
+test("a side or filter whose read fails says so in the body with Retry, never under another query's rows", async () => {
+  let pending: { resolve: (payload: InsiderSignalsPayload) => void; reject: (error: Error) => void } | null = null;
+  await mount((window, params) => params.side === "sell" || params.cluster
+    ? new Promise<InsiderSignalsPayload>((resolve, reject) => { pending = { resolve, reject }; })
+    : sided(window, params), 140, 24);
+  await tui.clickFrameText("Selling");
+  await settle();
+  // While Selling loads, Buying's rows stay on screen.
+  expect(tui.frame()).toContain("Northwind Biologics");
+  await act(async () => { pending!.reject(new Error("Upstream timed out.")); });
+  await settle();
+  let frame = tui.frame();
+  expect(frame).not.toContain("Northwind Biologics");
+  expect(frame).toContain("Insider activity unavailable.");
+  expect(frame).toContain("Upstream timed out.");
+  expect(frame).toContain("Retry");
+  // The bar stays above, on Selling.
+  expect(frame).toMatch(/Side\s+Buying\s+Selling/);
+  expect(frame).toContain("Exited");
+
+  // Retry loads Selling again with the body's spinner, not Buying's rows.
+  await tui.clickFrameText("Retry");
+  await settle();
+  expect(tui.frame()).not.toContain("Northwind Biologics");
+  await act(async () => { pending!.resolve({ ...payload(30, SELLING), side: "sell" }); });
+  await settle();
+  expect(tui.frame()).toContain("Tailspin Toys");
+
+  // A filter fails the same way, and Buying is one click away.
+  await tui.clickFrameText("Buying");
+  await settle();
+  expect(tui.frame()).toContain("Northwind Biologics");
+  await tui.clickFrameText("Cluster");
+  await settle();
+  await act(async () => { pending!.reject(new Error("Upstream timed out.")); });
+  await settle();
+  frame = tui.frame();
+  expect(frame).not.toContain("Northwind Biologics");
+  expect(frame).toContain("Upstream timed out.");
+  await tui.clickFrameText("Cluster");
+  await settle();
+  expect(tui.frame()).toContain("Northwind Biologics");
+});
+
+test("New and Exited start off on the other side", async () => {
+  await mount(sided, 140, 24);
+  await tui.clickFrameText("New");
+  await settle();
+  expect(asked.at(-1)).toEqual({ window: 30, limit: 100, position: "new" });
+  await tui.clickFrameText("Selling");
+  await settle();
+  expect(asked.at(-1)).toEqual({ side: "sell", window: 30, limit: 100 });
+  // Never a read of whole stakes sold on the way.
+  expect(asked.some((params) => params.position === "exited")).toBe(false);
+  expect(tui.frame()).toContain("[ ] Exited");
+  // Cluster is not a side's; it stays.
+  await tui.clickFrameText("Cluster");
+  await settle();
+  await tui.clickFrameText("Buying");
+  await settle();
+  expect(asked.at(-1)).toEqual({ window: 30, limit: 100, cluster: true });
+});
+
+test("the terminal bar folds until every control fits, Cap and clear included, and a checkbox never moves it", async () => {
+  const query = insiderSignalsQueryFrom({});
+  const fit = (width: number, capShown = false, changes: Record<string, unknown> = {}, desktop = false) =>
+    insiderSignalsBarFit(width, insiderSignalsQueryFrom({ ...query, ...changes }), { capShown, desktop });
+  expect(fit(140)).toEqual({ side: "full", windowInline: true, only: false });
+  expect(fit(100)).toEqual({ side: "full", windowInline: false, only: false });
+  expect(fit(88)).toEqual({ side: "short", windowInline: false, only: false });
+  expect(fit(80)).toEqual({ side: "short", windowInline: false, only: true });
+  expect(fit(80, true)).toEqual({ side: "short", windowInline: false, only: true });
+  expect(fit(60, true)).toEqual({ side: "menu", windowInline: false, only: true });
+  // Ticking a checkbox, or the other side, measures the same.
+  for (const width of [60, 80, 88, 95, 100, 110, 140]) {
+    for (const capShown of [false, true]) {
+      for (const desktop of [false, true]) {
+        expect(fit(width, capShown, { cluster: true, position: true, side: "sell" }, desktop)).toEqual(fit(width, capShown, {}, desktop));
+      }
+    }
+  }
+  // The desktop's menus take more room around their words, and its choices show full labels: at 640 px,
+  // 80 cells, Side folds with Cap shown; with Cap and Clear after two menus nothing more folds, so the bar scrolls.
+  expect(fit(120, true, {}, true)).toEqual({ side: "full", windowInline: true, only: false });
+  expect(fit(100, true, {}, true)).toEqual({ side: "full", windowInline: false, only: false });
+  expect(fit(80, false, {}, true)).toEqual({ side: "short", windowInline: false, only: true });
+  expect(fit(80, true, {}, true)).toEqual({ side: "menu", windowInline: false, only: true });
+
+  // At 80 columns every control shows whole with Cap; after two filters Side folds too, and clear shows.
+  const capped = async (window: number, params: CloudInsiderSignalsParams) => ({ ...(await sided(window, params)), marketCaps: "stored" as const });
+  const bar = () => tui.frame().split("\n")[0]!.trimEnd();
+  await mount(capped, 80, 24);
+  expect(bar()).toBe(" Side  Buy  Sell   Window 30D  Role All  Min Any  Only Any  Cap All");
+  // Only sets both checkboxes' filters: Cluster, then both.
+  const only = async (downs: number) => {
+    await tui.clickFrameText("Only");
+    await settle();
+    for (let i = 0; i < downs; i++) await act(async () => { tui.setup().mockInput.pressArrow("down"); });
+    await act(async () => { tui.setup().mockInput.pressEnter(); });
+    await settle();
+  };
+  await only(1);
+  expect(asked.at(-1)).toEqual({ window: 30, limit: 100, cluster: true });
+  expect(bar()).toBe(" Side  Buy  Sell   Window 30D  Role All  Min Any  Only Cluster  Cap All");
+  await only(2);
+  expect(asked.at(-1)).toEqual({ window: 30, limit: 100, cluster: true, position: "new" });
+  expect(bar()).toContain("Only Both");
+  insiderSignalsCache.reset();
+  seed = { "insider:signals:role": "officers", "insider:signals:minValue": 1_000_000 };
+  await mount(capped, 80, 24);
+  expect(bar()).toBe(" Side Buy  Window 30D  Role Officers  Min $1M+  Only Any  Cap All  clear");
+  expect(asked.at(-1)).toEqual({ window: 30, limit: 100, role: "officers", minValue: 1_000_000 });
 });

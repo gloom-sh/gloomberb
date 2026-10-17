@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide } from "../../../api-client/insider-signals";
+import type { InsiderSignalCap, InsiderSignalRoleGroup, InsiderSignalRow, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import {
   Badge,
   ColumnGrid,
@@ -21,9 +21,10 @@ import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
+import type { CloudResource } from "../shared/cloud-resource";
 import { listingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { cachedInsiderSignals, DEFAULT_INSIDER_SIGNAL_WINDOW, loadInsiderSignals } from "./signals-client";
+import { cachedInsiderSignals, DEFAULT_INSIDER_SIGNAL_WINDOW, loadInsiderSignals, type InsiderSignalsQuery } from "./signals-client";
 import {
   buildInsiderSignalColumns,
   compareInsiderSignalRows,
@@ -33,22 +34,25 @@ import {
   INSIDER_SIGNAL_MIN_OPTIONS,
   INSIDER_SIGNAL_ROLE_OPTIONS,
   INSIDER_SIGNAL_SIDE_OPTIONS,
+  INSIDER_SIGNAL_SIDE_SHORT,
   INSIDER_SIGNAL_WINDOW_OPTIONS,
   insiderSideWords,
-  INSIDER_SIGNAL_GROUP_GAP,
-  insiderSignalChipGroups,
   insiderSignalChips,
-  insiderSignalChipsFit,
   insiderSignalChipsText,
+  insiderSignalChipUnits,
+  insiderSignalOnly,
+  insiderSignalOnlyOptions,
   insiderSignalDetailLines,
   insiderSignalFirstDirection,
   insiderSignalsCoverageNotice,
   insiderSignalsEmptyTitle,
   insiderSignalsFiltered,
   insiderSignalsQueryFrom,
+  insiderSignalsBarFit,
   insiderSignalWhy,
   type InsiderSignalColumn,
   type InsiderSignalColumnId,
+  type InsiderSignalOnly,
 } from "./signals-model";
 
 interface InsiderSignalsViewProps {
@@ -64,6 +68,12 @@ const DETAIL_MIN_PANE_HEIGHT = 16;
 /** Insiders the detail lists, largest first; the ranking keeps up to ten. */
 const DETAIL_MAX_INSIDERS = 5;
 const DETAIL_GAP = 2;
+
+/** A ranking with the query it answers, so rows another query left on screen are told from this one's. */
+interface InsiderSignalsAnswer {
+  query: InsiderSignalsQuery;
+  resource: CloudResource<InsiderSignalsPayload>;
+}
 
 /**
  * INS without a ticker: the companies whose insiders bought, or sold, their
@@ -99,13 +109,27 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   const [selectedTicker, setSelectedTicker] = usePluginPaneState<string | null>("insider:signals:selected", null);
   const [sort, setSort] = useState<{ columnId: InsiderSignalColumnId; direction: "asc" | "desc" }>({ columnId: "score", direction: "desc" });
 
-  const loader = useCallback((force: boolean) => loadInsiderSignals(query, { force }), [query]);
+  const loader = useCallback(
+    async (force: boolean): Promise<InsiderSignalsAnswer> => ({ query, resource: await loadInsiderSignals(query, { force }) }),
+    [query],
+  );
   const resource = useAsyncResource(loader, {
-    initialData: () => cachedInsiderSignals(query),
+    initialData: () => {
+      const cached = cachedInsiderSignals(query);
+      return cached ? { query, resource: cached } : null;
+    },
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
-    // Another window or filter keeps the rows on screen, loading, until its own arrive.
+    // Another side, window or filter keeps the rows on screen, loading, until its own arrive.
     keepPreviousData: true,
   });
+  // The rows another query left stay only while this one loads the first time: once it has
+  // failed, the body says so with Retry, never another side's or filter's rows under this one.
+  const [failedQuery, setFailedQuery] = useState<InsiderSignalsQuery | null>(null);
+  const answered = resource.data?.query === query ? resource.data.resource : null;
+  useEffect(() => {
+    if (!answered && resource.error) setFailedQuery(query);
+  }, [answered, query, resource.error]);
+  const shown = answered ?? (resource.loading && failedQuery !== query ? resource.data?.resource ?? null : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   // Signing in or out reads the ranking again for the new session.
@@ -117,7 +141,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
     void reload();
   }, [reload, session.requestKey]);
 
-  const data = resource.data?.payload ?? null;
+  const data = shown?.payload ?? null;
   // Rows of the other side, kept on screen while this one loads, are drawn in their own side's words.
   const dataSide: InsiderSignalSide = data?.side ?? "buy";
   const rows = data?.rows ?? [];
@@ -137,7 +161,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
     registrationId: "insider:signals",
     loading: resource.loading,
     error: data ? resource.error : null,
-    stale: !!data && !!resource.data?.stale,
+    stale: !!data && !!shown?.stale,
     info: data?.asOf
       ? [{ id: "asof", asOf: true, parts: [{ text: `as of ${formatShortDate(data.asOf, { utc: true })}`, tone: "muted" as const }] }]
       : [],
@@ -148,7 +172,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
     focused,
     notices: [
       ...(coverageNotice ? [coverageNotice] : []),
-      ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
+      ...(shown?.refreshError ? [shown.refreshError] : []),
     ],
   });
 
@@ -166,10 +190,13 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
         return {
           text,
           content: (
-            <Box flexDirection="row" gap={INSIDER_SIGNAL_GROUP_GAP} height={1} overflow="hidden">
-              {insiderSignalChipGroups(insiderSignalChipsFit(chips, column.width)).map((group, groupIndex) => (
-                <Box key={groupIndex} flexDirection="row" gap={1} height={1} flexShrink={0}>
-                  {group.map((chip, chipIndex) => (
+            // One line that wraps, clipped: the browser moves a chip that does not fit whole, and every
+            // chip after it, to the hidden line. Nothing wide stands first, so that goes for the first chip too.
+            <Box flexDirection="row" flexWrap="wrap" width="100%" minWidth={0} height={1} overflow="hidden">
+              <Box width={0} height={1} flexShrink={0} />
+              {insiderSignalChipUnits(chips).map((unit, unitIndex) => (
+                <Box key={unitIndex} flexDirection="row" gap={1} height={1} flexShrink={0} marginLeft={unit.gap}>
+                  {unit.chips.map((chip, chipIndex) => (
                     <Badge key={`${chip.label}:${chipIndex}`} label={chip.label} tone={chip.tone} variant={chip.variant} />
                   ))}
                 </Box>
@@ -195,16 +222,28 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
   }
 
   const capShown = data?.marketCaps === "stored" || query.cap !== null;
+  // The bar folds as far as it must for every control, Cap and clear included, to fit its one row.
+  const fit = insiderSignalsBarFit(width, query, { capShown, desktop: !!nativePaneChrome });
+  const setOnly = (value: InsiderSignalOnly) => {
+    setCluster(value === "cluster" || value === "both");
+    setPosition(value === "position" || value === "both");
+  };
   const filters: QueryBarFilter[] = [
     {
       id: "side",
       label: "Side",
       title: "Insider buying or selling",
       value: side,
-      // Buy and Sell on a narrow terminal pane, so the toggles stay on screen.
-      options: !nativePaneChrome && width < 90 ? INSIDER_SIGNAL_SIDE_OPTIONS.map((option) => ({ ...option, short: option.value === "buy" ? "Buy" : "Sell" })) : INSIDER_SIGNAL_SIDE_OPTIONS,
-      inline: true,
-      onChange: (value: InsiderSignalSide) => setSide(value),
+      options: fit.side === "full"
+        ? INSIDER_SIGNAL_SIDE_OPTIONS
+        : INSIDER_SIGNAL_SIDE_OPTIONS.map((option) => ({ ...option, short: INSIDER_SIGNAL_SIDE_SHORT[option.value] })),
+      inline: fit.side !== "menu",
+      onChange: (value: InsiderSignalSide) => {
+        if (value === side) return;
+        setSide(value);
+        // New positions and whole stakes sold are one stored switch; a side starts with it off.
+        setPosition(false);
+      },
     },
     {
       id: "window",
@@ -213,8 +252,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       value: String(query.window),
       defaultValue: String(DEFAULT_INSIDER_SIGNAL_WINDOW),
       options: INSIDER_SIGNAL_WINDOW_OPTIONS,
-      // Below 100 columns the window is a menu, so the toggles stay on screen.
-      inline: !!nativePaneChrome || width >= 100,
+      inline: fit.windowInline,
       onChange: (value: string) => setWindow(Number(value)),
     },
     {
@@ -235,8 +273,20 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       options: INSIDER_SIGNAL_MIN_OPTIONS,
       onChange: (value: string) => setMin(Number(value)),
     },
-    { id: "cluster", kind: "toggle", label: "Cluster", value: query.cluster, onChange: setCluster },
-    { id: "position", kind: "toggle", label: words.position, value: query.position, onChange: setPosition },
+    ...(fit.only
+      ? [{
+        id: "only",
+        label: "Only",
+        title: side === "sell" ? "Only clusters, or whole stakes sold" : "Only clusters, or new positions",
+        value: insiderSignalOnly(query),
+        defaultValue: "any",
+        options: insiderSignalOnlyOptions(side),
+        onChange: setOnly,
+      } satisfies QueryBarFilter]
+      : [
+        { id: "cluster", kind: "toggle", label: "Cluster", value: query.cluster, onChange: setCluster } satisfies QueryBarFilter,
+        { id: "position", kind: "toggle", label: words.position, value: query.position, onChange: setPosition } satisfies QueryBarFilter,
+      ]),
     ...(capShown ? [{
       id: "cap",
       label: "Cap",
@@ -248,47 +298,54 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
     } satisfies QueryBarFilter] : []),
   ];
 
-  return (
-    <PaneStatusBody
-      loading={!data && resource.loading}
-      error={!data ? resource.error : null}
-      retry={{ onRetry: () => void resource.reload(), pending: resource.loading }}
-      subject="Insider activity"
-    >
-      {data ? (
-        <DataTableView<InsiderSignalRow, InsiderSignalColumn>
-          focused={focused}
-          rootWidth={width}
-          rootHeight={height}
-          rootBefore={<QueryBar width={width} filters={filters} />}
-          rootAfter={detail}
-          columns={columns}
-          items={sortedRows}
-          getItemKey={(row) => row.ticker}
-          selection={{
-            kind: "id",
-            selectedId: selectedTicker,
-            getId: (row) => row.ticker,
-            onChange: (ticker) => setSelectedTicker(ticker),
-          }}
-          onActivate={(row) => {
-            onOpen(row.ticker);
-            setSelectedTicker(row.ticker);
-          }}
-          sortColumnId={sort.columnId}
-          sortDirection={sort.direction}
-          onHeaderClick={(columnId) => setSort((current) => {
-            const id = columnId as InsiderSignalColumnId;
-            if (current.columnId !== id) return { columnId: id, direction: insiderSignalFirstDirection(id) };
-            return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
-          })}
-          renderCell={renderCell}
-          selectedTextOverridesCellColor
-          showHorizontalScrollbar={false}
-          emptyStateTitle={insiderSignalsEmptyTitle(data.window, dataSide, insiderSignalsFiltered(query))}
+  const queryBar = <QueryBar width={width} filters={filters} />;
+  if (!data) {
+    // Loading, or a failure: the query bar stays above, so another side or filter is one click away.
+    return (
+      <Box flexDirection="column" width={width} height={height}>
+        {queryBar}
+        <PaneStatusBody
+          loading={resource.loading}
+          error={resource.error}
+          retry={{ onRetry: () => void resource.reload(), pending: resource.loading }}
+          subject="Insider activity"
         />
-      ) : null}
-    </PaneStatusBody>
+      </Box>
+    );
+  }
+
+  return (
+    <DataTableView<InsiderSignalRow, InsiderSignalColumn>
+      focused={focused}
+      rootWidth={width}
+      rootHeight={height}
+      rootBefore={queryBar}
+      rootAfter={detail}
+      columns={columns}
+      items={sortedRows}
+      getItemKey={(row) => row.ticker}
+      selection={{
+        kind: "id",
+        selectedId: selectedTicker,
+        getId: (row) => row.ticker,
+        onChange: (ticker) => setSelectedTicker(ticker),
+      }}
+      onActivate={(row) => {
+        onOpen(row.ticker);
+        setSelectedTicker(row.ticker);
+      }}
+      sortColumnId={sort.columnId}
+      sortDirection={sort.direction}
+      onHeaderClick={(columnId) => setSort((current) => {
+        const id = columnId as InsiderSignalColumnId;
+        if (current.columnId !== id) return { columnId: id, direction: insiderSignalFirstDirection(id) };
+        return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
+      })}
+      renderCell={renderCell}
+      selectedTextOverridesCellColor
+      showHorizontalScrollbar={false}
+      emptyStateTitle={insiderSignalsEmptyTitle(data.window, dataSide, insiderSignalsFiltered(query))}
+    />
   );
 }
 

@@ -104,6 +104,121 @@ export function insiderSignalsQueryFrom(stored: {
   };
 }
 
+/**
+ * The query bar, from the roomiest to the most folded: Window
+ * inline or a menu; Side as Buying and Selling, as Buy and Sell, or a menu;
+ * Cluster and New (Exited) as two checkboxes, or as one Only menu. The two
+ * checkboxes fold before Side does, so buying and selling stay one key or
+ * click apart longest.
+ */
+interface InsiderSignalsBarFit {
+  side: "full" | "short" | "menu";
+  windowInline: boolean;
+  only: boolean;
+}
+
+const BAR_FITS: readonly InsiderSignalsBarFit[] = [
+  { side: "full", windowInline: true, only: false },
+  { side: "full", windowInline: false, only: false },
+  { side: "short", windowInline: false, only: false },
+  { side: "short", windowInline: false, only: true },
+  { side: "menu", windowInline: false, only: true },
+];
+
+/** Buy and Sell, for a narrow bar. */
+export const INSIDER_SIGNAL_SIDE_SHORT: Record<InsiderSignalSide, string> = { buy: "Buy", sell: "Sell" };
+
+/** The Only menu's choices: the two checkboxes folded into one control. */
+export type InsiderSignalOnly = "any" | "cluster" | "position" | "both";
+
+export function insiderSignalOnlyOptions(side: InsiderSignalSide): SelectButtonOption<InsiderSignalOnly>[] {
+  const position = insiderSideWords(side).position;
+  return [
+    { value: "any", label: "Any" },
+    { value: "cluster", label: "Cluster" },
+    { value: "position", label: position },
+    { value: "both", label: `Cluster and ${position.toLowerCase()}`, short: "Both" },
+  ];
+}
+
+export function insiderSignalOnly(query: Pick<InsiderSignalsQuery, "cluster" | "position">): InsiderSignalOnly {
+  return query.cluster ? query.position ? "both" : "cluster" : query.position ? "position" : "any";
+}
+
+/** What the bar's controls take around their words, in cells. */
+interface BarMetrics {
+  /** Around a menu's label and value. */
+  menu: number;
+  /** Beside an inline choice's label, and around each of its options. */
+  stripLabel: number;
+  stripOption: number;
+  checkbox: number;
+  clear: number;
+  /** Between two controls, and at the bar's ends. */
+  gap: number;
+  padding: number;
+  /** An inline choice shows its options' short labels. */
+  shortOptions: boolean;
+}
+
+/** The terminal's QueryBar: `Label value` for a menu, ` Option ` segments, `  [x] Label` for a checkbox, `clear`, two cells between controls and one at each end. */
+const TERMINAL_BAR: BarMetrics = { menu: 1, stripLabel: 1, stripOption: 2, checkbox: 6, clear: 5, gap: 2, padding: 2, shortOptions: true };
+/**
+ * The desktop's and the web's, in cells of 8 px with a cell for each letter
+ * (they take less): a menu's padding and chevron, a choice's padding, a
+ * checkbox's box and Clear, from the kit's styles and rounded up. Each
+ * control holds its own spacing; inline choices show their full labels.
+ */
+const DESKTOP_BAR: BarMetrics = { menu: 5, stripLabel: 0, stripOption: 2.5, checkbox: 4.5, clear: 7, gap: 0, padding: 0, shortOptions: false };
+
+/**
+ * The first bar layout whose controls all fit a pane `width` cells wide with
+ * this query's menus, the Cap filter when it shows, and `clear` when it
+ * shows; the most folded one when none does, which the terminal cuts and the
+ * desktop scrolls. A layout is measured with both checkboxes ticked and the
+ * wider side's words, so ticking one or switching sides never moves the bar
+ * under the pointer; another value in a menu may.
+ */
+export function insiderSignalsBarFit(
+  width: number,
+  query: InsiderSignalsQuery,
+  { capShown, desktop }: { capShown: boolean; desktop: boolean },
+): InsiderSignalsBarFit {
+  const bar = desktop ? DESKTOP_BAR : TERMINAL_BAR;
+  const widest = (labels: readonly string[]) => Math.max(...labels.map(displayWidth));
+  const valueLabel = <T extends string>(options: readonly SelectButtonOption<T>[], value: T) => {
+    const option = options.find((candidate) => candidate.value === value);
+    return option?.short ?? option?.label ?? value;
+  };
+  const menu = (label: string, valueCells: number) => displayWidth(label) + bar.menu + valueCells;
+  const strip = (label: string, options: readonly string[]) =>
+    displayWidth(label) + bar.stripLabel + options.reduce((sum, option) => sum + displayWidth(option) + bar.stripOption, 0);
+  const checkbox = (labels: readonly string[]) => bar.checkbox + widest(labels);
+  const sides = ["buy", "sell"] as const;
+  const shared = [
+    menu("Role", displayWidth(valueLabel(INSIDER_SIGNAL_ROLE_OPTIONS, query.role))),
+    menu("Min", displayWidth(valueLabel(INSIDER_SIGNAL_MIN_OPTIONS, String(query.minValue)))),
+    ...(capShown ? [menu("Cap", displayWidth(valueLabel(INSIDER_SIGNAL_CAP_OPTIONS, query.cap ?? "all")))] : []),
+  ];
+  const narrowedMenus = [query.window !== DEFAULT_INSIDER_SIGNAL_WINDOW, query.role !== "all", query.minValue > 0, query.cap !== null].filter(Boolean).length;
+  const fits = (fit: InsiderSignalsBarFit) => {
+    const short = fit.side === "short" && bar.shortOptions;
+    const controls = [
+      fit.side === "menu"
+        ? menu("Side", widest(sides.map((side) => INSIDER_SIGNAL_SIDE_SHORT[side])))
+        : strip("Side", short ? sides.map((side) => INSIDER_SIGNAL_SIDE_SHORT[side]) : INSIDER_SIGNAL_SIDE_OPTIONS.map((option) => option.label)),
+      fit.windowInline ? strip("Window", INSIDER_SIGNAL_WINDOW_OPTIONS.map((option) => option.label)) : menu("Window", displayWidth(`${query.window}D`)),
+      ...shared,
+      ...(fit.only
+        ? [menu("Only", widest(sides.flatMap((side) => insiderSignalOnlyOptions(side).map((option) => option.short ?? option.label))))]
+        : [checkbox(["Cluster"]), checkbox(sides.map((side) => insiderSideWords(side).position))]),
+    ];
+    if (narrowedMenus + (fit.only ? 1 : 2) >= 2) controls.push(bar.clear);
+    return bar.padding + controls.reduce((sum, cells) => sum + cells, 0) + bar.gap * (controls.length - 1) <= width;
+  };
+  return BAR_FITS.find(fits) ?? BAR_FITS[BAR_FITS.length - 1]!;
+}
+
 /** Whether a query narrows the side and window it reads. */
 export function insiderSignalsFiltered(query: InsiderSignalsQuery): boolean {
   return query.role !== "all" || query.minValue > 0 || query.cluster || query.position || query.cap !== null;
@@ -123,7 +238,7 @@ export interface InsiderSignalChip {
   lead: boolean;
 }
 
-/** Insiders named inline; the detail strip lists every one. */
+/** Insiders named inline; the detail strip lists up to five, largest first. */
 const MAX_INSIDER_GROUPS = 2;
 /** A stake raise above this, in percent, is said as the holding's multiple. */
 const STAKE_MULTIPLE_ABOVE = 300;
@@ -181,7 +296,7 @@ export function insiderSignalChips(row: InsiderSignalRow, side: InsiderSignalSid
 }
 
 /** The chips in their groups, as they are drawn and read. */
-export function insiderSignalChipGroups(chips: readonly InsiderSignalChip[]): InsiderSignalChip[][] {
+function insiderSignalChipGroups(chips: readonly InsiderSignalChip[]): InsiderSignalChip[][] {
   const groups: InsiderSignalChip[][] = [];
   for (const chip of chips) {
     if (chip.lead || groups.length === 0) groups.push([chip]);
@@ -204,33 +319,38 @@ export function insiderSignalWhy(row: InsiderSignalRow, side: InsiderSignalSide 
 /** A badge is its label plus one cell of padding on each side, one cell from the next in its group and two from the next group. */
 const CHIP_CHROME = 2;
 const CHIP_GAP = 1;
-export const INSIDER_SIGNAL_GROUP_GAP = 2;
+const INSIDER_SIGNAL_GROUP_GAP = 2;
 
 const chipGap = (chip: InsiderSignalChip) => (chip.lead ? INSIDER_SIGNAL_GROUP_GAP : CHIP_GAP);
 
-/** Cells the chips take side by side. */
+/**
+ * Cells the chips take side by side: what the why column asks for when the
+ * table shares out its width, as every column gives its width in cells.
+ */
 function insiderSignalChipsWidth(chips: readonly InsiderSignalChip[]): number {
   return chips.reduce((sum, chip, index) => sum + displayWidth(chip.label) + CHIP_CHROME + (index ? chipGap(chip) : 0), 0);
 }
 
+/** Chips that stay together on the desktop's wrapping row, and the room before them. */
+export interface InsiderSignalChipUnit {
+  chips: InsiderSignalChip[];
+  /** Cells before the unit: two before a group, one before another fact; none first. */
+  gap: number;
+}
+
 /**
- * The chips that fit `width` cells whole, strongest first: a chip never
- * shows cut, and an insider's role is not left alone without a fact about
- * them. The text column keeps every chip.
+ * The chips as the desktop's one-line row wraps them, strongest first: the
+ * browser moves a unit that does not fit whole to the hidden line, with
+ * every unit after it. An insider's role goes with their first fact, so a
+ * role never shows without a fact about them.
  */
-export function insiderSignalChipsFit(chips: readonly InsiderSignalChip[], width: number): InsiderSignalChip[] {
-  const shown: InsiderSignalChip[] = [];
-  let used = 0;
-  for (const chip of chips) {
-    const cells = displayWidth(chip.label) + CHIP_CHROME + (shown.length ? chipGap(chip) : 0);
-    if (used + cells > width) break;
-    shown.push(chip);
-    used += cells;
+export function insiderSignalChipUnits(chips: readonly InsiderSignalChip[]): InsiderSignalChipUnit[] {
+  const units: InsiderSignalChipUnit[] = [];
+  for (const [lead, first, ...rest] of insiderSignalChipGroups(chips)) {
+    units.push({ chips: first ? [lead!, first] : [lead!], gap: units.length ? INSIDER_SIGNAL_GROUP_GAP : 0 });
+    for (const chip of rest) units.push({ chips: [chip], gap: CHIP_GAP });
   }
-  // A role whose facts did not fit says nothing about why.
-  const next = chips[shown.length];
-  if (next && !next.lead && shown[shown.length - 1]?.lead) shown.pop();
-  return shown;
+  return units;
 }
 
 const DAY_MS = 86_400_000;

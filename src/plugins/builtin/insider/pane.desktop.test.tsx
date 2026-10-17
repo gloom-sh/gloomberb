@@ -134,18 +134,22 @@ test("the ranking opens a company in the same pane by keyboard and by double cli
     });
   };
 
-  // happy-dom has no layout, so give the table body a viewport tall enough for every row.
+  await withViewport(() => openRanking(pane, press));
+});
+
+/** happy-dom has no layout, so give the table body a viewport tall enough for every row. */
+async function withViewport(run: () => Promise<void>) {
   const saved = ["offsetHeight", "clientHeight"].map((property) => [property, Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, property)] as const);
   for (const [property] of saved) Object.defineProperty(dom.window.HTMLElement.prototype, property, { configurable: true, value: 18 * 20 });
   try {
-    await openRanking(pane, press);
+    await run();
   } finally {
     for (const [property, descriptor] of saved) {
       if (descriptor) Object.defineProperty(dom.window.HTMLElement.prototype, property, descriptor);
       else delete (dom.window.HTMLElement.prototype as unknown as Record<string, unknown>)[property];
     }
   }
-});
+}
 
 async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & object, press: (key: string) => Promise<void>) {
   const container = await dom.render(<RankingPane />);
@@ -170,4 +174,43 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
     await Bun.sleep(10);
   });
   expect(pane().binding).toEqual({ kind: "fixed", symbol: "NWBI" });
+}
+
+test("the why chips wrap on one clipped row, a role with its first fact, so the browser drops whole chips", async () => {
+  const director = { name: "Okafor Ben", role: "Director" } as const;
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => ({
+    ...RANKING,
+    side: "buy",
+    rows: [{
+      ...RANKING.rows[0]!,
+      insiders: 3,
+      whySignals: [
+        { kind: "cluster", value: 3, text: "3 insiders", insider: null },
+        { kind: "stake", value: 58, text: "+58%", insider: director },
+        { kind: "repeat", value: 2, text: "2nd buy", insider: director },
+      ],
+    }],
+  }));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => [] })));
+  await withViewport(() => checkChipRow());
+});
+
+async function checkChipRow() {
+  const container = await dom.render(<RankingPane />);
+  await until(() => container.querySelectorAll("[data-gloom-ui='badge']").length > 0);
+  const badges = [...container.querySelectorAll("[data-gloom-ui='badge']")];
+  expect(badges.map((badge) => badge.textContent)).toEqual(["3 insiders", "Director", "+58%", "2nd buy"]);
+  // Badge > its holder > the unit > the row.
+  const unit = (label: string) => badges.find((badge) => badge.textContent === label)!.parentElement!.parentElement as HTMLElement;
+  const row = unit("3 insiders").parentElement as HTMLElement;
+  expect(row.style.flexWrap).toBe("wrap");
+  expect(row.style.overflow).toBe("hidden");
+  expect(row.style.height).toBe("18px");
+  expect(row.style.width).toBe("100%");
+  // Nothing wide first, so a first chip too wide for the column wraps away too.
+  expect((row.firstElementChild as HTMLElement).style.width).toBe("0px");
+  expect(unit("Director")).toBe(unit("+58%"));
+  expect(unit("2nd buy")).not.toBe(unit("+58%"));
+  // Two cells before a group, one before another fact.
+  expect([unit("3 insiders"), unit("Director"), unit("2nd buy")].map((element) => element.style.marginLeft)).toEqual(["0px", "16px", "8px"]);
 }

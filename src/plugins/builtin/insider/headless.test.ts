@@ -8,6 +8,8 @@ import type { ParsedInsiderFiling } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { InsiderSignalsPayload } from "../../../api-client/insider-signals";
 import { insiderSignalsCache } from "./signals-client";
+import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
+import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -271,4 +273,24 @@ describe("insider report without a ticker", () => {
       insiderSignalsCache.reset();
     }
   });
+});
+
+test("the catalog's examples for the ranking run without a ticker and read as the options they name", () => {
+  const options = createInsiderHeadless().options;
+  const capability = { id: "insider", botSafe: true, options } as unknown as PaneFunctionCapability;
+  const examples = options.filter((option) => option.example).map((option) => [option.example!, option.exampleWithoutArgument]);
+  expect(examples).toEqual([
+    ["--side sell --min-value 250000", true],
+    ["--role directors --cluster --window 90", true],
+    ["--side sell --exited", true],
+  ]);
+  const read = (example: string) => {
+    const parsed = parsePaneFunctionArgs(["INS", ...example.split(" ")]);
+    expect(parsed.arg).toBe("");
+    const { side, window, role, minValue, cluster, exited } = normalizeCapabilityOptions(capability, parsed.options, { code: "INS" });
+    return { side, window, role, minValue, cluster, exited };
+  };
+  expect(read(examples[0]![0] as string)).toMatchObject({ side: "sell", window: 30, role: "all", minValue: 250_000 });
+  expect(read(examples[1]![0] as string)).toMatchObject({ side: "buy", window: 90, role: "directors", cluster: true });
+  expect(read(examples[2]![0] as string)).toMatchObject({ side: "sell", exited: true });
 });
