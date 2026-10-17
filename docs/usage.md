@@ -1154,9 +1154,9 @@ scale with the strategy's drawdown below, beside return, CAGR, volatility,
 Sharpe, drawdown, time in market, the share of rolling one-year windows in which
 the rule beat buy-and-hold, and trade statistics. **Trades** lists each trade;
 an open position is marked at the last close. `v` switches views and `r`
-refreshes history. A session still forming, and any session served without a
-positive close, is left out and named under the pane's data warnings (`!`),
-which also say when the ticker is a rolled futures continuation such as
+refreshes history. A session still forming, and any session without a positive
+close (CL=F on 2020-04-20), is left out and named under the pane's data warnings
+(`!`), which also say when the ticker is a rolled futures continuation such as
 `CL=F`. **Export CSV** writes the daily curve, as `--csv --equity` prints it,
 and says where the file went.
 

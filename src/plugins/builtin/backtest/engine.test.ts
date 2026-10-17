@@ -143,6 +143,10 @@ test("sessions served without a positive close are warned by date, a long list s
   ]);
   // A date past the end asked for is not this run's.
   expect(backtestWindow(served, { end: day(1) }).warnings[0]).toBe(`1 session without a positive close was left out: ${day(1)}.`);
+  // Sessions the source left out for the same reason join them, only between
+  // the first and last bar and where no bar is: CL=F's 2020-04-20.
+  const sourced = toBacktestBars([point(0, 10), point(3, 12), point(5, 13)], [day(4), day(1), day(3), day(5), day(9), day(0)]);
+  expect(sourced.skippedDates).toEqual([day(1), day(4)]);
   const many = Array.from({ length: 9 }, (_, index) => day(index));
   expect(listDates(many)).toBe(`${day(0)}, ${day(1)}, ${day(2)}, 4 more, ${day(7)} and ${day(8)}`);
 });

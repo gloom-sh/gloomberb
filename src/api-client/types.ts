@@ -1504,6 +1504,11 @@ export interface CloudMarketResponse<T> {
   session?: unknown;
   /** "1day" when daily bars answer an intraday range: the listing has no intraday bars. */
   servedResolution?: unknown;
+  /**
+   * Untrusted: daily sessions the bars leave out and why, as
+   * `[{ date: "2020-04-20", reason: "non-positive-close" }]`. Validated by the history adapter.
+   */
+  omittedSessions?: unknown;
   /** Untrusted until the history adapter validates its boundary dates. */
   coverage?: CloudHistoryCoverage;
   providerMeta?: {

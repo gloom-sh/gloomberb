@@ -32,9 +32,13 @@ export interface BacktestHistory {
 /**
  * One bar per UTC session date, ascending; later duplicates replace earlier
  * ones. A session served only without a positive close is skipped and named,
- * so the report can say which days the curve steps over.
+ * so the report can say which days the curve steps over, as is one the source
+ * left out of the series for that reason (`sourceSkipped`) within the bars' span.
  */
-export function toBacktestBars(points: readonly PricePoint[]): Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped"> {
+export function toBacktestBars(
+  points: readonly PricePoint[],
+  sourceSkipped: readonly string[] = [],
+): Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped"> {
   const byDate = new Map<string, BacktestBar>();
   const skipped = new Set<string>();
   let undatedSkipped = 0;
@@ -58,8 +62,11 @@ export function toBacktestBars(points: readonly PricePoint[]): Pick<BacktestHist
       ...(point.partial === true ? { partial: true as const } : {}),
     });
   }
+  const bars = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const first = bars[0]?.date, last = bars.at(-1)?.date;
+  for (const date of sourceSkipped) if (first && last && date > first && date < last) skipped.add(date);
   return {
-    bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    bars,
     skippedDates: [...skipped].filter((date) => !byDate.has(date)).sort(),
     undatedSkipped,
   };
@@ -76,7 +83,7 @@ export async function loadBacktestHistory(
     { forceRefresh: options.forceRefresh },
   );
   options.signal?.throwIfAborted();
-  const history = toBacktestBars(resolveEntryValue(entry) ?? []);
+  const history = toBacktestBars(resolveEntryValue(entry) ?? [], entry.history?.nonPositiveCloseDates);
   if (!history.bars.length) throw new Error(entry.error?.message ?? "Daily price history unavailable");
   return { symbol, ...history, fetchedAt: entry.fetchedAt ?? Date.now() };
 }

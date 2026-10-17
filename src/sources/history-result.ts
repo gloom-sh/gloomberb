@@ -5,6 +5,7 @@ import type { PriceHistoryResult } from "../types/price-history";
 import { parseHistorySession } from "../market-data/history-session";
 import { canonicalHistoryInterval } from "./history-retention";
 import { historyCoverageNoteText, isHistoryCoverageDate } from "./history-coverage";
+import { readNonPositiveCloseDates } from "./history-omitted";
 
 export type HistoryResultRequest =
   | { kind: "range"; range: TimeRange }
@@ -36,8 +37,10 @@ export function normalizeHistoryResult(
     interval: requestedInterval ?? result.resolution ?? undefined });
   // A contradictory declaration cannot be laundered into unknown legacy data.
   if (result.session != null && (!session || result.resolution === null)) return null;
+  const nonPositiveCloseDates = readNonPositiveCloseDates(result.nonPositiveCloseDates);
   return { points: result.points, resolution: result.resolution,
     ...(session ? { session } : {}),
+    ...(nonPositiveCloseDates ? { nonPositiveCloseDates } : {}),
     ...(typeof result.sourceKey === "string" && /^(provider|broker):[^\r\n\0]+$/.test(result.sourceKey) ? { sourceKey: result.sourceKey } : {}),
     ...(isHistoryCoverageDate(result.coverageStart) ? { coverageStart: result.coverageStart } : {}),
     ...(isHistoryCoverageDate(result.coverageStart) && historyCoverageNoteText(result.coverageNote)

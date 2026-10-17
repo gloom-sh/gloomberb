@@ -1168,16 +1168,17 @@ explicit unavailable state.
 
 BT runs on the ticker's daily history from the market data coordinator (all
 available sessions, one bar per UTC date). A session served without a positive
-close cannot carry a return and is left out; a session still forming (a coin's
-UTC day, a future's trade date or a US session before its close) is left out
-unless `--include-partial` keeps it. Each is warned with its date, and the run
-is dated by the last session it tested, which `--end` fixes. A futures
-continuation (`CL=F`, or a generic such as `CL2`) is not one contract: unless
-adjusted, each roll is a jump between two contracts' prices that the returns
-include, and the report says so. Indicators use the chart studies'
-formulas: simple and exponential moving averages seeded by a simple average,
-Wilder RSI, MACD as the fast minus slow EMA with an EMA signal line, and
-Bollinger bands from the simple average plus or minus k population standard
+close cannot carry a return and is left out, as is one Gloom Cloud left out of
+the history for that reason (CL=F settled at -37.63 on 2020-04-20); a session
+still forming (a coin's UTC day, a future's trade date or a US session before
+its close) is left out unless `--include-partial` keeps it. Each is warned with
+its date, and the run is dated by the last session it tested, which `--end`
+fixes. A futures continuation (`CL=F`, or a generic such as `CL2`) is not one
+contract: unless adjusted, each roll is a jump between two contracts' prices
+that the returns include, and the report says so. Indicators use the chart
+studies' formulas: simple and exponential moving averages seeded by a simple
+average, Wilder RSI, MACD as the fast minus slow EMA with an EMA signal line,
+and Bollinger bands from the simple average plus or minus k population standard
 deviations. `highest(n)` and `lowest(n)` use the n sessions before the current
 one, so a close can break out of its own range. An undefined value (warmup)
 never satisfies a comparison, and a cross needs both sessions defined.

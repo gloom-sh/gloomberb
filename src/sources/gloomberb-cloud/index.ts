@@ -4,6 +4,7 @@ import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
 import { HistoryCoverageError, parseHistoryCoverageNote, parseHistoryCoverageStart } from "../history-coverage";
+import { cloudNonPositiveCloseDates } from "../history-omitted";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
@@ -236,10 +237,13 @@ function mapCloudPriceHistory(
   if (declared && (!session || !matchingSource || !matchingIdentity || !matchingInterval)) {
     throw createProviderMiss(`Cloud chart session metadata does not match the requested history for ${ticker}`);
   }
+  // Sessions of daily bars the answer left out for a close at or below zero.
+  const nonPositiveCloseDates = resolution === "1d" ? cloudNonPositiveCloseDates(response.omittedSessions) : undefined;
   return {
     points,
     resolution,
     ...(session && matchingSource && matchingIdentity ? { session } : {}),
+    ...(nonPositiveCloseDates ? { nonPositiveCloseDates } : {}),
     ...(coverageStart ? { coverageStart } : {}),
     ...(coverageNote ? { coverageNote } : {}),
     ...(extendedHours ? { extendedHours: true } : {}),
