@@ -374,7 +374,7 @@ export const es: Record<string, string> = {
   "Institutional holders by value and position change": "Tenedores institucionales por valor y cambio de posición",
   "Institutional holders for the selected ticker.": "Tenedores institucionales del ticker seleccionado.",
   "SEC Form 4 insider transaction activity": "Actividad de insiders según SEC Form 4",
-  "Insider transactions for a ticker; alone, the companies whose insiders are buying.": "Operaciones de insiders de un ticker; sin ticker, las empresas cuyos insiders están comprando.",
+  "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.": "Operaciones de insiders de un ticker; sin ticker, las empresas cuyos insiders están comprando o vendiendo.",
   "Recent SEC filings for US equities": "Presentaciones recientes ante la SEC de acciones de EE. UU.",
   "Recent SEC filings for the selected ticker.": "Presentaciones recientes ante la SEC del ticker seleccionado.",
   "Price trigger alerts with desktop notifications": "Alertas de precio con notificaciones de escritorio",

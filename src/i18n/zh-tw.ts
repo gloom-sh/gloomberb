@@ -375,7 +375,7 @@ export const zhTW: Record<string, string> = {
   "Institutional holders by value and position change": "依市值與持股變動排列的機構投資人",
   "Institutional holders for the selected ticker.": "所選股票的機構投資人。",
   "SEC Form 4 insider transaction activity": "SEC Form 4 內部人士交易動態",
-  "Insider transactions for a ticker; alone, the companies whose insiders are buying.": "某檔股票的內部人士交易；不指定股票時，列出內部人士正在買進的公司。",
+  "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.": "某檔股票的內部人士交易；不指定股票時，列出內部人士正在買進或賣出的公司。",
   "Recent SEC filings for US equities": "美股最新 SEC 申報檔案",
   "Recent SEC filings for the selected ticker.": "所選股票的最新 SEC 申報檔案。",
   "Price trigger alerts with desktop notifications": "透過桌面通知的價格觸發提醒",

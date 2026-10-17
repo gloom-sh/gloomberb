@@ -167,7 +167,7 @@ A symbol that trades in several places lists its exchanges after a colon: `NET:`
 | `SIW [tickers]` | Short squeeze watch: short interest as a share of float, days to cover, change since the prior settlement and the 1M price move across your portfolios and watchlists, crowded names that are rising first |
 | `BUZZ <ticker>` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
-| `INS [ticker]` | Insider activity; alone, the companies whose insiders are buying in the open market, with why |
+| `INS [ticker]` | Insider activity; alone, the companies whose insiders are buying, or selling, in the open market, with why and filters |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
 | `RV <tickers>` | Relative valuation |
 

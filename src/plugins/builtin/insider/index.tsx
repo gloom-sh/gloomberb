@@ -482,8 +482,8 @@ function InsiderView({ width, height, focused, onBack }: {
 
 /**
  * INS on a ticker is that company's insider transactions; without one it is
- * the ranking of companies whose insiders are buying. A row of the ranking
- * opens its company here, and Back returns to the ranking.
+ * the ranking of companies whose insiders are buying, or selling. A row of
+ * the ranking opens its company here, and Back returns to the ranking.
  */
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
@@ -560,11 +560,11 @@ export const insiderModule: PluginModule = {
         id: "insider-pane",
         paneId: "insider",
         label: "Insider",
-        description: "Insider transactions for a ticker; alone, the companies whose insiders are buying.",
-        keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "cluster buying"],
+        description: "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.",
+        keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "insider selling", "insider activity", "cluster buying"],
         shortcut: "INS",
         canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
-        // Typed alone with no active ticker it ranks the market's insider buying.
+        // Typed alone with no active ticker it ranks the market's insider buying or selling.
         withoutTickerTitle: INSIDER_SIGNALS_TITLE,
       }),
       headless: insiderHeadless,

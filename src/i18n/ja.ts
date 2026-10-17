@@ -375,7 +375,7 @@ export const ja: Record<string, string> = {
   "Institutional holders by value and position change": "保有額とポジション変化別の機関投資家",
   "Institutional holders for the selected ticker.": "選択した銘柄の機関投資家。",
   "SEC Form 4 insider transaction activity": "SEC Form 4 インサイダー取引アクティビティ",
-  "Insider transactions for a ticker; alone, the companies whose insiders are buying.": "銘柄のインサイダー取引。銘柄を指定しないと、インサイダーが買っている企業の一覧。",
+  "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.": "銘柄のインサイダー取引。銘柄を指定しないと、インサイダーが買っている、または売っている企業の一覧。",
   "Recent SEC filings for US equities": "米国株の最新 SEC 開示",
   "Recent SEC filings for the selected ticker.": "選択した銘柄の最新 SEC 開示。",
   "Price trigger alerts with desktop notifications": "デスクトップ通知による価格トリガーアラート",
