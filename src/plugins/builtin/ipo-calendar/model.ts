@@ -105,10 +105,17 @@ function countryName(code: string): string {
   return name;
 }
 
-/** Company in either script, symbol, venue, country code or name, and status. */
+/** What `pending` searches for: a deal not priced yet. */
+const NOT_PRICED_STATUSES: readonly IpoStatus[] = ["filed", "upcoming"];
+
+/**
+ * Company in either script, symbol, venue, country code or name, and status.
+ * The word `pending` is no status of its own: it is every deal not priced yet.
+ */
 function matchesIpoQuery(deal: IpoDeal, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
+  if (needle === "pending") return NOT_PRICED_STATUSES.includes(deal.status);
   return [
     deal.company, deal.companyLocal, deal.symbol, deal.venue, deal.mic, deal.exchange,
     deal.country, countryName(deal.country), deal.segment, deal.status,

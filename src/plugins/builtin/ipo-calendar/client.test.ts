@@ -52,3 +52,16 @@ test("the CLI asks the server for the stage it filters on", async () => {
   expect((await load({})).rows.map((row) => row.id)).toEqual(["upcoming", "filed"]);
   expect(asked).toEqual([{ status: "filed" }, {}]);
 });
+
+test("fn IPO pending lists the deals not priced yet, as the pane's search does", async () => {
+  const ctx = {
+    apiClient: {
+      getCloudIpoCalendar: async () => board([
+        ipoDeal({ id: "upcoming" }), ipoDeal({ id: "priced", status: "priced" }), ipoDeal({ id: "listed", status: "listed" }),
+      ]),
+    },
+  } as unknown as HeadlessPaneContext;
+  const load = (argument: string) => ipoCalendarHeadless.load({ rawArgument: argument, argument, symbols: [], options: {} }, ctx);
+  expect((await load("pending")).rows.map((row) => row.id)).toEqual(["upcoming"]);
+  expect((await load("listed")).rows.map((row) => row.id)).toEqual(["listed"]);
+});

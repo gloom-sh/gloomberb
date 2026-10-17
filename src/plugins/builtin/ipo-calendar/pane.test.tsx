@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { IpoCalendarPayload } from "../../../api-client/ipo";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
-import { appReducer, createInitialState, type AppAction } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -47,8 +47,10 @@ async function mount(width = 110, height = 10, params?: Record<string, string>) 
   const id = "ipo-calendar";
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {}, ...(params ? { params } : {}) }));
   const pins: { symbol: string; options?: PinTickerOptions }[] = [];
+  let update: (change: (state: AppState) => AppState) => void = () => {};
   function Harness() {
     const [state, setState] = useState(initial);
+    update = setState;
     const dispatch = (action: AppAction) => setState((current) => appReducer(current, action));
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="ipo-calendar"
@@ -60,7 +62,7 @@ async function mount(width = 110, height = 10, params?: Record<string, string>) 
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
   await tui.waitForFrameToContain(params?.search ? "ARM" : "3750");
-  return { pins };
+  return { pins, update };
 }
 
 /** The cell a text starts on, counting a CJK character as the two cells it takes. */
@@ -89,16 +91,22 @@ test("Enter opens a Hong Kong code on its own exchange, never a US ticker of the
   expect(pins.map((pin) => pin.symbol)).toEqual(["3750:XHKG"]);
 });
 
-test("IPO opens on the search the command names, as fn IPO reads it, and on the whole board when it names none", async () => {
+test("IPO opens on the search the command names, as fn IPO reads it, and a later request replaces it", async () => {
   const create = ipoCalendarPlugin.paneTemplates![0]!.createInstance!;
-  const opened = async (arg?: string) => (await create({} as PaneTemplateContext, arg === undefined ? undefined : { arg }))?.params;
-  expect(await opened()).toBeUndefined();
-  expect(await opened("  ")).toBeUndefined();
-  const params = await opened(" arm ");
-  expect(params).toEqual({ search: "arm" });
-  await mount(110, 10, params);
-  const frame = tui.frame();
-  expect(frame).toContain("/ arm");
-  expect(frame).toContain("ARM");
-  expect(frame).not.toContain("3750");
+  const context = { layout: { dockRoot: null, instances: [], floating: [], detached: [] }, focusedPaneId: null } as unknown as PaneTemplateContext;
+  const params = (await create(context, { arg: " arm " }))?.params;
+  expect(params).toEqual({ search: "arm", tabAt: expect.stringMatching(/^\d+$/) });
+  const { update } = await mount(110, 10, params);
+  expect(tui.frame()).toContain("/ arm");
+  expect(tui.frame()).toContain("ARM");
+  expect(tui.frame()).not.toContain("3750");
+
+  // The next request is stamped later, so it applies even when it asks for what the pane already shows.
+  const asked = { ...params, search: "hk", tabAt: String(Number(params!.tabAt) + 1) };
+  await act(async () => update((state) => appReducer(state, { type: "UPDATE_LAYOUT", layout: {
+    ...state.config.layout, instances: state.config.layout.instances.map((instance) => ({ ...instance, params: asked })),
+  } })));
+  await tui.waitForFrameToContain("3750");
+  expect(tui.frame()).toContain("/ hk");
+  expect(tui.frame()).not.toContain("ARM");
 });

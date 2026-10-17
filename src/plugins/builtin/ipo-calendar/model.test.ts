@@ -45,6 +45,24 @@ describe("IPO calendar tabs and search", () => {
     // The tab still applies under a search.
     expect(ids(filterIpoDeals(deals, "us", "tokyo"))).toEqual([]);
   });
+
+  test("pending lists the deals not priced yet, which no status is called", () => {
+    const pipeline = [
+      ipoDeal({ id: "filed", status: "filed" }),
+      ipoDeal({ id: "upcoming", status: "upcoming" }),
+      ipoDeal({ id: "priced", status: "priced" }),
+      ipoDeal({ id: "listed", status: "listed" }),
+      ipoDeal({ id: "postponed", status: "postponed" }),
+      ipoDeal({ id: "withdrawn", status: "withdrawn" }),
+      // The word is the status's, not a company's: a name that holds it is not a pending deal.
+      ipoDeal({ id: "pending-co", company: "Pending Holdings", status: "listed" }),
+    ];
+    expect(ids(filterIpoDeals(pipeline, "all", " Pending "))).toEqual(["filed", "upcoming"]);
+    expect(ids(filterIpoDeals(pipeline, "all", "pend"))).toEqual(["pending-co"]);
+    expect(ids(filterIpoDeals(pipeline, "all", "upcoming"))).toEqual(["upcoming"]);
+    // The tab still applies.
+    expect(ids(filterIpoDeals([...pipeline, ipoDeal({ id: "tokyo", venue: "Tokyo", region: "apac" })], "apac", "pending"))).toEqual(["tokyo"]);
+  });
 });
 
 describe("IPO calendar order", () => {

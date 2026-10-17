@@ -1,8 +1,28 @@
-import type { GloomPlugin } from "../../../types/plugin";
+import type { GloomPlugin, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import { commandRequestParams } from "../shared/command-tab";
 import { ipoCalendarCache } from "./client";
 import { ipoCalendarHeadless } from "./headless";
 import { IPO_CALENDAR_PANE_ID } from "./model";
 import { IpoCalendarPane } from "./pane";
+
+/**
+ * `IPO japan` opens the calendar on that search, and so does a later `IPO europe`: one pane, the open one
+ * (the focused one when several are), with the search stamped on so asking for the same one again applies it
+ * too. Bare `IPO` names nothing and leaves the pane as it is.
+ */
+function ipoCalendarInstance(
+  context: PaneTemplateContext,
+  options?: PaneTemplateCreateOptions,
+): PaneTemplateInstanceConfig {
+  const open = context.layout.instances.filter((instance) => instance.paneId === IPO_CALENDAR_PANE_ID);
+  const pane = open.find((instance) => instance.instanceId === context.focusedPaneId) ?? open[0];
+  const search = options?.arg?.trim();
+  return {
+    instanceId: pane?.instanceId ?? IPO_CALENDAR_PANE_ID,
+    placement: "floating",
+    ...(search ? { params: commandRequestParams({ search }) } : {}),
+  };
+}
 
 export const ipoCalendarPlugin: GloomPlugin = {
   id: "ipo-calendar",
@@ -41,10 +61,7 @@ export const ipoCalendarPlugin: GloomPlugin = {
       keywords: ["ipo", "ipos", "initial", "public", "offering", "new", "listing", "listings", "debut", "flotation", "float"],
       shortcut: { prefix: "IPO", argKind: "text", argOptional: true, argPlaceholder: "company, ticker or market" },
       headless: ipoCalendarHeadless,
-      createInstance: (_context, options) => {
-        const search = options?.arg?.trim();
-        return { placement: "floating", ...(search ? { params: { search } } : {}) };
-      },
+      createInstance: ipoCalendarInstance,
     },
   ],
 };

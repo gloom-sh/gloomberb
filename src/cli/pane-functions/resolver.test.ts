@@ -124,5 +124,5 @@ test("shot hands CDX, SOVR (or its alias WCDS) and IPO their argument as the par
   expect(await shot("CDX", "HY")).toEqual({ params: expect.objectContaining({ tab: "credit", view: "index", index: "HY" }), binding: { kind: "none" } });
   // WCDS is SOVR's alias, and the country keeps the spelling it was typed in.
   expect(await shot("WCDS", "Ivory Coast")).toEqual({ params: expect.objectContaining({ tab: "credit", view: "sovereign", country: "Ivory Coast" }), binding: { kind: "none" } });
-  expect(await shot("IPO", "pending")).toEqual({ params: { search: "pending" }, binding: { kind: "none" } });
+  expect(await shot("IPO", "pending")).toEqual({ params: expect.objectContaining({ search: "pending" }), binding: { kind: "none" } });
 });

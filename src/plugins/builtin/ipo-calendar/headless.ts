@@ -108,7 +108,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: {
     kind: "free-text",
     placeholder: "company or ticker",
-    description: "Optional company, ticker, market, country or status filter.",
+    description: "Optional company, ticker, market, country or status filter; pending lists the deals not priced yet.",
     optional: true,
   },
   discovery: {
