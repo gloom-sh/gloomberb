@@ -861,6 +861,7 @@ class GloomApiClient {
   getCloudJobsMovers = this.data.getCloudJobsMovers.bind(this.data);
   getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
   getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);
+  getCloudEarningsCallAudio = this.data.getCloudEarningsCallAudio.bind(this.data);
   getProxyStatements = this.data.getProxyStatements.bind(this.data);
   getProxyStatement = this.data.getProxyStatement.bind(this.data);
   getFilingEvents = this.data.getFilingEvents.bind(this.data);

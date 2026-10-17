@@ -31,6 +31,11 @@ export interface QueryBarSearch {
   onNavigateDown?: () => void;
   /** Compares drafts before committing, e.g. trim so a trailing space does not re-query. */
   normalizeValue?: (value: string) => string;
+  /**
+   * A find in a document: Enter and Shift+Enter step to the next and the
+   * previous match, and the field keeps the keyboard.
+   */
+  onStep?: (direction: 1 | -1) => void;
 }
 
 interface QueryBarFilterBase {
@@ -319,6 +324,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
       onFocus={() => search.onActiveChange(true)}
       onBlur={() => search.onActiveChange(false)}
       onQueryChange={search.onChange}
+      onStep={search.onStep}
     />
   ) : null;
 

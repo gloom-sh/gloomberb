@@ -22,6 +22,7 @@ export function InputSearchBar({
   onBlur,
   onQueryChange,
   onSubmit,
+  onStep,
 }: {
   value: string;
   focused: boolean;
@@ -42,6 +43,12 @@ export function InputSearchBar({
   onQueryChange: (query: string) => void;
   /** Enter: called after the value is committed through `onQueryChange`. */
   onSubmit?: (query: string) => void;
+  /**
+   * Enter and Shift+Enter step forward and back through what the query found,
+   * as a find in a document does; the field keeps the keyboard. Replaces
+   * `onSubmit`.
+   */
+  onStep?: (direction: 1 | -1) => void;
 }) {
   const [draft, setDraft] = useState(value);
   useAppInputCapture(focused && active);
@@ -92,6 +99,14 @@ export function InputSearchBar({
     onBlur();
   }, [onBlur, onQueryChange, onSubmit]);
 
+  const step = useCallback((event: { name?: string; shift?: boolean; preventDefault?: () => void; stopPropagation?: () => void }) => {
+    if (!onStep || event.name !== "return") return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (normalizeValue(draft) !== normalizeValue(value)) onQueryChange(draft);
+    onStep(event.shift ? -1 : 1);
+  }, [draft, normalizeValue, onQueryChange, onStep, value]);
+
   return (
     <Box
       height={1}
@@ -124,6 +139,7 @@ export function InputSearchBar({
         onInput={setDraft}
         onChange={setDraft}
         onSubmit={commitNow}
+        {...(onStep ? { onKeyDown: step } : {})}
       />
     </Box>
   );

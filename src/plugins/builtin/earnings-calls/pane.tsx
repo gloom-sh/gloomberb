@@ -17,12 +17,14 @@ import {
   type PaneFooterSegment
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { AudioPlayer, useCanPlayAudio } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import {
   Box,
   useRendererHost,
+  useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
@@ -43,8 +45,9 @@ import {
   statusOf,
 } from "./data";
 import { callTitle, formatCallDate, formatDuration, formatPeriod, formatSentiment } from "./format";
-import { findCallForQuarter } from "./model";
-import { READER_TABS, TranscriptView, type ReaderTab } from "./transcript-view";
+import { findCallForQuarter, findInLines, turnParagraphs } from "./model";
+import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
+import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
 
 export const EARNINGS_CALLS_PANE_ID = "earnings-calls";
 
@@ -484,6 +487,40 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }, [detailOpen, listStatus, openQuarter, selected, setDetailOpen]);
   const selectedTranscript = transcript?.id === selectedCallId ? transcript : null;
 
+  // The desktop and the web play the call beside its transcript, and their
+  // find marks every match and steps through them where the terminal's
+  // narrows the turns to the ones that match.
+  const { nativePaneChrome } = useUiCapabilities();
+  const canPlayAudio = useCanPlayAudio();
+  const stepFind = nativePaneChrome === true && (selectedTranscript?.turns?.length ?? 0) > 0;
+  const transcriptRefused = transcriptError?.status === 402;
+  const playback = useCallPlayback({
+    callId: selectedCallId,
+    transcript: selectedTranscript,
+    enabled: canPlayAudio && readerOpen && !!selectedTranscript && !transcriptRefused
+      && access.emailVerified && access.hasProAccess,
+  });
+  const playerShown = !!playback.audio && !!selectedTranscript && readerOpen;
+  const transcriptPlayback = useMemo<TranscriptPlayback | undefined>(
+    () => playerShown ? { starts: playback.starts, current: playback.current, onPlay: playback.playFrom } : undefined,
+    [playerShown, playback.starts, playback.current, playback.playFrom],
+  );
+
+  const findLines = useMemo(() => {
+    if (!stepFind || !selectedTranscript || readerTab === "summary") return [];
+    return (selectedTranscript.turns ?? []).flatMap((turn, index) => (
+      readerTab === "qa" && !turn.isQa ? [] : turnParagraphs(turn).map((text, paragraph) => ({ turn: index, paragraph, text }))
+    ));
+  }, [stepFind, selectedTranscript, readerTab]);
+  const findMatches = useMemo(() => findInLines(findLines, searchQuery), [findLines, searchQuery]);
+  const [matchIndex, setMatchIndex] = useState(0);
+  useEffect(() => setMatchIndex(0), [findMatches]);
+  const activeMatch = findMatches.length > 0 ? findMatches[Math.min(matchIndex, findMatches.length - 1)]! : null;
+  const stepMatch = useCallback((direction: 1 | -1) => {
+    const count = findMatches.length;
+    if (count > 0) setMatchIndex((index) => (index + direction + count) % count);
+  }, [findMatches.length]);
+
   // Marks a call as transcribed in whichever list holds it, once it is.
   const markTranscribed = useCallback((callId: string) => {
     const update = (list: CloudEarningsCallPayload[]) =>
@@ -561,11 +598,13 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     if (transcriptScrollRef.current) scrollByLines(transcriptScrollRef.current, delta);
   }, []);
 
-  // A new call or a narrowed transcript should start at the top.
+  // A new call or a narrowed transcript should start at the top. A find that
+  // steps through its matches moves the view itself.
+  const narrowingQuery = stepFind ? "" : searchQuery;
   useEffect(() => {
     const scrollBox = transcriptScrollRef.current;
     if (scrollBox) scrollBox.scrollTop = 0;
-  }, [selectedId, detailOpen, readerTab, searchQuery]);
+  }, [selectedId, detailOpen, readerTab, narrowingQuery]);
 
   // A new search opens matching turns; an existing query must not override
   // the reader's subsequent choice to return to the summary.
@@ -632,6 +671,16 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   const handleDetailKey = useCallback(
     (event: DataTableKeyEvent) => {
+      if (playerShown && isPlainKey(event, "space")) {
+        stopSearchFocusNavigation(event);
+        playback.toggle();
+        return true;
+      }
+      if (playerShown && isPlainKey(event, "left", "right")) {
+        stopSearchFocusNavigation(event);
+        playback.seekBy(event.name === "left" ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS);
+        return true;
+      }
       if (isPlainKey(event, "s")) {
         stopSearchFocusNavigation(event);
         setReaderTab("summary");
@@ -664,7 +713,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       }
       return false;
     },
-    [focusSearch, scrollTranscriptBy, openSource],
+    [focusSearch, scrollTranscriptBy, openSource, playerShown, playback.toggle, playback.seekBy],
   );
 
   usePaneFooter(
@@ -680,6 +729,17 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         info.push({ id: "producing", parts: [{ text: "producing transcript", tone: "muted" }] });
       } else if (transcriptLoading) {
         info.push({ id: "transcribing", parts: [{ text: "loading transcript", tone: "muted" }] });
+      }
+      if (readerOpen && playback.status === "loading" && !playback.audio) {
+        info.push({ id: "audio-loading", parts: [{ text: "loading audio", tone: "muted" }] });
+      }
+      if (readerOpen && playback.error) {
+        info.push({ id: "audio-error", parts: [{ text: "audio unavailable", tone: "warning" }], title: playback.error });
+      }
+      if (readerOpen && stepFind && searchQuery.trim() && readerTab !== "summary") {
+        info.push(activeMatch
+          ? { id: "find", parts: [{ text: `match ${Math.min(matchIndex, findMatches.length - 1) + 1} of ${findMatches.length}`, tone: "muted" }] }
+          : { id: "find", parts: [{ text: "no matches", tone: "warning" }] });
       }
       if (listPending) {
         info.push({ id: "searching", parts: [{ text: "searching for calls", tone: "muted" }] });
@@ -712,18 +772,26 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         info.push({ id: "pro", parts: [{ text: "pro required", tone: "warning" }] });
       }
 
+      const playing = playback.state === "playing" || playback.state === "loading";
       const hints = !listShown
         ? []
         : readerOpen
           ? [
+              ...(playerShown
+                ? [{ id: "play", key: "space", label: playing ? "pause" : "play", onPress: playback.toggle }]
+                : []),
               ...(selected?.webcastUrl
                 ? [{ id: "open", key: "o", label: "pen source", onPress: openSource }]
                 : []),
               ...(readerSearchable ? [{ id: "find", key: "/", label: "find", onPress: focusSearch }] : []),
             ]
           : [{ id: "search", key: "/", label: "search", onPress: focusSearch }];
+      // The desktop's find key, where the browser's own would search the page.
+      const keys = listShown && readerSearchable && nativePaneChrome === true
+        ? [{ id: "find-key", key: "CmdOrCtrl+F", label: "find", onPress: focusSearch }]
+        : [];
 
-      return { info, hints };
+      return { info, hints, keys };
     },
     [
       listStatus,
@@ -746,6 +814,19 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       focusSearch,
       openSource,
       fetchCalls,
+      nativePaneChrome,
+      playerShown,
+      playback.status,
+      playback.audio,
+      playback.error,
+      playback.state,
+      playback.toggle,
+      stepFind,
+      searchQuery,
+      readerTab,
+      activeMatch,
+      matchIndex,
+      findMatches.length,
     ],
   );
 
@@ -818,6 +899,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
           focused: focused && readerOpen,
           ...searchProps,
           debounceMs: 80,
+          ...(stepFind ? { onStep: stepMatch } : {}),
         }}
         transcript={selectedTranscript}
         loading={transcriptLoading}
@@ -825,10 +907,28 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         tab={readerTab}
         onTabChange={setReaderTab}
         tabsFocused={focused && readerOpen && !searchFocused}
-        query={searchQuery}
+        query={stepFind ? undefined : searchQuery}
         width={width}
         scrollRef={transcriptScrollRef}
+        {...(stepFind ? { find: { query: searchQuery, active: activeMatch } } : {})}
+        {...(transcriptPlayback ? { playback: transcriptPlayback } : {})}
       />
+      {/* The recording stays with the call across its sections. */}
+      {playerShown && playback.audio && selected ? (
+        <AudioPlayer
+          src={playback.audio.url}
+          sourceKey={selected.id}
+          label={`${callTitle(selected)} call recording`}
+          durationSeconds={playback.audio.durationSeconds}
+          rates={PLAYBACK_RATES}
+          rate={playback.rate}
+          onRateChange={playback.setRate}
+          handleRef={playback.handleRef}
+          onTimeUpdate={playback.onTimeUpdate}
+          onStateChange={playback.onStateChange}
+          onError={playback.onError}
+        />
+      ) : null}
     </Box>
   );
 

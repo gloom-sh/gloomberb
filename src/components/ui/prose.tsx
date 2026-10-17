@@ -76,26 +76,83 @@ export interface ProseProps {
   /** Put before the first line; later lines are indented by its width. */
   prefix?: string;
   prefixColor?: string;
+  /** What a find in the text matched, set apart where it occurs. */
+  marks?: ProseMarks;
+}
+
+interface ProseMarks {
+  /** Matched without regard to case. */
+  query: string;
+  /** The occurrence the find is on, counted from 0 in this paragraph: drawn solid, the rest in colour alone. */
+  active?: number | null;
+}
+
+interface MarkRange {
+  start: number;
+  end: number;
+  active: boolean;
 }
 
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
 const NATIVE_TEXT_STYLE = { display: "block" };
 
-/** Figures set in bold, the rest in the given colour. */
+/** Where `marks.query` occurs in `text`, in order and without overlap. */
+function proseMarkRanges(text: string, marks: ProseMarks | undefined): MarkRange[] {
+  const needle = marks?.query.trim().toLowerCase() ?? "";
+  if (!needle) return [];
+  const haystack = text.toLowerCase();
+  const ranges: MarkRange[] = [];
+  for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length)) {
+    ranges.push({ start: at, end: at + needle.length, active: ranges.length === marks?.active });
+  }
+  return ranges;
+}
+
+/** The ranges that fall in `[start, start + length)`, against that slice. */
+function rangesIn(ranges: readonly MarkRange[], start: number, length: number): MarkRange[] {
+  return ranges
+    .filter((range) => range.end > start && range.start < start + length)
+    .map((range) => ({ start: Math.max(0, range.start - start), end: Math.min(length, range.end - start), active: range.active }));
+}
+
+/** Figures set in bold, the rest in the given colour, and a find's matches set apart. */
 function styledRuns(
   text: string,
   color: string,
   figureColor: string | null,
   attributes = 0,
+  marked: readonly MarkRange[] = [],
+  palette?: { mark: string; activeFg: string },
 ): StyledText {
-  if (!figureColor) return new StyledText([{ text, fg: color, attributes }]);
-  return new StyledText(
-    splitFigures(text).map((run) => ({
-      text: run.text,
-      fg: run.figure ? figureColor : color,
-      attributes: run.figure ? attributes | TextAttributes.BOLD : attributes,
-    })),
-  );
+  const runs = figureColor ? splitFigures(text) : [{ text, figure: false }];
+  const chunks: Array<{ text: string; fg: string; bg?: string; attributes: number }> = [];
+  let offset = 0;
+  for (const run of runs) {
+    const runStart = offset;
+    offset += run.text.length;
+    const base = {
+      fg: run.figure && figureColor ? figureColor : color,
+      attributes: run.figure && figureColor ? attributes | TextAttributes.BOLD : attributes,
+    };
+    const inRun = palette ? rangesIn(marked, runStart, run.text.length) : [];
+    if (inRun.length === 0) {
+      chunks.push({ text: run.text, ...base });
+      continue;
+    }
+    let at = 0;
+    for (const range of inRun) {
+      if (range.start > at) chunks.push({ text: run.text.slice(at, range.start), ...base });
+      chunks.push({
+        text: run.text.slice(range.start, range.end),
+        fg: range.active ? palette!.activeFg : palette!.mark,
+        ...(range.active ? { bg: palette!.mark } : {}),
+        attributes: base.attributes,
+      });
+      at = range.end;
+    }
+    if (at < run.text.length) chunks.push({ text: run.text.slice(at), ...base });
+  }
+  return new StyledText(chunks);
 }
 
 /**
@@ -112,12 +169,17 @@ export function Prose({
   attributes = 0,
   prefix = "",
   prefixColor,
+  marks,
 }: ProseProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const foreground = color ?? colors.text;
   const figureColor = figures ? colors.textBright : null;
   const prefixForeground = prefixColor ?? colors.textDim;
+  const marked = proseMarkRanges(text, marks);
+  // A match is marked in the warning colour, as search matches are elsewhere;
+  // the one a find is on is set solid in it.
+  const palette = marked.length > 0 ? { mark: colors.warning, activeFg: colors.bg } : undefined;
   if (!text.trim()) return null;
   if (nativePaneChrome) {
     return (
@@ -131,14 +193,21 @@ export function Prose({
           wrapText
           width="100%"
           style={NATIVE_TEXT_STYLE}
-          content={styledRuns(text, foreground, figureColor, attributes)}
+          content={styledRuns(text, foreground, figureColor, attributes, marked, palette)}
         />
       </Box>
     );
   }
   const indent = " ".repeat(prefix.length);
-  return wrapTextLines(text, Math.max(8, width - prefix.length)).map(
-    (line, index) => (
+  // Where each wrapped line sits in the text, so a match is marked on its line.
+  let cursor = 0;
+  const lineStarts = wrapTextLines(text, Math.max(8, width - prefix.length)).map((line) => {
+    const start = Math.max(cursor, text.indexOf(line, cursor));
+    cursor = start + line.length;
+    return { line, start };
+  });
+  return lineStarts.map(
+    ({ line, start }, index) => (
       <Box key={index} height={1} flexDirection="row" data-gloom-ui="prose">
         {prefix ? (
           <Text
@@ -149,7 +218,7 @@ export function Prose({
             {index === 0 ? prefix : indent}
           </Text>
         ) : null}
-        <Text content={styledRuns(line, foreground, figureColor, attributes)} />
+        <Text content={styledRuns(line, foreground, figureColor, attributes, rangesIn(marked, start, line.length), palette)} />
       </Box>
     ),
   );

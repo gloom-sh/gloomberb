@@ -22,7 +22,7 @@ function isStrip(item: HostQueryBarItem): boolean {
  * strip that scrolls on its own, so the label and the controls beside it stay
  * in view while it brings the chosen one into view.
  */
-function InlineChoices({ item }: { item: HostQueryBarItem }) {
+export function InlineChoices({ item }: { item: HostQueryBarItem }) {
   const stripRef = useRef<HTMLDivElement | null>(null);
   const strip = isStrip(item);
   const overflow = useHorizontalOverflow(stripRef, [item.options.length, strip]);

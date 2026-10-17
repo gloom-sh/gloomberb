@@ -24,6 +24,8 @@ export type IconName =
   | "cloud"
   | "sound-on"
   | "sound-off"
+  | "play"
+  | "pause"
   | "user"
   | "sort-up"
   | "sort-down"
@@ -57,6 +59,8 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   cloud: "☁",
   "sound-on": "◖)",
   "sound-off": "◖·",
+  play: "▸",
+  pause: "‖",
   user: "@",
   "sort-up": "▲",
   "sort-down": "▼",

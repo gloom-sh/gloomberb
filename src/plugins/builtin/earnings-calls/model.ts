@@ -3,6 +3,7 @@ import type {
   CloudEarningsTranscriptPayload,
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
+import { splitParagraphs } from "./prose";
 
 export type TranscriptSection =
   | "overview"
@@ -236,4 +237,94 @@ export function findCallForQuarter(
   }
 
   return null;
+}
+
+/**
+ * A turn as the reader shows it: the paragraphs the server cut where the
+ * speaker paused, or, for a transcript from before that, cut here by length.
+ */
+export function turnParagraphs(turn: CloudTranscriptTurnPayload): string[] {
+  return turn.paragraphs && turn.paragraphs.length > 0
+    ? turn.paragraphs
+    : splitParagraphs(turn.text);
+}
+
+/** A paragraph of the reader, by its turn's place in the whole transcript. */
+export interface TranscriptLine {
+  turn: number;
+  paragraph: number;
+}
+
+/**
+ * Where each paragraph starts in the recording, by turn and paragraph; null
+ * for a transcript the company published as a document, which has no times.
+ * The server gives the starts; a transcript held from before it did places
+ * each paragraph by how far into its turn it sits, between the turn's start
+ * and the next one's.
+ */
+export function transcriptLineStarts(
+  turns: readonly CloudTranscriptTurnPayload[],
+  durationSeconds: number | null,
+): Array<Array<number | null>> {
+  return turns.map((turn, index) => {
+    const paragraphs = turnParagraphs(turn);
+    const start = turn.startSeconds;
+    if (start === null || !Number.isFinite(start)) return paragraphs.map(() => null);
+    const given = turn.paragraphStarts;
+    if (given && given.length === paragraphs.length && given.every(Number.isFinite)) return [...given];
+    const next = turns.slice(index + 1).find((later) => later.startSeconds !== null && later.startSeconds > start);
+    const end = next?.startSeconds ?? durationSeconds;
+    const total = paragraphs.reduce((sum, paragraph) => sum + paragraph.length + 1, 0);
+    let offset = 0;
+    return paragraphs.map((paragraph) => {
+      const at = end !== null && end > start && total > 0 ? start + ((end - start) * offset) / total : start;
+      offset += paragraph.length + 1;
+      return Math.round(at * 10) / 10;
+    });
+  });
+}
+
+/**
+ * The paragraph being spoken at `seconds`: the last one to have started.
+ * Null before the first one starts (the hold music) or without times.
+ */
+export function lineAt(
+  starts: ReadonlyArray<ReadonlyArray<number | null>>,
+  seconds: number,
+): TranscriptLine | null {
+  let found: TranscriptLine | null = null;
+  let foundStart = Number.NEGATIVE_INFINITY;
+  // Starts rise through the call, but a turn can repeat the last start of the
+  // one before it; the later paragraph wins a tie.
+  for (const [turn, paragraphs] of starts.entries()) {
+    for (const [paragraph, start] of paragraphs.entries()) {
+      if (start === null || start > seconds + 0.05 || start < foundStart) continue;
+      found = { turn, paragraph };
+      foundStart = start;
+    }
+  }
+  return found;
+}
+
+/** One occurrence of a find query: its paragraph and which occurrence in it. */
+export interface TranscriptMatch extends TranscriptLine {
+  occurrence: number;
+}
+
+/** Every occurrence of `query` in `lines`, in reading order, ignoring case. */
+export function findInLines(
+  lines: ReadonlyArray<TranscriptLine & { text: string }>,
+  query: string,
+): TranscriptMatch[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const matches: TranscriptMatch[] = [];
+  for (const line of lines) {
+    const haystack = line.text.toLowerCase();
+    let occurrence = 0;
+    for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length)) {
+      matches.push({ turn: line.turn, paragraph: line.paragraph, occurrence: occurrence++ });
+    }
+  }
+  return matches;
 }

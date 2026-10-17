@@ -5,13 +5,16 @@
  * reader, markdown, prose paragraphs, a table, and a page with a table as tall
  * as its rows and label and value rows, a series list beside its detail
  * under a query bar), plus the real Trials and
- * Changelog panes, whose open items read through the detail reader. Every
- * study, release and article is invented, and nothing is fetched: the Trials
- * registry and the release feed are answered in the page.
+ * Changelog panes, whose open items read through the detail reader, and the
+ * Calls pane on an invented earnings call with its recording. Every study,
+ * release, article and call is invented, and nothing is fetched: the Trials
+ * registry, the release feed and Gloom Cloud's call reads are answered in the
+ * page, signed in on a Pro plan.
  *
  * Scenario options (query string, after `scenario=layout`): `pane=<id>`
- * (trials, changelog, reader, markdown, prose, inline, list, or a pane of the main
- * fixture such as table or chart-bar) and `mode=dock` or
+ * (trials, changelog, calls, reader, markdown, prose, inline, list, or a pane of the main
+ * fixture such as table or chart-bar), `audio=<url>` (the recording the call
+ * plays, `none` for a call without one) and `mode=dock` or
  * `mode=float`; a floating pane takes most of the window at a size that is not
  * a whole number of cells.
  */
@@ -27,6 +30,8 @@ import { ArticleReader } from "../../src/components/reader/article-reader";
 import { parseArticle } from "../../src/components/reader/article-text";
 import { TrialsPane } from "../../src/plugins/builtin/clinical-trials/pane";
 import { changelogModule } from "../../src/plugins/builtin/changelog";
+import { EarningsCallsPane } from "../../src/plugins/builtin/earnings-calls/pane";
+import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload, type CloudTranscriptTurnPayload } from "../../src/api-client";
 import { PluginRenderProvider } from "../../src/plugins/runtime";
 import { createTestPluginRuntime } from "../../src/test-support/plugin-runtime";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
@@ -96,7 +101,8 @@ const RELEASES = Array.from({ length: 6 }, (_, index) => ({
 }));
 
 /** Answers the Trials registry and the release feed in the page; anything else fails. */
-export function installLayoutFetches(): void {
+export function installLayoutFetches(params?: URLSearchParams): void {
+  if (params?.get("pane") === "calls") installCallFetches(params);
   const answer = (url: string): Response | null => {
     if (url.startsWith("https://clinicaltrials.gov/api/v2/studies")) {
       return Response.json({ studies: Array.from({ length: 12 }, (_, index) => inventedStudy(index)) });
@@ -113,7 +119,117 @@ export function installLayoutFetches(): void {
   window.fetch = Object.assign(fixtureFetch, { preconnect: pageFetch.preconnect }) as typeof fetch;
 }
 
+/** An invented company's calls, newest first; the newest is the one the Calls pane opens. */
+const CALLS: CloudEarningsCallPayload[] = [2, 1, 4, 3].map((quarter, index) => ({
+  id: `lumen-${index}`,
+  ticker: "LUMN",
+  companyName: "Lumen Instrument Works",
+  fiscalYear: index < 2 ? 2026 : 2025,
+  fiscalQuarter: quarter,
+  callAt: new Date(Date.UTC(2026, 7 - index * 3, 6, 21)).toISOString(),
+  status: "published",
+  durationSeconds: 240 + index * 600,
+  wordCount: 900,
+  hasTranscript: true,
+  sentiment: 0.18 - index * 0.07,
+}));
+
+const turn = (
+  speaker: string,
+  role: string | undefined,
+  startSeconds: number,
+  paragraphs: Array<[number, string]>,
+  isQa = false,
+): CloudTranscriptTurnPayload => ({
+  speaker,
+  role,
+  company: role === "Analyst" ? "Harbour Street Research" : role ? "Lumen Instrument Works" : undefined,
+  text: paragraphs.map(([, text]) => text).join(" "),
+  paragraphs: paragraphs.map(([, text]) => text),
+  paragraphStarts: paragraphs.map(([start]) => start),
+  isQa,
+  startSeconds,
+});
+
+/** Four minutes of an invented call, timed against the recording the page plays. */
+const TURNS: CloudTranscriptTurnPayload[] = [
+  turn("Operator", undefined, 4, [[4, "Good afternoon and welcome to the second quarter call of Lumen Instrument Works. All lines are in listen-only mode until the question and answer session."]]),
+  turn("Mara Ellison", "Head of Investor Relations", 16, [[16, "Thank you, and good afternoon. With me are our chief executive and our chief financial officer. Our remarks include forward-looking statements, and the risks that could change them are in our annual report."]]),
+  turn("Theo Brandt", "Chief Executive Officer", 31, [
+    [31, "Thanks, Mara. The quarter came in ahead of the plan we set in February. Orders for the field spectrometers grew 14% from a year ago, and the backlog closed at $212 million, the highest in our history."],
+    [52, "The new lens line in the river studio reached full output in June. It took two months longer than we wanted, but yields are now above 90% and the cost of each assembly is down by a fifth."],
+    [74, "Turning to the classroom kits, schools placed their autumn orders earlier than usual. We shipped 38,000 kits in the quarter and expect a similar number in the third."],
+  ]),
+  turn("Ines Kovac", "Chief Financial Officer", 96, [
+    [96, "Revenue was $148 million, up 11%. Gross margin was 46.2%, a point and a half better than last year, mostly from the lens yields Theo described."],
+    [117, "Operating expenses rose 6% as we added service staff in two regions. Free cash flow was $19 million, and we ended the quarter with $96 million in cash and no debt."],
+    [138, "For the full year we now expect revenue of $590 million to $605 million and a gross margin of about 46%."],
+  ]),
+  turn("Operator", undefined, 156, [[156, "We will now begin the question and answer session. The first question comes from Priya Nandakumar with Harbour Street Research."]], true),
+  turn("Priya Nandakumar", "Analyst", 166, [[166, "Thanks for taking the question. How much of the margin gain is lasting, and how much came from the timing of the classroom shipments?"]], true),
+  turn("Ines Kovac", "Chief Financial Officer", 178, [
+    [178, "Most of it is lasting. The yield improvement stays with us. The classroom timing added perhaps thirty basis points that will reverse in the fourth quarter."],
+    [196, "So the right way to think about the second half is a margin close to where we were this quarter, not above it."],
+  ], true),
+  turn("Priya Nandakumar", "Analyst", 208, [[208, "And on the backlog, how quickly does it convert?"]], true),
+  turn("Theo Brandt", "Chief Executive Officer", 214, [[214, "About two thirds ships within two quarters. The rest is observatory work with acceptance testing, which runs on the customer's schedule."]], true),
+  turn("Operator", undefined, 230, [[230, "That concludes today's call. Thank you for joining."]], true),
+];
+
+const CALL_TRANSCRIPT: CloudEarningsTranscriptPayload = {
+  ...CALLS[0]!,
+  timing: null,
+  webcastUrl: "https://example.invalid/lumen/webcast",
+  fullText: "",
+  turns: TURNS,
+  participants: [
+    { name: "Theo Brandt", role: "Chief Executive Officer", company: "Lumen Instrument Works" },
+    { name: "Ines Kovac", role: "Chief Financial Officer", company: "Lumen Instrument Works" },
+    { name: "Priya Nandakumar", role: "Analyst", company: "Harbour Street Research" },
+  ],
+  summary: "Orders and margin came in ahead of plan. The lens line reached full output and the backlog is the largest the company has had.",
+  guidance: "Full-year revenue of $590 million to $605 million and a gross margin of about 46%.",
+  riskFactors: "Observatory work converts on customers' acceptance schedules.",
+  notable: "Classroom kit orders arrived earlier than usual.",
+  analystFocus: "How lasting the margin gain is, and how fast the backlog converts.",
+  sentimentRationale: null,
+  qaStartTurn: 4,
+  asrModel: null,
+  updatedAt: "2026-08-07T00:00:00Z",
+};
+
+/**
+ * Gloom Cloud for the Calls pane: signed in on Pro, the invented shelf and
+ * transcript, and the recording at `audio` (a call without one with `none`).
+ */
+function installCallFetches(params: URLSearchParams): void {
+  const audio = params.get("audio") ?? "none";
+  apiClient.setSessionToken("fixture-session");
+  apiClient.restoreCachedUser({
+    id: "fixture-user", name: "Fixture", email: "fixture@example.invalid", emailVerified: true, plan: "pro", effectivePlan: "pro",
+  } as never);
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith("/audio")) {
+      return audio === "none"
+        ? Response.json({ message: "No recording for this call." }, { status: 404 })
+        : Response.json({ kind: "recording", url: audio, expiresAt: new Date(Date.now() + 3_600_000).toISOString(), durationSeconds: 240 });
+    }
+    if (path.includes("/transcripts/")) return Response.json(CALL_TRANSCRIPT);
+    if (path.endsWith("/transcripts")) return Response.json({ calls: CALLS });
+    return Response.json({ message: "Not in the fixture" }, { status: 404 });
+  });
+}
+
 const RUNTIME = createTestPluginRuntime();
+
+function CallsFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="research" runtime={RUNTIME}>
+      <EarningsCallsPane {...props} />
+    </PluginRenderProvider>
+  );
+}
 
 function TrialsFixturePane(props: PaneProps) {
   return (
@@ -280,6 +396,7 @@ export const LAYOUT_PANES = {
   list: { name: "List and detail", component: ListDetailFixturePane },
   trials: { name: "Trials", component: TrialsFixturePane },
   changelog: { name: "Changelog", component: ChangelogFixturePane },
+  calls: { name: "Earnings Calls", component: CallsFixturePane },
   reader: { name: "Reader", component: ReaderFixturePane },
   markdown: { name: "Markdown", component: MarkdownFixturePane },
   prose: { name: "Prose", component: ProseFixturePane },
@@ -289,7 +406,9 @@ export const LAYOUT_PANES = {
 export function layoutLayout(params: URLSearchParams): LayoutConfig {
   const paneId = params.get("pane") ?? "trials";
   const instanceId = `${paneId}:layout`;
-  const instance = { instanceId, paneId, binding: { kind: "none" as const } };
+  // The Calls pane opens on the newest call's transcript, as a layout can ask it to.
+  const settings = paneId === "calls" ? { quarter: "latest", reader: params.get("reader") ?? "transcript" } : undefined;
+  const instance = { instanceId, paneId, binding: { kind: "none" as const }, ...(settings ? { settings } : {}) };
   if (params.get("mode") !== "float") return { dockRoot: { kind: "pane", instanceId }, instances: [instance], floating: [], detached: [] };
   const columns = window.innerWidth / WEB_CELL_WIDTH;
   const rows = window.innerHeight / WEB_CELL_HEIGHT;

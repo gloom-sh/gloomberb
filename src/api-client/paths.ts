@@ -361,6 +361,10 @@ export function cloudEarningsTranscriptPath(id: string): string {
   return `/cloud/transcripts/${encodeURIComponent(id)}`;
 }
 
+export function cloudEarningsCallAudioPath(id: string): string {
+  return `${cloudEarningsTranscriptPath(id)}/audio`;
+}
+
 /**
  * An issuer read's path: a US listing or a bare symbol keeps its US ticker
  * and sends nothing else; a listing abroad sends its bare symbol with its

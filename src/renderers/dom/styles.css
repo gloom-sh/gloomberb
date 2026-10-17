@@ -907,6 +907,111 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   padding: 0 4px 0 8px;
 }
 
+/* Audio player: the query bar's band at the foot of what it plays, so its
+   hairline is on top. Play, the elapsed time, the track, the length and the
+   speed sit flush like the bar's controls; the speed is the bar's inline
+   choice. */
+.gloom-player {
+  --player-rail: color-mix(in srgb, var(--gloom-text) 22%, transparent);
+  padding-bottom: 0;
+  padding-top: 1px;
+  box-shadow: inset 0 1px 0 var(--qb-hairline);
+}
+.gloom-player-toggle {
+  height: 100%;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--gloom-text-bright);
+  cursor: pointer;
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-player-toggle:hover { background: var(--qb-fill); }
+.gloom-player-toggle:focus-visible {
+  outline: none;
+  background: var(--qb-fill);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+.gloom-player-time {
+  flex: none;
+  align-self: center;
+  padding: 0 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gloom-text);
+  white-space: nowrap;
+  text-box: trim-both cap alphabetic;
+}
+.gloom-player-time[data-gloom-role="audio-total"] { color: var(--gloom-text-muted); }
+/* The track is the whole height of the band, so it is easy to hit; the rail
+   is drawn thin in its middle and the thumb shows under the pointer. */
+.gloom-player-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 48px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+.gloom-player-rail {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--player-rail);
+  overflow: hidden;
+}
+.gloom-player-fill { height: 100%; background: var(--gloom-border-focused); }
+.gloom-player-thumb {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--gloom-text-bright);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.gloom-player-track:hover .gloom-player-thumb,
+.gloom-player-track[data-scrubbing="true"] .gloom-player-thumb { opacity: 1; }
+.gloom-player .gloom-qb-inline {
+  margin-left: 10px;
+  box-shadow: inset 1px 0 0 var(--qb-hairline);
+}
+
+/* A passage of a transcript that plays from where it starts. The one being
+   heard is marked like the row under a table's cursor, with the accent's bar
+   at its edge so it reads in themes whose cursor row is faint; the pointer
+   shows half the fill and no bar. The mark reaches a little past the text
+   without moving it. */
+.gloom-playback-line {
+  --line-bg: transparent;
+  position: relative;
+  border-radius: 3px;
+  cursor: pointer;
+  background-color: var(--line-bg);
+  box-shadow: 0 0 0 2px var(--line-bg), -3px 0 0 2px var(--line-bg), 3px 0 0 2px var(--line-bg);
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.gloom-playback-line:hover { --line-bg: var(--gloom-hover-bg); }
+.gloom-playback-line[data-current="true"] { --line-bg: var(--gloom-selected); }
+.gloom-playback-line[data-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 3px 0 0 3px;
+  background: var(--gloom-border-focused);
+}
+
 
 /* Detail header of a list/detail stack: the same band as the query bar, so
    Back and the item title read as the pane's toolbar. Grows when a long title
@@ -1205,7 +1310,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 
 /* Band text starts one cell in, on the same edge as the table columns and
    body text below it; segments after the first keep their 10px. */
-.gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search):first-child,
+.gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search, .gloom-player-toggle):first-child,
 .gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
 .gloom-stack-bar > .gloom-stack-back,

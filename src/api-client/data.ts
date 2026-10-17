@@ -67,6 +67,7 @@ import {
   cloudCdsPath,
   cloudCongressHousePath,
   cloudEarningsCallsPath,
+  cloudEarningsCallAudioPath,
   cloudEarningsTranscriptPath,
   cloudJobsMoversPath,
   cloudJobsPath,
@@ -122,6 +123,7 @@ import type {
   CloudCdsResponse,
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
+  CloudEarningsCallAudioPayload,
   CloudEarningsTranscriptPayload,
   CloudJobsMoversPayload,
   CloudJobsPostingsPayload,
@@ -889,6 +891,14 @@ export class CloudDataApi {
   ): Promise<CloudEarningsTranscriptPayload> {
     return this.request<CloudEarningsTranscriptPayload>(
       cloudEarningsTranscriptPath(id),
+    );
+  }
+
+  async getCloudEarningsCallAudio(
+    id: string,
+  ): Promise<CloudEarningsCallAudioPayload> {
+    return this.request<CloudEarningsCallAudioPayload>(
+      cloudEarningsCallAudioPath(id),
     );
   }
 
