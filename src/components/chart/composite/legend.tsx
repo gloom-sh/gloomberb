@@ -125,7 +125,7 @@ function CompositeSeriesSwatch({ series, cue, filled = true }: {
         width: 8,
         height: 8,
         marginInlineEnd: 6,
-        borderRadius: 999,
+        borderRadius: "var(--gloom-radius-full)",
         border: `1px solid ${series.color}`,
         backgroundColor: filled ? series.color : "transparent",
       }}

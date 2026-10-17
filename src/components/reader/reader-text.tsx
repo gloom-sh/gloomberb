@@ -1,4 +1,5 @@
 import { useThemeColors } from "../../theme/theme-context";
+import { TYPE, WEIGHT } from "../../theme/ui-tokens";
 import { Box, StyledText, Text, TextAttributes } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
@@ -14,30 +15,45 @@ import type { ArticleBlock } from "./article-text";
 
 /**
  * The reader's type scale on the desktop and the web, one for every reader
- * (the article reader, the detail reader, the markdown and docs headings in
- * them). Reading text sits a step above the app's own size (12px by default)
- * and every other level is a modest step from it, so the page reads as part
- * of the app and the levels differ by weight and space as much as by size:
+ * (the article reader, the detail reader, Docs, and the markdown in them),
+ * from the app's tokens (src/theme/ui-tokens.ts TYPE):
  *
  * | Level | Wide | Column under 480px |
  * |---|---|---|
- * | Metadata, facts, tables, coverage | 12px, dimmer | 12px |
- * | Body | 14px, line height 1.6 | 13.2px |
- * | Lead | 15px | 14.1px |
- * | Section heading | 16px bold | 15.2px |
+ * | Metadata, label and value facts, tables, coverage | 12px, dimmer | 12px |
+ * | Body, lead (bright, not bigger), and every prose bullet: key facts, list items, markdown | 14px, line height 1.6 | 13.2px |
+ * | Section heading | 16px bold, bright, space above | 15.1px |
  * | Title | 20px bold | 18.9px |
  *
- * The body size comes from `--reader-em`, which a container query in
- * styles.css lowers in a narrow column, so a resize changes it with the
- * layout and nothing counts cells. The levels above it are in em of it.
+ * 14 to 16 is a 14% step, so a heading also differs by weight, colour and
+ * the space above it. The body size comes from `--reader-em`, which a
+ * container query in styles.css lowers in a narrow column, so a resize
+ * changes it with the layout and nothing counts cells. The levels above it
+ * are in em of it. A bullet is a dim dot two characters wide, its wrapped
+ * lines hanging under the text, in the article reader and in markdown alike.
  */
-export const READER_COLUMN_FONT = "calc(var(--reader-em, 1.1667) * 1em)";
+export const READER_COLUMN_FONT = `calc(var(--reader-em, ${TYPE.body / TYPE.ui}) * 1em)`;
+/** The reading measure: every reader centres its column at this width, in its own type. */
+export const READER_MEASURE = "66ch";
+/**
+ * The one reading column: centred at the measure, the pane's inset on each
+ * side, 12px above and 16px below. Readers that sit in a DetailScrollBody
+ * (which already gives that inset) take only the measure.
+ */
+export const READER_COLUMN_STYLE = {
+  width: "100%",
+  maxWidth: `calc(${READER_MEASURE} + 2 * var(--gloom-inset))`,
+  padding: "var(--gloom-space-md) var(--gloom-inset) var(--gloom-space-lg)",
+  boxSizing: "border-box",
+} as const;
 /** Back to the app's own size inside a reading column: metadata, chips, controls, tables. */
 export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.1667))";
 /** Line height of reading text on the desktop, against its own size. */
 export const DESKTOP_LINE_HEIGHT = 1.6;
+/** The space between two blocks of reading text (paragraphs, a list), in every reader. */
+export const READER_PARAGRAPH_GAP = "0.9em";
 /** A section heading in reading text: a step above the body, set apart by weight and the space above it. */
-export const READER_HEADING_STYLE = { fontSize: "1.15em", fontWeight: 700, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
+export const READER_HEADING_STYLE = { fontSize: `${TYPE.heading / TYPE.body}em`, fontWeight: WEIGHT.bold, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
 
 export type Segment = { text: string; marked?: boolean; figure?: boolean };
 
@@ -71,16 +87,26 @@ function hasHeaderRow(rows: readonly string[][]): boolean {
 
 export type TextVariant = "headline" | "meta" | "lead" | "body" | "heading" | "label" | "fact" | "item";
 
+/**
+ * The role a reading block plays, the same in every reader (here, markdown,
+ * Docs), for the pane chrome checks that hold the readers to one layout.
+ */
+const READER_ROLE: Partial<Record<TextVariant, string>> = { body: "reader-paragraph", heading: "reader-heading", label: "reader-heading" };
+
 const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>> = {
-  headline: { fontSize: "1.43em", lineHeight: 1.25 },
+  headline: { fontSize: `${TYPE.title / TYPE.body}em`, lineHeight: 1.25 },
   meta: { fontSize: READER_APP_FONT, lineHeight: 1.5 },
-  lead: { fontSize: "1.07em", lineHeight: 1.55, marginBottom: "1em" },
-  body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
+  // The body's size, set apart by its brighter colour (the caller) and the space after it.
+  lead: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: READER_PARAGRAPH_GAP },
+  body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: READER_PARAGRAPH_GAP },
   heading: READER_HEADING_STYLE,
-  // Names what follows (key facts, coverage) as a section heading does, without the air above a section.
-  label: { ...READER_HEADING_STYLE, margin: "0 0 0.4em" },
-  fact: { fontSize: "0.93em", lineHeight: 1.55, marginBottom: "0.35em" },
-  item: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
+  // Names what follows (key facts, coverage): a section heading in all but name.
+  label: READER_HEADING_STYLE,
+  // A key fact is a sentence: a prose bullet at the body's size, as list items
+  // and markdown and Docs bullets are, one after another with no space between.
+  // Label and value facts (DetailReader) stay at the app's size.
+  fact: { lineHeight: DESKTOP_LINE_HEIGHT },
+  item: { lineHeight: DESKTOP_LINE_HEIGHT },
 };
 
 function styled(segments: readonly Segment[], color: string, markColor: string, figureColor: string | undefined, attributes: number): StyledText {
@@ -128,16 +154,17 @@ export function ReaderText({
         wrapText
         selectable
         width="100%"
-        style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant], ...(bullet ? { marginBottom: 0 } : {}) }}
+        style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant] }}
         content={content}
+        data-gloom-role={READER_ROLE[variant]}
       >
         {content ? undefined : text}
       </Text>
     );
     if (!bullet) return textNode;
     return (
-      <Box flexDirection="row" width="100%" style={{ marginBottom: DESKTOP_VARIANT_STYLE[variant].marginBottom }}>
-        <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "1.3em", flexShrink: 0 }}>{"\u2022"}</Text>
+      <Box flexDirection="row" width="100%" data-gloom-role="reader-bullet">
+        <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "2ch", flexShrink: 0 }}>{"\u2022"}</Text>
         <Box flexGrow={1} minWidth={0}>{textNode}</Box>
       </Box>
     );
@@ -198,7 +225,7 @@ export function ReaderBlock({
       return <ReaderText text={block.text} geometry={geometry} color={colors.text} variant="body" segments={segments} />;
     case "list":
       return (
-        <Box flexDirection="column" style={geometry.desktop ? { marginBottom: "0.9em" } : undefined}>
+        <Box flexDirection="column" style={geometry.desktop ? { marginBottom: READER_PARAGRAPH_GAP } : undefined}>
           {block.items.map((item, index) => (
             <ReaderText key={index} text={item} geometry={geometry} color={colors.text} variant="item" />
           ))}

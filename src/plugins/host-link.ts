@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, type Stats } from "fs";
 import { basename, dirname, join, resolve } from "path";
 
@@ -48,7 +49,7 @@ export function findHostPackageRoot(startDir: string = import.meta.dir): string 
           return dir;
         }
       } catch {
-        // Unreadable package.json — keep walking rather than giving up.
+        // Intentional ignore: A candidate parent need not be the host; continue searching its ancestors.
       }
     }
     const parent = dirname(dir);
@@ -79,7 +80,8 @@ export function hostPublicModules(): ReadonlyMap<string, string> {
         if (typeof target !== "string" || !key.startsWith(".")) continue;
         modules.set(key === "." ? "gloomberb" : `gloomberb/${key.slice(2)}`, join(root, target));
       }
-    } catch {
+    } catch (error) {
+      logFailure("plugin-host-link", "Host export map read failed")(error);
       // An unreadable host package.json leaves the map empty, and callers fall
       // back to whatever resolution they would do without it.
     }
@@ -97,7 +99,8 @@ function linkTarget(hostRoot: string, pkg: string): string | null {
   // the way the host itself resolves it.
   try {
     return dirname(Bun.resolveSync(`${pkg}/package.json`, hostRoot));
-  } catch {
+  } catch (error) {
+    logFailure("plugin-host-link", "Host runtime package resolution failed")(error);
     return null;
   }
 }
@@ -108,6 +111,7 @@ function alreadyLinked(path: string, target: string): boolean {
   try {
     return isLink(path, lstatSync(path)) && realpathSync(path) === realpathSync(target);
   } catch {
+    // Intentional ignore: A missing or stale link is recreated by ensureDirLink.
     return false;
   }
 }
@@ -153,6 +157,7 @@ export function missingPeerPlugins(pluginDir: string, pluginsDir: string = dirna
     const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
     peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
   } catch {
+    // Intentional ignore: Plugins may have no package manifest; loadExternalPlugin reports missing imports.
     return [];
   }
   return peers.filter((peer) => !pluginDirectoryNames(peer).some((name) => existsSync(join(pluginsDir, name))));
@@ -164,6 +169,7 @@ export function installedPeerPlugins(pluginDir: string, pluginsDir: string = dir
     const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
     peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
   } catch {
+    // Intentional ignore: Plugins may have no package manifest; loadExternalPlugin reports missing imports.
     return [];
   }
   const installed: Array<{ peer: string; directory: string }> = [];
@@ -188,6 +194,7 @@ function packageMain(packageDir: string): string | null {
     const main = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8")).main;
     return typeof main === "string" && main ? main : null;
   } catch {
+    // Intentional ignore: A peer without a package main falls back to its index entry.
     return null;
   }
 }
@@ -224,7 +231,7 @@ function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
       ensureDirLink(join(pluginDir, "node_modules", peer), join(pluginsDir, directory));
       linked.push(peer);
     } catch {
-      // Reported by the plugin's own load failure if it actually needed it.
+      // Intentional ignore: loadExternalPlugin reports the import failure if this peer link is needed.
     }
   }
   return linked;

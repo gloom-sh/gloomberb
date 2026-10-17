@@ -104,6 +104,7 @@ function stdinIsPiped(): boolean {
     const stats = fstatSync(0);
     return stats.isFIFO() || stats.isFile();
   } catch {
+    // Intentional ignore: An unavailable standard input cannot supply an optional symbol list.
     return false;
   }
 }

@@ -9,7 +9,7 @@ import { DetailScrollBody } from "../ui/detail-scroll-body";
 import { KeyValueRow } from "../ui/display";
 import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
 import { parseArticle } from "./article-text";
-import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, READER_HEADING_STYLE, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, READER_HEADING_STYLE, READER_MEASURE, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
 
 export interface DetailFact {
   label: string;
@@ -48,7 +48,11 @@ const DESKTOP_GEOMETRY: ReaderGeometry = { desktop: true, measure: 0, margin: 0 
 const PARAGRAPH_GAP = "0.9em";
 const URL_LINE = /^https?:\/\/\S+$/;
 
-const COLUMN_STYLE = { fontSize: READER_COLUMN_FONT, lineHeight: DESKTOP_LINE_HEIGHT } as const;
+/**
+ * The one reading column (reader-text.tsx): centred at the measure. The
+ * DetailScrollBody around it gives the pane's inset, 12px above and 16px below.
+ */
+const COLUMN_STYLE = { fontSize: READER_COLUMN_FONT, lineHeight: DESKTOP_LINE_HEIGHT, maxWidth: READER_MEASURE } as const;
 const META_STYLE = { marginBottom: "0.8em" } as const;
 /**
  * At the app's own size, as metadata is in every reader. Its columns come from
@@ -70,8 +74,8 @@ const NOTE_STYLE = { marginTop: "0.4em", fontSize: READER_APP_FONT, lineHeight: 
 /**
  * The open item of a list pane: a few lines of metadata, its facts, then its
  * text, scrolling between the stack header and the pane footer. The desktop
- * and the web set it in the reader's type across the pane's whole width,
- * wrapped by the browser; the terminal draws it pre-wrapped at `width`.
+ * and the web set it in the reader's column (the measure, centred), wrapped
+ * by the browser; the terminal draws it pre-wrapped at `width`.
  */
 export const DetailReader = forwardRef<ScrollBoxRenderable, DetailReaderProps>(function DetailReader(
   { resetScrollKey, width, meta = [], facts = [], body, bodyFormat = "text", note },
@@ -103,7 +107,7 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
   );
   const noteLines = note?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
   return (
-    <Box flexDirection="column" width="100%" data-gloom-ui="detail-reader">
+    <Box flexDirection="column" width="100%" alignItems="center" data-gloom-ui="detail-reader">
       <Box flexDirection="column" width="100%" data-gloom-ui="reader-column" style={COLUMN_STYLE}>
         {facts.length > 0 ? (
           <Box data-gloom-ui="detail-facts" style={FACTS_STYLE}>

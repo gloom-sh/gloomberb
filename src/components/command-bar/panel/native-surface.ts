@@ -1,4 +1,5 @@
 import { blendHex, commandBarPanelBg, type ThemeColors } from "../../../theme/colors";
+import { RADIUS, SPACE } from "../../../theme/ui-tokens";
 
 /**
  * Desktop metrics for the command surface, which is one control in two boxes:
@@ -9,10 +10,11 @@ import { blendHex, commandBarPanelBg, type ThemeColors } from "../../../theme/co
  * meet on.
  */
 export const NATIVE_COMMAND_SURFACE = {
-  paddingXPx: 14,
-  paddingYPx: 14,
-  radiusPx: 8,
-  shadow: "0 10px 18px color-mix(in srgb, var(--gloom-bg) 34%, transparent)",
+  paddingXPx: SPACE.lg,
+  paddingYPx: SPACE.lg,
+  radiusPx: RADIUS.lg,
+  /** The one elevation every floating surface casts (styles.css `--gloom-elevation`). */
+  shadow: "var(--gloom-elevation)",
 } as const;
 
 /**

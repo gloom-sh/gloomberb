@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { PerpBoardRow } from "../api-client/perps";
 import type { Quote } from "../types/financials";
 import { loadPerpetualMarket } from "../sources/gloomberb-cloud/perpetuals";
@@ -38,7 +39,8 @@ export async function cliPerpetualContract(quote: Pick<Quote, "symbol" | "instru
       premium: row.premium,
       observedAt: row.observedAt,
     };
-  } catch {
+  } catch (error) {
+    logFailure("cli.perpetual-contract", "Read perpetual contract terms failed")(error);
     // The quote stands without its terms.
     return null;
   }

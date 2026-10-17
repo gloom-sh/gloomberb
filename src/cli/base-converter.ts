@@ -1,4 +1,5 @@
 import type { DataProvider } from "../types/data-provider";
+import { logFailure } from "../utils/log-failure";
 
 export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchangeRate">, baseCurrency: string) {
   const rateCache = new Map<string, number>([["USD", 1]]);
@@ -12,7 +13,8 @@ export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchang
       const validRate = Number.isFinite(rate) && rate > 0 ? rate : Number.NaN;
       rateCache.set(normalizedCurrency, validRate);
       return validRate;
-    } catch {
+    } catch (error) {
+      logFailure("cli-base-converter", "Could not load base conversion exchange rate")(error);
       return Number.NaN;
     }
   };

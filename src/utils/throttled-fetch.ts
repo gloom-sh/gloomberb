@@ -65,6 +65,7 @@ export function createThrottledFetch(
     try {
       return new URL(url).host;
     } catch {
+      // Intentional ignore: Unparseable URLs share the unknown bucket; the request reports transport errors.
       return "unknown";
     }
   }

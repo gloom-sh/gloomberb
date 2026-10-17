@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
@@ -34,7 +35,7 @@ import {
 import { isNotATickerMessage } from "../not-a-ticker";
 import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
-import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -121,7 +122,8 @@ export async function functionCodeCommand(
     if (!found) return null;
     const code = word.replace(/^\$/, "").toUpperCase();
     return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Resolve function code command failed")(error);
     return null;
   }
 }
@@ -152,7 +154,8 @@ export async function nearFunctionCodeCommand(
     if (near.length !== 1) return null;
     const { code, label } = near[0]!;
     return { code, label, command: ["gloomberb fn", code, ...args.map(commandWord)].join(" ") };
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Find nearby function code command failed")(error);
     return null;
   }
 }
@@ -183,7 +186,8 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
         registry.destroy();
       }
     });
-  } catch {
+  } catch (error) {
+    logFailure("cli.pane-functions-index", "Find catalog command suggestions failed")(error);
     return [];
   }
 }
@@ -428,8 +432,9 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
-        // A setting is a command, not a function: "light theme" names `config themes` beside THEM.
-        const setting = settingsPointer(parsed.query);
+        // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
+        // "drip" names `portfolio show --drip` beside DVD.
+        const setting = commandPointer(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer

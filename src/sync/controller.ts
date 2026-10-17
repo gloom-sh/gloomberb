@@ -87,6 +87,13 @@ export class CloudSyncController {
   private syncQueued = false;
   private clientId: string | null = null;
   private lastSignature: string | null = null;
+  /**
+   * The content signature of the cloud's copy, with the revision and the
+   * write it belongs to. Each 15 s poll pulls the same copy again until a
+   * device writes; working its signature out every time was a third of an
+   * idle sync on a large workspace (GLO-925).
+   */
+  private cloudSignature: { transportId: string; revision: number; clientId: string; createdAt: string; signature: string } | null = null;
   private baseline: Record<string, unknown> | null = null;
   private baselineLoaded = false;
   private pulledContributors: SyncSnapshot["contributors"] = {};
@@ -302,7 +309,7 @@ export class CloudSyncController {
       });
       return {
         revision: response.snapshot ? response.revision : 0,
-        signature: response.snapshot ? snapshotContentSignature(response.snapshot) : null,
+        signature: response.snapshot ? this.pulledSignature(transport, response.revision, response.snapshot) : null,
       };
     } catch (error) {
       if (!this.isCurrent(runtime, transport)) return null;
@@ -435,6 +442,19 @@ export class CloudSyncController {
     return this.runtime === runtime && runtime.getTransport()?.transport === transport;
   }
 
+  private pulledSignature(transport: SyncTransport, revision: number | null, snapshot: SyncSnapshot): string {
+    const kept = this.cloudSignature;
+    if (revision != null && kept && kept.transportId === transport.id && kept.revision === revision
+      && kept.clientId === snapshot.clientId && kept.createdAt === snapshot.createdAt) {
+      return kept.signature;
+    }
+    const signature = snapshotContentSignature(snapshot);
+    this.cloudSignature = revision == null
+      ? null
+      : { transportId: transport.id, revision, clientId: snapshot.clientId, createdAt: snapshot.createdAt, signature };
+    return signature;
+  }
+
   private shouldApplyPulledRevision(revision: number | null): boolean {
     return revision == null || this.appliedRevision == null || revision > this.appliedRevision;
   }
@@ -456,6 +476,7 @@ export class CloudSyncController {
     this.inFlight = null;
     this.syncQueued = false;
     this.lastSignature = null;
+    this.cloudSignature = null;
     this.appliedRevision = null;
     this.baseline = null;
     this.baselineLoaded = false;

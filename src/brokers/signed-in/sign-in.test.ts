@@ -100,25 +100,37 @@ describe("BrokerSignInController", () => {
 
     test("cancelling leaves it as it was and stops asking", async () => {
       let reads = 0;
+      const paused = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let nextPoll = release;
       const io: BrokerSignInIo = fakeIo({
         fetchConnection: async () => {
           reads += 1;
           return { status: "connected", connectedAt: FIRST };
         },
-        // Yields to timers, so the test can cancel between polls.
-        delay: () => new Promise((resolve) => setTimeout(resolve, 1)),
+        // Hold the next poll after the renewal read and three unchanged polls.
+        delay: () => {
+          if (reads < 4) return Promise.resolve();
+          const poll = nextPoll;
+          nextPoll = Promise.withResolvers<void>();
+          paused.resolve();
+          return poll.promise;
+        },
       });
       const controller = new BrokerSignInController(IBKR, false, io, { renew: true });
-      controller.start();
-      await settle(controller, (snapshot) => snapshot.phase === "waiting");
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(reads).toBeGreaterThan(3);
-      controller.cancel();
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      const readsAtCancel = reads;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(controller.getSnapshot().phase).toBe("waiting");
-      expect(reads).toBe(readsAtCancel);
+      try {
+        controller.start();
+        await paused.promise;
+        expect(reads).toBe(4);
+        controller.cancel();
+        release.resolve();
+        await release.promise;
+        expect(controller.getSnapshot().phase).toBe("waiting");
+        expect(reads).toBe(4);
+      } finally {
+        controller.cancel();
+        release.resolve();
+      }
     });
 
     test("a first read that failed lets the first poll stand in for it", async () => {

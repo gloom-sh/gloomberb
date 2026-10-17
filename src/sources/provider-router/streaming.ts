@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { DataProvider, MarketDataRequestContext, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import type { BrokerCandidate } from "./brokers";
@@ -51,7 +52,8 @@ function isBrokerConnected(candidate: BrokerCandidate): boolean {
   try {
     const status = candidate.broker.getStatus?.(candidate.instance);
     return !status || status.state === "connected";
-  } catch {
+  } catch (error) {
+    logFailure("sources.provider-router.streaming", "Reading broker connection status failed")(error);
     return false;
   }
 }
@@ -62,7 +64,8 @@ function canWakeBroker(candidate: BrokerCandidate): boolean {
   try {
     const state = candidate.broker.getStatus?.(candidate.instance)?.state;
     return state === "disconnected" || state === "error";
-  } catch {
+  } catch (error) {
+    logFailure("sources.provider-router.streaming", "Reading broker connection status failed")(error);
     return false;
   }
 }
@@ -195,8 +198,8 @@ export class ProviderRouterStreamingRoutes {
             scheduleApply();
           });
           if (unsubscribe) watchers.push(unsubscribe);
-        } catch {
-          // A broker that cannot report status keeps the route it has now.
+        } catch (error) {
+          logFailure("sources.provider-router.streaming", "Subscribing to broker connection status failed")(error);
         }
       }
       this.delayedSessionListeners.add(scheduleApply);

@@ -25,6 +25,7 @@ function readLocalStorage(): StorageLike | undefined {
   try {
     return typeof localStorage === "undefined" ? undefined : localStorage;
   } catch {
+    // Intentional ignore: Private browsing can deny storage; the reporter accepts absent storage.
     return undefined;
   }
 }
@@ -35,6 +36,7 @@ export function browserDoNotTrack(): boolean {
     const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
     return nav.doNotTrack === "1" || nav.globalPrivacyControl === true;
   } catch {
+    // Intentional ignore: Non-browser runtimes have no navigator privacy signals.
     return false;
   }
 }
@@ -45,6 +47,7 @@ export function describeBrowserOs(): string {
     const data = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
     return data?.platform || navigator.platform || "";
   } catch {
+    // Intentional ignore: Non-browser runtimes have no navigator platform metadata.
     return "";
   }
 }

@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
@@ -41,7 +42,7 @@ export async function findListingOfCompanyName(
   if (!name) return null;
   const queries = [...new Set([name, shortCompanyName(name)])].filter(Boolean);
   const results = (await Promise.all(queries.map((query) => dataProvider.search(query, { limit: LISTING_SEARCH_LIMIT })
-    .catch((): InstrumentSearchResult[] => [])))).flat();
+    .catch(logFailure("tickers-company-name-listing", "Could not search company listings", [] as InstrumentSearchResult[]))))).flat();
   const ranked = results.flatMap((result, order) => {
     const exchange = canonicalExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange);
     const type = result.brokerContract?.secType || result.type || "";

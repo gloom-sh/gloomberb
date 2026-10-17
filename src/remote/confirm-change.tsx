@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { useEffect } from "react";
 import { Box, useUiHost } from "../ui";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -80,6 +81,6 @@ export async function confirmRemoteChange(
     closeOnClickOutside: false,
     closeOnEscape: true,
     content: (context) => <RemoteChangeDialog {...context} prompt={prompt} signal={signal} />,
-  }).catch(() => false);
+  }).catch(logFailure("remote.confirm-change", "Opening remote change confirmation failed", false));
   return answer === true;
 }

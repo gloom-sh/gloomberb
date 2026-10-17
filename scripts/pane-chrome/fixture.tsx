@@ -31,9 +31,12 @@
  * to the invented bars' last close),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
  * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
- * over an invented company, see DesPane), or `header` (the app's top bar in
+ * over an invented company, see DesPane), `header` (the app's top bar in
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
- * web app does).
+ * web app does), `tab-sweep` (what the layout sweep's tab visits are checked
+ * against, tab-sweep-fixture.tsx), or `kit` (the kit page: every design-system family in every
+ * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
+ * `&font=` as everywhere).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -89,6 +92,8 @@ import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
+import { KitPage } from "./kit-fixture";
+import { TabSweepFixture } from "./tab-sweep-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -790,17 +795,28 @@ function desLayout(): LayoutConfig {
  */
 function PaintPane(props: PaneProps) {
   const [active, setActive] = useState("empty");
+  // Like the research pane: a tab opened once stays mounted, hidden while
+  // another one shows, so going back to it reveals the chart it drew.
+  const [mounted, setMounted] = useState<readonly string[]>(["empty"]);
+  const select = useCallback((tab: string) => {
+    setActive(tab);
+    setMounted((current) => (current.includes(tab) ? current : [...current, tab]));
+  }, []);
   const { strip, rows } = usePaneTabs({
     tabs: ["empty", "chart", "overview", "composer"].map((value) => ({ value, label: value })),
-    activeValue: active, onSelect: setActive,
+    activeValue: active, onSelect: select,
   });
   const body = { ...props, height: Math.max(4, props.height - rows) };
   return <Box flexDirection="column" flexGrow={1}>
     {strip}
-    {active === "chart" ? <ChartPane {...props} />
-      : active === "overview" ? <OverviewPane {...props} />
-      : active === "composer" ? <ChartComposerFixturePane {...body} />
-      : null}
+    {mounted.map((tab) => (
+      <Box key={tab} visible={tab === active} flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
+        {tab === "chart" ? <ChartPane {...body} />
+          : tab === "overview" ? <OverviewPane {...body} />
+          : tab === "composer" ? <ChartComposerFixturePane {...body} />
+          : null}
+      </Box>
+    ))}
   </Box>;
 }
 
@@ -1464,6 +1480,8 @@ createRoot(root).render(
       {detached
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
+        : scenario === "kit" ? <KitPage family={params.get("family")} />
+        : scenario === "tab-sweep" ? <TabSweepFixture />
         : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
           <Box data-theme-chrome="header"><Header /></Box>
           <Shell pluginRegistry={paneRegistry} />

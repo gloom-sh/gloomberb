@@ -20,7 +20,10 @@ export function isUsableCachedExchangeRate(rate: number | null, currency: string
     exchangeRateMetadata({ rate, asOf: timing.asOf === undefined ? undefined : new Date(timing.asOf).toISOString() },
       currency, now, timing.fetchedAt ?? undefined);
     return true;
-  } catch { return false; }
+  } catch {
+    // Intentional ignore: Invalid or expired cache entries are rejected by this boolean validator.
+    return false;
+  }
 }
 
 /** Validate before numeric decoding, including persisted and legacy snapshots. */

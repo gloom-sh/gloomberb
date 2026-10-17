@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
 import {
@@ -148,7 +149,7 @@ export async function putWithRevision<T, Current extends { revision: number }>(
     });
   } catch (error) {
     if (!(error instanceof ApiRequestError) || error.status !== 412) throw error;
-    const current = await revision.loadCurrent().catch(() => null);
+    const current = await revision.loadCurrent().catch(logFailure("cloud-request", "Current revision request failed", null));
     throw new revision.conflict(error.message, current, current?.revision ?? (revision.expected ?? 0) + 1);
   }
 }
@@ -269,7 +270,7 @@ export class CloudApiRequestTransport {
         });
         throwIfRequestAborted(options.signal);
         if (!response.ok) {
-          const text = await response.text().catch(() => "");
+          const text = await response.text().catch(logFailure("cloud-request", "Error response body read failed", ""));
           throw new ApiRequestError(
             parseApiErrorMessage(text),
             response.status,

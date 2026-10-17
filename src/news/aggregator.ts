@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { NewsCapability } from "../capabilities";
 import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
@@ -153,7 +154,7 @@ export class NewsService {
       this.pollTimer = null;
       this.pollInFlight = true;
       this.lastPollAt = this.now();
-      void this.pollActiveQueries().catch(() => {}).then(() => {
+      void this.pollActiveQueries().catch(logFailure("news.aggregator", "Polling active news queries failed")).then(() => {
         this.pollInFlight = false;
         this.scheduleNextPoll();
       });

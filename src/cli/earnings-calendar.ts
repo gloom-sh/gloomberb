@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { EarningsEvent } from "../types/data-provider";
 import { isUsListingExchange } from "../utils/exchanges";
 import { listingChoiceNote, loadListingQuote, usLineOfListing, type CliListing, type ListingDeps, type ListingVenue } from "./listing-arg";
@@ -35,7 +36,7 @@ export async function noListingCalendarNote(
   const company = quote?.name?.trim() || listing.saved?.metadata.name?.trim() || null;
   const usLine = await usLineOfListing(listing, company, deps);
   if (!usLine || !deps.dataProvider.getEarningsCalendar) return lead;
-  const events = await deps.dataProvider.getEarningsCalendar([listing.symbol]).catch(() => []);
+  const events = await deps.dataProvider.getEarningsCalendar([listing.symbol]).catch(logFailure("cli.earnings-calendar", "Read earnings calendar failed", []));
   const event = events.find((entry) => entry.symbol.toUpperCase() === listing.symbol.toUpperCase());
   if (!event || event.earningsDate.getTime() < now - DAY_MS) return lead;
   return `${lead}; ADR date ${isoDate(event.earningsDate)} (estimate)`;

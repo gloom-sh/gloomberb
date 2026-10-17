@@ -4,9 +4,9 @@
  * the web, and nothing from the page run as code or HTML. The terminal shows
  * a picture's caption and a diagram's steps instead of the picture.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ActionRow, MarkdownText, RemoteImage, usePaneLinkMenuEntry } from "../../../components";
-import { READER_HEADING_STYLE } from "../../../components/reader/reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_COLUMN_FONT, READER_HEADING_STYLE, READER_MEASURE, READER_PARAGRAPH_GAP } from "../../../components/reader/reader-text";
 import type { DocsBlock } from "../../../docs/content";
 import { tf } from "../../../i18n";
 import { isDarkTheme } from "../../../theme/themes";
@@ -26,8 +26,15 @@ const CALLOUT_LABELS: Record<string, string> = {
   example: "Example",
 };
 
-/** The reader's section heading size; the space around it is the blocks' own. */
-const SECTION_HEADING_STYLE = { fontSize: READER_HEADING_STYLE.fontSize, lineHeight: READER_HEADING_STYLE.lineHeight } as const;
+/**
+ * On the desktop and the web Docs reads as every reader does (reader-text.tsx):
+ * a block of text, a list or a picture is followed by the paragraph gap, and a
+ * section heading brings its own space above and below.
+ */
+const SECTION_HEADING_STYLE = READER_HEADING_STYLE;
+const BLOCK_GAP_STYLE = { marginBottom: READER_PARAGRAPH_GAP } as const;
+/** A step inside a section: the body's size, bold, set off from what it names as a heading is. */
+const SUBHEADING_STYLE = { marginBottom: READER_HEADING_STYLE.margin.split(" ")[2] } as const;
 
 const LINK_PATTERN = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 
@@ -67,13 +74,15 @@ function ListBlock({ items, ordered, start, width, onOpenLink }: {
   onOpenLink?: (href: string) => void;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const markers = items.map((_, index) => (ordered ? `${start + index}.` : "•"));
   const markerWidth = Math.max(...markers.map((marker) => marker.length)) + 1;
   return (
     <Box flexDirection="column">
       {items.map((item, index) => (
-        <Box key={index} flexDirection="row">
-          <Box width={markerWidth} flexShrink={0}>
+        // The readers' prose bullet (reader-text.tsx): the marker in characters of the text, not cells.
+        <Box key={index} flexDirection="row" data-gloom-role={nativePaneChrome && !ordered ? "reader-bullet" : undefined}>
+          <Box width={nativePaneChrome ? undefined : markerWidth} flexShrink={0} style={nativePaneChrome ? { width: `${markerWidth}ch` } : undefined}>
             <Text fg={colors.textDim}>{markers[index]}</Text>
           </Box>
           <MarkdownText text={item.replace(/\n/g, " ")} lineWidth={Math.max(8, width - markerWidth)} onOpenLink={onOpenLink} />
@@ -118,7 +127,7 @@ function Picture({ src, alt, caption, width }: { src: string; alt: string; capti
   );
 }
 
-function Block({ block, width, onOpenLink }: { block: DocsBlock; width: number; onOpenLink: (href: string) => void }) {
+function Block({ block, width, onOpenLink, first = false }: { block: DocsBlock; width: number; onOpenLink: (href: string) => void; first?: boolean }) {
   const colors = useThemeColors();
   const themeId = useThemeId();
   const { nativePaneChrome } = useUiCapabilities();
@@ -134,7 +143,8 @@ function Block({ block, width, onOpenLink }: { block: DocsBlock; width: number; 
           wrapText
           selectable
           width={nativePaneChrome ? "100%" : width}
-          style={nativePaneChrome && block.level === 2 ? SECTION_HEADING_STYLE : undefined}
+          style={nativePaneChrome ? (block.level === 2 ? { ...SECTION_HEADING_STYLE, ...(first ? { marginTop: 0 } : {}) } : SUBHEADING_STYLE) : undefined}
+          data-gloom-role={nativePaneChrome && block.level === 2 ? "reader-heading" : undefined}
         >
           {block.text.replace(/[*`]/g, "")}
         </Text>
@@ -180,6 +190,19 @@ export function DocsBlocks({ blocks, width, onOpenLink }: {
   width: number;
   onOpenLink: (href: string) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  if (nativePaneChrome) {
+    return (
+      <Box flexDirection="column">
+        {blocks.map((block, index) => (
+          <Box key={index} flexDirection="column" style={block.type === "heading" ? undefined : BLOCK_GAP_STYLE}>
+            <Block block={block} width={width} onOpenLink={onOpenLink} first={index === 0} />
+            {blockLinks(block).map((link) => <LinkMenuEntry key={link.href} label={link.label} href={link.href} onOpen={onOpenLink} />)}
+          </Box>
+        ))}
+      </Box>
+    );
+  }
   return (
     <Box flexDirection="column" gap={1}>
       {blocks.map((block, index) => (
@@ -188,6 +211,29 @@ export function DocsBlocks({ blocks, width, onOpenLink }: {
           {blockLinks(block).map((link) => <LinkMenuEntry key={link.href} label={link.label} href={link.href} onOpen={onOpenLink} />)}
         </Box>
       ))}
+    </Box>
+  );
+}
+
+/**
+ * On the desktop and the web the text reads as in every reader
+ * (reader-text.tsx): the body size, a step up from the table text, the
+ * reading line height, centred at the measure; the column fills a narrower
+ * pane and stops there in a wider one.
+ */
+const DOCS_READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": `${DESKTOP_LINE_HEIGHT}em`, maxWidth: READER_MEASURE, alignSelf: "center" } as const;
+
+/**
+ * The desktop and web reading column. Its wrapper is a size container, as the
+ * article and detail readers are, so a narrow pane steps the type down with
+ * theirs (styles.css, "Reading columns").
+ */
+export function DocsReadingColumn({ children }: { children: ReactNode }) {
+  return (
+    <Box flexDirection="column" width="100%" data-gloom-ui="docs-reader">
+      <Box flexDirection="column" width="100%" data-gloom-role="docs-body" data-gloom-ui="reader-column" style={DOCS_READING_STYLE}>
+        {children}
+      </Box>
     </Box>
   );
 }

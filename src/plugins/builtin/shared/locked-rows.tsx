@@ -19,9 +19,11 @@ export function Blurred({ children }: { children: ReactNode }) {
 
 export function UpgradeLabel({ text, onPress, role }: { text: string; onPress: () => void; role?: string }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   return (
     <Box flexDirection="row" gap={1} onMouseDown={onPress} data-gloom-role={role} data-gloom-ui="pro-lock">
-      <Icon name="lock" size={11} color={colors.textBright} />
+      {/* The lock is the locked colour on the desktop; the label is the action. */}
+      <Icon name="lock" size={11} color={nativePaneChrome ? "var(--gloom-locked)" : colors.textBright} />
       <Text fg={colors.textBright}>{text}</Text>
     </Box>
   );

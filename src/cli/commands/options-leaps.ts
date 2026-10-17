@@ -496,6 +496,7 @@ function ivKey(listing: CliListing): string | null {
   try {
     return ivSymbol(listing.key);
   } catch {
+    // Intentional ignore: IV history supports US symbols only; unsupported listings have no IV key.
     return null;
   }
 }

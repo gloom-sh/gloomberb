@@ -1,7 +1,7 @@
 import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fxCloseOnOrBefore, type FxCloses } from "../../../market-data/fx-closes";
-import { extractFundamentalSeries } from "../../../time-series/fundamentals";
+import { extractFundamentalSeries, knownWhenFiled } from "../../../time-series/fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "../../../time-series/types";
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../types/financials";
@@ -95,20 +95,6 @@ export interface PeBandModel {
   error: string | null;
   /** The pane still draws, but without bands. */
   notice: string | null;
-}
-
-/**
- * A split restates EPS onto the new share count, and SEC history dates the
- * restated figure by the filing that evidenced the split. The earnings were
- * known at the original filing; the price history is split-adjusted the same
- * way, so the restated figure steps when it was first filed.
- */
-function knownWhenFiled(row: FinancialStatement): FinancialStatement {
-  const filed = row.epsBasis?.status === "split-adjusted" ? row.epsBasis.originalFiled : undefined;
-  if (!filed || !Number.isFinite(Date.parse(filed))) return row;
-  const current = row.fieldAvailability !== undefined ? row.fieldAvailability.eps : row.availableAt;
-  if (current && Date.parse(current) <= Date.parse(filed)) return row;
-  return { ...row, fieldAvailability: { ...row.fieldAvailability, eps: filed } };
 }
 
 function epsSeries(financials: TickerFinancials, period: "ttm" | "annual"): TimeSeriesPoint[] {

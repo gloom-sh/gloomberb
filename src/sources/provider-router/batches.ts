@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type {
   CachedFinancialsTarget,
   MarketDataRequestContext,
@@ -96,7 +97,7 @@ export class ProviderRouterBatchRoutes {
         providerIndexes.set(key, bucket);
       }
       const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
-      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch(() => []);
+      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch(logFailure("sources.provider-router.batches", "Loading batch quotes failed", []));
       for (const item of batchResults) {
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) continue;
         const key = this.quoteBatchKey(item.target);
@@ -163,7 +164,7 @@ export class ProviderRouterBatchRoutes {
         providerIndexes.set(key, bucket);
       }
       const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
-      const batchResults = await batchProvider.getTickerFinancialsBatch!(uniqueTargets, options).catch(() => []);
+      const batchResults = await batchProvider.getTickerFinancialsBatch!(uniqueTargets, options).catch(logFailure("sources.provider-router.batches", "Loading batch financials failed", []));
       for (const item of batchResults) {
         if (!item.financials) continue;
         if (!item.target.instrument && !providerFinancialsMatchTarget(item.financials, item.target.symbol, item.target.exchange)) continue;

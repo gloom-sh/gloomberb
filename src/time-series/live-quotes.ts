@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { canonicalTimeSeriesFieldId, isMarketFieldId } from "./field-catalog";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
@@ -211,9 +212,7 @@ export function createLiveChartRefresher(
     lastStartedAt = Date.now();
     Promise.resolve()
       .then(run)
-      .catch(() => {
-        // A background refresh failure must not stop live updates.
-      })
+      .catch(logFailure("time-series-live-quotes", "Could not refresh live chart"))
       .finally(() => {
         inFlight = false;
         pump();

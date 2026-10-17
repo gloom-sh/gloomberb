@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
@@ -48,7 +49,7 @@ function loadChartRequests(
   options: { forceRefresh?: boolean } = {},
 ): void {
   for (const request of requests) {
-    void coordinator.loadChart(request, options).catch(() => {});
+    void coordinator.loadChart(request, options).catch(logFailure("market-data.hooks", "Loading chart data failed"));
   }
 }
 
@@ -117,7 +118,7 @@ export function useTickerFinancials(symbol: string | null | undefined, ticker: T
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !instrument) return;
     const timeoutId = setTimeout(() => {
-      void coordinator.loadSnapshot(instrument).catch(() => {});
+      void coordinator.loadSnapshot(instrument).catch(logFailure("market-data.hooks", "Loading a financial snapshot failed"));
     }, TICKER_FINANCIALS_LOAD_DELAY_MS);
     return () => clearTimeout(timeoutId);
   }, [instrumentKey]);
@@ -308,7 +309,7 @@ export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerR
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !instrument) return;
-    void coordinator.loadQuote(instrument).catch(() => {});
+    void coordinator.loadQuote(instrument).catch(logFailure("market-data.hooks", "Loading a quote failed"));
   }, [instrumentKey]);
 
   return entry;
@@ -475,7 +476,7 @@ export function useOptionsQuery(
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !request) return;
-    void coordinator.loadOptions(request).catch(() => {});
+    void coordinator.loadOptions(request).catch(logFailure("market-data.hooks", "Loading options failed"));
   }, [requestKey]);
 
   useEffect(() => {
@@ -483,7 +484,7 @@ export function useOptionsQuery(
     if (!coordinator || !request || !visible || refreshIntervalMs <= 0) return;
     const refresh = () => {
       lastRefreshRef.current = { key: requestKey, at: Date.now() };
-      void coordinator.loadOptions(request, { forceRefresh: true }).catch(() => {});
+      void coordinator.loadOptions(request, { forceRefresh: true }).catch(logFailure("market-data.hooks", "Loading options failed"));
     };
     if (Date.now() - lastRefreshRef.current.at >= refreshIntervalMs) refresh();
     const interval = setInterval(refresh, refreshIntervalMs);
@@ -502,7 +503,7 @@ export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !request) return;
-    void coordinator.loadSecFilings(request).catch(() => {});
+    void coordinator.loadSecFilings(request).catch(logFailure("market-data.hooks", "Loading filings failed"));
   }, [requestKey]);
 
   return entry;
@@ -525,7 +526,7 @@ export function useSecFilingContent(filing: SecFilingItem | null | undefined): Q
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !filing) return;
-    void coordinator.loadSecFilingContent(filing).catch(() => {});
+    void coordinator.loadSecFilingContent(filing).catch(logFailure("market-data.hooks", "Loading filing content failed"));
   }, [key]);
 
   return entry;
@@ -540,7 +541,7 @@ export function useSecFilingDocuments(filing: SecFilingItem | null | undefined):
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !filing) return;
-    void coordinator.loadSecFilingDocuments(filing).catch(() => {});
+    void coordinator.loadSecFilingDocuments(filing).catch(logFailure("market-data.hooks", "Loading filing documents failed"));
   }, [key]);
 
   return entry;
@@ -555,7 +556,7 @@ export function useArticleSummary(url: string | null | undefined): QueryEntry<st
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !url) return;
-    void coordinator.loadArticleSummary(url).catch(() => {});
+    void coordinator.loadArticleSummary(url).catch(logFailure("market-data.hooks", "Loading an article summary failed"));
   }, [url]);
 
   return entry;

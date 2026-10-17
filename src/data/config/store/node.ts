@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { existsSync, readdirSync, type Dirent } from "fs";
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { dirname, join, resolve } from "path";
@@ -46,7 +47,9 @@ export async function getDataDir(): Promise<string | null> {
     const recorded = config.dataDir || null;
     if (recorded && dirs.kind !== "home" && !existsSync(recorded)) return dirs.data;
     return recorded;
-  } catch {
+  } catch (error) {
+    // Intentional ignore: an absent optional file or directory is expected.
+    if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.store.node", "Reading the configured data directory failed")(error);
     return null;
   }
 }
@@ -62,7 +65,9 @@ function hasAbsorbedPluginCheckout(pluginId: string): boolean {
   let entries: Dirent[];
   try {
     entries = readdirSync(pluginsDir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    // Intentional ignore: an absent optional file or directory is expected.
+    if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.store.node", "Reading installed plugins for migration failed")(error);
     return false;
   }
   return entries.some((entry) => {
@@ -114,7 +119,7 @@ async function writeConfigFile(configPath: string, contents: string): Promise<vo
     await writeFile(tempPath, contents, "utf-8");
     await rename(tempPath, configPath);
   } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => {});
+    await rm(tempPath, { force: true }).catch(() => { /* Intentional ignore: Remove a partial temporary file while preserving the write error rethrown below. */ });
     throw error;
   }
 }
@@ -130,7 +135,7 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   // earlier saves are still running.
   const contents = JSON.stringify(normalizeConfigForSave(config), null, 2);
   const result = (saveQueues.get(configPath) ?? Promise.resolve()).then(() => writeConfigFile(configPath, contents));
-  const settled = result.catch(() => {});
+  const settled = result.catch(() => { /* Intentional ignore: The caller receives result; only the serialization chain consumes its duplicate rejection. */ });
   saveQueues.set(configPath, settled);
   void settled.then(() => {
     if (saveQueues.get(configPath) === settled) saveQueues.delete(configPath);

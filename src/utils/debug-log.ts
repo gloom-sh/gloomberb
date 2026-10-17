@@ -64,7 +64,7 @@ class DebugLog {
     }
     this.mirrorEntryToConsole(entry);
     for (const listener of this.listeners) {
-      try { listener(entry); } catch { /* ignore */ }
+      try { listener(entry); } catch { /* Intentional ignore: A broken log listener must not block other listeners or recursively log itself. */ }
     }
   }
 

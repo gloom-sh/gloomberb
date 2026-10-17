@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 export { clipPriceHistoryToRange } from "../../time-series/history-window";
@@ -122,7 +123,7 @@ export async function withShotReturnHistory(
   financials: TickerFinancials,
 ): Promise<TickerFinancials> {
   const support = await Promise.resolve(context.dataProvider.getChartResolutionSupport?.(instrument.symbol, exchange) ?? [])
-    .catch(() => []);
+    .catch(logFailure("cli.pane-functions-data", "Read chart resolution support failed", []));
   const series = await loadReturnSeries(context.dataProvider, {
     symbol: instrument.symbol,
     exchange,
@@ -208,7 +209,7 @@ export async function createFallbackTicker(symbol: string, financials: TickerFin
   const known = quote ? quoteMetadataFromQuote(quote) : financials?.quoteMetadata;
   const listing = instrument.exchange || known?.listingExchangeName
     ? known
-    : await context.dataProvider.getQuoteMetadata?.(instrument.symbol, "").catch(() => null) ?? known;
+    : await context.dataProvider.getQuoteMetadata?.(instrument.symbol, "").catch(logFailure("cli.pane-functions-data", "Read screenshot quote metadata failed", null)) ?? known;
   return {
     metadata: {
       // A listing key stays the key the pane is bound to (CAR:ASX), as a saved listing abroad is keyed.

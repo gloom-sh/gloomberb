@@ -116,7 +116,7 @@ export function ExternalLinkText(
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const { showContextMenu } = useContextMenu();
-  const { nativeContextMenu } = useUiCapabilities();
+  const { nativeContextMenu, nativePaneChrome } = useUiCapabilities();
   const resolvedOpen = onOpen === openUrl
     ? (nextUrl: string) => {
       void rendererHost.openExternal(nextUrl);
@@ -134,11 +134,13 @@ export function ExternalLinkText(
   usePaneLinkMenuEntry(`link:${url}`, tf("Open {label}", { label: menuLinkLabel(url, label) }), () => resolvedOpen(url));
   return (
     <Text
-      fg={color ?? colors.textBright}
+      // Desktop: a link is the text around it, underlined; the pointer brightens it (styles.css).
+      fg={color ?? (nativePaneChrome ? "inherit" : colors.textBright)}
       attributes={TextAttributes.UNDERLINE | attributes}
       cursor="pointer"
       style={inline ? INLINE_LINK_STYLE : undefined}
       role="link"
+      data-gloom-link="true"
       tabIndex={0}
       wrapText
       onKeyDown={(event: any) => {

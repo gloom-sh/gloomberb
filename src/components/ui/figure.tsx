@@ -1,19 +1,21 @@
 import { useCallback, type ReactNode } from "react";
 import { priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
+import { TYPE, WEIGHT } from "../../theme/ui-tokens";
 import { Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { displayWidth } from "../../utils/format";
 
 /** `value` is a pane's lead figure (a last price); `sub` is the change or detail that rides with it. */
 export type FigurePart = "value" | "sub";
 
-const FIGURE_FONT_PX: Record<FigurePart, number> = { value: 22, sub: 13 };
+/** On the type scale (src/theme/ui-tokens.ts): the title size for the lead figure, the app's for what rides with it. */
+const FIGURE_FONT_PX: Record<FigurePart, number> = { value: TYPE.title, sub: TYPE.ui };
 const FIGURE_LINE_HEIGHT: Record<FigurePart, number> = { value: 1.05, sub: 1.1 };
 
 // The desktop sets figures larger and heavier than body text; the terminal has one size, so the value is bold.
 const DESKTOP_FIGURE_STYLE: Record<FigurePart, { fontSize: string; lineHeight: number; fontWeight: number }> = {
-  value: { fontSize: `${FIGURE_FONT_PX.value}px`, lineHeight: FIGURE_LINE_HEIGHT.value, fontWeight: 700 },
-  sub: { fontSize: `${FIGURE_FONT_PX.sub}px`, lineHeight: FIGURE_LINE_HEIGHT.sub, fontWeight: 500 },
+  value: { fontSize: `${FIGURE_FONT_PX.value}px`, lineHeight: FIGURE_LINE_HEIGHT.value, fontWeight: WEIGHT.bold },
+  sub: { fontSize: `${FIGURE_FONT_PX.sub}px`, lineHeight: FIGURE_LINE_HEIGHT.sub, fontWeight: WEIGHT.regular },
 };
 
 function figureLinePx(part: FigurePart): number {

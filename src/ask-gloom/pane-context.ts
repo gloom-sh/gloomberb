@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { ResolvedPane } from "../layout/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
 import { panePersonalData } from "../shares/personal-pane";
@@ -122,7 +123,8 @@ export function buildAskGloomPaneAttachment({
 function showsPersonalData(source: Parameters<typeof panePersonalData>[0]): boolean {
   try {
     return panePersonalData(source) !== null;
-  } catch {
+  } catch (error) {
+    logFailure("ask-gloom.pane-context", "Checking pane personal data failed")(error);
     return true;
   }
 }

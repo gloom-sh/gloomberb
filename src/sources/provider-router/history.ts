@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { ApiRequestError } from "../../api-client/errors";
 import { canonicalHistoryInterval, HistoryRetentionError, isHistoryRetentionError, parseHistoryRecoveryCandidate,
   type HistoryRecoveryCandidate, type HistoryRetention, type HistorySourceOutcome } from "../history-retention";
@@ -311,8 +312,8 @@ export class ProviderRouterHistoryRoutes {
     try {
       const marker = this.deps.resources?.get<{ checkedAt?: unknown }>(calendarRecheckMarkerKey(request));
       if (typeof marker?.value?.checkedAt === "number") persisted = marker.value.checkedAt;
-    } catch {
-      // Without the store, the in-memory mark bounds this process.
+    } catch (error) {
+      logFailure("sources.provider-router.history", "Reading the calendar refresh marker failed")(error);
     }
     const local = this.calendarRecheckAt.get(request.identity.revalidationKey);
     return persisted === undefined ? local : local === undefined ? persisted : Math.max(persisted, local);
@@ -323,8 +324,8 @@ export class ProviderRouterHistoryRoutes {
     this.calendarRecheckAt.set(request.identity.revalidationKey, checkedAt);
     try {
       this.deps.resources?.set(calendarRecheckMarkerKey(request), { checkedAt }, { cachePolicy: CALENDAR_RECHECK_MARKER_POLICY });
-    } catch {
-      // Without the store, the in-memory mark bounds this process.
+    } catch (error) {
+      logFailure("sources.provider-router.history", "Saving the calendar refresh marker failed")(error);
     }
   }
 
@@ -725,8 +726,8 @@ export class ProviderRouterHistoryRoutes {
       const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates));
       if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return;
       await this.fetchProviderHistory(request);
-    } catch {
-      // Background refresh is best-effort; callers already have cached points.
+    } catch (error) {
+      logFailure("sources.provider-router.history", "Refreshing background price history failed")(error);
     }
   }
 
@@ -809,8 +810,8 @@ export class ProviderRouterHistoryRoutes {
           if (coverage && !coverage.isUsable(value)) { unavailable.push(value); firstUnavailable ??= result; continue; }
           return coverage ? { ...result, value: coverage.merge(value, unavailable) } : result;
         }
-      } catch {
-        // Continue through the broker candidates.
+      } catch (error) {
+        logFailure("sources.provider-router.history", "Loading broker history failed")(error);
       }
     }
     return firstUnavailable && coverage

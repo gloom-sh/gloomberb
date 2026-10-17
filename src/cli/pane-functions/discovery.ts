@@ -179,7 +179,7 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
       }
     }
   } catch (error) {
-    try { destroy(); } catch { /* Preserve the setup error after attempting every disposer. */ }
+    try { destroy(); } catch { /* Intentional ignore: Preserve the setup error after attempting every disposer. */ }
     throw error;
   }
   return { panes, paneTemplates, destroy };

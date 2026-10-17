@@ -1,7 +1,9 @@
+import { logFailure } from "../../utils/log-failure";
 import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
+import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { canonicalExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import { noProviderError, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
@@ -104,7 +106,9 @@ export class ProviderRouterCachedRoutes {
               try {
                 const value = await candidate.broker.getOptionsChain(ticker, candidate.instance, exchange, expiration, context?.instrument ?? null);
                 return store(value, this.deps.brokerSourceKey(candidate), this.deps.resolveBrokerPolicy(route.policy, candidate.broker));
-              } catch { /* Try the next broker, then the provider chain. */ }
+              } catch (error) {
+                logFailure("sources.provider-router.cached-routes", "Loading broker options failed")(error);
+              }
             }
             return null;
           })());
@@ -191,7 +195,7 @@ export class ProviderRouterCachedRoutes {
           request: (provider) => provider.getExchangeRateSnapshot?.(currency) ?? provider.getExchangeRate(currency),
           rank: (value: any, fetchedAt) => {
             try { exchangeRateMetadata(value, currency, Date.now(), fetchedAt); return 2; }
-            catch { return -1; }
+            catch { /* Intentional ignore: Invalid exchange-rate metadata receives the rejecting rank and is not served. */ return -1; }
           },
           decode: (data: any) => typeof data === "number" ? data : data.rate,
           encode: (data: any) => typeof data === "number" ? { rate: data } : data,
@@ -211,7 +215,9 @@ export class ProviderRouterCachedRoutes {
         error: `No analyst research provider available for ${ticker}`,
       };
       case "getCorporateActions": return {
-        ...tickerRoute("corporateActions-v3", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        ...tickerRoute("corporateActions-v4", "corporateActions"),
+        // Cash in the major unit as it arrives from any source, so no reader divides a sub-unit out again.
+        request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra)?.then(cashInMajorUnits),
         rank: (data: CorporateActionsData) => !hasCorporateActionsValue(data) ? 0 : data.stale || Object.values(data.coverage ?? {}).includes("unavailable") ? 1 : 2,
         acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,

@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { SearchRequestContext, DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
@@ -98,8 +99,8 @@ export async function resolveTickerOpenTarget({
   let quote: Quote | null = null;
   try {
     quote = await dataProvider.getQuote(symbol, "", publicOnly ? { instrument: null } : undefined);
-  } catch {
-    // No source has a price for the key right now.
+  } catch (error) {
+    logFailure("tickers-open-target", "Could not load ticker target quote")(error);
   }
   const quoteExchange = quote ? quote.listingExchangeName ?? quote.exchangeName : undefined;
   // A public open (a board row, a link) skips search for its quote. When the
@@ -133,7 +134,8 @@ export async function resolveTickerOpenTarget({
     });
 
     return { symbol: ticker.metadata.ticker, ticker, created: true, ...selection };
-  } catch {
+  } catch (error) {
+    logFailure("tickers-open-target", "Could not persist ticker target")(error);
     return null;
   }
 
@@ -147,7 +149,8 @@ export async function resolveTickerOpenTarget({
       const listingAlias = requested.exchange ? getListingSymbol(requested.symbol, requested.exchange) : symbol;
       const explicitAliasMatches = tickerHasListingSuffix(listingAlias) && normalizeTickerSymbol(answer.symbol) === listingAlias;
       return explicitAliasMatches || !!findExactTickerSearchMatch([{ label: answer.symbol, right: quoteExchange }], symbol);
-    } catch {
+    } catch (error) {
+      logFailure("tickers-open-target", "Could not verify quote listing")(error);
       return false;
     }
   }

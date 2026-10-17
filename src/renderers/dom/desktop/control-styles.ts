@@ -1,10 +1,13 @@
 import type { ButtonProps } from "../../../components/ui/button";
 import { blendHex, colors, type ThemeColors } from "../../../theme/colors";
+import { RADIUS, controlBorderColour } from "../../../theme/ui-tokens";
 
-export const CONTROL_RADIUS = 6;
+/** Buttons, fields, selects and list cards (docs/pane-conventions.md, "Tokens"). */
+export const CONTROL_RADIUS = RADIUS.md;
 
+/** The border of a control and of a floating surface: `--gloom-control-border`. */
 export function panelBorder(palette: ThemeColors = colors): string {
-  return blendHex(palette.border, palette.borderFocused, 0.18);
+  return controlBorderColour(palette);
 }
 
 export function panelFill(palette: ThemeColors = colors): string {
@@ -19,85 +22,23 @@ export function selectedPanelFill(palette: ThemeColors = colors): string {
   return blendHex(palette.selected, palette.bg, 0.42);
 }
 
+/** A control's border: the accent while it has focus or is chosen, the control border otherwise. */
 export function controlBorderColor(focused = false, active = false, palette: ThemeColors = colors): string {
-  if (active) return palette.borderFocused;
-  if (focused) return blendHex(palette.borderFocused, palette.textBright, 0.24);
-  return panelBorder(palette);
-}
-
-function activeHalo(palette: ThemeColors): string {
-  return `0 0 0 1px ${blendHex(palette.bg, palette.borderFocused, 0.18)}`;
-}
-
-export function controlShadow(active = false, palette: ThemeColors = colors): string {
-  return active
-    ? `${activeHalo(palette)}, inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.06)}`
-    : `inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.04)}`;
-}
-
-const WHITE = "#ffffff";
-const BLACK = "#000000";
-
-function withAlpha(hex: string, alpha: number): string {
-  return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
-}
-
-/** How far a raised button's tones move from its fill, toward white at the top and black below. */
-const SOLID_RELIEF = { light: 0.12, shade: 0.06, edge: 0.18, shadow: 0.3 };
-const SURFACE_RELIEF = { light: 0.05, shade: 0.03, edge: 0.08, shadow: 0.14 };
-
-interface ButtonRelief {
-  backgroundImage?: string;
-  boxShadow: string;
-  /** Replaces the border colour, so a solid fill runs to its edge. */
-  borderColor?: string;
-  /** What the button shows while it is held down. */
-  pressedImage?: string;
-  pressedShadow?: string;
+  if (active || focused) return palette.borderFocused;
+  return controlBorderColour(palette);
 }
 
 /**
- * Light from above, built from the button's own fill so it reads the same on
- * any surface and in every theme: a little lighter at the top, a little darker
- * toward the bottom, a darker band on the bottom edge and a soft shadow under
- * it. Nothing draws a line along the top edge. Held down, the light flips and
- * the shadow goes, so the button sinks.
+ * The four buttons. Primary (and danger, its negative twin) is filled and
+ * bold; secondary is a 1px border; ghost (and plain) is text that takes the
+ * hover fill; a chosen (`active`) button is the selection fill. None of them
+ * casts a shadow. The icon button is `.gloom-icon-button` in styles.css.
  */
-function raisedRelief(fill: string, tone: typeof SOLID_RELIEF, ring?: string): ButtonRelief {
-  const shade = blendHex(fill, BLACK, tone.shade);
-  const edge = blendHex(fill, BLACK, tone.edge);
-  const drop = `0 1px 2px ${withAlpha(blendHex(fill, BLACK, 0.75), tone.shadow)}`;
-  return {
-    backgroundImage: `linear-gradient(${blendHex(fill, WHITE, tone.light)}, ${shade} calc(100% - 1px), ${edge} calc(100% - 1px))`,
-    boxShadow: ring ? `${ring}, ${drop}` : drop,
-    pressedImage: `linear-gradient(${shade}, ${fill})`,
-    pressedShadow: ring ?? "none",
-  };
-}
-
-/**
- * A button's relief. Primary, danger and a selected button are raised from
- * their fill; a secondary one gets the same light, fainter. Ghost and plain
- * buttons have no fill to light and stay flat, and so does a disabled one.
- */
-export function buttonRelief(
-  props: Pick<ButtonProps, "variant" | "active" | "disabled">,
-  palette: ThemeColors = colors,
-): ButtonRelief {
-  if (props.variant === "plain" || props.variant === "ghost" || props.disabled) return { boxShadow: "none" };
-  const fill = buttonPalette(props, palette).bg;
-  if (props.active) return raisedRelief(fill, SOLID_RELIEF, `0 0 0 1px ${withAlpha(palette.borderFocused, 0.18)}`);
-  if (props.variant === "primary" || props.variant === "danger") {
-    return { ...raisedRelief(fill, SOLID_RELIEF), borderColor: "transparent" };
-  }
-  return raisedRelief(fill, SURFACE_RELIEF);
-}
-
 export function buttonPalette(
   props: Pick<ButtonProps, "variant" | "active" | "disabled">,
   palette: ThemeColors = colors,
 ) {
-  if (props.variant === "plain") {
+  if (props.variant === "plain" || props.variant === "ghost") {
     return {
       fg: props.disabled ? palette.textMuted : props.active ? palette.textBright : palette.textDim,
       bg: "transparent",
@@ -107,8 +48,8 @@ export function buttonPalette(
   if (props.disabled) {
     return {
       fg: palette.textMuted,
-      bg: subtlePanelFill(palette),
-      border: panelBorder(palette),
+      bg: "transparent",
+      border: controlBorderColour(palette),
     };
   }
   if (props.active) {
@@ -132,18 +73,12 @@ export function buttonPalette(
         bg: palette.negative,
         border: palette.negative,
       };
-    case "ghost":
-      return {
-        fg: palette.textDim,
-        bg: "transparent",
-        border: panelBorder(palette),
-      };
     case "secondary":
     default:
       return {
         fg: palette.text,
-        bg: panelFill(palette),
-        border: panelBorder(palette),
+        bg: "transparent",
+        border: controlBorderColour(palette),
       };
   }
 }

@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
@@ -147,13 +148,14 @@ export async function loadListingFate(
   try {
     const quote = await (options.quote !== undefined
       ? options.quote
-      : dataProvider.getQuote(request.symbol, request.exchange).catch(() => null));
+      : dataProvider.getQuote(request.symbol, request.exchange).catch(logFailure("tickers-listing-fate", "Could not load listing fate quote", null)));
     // A lookup started beside the command's request gets a short grace once that is ready, so a slow
     // one never holds a symbol that trades. A line that stopped is waited for: only its company can
     // have moved, and then the answer decides whether the command serves anything at all.
     const changes = await lookup.settle(!options.changes || mayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
     return describeListingFate(listing, quote, changes);
-  } catch {
+  } catch (error) {
+    logFailure("tickers-listing-fate", "Could not resolve listing fate")(error);
     return NO_FATE;
   }
 }

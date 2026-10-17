@@ -106,7 +106,7 @@ function nativePromptSurfaceStyle(colors: ReturnType<typeof useThemeColors>, ope
   if (!open) {
     return {
       border: "1px solid transparent",
-      borderRadius: 5,
+      borderRadius: "var(--gloom-radius-md)",
     };
   }
   const { radiusPx, shadow } = NATIVE_COMMAND_SURFACE;
@@ -233,18 +233,19 @@ function HeaderCommandPrompt({
   const backgroundColor = open
     ? (nativePaneChrome ? commandBarPanelBg(colors) : commandBarBg(colors))
     : undefined;
+  // The desktop takes the theme's text roles; the terminal mixes from the header's own colours.
   const caretColor = open
     ? commandBarText(colors)
-    : blendHex(colors.headerText, colors.header, 0.15);
-  const mutedColor = blendHex(colors.headerText, colors.header, 0.42);
+    : nativePaneChrome ? colors.text : blendHex(colors.headerText, colors.header, 0.15);
+  const mutedColor = nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42);
   // Dimmer than the placeholder it trails: the label is what names the control,
   // the binding is a footnote to it.
-  const shortcutColor = blendHex(colors.headerText, colors.header, 0.62);
+  const shortcutColor = nativePaneChrome ? colors.textMuted : blendHex(colors.headerText, colors.header, 0.62);
   // Desktop hover lifts the prompt off the header itself, which is the only
   // thing telling the pointer this text is a control. The terminal has no
   // chrome, so it lifts off the strip fill the whole row already wears.
   const hoverBg = nativePaneChrome
-    ? blendHex(colors.header, colors.headerText, 0.14)
+    ? "var(--gloom-hover-fill)"
     : blendHex(idleBg, colors.headerText, 0.16);
   const inputWidth = Math.max(1, width - 2 - PROMPT_CARET.length);
 
@@ -602,7 +603,7 @@ function NativeUpdateStatus({ onRestart, trailingGap, updateKey, view }: {
     return (
       <NativeStatusRow trailingGap={trailingGap}>
         {view.parts.map((part, index) => nativeStatusPiece(part, index, { alone, color, title: view.message }))}
-        {hint ? <Text fg={blendHex(color, colors.header, 0.62)}>{hint}</Text> : null}
+        {hint ? <Text fg={colors.textMuted}>{hint}</Text> : null}
       </NativeStatusRow>
     );
   }
@@ -647,7 +648,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
       ) : null}
       {fit.showBaseCurrency ? (
         <Box paddingRight={1} flexShrink={0}>
-          <Text fg={blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrency}</Text>
+          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrency}</Text>
         </Box>
       ) : null}
     </>

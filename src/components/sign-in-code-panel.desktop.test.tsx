@@ -39,7 +39,7 @@ test("a code is set as text a step above the body, and a short window shrinks th
   const tall = await render({ url: LINK_URL, code: "ABCD-1234", height: 40 });
   const code = tall.querySelector("[data-gloom-role=sign-in-code]") as HTMLElement;
   expect(code.textContent).toBe("ABCD-1234");
-  expect(code.querySelector("[style*=font-size]")?.getAttribute("style")).toContain("font-size: 22px");
+  expect(code.querySelector("[style*=font-size]")?.getAttribute("style")).toContain("font-size: 20px");
 
   const { modules } = renderQrSvgDataUri(LINK_URL);
   // Room for three-pixel modules only: smaller, still whole pixels.

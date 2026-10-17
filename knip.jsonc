@@ -11,6 +11,8 @@
     "scripts/heap-probe.ts",
     // Built by path in scripts/pane-chrome/page.ts.
     "scripts/pane-chrome/fixture.tsx",
+    // Built by path in scripts/pane-chrome/sync-poll.ts.
+    "scripts/pane-chrome/sync-poll-fixture.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
     "src/renderers/electrobun/view/main.tsx",

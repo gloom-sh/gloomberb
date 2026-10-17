@@ -46,9 +46,7 @@ function getEnvironmentLanguageOverride(): AppLanguage | null {
     return typeof process !== "undefined" && process.env?.GLOOMBERB_LANG
       ? normalizeLanguageTag(process.env.GLOOMBERB_LANG)
       : null;
-  } catch {
-    return null;
-  }
+  } catch { /* Intentional ignore: Environment locale access is optional; language detection falls back to the browser or English. */ return null; }
 }
 
 function detectLanguage(): AppLanguage {
@@ -63,17 +61,13 @@ function detectLanguage(): AppLanguage {
       const fromLocale = normalizeLanguageTag(locale);
       if (fromLocale) return fromLocale;
     }
-  } catch {
-    // ignore and fall through
-  }
+  } catch { /* Intentional ignore: Environment locale access is optional; language detection falls back to the browser or English. */ }
   try {
     if (typeof navigator !== "undefined" && navigator.language) {
       const fromNavigator = normalizeLanguageTag(navigator.language);
       if (fromNavigator) return fromNavigator;
     }
-  } catch {
-    // ignore and fall through
-  }
+  } catch { /* Intentional ignore: Browser locale access is optional; language detection falls back to English. */ }
   return "en";
 }
 

@@ -1,5 +1,7 @@
 /** Cited company disclosures; Pro, omitted by older servers. */
 export const KPI_FIELDS = ["kpiArr", "kpiNrrPercent", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiTakeRatePercent", "kpiSameStoreSalesPercent", "kpiStores", "kpiBacklog", "kpiBookToBill", "kpiNimPercent", "kpiCet1Percent", "kpiCombinedRatioPercent", "kpiOccupancyPercent", "kpiLoadFactorPercent", "guideRevenueChangePercent", "guideEpsChangePercent"] as const;
+/** Payout ratio and dividend growth; listed only when asked (`include=dividends`), and omitted by a server from before them. */
+export const DIVIDEND_FIELDS = ["payoutRatioPercent", "dividendGrowth1YPercent", "dividendGrowth3YPercent"] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -12,6 +14,7 @@ export const NUMERIC_FIELDS = [
   "forwardPE",
   "enterpriseToRevenue",
   "dividendYieldPercent",
+  ...DIVIDEND_FIELDS,
   "revenueGrowthPercent",
   "earningsGrowthPercent",
   "grossMarginPercent",

@@ -150,9 +150,7 @@ export class CapabilityRegistry {
     for (const subscriptionId of [...this.subscriptions.keys()]) {
       try {
         this.unsubscribe(subscriptionId);
-      } catch {
-        // Continue releasing the remaining subscriptions.
-      }
+      } catch { /* Intentional ignore: Teardown must attempt every subscription disposer even if one has already closed. */ }
     }
     this.capabilities.clear();
   }

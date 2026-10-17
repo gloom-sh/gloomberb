@@ -14,6 +14,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
+import { chromeBarRows } from "../../../components/layout/pane/sizing";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
@@ -191,7 +192,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
   ] : [];
-  const tableHeight = Math.max(3, height - 1 - tabRows - statGridRows(ivStats, width));
+  const tableHeight = Math.max(3, height - chromeBarRows(nativePaneChrome) - tabRows - statGridRows(ivStats, width));
   const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   // A typed date (`--expiration 2027-01-15`) is that day's UTC midnight; the
   // catalogue may stamp the same expiry later in the day.

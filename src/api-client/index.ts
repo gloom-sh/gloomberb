@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import {
   isMarketplaceLayoutId,
   parseMarketplaceLayoutEntry,
@@ -636,8 +637,9 @@ class GloomApiClient {
   reportCommandSearch(report: CommandSearchReport): void {
     try {
       if (!this.isSignedIn()) return;
-      void this.telemetry.reportCommandSearch(report).catch(() => {});
-    } catch {
+      void this.telemetry.reportCommandSearch(report).catch(logFailure("cloud-telemetry", "Command search report failed"));
+    } catch (error) {
+      logFailure("cloud-telemetry", "Command search reporting failed")(error);
       /* A report must never get in the way of the command bar. */
     }
   }

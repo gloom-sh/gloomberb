@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
@@ -219,7 +220,7 @@ export async function notTradedMessage(
   deps: ListingDeps,
 ): Promise<string | null> {
   if (!listing.exchange) return null;
-  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return null;
   if (await quotedOnVenue(listing, deps)) return null;
   return `${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`;
@@ -328,7 +329,7 @@ function isBareListing(listing: Pick<CliListing, "exchange" | "saved">): boolean
  * choice costs no wait; null for a listing whose venue was named or saved.
  */
 export function loadBareVenues(listing: Pick<CliListing, "symbol" | "exchange" | "saved">, deps: ListingDeps): Promise<ListingVenue[]> | null {
-  return isBareListing(listing) ? listingVenues(listing.symbol, deps).catch(() => []) : null;
+  return isBareListing(listing) ? listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", [])) : null;
 }
 
 /** What the resolver read a typed listing as (7203:TSE as 7203:JPX), for a command's warnings. */
@@ -383,7 +384,7 @@ export async function usLineOfListing(
   deps: ListingDeps,
 ): Promise<ListingVenue | null> {
   if (!listing.exchange || isUsListingExchange(listing.exchange) || !company) return null;
-  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   return venues.find((venue) => isUsListingExchange(venue.exchange) && sameCompany(venue.name, company)) ?? null;
 }
 
@@ -442,7 +443,7 @@ export async function usListingsOnlyMessage(
  */
 async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promise<BareListingVenues | null> {
   if (listing.exchange) return null;
-  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
   if (!savedExchange && listsSeveralCompanies(venues)) return { exchange: "", resolved: null, others: venues, choose: true };
   const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0] ?? null);
@@ -544,12 +545,12 @@ async function quoteListings(
   if (listings.length === 0) return [];
   const targets = listings.map((listing) => listing.request);
   if (dataProvider.getQuotesBatch) {
-    const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh }).catch(() => []);
+    const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh }).catch(logFailure("cli.listing-arg", "Read listing quote batch failed", []));
     return targets.map((target, index) => (results.find((result) => result.target === target) ?? results[index])?.quote ?? null);
   }
   return Promise.all(targets.map((target) => dataProvider.getQuote(target.symbol, target.exchange, {
     cacheMode: refresh ? "refresh" : "default",
-  }).catch(() => null)));
+  }).catch(logFailure("cli.listing-arg", "Read listing quote failed", null))));
 }
 
 export type BareListingQuote =
@@ -787,7 +788,7 @@ async function builderDexMarket(listing: ListingArg, deps: ListingDeps): Promise
   if (!/^[A-Z][A-Z0-9]{0,11}$/.test(listing.symbol) || !/^[A-Z0-9]{1,32}$/.test(listing.exchange)) return null;
   const market = perpetualListingOfMarket(`hyperliquid:${listing.symbol.toLowerCase()}:${listing.exchange}`);
   if (!market) return null;
-  const found = await deps.dataProvider.search(market.key).catch(() => []);
+  const found = await deps.dataProvider.search(market.key).catch(logFailure("cli.listing-arg", "Search market listing failed", []));
   return found.some((result) => result.symbol.toUpperCase() === market.key)
     ? { symbol: market.symbol, exchange: market.exchange, key: market.key }
     : null;

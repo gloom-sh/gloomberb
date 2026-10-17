@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { useCallback, useEffect, useRef, type Dispatch } from "react";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker, type InstrumentRef } from "../../market-data/request-types";
@@ -75,10 +76,10 @@ export function useTickerRefreshRuntime({
       const data = entry.data ?? entry.lastGoodData;
       if (data) pluginRegistry.events.emit("ticker:refreshed", { symbol: instrument.symbol, financials: data });
       const currency = data?.quote?.currency;
-      if (currency) void marketData.loadFxRate(currency).catch(() => {});
-      void marketData.loadFxRate(baseCurrency).catch(() => {});
-    } catch {
-      // Silently fail - will show "—" for missing data.
+      if (currency) void marketData.loadFxRate(currency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
+      void marketData.loadFxRate(baseCurrency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
+    } catch (error) {
+      logFailure("app.runtime.ticker-refresh", "Ticker refresh failed")(error);
     } finally {
       refreshInFlight.delete(key);
       setRefreshing(instrument.symbol, false);
@@ -93,10 +94,10 @@ export function useTickerRefreshRuntime({
       const entry = await marketData.loadQuote(instrument, { forceRefresh: true });
       const quote = entry.data ?? entry.lastGoodData;
       if (!quote) return;
-      if (quote.currency) void marketData.loadFxRate(quote.currency).catch(() => {});
-      void marketData.loadFxRate(baseCurrency).catch(() => {});
-    } catch {
-      // Silently fail - the list can fall back to stale cache or the backend.
+      if (quote.currency) void marketData.loadFxRate(quote.currency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
+      void marketData.loadFxRate(baseCurrency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
+    } catch (error) {
+      logFailure("app.runtime.ticker-refresh", "Quote refresh failed")(error);
     } finally {
       quoteRefreshInFlight.delete(key);
     }
@@ -154,10 +155,10 @@ export function useTickerRefreshRuntime({
             const data = entry.data ?? entry.lastGoodData;
             if (instrument && data) {
               pluginRegistry.events.emit("ticker:refreshed", { symbol: instrument.symbol, financials: data });
-              if (data.quote?.currency) void marketData.loadFxRate(data.quote.currency).catch(() => {});
+              if (data.quote?.currency) void marketData.loadFxRate(data.quote.currency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
             }
           });
-          void marketData.loadFxRate(baseCurrency).catch(() => {});
+          void marketData.loadFxRate(baseCurrency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
         } finally {
           for (const { instrument, key } of runnable) {
             refreshInFlight.delete(key);
@@ -183,9 +184,9 @@ export function useTickerRefreshRuntime({
           const results = await marketData.loadQuotesBatch(runnable.map(({ instrument }) => instrument));
           for (const entry of results) {
             const quote = entry.data ?? entry.lastGoodData;
-            if (quote?.currency) void marketData.loadFxRate(quote.currency).catch(() => {});
+            if (quote?.currency) void marketData.loadFxRate(quote.currency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
           }
-          void marketData.loadFxRate(baseCurrency).catch(() => {});
+          void marketData.loadFxRate(baseCurrency).catch(logFailure("app.runtime.ticker-refresh", "Refreshing an exchange rate failed"));
         } finally {
           for (const { key } of runnable) {
             quoteRefreshInFlight.delete(key);

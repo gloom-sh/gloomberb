@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "fs";
 import { join, resolve } from "path";
 
@@ -74,7 +75,8 @@ function readJson(path: string): Record<string, unknown> | null {
   try {
     const value = JSON.parse(readFileSync(path, "utf-8"));
     return value && typeof value === "object" ? value as Record<string, unknown> : null;
-  } catch {
+  } catch (error) {
+    logFailure("plugin-compat", "Plugin manifest read failed")(error);
     return null;
   }
 }

@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { homedir, release } from "os";
 import { join } from "path";
@@ -34,7 +35,7 @@ export function describeNodeOs(): string {
   try {
     osRelease = release();
   } catch {
-    /* Unavailable on some runtimes; the platform alone still helps. */
+    // Intentional ignore: Some runtimes lack an OS release; platform and architecture remain available.
   }
   return [process.platform, osRelease, process.arch].filter(Boolean).join(" ");
 }
@@ -55,7 +56,7 @@ export function readOrCreateInstallId(dataDir: string): string | null {
       return existing;
     }
   } catch {
-    /* First run, or unreadable: create one below. */
+    // Intentional ignore: First-run profiles have no install ID; create one below.
   }
   try {
     const created = crypto.randomUUID();
@@ -63,7 +64,8 @@ export function readOrCreateInstallId(dataDir: string): string | null {
     writeFileSync(path, `${created}\n`, "utf-8");
     installIds.set(dataDir, created);
     return created;
-  } catch {
+  } catch (error) {
+    logFailure("telemetry-crash-reports-node", "Could not save install identifier")(error);
     return null;
   }
 }
@@ -78,7 +80,8 @@ function readSpool(dataDir: string): SpooledCrashReport[] {
     if (!existsSync(path)) return [];
     const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
     return Array.isArray(parsed) ? (parsed as SpooledCrashReport[]).slice(0, MAX_SPOOLED_REPORTS) : [];
-  } catch {
+  } catch (error) {
+    logFailure("telemetry-crash-reports-node", "Could not read pending crash reports")(error);
     return [];
   }
 }

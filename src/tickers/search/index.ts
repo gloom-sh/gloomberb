@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
@@ -439,8 +440,8 @@ async function resolveTickerSymbol(
         });
         verified = quotedListings(sameSecurity, exchange).map((item) => ({ ...item, result: { ...item.result!, currency } }));
       }
-    } catch {
-      // An unavailable quote cannot establish the default listing.
+    } catch (error) {
+      logFailure("tickers-search", "Could not verify default listing")(error);
     }
     if (new Set(verified.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!)))).size !== 1) {
       throw ambiguity(symbol);
@@ -470,7 +471,8 @@ function quotedListings(items: TickerSearchCandidate[], exchange: string): Ticke
   return items.filter((item) => isUsListingExchange(venue(item)));
 }
 
-function listingExchange(result: InstrumentSearchResult): string {
+/** The venue a search row is a listing on: the primary exchange when a broker routes through SMART. */
+export function listingExchange(result: InstrumentSearchResult): string {
   return result.exchange === "SMART" ? result.primaryExchange || result.exchange
     : result.exchange || result.primaryExchange || "";
 }
@@ -560,8 +562,8 @@ async function searchProviderResults(
           : {}),
       });
       add(results);
-    } catch {
-      // One spelling failing must not lose the others.
+    } catch (error) {
+      logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
   }));
 
@@ -598,8 +600,8 @@ async function searchProviderResults(
             type,
           }]);
         }
-      } catch {
-        // An unverified symbol stays unresolved; never substitute a fuzzy equity.
+      } catch (error) {
+        logFailure("tickers-search", "Could not verify market symbol")(error);
       }
     }
   }
@@ -616,8 +618,8 @@ async function searchProviderResults(
       add(funds);
       // A row both found keeps the funds' place and the name search's richer version of it (its theme).
       for (const [key, result] of named) byKey.set(key, result);
-    } catch {
-      // The funds are an addition: the name results stand without them.
+    } catch (error) {
+      logFailure("tickers-search", "Could not search theme funds")(error);
     }
   }
 

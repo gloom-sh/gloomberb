@@ -142,7 +142,7 @@ function DesktopTextFieldDialog(props: TextFieldDialogProps) {
           onSubmit={() => { void submit(); }}
         />
         {error && (
-          <Text fg={colors.negative} wrapText style={desktopText(600)}>{error}</Text>
+          <Text fg={colors.negative} wrapText style={desktopText()}>{error}</Text>
         )}
         <Box flexDirection="row" justifyContent="flex-end" style={{ marginTop: 12 }}>
           <Button label={t("Save")} variant="primary" onPress={() => { void submit(); }} />

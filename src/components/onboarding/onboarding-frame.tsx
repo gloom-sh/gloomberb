@@ -1,3 +1,4 @@
+import { RADIUS, SPACE } from "../../theme/ui-tokens";
 import type { ReactNode } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { useViewport } from "../../react/input";
@@ -14,12 +15,12 @@ import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../layout/titlebar-overlay";
  * one larger break before the footer.
  */
 export const ONBOARDING_DESKTOP = {
-  padding: "26px 28px 24px",
-  radius: 10,
-  afterProgress: 22,
-  afterTitle: 6,
-  afterHeader: 20,
-  beforeFooter: 24,
+  padding: `${SPACE.xl}px`,
+  radius: RADIUS.lg,
+  afterProgress: SPACE.xl,
+  afterTitle: SPACE.xs,
+  afterHeader: SPACE.xl,
+  beforeFooter: SPACE.xl,
   buttonHeight: "28px",
 } as const;
 
@@ -80,11 +81,11 @@ export function OnboardingModal({
             height: "auto",
             maxHeight: "calc(100vh - 88px)",
             padding: ONBOARDING_DESKTOP.padding,
-            backgroundColor: blendHex(colors.panel, colors.bg, 0.12),
+            // The floating surface every dialog uses (docs/pane-conventions.md).
+            backgroundColor: "var(--gloom-surface-raised)",
+            border: "1px solid var(--gloom-control-border)",
             borderRadius: ONBOARDING_DESKTOP.radius,
-            // A hairline of light instead of a drawn border: the card reads as
-            // a raised surface, not a box inside a box.
-            boxShadow: `0 24px 64px color-mix(in srgb, ${colors.bg} 55%, transparent), 0 0 0 1px color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+            boxShadow: "var(--gloom-elevation)",
             boxSizing: "border-box",
             overflowY: "auto",
           }}
@@ -155,13 +156,14 @@ export function OnboardingCoach({
         // Wide enough for the primary action and its key on one line.
         width="min(432px, calc(100vw - 32px))"
         flexDirection="column"
-        backgroundColor={blendHex(colors.panel, colors.bg, 0.12)}
         style={{
           height: "auto",
-          padding: 14,
-          border: `1px solid ${blendHex(colors.border, colors.borderFocused, 0.28)}`,
-          borderRadius: 6,
-          boxShadow: `0 14px 34px color-mix(in srgb, ${colors.bg} 42%, transparent), inset 0 1px 0 color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+          padding: SPACE.lg,
+          // The one floating surface (docs/pane-conventions.md, "Design system").
+          backgroundColor: "var(--gloom-surface-raised)",
+          border: "1px solid var(--gloom-control-border)",
+          borderRadius: RADIUS.lg,
+          boxShadow: "var(--gloom-elevation)",
           boxSizing: "border-box",
         }}
         data-gloom-role="onboarding-coach"
@@ -249,7 +251,7 @@ export function OnboardingTitle({
           <Text
             fg={colors.borderFocused}
             attributes={TextAttributes.BOLD}
-            style={{ fontSize: 11, letterSpacing: 0.6 }}
+            style={{ fontSize: "var(--gloom-type-ui)" }}
           >
             {step}
           </Text>
@@ -258,13 +260,14 @@ export function OnboardingTitle({
           flexDirection="row"
           alignItems="baseline"
           minWidth={0}
-          style={{ marginTop: step ? 6 : 0, gap: 8 }}
+          style={{ marginTop: step ? "var(--gloom-space-xs)" : 0, gap: "var(--gloom-space-sm)" }}
         >
           <Text
             fg={colors.textBright}
             attributes={TextAttributes.BOLD}
             wrapText
-            style={{ fontSize: 15, lineHeight: "20px" }}
+            // The heading step of the type scale (src/theme/ui-tokens.ts).
+            style={{ fontSize: "var(--gloom-type-heading)", lineHeight: 1.25 }}
           >
             {title}
           </Text>
@@ -382,10 +385,10 @@ export function OnboardingHeader({
               // The wizard jumps to a section on its digit too.
               title={clickable ? `${section.label} (${index + 1})` : undefined}
               onMouseDown={clickable ? () => onNavigate?.(section.id) : undefined}
-              style={{ gap: 6, cursor: clickable ? "pointer" : "default" }}
+              style={{ gap: "var(--gloom-space-xs)", cursor: clickable ? "pointer" : "default" }}
             >
               <Box style={{ height: 2, borderRadius: 1, backgroundColor: bar }} />
-              <Text fg={label} style={{ fontSize: 11, lineHeight: "14px", fontWeight: state === "current" ? 700 : 500 }}>
+              <Text fg={label} style={{ lineHeight: "14px", fontWeight: state === "current" ? 700 : 400 }}>
                 {section.label}
               </Text>
             </Box>
@@ -581,7 +584,7 @@ export function OnboardingFeature({
         width="6px"
         height="6px"
         backgroundColor={colors.positive}
-        style={{ borderRadius: 999, flexShrink: 0, marginTop: 6, marginRight: 10 }}
+        style={{ borderRadius: RADIUS.full, flexShrink: 0, marginTop: 6, marginRight: 10 }}
       />
       <Box flexDirection="column" flexGrow={1} minWidth={0}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText>

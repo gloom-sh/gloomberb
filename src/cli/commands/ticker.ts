@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
@@ -71,7 +72,7 @@ import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
-import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
+import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { notTheCoinNote } from "./crypto-hints";
 
@@ -104,7 +105,7 @@ export async function cliFuturesContract(
   instrumentType: string | undefined,
   load: (symbol: string) => Promise<FuturesContractTermsPayload | null> = loadFuturesContractTerms,
 ): Promise<FuturesContractTermsPayload | null> {
-  return isFuturesInstrument(symbol, instrumentType) ? load(symbol).catch(() => null) : null;
+  return isFuturesInstrument(symbol, instrumentType) ? load(symbol).catch(logFailure("cli.commands-ticker", "Read futures contract details failed", null)) : null;
 }
 
 /** The Contract block as `ticker` and `quote` print it; a contract past first notice is in the warning colour. */
@@ -384,7 +385,8 @@ export async function loadForwardYieldDistributions(
     const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
     return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}),
       history: distributionHistory(actions, now) };
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-ticker", "Read forward dividend distributions failed")(error);
     return null;
   }
 }
@@ -400,18 +402,21 @@ function forwardYieldLapse(
 }
 
 /**
- * A forward yield says what it annualizes and when, as DVD does (a declared
- * distribution by its ex-date and stated amount), and once its dividend has
- * stopped, that there is none and when it was last paid; any other yield is
- * the figure alone.
+ * A dividend yield says its basis in the words DVD uses: a forward yield what
+ * it annualizes and when (a declared distribution by its ex-date and stated
+ * amount), and once its dividend has stopped, that there is none and when it
+ * was last paid; a trailing one the twelve months it covers. A yield of no
+ * stated basis is the figure alone.
  */
 function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: ForwardYieldDistributions | null): MetricFigure {
   const lapse = forwardYieldLapse(fundamentals, distributions);
   if (lapse) return { text: noCurrentDividend(lapse), value: null };
   const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
-  return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
-    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })})` }
-    : figure;
+  if (fundamentals?.dividendYield == null) return figure;
+  const basis = fundamentals.dividendYieldBasis === "forward"
+    ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
+    : fundamentals.dividendYieldBasis === "trailing" ? TRAILING_DIVIDEND_BASIS : null;
+  return basis ? { ...figure, text: `${figure.text} (${basis})` } : figure;
 }
 
 /**

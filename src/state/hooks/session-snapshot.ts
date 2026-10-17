@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { useEffect, useRef } from "react";
 import type { AppSessionStorePort } from "../../core/app-service-ports";
 import {
@@ -69,8 +70,8 @@ export function usePersistSessionSnapshot(
         recentTickers: currentState.recentTickers,
         tickers: currentState.tickers,
       }) satisfies AppSessionSnapshot;
-    } catch {
-      // Snapshot persistence is best-effort during teardown.
+    } catch (error) {
+      logFailure("persist", "Building the saved session snapshot failed")(error);
       return null;
     }
   };

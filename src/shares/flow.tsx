@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import type { PluginRegistry } from "../plugins/registry";
 import type { PanePersonalData } from "../types/plugin";
@@ -38,7 +39,7 @@ async function confirmPersonalLink(host: PaneShareHost, kind: PanePersonalData):
         defaultAction="cancel"
       />
     ),
-  }).catch(() => undefined);
+  }).catch(logFailure("shares.flow", "Opening personal share confirmation failed", undefined));
   return answer === true;
 }
 

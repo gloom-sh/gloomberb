@@ -105,7 +105,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
       this.active = request;
     }
     if (!force && acceptable && cached.expiresAt > Date.now() && background) {
-      void this.active.catch(() => {});
+      void this.active.catch(() => { /* Intentional ignore: The request rejection already publishes CachedQuery.error to subscribers. */ });
       return Promise.resolve(cached);
     }
     return this.active;

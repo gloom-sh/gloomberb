@@ -173,5 +173,5 @@ export function parseHistoryRetentionError(value: unknown): HistoryRetentionErro
     return new HistoryRetentionError(retention, {
       candidates: value.candidates as HistoryRecoveryCandidate[], outcomes: value.outcomes as HistorySourceOutcome[],
     });
-  } catch { return null; }
+  } catch { /* Intentional ignore: Invalid recovery metadata is rejected at the desktop JSON boundary. */ return null; }
 }

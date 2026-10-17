@@ -56,8 +56,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { badgeCell } from "../help/table-cells";
-import { READER_COLUMN_FONT } from "../../../components/reader/reader-text";
-import { DocsBlocks } from "./blocks";
+import { READER_PARAGRAPH_GAP } from "../../../components/reader/reader-text";
+import { DocsBlocks, DocsReadingColumn } from "./blocks";
 import { useDocsFeed, useDocsLesson } from "./use-docs";
 
 type DocsShow = "all" | "functions" | "guides" | "academy";
@@ -75,13 +75,8 @@ const SHOW_OPTIONS = [
 const STACK_LIMIT = 30;
 /** Prose reads best at about seventy columns, however wide the pane. */
 const MEASURE = 72;
-/**
- * On the desktop and the web the text reads at the reader's body size, a step
- * up from the table text, with more air between lines, at most 69 characters
- * of it to the line (as wide as a screenshot of the measure): the column fills
- * a narrower pane and stops there in a wider one.
- */
-const READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": "1.7em", maxWidth: "69ch" } as const;
+/** A page's lead, then its blocks, the paragraph gap apart as in every reader. */
+const PAGE_STYLE = { gap: READER_PARAGRAPH_GAP } as const;
 /** The terminal wraps at `width` columns; the desktop and the web at the reading column's own width. */
 function useTextWidth(width: number): number | "100%" {
   return useUiCapabilities().nativePaneChrome ? "100%" : width;
@@ -233,7 +228,7 @@ function TopicView({ topic, feed, width, scrollRef, onOpenTopic, onOpenLink, onS
     if (topic.kind === "page") {
       const page = findDocsPage(feed, topic.slug)!;
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box flexDirection="column" {...(nativePaneChrome ? { style: PAGE_STYLE } : { gap: 1 })}>
           {page.lead ? <MarkdownText text={page.lead} lineWidth={measure} textColor={colors.textBright} onOpenLink={onOpenLink} /> : null}
           <DocsBlocks blocks={page.blocks} width={measure} onOpenLink={onOpenLink} />
         </Box>
@@ -244,9 +239,9 @@ function TopicView({ topic, feed, width, scrollRef, onOpenTopic, onOpenLink, onS
   return (
     <DetailScrollBody ref={scrollRef} resetScrollKey={docsTopicKey(topic)}>
       <PaneLinkMenu>
-        <Box flexDirection="column" width={nativePaneChrome ? "100%" : measure} data-gloom-role="docs-body" style={nativePaneChrome ? READING_STYLE : undefined}>
-          {body}
-        </Box>
+        {nativePaneChrome
+          ? <DocsReadingColumn>{body}</DocsReadingColumn>
+          : <Box flexDirection="column" width={measure} data-gloom-role="docs-body">{body}</Box>}
       </PaneLinkMenu>
     </DetailScrollBody>
   );

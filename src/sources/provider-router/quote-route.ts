@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { canonicalExchange, US_LISTING_EXCHANGES } from "../../utils/exchanges";
 import type { BrokerCandidate } from "./brokers";
@@ -54,7 +55,8 @@ export function resolveBrokerQuoteStreamState(
     const status = broker.getStatus?.(instance);
     if (status && status.state !== "connected") return "offline";
     return status?.quoteData === "delayed" || observedDelayed ? "delayed" : "live";
-  } catch {
+  } catch (error) {
+    logFailure("sources.provider-router.quote-route", "Reading broker quote stream status failed")(error);
     return "unsupported";
   }
 }

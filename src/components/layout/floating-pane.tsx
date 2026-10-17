@@ -143,7 +143,6 @@ export function FloatingPaneWrapper({
         showActions={showActions}
         quickSettings={quickSettings}
         tabs={headerTabs}
-        bodyBackground={bg}
         topRule
         onHeaderMouseMove={onHeaderMouseMove}
         onHeaderMouseDown={onHeaderMouseDown}

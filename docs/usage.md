@@ -11,6 +11,7 @@
 - [CLI commands and output formats](#cli)
 - [Plugins pane](#plugins-pane)
 - [Portfolio currency](#portfolio-currency)
+- [Dividend income and DRIP](#dividend-income-and-drip)
 - [Importing a manager's 13F as a portfolio](#importing-a-managers-13f-as-a-portfolio)
 - [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
@@ -161,7 +162,7 @@ A symbol that trades in several places lists its exchanges after a colon: `NET:`
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
-| `DVD <ticker>` | Dividend yield and history |
+| `DVD <ticker>` | Dividend yield and history; `gloomberb fn DVD KO PEP JNJ` ranks several tickers in one table by yield, with payout, growth, last ex-date and pay date |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `SIW [tickers]` | Short squeeze watch: short interest as a share of float, days to cover, change since the prior settlement and the 1M price move across your portfolios and watchlists, crowded names that are rising first |
@@ -237,9 +238,9 @@ Without them the file name names the series, the unit is a plain number and the 
 
 Open **Series** to add, remove, reorder, or hide series and choose each series' field, chart style, transform, axis, panel, period, and panel scale. Price data supports candles, OHLC, HLC, line, and area; scalar data supports its compatible line, area, step, column, and point modes. Panels can use independent left/right axes and linear or logarithmic scales.
 
-`GF` opens on quarterly bars; set a series' Period to Annual (or `fn GF --period annual`) for fiscal years. `GE` opens on quarterly figures in the app, with the multiple on the trailing twelve months, but `fn GE`, `shot GE` and agent reads default to annual for now, because the quarterly multiple has values for only the latest few quarters; `--period quarterly` reads the app's view. The legend names the fiscal period of a statement value as FA's columns do: `Q3 FY26`, `FY2025`, `TTM Q3 FY26`, by the year end of the issuer's annual statements, or its period end date without them. In `GF`, a company that reports no quarterly figures, such as a semi-annual filer, says so instead of switching to annual.
+`GF` opens on quarterly bars; set a series' Period to Annual (or `fn GF --period annual`) for fiscal years. `GE` opens on fiscal years, in the app and in `fn GE`, `shot GE` and agent reads. Set a series' Period to Quarterly (or `--period quarterly`) for the multiple on the trailing twelve months at each quarter end. Most US filers report no fourth-quarter EPS and charts do not reconstruct it ([research data](research-data.md#financial-statements-and-valuation)), so that history usually covers only the latest few quarters. A pane already saved keeps the period it was saved with. The legend names the fiscal period of a statement value as FA's columns do: `Q3 FY26`, `FY2025`, `TTM Q3 FY26`, by the year end of the issuer's annual statements, or its period end date without them. In `GF`, a company that reports no quarterly figures, such as a semi-annual filer, says so instead of switching to annual.
 
-The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, VWAP, anchored VWAP, volume profile, RSI, MACD, ATR, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
+The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, VWAP, anchored VWAP, volume profile, RSI, MACD, ATR, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`). A period kept as a gap, where the line breaks, has no value to date: it raises no such warning, and `fn` does not count it among a series' points.
 
 Spread calculates the first input minus the second input times its configured multiplier. It requires matching known input dimensions, currencies, and scales; an incompatible formula is unavailable and appears in the existing chart/report errors while usable series remain available. Market prices also require a declared per-unit basis: a future's is its contract's unit (USD / barrel), and a price in a currency alone does not establish comparable physical quantities. A spread's multiplier does not supply missing units or establish a conversion. No implicit FX conversion occurs. Studies use source values before chart presentation transforms, so selecting a percent or index display does not convert foreign-currency inputs before subtraction. Ratios retain derived units such as USD/EUR or 1/share and have no value at a zero denominator. As-of alignment can combine observations from different dates; the source dates do not establish a synchronized executable price.
 
@@ -737,6 +738,18 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 
 A broker portfolio's header leads with `Net Liq`, the account's equity, then `Gross`, the market value of its positions, and `Cash`, which is negative while the account borrows on margin. `Lev` (gross over Net Liq) appears once the account is levered, and the day's percentage is a return on the equity. The broker's last account snapshot is kept across restarts in the terminal, desktop and web apps, and the footer gives its sync time. Until there is one, `Net Liq` and `Cash` read `—`, because the positions alone are not what the account is worth, and when the broker's last call failed (a sign-in that lapsed, say) the footer says why. `PORT` shows the same figures and `KELLY` bets the same equity.
 
+## Dividend income and DRIP
+
+`gloomberb portfolio show <name>` adds Income and Yield for a portfolio of shares or funds, after Weight, or after Trade Value when targets are set: a year of trailing dividends on the shares held, in the portfolio's currency, and that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative. The dividends come from the cache when they were read in the last six hours, and all the reads together wait at most four seconds. A holding whose income is unknown shows `—`, and so does the total, never $0, with one line under the table naming the cause (no dividend history, no exchange rate, or not read: signed out, offline or past the deadline); when none is known the columns are left out and that line says why.
+
+```bash
+gloomberb portfolio show Income                                  # Income and Yield columns
+gloomberb portfolio show Income --drip --years 3 --withholding 20 # reinvested shares and income per year
+gloomberb fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
+```
+
+`--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year, in the portfolio's currency. Today's dividends, prices and exchange rates are held flat and reinvested once a year; a short owes its dividend in full each year and reinvests nothing. `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).
+
 ## Importing a manager's 13F as a portfolio
 
 `gloomberb portfolio import --13f <CIK|fund name>` makes a manual portfolio from a manager's latest 13F, to follow it in `PF` and `PORT`:
@@ -1064,8 +1077,17 @@ social attention, fields cover:
 - **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility
   between its 52-week low (0) and high (100), and over the realized volatility of
   the last 21 daily closes. IV rank is a rank, not an IV percentile.
+- **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal
+  year over that year's net income attributable to the parent, from SEC filings, so
+  US filers only; unavailable when the income is zero or negative.
+- **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`,
+  `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and
+  three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that
+  stopped reads -100%; a company with too short a history or none paid in the base
+  year has none. Distribution history is stored for most large USD payers and fewer
+  elsewhere, so check coverage before ranking a small-cap or non-USD universe.
 
-Returns, EPS revisions and upside take the sign colour.
+Returns, EPS revisions, upside and dividend growth take the sign colour.
 
 **Results** leads with the chosen metric and its covered-universe percentile, then
 one column per numeric criterion and context columns (market cap, price, change, P/E,

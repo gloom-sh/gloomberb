@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ChartResolveCache,
@@ -401,7 +402,7 @@ export function useChartResolution(
       if (disposed || quoteActivityAt <= lastReconcileAt) return;
       lastReconcileAt = Date.now();
       const changed = await reconcileChartTail(latestRequestRef.current.sources, resolveCacheRef.current)
-        .catch(() => false);
+        .catch(logFailure("time-series-use-chart-resolution", "Could not reconcile live chart", false));
       if (disposed) return;
       if (!changed) {
         // A window that settles nothing, or that this history cannot take, is not asked for again at once.

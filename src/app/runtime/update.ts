@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { useCallback, useEffect, useRef, type Dispatch } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
@@ -214,13 +215,13 @@ export function useAppUpdateRuntime({
     const isUpgrade = !!config.lastLaunchedVersion;
     const nextConfig = { ...config, lastLaunchedVersion: VERSION };
     dispatch({ type: "SET_CONFIG", config: nextConfig });
-    void saveConfigImmediately(nextConfig).catch(() => {});
+    void saveConfigImmediately(nextConfig).catch(logFailure("update", "Saving the last launched version failed"));
     // Nightly builds come daily and the changelog lists stable releases only.
     if (!isUpgrade || isPrereleaseVersion(VERSION)) return;
     // Opened by the app, not the user: usage counts leave it out.
     void runAutomated(() => pluginRegistry.createPaneFromTemplateAsync("changelog-pane", {
       values: { version: VERSION },
-    })).catch(() => {});
+    })).catch(logFailure("update", "Opening release notes failed"));
   }, [dispatch, enabled, isDetachedWindow, pluginRegistry, stateRef]);
 
   useEffect(() => {

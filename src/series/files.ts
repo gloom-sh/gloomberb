@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { inferSeriesFrequency, parseSeriesCsv } from "./csv";
 import type { SeriesDefinition, SeriesFrequency } from "./types";
 import { SERIES_FREQUENCIES, isValidSeriesUnit } from "./validate";
@@ -78,7 +79,9 @@ export async function listSeriesFiles(dataDir: string): Promise<SeriesFolderFile
   let names: string[];
   try {
     names = (await readdir(folder)).filter((name) => name.toLowerCase().endsWith(".csv"));
-  } catch {
+  } catch (error) {
+    // Intentional ignore: an absent optional file or directory is expected.
+    if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("series.files", "Listing series files failed")(error);
     return [];
   }
   const files = await Promise.all(names.map(async (name): Promise<SeriesFolderFile | null> => {
@@ -86,7 +89,9 @@ export async function listSeriesFiles(dataDir: string): Promise<SeriesFolderFile
     try {
       const { mtimeMs } = await stat(path);
       return { name, mtimeMs, readText: () => readFile(path, "utf-8") };
-    } catch {
+    } catch (error) {
+      // Intentional ignore: an absent optional file or directory is expected.
+      if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("series.files", "Reading series file metadata failed")(error);
       return null;
     }
   }));
@@ -99,7 +104,8 @@ export async function readSeriesFolder(dataDir: string): Promise<SeriesDefinitio
   const definitions = await Promise.all(files.map(async (file) => {
     try {
       return seriesFromFile(file.name, await file.readText(), file.readText);
-    } catch {
+    } catch (error) {
+      logFailure("series.files", "Reading series definitions failed")(error);
       return [];
     }
   }));

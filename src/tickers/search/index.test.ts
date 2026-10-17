@@ -306,6 +306,45 @@ describe("ticker-search utilities", () => {
     });
   });
 
+  describe("an index, rate, volatility or crypto market typed with futures", () => {
+    // /market/search with the server change (GLO-953): the full-size future leads and carries the names it answers to.
+    const future = (symbol: string, name: string, exchange: string, searchAliases?: string[]) =>
+      makeSearchResult(symbol, name, { exchange, type: "FUTURE", currency: "USD", searchAliases });
+    const row = (symbol: string, name: string, exchange: string, type: string) => makeSearchResult(symbol, name, { exchange, type });
+    const order = (query: string, providerResults: InstrumentSearchResult[]) =>
+      buildTickerSearchCandidates({ query, tickers: new Map(), providerResults, totalLimit: 30 }).map((candidate) => `${candidate.label}:${candidate.exchangeLabel}`);
+    const es = future("ES=F", "E-Mini S&P 500", "CME", ["E-Mini S&P 500", "S&P 500", "S&P", "SPX", "SP500"]);
+    const nq = future("NQ=F", "Nasdaq 100 Dec 26", "CME", ["E-Mini Nasdaq 100", "Nasdaq 100", "Nasdaq", "NDX"]);
+    const vx = future("VX1", "VIX Futures 1st generic", "CFE", ["VIX Futures", "VIX"]);
+
+    test("the full-size future is the first result, ahead of the index, the funds and the mini and micro contracts", () => {
+      const spRows = [es, row("^SPXFPE", "S&P 500 Futures Index (0930-160", "SNP", "INDEX"), row("^SP500FER", "S&P 500 Futures Index ER", "SNP", "INDEX"),
+        future("NES=F", "E-nano S&P 500 Futures,Dec-2026", "CME"), future("MES=F", "Micro E-Mini S&P 500", "CME")];
+      for (const query of ["s&p 500 futures", "S&P Futures", "spx futures"]) expect(order(query, spRows)[0], query).toBe("ES=F:CME");
+      // "nasdaq" is a venue and "futures" a type to the ranking: no text is left for the future's name to match.
+      const nasdaqRows = [nq, row("304940", "Samsung Kodex Us Nasdaq 100 Futures Etf(H)", "KRX", "ETF"), future("MNQ=F", "Micro E-Mini Nasdaq 100", "CME")];
+      expect(order("nasdaq futures", nasdaqRows)[0]).toBe("NQ=F:CME");
+      expect(order("nasdaq futures", [...nasdaqRows.slice(1), nq])[0]).toBe("NQ=F:CME");
+      // VIX has no continuous symbol: the front generic leads, and the volatility index and its ETFs follow.
+      const vixRows = [vx, row("^LONGVOL", "Long VIX Futures Index", "WCB", "INDEX"), row("UVIX", "2x Long VIX Futures ETF", "BTS", "ETF")];
+      expect(order("vix futures", vixRows)).toEqual(["VX1:CFE", "^LONGVOL:WCB", "UVIX:BTS"]);
+      const ten = future("ZN=F", "10-Year T-Note", "CBT", ["10-Year T-Note", "10 Year Note", "10 Year Treasury Note", "10 Year Treasury", "Treasury Note", "T-Note", "Treasury", "Treasuries"]);
+      expect(order("10 year note futures", [row("304660", "Samsung Kodex Ultra Treasury Bond Futures(H) ETF", "KRX", "ETF"), ten])[0]).toBe("ZN=F:CBT");
+    });
+
+    test("a bare name, a fund and a stock sent with the same word keep the rank they had", () => {
+      const index = row("^GSPC", "S&P 500", "SNP", "INDEX");
+      const fund = row("SPY", "SPDR S&P 500 ETF Trust", "ARCA", "ETF");
+      expect(order("s&p 500", [index, fund, future("ES=F", "E-Mini S&P 500", "CME")]).slice(0, 3)).toEqual(["^GSPC:SNP", "SPY:ARCA", "ES=F:CME"]);
+      // The server names no future for a bare "vix", whose alias list is the index's own.
+      const vixIndex = makeSearchResult("^VIX", "CBOE Volatility Index", { exchange: "WCB", type: "INDEX", searchAliases: ["VIX", "VIX Index"] });
+      expect(order("vix", [vixIndex, row("VIXY", "ProShares VIX Short-Term Futures ETF", "BATS", "ETF")])[0]).toBe("^VIX:WCB");
+      // A stock coded like a generic is no future: it does not share the lead, wherever the server put it.
+      const stock = makeSearchResult("ABC1", "ABC One Inc.", { exchange: "NYSE", type: "Common Stock", searchAliases: ["VIX"] });
+      expect(order("vix futures", [stock, vx])[0]).toBe("VX1:CFE");
+    });
+  });
+
   describe("an index typed by its code", () => {
     // /market/search?q=IBOV, captured 2026-10-12: the server leads with the index and tags it with the codes it answers to.
     const ibovespa = makeSearchResult("^BVSP", "Ibovespa", { exchange: "B3", type: "INDEX", searchAliases: ["IBOV", "IBOV Index"] });

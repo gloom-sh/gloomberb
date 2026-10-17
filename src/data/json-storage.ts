@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -23,7 +24,7 @@ export class SafeJsonStorage<T> {
         this.value = parsed;
       }
     } catch {
-      try { storage?.removeItem(key); } catch {}
+      try { storage?.removeItem(key); } catch { /* Intentional ignore: Optional browser storage may reject removal in private mode; the in-memory fallback is retained. */ }
     }
   }
 
@@ -33,12 +34,14 @@ export class SafeJsonStorage<T> {
 
   set(value: T): void {
     this.value = value;
-    try { this.storage?.setItem(this.key, JSON.stringify(value)); } catch {}
+    try { this.storage?.setItem(this.key, JSON.stringify(value)); } catch (error) {
+      logFailure("data.json-storage", "Saving browser JSON storage failed")(error);
+    }
   }
 
   clear(fallback: T): void {
     this.value = fallback;
-    try { this.storage?.removeItem(this.key); } catch {}
+    try { this.storage?.removeItem(this.key); } catch { /* Intentional ignore: Optional browser storage may reject removal in private mode; the in-memory value is cleared. */ }
   }
 }
 

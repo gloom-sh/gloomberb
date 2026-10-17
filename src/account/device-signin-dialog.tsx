@@ -137,7 +137,7 @@ export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser 
       <Box width={FORM_DIALOG_WIDTH} maxWidth="calc(100vw - 72px)" flexDirection="column">
         <DialogFrame title={title} subtitle={subtitle} onClose={dismiss} desktopFooter={null}>
           <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - DESKTOP_DIALOG_ROWS)} />
-          <Box style={{ marginTop: 14 }}>
+          <Box style={{ marginTop: "var(--gloom-space-md)" }}>
             <DialogActions alignEnd hints={{ keys: [{ key: "r", label: "new code" }] }}>
               <Button label="Cancel" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
             </DialogActions>

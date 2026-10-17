@@ -155,7 +155,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
       {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}
       onMouseDown={(event: any) => onRowMouseDown(event, item, globalIdx)}
       data-command-bar-row-selected={nativePaneChrome && isSelected ? "true" : undefined}
-      style={nativePaneChrome ? { borderRadius: 6 } : undefined}
+      style={nativePaneChrome ? { borderRadius: "var(--gloom-radius-md)" } : undefined}
     >
       <Box flexDirection="row" height={1}>
         <Box width={BADGE_INDENT} flexDirection="row">

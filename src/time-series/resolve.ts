@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
@@ -1674,7 +1675,7 @@ async function resolveChartSpecPass(
         // preset in charge, the same as a source without the capability.
         pending = Promise.resolve(result)
           .then((value) => normalizeChartResolutionSupport(value))
-          .catch(() => [] as ChartResolutionSupport[]);
+          .catch(logFailure("time-series-resolve", "Could not load chart resolution support", [] as ChartResolutionSupport[]));
         const settledPending = pending;
         settledPending.then((settled) => {
           if (cache.resolutionSupportByInstrument.get(key) !== settledPending) return;
@@ -1979,7 +1980,7 @@ async function resolveChartSpecPass(
     const key = symbol.trim().toUpperCase();
     let pending = cache.futuresPriceUnits.get(key);
     if (!pending) {
-      pending = sources.loadFuturesPriceUnit(key).catch(() => null).then((unit) => {
+      pending = sources.loadFuturesPriceUnit(key).catch(logFailure("time-series-resolve", "Could not load futures price unit", null)).then((unit) => {
         // Terms that did not say are asked again on a later pass, when the source allows.
         if (unit === null) cache.futuresPriceUnits.delete(key);
         else cache.revision += 1;
@@ -2390,7 +2391,10 @@ export function reconcileChartTail(
   }
   const run: Promise<boolean> = Promise.all([...cache.liveTails].map(async ([key, tail]) => {
     const pending = cache.priceHistoryByRequest.get(key);
-    const loaded = pending ? await pending.catch(() => null) : null;
+    const loaded = pending ? await pending.catch(() => {
+      // Intentional ignore: resolveChartSpecPass already includes this history failure in the series errors.
+      return null;
+    }) : null;
     if (!pending || !loaded || loaded.resolution !== tail.resolution) return false;
     const accumulated = cache.accumulatedPriceHistory.get(tail.accumulationKey);
     const latest = latestObservationTime(accumulated?.points ?? loaded.points);
@@ -2411,7 +2415,7 @@ export function reconcileChartTail(
     if (!request) {
       const fetched = fetchHistoryResult(provider, symbol, exchange ?? "",
         { kind: "detail", start: new Date(start), end: new Date(end), interval: tail.resolution }, context)
-        .catch(() => null)
+        .catch(logFailure("time-series-resolve", "Could not reconcile chart history", null))
         .finally(() => {
           if (shared.get(requestKey) === fetched) shared.delete(requestKey);
         });

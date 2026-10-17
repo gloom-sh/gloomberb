@@ -299,7 +299,10 @@ function setBoxFills(surface: HTMLElement, boxes: Array<[HTMLElement, Axis, Mode
 
 /** Fills the surface's box at rest, on the axes where it is a fraction of a cell short of it. */
 export function fitSurface(surface: HTMLElement): void {
-  if (!surface.isConnected || isLiveResizing()) return;
+  // A surface that is not displayed (a hidden tab) has no space to fit: it
+  // keeps its fills for when it shows again, instead of losing them to the
+  // 0 by 0 it is laid out at meanwhile and taking them back as it reappears.
+  if (!surface.isConnected || isLiveResizing() || surface.getClientRects().length === 0) return;
   const pass: Pass = { styles: new Map() };
   // Judged on the cells each box was given and where it starts, neither of which a fill changes.
   const fills = { x: restFill(pass, surface, "x"), y: restFill(pass, surface, "y") };

@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
@@ -179,7 +180,7 @@ export async function resolveCliTicker(
   const others = resolved.otherListings?.map((key) => parsePublicTickerKey(key).exchange ?? key) ?? [];
   // Several companies' listings name the company it went to and theirs; one company's name its other venues.
   const venueNote = bareNote ?? (others.length > 0 && saved.exchange
-    ? listingChoiceNote(listing.symbol, saved, await listingVenues(listing.symbol, deps).catch(() => []))
+    ? listingChoiceNote(listing.symbol, saved, await listingVenues(listing.symbol, deps).catch(logFailure("cli.ticker-resolution", "Read resolved ticker listing venues failed", [])))
       ?? chosenListingNote(listing.symbol, saved.exchange, others)
     : null);
   const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
@@ -219,7 +220,7 @@ async function withChange(
 async function missingListingMessage(listing: CliListing, deps: ListingDeps): Promise<string> {
   const notTraded = await notTradedMessage(listing, deps);
   if (notTraded) return notTraded;
-  const quote = await deps.dataProvider.getQuote(listing.request.symbol, listing.request.exchange).catch(() => null);
+  const quote = await deps.dataProvider.getQuote(listing.request.symbol, listing.request.exchange).catch(logFailure("cli.ticker-resolution", "Read missing listing quote failed", null));
   const ended = quote ? noLongerTradingNote(listing.key, quote) : null;
   return ended ? `${ended}.` : `No ticker match found for "${listing.key}".`;
 }

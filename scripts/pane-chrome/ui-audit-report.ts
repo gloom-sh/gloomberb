@@ -36,7 +36,7 @@ interface ResultLine {
   measure: AuditMeasure;
 }
 
-interface ViewLine { id: string; token: string; view: string; plugin?: string; kind: string }
+interface ViewLine { id: string; token: string; view: string; plugin?: string; kind: string; reason?: string }
 interface VariantPicture { key: string; family: string; shape: string; component: string; state: string; token: string; view: string; width: number; file: string; hover: string | null }
 
 /** Families whose height is their content's (a dialog, a card): their variants are told apart without it. */
@@ -47,7 +47,7 @@ const CONTENT_HEIGHT = new Set(["dialog", "card", "menu", "tooltip", "toast", "t
  * label fitted to the tile, a map label scaled with the map. Reported apart
  * from the app's type scale and cards; their chrome (legends, axes) is not.
  */
-const FITTED = /HeatTreemap|DomHeatTile|WorldVenueMap|CountryNames|SupplyGraph|GeoMap|Basemap|MetricTreemap/;
+export const FITTED = /HeatTreemap|DomHeatTile|WorldVenueMap|CountryNames|SupplyGraph|GeoMap|Basemap|MetricTreemap/;
 
 /** What each family is, for the report's reader. */
 const FAMILY_LABEL: Record<string, string> = {
@@ -104,7 +104,7 @@ function textRole(run: AuditTextRun): string {
 }
 
 /** The theme token a computed colour is, or how it is not one. */
-function colourName(colour: string, palette: Record<string, string>): string {
+export function colourName(colour: string, palette: Record<string, string>): string {
   if (!colour) return "none";
   const rgb = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(colour);
   if (!rgb) return colour.startsWith("color(") ? "mixed (color-mix)" : `other ${colour}`;
@@ -122,7 +122,7 @@ function colourName(colour: string, palette: Record<string, string>): string {
 }
 
 /** The variant a family member belongs to: its shape, without the height its content gives it. */
-function variantShape(element: AuditElement): string {
+export function variantShape(element: AuditElement): string {
   let shape = CONTENT_HEIGHT.has(element.family) ? element.shape.replace(/\bh=\d+\s*/, "") : element.shape;
   // A width over a few cells is its label's, not an icon's.
   shape = shape.replace(/\bw=(\d+)\b/, (whole, width) => (Number(width) > 48 ? "w=auto" : whole));
@@ -135,7 +135,7 @@ function variantShape(element: AuditElement): string {
  * pane's title bar, a hover fill, the command bar's surfaces), so a colour
  * one of them makes is not counted as off the palette.
  */
-async function derivedColours(themeId: string): Promise<Record<string, string>> {
+export async function derivedColours(themeId: string): Promise<Record<string, string>> {
   const theme = await import("../../src/theme/colors");
   const controls = await import("../../src/renderers/dom/desktop/control-styles");
   const p = theme.getThemeColors(themeId);
@@ -275,6 +275,8 @@ export async function writeAuditReport(out: string, { root = resolve(join(import
   const widths = [...new Set(results.map((result) => result.width))].sort((a, b) => a - b);
   const viewIds = new Set(results.map((result) => result.id));
   const failed = views.filter((view) => view.view === "failed").map((view) => view.token);
+  // Tabs the audit could not open (the press did not select them) or left alone (disabled, not laid out): listed, never counted as measured.
+  const unopened = views.filter((view) => view.view === "unmeasured" || view.view === "skipped").map((view) => `${view.id} (${view.reason ?? view.view})`);
   const gated = new Set(results.filter((result) => result.measure.gated || (result.measure.elements ?? []).some((element) => element.family === "state-locked")).map((result) => result.id));
   const measured = results.find((result) => Object.keys(result.measure.palette ?? {}).length > 0);
   // Tokens first: a derived colour equal to a token is named as the token.
@@ -462,7 +464,7 @@ export async function writeAuditReport(out: string, { root = resolve(join(import
   const paneViews = [...viewIds].filter((id) => results.find((result) => result.id === id)?.kind === "pane").length;
   const md = `# UI audit
 
-${viewCount} views (${paneViews} pane views of ${new Set(results.filter((result) => result.kind === "pane").map((result) => result.token)).size} functions and plugin panes, ${viewCount - paneViews} shell views), at ${widths.join(" and ")} px, measured in the ${results[0]?.theme} theme. ${gated.size} views show a sign-in wall, gate or Pro lock. ${failed.length ? `Not measured (failed to open): ${failed.join(", ")}.` : ""}
+${viewCount} views (${paneViews} pane views of ${new Set(results.filter((result) => result.kind === "pane").map((result) => result.token)).size} functions and plugin panes, ${viewCount - paneViews} shell views), at ${widths.join(" and ")} px, measured in the ${results[0]?.theme} theme. ${gated.size} views show a sign-in wall, gate or Pro lock. ${failed.length ? `Not measured (failed to open): ${failed.join(", ")}.` : ""} ${unopened.length ? `Tabs not measured: ${unopened.join("; ")}.` : "Every tab listed was opened and confirmed selected before it was measured."}
 
 ## Element families
 
@@ -506,7 +508,7 @@ ${familyDetails.join("\n\n")}
 `;
   await Bun.write(join(out, "report.md"), md);
   await Bun.write(join(out, "report.json"), JSON.stringify({
-    views: viewCount, paneViews, widths, failed, gated: [...gated],
+    views: viewCount, paneViews, widths, failed, unopened, gated: [...gated],
     families: familyReport,
     type: Object.fromEntries([...typeByWidth].map(([width, sizes]) => [width, [...sizes].map(([size, entry]) => ({ size, views: entry.views.size, runs: entry.runs, chars: entry.chars, roles: top(entry.roles, 20), components: top(entry.components, 20) }))])),
     roles: Object.fromEntries([...roleSizes].map(([role, byKey]) => [role, [...byKey].map(([key, value]) => ({ key, views: value.views.size, components: top(value.components, 10), sampleViews: [...value.views].slice(0, 10) }))])),

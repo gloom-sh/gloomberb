@@ -16,6 +16,7 @@ export function safeExternalUrl(value: string): string | null {
   try {
     parsed = new URL(value);
   } catch {
+    // Intentional ignore: Malformed URLs are rejected by this validator.
     return null;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;

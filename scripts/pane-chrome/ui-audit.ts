@@ -2,7 +2,8 @@ import { appendFile, mkdir, readdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { cacheDir, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { pathName, visitAlternatives } from "./tab-visits";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
 import {
@@ -15,7 +16,9 @@ import {
  * function in the catalog, the panes of the plugins the web app bundles and,
  * with `--registry`, of every plugin the registry lists, it opens the pane
  * docked on the real web build at each width, then its detail (Enter) and
- * each of its tabs, and records with ui-audit-measure.ts every run of text
+ * each of its tabs, each opened from the pane as it first shows and measured
+ * only once the page says it is selected (tab-visits.ts; a tab it could not
+ * open is listed in `views.jsonl` as unmeasured, with why), and records with ui-audit-measure.ts every run of text
  * (size, line height, weight, colour, where it sits against the pane's edge,
  * and the component that drew it), every element of a design-system family
  * (buttons, tabs, chips, fields, rows, headings, cards, states, pane chrome,
@@ -54,7 +57,6 @@ const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("ui
 const shots = !args.includes("--no-shots");
 const resume = args.includes("--resume");
 const withRegistry = args.includes("--registry");
-const MAX_TABS = 20;
 /** Families whose look under the pointer is pictured too. */
 const HOVERED = new Set(["button", "tab", "link", "chip", "toggle", "input", "select", "menu-item", "keycap", "list-row", "table-row"]);
 
@@ -78,9 +80,10 @@ interface AuditView {
   paneId?: string;
   plugin?: string;
   instance?: Record<string, unknown>;
-  /** Root, detail (Enter on the root), or a tab of the root by its label. */
+  /** Root, detail (Enter on the root), a tab of the root by its label, or a tab not measured (`unmeasured`, `skipped`) with why. */
   view: string;
   tab?: string;
+  reason?: string;
 }
 
 interface AuditResult extends AuditView {
@@ -340,7 +343,6 @@ async function main(): Promise<void> {
         const rootView: AuditView = { ...base, id: `${entry.token}--root`, view: "root" };
         if (!await record(rootView, id, width, theme, measure)) continue;
         views.set(rootView.id, rootView);
-        const tabs = await evaluate<string[]>(cdp, `[...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll("[role=tab]") ?? [])].filter((el) => el.getAttribute("aria-selected") !== "true" && el.getBoundingClientRect().width > 0).map((el) => el.textContent.trim()).filter(Boolean).slice(0, ${MAX_TABS})`);
         // The detail Enter opens from the root.
         const before = await paneText();
         await key(cdp, "Enter", "Enter", 13);
@@ -350,16 +352,27 @@ async function main(): Promise<void> {
           await record(detail, id, width, theme, measure);
           views.set(detail.id, detail);
         }
-        if (tabs.length === 0) continue;
-        await open(theme);
-        for (const label of tabs) {
-          const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const el = [...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll("[role=tab]") ?? [])].find((tab) => tab.textContent.trim() === ${JSON.stringify(label)}); const r = el?.getBoundingClientRect(); return r && r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
-          if (!at) continue;
-          await click(cdp, at);
-          await settle(cdp, scope, 700, 6_000);
-          const tab: AuditView = { ...base, id: `${entry.token}--tab-${slug(label)}`, view: "tab", tab: label };
-          await record(tab, id, width, theme, measure);
-          views.set(tab.id, tab);
+        // Each tab from the pane as it first shows, measured only once the page says it is the selected one (tab-visits.ts).
+        const visits = await visitAlternatives({
+          cdp,
+          scope,
+          selector: "[role=tab]",
+          depth: 1,
+          reset: () => open(theme),
+          settle: () => settle(cdp, scope, 700, 6_000),
+          record: async (path) => {
+            const name = pathName(path);
+            const tab: AuditView = { ...base, id: `${entry.token}--tab-${slug(name)}`, view: "tab", tab: name };
+            if (!await record(tab, id, width, theme, measure)) return false;
+            views.set(tab.id, tab);
+            return true;
+          },
+        });
+        for (const visit of visits) {
+          if (visit.status === "measured") continue;
+          const name = pathName(visit.path);
+          const missed: AuditView = { ...base, id: `${entry.token}--tab-${slug(name)}`, view: visit.status, tab: name, reason: visit.reason };
+          if (!views.has(missed.id)) views.set(missed.id, missed);
         }
       }
     }

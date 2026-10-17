@@ -6,6 +6,7 @@ export function normalizedHttpUrl(value: unknown): string | null {
     const url = new URL(trimmed);
     return url.protocol === "https:" || url.protocol === "http:" ? trimmed : null;
   } catch {
+    // Intentional ignore: Malformed URLs are rejected by this validator.
     return null;
   }
 }

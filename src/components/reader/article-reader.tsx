@@ -21,7 +21,9 @@ import { titleCase } from "../ui/header-case";
 import { blockWords, markTerms, type ArticleBlock } from "./article-text";
 import {
   READER_APP_FONT,
+  READER_PARAGRAPH_GAP,
   READER_COLUMN_FONT,
+  READER_COLUMN_STYLE,
   DESKTOP_LINE_HEIGHT,
   ReaderBlock,
   ReaderText,
@@ -34,7 +36,6 @@ import {
  * loses its place on the way back to the start of the next line.
  */
 const TERMINAL_MEASURE = 72;
-const DESKTOP_MEASURE_CH = 66;
 /** Fewer hidden words than this are shown rather than tucked behind Read more. */
 const COLLAPSE_MIN_HIDDEN_WORDS = 80;
 const MAX_TICKERS = 6;
@@ -196,6 +197,8 @@ function ArticleReaderView({
 }: ArticleReaderProps) {
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
+  // A label names a section as a heading does, so on the desktop it looks like one; the terminal keeps it dim.
+  const labelColor = desktop ? colors.textBright : colors.textDim;
   const nativeRenderer = useNativeRenderer();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const idPrefix = `reader-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -375,8 +378,8 @@ function ArticleReaderView({
         <ReaderText text={lead} geometry={geometry} color={colors.textBright} variant="lead" />
       ) : null}
       {!raw && facts.length > 0 ? (
-        <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1em" } : undefined}>
-          <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={colors.textDim} variant="label" />
+        <Box flexDirection="column" style={desktop ? { marginBottom: READER_PARAGRAPH_GAP } : undefined}>
+          <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={labelColor} variant="label" />
           {facts.map((fact, index) => (
             <ReaderText key={index} text={fact} geometry={geometry} color={colors.text} variant="fact" segments={figureSegments(fact)} figureColor={colors.textBright} />
           ))}
@@ -400,8 +403,8 @@ function ArticleReaderView({
         </Box>
       ) : null}
       {children ? (
-        <Box flexDirection="column" style={desktop ? { marginTop: lead || blocks.length > 0 ? "0.8em" : 0 } : undefined}>
-          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={colors.textDim} variant="label" /> : null}
+        <Box flexDirection="column" style={desktop ? { marginTop: !childrenLabel && (lead || blocks.length > 0) ? "0.8em" : 0 } : undefined}>
+          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={labelColor} variant="label" /> : null}
           <Box flexDirection="column" style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
             {children}
           </Box>
@@ -419,12 +422,10 @@ function ArticleReaderView({
             width="100%"
             data-gloom-ui="reader-column"
             style={{
-              // The measure plus the column's own inset on both sides.
-              maxWidth: `calc(${DESKTOP_MEASURE_CH}ch + 48px)`,
+              // The one reading column (reader-text.tsx): the measure, the pane's inset on each side.
+              ...READER_COLUMN_STYLE,
               fontSize: READER_COLUMN_FONT,
               lineHeight: DESKTOP_LINE_HEIGHT,
-              padding: "1.2em 24px 3em",
-              boxSizing: "border-box",
             }}
           >
             {content}
@@ -447,7 +448,7 @@ function RawText({ text, geometry }: { text: string; geometry: ReaderGeometry })
   const colors = useThemeColors();
   if (geometry.desktop) {
     return (
-      <Text fg={colors.text} wrapText selectable width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: "0.85em", lineHeight: 1.6 }}>
+      <Text fg={colors.text} wrapText selectable width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: READER_APP_FONT, lineHeight: 1.6 }}>
         {text}
       </Text>
     );

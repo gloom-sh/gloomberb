@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { DataProvider, SearchRequestContext } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { BrokerCandidate } from "./brokers";
@@ -167,8 +168,8 @@ export class ProviderRouterSearchRoutes {
           timeoutMs,
         );
         record(items && annotateBrokerSearchResults(items, candidate));
-      } catch {
-        // A broker that cannot answer must not hold up the ones that can.
+      } catch (error) {
+        logFailure("sources.provider-router.search", "Searching broker instruments failed")(error);
       }
     })();
 

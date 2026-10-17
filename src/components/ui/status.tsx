@@ -211,6 +211,9 @@ export interface PaneStatusBodyProps {
   children?: ReactNode;
 }
 
+/** Desktop: where every empty, error, loading and locked state starts, the pane's 8px in from each edge. */
+export const NATIVE_STATE_INSET = { padding: "var(--gloom-space-sm) var(--gloom-inset)" } as const;
+
 /** State precedence remains explicit at the caller: pass loading/error only when replacing the body. */
 export function PaneStatusBody({
   loading = false,
@@ -228,6 +231,7 @@ export function PaneStatusBody({
   height,
   children,
 }: PaneStatusBodyProps) {
+  const { nativePaneChrome } = useUiCapabilities();
   const status = error ? "error" : loading ? "loading" : empty ? "empty" : null;
   // Here rather than in the state, so a retry that shows the spinner while it
   // runs still says it tried once the same failure is back.
@@ -246,6 +250,8 @@ export function PaneStatusBody({
       justifyContent={align === "center" ? "center" : undefined}
       data-gloom-status={status}
       data-gloom-ui="pane-status"
+      // The desktop's state inset: the pane's 8px on every side, not a terminal row above and below.
+      style={nativePaneChrome ? NATIVE_STATE_INSET : undefined}
     >
       {status === "loading" ? <Spinner label={loadingLabel ?? loadingText(subject)} /> : (
         <EmptyStateBody

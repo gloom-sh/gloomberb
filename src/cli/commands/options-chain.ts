@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../types/financials";
 import type { DataProvider } from "../../types/data-provider";
 import type { CliListing } from "../listing-arg";
@@ -114,7 +115,7 @@ export function loadUnderlyingFinancials(
 ): Promise<TickerFinancials | null> {
   return Promise.resolve().then(() => dataProvider.getTickerFinancials(
     listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
-  )).catch(() => null);
+  )).catch(logFailure("cli.commands-options-chain", "Read option underlying financials failed", null));
 }
 
 /**

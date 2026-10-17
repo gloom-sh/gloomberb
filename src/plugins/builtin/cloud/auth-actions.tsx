@@ -10,8 +10,9 @@
  * `ProWall` is the signed-in counterpart for a pane body that needs Pro.
  */
 import { useId } from "react";
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { Button, EmptyState, PaneStatusBody, usePaneMenuItems } from "../../../components";
+import { NATIVE_STATE_INSET } from "../../../components/ui/status";
 import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
@@ -90,6 +91,7 @@ export interface SignInWallProps {
 /** The account wall for a pane body that cannot render until the account is right. */
 export function SignInWall({ placement, action, needsVerification = false, hint, width = 0, height = 0, symbol, exchange }: SignInWallProps) {
   const { openCommandBar } = usePluginAppActions();
+  const { nativePaneChrome } = useUiCapabilities();
   const title = needsVerification
     ? tf("Verify your email to {action}.", { action: t(action) })
     : tf("Sign in to {action}.", { action: t(action) });
@@ -101,7 +103,7 @@ export function SignInWall({ placement, action, needsVerification = false, hint,
   return (
     <WallTeaser experiment="wall_teaser_signin" placement={placement} title={title} message={hint}
       width={width} height={height} symbol={symbol} exchange={exchange}>
-      <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
+      <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall" style={nativePaneChrome ? NATIVE_STATE_INSET : undefined}>
         <EmptyState
           title={title}
           hint={hint}

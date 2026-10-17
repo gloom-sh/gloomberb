@@ -3,17 +3,25 @@ import { declaredDividends } from "./declared-dividends";
 import { formatDistributionAmount } from "./format";
 
 /**
- * What a forward dividend yield is everywhere it shows (fundamentals, DVD):
- * the indicated annual rate Gloom Cloud serves over the price, dated by the
- * ex-date of the distribution it annualizes. While no other is announced that
- * is the latest distribution, whose ex-date has passed. Once the next one is
- * declared the rate annualizes it, and its ex-date is still ahead: the basis
- * then names the declared distribution by its ex-date and pay date, and by its
- * amount when Gloom Cloud states one for that ex-date, never a rate "as of" a
- * day that has not come. The amount is only ever the stated one, never the
- * rate divided back.
+ * What a forward dividend yield is everywhere it shows (fundamentals, DVD,
+ * EQS): the indicated annual rate Gloom Cloud serves over the price, dated by
+ * the ex-date of the distribution it annualizes. While no other is announced
+ * that is the latest distribution, whose ex-date has passed. Once the next one
+ * is declared the rate annualizes it, and its ex-date is still ahead: the
+ * basis then names the declared distribution by its ex-date and pay date, and
+ * by its amount when Gloom Cloud states one for that ex-date, never a rate "as
+ * of" a day that has not come. The amount is only ever the stated one, never
+ * the rate divided back.
  */
-const LATEST_DISTRIBUTION = "latest distribution annualized";
+export const LATEST_DISTRIBUTION = "latest distribution annualized";
+
+/**
+ * What a trailing dividend yield is everywhere it shows (DVD, a fund's in
+ * fundamentals, EQS): the distributions that went ex in the last twelve months
+ * over the price, so it differs from the forward yield whenever the latest
+ * distribution is not the year's usual one.
+ */
+export const TRAILING_DIVIDEND_BASIS = "last 12 months of distributions";
 
 /** `2026-10-01` from a date or an ISO text; null when it is neither. */
 function isoDay(value: string | Date | null | undefined): string | null {

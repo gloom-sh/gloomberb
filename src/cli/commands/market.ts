@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
@@ -933,7 +934,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const fromQuote = points !== loaded.points;
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
-    const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
+    const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
     const unit = historyUnit(listing.key, listed ?? quote);
     const traded = {
       listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
@@ -1220,7 +1221,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       : undefined;
     if (word && reason) {
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
-      const found = await searchNewsStories(word, limit).catch(() => []);
+      const found = await searchNewsStories(word, limit).catch(logFailure("cli.commands-market", "Search news stories failed", []));
       await printNewsSearch(word, found, { reason, empty: emptyMessage(true) }, ctx);
       return;
     }
@@ -1249,7 +1250,7 @@ const FILING_COLUMNS = [
 
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
 async function registrantUsExchange(market: MarketContext, symbol: string, registrantName: string): Promise<string | null> {
-  const venues = (await listingVenues(symbol, market).catch(() => []))
+  const venues = (await listingVenues(symbol, market).catch(logFailure("cli.commands-market", "Read listing venues for filings failed", [])))
     .filter((venue) => !nonUsSecListingVenue(symbol, venue.exchange) && !areDifferentCompanies(venue.name, registrantName));
   return (venues.find((venue) => isUsListingExchange(venue.exchange)) ?? venues[0])?.exchange ?? null;
 }
@@ -1327,7 +1328,8 @@ async function loadForm4Insiders(market: MarketContext, listing: CliListing): Pr
     if (parsed.length > 0) return "available";
     if (noFilings && nonUsSecListingVenue(listing.request.symbol, listing.request.exchange)) return "no-sec-reports";
     return foreignPrivateIssuer ? "foreign-private-issuer" : "none";
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-market", "Read insider filing availability failed")(error);
     return null;
   }
 }
@@ -1373,10 +1375,10 @@ async function printBeneficialOwners(
   const request = { form: beneficialRouteForm(form), history, listing: { exchange, name: abroad?.name ?? undefined } };
   const [payload, holders, quote, financials] = await Promise.all([
     loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request)),
-    market.dataProvider.getHolders?.(symbol, exchange).catch(() => null) ?? null,
+    market.dataProvider.getHolders?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read company holders failed", null)) ?? null,
     quotePromise,
     // Today's share count, which the filed percents are set against.
-    market.dataProvider.getTickerFinancials(symbol, exchange).catch(() => null),
+    market.dataProvider.getTickerFinancials(symbol, exchange).catch(logFailure("cli.commands-market", "Read company financials for holders failed", null)),
   ]);
   const identity = listingIdentity(listing, quote);
   const sharesOutstanding = classSharesToday(financials);

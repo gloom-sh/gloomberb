@@ -2,6 +2,7 @@ import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, ScrollBox, type ScrollBoxRenderable } from "../../../ui";
 import {
+  useAssetData,
   useAsyncResource,
   useAutoRefresh,
   usePaneSettingValue,
@@ -240,14 +241,15 @@ function EstimateDetail({
 export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   const { ticker, symbol: boundSymbol } = usePaneTickerIdentity(),
     session = useResearchCloudSession(),
+    marketData = useAssetData(),
     colors = useThemeColors();
   const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");
   const symbol = identity?.symbol ?? null;
   useCompanyDisclosureLinks(boundSymbol);
   const exchange = canonicalExchange(identity?.exchange ?? "");
   const loader = useCallback(
-    (force: boolean) => loadEstimates(symbol!, exchange, force),
-    [symbol, exchange, session.requestKey],
+    (force: boolean) => loadEstimates(symbol!, exchange, force, marketData ?? undefined),
+    [symbol, exchange, marketData, session.requestKey],
   );
   const resource = useAsyncResource(symbol ? loader : null, {
     initialData: () => (symbol ? cachedEstimates(symbol, exchange) : null),

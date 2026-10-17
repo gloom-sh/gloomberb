@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import type { MarketplaceHost, PluginManager } from "./store";
 
 export type PluginActivation =
@@ -22,18 +23,18 @@ export async function activateInstalledPlugin(
   // Registering it here, or where data calls run, would mix the new files
   // with modules this process already imported; the host keeps what runs.
   if (loaded.needsRestart) {
-    await host.activate(loaded).catch(() => {});
+    await host.activate(loaded).catch(logFailure("plugin-activation", "Pending-restart plugin activation failed"));
     return { ok: true, pluginId: loaded.plugin.id, name, restart: true };
   }
   if (loaded.error) {
-    await host.activate(loaded).catch(() => {});
+    await host.activate(loaded).catch(logFailure("plugin-activation", "Failed plugin registration failed"));
     return { ok: false, error: loaded.error, name };
   }
   // Where data calls execute first, so a pane that renders can also fetch.
   if (manager.activate && !loaded.unsupportedTarget) {
     const backend = await manager.activate(directory);
     if (!backend.ok) {
-      await host.activate({ ...loaded, error: backend.error }).catch(() => {});
+      await host.activate({ ...loaded, error: backend.error }).catch(logFailure("plugin-activation", "Backend failure registration failed"));
       return { ok: false, error: backend.error, name };
     }
   }

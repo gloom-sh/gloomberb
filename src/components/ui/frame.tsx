@@ -2,7 +2,8 @@ import { Box, Text, useUiHost } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { type ComponentType, type ReactNode } from "react";
 import { t } from "../../i18n";
-import { blendHex, type ThemeColors } from "../../theme/colors";
+import type { ThemeColors } from "../../theme/colors";
+import { RADIUS, SPACE, controlBorderColour, surfaceRaisedColour } from "../../theme/ui-tokens";
 import { useThemeColors } from "../../theme/theme-context";
 
 export interface ModalSurfaceOptions {
@@ -22,11 +23,12 @@ export function modalSurfaceStyle(colors: ThemeColors, options: ModalSurfaceOpti
     width: options.width ?? "min(540px, 100%)",
     height: "auto",
     maxHeight: options.maxHeight ?? "calc(100vh - 88px)",
-    padding: options.padding ?? 14,
-    backgroundColor: blendHex(colors.panel, colors.bg, 0.12),
-    border: `1px solid ${blendHex(colors.border, colors.borderFocused, 0.18)}`,
-    borderRadius: 6,
-    boxShadow: `0 18px 48px color-mix(in srgb, ${colors.bg} 46%, transparent), inset 0 1px 0 color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+    padding: options.padding ?? SPACE.lg,
+    // The floating surface (docs/pane-conventions.md, "Dialogs, menus and surfaces").
+    backgroundColor: surfaceRaisedColour(colors),
+    border: `1px solid ${controlBorderColour(colors)}`,
+    borderRadius: RADIUS.lg,
+    boxShadow: "var(--gloom-elevation)",
     boxSizing: "border-box" as const,
     overflowY: "auto" as const,
   };

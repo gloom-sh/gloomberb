@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { AppResourceStorePort, AppTickerRepositoryPort } from "../core/app-service-ports";
 import { persistBrokerAccounts } from "./account-cache";
 import type { BrokerAdapter, BrokerPosition } from "../types/broker";
@@ -218,7 +219,7 @@ export async function syncBrokerInstance({
     throw new Error(`Broker "${instance.brokerType}" is not available.`);
   }
 
-  const valid = await broker.validate(instance).catch(() => false);
+  const valid = await broker.validate(instance).catch(logFailure("broker-sync", "Broker validation failed", false));
   throwIfBrokerImportCancelled(signal);
   if (!valid) {
     throw new Error(`${broker.name} setup is incomplete.`);

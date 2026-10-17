@@ -217,11 +217,7 @@ export const paneSchemas = {
         // The same metric the GE template opens with in the app.
         defaultValue: "trailingPE",
       },
-      // Annual, not the quarterly the GE template opens on in the app: the
-      // trailing-twelve-month P/E has values only from the latest few quarters,
-      // so the quarterly view is about a year of line where annual reads from
-      // 2021. Until that history is fixed, `fn`, `shot` and agent reads of GE
-      // stay on annual; `--period quarterly` opens the app's view.
+      // Annual, as the GE template opens in the app.
       FINANCIAL_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
     ],

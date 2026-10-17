@@ -21,9 +21,7 @@ export function paneShareIdFromUrl(raw: string): string | null {
   let url: URL;
   try {
     url = new URL(raw);
-  } catch {
-    return null;
-  }
+  } catch { /* Intentional ignore: Non-URL text is not a share link. */ return null; }
   if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (url.hostname === "term.gloom.sh") {

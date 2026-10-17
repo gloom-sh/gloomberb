@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import {
   ASKG_PROTOCOL_VERSION,
   type ASKGCapabilities,
@@ -247,7 +248,8 @@ function parseASKGFrame(frame: SseFrame): ASKGSseEvent | null {
   try {
     const parsed: unknown = JSON.parse(data);
     return isAskgEvent(parsed) ? parsed : null;
-  } catch {
+  } catch (error) {
+    logFailure("cloud-askg", "Stream event decoding failed")(error);
     return null;
   }
 }
@@ -291,7 +293,7 @@ export async function readASKGEventStream(
   };
 
   const abort = () => {
-    void reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => { /* Intentional ignore: Abort cleanup may race an already closed reader. */ });
   };
   options.signal?.addEventListener("abort", abort, { once: true });
   try {
@@ -308,7 +310,7 @@ export async function readASKGEventStream(
     try {
       reader.releaseLock?.();
     } catch {
-      // A reader cancelled mid-read cannot release its lock; nothing to undo.
+      // Intentional ignore: A reader cancelled mid-read cannot release its lock.
     }
   }
 }

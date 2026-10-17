@@ -11,6 +11,15 @@ export function nativePaneFooterRows(): number {
   return chromeRowPx() / WEB_CELL_HEIGHT;
 }
 
+/**
+ * Rows a chrome bar under the title bar takes (a query bar, a figure band's
+ * bar): one on the terminal, the taller chrome row on the desktop and the
+ * web, so what is sized in rows under it ends at the pane's edge.
+ */
+export function chromeBarRows(nativePaneChrome: boolean | undefined): number {
+  return nativePaneChrome ? nativePaneHeaderRows() : 1;
+}
+
 export function paneHeaderRows(nativePaneChrome: boolean | undefined): number {
   return nativePaneChrome ? nativePaneHeaderRows() : PANE_HEADER_ROWS;
 }

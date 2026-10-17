@@ -79,6 +79,11 @@ function cloneRuntimeValue<T>(value: T): T {
 // with their identity. Cloning each object once per identity, at every
 // level, keeps the mirror a real copy while making the rebuild cost
 // proportional to what changed rather than to every pane in every layout.
+// An object and its copy are entered as a pair, so copying the copy hands
+// back the object it came from. A layout switch makes the saved copy live
+// and the next mirror copies it again: a fresh copy there would be keyed on
+// the last one, so every switch would add a generation and the chain would
+// keep all of them alive for the rest of the session.
 const runtimeValueClones = new WeakMap<object, unknown>();
 /** Clone to the object it was copied from, so a saved copy can be traced to live state. */
 const paneStateOrigins = new WeakMap<object, object>();
@@ -93,6 +98,7 @@ function cloneRuntimeValueShared<T>(value: T): T {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, cloneRuntimeValueShared(entry)]),
     );
   runtimeValueClones.set(value, clone);
+  runtimeValueClones.set(clone, value);
   return clone as T;
 }
 

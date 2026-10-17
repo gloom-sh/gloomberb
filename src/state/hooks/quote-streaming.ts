@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppVisible, usePaneInView } from "../app/activity";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -252,8 +253,8 @@ export function useQuoteUpdates(
       lastPollRef.current = { key: instrumentKey, at: Date.now() };
       try {
         await coordinator.loadQuotesBatch(instruments, { forceRefresh: true });
-      } catch {
-        // Polling is best effort and the coordinator retains the last good quote.
+      } catch (error) {
+        logFailure("state.hooks.quote-streaming", "Polling broker quotes failed")(error);
       } finally {
         inFlight = false;
       }

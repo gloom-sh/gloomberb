@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -23,7 +24,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
-import { knownGapMessage, settingsPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany, sameCompany } from "../../tickers/company-name";
@@ -68,7 +69,8 @@ export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[
     const entries = await buildPaneCatalogEntries(registry, context);
     const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, SEARCH_FUNCTION_LIMIT);
     return loose ? [] : shown.map(({ token, label, description }) => ({ token, label, description }));
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-search", "Discover plugin functions for search failed")(error);
     // A plugin that cannot set up for discovery leaves the search as it was.
     return [];
   } finally {
@@ -78,7 +80,7 @@ export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[
 
 /** A bare symbol's quote, asked as `quote SYM` asks it: on the venue a saved row of the symbol is on, else the bare symbol. */
 function loadSearchedQuote(symbol: string, savedExchange: string, dataProvider: DataProvider): Promise<Quote | null> {
-  return Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(() => null);
+  return Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(logFailure("cli.commands-search", "Read searched symbol quote failed", null));
 }
 
 export async function searchCandidatesForCli({
@@ -121,7 +123,8 @@ export async function searchCandidatesForCli({
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
     return withQuotedNames(symbol, withHomeListingPrimary(symbol, withPrimaryListingFirst(symbol, candidates, quote)), quote).slice(0, totalLimit);
-  } catch {
+  } catch (error) {
+    logFailure("cli.commands-search", "Search ticker candidates failed")(error);
     return [];
   }
 }
@@ -378,7 +381,7 @@ function searchNotes(
 ): string[] {
   const gap = knownGapMessage(query);
   const bank = searchedCentralBank(query);
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   const empty = candidates.length === 0 && !fate.stopped;
   // A gap line that names the index (TNX's yield line names ^TNX) says it once.
   return [...fate.notes, gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
@@ -425,7 +428,7 @@ export function buildSearchReport({
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", centralBankLine(bank));
-  const setting = settingsPointer(query);
+  const setting = commandPointer(query);
   if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to

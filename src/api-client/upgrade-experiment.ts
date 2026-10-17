@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { ExperimentAnswer, StorageLike } from "./web-experiments";
 
 /**
@@ -36,11 +37,11 @@ function isVariant(value: unknown): value is UpgradePersonalizedVariant {
 }
 
 function read(storage: StorageLike | undefined, key: string): string | null {
-  try { return storage?.getItem(key) ?? null; } catch { return null; }
+  try { return storage?.getItem(key) ?? null; } catch { /* Intentional ignore: Private browsing may deny optional experiment storage. */ return null; }
 }
 
 function write(storage: StorageLike | undefined, key: string, value: string): void {
-  try { storage?.setItem(key, value); } catch { /* Storage is optional in private browsing. */ }
+  try { storage?.setItem(key, value); } catch { /* Intentional ignore: Private browsing may deny optional experiment storage. */ }
 }
 
 /**
@@ -77,7 +78,7 @@ export function createUpgradeExperimentSession() {
       if (inFlight) return inFlight;
       const request = (async () => {
         let answer: ExperimentAnswer;
-        try { answer = await ask(); } catch { return null; }
+        try { answer = await ask(); } catch (error) { logFailure("cloud-experiments", "Experiment exposure request failed")(error); return null; }
         const variant = answer.accepted && isVariant(answer.variant) ? answer.variant : null;
         answers.set(identity, variant);
         write(context.session, `${SESSION_PREFIX}${identity}`, variant ?? "excluded");

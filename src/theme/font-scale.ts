@@ -54,6 +54,8 @@ export function syncFontScale(fontSizePx: unknown): boolean {
   style.setProperty("--cell-h", `${WEB_CELL_HEIGHT}px`);
   style.setProperty("--chrome-h", `${chromeRowPx()}px`);
   style.setProperty("font-size", `${size}px`);
+  // The type, spacing and inset tokens in styles.css scale with it.
+  style.setProperty("--gloom-font-scale", String(roundToHundredth(scale)));
   appliedToDocument = true;
   return true;
 }

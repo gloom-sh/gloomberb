@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { lstatSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, join } from "path";
@@ -58,7 +59,9 @@ function pathExists(path: string): boolean {
   try {
     lstatSync(path);
     return true;
-  } catch {
+  } catch (error) {
+    // Intentional ignore: an absent optional file or directory is expected.
+    if ((error as { code?: unknown } | null)?.code !== "ENOENT") logFailure("data.config.home", "Checking the existing config directory failed")(error);
     return false;
   }
 }

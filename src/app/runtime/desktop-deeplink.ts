@@ -1,3 +1,4 @@
+import { logFailure } from "../../utils/log-failure";
 import { useEffect, type Dispatch } from "react";
 import { apiClient } from "../../api-client";
 import { getDockedPaneIds } from "../../layout/pane-manager";
@@ -81,9 +82,7 @@ function parseGloomUrl(rawUrl: string): ParsedGloomUrl | null {
   let url: URL;
   try {
     url = new URL(rawUrl);
-  } catch {
-    return null;
-  }
+  } catch { /* Intentional ignore: Malformed external deep links are rejected as non-matches. */ return null; }
   if (url.protocol !== "gloomberb:") return null;
 
   const host = url.hostname.trim().toLowerCase();
@@ -575,7 +574,7 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       if (action.route.kind === "cloud-success") {
         requestAccountManagementTab("pro");
         // Checkout just completed: re-read the session so the new plan shows at once.
-        void chatController.refreshSession().catch(() => {});
+        void chatController.refreshSession().catch(logFailure("app.runtime.desktop-deeplink", "Checkout session refresh failed"));
       }
       options.pluginRegistry.showPane("account-management");
       notifySuccess(options.pluginRegistry, action.message);

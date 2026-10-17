@@ -3,6 +3,7 @@ import { useUiCapabilities } from "../../../ui";
 import { QueryBar } from "../../ui/query-bar";
 import { Tabs, type TabsProps } from "../../ui/tabs";
 import { usePaneHeaderTabs } from "./header-tabs";
+import { chromeBarRows } from "./sizing";
 
 export interface PaneTabsOptions extends TabsProps {
   /**
@@ -16,8 +17,8 @@ export interface PaneTabsOptions extends TabsProps {
 export interface PaneTabs {
   /** What the body draws first: the `Tabs` row, or null while the chrome draws the strip. */
   strip: ReactNode;
-  /** Body rows the strip takes, for content sized in rows. */
-  rows: 0 | 1;
+  /** Body rows the strip takes, for content sized in rows: a query bar's taller chrome row on the desktop. */
+  rows: number;
 }
 
 /**
@@ -34,7 +35,7 @@ export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
   if (queryBarWidth !== undefined && nativePaneChrome) {
     return {
       strip: <QueryBar width={queryBarWidth} view={{ value: tabs.activeValue ?? "", options: tabs.tabs, onChange: tabs.onSelect }} />,
-      rows: 1,
+      rows: chromeBarRows(true),
     };
   }
   return { strip: <Tabs {...tabs} />, rows: 1 };

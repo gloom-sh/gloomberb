@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 import type { TapeFeedEvent } from "./tape";
 import type {
   AuthUser,
@@ -188,7 +189,7 @@ export class CloudApiSocket {
     try {
       ws?.close();
     } catch {
-      // ignore closed sockets
+      // Intentional ignore: Closing an already closed socket needs no further cleanup.
     }
   }
 
@@ -312,7 +313,8 @@ export class CloudApiSocket {
     try {
       this.ws.send(JSON.stringify(payload));
       return true;
-    } catch {
+    } catch (error) {
+      logFailure("cloud-socket", "WebSocket frame send failed")(error);
       return false;
     }
   }
@@ -557,7 +559,8 @@ export class CloudApiSocket {
     let parsed: any;
     try {
       parsed = JSON.parse(raw);
-    } catch {
+    } catch (error) {
+      logFailure("cloud-socket", "WebSocket message decoding failed")(error);
       return;
     }
 

@@ -206,7 +206,7 @@ export function CompositePanelSurface({
   // read the pointer in plot space, so they convert through this.
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
   const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
-  const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
+  const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb, revealed: plotSize.revealed === true });
   // The level line follows the pointer only. A keyboard or shared cursor knows
   // its column, and the series markers and axis readout already say the value.
   // A tool placed from the keyboard is the exception: its end is a level.
@@ -834,8 +834,8 @@ export function CompositePanelSurface({
           style={isDesktopWeb
             ? {
               width: "auto",
-              paddingInline: 4,
-              borderRadius: 4,
+              paddingInline: "var(--gloom-space-xs)",
+              borderRadius: "var(--gloom-radius-sm)",
               backgroundColor: `color-mix(in srgb, ${colors.background} 82%, transparent)`,
             }
             : undefined}

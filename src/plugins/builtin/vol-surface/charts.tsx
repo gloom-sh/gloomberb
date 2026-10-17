@@ -102,7 +102,8 @@ export function TermChart({ snapshot, width, height, focused = false }: { snapsh
       colors={resolveChartPalette(colors)} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
       xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: dayLabel(i / 4) }))}
       formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} focused={focused} />
-    <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} scrollY focusable={false}>
+    {/* Takes what the chart's whole rows leave, so the list ends at the pane's edge on the desktop. */}
+    <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} flexGrow={1} scrollY focusable={false}>
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
         value={`${formatPrice(expiry.expectedMove.straddle)} straddle / ${formatPrice(expiry.expectedMove.sigma)} 1-sigma (${formatPrice(expiry.expectedMove.sigmaPercent)}%)`} />)}

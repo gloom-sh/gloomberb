@@ -1,3 +1,4 @@
+import { logFailure } from "../utils/log-failure";
 /**
  * Geo layers, as GET /cloud/geo/* serves them: anything with a place (a ship,
  * a port, a pipeline) as map features, an entity table and chart series. The
@@ -329,7 +330,7 @@ export async function loadGeoCatalog(
     catalogInFlight = request<unknown>("layers")
       .then(normalizeCatalog)
       // A missing route or a refusal is an answer; a network blip is too, for a while.
-      .catch(() => null)
+      .catch(logFailure("cloud-geo", "Geo catalog request failed", null))
       .then((payload) => {
         catalogEntry = { at: options.now ?? Date.now(), payload };
         return payload;

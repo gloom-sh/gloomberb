@@ -15,6 +15,8 @@ import {
   computeWeightedPortfolioReturns,
   syntheticAccountUnsupportedReason,
   syntheticPositionUnsupportedReason,
+  type DatedReturn,
+  type ReturnHistoryResult,
   type WeightedReturnSeries,
 } from "../plugins/builtin/analytics/metrics";
 import {
@@ -303,12 +305,15 @@ function pricePointTime(point: { date: Date | string | number }): number {
   return new Date(value).getTime();
 }
 
+/** The bars a week's move can start from, oldest first. */
+const datedCloses = historyMemo((history) => history
+  .filter((point) => Number.isFinite(point.close) && point.close > 0 && Number.isFinite(pricePointTime(point)))
+  .sort((left, right) => pricePointTime(left) - pricePointTime(right)));
+
 function weeklyQuoteMove(financials: TickerFinancials | null | undefined) {
   const quote = financials?.quote;
   if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return undefined;
-  const history = (financials?.priceHistory ?? [])
-    .filter((point) => Number.isFinite(point.close) && point.close > 0 && Number.isFinite(pricePointTime(point)))
-    .sort((left, right) => pricePointTime(left) - pricePointTime(right));
+  const history = datedCloses(financials?.priceHistory);
   if (history.length === 0) return undefined;
   const latestTime = Number.isFinite(quote.lastUpdated)
     ? quote.lastUpdated
@@ -438,6 +443,40 @@ function recentPriceHistory(history: PricePoint[], days: number): PricePoint[] {
   });
 }
 
+/**
+ * Work derived from a bar history, kept with the history. Every sync values
+ * every portfolio and quotes every filed ticker (each 15 s poll, and after
+ * each workspace change), and redoing that work from each holding's bars
+ * blocked the view for a quarter of a second on a few hundred holdings
+ * (GLO-925). Bars change when a history loads again, which replaces the
+ * array; a last bar extended or revised in place, or one appended, is caught
+ * by its length, time and close.
+ */
+function historyMemo<T>(derive: (history: PricePoint[]) => T): (history: PricePoint[] | undefined) => T {
+  const kept = new WeakMap<PricePoint[], { length: number; lastTime: number | null; lastClose: number | undefined; value: T }>();
+  const empty = derive([]);
+  return (history) => {
+    if (!history || history.length === 0) return empty;
+    const last = history[history.length - 1]!;
+    const lastTime = pricePointTimeOrNull(last);
+    const cached = kept.get(history);
+    if (cached && cached.length === history.length && cached.lastTime === lastTime && cached.lastClose === last.close) return cached.value;
+    const value = derive(history);
+    kept.set(history, { length: history.length, lastTime, lastClose: last.close, value });
+    return value;
+  };
+}
+
+/** A holding's daily returns over its last year of bars. */
+const lastYearReturns = historyMemo((history): ReturnHistoryResult => resolveDatedReturns(recentPriceHistory(history, 366)));
+
+/** The holdings' beta to SPY at today's weights, worked out only when no preview supplies one. */
+function holdingsBeta(series: WeightedReturnSeries[], spyReturns: DatedReturn[]): number | null {
+  if (series.length === 0 || spyReturns.length === 0) return null;
+  const returns = computeWeightedPortfolioReturns(series);
+  return returns.length > 0 ? computeDatedBeta(returns, spyReturns) : null;
+}
+
 function collectAnalyticsByPortfolio(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
@@ -446,7 +485,7 @@ function collectAnalyticsByPortfolio(
   brokerAccounts: Record<string, BrokerAccount[]>,
 ) {
   const output: Record<string, Record<string, unknown>> = {};
-  const spySample = resolveDatedReturns(recentPriceHistory(financials.get("SPY")?.priceHistory ?? [], 366));
+  const spySample = lastYearReturns(financials.get("SPY")?.priceHistory);
   const spyReturns = spySample.returns;
   for (const portfolio of config.portfolios) {
     const account = portfolio.brokerInstanceId && portfolio.brokerAccountId
@@ -469,14 +508,13 @@ function collectAnalyticsByPortfolio(
           unsupported = true;
           continue;
         }
-        const sample = resolveDatedReturns(recentPriceHistory(tickerFinancials?.priceHistory ?? [], 366));
+        const sample = lastYearReturns(tickerFinancials?.priceHistory);
         invalidHistory ||= sample.integrity != null;
         const returns = sample.returns;
         if (returns.length >= 10) datedReturnSeries.push({ weight: value, returns });
         else unsupported = true;
       }
     }
-    const portfolioReturns = unsupported ? [] : computeWeightedPortfolioReturns(datedReturnSeries);
     const previewAnalytics = getSyncedProfileAnalytics(portfolio.id);
     // The broker's own returns do not depend on the holdings' price histories.
     const accountBasis = previewAnalytics?.basis === "account";
@@ -484,11 +522,7 @@ function collectAnalyticsByPortfolio(
     // one-year account return. Only preserve an explicitly supplied preview.
     const oneYearReturn = invalidHistory && !accountBasis ? null : previewAnalytics?.oneYearReturn ?? null;
     const spyBeta = (invalidHistory && !accountBasis) || spySample.integrity ? null : previewAnalytics?.spyBeta
-      ?? (
-        portfolioReturns.length > 0 && spyReturns.length > 0
-          ? computeDatedBeta(portfolioReturns, spyReturns)
-          : null
-      );
+      ?? holdingsBeta(unsupported ? [] : datedReturnSeries, spyReturns);
     output[portfolio.id] = {
       oneYearReturn,
       spyBeta,

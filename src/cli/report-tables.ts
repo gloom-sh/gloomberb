@@ -209,6 +209,7 @@ function flattenJsonText(value: string): string | null {
     const parsed: unknown = JSON.parse(value);
     return parsed != null && typeof parsed === "object" ? flattenValue(parsed) : null;
   } catch {
+    // Intentional ignore: Non-JSON display text keeps its original formatting.
     return null;
   }
 }

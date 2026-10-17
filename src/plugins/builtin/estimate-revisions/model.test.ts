@@ -4,6 +4,10 @@ import type {
   EstimateRevisionsPayload,
 } from "../../../api-client/estimate-revisions";
 import { ApiRequestError } from "../../../api-client/errors";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import type { HeadlessPaneContext } from "../../../types/headless";
+import { estimateRevisionsHeadless } from "./headless";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { fetchEstimates, validateEstimates } from "./client";
 import {
@@ -189,40 +193,79 @@ test("fiscal pin preserves frequency and currency identity and rejects invalid o
   );
 });
 
-test("untracked listings resolve only an exact unambiguous Cloud search identity", async () => {
-  const listing = {
-    providerId: "gloom",
-    symbol: "AAPL",
-    name: "Apple",
-    exchange: "NASDAQ",
-    type: "equity",
-  };
+const listing = (exchange: string, name = "Apple Inc.", symbol = "AAPL") => ({
+  providerId: "gloom", symbol, name, exchange, type: "Common Stock", currency: "USD",
+});
+/** A source whose search lists every venue of the symbol and whose quote prices `quoteVenue`; no quote when it is null. */
+function listings(rows: ReturnType<typeof listing>[], quoteVenue: string | null) {
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => (asked.push(query), rows),
+    getQuote: async (symbol) => {
+      if (!quoteVenue) throw new Error("no quote");
+      return createTestQuote({ symbol, listingExchangeName: quoteVenue, lastUpdated: 1 });
+    },
+  });
+  return { dataProvider, asked };
+}
+function routeSpy() {
   const seen: string[] = [];
-  const client = {
-    searchInstruments: async () => [listing, { ...listing, exchange: "XNAS" }],
-    getCloudEstimateRevisions: async (symbol: string, exchange: string) => {
-      seen.push(`${exchange}:${symbol}`);
-      return fixture();
+  return {
+    seen,
+    client: {
+      getCloudEstimateRevisions: async (symbol: string, exchange: string) => {
+        seen.push(`${exchange}:${symbol}`);
+        return { ...fixture(), exchange };
+      },
     },
   };
-  await fetchEstimates("AAPL", "", client);
-  expect(seen).toEqual(["NASDAQ:AAPL"]);
+}
+
+test("a bare symbol listed on several venues reads the listing its quote prices, as quote does", async () => {
+  const route = routeSpy();
+  const { dataProvider } = listings(
+    [listing("BVC"), listing("NASDAQ"), listing("BMV"), listing("VIE"), listing("XETR")],
+    "NASDAQ",
+  );
+  await fetchEstimates("AAPL", "", route.client, dataProvider);
+  // The US exchanges share one symbol: a quote labelled NYSE American still reads its one US line.
+  await fetchEstimates("AAPL", "", route.client, listings([listing("XETR"), listing("NYSE")], "AMEX").dataProvider);
+  // One listing needs no quote.
+  await fetchEstimates("AAPL", "", route.client, listings([listing("XNAS")], null).dataProvider);
+  expect(route.seen).toEqual(["NASDAQ:AAPL", "NYSE:AAPL", "NASDAQ:AAPL"]);
+});
+
+test("fn EM reads a bare ticker with no saved listing on its primary venue", async () => {
+  const route = routeSpy();
+  const ctx = createTestHeadlessContext({
+    marketData: listings([listing("XETR"), listing("NASDAQ"), listing("BMV")], "NASDAQ").dataProvider,
+    apiClient: route.client as HeadlessPaneContext["apiClient"],
+    resolveInstrument: async (symbol) => ({ symbol }),
+  });
+  const result = await estimateRevisionsHeadless.load(createTestHeadlessArgs({ symbols: ["AAPL"], argument: "AAPL", rawArgument: "AAPL" }), ctx);
+  expect(route.seen).toEqual(["NASDAQ:AAPL"]);
+  expect(result.metadata).toMatchObject({ symbol: "AAPL", exchange: "NASDAQ" });
+});
+
+test("a listing that names its venue is never searched for", async () => {
+  const route = routeSpy();
+  const { dataProvider, asked } = listings([listing("XETR")], "XETR");
+  await fetchEstimates("AAPL", "NASDAQ", route.client, dataProvider);
+  await fetchEstimates("AAPL", "XNAS", route.client);
+  expect(route.seen).toEqual(["NASDAQ:AAPL", "NASDAQ:AAPL"]);
+  expect(asked).toEqual([]);
+});
+
+test("a bare symbol no quote settles asks for a listing, and one search does not list says so", async () => {
+  const route = routeSpy();
+  const several = listings([listing("NASDAQ", "Avis"), listing("XETR", "Carrefour")], null).dataProvider;
+  await expect(fetchEstimates("AAPL", "", route.client, several)).rejects.toThrow(
+    "Choose a listing exchange for estimate revisions, for example AAPL:NASDAQ.",
+  );
   await expect(
-    fetchEstimates("AAPL", "", {
-      ...client,
-      searchInstruments: async () => [
-        listing,
-        { ...listing, exchange: "NYSE" },
-      ],
-    }),
-  ).rejects.toThrow("Choose a listing exchange");
-  await expect(
-    fetchEstimates("AAPL", "", {
-      ...client,
-      searchInstruments: async () => [{ ...listing, symbol: "AAP" }],
-    }),
-  ).rejects.toThrow("Choose a listing exchange");
-  expect(seen).toHaveLength(1);
+    fetchEstimates("AAPL", "", route.client, listings([listing("NASDAQ", "Apple", "AAP")], null).dataProvider),
+  ).rejects.toThrow('No ticker match found for "AAPL".');
+  expect(route.seen).toEqual([]);
 });
 
 test("guidance and surprise provenance are validated before rendering date and source fields", () => {
