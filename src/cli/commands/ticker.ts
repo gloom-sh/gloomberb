@@ -680,7 +680,7 @@ export function renderFundamentalsReport(
   for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") {
     for (const note of statementFilingsNotes(financials.statementFilings)) lines.push(cliStyles.muted(note));
-    const bank = financials.bank ? bankSection(financials.bank, symbol, latestStatementDate(financials)) : null;
+    const bank = financials.bank ? bankSection(financials.bank, symbol, bankSectionContext(financials)) : null;
     if (bank) {
       appendMetricSection(lines, "Bank", bank.lines);
       for (const note of bank.notes) lines.push(cliStyles.muted(note));
@@ -692,9 +692,12 @@ export function renderFundamentalsReport(
   return lines.join("\n");
 }
 
-/** The newest statement period, YYYY-MM-DD. */
-function latestStatementDate(financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string | null {
-  return [...financials.quarterlyStatements, ...financials.annualStatements].map((row) => row.date).sort().at(-1) ?? null;
+/** What the Bank section reads from the rest of the report: the newest statement period, and the annual report form. */
+function bankSectionContext(financials: FundamentalsReportData) {
+  return {
+    latestStatementDate: [...financials.quarterlyStatements, ...financials.annualStatements].map((row) => row.date).sort().at(-1) ?? null,
+    annualReportForm: financials.statementFilings?.annualReportForm ?? null,
+  };
 }
 
 /**
@@ -714,7 +717,7 @@ export function fundamentalsReportTables(
     metrics.map((metric) => ({ label: metric.label, value: metric.value, formatted: metric.text, unit: metric.unit })),
   )];
   const bank = view === "fundamentals" && financials.bank
-    ? bankSection(financials.bank, financials.quote?.symbol ?? financials.symbol, latestStatementDate(financials))
+    ? bankSection(financials.bank, financials.quote?.symbol ?? financials.symbol, bankSectionContext(financials))
     : null;
   if (bank) tables.push(exportEntriesTable("Bank", bank.entries));
   if (view === "fundamentals") {

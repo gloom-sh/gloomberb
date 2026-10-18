@@ -1,7 +1,7 @@
 import type { BankFiguresPayload } from "../api-client/bank-figures";
 import type { TickerFinancials } from "../types/financials";
 import type { CliReportEntry } from "./report-tables";
-import type { StatementReportSources } from "./statement-filings";
+import { isForeignIssuerForm, type StatementReportSources } from "./statement-filings";
 import { formatCompact, formatPercent } from "../utils/format";
 import { logFailure } from "../utils/log-failure";
 import { nonUsSecListingVenue } from "../utils/sec";
@@ -34,22 +34,37 @@ export function nimCommand(symbol: string): string {
   return `gloomberb fn EQS --metric kpiNimPercent --definition '${definition}'`;
 }
 
-export function bankSection(bank: BankFiguresPayload, symbol: string, latestStatementDate: string | null): BankSection | null {
+/** Gloom Cloud's note for a company with no US GAAP deposits tag, which reads as if it filed 10-Qs; a foreign issuer files neither. */
+const NO_DEPOSITS_TAG_NOTE = "The company's 10-Q and 10-K tag no total deposits.";
+
+export function bankSection(bank: BankFiguresPayload, symbol: string, { latestStatementDate, annualReportForm }: {
+  /** The newest statement period, YYYY-MM-DD. */
+  latestStatementDate: string | null;
+  /** The company's annual report form: a 20-F or 40-F names a foreign group, whose FDIC-insured bank is only its US arm. */
+  annualReportForm: string | null;
+}): BankSection | null {
   if (!bank.bank) return null;
+  const foreignGroup = isForeignIssuerForm(annualReportForm);
   const lines: Array<[string, string]> = [];
   const entries: CliReportEntry[] = [];
-  const notes = [...bank.notes];
+  const notes = foreignGroup ? bank.notes.filter((note) => note !== NO_DEPOSITS_TAG_NOTE) : [...bank.notes];
   const { deposits, leadBank, callReport } = bank;
 
   if (leadBank) {
-    const role = !leadBank.holdingCompany
-      ? "the company is the bank"
-      : leadBank.otherBanks > 0
-        ? `largest of ${leadBank.otherBanks + 1} insured banks by assets${leadBank.reportDate ? ` at ${leadBank.reportDate}` : ""}`
-        : "its insured bank";
+    const largest = leadBank.otherBanks > 0
+      ? `largest of ${leadBank.otherBanks + 1} insured banks by assets${leadBank.reportDate ? ` at ${leadBank.reportDate}` : ""}`
+      : null;
+    const role = foreignGroup
+      ? ["US bank subsidiary only", largest].filter(Boolean).join(", ")
+      : !leadBank.holdingCompany ? "the company is the bank" : largest ?? "its insured bank";
     const asOf = day(leadBank.source.datasetAsOf);
     lines.push(["Lead Bank", `${leadBank.name} (FDIC cert ${leadBank.cert}; ${role}${asOf ? `; FDIC data of ${asOf}` : ""})`]);
     entries.push({ label: "Lead Bank", value: leadBank.name }, { label: "Lead Bank FDIC Cert", value: leadBank.cert });
+    if (foreignGroup) {
+      entries.push({ label: "Lead Bank Scope", value: "US bank subsidiary of a foreign group" });
+      notes.push(`${symbol} reports as a foreign issuer (${annualReportForm}): the FDIC figures are those of its US bank subsidiary, ${leadBank.name}, `
+        + `not the group's. Group deposits are in its ${annualReportForm} and not read here.`);
+    }
   }
 
   if (deposits) {
@@ -74,11 +89,22 @@ export function bankSection(bank: BankFiguresPayload, symbol: string, latestStat
   if (callReport) {
     const asOf = day(callReport.source.datasetAsOf);
     const report = `call report ${callReport.reportDate}${asOf ? `, FDIC data of ${asOf}` : ""}`;
-    lines.push(["Uninsured Deposits", callReport.uninsuredShare != null && callReport.uninsuredDeposits != null
-      ? `${share(callReport.uninsuredShare)} of deposits, ${money(callReport.uninsuredDeposits)} (${report})`
+    // The FDIC's estimate covers deposits in domestic offices: its uninsured part over insured plus uninsured.
+    const { uninsuredShare, uninsuredDeposits, insuredDeposits } = callReport;
+    const estimated = uninsuredDeposits != null && insuredDeposits != null ? uninsuredDeposits + insuredDeposits : null;
+    lines.push(["Uninsured Deposits", uninsuredShare != null && uninsuredDeposits != null && estimated != null
+      ? `${share(uninsuredShare)} of domestic deposits (${formatCompact(uninsuredDeposits)} uninsured of ${money(estimated)} estimated insured plus uninsured; ${report})`
       : `not reported: banks under $1B in assets do not file the estimate (${report})`]);
-    if (callReport.uninsuredShare != null) entries.push({ label: "Uninsured Share", value: callReport.uninsuredShare * 100, unit: "%" });
-    if (callReport.uninsuredDeposits != null) entries.push({ label: "Uninsured Deposits", value: callReport.uninsuredDeposits, unit: "USD" });
+    if (uninsuredShare != null) entries.push({ label: "Uninsured Share of Domestic Deposits", value: uninsuredShare * 100, unit: "%" });
+    if (uninsuredDeposits != null) entries.push({ label: "Uninsured Deposits", value: uninsuredDeposits, unit: "USD" });
+    // Deposits in foreign offices are outside the estimate, and FDIC insurance does not cover them.
+    const foreignOffices = callReport.totalDeposits != null && callReport.domesticDeposits != null
+      ? callReport.totalDeposits - callReport.domesticDeposits
+      : 0;
+    if (uninsuredShare != null && callReport.totalDeposits && foreignOffices / callReport.totalDeposits >= 0.005) {
+      entries.push({ label: "Foreign Office Deposits", value: foreignOffices, unit: "USD" });
+      notes.push(`The uninsured share covers domestic offices; another ${money(foreignOffices)} of deposits sits in foreign offices, which FDIC insurance does not cover.`);
+    }
     if (callReport.cre && callReport.capital && callReport.creToCapital != null) {
       lines.push(["CRE / Capital", `${share(callReport.creToCapital)}: CRE ${money(callReport.cre.total)} over ${callReport.capital.basis} ${money(callReport.capital.value)} (${report})`]);
       entries.push(

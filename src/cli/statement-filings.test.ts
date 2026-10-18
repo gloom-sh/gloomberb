@@ -51,6 +51,27 @@ test("a 52-53 week year reads its quarters on its own grid: Apple's September qu
   expect(behind).toMatchObject({ fiscalQuarter: 3, accessionNumber: "q3" });
 });
 
+test("a quarter that ends mid-month counts from its own end date: Costco's 10 May quarter, released 28 May", () => {
+  // Costco's 52-53 week year: 12-week quarters to 23 Nov, 15 Feb and 10 May, a 16-week fourth to 30 Aug.
+  const costco = [
+    release("2026-09-24", "c-q4"),
+    filing("10-Q", "2026-06-03", "c-q3-10q", { reportDate: "2026-05-10" }),
+    release("2026-05-28", "c-q3"),
+    filing("10-Q", "2026-03-11", "c-q2-10q", { reportDate: "2026-02-15" }),
+    release("2026-03-05", "c-q2"),
+  ];
+  const q3 = detectResultsRelease({ latestQuarter: "2026-02-15", latestAnnual: "2025-08-31", filings: costco.slice(2) })!;
+  expect(q3).toMatchObject({ fiscalQuarter: 3, periodMonth: "2026-05", filed: "2026-05-28", accessionNumber: "c-q3", statementsForm: "10-Q" });
+  // From 10 May, its 16-week fourth quarter is released after 30 Aug, with the 10-K.
+  expect(detectResultsRelease({ latestQuarter: "2026-05-10", latestAnnual: "2025-08-31", filings: costco })).toMatchObject({
+    fiscalQuarter: 4, periodMonth: "2026-08", accessionNumber: "c-q4", statementsForm: "10-K",
+  });
+  // Its own quarter's release, filed after the 15 Feb end, is not a newer quarter's.
+  expect(detectResultsRelease({ latestQuarter: "2026-02-15", latestAnnual: "2025-08-31", filings: costco.slice(4) })).toBeNull();
+  // A calendar quarter still waits for the month's end: 30 Jun to 30 Sep, so a 2.02 on 29 Sep is inside the quarter.
+  expect(detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: [release("2026-09-29", "inside")] })).toBeNull();
+});
+
 test("a 10-Q filed after the release while the statements still lack it is named, not promised", () => {
   const filed = detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: [filing("10-Q", "2026-11-04", "q"), ...JPM_FILINGS] })!;
   expect(filed.periodicReport).toEqual({ form: "10-Q", filed: "2026-11-04", accessionNumber: "q" });
@@ -65,6 +86,9 @@ test("a statement's filing is its SEC accession, else the original 10-Q or 10-K 
   const provider = { date: "2026-06-30", dateSource: "provider" as const };
   const amended = [filing("10-Q/A", "2026-09-01", "amend", { reportDate: "2026-06-30" }), filing("10-Q", "2026-08-06", "orig", { reportDate: "2026-06-30" })];
   expect(statementFiling(provider, amended, ["10-Q", "10-K"])?.accessionNumber).toBe("orig");
+  // A foreign issuer's annual period comes from its 20-F or 40-F.
+  expect(statementFiling({ date: "2025-10-31" }, [filing("40-F", "2025-12-03", "ry", { reportDate: "2025-10-31" })], ["10-K", "20-F", "40-F"]))
+    .toMatchObject({ form: "40-F", filed: "2025-12-03" });
   // A fiscal fourth quarter's period comes from the 10-K.
   expect(statementFiling({ date: "2025-12-31" }, JPM_FILINGS, ["10-Q", "10-K"])).toMatchObject({ form: "10-K", filed: "2026-02-13" });
   expect(statementFiling({ date: "2025-09-30" }, JPM_FILINGS, ["10-Q", "10-K"])).toBeNull();
@@ -74,19 +98,22 @@ afterEach(() => {
   (apiClient.getCloudSecFilings as unknown as { mockRestore?: () => void }).mockRestore?.();
 });
 
-test("a server that predates the form filter sends every form: only the periodic reports and 8-Ks are kept", async () => {
+test("a server that predates the form filter sends every form: only the periodic reports, annual reports and 8-Ks are kept", async () => {
   const spy = spyOn(apiClient, "getCloudSecFilings").mockResolvedValue({
     filings: [
       { accessionNumber: "p", form: "424B2", filingDate: "2026-10-14", cik: "1", filingUrl: "" },
       { accessionNumber: "r", form: "8-K", filingDate: "2026-10-13", items: "2.02,9.01", cik: "1", filingUrl: "" },
       { accessionNumber: "q", form: "10-Q", filingDate: "2026-08-06", reportDate: "2026-06-30", cik: "1", filingUrl: "" },
+      { accessionNumber: "s", form: "6-K", filingDate: "2026-08-01", cik: "1", filingUrl: "" },
+      { accessionNumber: "f", form: "40-F/A", filingDate: "2026-01-10", reportDate: "2025-10-31", cik: "1", filingUrl: "" },
     ],
   } as never);
   expect(await cloudStatementReportSources.statementFilings("JPM")).toEqual([
     { form: "8-K", filed: "2026-10-13", accessionNumber: "r", items: ["2.02", "9.01"] },
     { form: "10-Q", filed: "2026-08-06", accessionNumber: "q", items: [], reportDate: "2026-06-30" },
+    { form: "40-F/A", filed: "2026-01-10", accessionNumber: "f", items: [], reportDate: "2025-10-31" },
   ]);
-  expect(spy.mock.calls[0]?.[0]).toMatchObject({ ticker: "JPM", forms: ["10-K", "10-Q", "8-K"] });
+  expect(spy.mock.calls[0]?.[0]).toMatchObject({ ticker: "JPM", forms: ["10-K", "10-Q", "8-K", "20-F", "40-F"] });
 });
 
 const config = createDefaultConfig("/tmp/gloom-statement-filings-unused");
