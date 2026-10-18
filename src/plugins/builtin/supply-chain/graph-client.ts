@@ -3,7 +3,7 @@ import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphP
 import { createPluginCache } from "../../../data/plugin-cache";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { normalizeSupplyRow, validSupplyEntity, validSupplyRow } from "./client";
+import { normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
 import { activeRelationship, isUnconfirmed } from "./trust";
 
@@ -40,7 +40,7 @@ export function validateGraph(data: GraphPayload): GraphPayload {
         if (!link || !(link.from === a && link.to === b || link.to === a && link.from === b)) throw 0;
       });
       if (entry.exposure && (entry.linkIds.some(id => graphEvidenceRow(links.get(id)!.evidence.find(item => item.id === links.get(id)!.primaryEvidenceId)!).tier !== 1) || entry.exposure.estimated !== true || !Number.isFinite(entry.exposure.pct) || entry.exposure.pct < 0 || entry.exposure.pct > 100
-        || !entry.nodeIds.includes(entry.exposure.denominatorEntityId) || !["revenue", "receivables", "cost", "purchases"].includes(entry.exposure.basis))) throw 0;
+        || !entry.nodeIds.includes(entry.exposure.denominatorEntityId) || !["revenue", "receivables", "cost", "purchases"].includes(entry.exposure.basis) || !validPeriodMonths(entry.exposure.periodMonths))) throw 0;
     };
     data.paths.forEach(path);
     for (const entry of [...data.upstream, ...data.downstream, ...data.related]) {

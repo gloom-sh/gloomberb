@@ -6,7 +6,7 @@ import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { counterpartyKind, counterpartyKindLabel, disclosedValue, dollars, nativeValue, ROLE_COLORS, roleLabel, shareParts, sourceLabel } from "./model";
+import { counterpartyKind, counterpartyKindLabel, disclosedValue, dollars, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts, sourceLabel } from "./model";
 import { canShowQuote, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, tierLabel } from "./trust";
 import { DisclosureQuote } from "./disclosure-quote";
 
@@ -72,7 +72,7 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
   const figures: StatItem[] = [
     ...(share ? [{ id: "share", label: "Share", value: share.value, detail: share.basis }] : []),
     ...(native || row.usd !== null ? [{ id: "value", label: "Value", value: disclosedValue(row) }] : []),
-    { id: "period", label: "Period", value: row.period, detail: row.fiscalYear ? `Fiscal year ${row.fiscalYear}` : undefined },
+    { id: "period", label: "Period", value: periodText(row), detail: row.fiscalYear ? `Fiscal year ${row.fiscalYear}` : undefined },
     { id: "published", label: "Published", value: evidenceDate(row), detail: evidenceLabel(row) },
     { id: "confidence", label: "Confidence", value: `${Math.round(row.confidence * 100)}%` },
   ];

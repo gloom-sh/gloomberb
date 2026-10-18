@@ -7,7 +7,7 @@ export function graphEvidenceRow(evidence: GraphEvidence): SupplyRow {
     id: evidence.id, counterparty: evidence.reporter.id === evidence.to.id ? evidence.from : evidence.to,
     reportingEntity: evidence.reporter, role: evidence.role,
     direction: evidence.role === "supplier" ? "in" : evidence.role === "customer" ? "out" : "mutual",
-    sourceKind: evidence.sourceKind, period: evidence.period, asOf: evidence.asOf,
+    sourceKind: evidence.sourceKind, period: evidence.period, periodMonths: evidence.periodMonths ?? null, asOf: evidence.asOf,
     fiscalYear: evidence.fiscalYear ?? null, form: evidence.form ?? null, filedDate: evidence.filedDate ?? null,
     pctOfRevenue: evidence.pctOfRevenue ?? null, pctBasis: evidence.pctBasis ?? null, pctScope: evidence.pctScope ?? null,
     usd: evidence.usd ?? null, usdBasis: evidence.usdBasis ?? null,

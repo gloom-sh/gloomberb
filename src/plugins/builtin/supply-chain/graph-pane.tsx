@@ -18,7 +18,7 @@ import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-cli
 import { entityKey, entityLabel, exposureLabel, pathLabel } from "./graph-model";
 import { SupplyGraph } from "./graph";
 import { graphEvidenceRow } from "./graph-evidence";
-import { disclosedValue, dollars, nativeValue, ROLE_COLORS, roleLabel, shareParts } from "./model";
+import { disclosedValue, dollars, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts } from "./model";
 import { SupplySources, SupplyVerification } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
@@ -67,7 +67,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
   const figures: StatItem[] = [
     { id: "score", label: "Path score", value: path.score.toFixed(4) },
     { id: "confidence", label: "Confidence", value: `${Math.round(path.confidence * 100)}%` },
-    { id: "exposure", label: "Estimated exposure", value: exposureLabel(path, data), detail: path.exposure?.period, wide: true },
+    { id: "exposure", label: "Estimated exposure", value: exposureLabel(path, data), detail: path.exposure ? periodText(path.exposure) : undefined, wide: true },
   ];
   const company = (entity: SupplyEntity) => desktop && entity.ticker ? <Badge label={entity.ticker} tone="accent" />
     : <Text fg={entity.aggregate || entity.anonymous ? colors.textDim : colors.textBright} attributes={TextAttributes.BOLD}>{entityLabel(entity)}</Text>;
@@ -90,7 +90,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
             <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
-            <KeyValueRow label="Period" value={evidence.period} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? "--"}` : `published ${evidenceDate(row)}`} labelWidth={20} />
+            <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? "--"}` : `published ${evidenceDate(row)}`} labelWidth={20} />
             {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
             <SupplyVerification row={row} />
             {share ? <>

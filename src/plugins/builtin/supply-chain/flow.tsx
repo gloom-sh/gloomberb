@@ -12,7 +12,7 @@ import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
-import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
+import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, periodText, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
@@ -325,7 +325,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
   const share = shareParts(row, focusId);
   const lines = [
     share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
-    `${roleLabel(row.role)} · ${row.period}`,
+    `${roleLabel(row.role)} · ${periodText(row)}`,
     trustTier(row) === 1
       ? `${evidenceLabel(row)} · ${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
       : `${evidenceLabel(row)} · ${evidenceDate(row)}`,

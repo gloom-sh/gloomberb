@@ -7,7 +7,7 @@ export interface GraphOptions {
   minPct: number; minConfidence: number; limit: number; ranking: "score" | "shortest"; asOf?: string;
 }
 export const DEFAULT_GRAPH_OPTIONS: GraphOptions = { depth: 2, direction: "both", roles: [], sources: [], tiers: [], minPct: 0, minConfidence: 0, limit: 50, ranking: "score" };
-export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroboration" | "leadStatus" | "firstSeenAt" | "lastSeenAt" | "lastConfirmedAt" | "whyUnconfirmed" | "evidence" | "nativeAmount" | "nativeCurrency" | "nativeScale" | "entityScope" | "quoteGloss" | "sectionRef" | "sourceAttribution"> {
+export interface GraphEvidence extends Pick<SupplyRow, "claimType" | "corroboration" | "leadStatus" | "firstSeenAt" | "lastSeenAt" | "lastConfirmedAt" | "whyUnconfirmed" | "evidence" | "nativeAmount" | "nativeCurrency" | "nativeScale" | "entityScope" | "quoteGloss" | "sectionRef" | "sourceAttribution" | "periodMonths"> {
   /** Source trust tier, distinct from the graph evidence class in tier. */
   trustTier?: SupplyTier;
   id: string; fromEntity: string; toEntity: string; reportingEntity: string;
@@ -25,7 +25,7 @@ interface GraphLink {
 }
 export interface GraphPath {
   id: string; nodeIds: string[]; linkIds: string[]; hops: number; score: number; confidence: number;
-  exposure: { pct: number; basis: NonNullable<SupplyRow["pctBasis"]>; period: string; denominatorEntityId: string; estimated: true } | null;
+  exposure: { pct: number; basis: NonNullable<SupplyRow["pctBasis"]>; period: string; periodMonths?: number | null; denominatorEntityId: string; estimated: true } | null;
 }
 interface GraphReach { entityId: string; direction: "upstream" | "downstream"; hops: number; bestPath: GraphPath; shortestPath: GraphPath; }
 export interface GraphPayload {

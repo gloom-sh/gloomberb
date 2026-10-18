@@ -6,7 +6,7 @@ import { fetchSupplyChain } from "./client";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { exposureLabel, pathLabel } from "./graph-model";
-import { counterpartyName, disclosedValue, lockedDisclosures, nativeValue, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
+import { counterpartyName, disclosedValue, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
 
 /**
  * The Table tab's columns, printed as the pane prints them: the share with
@@ -21,6 +21,7 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
     return (source ? read(source) : value == null ? null : String(value)) ?? "-";
   };
   const valued = rows.some((row) => { const source = sources.get(row); return !!source && (nativeValue(source) !== null || source.usd !== null); });
+  const lengths = rows.some((row) => sources.get(row)?.periodMonths != null);
   return [
     { key: "counterparty", header: "Counterparty", format: cell(counterpartyName) },
     { key: "evidenceTier", header: "Evidence" },
@@ -31,7 +32,9 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
       textFormat: cell((row) => { const share = shareParts(row, focusId); return share ? `${share.value} ${share.basis}` : null; }) },
     ...(valued ? [{ key: "usd", header: "Value", align: "right" as const,
       format: cell((row) => nativeValue(row) === null && row.usd === null ? null : disclosedValue(row).replace(/ (disclosed|derived)$/, "")) }] : []),
-    { key: "period", header: "Period" },
+    // Exports keep the end date; the text adds the period's length when the source states it.
+    // A narrow table may cut the length as it cuts other text, never the date (eleven cells: the date and an ellipsis).
+    { key: "period", header: "Period", textFormat: cell(periodText), ...(lengths ? { minWidth: 11 } : {}) },
     { key: "filed", header: "Published", format: cell(evidenceDate) },
   ];
 }
@@ -60,12 +63,13 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   sections.push({ title: "Disclosure evidence", columns: [
     { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
     { key: "role", header: "Role" }, { key: "pct", header: "% disclosed" }, { key: "denominator", header: "Denominator" },
-    { key: "period", header: "Period" }, { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
+    { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
+    { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     { key: "quote", header: "Quote" }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
-    pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, filed: item.filedDate, asOf: item.asOf,
+    pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
     quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,
     nativeCurrency: item.nativeCurrency ?? null, nativeScale: item.nativeScale ?? null, jurisdiction: item.jurisdiction,
@@ -127,7 +131,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? supplyPreviewNote(data, lockedDisclosures(data, ["says", "names"])) : "Additional relationships need Gloom Pro"] : [],
       sections: (["says", "names"] as const).flatMap((view) => [false, true].map((leads) => ({ title: `${view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`}${leads ? " | Unconfirmed" : ""}`,
         rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => sourced(row, { counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
-          pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, fiscalYear: row.fiscalYear,
+          pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
           nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
           jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
           evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,

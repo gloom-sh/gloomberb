@@ -56,6 +56,8 @@ function shareBarCells(width: number, bases: readonly number[]): number {
 }
 const longestBasis = (bases: readonly number[], width: number) => Math.max(0, ...bases.filter((cells) => SHARE_BAR_MIN_CELLS + 1 + cells <= width));
 
+/** A period end date; its length, when the source states it, follows it in a wider column. */
+const PERIOD_DATE_CELLS = 10;
 /**
  * Columns that fit the pane, giving up the least first: the share bar shortens
  * to keep the whole basis, the name shortens to 18 cells, the ticker folds into
@@ -65,7 +67,7 @@ const longestBasis = (bases: readonly number[], width: number) => Math.max(0, ..
  * Value shows only when some row discloses a value, retaining its original
  * currency and units.
  */
-function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: readonly number[]): DataTableColumn[] {
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: readonly number[], periodWidth = PERIOD_DATE_CELLS): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
   const share: DataTableColumn = { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" };
@@ -76,7 +78,7 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
     { id: "role", label: "Role", width: 11, align: "left" },
     share,
     ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),
-    { id: "fy", label: "Period", width: 10, align: "left" },
+    { id: "fy", label: "Period", width: periodWidth, align: "left" },
     ...(wide ? [
       { id: "filed", label: "Published", width: 10, align: "left" as const },
       { id: "publisher", label: "Publisher", width: 16, align: "left" as const },
@@ -221,7 +223,13 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const values = rows.filter((row) => nativeValue(row) !== null || row.usd !== null);
   const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
   const bases = rows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [displayWidth(share.basis)] : []; });
-  const columns = tableColumns(width, desktop, locked > 0, valueWidth, bases);
+  // The period's length follows its end date when the source states it (2026-07-31 half) and costs
+  // no column; laid out a cell narrower, the table also clears its own scrollbar. Otherwise the
+  // evidence view says it.
+  const periodWidth = Math.max(PERIOD_DATE_CELLS, ...rows.map((row) => displayWidth(cellText(row, "fy"))));
+  const dated = tableColumns(width, desktop, locked > 0, valueWidth, bases);
+  const lengths = periodWidth > PERIOD_DATE_CELLS ? tableColumns(width - 1, desktop, locked > 0, valueWidth, bases, periodWidth) : null;
+  const columns = lengths?.some((column) => column.id === "fy") && lengths.map((column) => column.id).join() === dated.map((column) => column.id).join() ? lengths : dated;
   const renderCell = (entry: SectionedRow<Item>, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(entry)) return { text: "" };
     const item = entry.item;
@@ -268,7 +276,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         content: <ShareCell row={row} focusId={focusId} width={column.width} bases={bases} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
-      case "fy": return { text: row.period, color: colors.textDim };
+      case "fy": return { text: displayWidth(cellText(row, "fy")) <= column.width ? cellText(row, "fy") : row.period, color: colors.textDim };
       default: return { text: cellText(row, column.id) };
     }
   };

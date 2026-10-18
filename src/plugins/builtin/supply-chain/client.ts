@@ -16,6 +16,8 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const nonnegative = (value: unknown) => finite(value) && value >= 0;
 const nullableNumber = (value: unknown) => value === null || nonnegative(value);
 const optionalText = (value: unknown) => value === undefined || nullableText(value);
+/** A period length in months; absent from older servers. */
+export const validPeriodMonths = (value: unknown) => value === undefined || value === null || Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 60;
 const date = (value: unknown) => text(value) && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
 const tier = (value: unknown) => Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 6;
@@ -52,7 +54,7 @@ export function validSupplyRow(value: SupplyRow): boolean {
     && (value.jurisdiction == null || (text(value.jurisdiction) && /^[A-Z]{2}$/.test(value.jurisdiction)))
     && [undefined, null, "entity", "group", "anonymous", "aggregate"].includes(value.entityScope)
     && (value.pctOfRevenue === null || value.pctBasis !== null) && (value.usd === null || value.usdBasis !== null)
-    && text(value.period) && nullableText(value.fiscalYear) && ["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value.sourceKind)
+    && text(value.period) && validPeriodMonths(value.periodMonths) && nullableText(value.fiscalYear) && ["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value.sourceKind)
     && nullableText(value.form) && (value.filedDate === null || date(value.filedDate)) && date(value.asOf)
     && finite(value.confidence) && value.confidence >= 0 && value.confidence <= 1
     && text(value.quote) && (value.quote.trim().length > 0 || !!value.evidence?.length) && nullableText(value.quoteLanguage)

@@ -166,6 +166,28 @@ test("headless reports keep original evidence and unconverted native units with 
   expect(text).not.toContain(row.quote!);
 });
 
+test("reports say how long a period is when the source states it, and keep older payloads as they were", async () => {
+  const half = supplyRow("half", { sourceKind: "xbrl", periodMonths: 6 });
+  const context = createTestHeadlessContext();
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [half, supplyRow("prose", { period: "2025-12-31" })], totalRows: 2,
+    counts: { says: { customer: 2, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } }) };
+  const args = createTestHeadlessArgs({ symbols: ["FOCUS"] });
+  const result = await supplyChainHeadless.load(args, context);
+  expect(result.sections[0]?.rows?.map((row) => [row.period, row.periodMonths])).toEqual([["2026-01-31", 6], ["2025-12-31", null]]);
+  const text = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
+  expect(text).toContain("2026-01-31 half");
+  expect(text).not.toMatch(/2025-12-31 \S/);
+  const payload = graphPayload();
+  payload.links[0]!.evidence[0]!.periodMonths = 12;
+  payload.downstream[0]!.bestPath.exposure!.periodMonths = 12;
+  const graph = await supplyChainHeadless.load(createTestHeadlessArgs({ rawArgument: "A", argument: "A", symbols: ["A"], options: { tab: "graph" } }),
+    createTestHeadlessContext({ apiClient: new CloudDataApi(async <T>() => payload as T) as unknown as HeadlessPaneContext["apiClient"] }));
+  expect(graph.sections[3]!.rows!.map((row) => row.periodMonths)).toEqual([12, null]);
+  expect(graph.sections[1]!.rows![0]!.exposure).toMatchObject({ period: "2025-12-31", periodMonths: 12 });
+  const malformed = graphPayload(); malformed.downstream[0]!.bestPath.exposure!.periodMonths = 2.5;
+  expect(() => validateGraph(malformed)).toThrow("unreadable");
+});
+
 test("graph boundaries preserve global filing scale and provenance and reject uninterpretable native amounts", async () => {
   const payload = graphPayload();
   // Synthetic contract fixture: these amounts are not a claim about a real route.

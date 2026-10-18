@@ -111,11 +111,25 @@ export const nativeValue = (row: SupplyRow) => row.nativeAmount == null || !row.
 export const disclosedValue = (row: SupplyRow) => nativeValue(row) ?? dollars(row);
 const QUOTE_LANGUAGES: Record<string, string> = { ko: "Korean", ja: "Japanese", zh: "Chinese", "zh-TW": "Chinese", "zh-Hant": "Chinese", "zh-Hans": "Chinese", en: "English" };
 export const quoteLanguageLabel = (row: Pick<SupplyRow, "quoteLanguage">) => QUOTE_LANGUAGES[row.quoteLanguage ?? ""] ?? row.quoteLanguage ?? "original language";
+/**
+ * How long a period is, in the words the KPI pane uses for a period's kind:
+ * a share of receivables is a balance at the period end, an instant. Null
+ * when the source does not say; a form or a period label never does.
+ */
+function periodLength(months: number | null | undefined): string | null {
+  if (months == null) return null;
+  return months === 0 ? "instant" : months === 3 ? "quarter" : months === 6 ? "half" : months === 12 ? "year" : `${months} month${months === 1 ? "" : "s"}`;
+}
+/** The period end with its length when the source states it: 2026-07-31 half. */
+export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
+  const length = periodLength(row.periodMonths);
+  return length ? `${row.period} ${length}` : row.period;
+};
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
-    : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? row.period
+    : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
     : column === "corroboration" ? corroborationLabel(row)
     : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
@@ -165,17 +179,27 @@ export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Recor
   }
   return Object.fromEntries((Object.keys(grouped) as FlowBand[]).map((band) => {
     const values = sortRows(grouped[band], { column: "pct", direction: "desc" });
-    // One reporter, period and revenue scope form a compatible percentage scale.
+    // One reporter, period and revenue scope form a compatible percentage scale,
+    // and a quarter and a half ending on that date do not: each stated length
+    // is its own scale, which a share whose length is not stated can join.
     // Prefer the largest compatible group, then whole-company revenue on a tie.
-    const revenueGroups = new Map<string, SupplyRow[]>();
+    const revenueGroups = new Map<string, { length: number | null; rows: SupplyRow[] }>();
+    const unstated = new Map<string, SupplyRow[]>();
     for (const row of values) if (trustTier(row) === 1 && band === "customers" && row.pctBasis === "revenue" && !(row.sourceKind === "xbrl" && row.pctScope) && (row.pctOfRevenue ?? 0) > 0 && (!focusId || row.reportingEntity.id === focusId)) {
-      const key = revenueKey(row);
-      revenueGroups.set(key, [...(revenueGroups.get(key) ?? []), row]);
+      const key = revenueKey(row), length = row.periodMonths ?? null;
+      if (length === null) unstated.set(key, [...(unstated.get(key) ?? []), row]);
+      else revenueGroups.set(`${key}:${length}`, { length, rows: [...(revenueGroups.get(`${key}:${length}`)?.rows ?? []), row] });
     }
-    const revenueGroup = [...revenueGroups.values()].sort((a, b) => b.length - a.length || Number(a[0]!.pctScope !== null) - Number(b[0]!.pctScope !== null))[0];
-    const scaleKey = revenueGroup ? revenueKey(revenueGroup[0]!) : null;
+    for (const [key, rows] of unstated) {
+      const stated = [...revenueGroups.values()].filter((group) => revenueKey(group.rows[0]!) === key);
+      for (const group of stated) group.rows.push(...rows);
+      if (!stated.length) revenueGroups.set(key, { length: null, rows });
+    }
+    const revenueGroup = [...revenueGroups.values()].sort((a, b) => b.rows.length - a.rows.length || Number(a.rows[0]!.pctScope !== null) - Number(b.rows[0]!.pctScope !== null))[0];
+    const scaleKey = revenueGroup ? revenueKey(revenueGroup.rows[0]!) : null;
     const value = (row: SupplyRow) => trustTier(row) !== 1 ? 0 : scaleKey === null ? row.usd ?? 0
-      : row.pctBasis === "revenue" && !(row.sourceKind === "xbrl" && row.pctScope) && revenueKey(row) === scaleKey ? row.pctOfRevenue ?? 0 : 0;
+      : row.pctBasis === "revenue" && !(row.sourceKind === "xbrl" && row.pctScope) && revenueKey(row) === scaleKey
+        && (row.periodMonths == null || revenueGroup!.length === null || row.periodMonths === revenueGroup!.length) ? row.pctOfRevenue ?? 0 : 0;
     // Use the entire band: paging must not change an existing ribbon's width.
     const max = Math.max(0, ...values.map(value));
     const ordered = [...values].sort((a, b) => value(b) - value(a));
@@ -183,7 +207,7 @@ export function flowBands(rows: SupplyRow[], limit: number, pages: Partial<Recor
     const start = paged ? ((pages[band] ?? 0) % Math.ceil(values.length / pageSize)) * pageSize : 0;
     const visible = ordered.slice(start, start + (paged ? pageSize : limit));
     const nodes: FlowNode[] = visible.map((row) => ({ id: row.id, label: counterpartyName(row), row, band, more: 0,
-      weight: value(row) > 0 ? value(row) / max : null, weightScope: revenueGroup?.[0]?.pctScope ?? null, weightBasis: scaleKey ? "revenue" : max > 0 ? "usd" : null }));
+      weight: value(row) > 0 ? value(row) / max : null, weightScope: revenueGroup?.rows[0]?.pctScope ?? null, weightBasis: scaleKey ? "revenue" : max > 0 ? "usd" : null }));
     if (paged) nodes.push({ id: `more:${band}`, label: `+${values.length - visible.length} more`, row: null, band, more: values.length - visible.length, weight: null, weightScope: null, weightBasis: null });
     return [band, nodes];
   })) as Record<FlowBand, FlowNode[]>;
