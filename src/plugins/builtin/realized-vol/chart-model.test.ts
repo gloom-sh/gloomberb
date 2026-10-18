@@ -6,7 +6,7 @@ describe("realized-vol chart inputs", () => {
     const dates = [1, 2, 3].map((day) => new Date(Date.UTC(2026, 8, day)));
     const ivDate = new Date("2026-09-04T14:30:00Z");
     const result = realizedChartSeries({ history: [], rolling: dates.map((date, i) => ({ date, values: { 30: i === 1 ? null : 0.2 } })),
-      windows: [30], currency: "USD", iv: { value: 0.3, date: ivDate, label: "ATM 30d" } }, ["#123456"]);
+      windows: [30], priceUnit: "USD", iv: { value: 0.3, date: ivDate, label: "ATM 30d" } }, ["#123456"]);
     expect(result[0]!.points.map((point) => point.value)).toEqual([20, null, 20]);
     expect(result[1]!.points).toEqual([{ date: ivDate, observedAt: ivDate, value: 30 }]);
     expect(result[1]!.style).toBe("points");

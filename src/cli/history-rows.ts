@@ -1,3 +1,4 @@
+import { INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import type { PricePoint } from "../types/financials";
 import { marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
@@ -372,7 +373,7 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
     const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
-  if (quote?.instrumentType?.trim().toUpperCase() === "INDEX") return { kind: "points", currency: null, unit: "index points" };
+  if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: "index points" };
   const code = quote?.currency?.trim();
   return code
     ? { kind: "currency", currency: code, unit: currencyUnitLabel(code, { ofMajor: true }) }
@@ -400,7 +401,7 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const interval = rows[0]?.interval;
   const unbroken = historyUnbrokenFrom(rows);
   return [
-    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? "Index points" : `Currency ${unit.unit ?? "unknown"}`,
+    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? INDEX_POINTS_LABEL : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",
     `${rows.length} ${rows.length === 1 ? "bar" : "bars"}`,

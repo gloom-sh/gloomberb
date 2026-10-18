@@ -453,7 +453,7 @@ describe("realized volatility screenshot evidence", () => {
     currentIv: { value: 22, date: "2026-09-22T14:30:00.000Z", label: "ATM IV 24d", source: "test", expiration: 1_800_000_000 } };
   const dates = [new Date("2026-09-21"), new Date("2026-09-22")];
   const series = realizedChartSeries({ history: dates.map((date) => ({ date, close: 100 })),
-    rolling: dates.map((date, index) => ({ date, values: { 10: index ? 0.2 : null } })), windows: [10], currency: "USD",
+    rolling: dates.map((date, index) => ({ date, values: { 10: index ? 0.2 : null } })), windows: [10], priceUnit: "USD",
     iv: { value: 0.22, date: new Date(status.currentIv.date), label: status.currentIv.label } }, ["green"], "white");
   const evidence = realizedVolSemanticEvidence(series, status);
   const request = { ...resolved("realized-vol-graph-pane", { tab: "graph", windows: "10", showIv: true }),

@@ -21,6 +21,7 @@ import { projectRealizedVolatility } from "./model";
 import { RealizedVolGraph, VolatilityConeChart } from "./charts";
 import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
+import { priceSeriesUnit } from "../../../market-data/market/index-level";
 
 /** In session, while visible, the current ATM IV reference re-reads its expiry this often. */
 const ATM_IV_REFRESH_MS = 60_000;
@@ -109,8 +110,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
   }) : null, [history.data, estimator, windows, lookback]);
   const chartInput = useMemo(() => model ? { history: model.history, rolling: model.series, windows: model.windows,
-    currency: quote?.currency ?? "", iv: showIv ? iv.data?.reference ?? null : null } : null,
-  [model, quote?.currency, showIv, iv.data]);
+    priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType), iv: showIv ? iv.data?.reference ?? null : null } : null,
+  [model, quote?.currency, quote?.instrumentType, showIv, iv.data]);
   const notices = [identityError, history.error, history.data?.error, iv.error, iv.data?.error,
     ...(model?.warnings ?? []), ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),

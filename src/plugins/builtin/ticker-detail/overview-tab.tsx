@@ -12,6 +12,7 @@ import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
+import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
   exchangeShortName,
   extendedSessionLineLabel,
@@ -157,7 +158,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     id: `${ticker.metadata.ticker}:price`,
     label: `${ticker.metadata.ticker} Price`,
     color: priceColor(chartDelta),
-    unit: unknownHistoryBasis ? "unknown" : quoteCurrency,
+    // An index's axis reads in points: ^VIX at 20, never $20.
+    unit: unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType),
     style: "area",
     axis: "right",
     panelId: "price",

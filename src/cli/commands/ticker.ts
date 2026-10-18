@@ -38,7 +38,8 @@ import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancial
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
-import { instrumentTypeLabel, isCryptoVenuePerpetual, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
+import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
+import { INDEX_POINTS_LABEL, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
@@ -760,10 +761,12 @@ export async function buildTickerReport({
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);
   if (!quote) lines.push(cliStyles.muted(quoteNote ?? QUOTE_UNAVAILABLE));
 
+  const quoteCurrency = quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency;
+  // An index's level is in points, as `history` heads its bars, not in the currency its members trade in.
+  const indexLevel = isIndexLevel(quote?.instrumentType?.trim() || financials.quoteMetadata?.instrumentType?.trim() || tickerFile?.metadata.assetCategory);
   const summaryParts = [
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
-    (quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency)
-      ? `Currency ${quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency}` : undefined,
+    indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${quoteCurrency}` : undefined,
     quoteMarketStateLabel(quote) ?? undefined,
     quote?.dataSource ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
   ].filter((part): part is string => !!part);
@@ -827,6 +830,7 @@ export async function buildTickerReport({
         extended.change,
       )
       : "—";
+    const volume = reportedQuoteVolume(quote);
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       ["Last", colorBySign(formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions), session.change)],
@@ -842,9 +846,8 @@ export async function buildTickerReport({
         ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
         : "—"],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
-      // A perpetual's price comes with no volume; its 0 means not reported, not no trades.
-      ["Volume", quote.volume != null && !(quote.volume === 0 && isCryptoVenuePerpetual(quote.instrumentType, quote.name))
-        ? formatNumber(quote.volume, 0) : "—"],
+      // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
+      ["Volume", volume != null ? formatNumber(volume, 0) : "—"],
       ["Updated", formatTimestamp(quoteHeadlineTime(quote))],
     ]);
 

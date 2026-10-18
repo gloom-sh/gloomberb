@@ -88,6 +88,7 @@ import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSes
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { contractPriceUnit } from "./price-units";
+import { INDEX_POINTS_UNIT, isIndexLevel } from "../market-data/market/index-level";
 import { isDatasetChart, isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -1200,7 +1201,10 @@ function baseSecuritySeries(
   // future's continuous symbol or contract in points, not dollars, as its quote does.
   const genericBasis = field.unitGroup === "price" && isMarketFieldId(field.id)
     ? futuresListingPriceBasis(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
-  const genericUnit = genericBasis === "points" ? "points" : genericBasis === "thirty-seconds" ? "32nds" : null;
+  // An index's level is points too, never the currency its members trade in.
+  const indexLevel = field.unitGroup === "price" && isMarketFieldId(field.id)
+    && isIndexLevel(financials.quote?.instrumentType || quoteMetadata?.instrumentType);
+  const genericUnit = genericBasis === "points" || indexLevel ? INDEX_POINTS_UNIT : genericBasis === "thirty-seconds" ? "32nds" : null;
   // A future's price in a currency counts what its contract terms say: heating
   // oil is USD / gallon and crude USD / barrel, which a bare USD does not tell apart.
   const statedUnit = !genericUnit && unitTemplate === "currency" ? contractPriceUnit(contractUnit, currency) : null;

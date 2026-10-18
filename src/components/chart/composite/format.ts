@@ -1,4 +1,5 @@
 import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDigits, type MarketFormatOptions } from "../../../market-data/market/format";
+import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
@@ -39,12 +40,14 @@ function currencyPrefix(unit: string): string {
   return currency ? CURRENCY_SYMBOLS[currency] ?? "" : "";
 }
 
+/** A price in full, as the crosshair tag and a live label read it: $343.46 in a currency, 7,805.45 in index points. */
 function formatFullCurrencyValue(
   value: number,
   unit: string,
   assetCategory?: string,
   options: MarketFormatOptions = {},
 ): string | null {
+  if (unit.trim() === INDEX_POINTS_UNIT) return formatMarketPrice(value, { ...options, assetCategory, priceBasis: "points" });
   const currency = unitCurrencyCode(unit);
   return currency ? formatMarketPriceWithCurrency(value, currency, { ...options, assetCategory }) : null;
 }

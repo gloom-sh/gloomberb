@@ -9,7 +9,8 @@ export interface RealizedChartInput {
   history: readonly PricePoint[];
   rolling: readonly RollingRealizedVolatilityPoint[];
   windows: readonly number[];
-  currency: string;
+  /** What the price panel reads in: the quote's currency, or points for an index (`priceSeriesUnit`). */
+  priceUnit: string;
   iv: IvChartReference | null;
 }
 
@@ -27,7 +28,7 @@ export function realizedChartSeries(input: RealizedChartInput, colors: readonly 
     unit: "%", unitGroup: "volatility", panelId: "vol", observationKind: "market" });
   }
   series.push(pricePointsToResolvedSeries(input.history, {
-    id: "price", label: "Price", unit: input.currency, color: priceColor, panelId: "price", style: "line",
+    id: "price", label: "Price", unit: input.priceUnit, color: priceColor, panelId: "price", style: "line",
     timeBasis: { kind: "market", timeZone: "UTC", cadenceMs: 86_400_000 },
   }));
   return series;

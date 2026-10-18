@@ -12,6 +12,7 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -396,7 +397,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const extended = getExtendedSessionDisplay(quote);
     const yieldIndex = isYieldIndexSymbol(result.target.symbol);
     // An index level is in points, not in the currency its members trade in.
-    const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
+    const indexPoints = isIndexLevel(quote?.instrumentType);
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
     // Points have no minor unit, so a yen-listed index still pads to two.
     const options = {
@@ -434,8 +435,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       dayRange: quote?.low != null && quote.high != null
         ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
         : "",
-      volume: quote?.volume ?? null,
-      currency: quote?.currency ?? "",
+      // An index's 0 is volume nobody counts, and its level has no currency.
+      volume: reportedQuoteVolume(quote),
+      currency: indexPoints ? "" : quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),

@@ -34,6 +34,7 @@ import {
 import { formatOptionTicker } from "../../../utils/options";
 import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../../../utils/forward-dividend";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { isIndexLevel, reportedQuoteVolume } from "../../../market-data/market/index-level";
 import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
 import { currentListingName } from "../../../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
@@ -162,6 +163,17 @@ function positionSideLabel(ticker: TickerRecord, activeTab: string | undefined):
   if (shortCount === 0) return "LONG";
   if (shortCount === positions.length) return "SHORT";
   return "MIX";
+}
+
+/** The currency a row is listed in: its position's, else its quote's; an index's level is in points and has none. */
+function listedCurrency(
+  positionCurrency: string | undefined,
+  quoteCurrency: string,
+  ticker: TickerRecord,
+  quote: TickerFinancials["quote"],
+): string {
+  if (!positionCurrency && isIndexLevel(quote?.instrumentType || ticker.metadata.assetCategory)) return "";
+  return (positionCurrency || quoteCurrency || ticker.metadata.currency || "").toUpperCase();
 }
 
 function compactText(value: string | null | undefined): string {
@@ -396,7 +408,7 @@ export function getColumnValue(
         ),
       };
     case "currency":
-      return { text: compactText((positionCurrency || quoteCurrency || ticker.metadata.currency || "").toUpperCase()) };
+      return { text: compactText(listedCurrency(positionCurrency, quoteCurrency, ticker, quote)) };
     case "sector":
       return { text: compactText(ticker.metadata.sector || financials?.profile?.sector) };
     case "industry":
@@ -437,11 +449,14 @@ export function getColumnValue(
         ? { text: formatPercentRaw(changePercent), color: marketChangeColor(changePercent, quote.marketState) }
         : { text: "—" };
     }
-    case "volume":
-      return { text: isFiniteNumber(quote?.volume) ? formatCompact(quote.volume, { fixedDecimals: true }) : "—" };
+    case "volume": {
+      const volume = reportedQuoteVolume(quote);
+      return { text: volume != null ? formatCompact(volume, { fixedDecimals: true }) : "—" };
+    }
     case "dollar_volume": {
-      if (!displayQuote || !isFiniteNumber(quote?.volume)) return { text: "—" };
-      return { text: formatCompact(toBaseQuote(displayQuote.price * quote.volume), { fixedDecimals: true }) };
+      const volume = reportedQuoteVolume(quote);
+      if (!displayQuote || volume == null) return { text: "—" };
+      return { text: formatCompact(toBaseQuote(displayQuote.price * volume), { fixedDecimals: true }) };
     }
     case "range_52w": {
       const position = fiftyTwoWeekPosition(displayQuote, quote);
@@ -637,7 +652,7 @@ export function getSortValue(
         ?? ticker.metadata.exchange
         ?? null;
     case "currency":
-      return (positionCurrency || quoteCurrency || ticker.metadata.currency || "").toUpperCase() || null;
+      return listedCurrency(positionCurrency, quoteCurrency, ticker, quote) || null;
     case "sector":
       return ticker.metadata.sector || financials?.profile?.sector || null;
     case "industry":
@@ -668,11 +683,11 @@ export function getSortValue(
     case "change_pct":
       return headlineChangePercent(headlineQuote, quote) ?? null;
     case "volume":
-      return quote?.volume ?? null;
-    case "dollar_volume":
-      return displayQuote && isFiniteNumber(quote?.volume)
-        ? toBaseQuote(displayQuote.price * quote.volume)
-        : null;
+      return reportedQuoteVolume(quote);
+    case "dollar_volume": {
+      const volume = reportedQuoteVolume(quote);
+      return displayQuote && volume != null ? toBaseQuote(displayQuote.price * volume) : null;
+    }
     case "range_52w":
       return fiftyTwoWeekPosition(displayQuote, quote);
     case "market_cap": {

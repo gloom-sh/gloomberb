@@ -47,5 +47,5 @@ test("beside other symbols the yield rows keep their own units and the header st
   expect(lines.find((line) => line.startsWith("AAPL"))).toMatch(/ \$336\.64 +-1\.11% /);
   expect(result.data[1]).not.toHaveProperty("unit");
   const compared = await quote([yields[0]!], "compare");
-  expect(compared.text.split("\n").find((line) => line.startsWith("^TNX"))).toMatch(/ 5\.24% +\+1\.3bp .* 5\.23% /);
+  expect(compared.text.split("\n").find((line) => line.startsWith("^TNX"))).toMatch(/ 5\.24% +\+1\.3bp .* 5\.23%( |$)/);
 });

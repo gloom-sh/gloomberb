@@ -18,6 +18,7 @@ import {
   formatMarketQuantity,
   withCurrencyMinorDigits,
 } from "../../../../market-data/market/format";
+import { reportedQuoteVolume } from "../../../../market-data/market/index-level";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { ForwardDividendState } from "./dividend-lapse";
 import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
@@ -100,9 +101,11 @@ export function buildOverviewStats({
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
 
-  if (quote?.volume != null) {
+  // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
+  const volume = reportedQuoteVolume(quote);
+  if (volume != null) {
     // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
-    stats.push({ label: "Volume", value: formatCompact(quote.volume, { fixedDecimals: true }) });
+    stats.push({ label: "Volume", value: formatCompact(volume, { fixedDecimals: true }) });
   }
   // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
   const capitalization = liveMarketCapitalization(quote, fundamentals);

@@ -1,6 +1,7 @@
 import type { PriceBasis } from "../../types/instrument";
 import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "./price-basis";
+import { isIndexLevel } from "./index-level";
 import { currencyPriceDigits, formatCompact, formatCurrency } from "../../utils/format";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
@@ -428,7 +429,7 @@ export function formatMarketChangeWithCurrency(
   referencePrice?: number,
 ): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  if (isIndexLevel(options) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatSignedMarketPrice(value, options);
+  if (isIndexLevel(options.assetCategory) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatSignedMarketPrice(value, options);
   if (options.fixedFractionDigits !== undefined) {
     const maxWidth = options.maxWidth == null ? undefined : Math.max(1, options.maxWidth - 1);
     const body = formatMarketPriceWithCurrency(Math.abs(value), currency, { ...options, maxWidth });
@@ -611,18 +612,13 @@ export function liveQuoteFormatOptions(
   return withStablePriceDigits(quoteFormatOptions(quote, fallbackAssetCategory, metadataInstrumentType), currency, quote);
 }
 
-/** An index level is points, not money: ^GSPC at 7,805.45 has no currency to name, wherever it is shown. */
-function isIndexLevel(options: MarketFormatOptions): boolean {
-  return options.assetCategory?.trim().toUpperCase() === "INDEX";
-}
-
 export function formatMarketPriceWithCurrency(
   value: number | undefined,
   currency = "USD",
   options: MarketFormatOptions = {},
 ): string {
   if (value === undefined || value === null || Number.isNaN(value)) return "—";
-  if (isIndexLevel(options) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketPrice(value, options);
+  if (isIndexLevel(options.assetCategory) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketPrice(value, options);
   const normalizedCurrency = currency.trim().toUpperCase() || "USD";
   const sign = value < 0 ? "-" : "";
   const symbol = getCurrencySymbol(normalizedCurrency);
