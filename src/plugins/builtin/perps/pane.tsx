@@ -25,8 +25,8 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
 import { perpFreshness, perpObservation } from "./freshness";
-import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
-  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, PERP_TABS, percent,
+import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
+  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
@@ -104,8 +104,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
   </ScrollBox>;
 }
 
-function History({ market, accessKey, width, height, focused, range, metric, refreshMarket }: {
-  market: PerpBoardRow; accessKey: string; width: number; height: number; focused: boolean; range: string; metric: HistoryMetric; refreshMarket: () => void;
+function History({ market, venues, accessKey, width, height, focused, range, metric, refreshMarket }: {
+  market: PerpBoardRow; venues: number | null; accessKey: string; width: number; height: number; focused: boolean; range: string; metric: HistoryMetric; refreshMarket: () => void;
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadPerpsHistoryForRange(market.marketId, Number(range), accessKey, force), [market.marketId, range, accessKey]);
@@ -158,7 +158,7 @@ function History({ market, accessKey, width, height, focused, range, metric, ref
   const shownColumns = oneBasis ? columns.filter((column) => column.id !== "basis") : columns;
   if (data?.locked) return <Box flexDirection="column" flexGrow={1}>
     <StatGrid width={width} items={figures} />
-    <Box paddingX={1} paddingTop={1}><EmptyState title="Full history requires Gloom Pro." actions={<UpgradeLabel text="Upgrade for full history" onPress={upgrade} role="perps-history-upgrade" />} /></Box>
+    <Box paddingX={1} paddingTop={1}><EmptyState title="Full history requires Gloom Pro." message={`Gloom Pro adds ${perpHistoryProText(market, venues)}.`} actions={<UpgradeLabel text="Upgrade for full history" onPress={upgrade} role="perps-history-upgrade" />} /></Box>
   </Box>;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual history">
     <DataTableView columns={shownColumns} items={rows} focused={focused} rootWidth={width} rootHeight={height} getItemKey={(row) => row.time} sortColumnId="time" sortDirection="asc"
@@ -434,7 +434,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
             { id: "range", label: "Range", value: range, options: ["1", "7", "30", "90", "365"].map((value) => ({ value, label: `${value}D` })), onChange: setRange },
           ] : []} />
         <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual market">
-          {active ? tab === "history" ? <History key={active.marketId} market={active} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
+          {active ? tab === "history" ? <History key={active.marketId} market={active} venues={collectedVenueCount(data?.sources)} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
             : <MarketEvidence row={active} data={data!} width={width} height={listHeight - 1} />
             : <EmptyState title="No market matches." message={data?.suggestions?.length ? `Try ${data.suggestions.join(", ")}.` : undefined} />}
         </PaneStatusBody>

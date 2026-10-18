@@ -56,10 +56,12 @@ test("no market opens the board in its preview; a named market still opens its h
   expect(board).toContain("Hyperliquid");
   expect(board).not.toContain("NaN");
   await remount();
-  serve({ board: perpBoard({ access: "preview", locked: 5 }) });
+  serve({ board: perpBoard({ access: "preview", locked: 5, sources: ["hyperliquid", "binance"].map((source) => ({ source })) }) });
   await mount({ market: "BTC" });
   const history = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
   expect(history).toContain("Funding / 8h");
+  // The lock says what Pro adds, with the venues Gloom Cloud collects.
+  expect(history).toContain("Gloom Pro adds Hyperliquid BTC history and every market on 2 venues.");
   expect(history).toContain("Upgrade for full history");
 });
 
