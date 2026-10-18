@@ -48,8 +48,19 @@ export const EXCHANGE_OPTION = {
   description: "Listing exchange, for a symbol that trades in several places (same as SYMBOL:CODE)",
 };
 
+/** One listing a symbol's question names: BDI:TSX and its company. */
+export interface ListingChoice {
+  key: string;
+  name: string | null;
+}
+
 export class ListingArgError extends Error {
-  constructor(message: string, readonly details?: string) {
+  constructor(
+    message: string,
+    readonly details?: string,
+    /** The listings it asks to choose between, when it asks which. */
+    readonly choices?: readonly ListingChoice[],
+  ) {
     super(message);
     this.name = "ListingArgError";
   }
@@ -465,6 +476,8 @@ interface OtherListingsMessage {
   heading: string;
   /** SAN:EPA, for each other listing. */
   listings: string[];
+  /** Each other listing and its company. */
+  choices: ListingChoice[];
   /** Several companies list the symbol, so it went to none of them and the message asks which. */
   choose: boolean;
 }
@@ -515,6 +528,7 @@ function describeOtherListings(
     details: lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n"),
     heading,
     listings: [...others.map((venue) => `${listing.symbol}:${venue.exchange}`), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
+    choices: others.slice(0, MAX_OTHER_LISTINGS).map((venue) => ({ key: `${listing.symbol}:${venue.exchange}`, name: venue.name || null })),
     choose,
   };
 }
@@ -656,7 +670,7 @@ export async function readBareListing(
   if (!isNoProviderError(answer.error)) return null;
   const other = await quoteBareListing(listing, deps, request, { refresh });
   if (other?.kind === "quoted") return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null };
-  if (other?.choose) throw new ListingArgError(other.message, other.details);
+  if (other?.choose) throw new ListingArgError(other.message, other.details, other.choices);
   return null;
 }
 

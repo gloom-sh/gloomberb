@@ -297,7 +297,8 @@ function withSuccessorFirst<T extends TickerSearchCandidate>(items: T[], query: 
     && namesFormerIssuer(query, item.result?.formerIssuer));
   const former = successor?.result?.formerIssuer;
   if (!successor || !former) return items;
-  const linked = { ...former, successor: { symbol: successor.symbol, name: successor.result?.name ?? null } };
+  // The successor as the service names it beside a quote too, so both print the same line.
+  const linked = { ...former, successor: former.successor ?? { symbol: successor.symbol, name: successor.result?.name ?? null } };
   const leftovers = items.filter((item) => item !== successor && item.kind === "search" && !item.saved
     && !item.result?.formerIssuer && companyNameExtraWords(former.name, item.result?.name) === 0);
   const at = items.findIndex((item) => item.kind === "search" && !item.saved);

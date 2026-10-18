@@ -90,6 +90,17 @@ function useThemedSeriesList(list: ResolvedSeries[] | undefined, themeId: string
   }, [list, themeId]);
 }
 
+/** A line broken between its " · " parts to fit `width` cells, each part kept whole. */
+function centeredLines(text: string, width: number): string[] {
+  const lines: string[] = [];
+  for (const part of text.split(" · ")) {
+    const last = lines.at(-1);
+    if (last !== undefined && last.length + 3 + part.length <= width) lines[lines.length - 1] = `${last} · ${part}`;
+    else lines.push(part);
+  }
+  return lines;
+}
+
 export function CompositeChart(props: CompositeChartProps) {
   const themeId = useThemeId();
   const series = useThemedSeriesList(props.series, themeId);
@@ -124,6 +135,7 @@ function ThemedCompositeChart({
   legendAccessoryWidth,
   showTimeAxis = true,
   emptyMessage = "No chart data",
+  emptyDetail,
   formatValue,
   onCursorDateChange,
   onViewportChange,
@@ -592,7 +604,17 @@ function ThemedCompositeChart({
               data-gloom-role="composite-chart-empty"
               data-gloom-label={emptyMessage}
             >
-              <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+              {emptyDetail ? (
+                // The kit's empty state: the message dim, what to do about it muted under it.
+                <Box flexDirection="column" alignItems="center">
+                  <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+                  {centeredLines(emptyDetail, plotWidth - 2).map((line, index) => (
+                    <Text key={index} fg={activeThemeColors.textMuted}>{line}</Text>
+                  ))}
+                </Box>
+              ) : (
+                <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+              )}
             </ChartSurface>
             {rightPadding > 0 ? <Box width={rightPadding} /> : null}
           </Box>

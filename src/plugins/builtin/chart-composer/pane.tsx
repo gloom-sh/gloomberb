@@ -1085,6 +1085,10 @@ function ChartComposerSurface({
       ? "Loading chart data"
       : statusErrorNotice ?? comparisonUnavailable
         ?? (unreported ? `${unreported.label} has no ${unreported.unreportedPeriod} figures. Set Period to Annual in Series.` : "No observations in this range");
+  // Under "Choose an exchange for BDI.", the listings it asks between.
+  const emptyDetail = !loading && spec.series.length > 0 && emptyMessage === statusErrorNotice && statusError
+    ? listings.choices.get(statusError)
+    : undefined;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -1166,6 +1170,7 @@ function ChartComposerSurface({
           timePick={timePick}
           levels={chartLevels}
           emptyMessage={emptyMessage}
+          emptyDetail={emptyDetail}
           legendAccessory={(
             <ChartSeriesQuickAdd
               spec={spec}

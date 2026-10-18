@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ListingArgError, readBareListing } from "../../../cli/listing-arg";
+import { ListingArgError, readBareListing, type ListingChoice } from "../../../cli/listing-arg";
+import { shortCompanyName } from "../../../tickers/company-name";
 import type { ListingDeps } from "../../../tickers/listing-venues";
 import { hydrateChartSpecInstruments } from "../../../time-series/hooks";
 import type { ChartSpec } from "../../../time-series/types";
@@ -14,7 +15,7 @@ type SeriesListing =
   /** Its company, and for a bare symbol the venue `quote` reads it on (empty when its own quote answered). */
   | { status: "read"; exchange: string; name: string | null }
   /** A bare code several companies list (BDI): `quote`'s question, and the listings it names. */
-  | { status: "choose"; message: string; listings: string | null };
+  | { status: "choose"; message: string; listings: string | null; choices: string | null };
 
 interface SeriesListings {
   /** The spec to load: bare series on the venue they were read on; one still being read, or to choose, left out with what draws on it. */
@@ -25,6 +26,8 @@ interface SeriesListings {
   errors: string[];
   /** The listings each question names: "Listings: BDI:TSX Black Diamond Group, BDI:BSE B.D. Industries". */
   notices: string[];
+  /** Under each question, the listings it asks between, short: "BDI:TSX Black Diamond Group · BDI:BSE B. D. Industries (Pune)". */
+  choices: ReadonlyMap<string, string>;
   /** The company of each security series, by series id. */
   names: ReadonlyMap<string, string>;
 }
@@ -35,6 +38,12 @@ function listingsLine(details: string | undefined): string | null {
   const [heading = "", ...lines] = details.split("\n");
   if (lines.length === 0) return details.trim() || null;
   return `${heading.replace(/:$/, "")}: ${lines.map((line) => line.trim()).filter(Boolean).join(", ")}`;
+}
+
+/** "BDI:TSX Black Diamond Group · BDI:NEO Black Diamond Group": the listings to choose from, on one short line. */
+function choicesLine(choices: readonly ListingChoice[] | undefined): string | null {
+  if (!choices?.length) return null;
+  return choices.map(({ key, name }) => (name?.trim() ? `${key} ${shortCompanyName(name)}` : key)).join(" · ");
 }
 
 function targetKey(symbol: string, exchange: string): string {
@@ -103,7 +112,12 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
         .then((listing) => settle(key, { status: "read", exchange: listing?.exchange ?? "", name: listing?.name ?? null }))
         .catch((error: unknown) => {
           if (error instanceof ListingArgError) {
-            settle(key, { status: "choose", message: error.message, listings: listingsLine(error.details) });
+            settle(key, {
+              status: "choose",
+              message: error.message,
+              listings: listingsLine(error.details),
+              choices: choicesLine(error.choices),
+            });
             return;
           }
           logFailure("chart-composer.series-listings", "Read a bare series listing failed")(error);
@@ -118,6 +132,7 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
     const names = new Map<string, string>();
     const errors = new Set<string>();
     const notices = new Set<string>();
+    const choices = new Map<string, string>();
     let pending = false;
     let changed = false;
     const series = hydrated.series.flatMap((entry) => {
@@ -134,6 +149,7 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       if (listing.status === "choose") {
         errors.add(listing.message);
         if (listing.listings) notices.add(listing.listings);
+        if (listing.choices) choices.set(listing.message, listing.choices);
         dropped.add(entry.id);
         changed = true;
         return [];
@@ -155,6 +171,7 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       pending,
       errors: [...errors],
       notices: [...notices],
+      choices,
       names,
     };
   }, [hydrated, read]);

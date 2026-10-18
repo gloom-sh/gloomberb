@@ -298,7 +298,7 @@ test("a symbol whose company merged into another names it in one line and its JS
   // Search sends the company it merged into for the old name, naming it; the line is quote's. It is the
   // primary listing though the old company's leftover line matches the name better, and that line,
   // linked by its name, says what it became; a namesake search cannot link stays below.
-  const former = { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20" };
+  const former = { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20", successor: { symbol: "CMBT", name: "Cmb.Tech NV" } };
   const dataProvider = createTestDataProvider({
     search: async () => [
       { providerId: "test", symbol: "GOGLC", name: "GOLDEN OCEAN GROUP", exchange: "BYMA", type: "Common Stock", currency: "ARS" },
@@ -315,7 +315,7 @@ test("a symbol whose company merged into another names it in one line and its JS
   expect(printed[0]!.warnings).toEqual(["GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT"]);
   expect((printed[0]!.data as Array<Record<string, unknown>>).map(({ category, symbol, formerIssuer }) => ({ category, symbol, formerIssuer }))).toEqual([
     { category: "Primary Listing", symbol: "CMBT", formerIssuer: former },
-    { category: "Other Listings", symbol: "GOGLC", formerIssuer: { ...former, successor: { symbol: "CMBT", name: "Cmb.Tech NV" } } },
+    { category: "Other Listings", symbol: "GOGLC", formerIssuer: former },
     { category: "Other Listings", symbol: "GOMH", formerIssuer: undefined },
   ]);
 });

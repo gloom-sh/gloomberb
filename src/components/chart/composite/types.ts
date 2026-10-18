@@ -301,6 +301,8 @@ export interface CompositeChartProps {
   legendAccessoryWidth?: number;
   showTimeAxis?: boolean;
   emptyMessage?: string;
+  /** A second, quieter line under `emptyMessage`: what to do about it. */
+  emptyDetail?: string;
   formatValue?: (value: number, series: ResolvedSeries) => string;
   onCursorDateChange?: (date: Date | null) => void;
   /** Reports a user-created viewport, or null when the user resets to the authored viewport. */

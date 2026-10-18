@@ -88,6 +88,8 @@ test("the chart pane asks which listing of a bare code several companies list, a
   await renderChart("2222", charted);
   const frame = await frameWith("Choose an exchange for 2222.");
   expect(frame).not.toContain("Loading chart data");
+  // The listings it asks between, under the question.
+  expect(frame).toContain("2222:JPX Kotobuki Spirits · 2222:TADAWUL Saudi Arabian Oil");
   expect(charted).toEqual([]);
 });
 
