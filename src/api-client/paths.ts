@@ -246,6 +246,8 @@ export type CloudSecFilingsParams = {
   name?: string;
   limit?: number;
   offset?: number;
+  /** Only these forms, each with its amendment (`8-K` is also `8-K/A`). A server that predates the filter sends every form. */
+  forms?: readonly string[];
 };
 
 export type CloudSecFilingParams = {
@@ -433,8 +435,14 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.forms?.length) search.set("form", params.forms.join(","));
   setListingAbroad(search, abroad);
   return appendQuery("/cloud/sec/filings", search);
+}
+
+/** A US-listed company's bank figures: SEC deposits and its lead bank's FDIC call report. */
+export function cloudBankFiguresPath(symbol: string): string {
+  return appendQuery("/cloud/bank-figures", new URLSearchParams({ symbol }));
 }
 
 /** Schedule 13D and 13G reports about the issuer behind `ticker`. */

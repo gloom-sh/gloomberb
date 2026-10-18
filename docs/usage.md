@@ -913,6 +913,21 @@ Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or, onc
 
 Use `gloomberb fn DDIS MSFT --json` for the source amounts, complete filing history, ranks and provenance. `gloomberb shot DDIS MSFT --tab history` captures the historical view; `--tab filing` selects the filing details. Missing facts remain unavailable, and unsupported issuers do not appear to have zero debt.
 
+## Statement filings and bank figures
+
+`ticker` names the filing behind each latest period: `Latest Quarter (2026-06-30, 10-Q filed 2026-08-06)` and `Latest Annual (2025-12-31, 10-K filed 2026-02-13)`. `fundamentals` says the same in a line under its figures (`Latest quarter 2026-06-30, 10-Q filed 2026-08-06.`). A period SEC dated is matched to its filing by accession; any other is the original 10-Q or 10-K whose period of report is the period's date. A filing that cannot be read leaves the date alone, or `filed` without the form when only the date is known. Both commands' `--json` carry `statementFilings` with `latestQuarter`, `latestAnnual` (`date`, `form`, `filed`, `accessionNumber`) and `resultsRelease`.
+
+A company releases a quarter's results in an 8-K (Item 2.02) weeks before the 10-Q or 10-K with its statements. When such an 8-K was filed after the next quarter ended, both commands add one line: `Q3 (Sep 2026) results released 2026-10-13 (8-K); statements arrive with the 10-Q.` The quarter is counted on the company's own fiscal year, from its latest annual period, so a September quarter is Apple's Q4 and arrives with the 10-K. When the 10-Q or 10-K was filed after the release but the statements do not have it yet, the line says when it was filed instead. An amended 8-K, an 8-K without Item 2.02, and a release of the latest period's own results add nothing.
+
+For a US bank holding company, `fundamentals` adds a Bank section:
+
+- **Lead Bank**: the largest insured bank the company holds, by total assets, with its FDIC certificate number. A company that is itself a bank (Zions Bancorporation, N.A.) says so.
+- **Deposits**: total deposits from the company's own 10-Q or 10-K, with the balance-sheet date and the form and filed date, and the change from the quarter before. A company that tags only interest-bearing and noninterest-bearing deposits shows their sum and says so.
+- **Uninsured Deposits**: the lead bank's estimated uninsured deposits over its insured plus uninsured deposits, from its latest FDIC call report. Banks under $1 billion in assets do not report the estimate.
+- **CRE / Capital**: the lead bank's commercial real estate loans (construction and land development, multifamily, and nonfarm nonresidential not occupied by the owner) over its total risk-based capital, from the same call report.
+
+Each line names its quarter and the date its filing was filed or the FDIC data was built. The FDIC figures are the lead bank's, not the holding company's consolidated ones. A part that cannot be read becomes one line saying so, never an error, and the rest of the report is unchanged. A company outside banking has no Bank section. Net interest margin is a Pro figure in EQS: the section's last line gives the `gloomberb fn EQS --metric kpiNimPercent` command for the ticker. `--json` carries the figures as `bank`, with each one's SEC filing or FDIC source URL, retrieval time and hash; `--csv` adds a `Bank` table. `catalog NIM`, `catalog deposits`, `catalog CRE` and `catalog bank`, and `fn NIM <ticker>`, point here.
+
 ## Theses
 
 A thesis is why you hold something, written so it can be checked: the instruments it holds, the pillars that must stay true, the kill conditions that would make you sell, and dated catalysts. Every ticker has a Thesis tab next to Notes, and a portfolio or watchlist row's context menu has a Thesis entry; `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions that have no thesis yet, biggest first. `THESIS NVDA AMD` starts one on a basket or a pair; the ticker prompt takes several symbols separated by spaces or commas. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.

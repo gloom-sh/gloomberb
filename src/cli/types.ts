@@ -4,6 +4,7 @@ import { TickerRepository } from "../data/ticker-repository";
 import { AssetDataRouter } from "../sources/provider-router";
 import type { AppServices } from "../core/app-services";
 import type { CapabilityInvoker } from "../capabilities/types";
+import type { StatementReportSources } from "./statement-filings";
 
 export type ConfigContext = {
   config: AppConfig;
@@ -18,6 +19,8 @@ export type MarketContext = ConfigContext & {
   seriesCapabilities?: CapabilityInvoker;
   /** `--refresh`: prefetched data bypasses the local cache. */
   refresh?: boolean;
+  /** Filings behind the statements and a bank's figures, read from Gloom Cloud; absent where the data service is a stand-in. */
+  statementSources?: StatementReportSources;
 };
 
 export type CliServicesContext = {

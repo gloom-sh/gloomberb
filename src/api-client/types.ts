@@ -1279,6 +1279,8 @@ interface CloudSecFilingPayload {
   primaryDocument?: string;
   primaryDocDescription?: string;
   items?: string;
+  /** SEC's period of report, YYYY-MM-DD: a 10-Q's or 10-K's balance-sheet date. Absent from older servers. */
+  reportDate?: string;
   cik: string;
   companyName?: string;
   filingUrl: string;

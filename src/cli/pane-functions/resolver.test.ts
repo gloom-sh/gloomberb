@@ -110,6 +110,26 @@ test("a code one slip from a function's (swapped, missing or extra letter) names
   expect((await unknown(["WE", "PLTR"]))?.message).toBe('Unknown function or pane "WE".');
 });
 
+test("a bank figure typed as a function (NIM, one slip from NI) is pointed at the Bank section and EQS, not at NI", async () => {
+  const news: PaneTemplateDef = { ...template("NI", "topic-news", indices), label: "Topic News" };
+  const withNews: PaneFunctionCatalog = {
+    ...registry,
+    panes: new Map([...registry.panes, ["topic-news", pane("topic-news")]]),
+    paneTemplates: new Map([...registry.paneTemplates, ["topic-news-pane", news]]),
+  };
+  for (const name of ["NIM", "deposits", "CRE"]) {
+    const error = await resolvePaneFunction(withNews, context, parsePaneFunctionArgs([name, "jpm"])).then(() => null, (failure: unknown) => failure as UnknownPaneFunctionError);
+    expect(error?.message, name).toBe(`${name} is not a function: a bank's figures are in the Bank section of fundamentals.`);
+    expect(error?.details.split("\n"), name).toEqual([
+      "Deposits, uninsured share, CRE / capital and the lead bank: gloomberb fundamentals JPM",
+      "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent --definition "
+        + `'{"version":1,"currency":null,"criteria":[{"field":"symbol","op":"in","value":["JPM"]}],"sort":{"field":"symbol","direction":"asc"}}'`,
+    ]);
+  }
+  expect((await resolvePaneFunction(withNews, context, parsePaneFunctionArgs(["NIX", "JPM"])).catch((failure: Error) => failure))?.message)
+    .toBe('Unknown function or pane "NIX". Did you mean NI (Topic News)?');
+});
+
 test("shot hands CDX, SOVR (or its alias WCDS) and IPO their argument as the params their pane opens on, never as a ticker", async () => {
   const templates = [...creditBoardsModule.paneTemplates ?? [], ...ipoCalendarPlugin.paneTemplates ?? []];
   const boards: PaneFunctionCatalog = {

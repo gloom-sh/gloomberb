@@ -13,6 +13,7 @@ import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply
 import type { AwardDetailPayload, AwardFilter, AwardsPayload } from "./awards";
 import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
+import type { BankFiguresPayload } from "./bank-figures";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
@@ -76,6 +77,7 @@ import {
   type CloudJobsPostingsParams,
   type IssuerListingParams,
   cloudProxyStatementPath,
+  cloudBankFiguresPath,
   cloudDebtMaturitiesPath,
   cloudFilingEventsPath,
   cloudRiskReportPath,
@@ -768,6 +770,10 @@ export class CloudDataApi {
 
   async getCloudDebtMaturities(symbol: string, listing?: IssuerListingParams): Promise<DebtMaturitiesPayload> {
     return this.request<DebtMaturitiesPayload>(cloudDebtMaturitiesPath(symbol, listing), { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudBankFigures(symbol: string): Promise<BankFiguresPayload> {
+    return this.request<BankFiguresPayload>(cloudBankFiguresPath(symbol), { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudRevenueBreakdown(symbol: string, view?: RevenueBreakdownView, listing?: IssuerListingParams): Promise<RevenueBreakdownPayload> {

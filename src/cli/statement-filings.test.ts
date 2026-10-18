@@ -1,0 +1,136 @@
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../api-client";
+import { createDefaultConfig } from "../types/config";
+import type { TickerFinancials } from "../types/financials";
+import { createTestDataProvider } from "../test-support/data-provider";
+import { buildTickerReport, ticker } from "./commands/ticker";
+import {
+  cloudStatementReportSources,
+  detectResultsRelease,
+  resultsReleaseText,
+  statementFiling,
+  type PeriodicFiling,
+  type StatementReportSources,
+} from "./statement-filings";
+import type { MarketContext } from "./types";
+
+const filing = (form: string, filed: string, accessionNumber: string, extra: Partial<PeriodicFiling> = {}): PeriodicFiling =>
+  ({ form, filed, accessionNumber, items: [], ...extra });
+const release = (filed: string, accessionNumber: string, items = ["2.02", "9.01"]) => filing("8-K", filed, accessionNumber, { items });
+
+// JPM on 2026-10-18: Q2's 10-Q is the latest statement; Q3's results came out on 13 Oct.
+const JPM_FILINGS = [
+  release("2026-10-13", "0001628280-26-065582"),
+  filing("8-K", "2026-09-15", "0001628280-26-061000", { items: ["7.01", "9.01"] }),
+  filing("10-Q", "2026-08-06", "0001628280-26-054343", { reportDate: "2026-06-30" }),
+  release("2026-07-14", "0001628280-26-047000"),
+  filing("10-Q", "2026-05-01", "0001628280-26-029344", { reportDate: "2026-03-31" }),
+  filing("10-K", "2026-02-13", "0001628280-26-008131", { reportDate: "2025-12-31" }),
+];
+
+test("an Item 2.02 8-K filed after the next quarter ends is that quarter's release, before its 10-Q", () => {
+  const jpm = detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: JPM_FILINGS })!;
+  expect(jpm).toMatchObject({ fiscalQuarter: 3, periodMonth: "2026-09", filed: "2026-10-13", accessionNumber: "0001628280-26-065582", statementsForm: "10-Q", periodicReport: null });
+  expect(resultsReleaseText(jpm)).toBe("Q3 (Sep 2026) results released 2026-10-13 (8-K); statements arrive with the 10-Q.");
+
+  // The latest quarter's own release (20 Jul for June), an 8-K without 2.02, or one inside the quarter, is none.
+  const zion = [release("2026-07-20", "z-1"), filing("10-Q", "2026-08-06", "z-2"), release("2026-09-10", "z-3"), filing("8-K", "2026-10-01", "z-4", { items: ["5.02"] })];
+  expect(detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: zion })).toBeNull();
+  expect(detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: [filing("8-K/A", "2026-10-14", "a", { items: ["2.02"] })] })).toBeNull();
+});
+
+test("a 52-53 week year reads its quarters on its own grid: Apple's September quarter is Q4, with the 10-K", () => {
+  // Quarter ended Sat 27 Jun 2026, year ended Sat 27 Sep 2025; a year ending in the first days of a month belongs to the one before.
+  const apple = detectResultsRelease({ latestQuarter: "2026-06-27", latestAnnual: "2025-09-27", filings: [release("2026-10-29", "a-1"), release("2026-07-30", "a-0")] })!;
+  expect(apple).toMatchObject({ fiscalQuarter: 4, periodMonth: "2026-09", statementsForm: "10-K" });
+  expect(resultsReleaseText(apple)).toBe("Q4 (Sep 2026) results released 2026-10-29 (8-K); statements arrive with the 10-K.");
+  const retailer = detectResultsRelease({ latestQuarter: "2026-08-01", latestAnnual: "2026-01-31", filings: [release("2026-11-19", "r-1")] })!;
+  expect(retailer).toMatchObject({ fiscalQuarter: 3, periodMonth: "2026-10" });
+  // Two quarters behind: the newer quarter's release is the one named, its first filing.
+  const behind = detectResultsRelease({ latestQuarter: "2026-03-31", latestAnnual: "2025-12-31", filings: [release("2026-10-13", "q3"), release("2026-10-20", "q3-recast"), release("2026-07-14", "q2")] })!;
+  expect(behind).toMatchObject({ fiscalQuarter: 3, accessionNumber: "q3" });
+});
+
+test("a 10-Q filed after the release while the statements still lack it is named, not promised", () => {
+  const filed = detectResultsRelease({ latestQuarter: "2026-06-30", latestAnnual: "2025-12-31", filings: [filing("10-Q", "2026-11-04", "q"), ...JPM_FILINGS] })!;
+  expect(filed.periodicReport).toEqual({ form: "10-Q", filed: "2026-11-04", accessionNumber: "q" });
+  expect(resultsReleaseText(filed)).toBe("Q3 (Sep 2026) results released 2026-10-13 (8-K); the 10-Q followed on 2026-11-04 and its statements are not in yet.");
+});
+
+test("a statement's filing is its SEC accession, else the original 10-Q or 10-K for its period", () => {
+  const sec = { date: "2026-06-30", dateSource: "sec" as const, dateEvidence: { accessionNumber: "0001628280-26-054343", filed: "2026-08-06" } };
+  expect(statementFiling(sec, JPM_FILINGS, ["10-Q", "10-K"])).toEqual({ form: "10-Q", filed: "2026-08-06", accessionNumber: "0001628280-26-054343" });
+  // Off the list, the filed date still stands; only the form is unknown.
+  expect(statementFiling(sec, [], ["10-Q"])).toEqual({ form: null, filed: "2026-08-06", accessionNumber: "0001628280-26-054343" });
+  const provider = { date: "2026-06-30", dateSource: "provider" as const };
+  const amended = [filing("10-Q/A", "2026-09-01", "amend", { reportDate: "2026-06-30" }), filing("10-Q", "2026-08-06", "orig", { reportDate: "2026-06-30" })];
+  expect(statementFiling(provider, amended, ["10-Q", "10-K"])?.accessionNumber).toBe("orig");
+  // A fiscal fourth quarter's period comes from the 10-K.
+  expect(statementFiling({ date: "2025-12-31" }, JPM_FILINGS, ["10-Q", "10-K"])).toMatchObject({ form: "10-K", filed: "2026-02-13" });
+  expect(statementFiling({ date: "2025-09-30" }, JPM_FILINGS, ["10-Q", "10-K"])).toBeNull();
+});
+
+afterEach(() => {
+  (apiClient.getCloudSecFilings as unknown as { mockRestore?: () => void }).mockRestore?.();
+});
+
+test("a server that predates the form filter sends every form: only the periodic reports and 8-Ks are kept", async () => {
+  const spy = spyOn(apiClient, "getCloudSecFilings").mockResolvedValue({
+    filings: [
+      { accessionNumber: "p", form: "424B2", filingDate: "2026-10-14", cik: "1", filingUrl: "" },
+      { accessionNumber: "r", form: "8-K", filingDate: "2026-10-13", items: "2.02,9.01", cik: "1", filingUrl: "" },
+      { accessionNumber: "q", form: "10-Q", filingDate: "2026-08-06", reportDate: "2026-06-30", cik: "1", filingUrl: "" },
+    ],
+  } as never);
+  expect(await cloudStatementReportSources.statementFilings("JPM")).toEqual([
+    { form: "8-K", filed: "2026-10-13", accessionNumber: "r", items: ["2.02", "9.01"] },
+    { form: "10-Q", filed: "2026-08-06", accessionNumber: "q", items: [], reportDate: "2026-06-30" },
+  ]);
+  expect(spy.mock.calls[0]?.[0]).toMatchObject({ ticker: "JPM", forms: ["10-K", "10-Q", "8-K"] });
+});
+
+const config = createDefaultConfig("/tmp/gloom-statement-filings-unused");
+const JPM: TickerFinancials = {
+  quote: { symbol: "JPM", name: "JPMorgan Chase & Co.", price: 330, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-10-16T20:00:00Z") },
+  annualStatements: [{ date: "2025-12-31", currency: "USD", totalRevenue: 181_850_000_000, dateSource: "sec", dateEvidence: { accessionNumber: "0001628280-26-008131", filed: "2026-02-13" } }],
+  quarterlyStatements: [{ date: "2026-06-30", currency: "USD", totalRevenue: 52_850_000_000, dateSource: "sec", dateEvidence: { accessionNumber: "0001628280-26-054343", filed: "2026-08-06" } }],
+  priceHistory: [],
+};
+
+/** `ticker JPM --json` with these sources, and the text report on the filings it read. */
+async function tickerReport(financials: TickerFinancials, sources: StatementReportSources) {
+  let data: any;
+  await ticker("JPM", {
+    initMarketData: async () => ({
+      config, dataDir: "/tmp/gloom-statement-filings-unused", statementSources: sources,
+      store: { loadTicker: async () => null }, persistence: { close: () => {} },
+      dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
+    }) as unknown as MarketContext,
+    fail: (message) => { throw new Error(message); },
+    printResult: (result) => { data = result.data; },
+  });
+  const text = (await buildTickerReport({
+    symbol: "JPM", tickerFile: null, financials, config, toBase: async (value) => value, statementFilings: data.statementFilings,
+  })).replace(/\u001b\[[0-9;]*m/g, "");
+  return { text, data };
+}
+
+test("ticker names each latest period's form and filed date, and the quarter released since", async () => {
+  const sources: StatementReportSources = {
+    statementFilings: async () => JPM_FILINGS,
+    bankFigures: async () => { throw new Error("ticker reads no bank figures"); },
+  };
+  const { text, data } = await tickerReport(JPM, sources);
+  expect(text).toContain("Latest Annual (2025-12-31, 10-K filed 2026-02-13)");
+  expect(text).toContain("Latest Quarter (2026-06-30, 10-Q filed 2026-08-06)");
+  expect(text).toContain("Q3 (Sep 2026) results released 2026-10-13 (8-K); statements arrive with the 10-Q.");
+  expect(data.statementFilings).toMatchObject({
+    latestQuarter: { date: "2026-06-30", form: "10-Q", filed: "2026-08-06" },
+    resultsRelease: { fiscalQuarter: 3, filed: "2026-10-13", accessionNumber: "0001628280-26-065582" },
+  });
+
+  // A failed filings read keeps the filed date the statement carries, and says nothing of a release.
+  const failed = await tickerReport(JPM, { ...sources, statementFilings: async () => { throw new Error("offline"); } });
+  expect(failed.text).toContain("Latest Quarter (2026-06-30, filed 2026-08-06)");
+  expect(failed.text).not.toContain("results released");
+});

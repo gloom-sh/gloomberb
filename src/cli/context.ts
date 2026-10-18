@@ -16,6 +16,7 @@ import type { LoadedExternalPlugin } from "../plugins/loader";
 import { apiClient } from "../api-client";
 import { fail } from "./errors";
 import { resolvePersistedCloudSessionToken } from "./pane-functions/cloud-session";
+import { cloudStatementReportSources } from "./statement-filings";
 import type { ConfigContext, MarketContext } from "./types";
 
 export { withCliServices, withConfigData, withMarketData } from "./scoped-context";
@@ -130,7 +131,7 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   dataProvider.setConfigAccessor(() => context.config);
   dataProvider.setBackgroundRevalidation(false);
   const seriesCapabilities = standaloneSeriesInvoker(plugins, context.dataDir, context.config.disabledPlugins);
-  return { ...context, dataProvider, seriesCapabilities };
+  return { ...context, dataProvider, seriesCapabilities, statementSources: cloudStatementReportSources };
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {

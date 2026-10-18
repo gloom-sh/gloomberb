@@ -108,6 +108,36 @@ test("securities-lending data is said to be unavailable, with short interest as 
   expect(catalog).not.toContain("No functions match");
 });
 
+test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamentals and EQS; bank still lists CBR", async () => {
+  const topic = "Bank deposits, uninsured share and CRE / capital: in the Bank section of gloomberb fundamentals <ticker>; "
+    + "net interest margin: EQS (NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent)";
+  for (const query of ["NIM", "deposits", "CRE", "net interest margin", "JPM NIM", "commercial real estate", "uninsured deposits"]) {
+    expect(knownGapMessage(query), query).toBe(topic);
+    expect(topicPointer(query)?.codes, query).toEqual(["EQS"]);
+  }
+  // Credit is not CRE, nor is a margin a bank's margin.
+  for (const query of ["credit", "operating margin", "real estate", "central bank"]) expect(topicPointer(query), query).toBeNull();
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["CRE"]), lookupGlossary("CRE"), knownGapMessage("CRE"));
+  expect(catalog).toStartWith("Bank deposits, uninsured share and CRE / capital");
+  expect(catalog).not.toContain("No functions match");
+
+  const line = "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloomberb fundamentals <ticker>, Bank section. "
+    + "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent";
+  for (const query of ["bank", "banks", "bank figures", "bank holding company"]) expect(commandPointer(query), query).toBe(line);
+  for (const query of ["central bank", "bank rate", "world bank"]) expect(commandPointer(query), query).toBeNull();
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const report = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "bank"), parsePaneCatalogArgs(["bank"]), lookupGlossary("bank"), knownGapMessage("bank"), [], commandPointer("bank"))
+      .replace(/\x1b\[[0-9;]*m/g, "");
+    expect(report).toMatch(/^CBR\s+Central Bank Rates/m);
+    expect(report.trimEnd()).toEndWith(line);
+  } finally {
+    registry.destroy();
+  }
+});
+
 test("an income or reinvestment query names portfolio show --drip; a statement or margin query does not", () => {
   const line = "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip";
   for (const query of ["drip", "DRIP projection", "reinvest", "dividend reinvestment", "dividend income", "my portfolio income"]) {

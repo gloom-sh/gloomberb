@@ -52,6 +52,9 @@ import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailable
 import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadForwardYieldDistributions, renderFundamentalsReport,
 } from "./ticker";
+import { loadStatementFilings } from "../statement-filings";
+import { loadBankFigures } from "../bank-section";
+import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
 import {
@@ -1141,7 +1144,17 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
       const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
-      const report = { ...data, distributions: await distributions };
+      // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
+      const [statementFilings, bank] = view === "fundamentals"
+        ? await Promise.all([
+          loadStatementFilings(market.statementSources, listing.request, {
+            quarter: latestFinancialPeriod(financials.quarterlyStatements, (row) => row.date),
+            annual: latestFinancialPeriod(financials.annualStatements, (row) => row.date),
+          }),
+          loadBankFigures(market.statementSources, listing.request, financials),
+        ])
+        : [null, { bank: null, note: null }];
+      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1152,6 +1165,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
           fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, report.distributions),
+          ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},
         },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),

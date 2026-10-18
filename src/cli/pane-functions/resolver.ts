@@ -17,6 +17,7 @@ import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
+import { bankFigurePointer } from "../known-gaps";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -210,8 +211,8 @@ function takeTableSection(
 
 /** A name that opens no function: `details` list the closest ones and where to search for more. */
 export class UnknownPaneFunctionError extends Error {
-  constructor(name: string, readonly details: string, suggestion: string | null = null) {
-    super(`Unknown function or pane "${name}".${suggestion ? ` Did you mean ${suggestion}?` : ""}`);
+  constructor(name: string, readonly details: string, suggestion: string | null = null, message?: string) {
+    super(message ?? `Unknown function or pane "${name}".${suggestion ? ` Did you mean ${suggestion}?` : ""}`);
     this.name = "UnknownPaneFunctionError";
   }
 }
@@ -235,6 +236,9 @@ async function unknownPaneFunctionError(
   arg: string,
   command: "fn" | "shot",
 ): Promise<UnknownPaneFunctionError> {
+  // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
+  const bank = bankFigurePointer(name, arg);
+  if (bank) return new UnknownPaneFunctionError(name, bank.details, null, bank.message);
   const near = nearFunctionCodes(registry, name);
   // A catalog that cannot be read still leaves the pointer to it.
   const closest = (await suggestPaneFunctions(registry, context, name).catch(logFailure("cli.pane-functions-resolver", "Find pane function suggestions failed", [])))

@@ -76,6 +76,9 @@ import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { notTheCoinNote } from "./crypto-hints";
+import { loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
+import type { BankFiguresPayload } from "../../api-client/bank-figures";
+import { bankSection } from "../bank-section";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -545,7 +548,27 @@ function fundamentalsNotes(
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.
 const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
-type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string; distributions?: ForwardYieldDistributions | null };
+type FundamentalsReportData = TickerFinancials & {
+  symbol: string;
+  exchange?: string;
+  distributions?: ForwardYieldDistributions | null;
+  /** The filings behind the latest statements, and a newer quarter's results release. */
+  statementFilings?: StatementFilingsReport | null;
+  /** A bank holding company's deposits, uninsured share and CRE (`fundamentals` only). */
+  bank?: BankFiguresPayload | null;
+  /** In place of `bank`, for a bank whose figures could not be read. */
+  bankNote?: string | null;
+};
+
+/** "Latest quarter 2026-06-30, 10-Q filed 2026-08-06." and the newer quarter's results release, for the lines under a report's figures. */
+function statementFilingsNotes(report: StatementFilingsReport | null | undefined): string[] {
+  if (!report) return [];
+  const latest = report.latestQuarter ?? report.latestAnnual;
+  return [
+    ...latest ? [`Latest ${report.latestQuarter ? "quarter" : "annual period"} ${statementPeriodText(latest.date, latest)}.`] : [],
+    ...report.resultsRelease ? [resultsReleaseText(report.resultsRelease)] : [],
+  ];
+}
 
 /**
  * Where a fund's facts are: for a US listing, the ETF function (fee, NAV,
@@ -655,8 +678,23 @@ export function renderFundamentalsReport(
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
   for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
-  if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
+  if (view === "fundamentals") {
+    for (const note of statementFilingsNotes(financials.statementFilings)) lines.push(cliStyles.muted(note));
+    const bank = financials.bank ? bankSection(financials.bank, symbol, latestStatementDate(financials)) : null;
+    if (bank) {
+      appendMetricSection(lines, "Bank", bank.lines);
+      for (const note of bank.notes) lines.push(cliStyles.muted(note));
+    } else if (financials.bankNote) {
+      lines.push("", renderSection("Bank"), cliStyles.muted(financials.bankNote));
+    }
+    appendTextSection(lines, "Description", profile?.description);
+  }
   return lines.join("\n");
+}
+
+/** The newest statement period, YYYY-MM-DD. */
+function latestStatementDate(financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string | null {
+  return [...financials.quarterlyStatements, ...financials.annualStatements].map((row) => row.date).sort().at(-1) ?? null;
 }
 
 /**
@@ -675,6 +713,10 @@ export function fundamentalsReportTables(
     view === "valuation" ? "Valuation" : "Fundamentals",
     metrics.map((metric) => ({ label: metric.label, value: metric.value, formatted: metric.text, unit: metric.unit })),
   )];
+  const bank = view === "fundamentals" && financials.bank
+    ? bankSection(financials.bank, financials.quote?.symbol ?? financials.symbol, latestStatementDate(financials))
+    : null;
+  if (bank) tables.push(exportEntriesTable("Bank", bank.entries));
   if (view === "fundamentals") {
     const quote = financials.quote;
     const profile = financials.profile;
@@ -696,6 +738,9 @@ export function fundamentalsReportTables(
           ? [`No ${view} reported for ${financials.symbol}.`]
           : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency),
         ...fund ? [fund] : [],
+        ...view === "fundamentals" ? statementFilingsNotes(financials.statementFilings) : [],
+        ...bank?.notes ?? [],
+        ...!bank && view === "fundamentals" && financials.bankNote ? [financials.bankNote] : [],
       ],
     }),
   };
@@ -728,8 +773,11 @@ export async function buildTickerReport({
   recentSecFilings = [],
   futuresContract = null,
   distributions = null,
+  statementFilings = null,
 }: {
   symbol: string;
+  /** The filings behind the latest statements, and a newer quarter's results release. */
+  statementFilings?: StatementFilingsReport | null;
   /** The distributions a forward yield is read with (loadForwardYieldDistributions). */
   distributions?: ForwardYieldDistributions | null;
   /** The exchange the command named, as a canonical code. */
@@ -880,13 +928,17 @@ export async function buildTickerReport({
   const statementCurrency = (row: FinancialStatement) => row.currency?.trim() || fallbackCurrency;
   const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date);
   if (latestAnnual) {
-    appendMetricSection(lines, `Latest Annual (${latestAnnual.date})`, buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual)));
+    appendMetricSection(lines, `Latest Annual (${statementPeriodText(latestAnnual.date, statementFilings?.latestAnnual ?? null)})`,
+      buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual)));
   }
 
   const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date);
   if (latestQuarter) {
-    appendMetricSection(lines, `Latest Quarter (${latestQuarter.date})`, buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter)));
+    appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
+      buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter)));
   }
+  // The statements stop a quarter short of the results the company has released.
+  if (statementFilings?.resultsRelease && (latestAnnual || latestQuarter)) lines.push(cliStyles.muted(resultsReleaseText(statementFilings.resultsRelease)));
 
   appendTextSection(lines, "Description", profile?.description);
 
@@ -934,9 +986,11 @@ function buildTickerStructuredData({
   recentSecFilings,
   futuresContract,
   distributions,
+  statementFilings,
 }: {
   symbol: string;
   listing: CliListing;
+  statementFilings: StatementFilingsReport | null;
   futuresContract: FuturesContractTermsPayload | null;
   distributions: ForwardYieldDistributions | null;
   tickerFile: TickerRecord | null;
@@ -995,6 +1049,8 @@ function buildTickerStructuredData({
     latestQuarter: latestFinancialPeriod(financials.quarterlyStatements, row => row.date) ?? null,
     annualStatementCount: financials.annualStatements.length,
     quarterlyStatementCount: financials.quarterlyStatements.length,
+    // The form and filed date of the latest periods' filings, and a newer quarter's results released before its statements.
+    statementFilings,
     notes,
     recentNews: recentNews.map((item) => ({
       title: item.title,
@@ -1029,7 +1085,7 @@ async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"],
 export async function ticker(symbol: string, dependencies: TickerCommandDependencies = {}) {
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   const failCommand = dependencies.fail ?? fail;
-  await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir }) => {
+  await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir, statementSources }) => {
     let listing: CliListing;
     try {
       listing = await resolveCliListing(symbol, dependencies.exchange, { store, dataProvider });
@@ -1098,6 +1154,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The forward yield's distributions, read beside the rest when its basis or its lapse needs them; they never fail the report.
     const distributions = loadForwardYieldDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals,
       { declared: !dependencies.printResult });
+    const statementFilings = loadStatementFilings(statementSources, { symbol: requestSymbol, exchange }, {
+      quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),
+      annual: latestFinancialPeriod(resolvedFinancials.annualStatements, (row) => row.date),
+    });
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
@@ -1146,6 +1206,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           recentSecFilings,
           futuresContract,
           distributions: await distributions,
+          statementFilings: await statementFilings,
         }),
       });
       return;
@@ -1165,6 +1226,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentSecFilings,
         futuresContract,
         distributions: await distributions,
+        statementFilings: await statementFilings,
     }));
     if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });

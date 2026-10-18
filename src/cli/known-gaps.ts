@@ -1,3 +1,4 @@
+import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 
 /**
@@ -57,6 +58,29 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly s
 ];
 
 /**
+ * A bank's deposits, uninsured share, CRE and net interest margin: no function is named for them (NIM is one slip
+ * from NI, CRE the start of every credit function), the Bank section of `fundamentals` shows the first three and
+ * EQS screens on NIM (Pro).
+ */
+const BANK_FIGURES_TOPIC = {
+  topic: "Bank deposits, uninsured share and CRE / capital",
+  availability: "in the Bank section of gloomberb fundamentals <ticker>",
+  phrases: ["nim", "nims", "net interest margin", "net interest margins", "deposits", "deposit growth", "deposit flows",
+    "deposit outflows", "deposit base", "uninsured", "cre", "commercial real estate"],
+  closestLabel: "net interest margin",
+  closest: [["EQS", "NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent"]],
+} as const;
+
+/** "bank", "bank figures": beside the functions a bank's name finds (CBR), where its figures are. */
+const BANK_FIGURES_POINTER = {
+  names: ["bank", "banks", "banking"],
+  words: ["figures", "figure", "data", "metrics", "holding", "company", "companies", "section", "kpi", "kpis", "ratios",
+    "fundamentals", "stats", "statistics", "balance", "sheet"],
+  line: "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloomberb fundamentals <ticker>, Bank section. "
+    + "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent",
+};
+
+/**
  * Topics a query asks the terminal about that no function covers, with the nearest functions that do part of it.
  * A query naming one (as a phrase, so "us defense budget 2027" does too) is answered with the pointer instead of
  * the loose matches its words would find: "budget" is OSA's hedge budget, not a defense one. One line per topic:
@@ -70,8 +94,11 @@ const TOPIC_POINTERS: ReadonlyArray<{
   phrases: readonly string[];
   /** Words that ask for the topic only as the whole query: "utilization" alone, but "capacity utilization" is another thing. */
   whole?: readonly string[];
+  /** What `closest` is called in the line, when the functions are not merely near it. */
+  closestLabel?: string;
   closest: ReadonlyArray<readonly [code: string, gives: string]>;
 }> = [
+  BANK_FIGURES_TOPIC,
   {
     topic: "defense budget",
     phrases: ["defense budget", "defence budget", "defense spending", "defence spending", "dod", "department of defense",
@@ -103,16 +130,20 @@ function containsWords(query: readonly string[], phrase: readonly string[]): boo
   return false;
 }
 
-/** The pointer for a query that asks about a topic no function covers, with the function codes it names. */
-export function topicPointer(query: string): { message: string; codes: string[] } | null {
+function findTopicPointer(query: string): (typeof TOPIC_POINTERS)[number] | null {
   const asked = words(query);
   const key = lookupKey(query);
-  const pointer = TOPIC_POINTERS.find(({ phrases, whole }) => phrases.some((phrase) => containsWords(asked, words(phrase)))
-    || whole?.some((word) => lookupKey(word) === key));
+  return TOPIC_POINTERS.find(({ phrases, whole }) => phrases.some((phrase) => containsWords(asked, words(phrase)))
+    || whole?.some((word) => lookupKey(word) === key)) ?? null;
+}
+
+/** The pointer for a query that asks about a topic no function covers, with the function codes it names. */
+export function topicPointer(query: string): { message: string; codes: string[] } | null {
+  const pointer = findTopicPointer(query);
   if (!pointer) return null;
   const closest = pointer.closest.map(([code, gives]) => `${code} (${gives})`).join(", ");
   return {
-    message: `${pointer.topic}: ${pointer.availability ?? "not in the terminal yet"}; closest: ${closest}`,
+    message: `${pointer.topic}: ${pointer.availability ?? "not in the terminal yet"}; ${pointer.closestLabel ?? "closest"}: ${closest}`,
     codes: pointer.closest.map(([code]) => code),
   };
 }
@@ -125,6 +156,7 @@ export function topicPointer(query: string): { message: string; codes: string[] 
  * "usdc peg", but not "peg ratio".
  */
 const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string }> = [
+  BANK_FIGURES_POINTER,
   {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
     words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
@@ -145,10 +177,31 @@ const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonl
 
 /** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */
 export function commandPointer(query: string): string | null {
+  return findCommandPointer(query)?.line ?? null;
+}
+
+function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {
   const asked = words(query);
   if (asked.length === 0) return null;
   return COMMAND_POINTERS.find(({ names, words: other }) => asked.some((word) => names.includes(word))
-    && asked.every((word) => names.includes(word) || other.includes(word)))?.line ?? null;
+    && asked.every((word) => names.includes(word) || other.includes(word))) ?? null;
+}
+
+/**
+ * The answer to `fn NIM JPM`, `fn DEPOSITS WFC`, `fn CRE ZION`: no function is named for a bank figure, the Bank
+ * section of `fundamentals` has them, and NIM is in EQS. Null for a name that asks for anything else (`BANK` is
+ * CBR's alias, so it never gets here).
+ */
+export function bankFigurePointer(name: string, arg: string): { message: string; details: string } | null {
+  if (findTopicPointer(name) !== BANK_FIGURES_TOPIC && findCommandPointer(name) !== BANK_FIGURES_POINTER) return null;
+  const symbol = /^[A-Za-z0-9.:^-]+$/.test(arg.trim()) ? arg.trim().toUpperCase() : "";
+  return {
+    message: `${name} is not a function: a bank's figures are in the Bank section of fundamentals.`,
+    details: [
+      `Deposits, uninsured share, CRE / capital and the lead bank: gloomberb fundamentals ${symbol || "<ticker>"}`,
+      `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloomberb fn EQS --metric kpiNimPercent"}`,
+    ].join("\n"),
+  };
 }
 
 /** Letters and digits only, lower case: `EU-ETS`, `eu ets` and `EUETS` are one lookup. */
