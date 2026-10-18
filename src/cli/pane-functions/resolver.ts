@@ -18,6 +18,7 @@ import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
 import { bankFigurePointer } from "../known-gaps";
+import { readTerminalListingCode } from "../../tickers/terminal-codes";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -137,7 +138,8 @@ export async function applyListingArgument(
   const takesOneTicker = kind === "ticker";
   const takesList = kind === "tickers" || kind === "symbol-list" || (!headless && kind === "ticker-list");
   // A function with an exchange option of its own (DIST) keeps it.
-  if (!(takesOneTicker || takesList) || (takesOneTicker && /\s/.test(args.arg))
+  // A ticker with spaces is no listing, unless it is a terminal's code for one ("JPM US Equity").
+  if (!(takesOneTicker || takesList) || (takesOneTicker && /\s/.test(args.arg) && !readTerminalListingCode(args.arg))
     || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
   }

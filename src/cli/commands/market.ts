@@ -214,6 +214,7 @@ import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-
 import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
+import { currentReportItemsLabel } from "../../utils/sec-filings";
 import { loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
 import { insiderEmptyNotice } from "../../plugins/builtin/insider/issuer";
 import {
@@ -543,6 +544,8 @@ function filingRows(filings: SecFilingItem[]) {
     form: filing.form,
     filingDate: isoDate(filing.filingDate).slice(0, 10),
     companyName: filing.companyName ?? "",
+    // A current report's items by number and name: the results 8-K reads apart from another filed that day.
+    items: currentReportItemsLabel(filing.items) ?? "",
     accessionNumber: filing.accessionNumber,
     url: filing.primaryDocumentUrl ?? filing.filingUrl,
   }));
@@ -1007,6 +1010,17 @@ function historySymbolArg(args: readonly string[]): string | undefined {
     && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
 }
 
+/** What people type for quarterly figures, which `financials` (fiscal years) does not take. */
+const QUARTERLY_OPTIONS = new Set(["--quarterly", "--quarter", "--quarters", "--qtr", "--period", "--periods", "--frequency", "--freq", "--interval"]);
+
+/** `financials --quarterly` points at the functions that show quarters: GF a metric over time, FA the statements. */
+function financialsOptionHint(flag: string, args: readonly string[]): string | null {
+  if (!QUARTERLY_OPTIONS.has(flag)) return null;
+  const symbol = historySymbolArg(args) ?? "<symbol>";
+  return `financials lists fiscal years. For quarters: gloomberb fn GF ${symbol} --period quarterly --periods 40 (one metric at a time), `
+    + `or gloomberb fn FA ${symbol} --period quarterly (the statements).`;
+}
+
 function historyOptionHint(flag: string, args: readonly string[]): string | null {
   if (DATE_WINDOW_OPTIONS.has(flag)) return `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`;
   if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
@@ -1370,6 +1384,7 @@ const FILING_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
+  { key: "items", header: "Items" },
   { key: "url", header: "URL", optional: true },
 ];
 
@@ -2196,6 +2211,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
       examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv > msft.csv"],
     },
+    unknownOptionHint: financialsOptionHint,
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),
   },
   {

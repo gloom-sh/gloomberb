@@ -64,7 +64,59 @@ describe("SEC headless model", () => {
 
     const both = await headless.load(args(2), createTestHeadlessContext());
     expect(both.rows).toHaveLength(2);
-    expect(requestedLimits).toEqual([1, 2]);
+    // A first read asks for a few hundred, past the pricing supplements a bank files in runs.
+    expect(requestedLimits).toEqual([200, 200]);
+  });
+
+  // WFC as the service lists it: 192 of its last 200 filings are note supplements, its results 8-K behind them.
+  const supplement = (index: number, form = "424B2", description = "PRICING SUPPLEMENT NO. 1"): SecFilingItem => ({
+    ...filings[1]!, form, primaryDocDescription: description, accessionNumber: `0001839882-26-${String(index).padStart(6, "0")}`,
+  });
+  const bank = [
+    ...Array.from({ length: 150 }, (_, index) => supplement(index)),
+    supplement(900, "FWP", "FREE WRITING PROSPECTUS"),
+    filings[0]!,
+    supplement(901, "424B3", "PROSPECTUS"),
+    ...Array.from({ length: 300 }, (_, index) => supplement(1000 + index)),
+    filings[1]!,
+  ];
+
+  test("leaves a bank's pricing supplements out, says how many, and lists them with --all", async () => {
+    const requested: number[] = [];
+    const headless = createSecHeadless({ loadFilings: async (_symbol, limit) => {
+      requested.push(limit);
+      return bank.slice(0, limit);
+    } });
+
+    const hidden = await headless.load(args(3), createTestHeadlessContext());
+    expect(hidden.rows.map((row) => row.accessionNumber)).toEqual([filings[0]!.accessionNumber, "0001839882-26-000901", filings[1]!.accessionNumber]);
+    expect(hidden.notes).toEqual(["451 pricing supplements hidden, --all to show"]);
+    expect(hidden.metadata?.pricingSupplementsHidden).toBe(451);
+    // The first read (200) left the list short, so the issuer was read in full.
+    expect(requested).toEqual([200, SEC_FILING_FETCH_LIMIT]);
+
+    const all = await headless.load({ ...args(3), options: { limit: 3, all: true } }, createTestHeadlessContext());
+    expect(all.rows.map((row) => row.form)).toEqual(["424B2", "424B2", "424B2"]);
+    expect(all.notes).toBeUndefined();
+  });
+
+  test("--form keeps that form and its amendments from every filing listed, as filings --form does", async () => {
+    const requested: number[] = [];
+    const amended = { ...filings[0]!, form: "8-K/A", accessionNumber: "0000320193-26-000001" };
+    const headless = createSecHeadless({ loadFilings: async (_symbol, limit) => {
+      requested.push(limit);
+      return [...bank, amended];
+    } });
+    const eightK = await headless.load({ ...args(5), options: { limit: 5, form: "8-k" } }, createTestHeadlessContext());
+    expect(requested).toEqual([SEC_FILING_FETCH_LIMIT]);
+    expect(eightK.rows.map((row) => row.form)).toEqual(["8-K", "8-K/A"]);
+    expect(eightK.notes).toBeUndefined();
+    // A supplement named by its form is listed.
+    const named = await headless.load({ ...args(2), options: { limit: 2, form: "FWP" } }, createTestHeadlessContext());
+    expect(named.rows.map((row) => row.form)).toEqual(["FWP"]);
+    const none = await headless.load({ ...args(2), options: { limit: 2, form: "10-K" } }, createTestHeadlessContext());
+    expect(none.rows).toEqual([]);
+    expect(none.empty).toBe("No 10-K filings found for AAPL.");
   });
 });
 

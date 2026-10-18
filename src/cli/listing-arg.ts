@@ -41,6 +41,7 @@ import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-b
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
+import { readTerminalListingCode, terminalCodeReadAs } from "../tickers/terminal-codes";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -104,8 +105,11 @@ export function parseListingArg(
   // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
   const stripped = stripStrayEdges(rawArg);
   const raw = stripped.text || rawArg;
-  const listing = parseCleanListingArg(raw, exchangeOption, { ownExchangeWins });
-  return stripped.text && stripped.notes.length > 0 ? { ...listing, readAs: stripped.notes.join(" ") } : listing;
+  // A terminal's code for a US listing (WFC.N, "JPM US Equity") is that listing (WFC:NYSE, JPM).
+  const terminal = readTerminalListingCode(raw);
+  const listing = parseCleanListingArg(terminal?.key ?? raw, exchangeOption, { ownExchangeWins });
+  const notes = [...stripped.text ? stripped.notes : [], ...terminal ? [terminalCodeReadAs(terminal)] : []];
+  return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
 }
 
 function parseCleanListingArg(
@@ -928,7 +932,8 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
  */
 async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
   const typed = stripStrayEdges(raw).text || raw;
-  if (!isCompanyNameInput(typed)) return null;
+  // "JPM US Equity" is Bloomberg's code for JPM, not the name of a fund that starts with it.
+  if (!isCompanyNameInput(typed) || readTerminalListingCode(typed)) return null;
   const found = await findListingOfCompanyName(deps.dataProvider, typed);
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;

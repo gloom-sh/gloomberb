@@ -59,7 +59,8 @@ import {
   formatWatchlistNames,
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
-import { isKnownNonUsListing } from "../../utils/sec";
+import { isKnownNonUsListing, secFilingItemCodes } from "../../utils/sec";
+import { currentReportItemsLabel, loadWithoutPricingSupplements, pricingSupplementsNote } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
   failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
@@ -82,6 +83,15 @@ import { bankSection } from "../bank-section";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
+
+/** The latest filings the report lists: without a bank's pricing supplements, unless `all`. */
+async function loadRecentSecFilings(
+  load: (count: number) => Promise<SecFilingItem[]>,
+  all: boolean,
+): Promise<{ filings: SecFilingItem[]; hidden: number }> {
+  return all ? { filings: (await load(SEC_FILING_LIMIT)).slice(0, SEC_FILING_LIMIT), hidden: 0 }
+    : loadWithoutPricingSupplements(load, SEC_FILING_LIMIT);
+}
 // Prose such as a company description stays readable on wide terminals.
 const MAX_PROSE_WIDTH = 100;
 const METADATA_SEPARATOR = "  ·  ";
@@ -96,6 +106,8 @@ interface TickerCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
+  /** `--all`: the recent SEC filings keep a bank's pricing supplements. */
+  allFilings?: boolean;
   /** A futures symbol's contract terms and settlement; a failure leaves them out of the report. */
   futuresContract?: (symbol: string) => Promise<FuturesContractTermsPayload | null>;
 }
@@ -199,9 +211,14 @@ function appendFeedSection(
     body?: string;
     link?: string;
   }>,
+  /** What the list leaves out, after its entries. */
+  note?: string | null,
 ) {
   const populated = entries.filter((entry) => entry.title.trim().length > 0);
-  if (populated.length === 0) return;
+  if (populated.length === 0) {
+    if (note) lines.push("", renderSection(title), cliStyles.muted(note));
+    return;
+  }
 
   lines.push("");
   lines.push(renderSection(title));
@@ -222,6 +239,12 @@ function appendFeedSection(
       lines.push("");
     }
   }
+  if (note) lines.push("", cliStyles.muted(note));
+}
+
+function filingItemsMeta(filing: SecFilingItem): string {
+  const items = currentReportItemsLabel(filing.items);
+  return items ? `Items ${items}` : "";
 }
 
 function normalizeComparable(value: string): string {
@@ -774,6 +797,7 @@ export async function buildTickerReport({
   listingNote,
   recentNews = [],
   recentSecFilings = [],
+  hiddenPricingSupplements = 0,
   futuresContract = null,
   distributions = null,
   statementFilings = null,
@@ -798,6 +822,8 @@ export async function buildTickerReport({
   listingNote?: string;
   recentNews?: NewsArticle[];
   recentSecFilings?: SecFilingItem[];
+  /** The pricing supplements left out of `recentSecFilings`. */
+  hiddenPricingSupplements?: number;
 }): Promise<string> {
   const quote = financials.quote;
   const fundamentals = financials.fundamentals;
@@ -966,12 +992,13 @@ export async function buildTickerReport({
       return filingDate ? `Form ${filing.form}${METADATA_SEPARATOR}${filingDate}` : `Form ${filing.form}`;
     })(),
     meta: [
-      filing.items ? `Items ${filing.items}` : "",
+      // The items by number and name, so a results 8-K reads apart from another 8-K filed the same day.
+      filingItemsMeta(filing),
       getFilingDescription(filing) ?? "",
       filing.primaryDocument ? `Primary Document ${filing.primaryDocument}` : "",
     ],
     link: filing.filingUrl,
-  })));
+  })), pricingSupplementsNote(hiddenPricingSupplements));
 
   await appendTickerPositions(lines, tickerFile, quote, config, toBase);
 
@@ -987,6 +1014,7 @@ function buildTickerStructuredData({
   notes,
   recentNews,
   recentSecFilings,
+  hiddenPricingSupplements,
   futuresContract,
   distributions,
   statementFilings,
@@ -1002,6 +1030,7 @@ function buildTickerStructuredData({
   notes: string;
   recentNews: NewsArticle[];
   recentSecFilings: SecFilingItem[];
+  hiddenPricingSupplements: number;
 }) {
   const quote = financials.quote;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
@@ -1069,7 +1098,10 @@ function buildTickerStructuredData({
       filingUrl: filing.filingUrl,
       primaryDocumentUrl: filing.primaryDocumentUrl ?? "",
       description: getFilingDescription(filing) ?? "",
+      items: secFilingItemCodes(filing.items) ?? "",
     })),
+    // The pricing supplements a bank files for its notes, left out of recentSecFilings unless --all.
+    recentSecFilingsHidden: { pricingSupplements: hiddenPricingSupplements },
   };
 }
 
@@ -1175,15 +1207,16 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       // Outside the US the lookup checks the SEC registrant against the listing's company,
       // and refuses another company's filings.
       shouldFetchSecFilings(requestSymbol, exchange, tickerFile, resolvedFinancials) && dataProvider.getSecFilings
-        ? dataProvider.getSecFilings(requestSymbol, SEC_FILING_LIMIT, exchange || quote?.exchangeName || "",
-          listingName ? { listingName } : undefined)
-        : Promise.resolve([]),
+        ? loadRecentSecFilings((count) => dataProvider.getSecFilings!(requestSymbol, count, exchange || quote?.exchangeName || "",
+          listingName ? { listingName } : undefined), dependencies.allFilings === true)
+        : Promise.resolve({ filings: [], hidden: 0 }),
     ]);
 
     const futuresContract = await cliFuturesContract(quote?.symbol ?? requestSymbol, quote?.instrumentType, dependencies.futuresContract);
     const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
-    const recentSecFilings = secFilingsResult.status === "fulfilled" ? secFilingsResult.value : [];
+    const { filings: recentSecFilings, hidden: hiddenPricingSupplements } = secFilingsResult.status === "fulfilled"
+      ? secFilingsResult.value : { filings: [], hidden: 0 };
 
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
@@ -1207,6 +1240,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           notes,
           recentNews,
           recentSecFilings,
+          hiddenPricingSupplements,
           futuresContract,
           distributions: await distributions,
           statementFilings: await statementFilings,
@@ -1227,6 +1261,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         listingNote,
         recentNews,
         recentSecFilings,
+        hiddenPricingSupplements,
         futuresContract,
         distributions: await distributions,
         statementFilings: await statementFilings,

@@ -19,6 +19,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
+import { isPricingSupplement } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -296,10 +297,18 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const issuers = useMemo(() => secFilingIssuers(formFilings), [formFilings]);
   const [storedIssuer, setIssuer] = usePluginPaneState<string>("issuerCik", ALL_FORMS);
   const issuerCik = issuers.some((issuer) => issuer.cik === storedIssuer) ? storedIssuer : ALL_FORMS;
-  const filings = useMemo(() => {
+  const scopedFilings = useMemo(() => {
     const grouped = filterFilingsByGroup(formFilings, groups, formGroup);
     return issuerCik === ALL_FORMS ? grouped : grouped.filter((filing) => filing.cik === issuerCik);
   }, [formFilings, formGroup, groups, issuerCik]);
+  // A bank files a pricing supplement for each note it sells, hundreds a week, which bury its
+  // reports; they stay out until asked for, counted among the filings the other filters keep.
+  const [showSupplements, setShowSupplements] = usePluginPaneState<boolean>("pricingSupplements", false);
+  const supplementCount = useMemo(() => scopedFilings.filter(isPricingSupplement).length, [scopedFilings]);
+  const filings = useMemo(
+    () => (showSupplements || supplementCount === 0 ? scopedFilings : scopedFilings.filter((filing) => !isPricingSupplement(filing))),
+    [scopedFilings, showSupplements, supplementCount],
+  );
   const filterHistoryCapped = !!forms && issuerFilings.length >= SEC_FILING_FETCH_LIMIT;
   const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
   const visibleFilings = useMemo(() => filings.slice(0, visibleCount), [filings, visibleCount]);
@@ -311,7 +320,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   );
   useEffect(() => {
     setVisibleCount(SEC_FILING_PAGE_SIZE);
-  }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting, formGroup, issuerCik]);
+  }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting, formGroup, issuerCik, showSupplements]);
   const loading = filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing";
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
@@ -319,13 +328,16 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     if (!openItemId || filings.length === 0) return;
     const index = filings.findIndex((filing) => filing.accessionNumber === openItemId);
     if (index < 0) {
-      if (!loading) setOpenItemId(null);
+      // A pricing supplement opened from the command bar shows the supplements rather than closing.
+      const supplement = !showSupplements && scopedFilings.some((filing) => filing.accessionNumber === openItemId && isPricingSupplement(filing));
+      if (supplement) setShowSupplements(true);
+      else if (!loading) setOpenItemId(null);
       return;
     }
     if (index >= visibleCount) {
       setVisibleCount(Math.ceil((index + 1) / SEC_FILING_PAGE_SIZE) * SEC_FILING_PAGE_SIZE);
     }
-  }, [filings, loading, openItemId, setOpenItemId, visibleCount]);
+  }, [filings, loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
   const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();
@@ -467,7 +479,16 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       options: [{ value: ALL_FORMS, label: "All filers" }, ...issuers.map((issuer) => ({ value: issuer.cik, label: issuer.companyName || `CIK ${issuer.cik}` }))],
       onChange: (value: string) => { setIssuer(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     }] : []),
-  ], [formGroup, forms, groups, issuerCik, issuers, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx]);
+    ...(supplementCount > 0 ? [{
+      id: "pricingSupplements",
+      kind: "toggle" as const,
+      label: `Pricing supplements (${supplementCount.toLocaleString("en-US")})`,
+      short: `Supplements (${supplementCount.toLocaleString("en-US")})`,
+      value: showSupplements,
+      defaultValue: false,
+      onChange: (value: boolean) => { setShowSupplements(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
+    }] : []),
+  ], [formGroup, forms, groups, issuerCik, issuers, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
   // The ticker and the filer once, beside the filters: every row is their filing.
   const issuerMeta = issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
   const queryBar = (
@@ -546,8 +567,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
       sourceLabel="Form"
       titleLabel="Filing"
-      emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
-      emptyStateHint={forms && formFilings.length === 0 ? fundEmptyHint : undefined}
+      emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
+        : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
+        : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
+      emptyStateHint={forms && formFilings.length === 0 ? fundEmptyHint
+        : supplementCount > 0 && !showSupplements ? "Turn on Pricing supplements to list them." : undefined}
       scrollRef={scrollRef}
       onBodyScrollActivity={trackScroll}
     />

@@ -25,12 +25,8 @@ export const ETF_FILING_FORMS = [
 
 export const ETF_FORMS_SETTING = ETF_FILING_FORMS.join(",");
 
-/**
- * How many filings the SEC pane asks for: the most the filings service
- * returns for one issuer. A form filter searches only these, so when an issuer
- * has this many, older matching filings may exist.
- */
-export const SEC_FILING_FETCH_LIMIT = 20_000;
+/** How many filings the SEC pane asks for: every filing the service lists for the issuer. */
+export { SEC_FILING_FETCH_LIMIT } from "../../../utils/sec-filings";
 
 function normalizeFilingForm(form: string): string {
   return form.trim().toUpperCase();

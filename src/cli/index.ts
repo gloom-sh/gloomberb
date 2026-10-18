@@ -27,7 +27,7 @@ import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../u
 import { setDisplayTimeZone } from "../utils/utc-time";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
-import { requireOneArg, takeOption } from "./commands/command-utils";
+import { requireOneArg, takeFlag, takeOption } from "./commands/command-utils";
 import { EXCHANGE_OPTION } from "./listing-arg";
 import { apiCliCommand } from "./commands/api";
 import { marketDataCliCommands } from "./commands/market";
@@ -121,15 +121,20 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.research,
         usage: ["ticker <symbol>"],
-        options: [EXCHANGE_OPTION],
+        options: [
+          EXCHANGE_OPTION,
+          { flags: "--all", description: "List a bank's pricing supplements (424B2, FWP) among the recent SEC filings" },
+        ],
         examples: ["ticker AAPL", "ticker SAN:EPA", "ticker 7203.T", "ticker AAPL --json"],
       },
       execute: async (rawArgs, ctx) => {
         const args = [...rawArgs];
         const exchange = takeOption(args, "--exchange");
+        const allFilings = takeFlag(args, "--all");
         const symbol = requireOneArg(args, "ticker <symbol>", "symbol", ctx);
         await ticker(symbol, {
           exchange,
+          allFilings,
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),

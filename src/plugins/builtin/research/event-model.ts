@@ -38,7 +38,10 @@ export interface EventRow {
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
   status: EventStatus;
+  /** The fiscal quarter an earnings row reports (Sep 2026), "-" when no source names it. */
   period: string;
+  /** When in the day an earnings report comes out, as the source says it ("Pre Market"). */
+  reportTime?: string;
   detail: string;
   epsCurrency?: string;
   revenueCurrency?: string;
@@ -324,7 +327,9 @@ export function buildEventRows(
       date: earning.dateType === "fiscal-period-end" ? statement?.date ?? earning.date : earning.date,
       dateType: earning.dateType,
       status: "Earnings",
-      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : earning.time?.trim() || "-",
+      // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
+      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : "-",
+      ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: earningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : undefined),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,

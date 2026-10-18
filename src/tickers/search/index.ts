@@ -34,6 +34,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
+import { readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
@@ -105,9 +106,12 @@ interface TickerSearchCandidateOptions {
   providerPopularity?: ReadonlyMap<string, number>;
 }
 
-/** The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`). */
+/**
+ * The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`),
+ * and a terminal's code for a US listing (`WFC.N`, `JPM US Equity`) as that listing (`WFC:NYSE`, `JPM`).
+ */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
-  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? arg).trim().toUpperCase() : "";
+  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? readTerminalListingCode(arg)?.key ?? arg).trim().toUpperCase() : "";
   if (explicitTicker) return explicitTicker;
   return activeTicker;
 }

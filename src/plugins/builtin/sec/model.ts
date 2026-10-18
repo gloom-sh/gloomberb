@@ -1,5 +1,6 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
+import { currentReportItemNames, isCurrentReportForm as isCurrentReport } from "../../../utils/sec-filings";
 
 function getDisplayFormLabel(form: string): string {
   const trimmed = form.trim();
@@ -47,49 +48,6 @@ export function getFilingDisplayTitle(filing: SecFilingItem): string {
 }
 
 /**
- * 8-K items in a few words, as a reader scans them: what happened, not the
- * SEC's full caption. 9.01 (exhibits) comes with most reports and says little.
- */
-const CURRENT_REPORT_ITEMS: Record<string, string> = {
-  "1.01": "Material agreement",
-  "1.02": "Agreement terminated",
-  "1.03": "Bankruptcy or receivership",
-  "1.04": "Mine safety",
-  "1.05": "Cybersecurity incident",
-  "2.01": "Acquisition or disposal",
-  "2.02": "Results of operations",
-  "2.03": "New financial obligation",
-  "2.04": "Obligation accelerated",
-  "2.05": "Exit or restructuring costs",
-  "2.06": "Impairment",
-  "3.01": "Listing standard notice",
-  "3.02": "Unregistered equity sale",
-  "3.03": "Shareholder rights modified",
-  "4.01": "Auditor change",
-  "4.02": "Non-reliance on financials",
-  "5.01": "Change in control",
-  "5.02": "Officer or director change",
-  "5.03": "Charter or bylaws amended",
-  "5.04": "Benefit plan trading suspension",
-  "5.05": "Code of ethics change",
-  "5.06": "Shell company status change",
-  "5.07": "Shareholder vote results",
-  "5.08": "Director nominations",
-  "7.01": "Regulation FD disclosure",
-  "8.01": "Other events",
-  "9.01": "Exhibits",
-};
-
-const isCurrentReport = (form: string) => /^(?:8-K|6-K)(?:\/A)?$/i.test(form.trim());
-
-/** `Results of operations; Exhibits` from `2.02,9.01`; exhibits only when nothing else is reported. */
-function currentReportItemsText(items: string | null | undefined): string | null {
-  const codes = (secFilingItemCodes(items) ?? "").split(",").filter(Boolean);
-  const named = codes.filter((code) => code !== "9.01" || codes.length === 1).map((code) => CURRENT_REPORT_ITEMS[code] ?? `Item ${code}`);
-  return named.length > 0 ? named.join("; ") : null;
-}
-
-/**
  * The period a 10-K or 10-Q covers, read from its inline XBRL document name
  * (`aapl-20260627.htm`), which by convention carries the period end. A date
  * after the filing, or more than 15 months before it, is not taken.
@@ -111,7 +69,7 @@ export function getFilingColumnText(filing: SecFilingItem): string {
   const description = getMeaningfulPrimaryDescription(filing);
   const meaning = getFormDescription(filing.form);
   if (!description) {
-    const items = isCurrentReport(filing.form) ? currentReportItemsText(filing.items) : null;
+    const items = isCurrentReport(filing.form) ? currentReportItemNames(filing.items) : null;
     if (items) return /\/A$/i.test(filing.form.trim()) ? `${items} (amended)` : items;
     const period = periodicReportPeriod(filing);
     if (period) return `${meaning || "Report"}, period ended ${period}`;
