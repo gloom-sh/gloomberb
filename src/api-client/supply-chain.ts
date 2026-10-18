@@ -55,7 +55,7 @@ export interface SupplyRow {
   jurisdiction?: string | null;
   entityScope?: "entity" | "group" | "anonymous" | "aggregate" | null;
   period: string;
-  /** Months the period covers: 0 a balance at the period end, 3 a quarter, 12 a year. Null or absent when the source does not say. */
+  /** Months every figure on the row covers: 0 a balance at the period end, 3 a quarter, 12 a year. Null or absent when the source does not say or the figures differ in length. */
   periodMonths?: number | null;
   fiscalYear: string | null;
   sourceKind: "xbrl" | "filing_text" | "call" | "news" | "web" | "import" | "press_release";
