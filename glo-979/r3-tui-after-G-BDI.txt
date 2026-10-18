@@ -1,0 +1,32 @@
+  > Search or run a command  Ctrl+P                                       Help ? CLOSED SPY 763.25 -1.11% USD
+:: Ma┌─:: G BDI ⚡ ───────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+  Mai  Range 1:1D 2:1W 3:1M 4:3M 5:6M 6:1Y 7:5Y 8:ALL     Auto 1m 5m 15m 30m 45m 1h D W M
+  TIC                                                                                      + add series
+
+  No
+  Cli
+  pre
+
+  + t
+
+
+
+
+
+
+  + t                                     Choose an exchange for BDI.
+          BDI:TSX Black Diamond Group · BDI:NEO Black Diamond Group · BDI:BSE B. D. Industries (Pune)
+
+:: #e
+ ← Ba
+
+  lun
+    h
+   re
+  vin
+    W
+ ----
+  Rea
+  Log 2021                 2023                2024               2025                             2026
+     └⚠[!]                                                            [s]eries [i]ndicators [t]imeframe─◢
+  ^1 Home  ^2 Monitor  ^3 Macro   +                                                 v0.17.6 ☁ Log in Feedback
