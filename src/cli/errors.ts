@@ -4,6 +4,7 @@ import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
+import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
@@ -76,6 +77,10 @@ function cliErrorObject(error: unknown): CliErrorObject {
       retryable: error.retryable,
       ...error.fields,
     };
+  }
+  // A symbol or name search was too busy to look up: not a miss, and asking again may find it.
+  if (isProviderBusy(error)) {
+    return { code: SEARCH_BUSY_CODE, message: SEARCH_BUSY_MESSAGE, retryable: true };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {

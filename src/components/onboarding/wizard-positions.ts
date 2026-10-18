@@ -14,6 +14,7 @@ import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerS
 import type { Quote } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
+import { isProviderBusy } from "../../sources/provider-errors";
 import { debugLog } from "../../utils/debug-log";
 import { ambiguousNumberMessage, parseTypedNumber } from "../../utils/decimal-comma";
 import {
@@ -180,9 +181,9 @@ export function useOnboardingPositions({
         if (!currencyEditedRef.current) {
           setDraft((current) => ({ ...current, currency: result.currency.toUpperCase() }));
         }
-      }).catch(() => {
+      }).catch((error: unknown) => {
         if (previewSeqRef.current === seq) {
-          setPreview({ status: "missing", query, message: t("Ticker lookup failed") });
+          setPreview({ status: "missing", query, message: isProviderBusy(error) ? t("Search is busy") : t("Ticker lookup failed") });
         }
       });
     }, PREVIEW_DEBOUNCE_MS);
@@ -313,7 +314,8 @@ export function useOnboardingPositions({
       resetDraft();
       return true;
     } catch (caught) {
-      const message = caught instanceof Error && caught.message.trim() ? caught.message.trim() : t("Could not add that position.");
+      const message = isProviderBusy(caught) ? t("Search is busy, try again in a moment.")
+        : caught instanceof Error && caught.message.trim() ? caught.message.trim() : t("Could not add that position.");
       onboardingLog.error("Onboarding position failed", { query, error: message });
       setFieldIdx(0);
       setError(message);

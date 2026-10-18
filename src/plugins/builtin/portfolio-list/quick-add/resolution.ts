@@ -8,6 +8,7 @@ import {
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
+import { isProviderBusy } from "../../../../sources/provider-errors";
 import {
   describeFormerIssuer,
   describeTickerChange,
@@ -202,6 +203,6 @@ export async function resolveQuickAddValidation({
     if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) {
       return { status: "choose", query };
     }
-    return { status: "error", query, message: "Ticker lookup failed" };
+    return { status: "error", query, message: isProviderBusy(error) ? "Search is busy" : "Ticker lookup failed" };
   }
 }

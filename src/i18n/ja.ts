@@ -105,6 +105,7 @@ export const ja: Record<string, string> = {
   "Check your connection": "接続を確認してください",
   "Search is busy": "検索が混み合っています",
   "Try again in a moment": "しばらくしてから再試行してください",
+  "Search is busy, try again in a moment.": "検索が混み合っています。しばらくしてから再試行してください。",
   "Commands": "コマンド",
 
   // ── Command bar categories ───────────────────────────────────
