@@ -178,7 +178,10 @@ test("Enter on an insider shows their trades as filed; Esc closes an open trade 
   expect(frame).toMatch(/Insider\s+Ana Rivera/);
   expect(frame).toMatch(/Ana Rivera\s+BUY\s+4k\s+\$10\.00\s+\$40k/);
   expect(frame).not.toContain("$90k");
-  expect(state!.paneState[PANE_ID]?.pluginState?.insider).toMatchObject({ "insider:signals:openView": "trades", "insider:nameFilter:NWBI": "Rivera Ana" });
+  // The view is the ranking's to keep; the filter is the open company's own and goes with it.
+  const kept = state!.paneState[PANE_ID]?.pluginState?.insider ?? {};
+  expect(kept).toMatchObject({ "insider:signals:openView": "trades" });
+  expect(Object.keys(kept).filter((key) => /^insider:(nameFilter|selectedId|openItemId|typeFilter)/.test(key))).toEqual([]);
 
   // A trade opens in the company's own stack, under the company's.
   await act(async () => { tui.setup().mockInput.pressEnter(); });
@@ -554,6 +557,20 @@ test("an opened company comes back opened, and stays open when a refreshed ranki
   frame = tui.frame();
   expect(frame).toContain("Fabrikam Bancorp");
   expect(frame).not.toContain("\u2190 Back");
+});
+
+test("an opened company keeps its name in the title when a refreshed ranking no longer lists it", async () => {
+  await mount(async (window) => payload(window), 140, 24);
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  expect(tui.frame()).toContain("\u2190 Back NWBI \u00b7 Northwind Biologics Inc");
+  // The app comes back with the pane as it was left; its ranking has moved on.
+  seed = { ...state!.paneState[PANE_ID]?.pluginState?.insider };
+  insiderSignalsCache.reset();
+  await mount(async (window) => payload(window, [ROWS[1]!, ROWS[2]!]), 140, 24);
+  const frame = tui.frame();
+  expect(frame).toContain("\u2190 Back NWBI \u00b7 Northwind Biologics Inc");
+  expect(frame).toMatch(/Ana Rivera\s+CEO/);
 });
 
 test("a company with no open-market trades in the window says so, with its trades a click away", async () => {

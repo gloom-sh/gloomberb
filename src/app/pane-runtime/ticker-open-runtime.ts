@@ -24,8 +24,8 @@ import {
   tickerOpenFailureMessage,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
-import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
-import { isDialogOpen } from "../../ui/dialog-stack";
+import { findExactTickerSearchMatch } from "../../tickers/search";
+import { offerTickerListings, publishTickerOpenTarget as publishOpenTarget } from "./ticker-open-target";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { attentionActionForPane, captureAttentionAction } from "../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../sources/listing-symbols";
@@ -79,11 +79,7 @@ export function useAppTickerOpenRuntime({
       return target;
     } catch (err) {
       if (!canPresentFeedback()) return null;
-      // Ticker search offers the listings, unless a dialog would sit over the bar.
-      if (err instanceof AmbiguousTickerError && !isDialogOpen()) {
-        dispatch({ type: "SET_COMMAND_BAR", open: true, query: rawSymbol,
-          launch: { kind: "ticker-search", query: rawSymbol } });
-      }
+      offerTickerListings(err, rawSymbol, dispatch);
       const message = err instanceof Error ? err.message : String(err);
       pluginRegistry.notify({ body: `Failed to open ${rawSymbol}: ${message}`, type: "error" });
       return null;
@@ -91,13 +87,7 @@ export function useAppTickerOpenRuntime({
   }, [dataProvider, dispatch, pluginRegistry, stateRef, tickerRepository]);
 
   const publishTickerOpenTarget = useCallback((target: TickerOpenTarget) => {
-    const currentTicker = stateRef.current.tickers.get(target.symbol);
-    if (currentTicker !== target.ticker) {
-      dispatch({ type: "UPDATE_TICKER", ticker: target.ticker });
-    }
-    if (target.created) {
-      pluginRegistry.events.emit("ticker:added", { symbol: target.symbol, ticker: target.ticker });
-    }
+    publishOpenTarget(target, { tickers: stateRef.current.tickers, dispatch, events: pluginRegistry.events });
   }, [dispatch, pluginRegistry.events, stateRef]);
 
   /**

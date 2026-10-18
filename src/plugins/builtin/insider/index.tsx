@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { PaneProps } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import type { InsiderSignalSide } from "../../../api-client/insider-signals";
 import { useAppDispatch, useAppSelector, useAppStateRef, usePaneInstance } from "../../../state/app/context";
 import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tickers/open-target";
+import { offerTickerListings, publishTickerOpenTarget } from "../../../app/pane-runtime/ticker-open-target";
 import { getSharedRegistry } from "../../registry";
 import {
   useResolvedEntryValue,
@@ -90,11 +91,17 @@ const AUTO_FILL_FILING_CAP = INSIDER_WINDOW_CAP;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Narrower panes pick the Type filter from a menu instead of showing every choice. */
 const TYPE_FILTER_INLINE_WIDTH = 80;
+/** Back as a query bar draws it at the head of a stack's detail: the arrow, the word and their padding. */
+const STACK_BACK_CELLS = 8;
+/** The bar draws the stack's title up to this many characters, with a cell of padding each side. */
+const STACK_TITLE_MAX_CELLS = 40;
 /**
- * On the desktop a company opened from the ranking shares that bar with Back
- * and its name, which keep about this many cells.
+ * The cells Back and the title take in the query bar of a company opened
+ * from the ranking, on the desktop, where they lead INS's own bar.
  */
-const STACK_HEADER_CELLS = 20;
+function stackHeaderCells(title: string): number {
+  return STACK_BACK_CELLS + Math.min(title.length, STACK_TITLE_MAX_CELLS) + 2;
+}
 /** The insider filter's value for every reporting owner. */
 const ALL_INSIDERS = "*";
 
@@ -136,32 +143,100 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
   return items;
 }
 
+type Setter<T> = (value: SetStateAction<T>) => void;
+
+/** The Trades view's selected row, Insider and Type filters, and open transaction. */
+interface InsiderTradesState {
+  selectedId: string | null;
+  setSelectedId: Setter<string | null>;
+  nameFilter: string | null;
+  setNameFilter: Setter<string | null>;
+  typeFilter: InsiderTypeFilter;
+  setTypeFilter: Setter<InsiderTypeFilter>;
+  openItemId: string | null;
+  setOpenItemId: (itemId: string | null) => void;
+}
+
+interface StackedTradesState {
+  tickerKey: string;
+  selectedId: string | null;
+  nameFilter: string | null;
+  typeFilter: InsiderTypeFilter;
+  openItemId: string | null;
+}
+
+const freshTradesState = (tickerKey: string): StackedTradesState => ({
+  tickerKey, selectedId: null, nameFilter: null, typeFilter: DEFAULT_INSIDER_TYPE_FILTER, openItemId: null,
+});
+
+/**
+ * Where the Trades view keeps its selection, filters and open transaction.
+ * A pane of its own keeps them as pane state, by ticker, so it comes back as
+ * it was left. A company opened from the ranking keeps them only while it is
+ * open, so opening it again, or another company, starts clean: no trade
+ * still open, no filter left on the last insider.
+ */
+function useInsiderTradesState(tickerKey: string, stacked: boolean): InsiderTradesState {
+  const [paneSelectedId, setPaneSelectedId] = usePluginPaneState<string | null>(`insider:selectedId:${tickerKey}`, null);
+  const [paneNameFilter, setPaneNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);
+  const [paneTypeFilter, setPaneTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
+  const [paneOpenItemId, setPaneOpenItemIdState] = useDebouncedPluginPaneState<string | null>(`insider:openItemId:${tickerKey}`, null);
+  const setPaneOpenItemId = useCallback(
+    (itemId: string | null) => setPaneOpenItemIdState(itemId, { immediate: true }),
+    [setPaneOpenItemIdState],
+  );
+  const [stackedState, setStackedState] = useState<StackedTradesState>(() => freshTradesState(tickerKey));
+  const stackedSetters = useMemo(() => {
+    const setter = <K extends "selectedId" | "nameFilter" | "typeFilter" | "openItemId">(field: K) =>
+      (value: SetStateAction<StackedTradesState[K]>) => setStackedState((current) => {
+        const base = current.tickerKey === tickerKey ? current : freshTradesState(tickerKey);
+        const next = typeof value === "function" ? (value as (previous: StackedTradesState[K]) => StackedTradesState[K])(base[field]) : value;
+        return { ...base, [field]: next };
+      });
+    return {
+      setSelectedId: setter("selectedId"),
+      setNameFilter: setter("nameFilter"),
+      setTypeFilter: setter("typeFilter"),
+      setOpenItemId: setter("openItemId") as (itemId: string | null) => void,
+    };
+  }, [tickerKey]);
+
+  if (stacked) {
+    const current = stackedState.tickerKey === tickerKey ? stackedState : freshTradesState(tickerKey);
+    return { ...current, ...stackedSetters };
+  }
+  return {
+    selectedId: paneSelectedId,
+    setSelectedId: setPaneSelectedId,
+    nameFilter: paneNameFilter,
+    setNameFilter: setPaneNameFilter,
+    typeFilter: isInsiderTypeFilter(paneTypeFilter) ? paneTypeFilter : DEFAULT_INSIDER_TYPE_FILTER,
+    setTypeFilter: setPaneTypeFilter,
+    openItemId: paneOpenItemId,
+    setOpenItemId: setPaneOpenItemId,
+  };
+}
+
 /**
  * INS on a ticker, its trades as filed: the 90-day totals, the Insider and
  * Type filters, and Enter opening a transaction.
  */
-function InsiderTradesView({ ticker, viewBar, width, height, focused, stacked = false, onDetailChange }: {
+function InsiderTradesView({ ticker, viewBar, state, width, height, focused, stackTitle, onDetailChange }: {
   ticker: TickerRecord;
   viewBar: QueryBarView<InsiderViewMode>;
+  state: InsiderTradesState;
   width: number;
   height: number;
   focused: boolean;
-  /** Opened from the ranking, under its Back. */
-  stacked?: boolean;
+  /** Opened from the ranking: the stack's title, which on the desktop leads this view's query bar with Back. */
+  stackTitle?: string;
   onDetailChange?: (open: boolean) => void;
 }) {
   const tickerKey = ticker.metadata.ticker;
   const { nativePaneChrome } = useUiCapabilities();
-  const typeInlineWidth = TYPE_FILTER_INLINE_WIDTH + (stacked && nativePaneChrome ? STACK_HEADER_CELLS : 0);
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`insider:selectedId:${tickerKey}`, null);
-  const [nameFilter, setNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);
-  const [storedTypeFilter, setTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
-  const typeFilter = isInsiderTypeFilter(storedTypeFilter) ? storedTypeFilter : DEFAULT_INSIDER_TYPE_FILTER;
-  const [openItemId, setOpenItemIdState] = useDebouncedPluginPaneState<string | null>(`insider:openItemId:${tickerKey}`, null);
-  const setOpenItemId = useCallback(
-    (itemId: string | null) => setOpenItemIdState(itemId, { immediate: true }),
-    [setOpenItemIdState],
-  );
+  // Every Type choice in view only where Back and the whole title still fit beside them.
+  const typeInlineWidth = TYPE_FILTER_INLINE_WIDTH + (stackTitle != null && nativePaneChrome ? stackHeaderCells(stackTitle) : 0);
+  const { selectedId, setSelectedId, nameFilter, setNameFilter, typeFilter, setTypeFilter, openItemId, setOpenItemId } = state;
   const [sort, setSort] = useState<StackSortPreference<InsiderColumnId>>({ columnId: "date", direction: "desc" });
   // A listing abroad is looked up by its company; an empty list means it files nothing with the SEC.
   const abroadVenue = nonUsSecListingVenue(ticker.metadata.ticker, ticker.metadata.exchange);
@@ -507,14 +582,14 @@ function usePaneInsiderViewControl(): InsiderViewControl {
  * A company opened from the ranking passes its ticker, which the pane does
  * not have, and the ranking's choices.
  */
-function InsiderView({ width, height, focused, ticker: openedTicker, control: openedControl, stacked, onDetailChange }: {
+function InsiderView({ width, height, focused, ticker: openedTicker, control: openedControl, stackTitle, onDetailChange }: {
   width: number;
   height: number;
   focused: boolean;
   ticker?: TickerRecord | null;
   control?: InsiderViewControl;
-  /** Opened from the ranking, under its Back. */
-  stacked?: boolean;
+  /** Opened from the ranking: the stack's title, under its Back. */
+  stackTitle?: string;
   onDetailChange?: (open: boolean) => void;
 }) {
   const identity = usePaneTickerIdentity();
@@ -522,9 +597,8 @@ function InsiderView({ width, height, focused, ticker: openedTicker, control: op
   const paneControl = usePaneInsiderViewControl();
   const control = openedControl ?? paneControl;
   const tickerKey = ticker?.metadata.ticker ?? "none";
-  const [, setNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);
-  const [, setSelectedId] = usePluginPaneState<string | null>(`insider:selectedId:${tickerKey}`, null);
-  const [, setTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
+  const trades = useInsiderTradesState(tickerKey, stackTitle != null);
+  const { setNameFilter, setSelectedId, setTypeFilter } = trades;
   const { setView } = control;
   const viewBar = useMemo<QueryBarView<InsiderViewMode>>(() => ({ value: control.view, options: INSIDER_VIEW_OPTIONS, onChange: setView }), [control.view, setView]);
   // An insider's trades: the Trades view narrowed to them with the Insider filter, open-market lines first.
@@ -553,14 +627,17 @@ function InsiderView({ width, height, focused, ticker: openedTicker, control: op
       />
     );
   }
-  return <InsiderTradesView key={tickerKey} ticker={ticker} viewBar={viewBar} width={width} height={height} focused={focused} stacked={stacked} onDetailChange={onDetailChange} />;
+  return <InsiderTradesView key={tickerKey} ticker={ticker} viewBar={viewBar} state={trades} width={width} height={height} focused={focused} stackTitle={stackTitle} onDetailChange={onDetailChange} />;
 }
 
 /**
  * A company opened from the ranking, as INS on its ticker. One the app has
- * not seen is looked up first, as the command bar looks up `INS CTSO`.
+ * not seen is looked up first, as the command bar looks up `INS CTSO`, and
+ * joins the app's tickers the way every open adds one. Back before the
+ * lookup answers leaves nothing behind: no ticker saved or added, no search
+ * offered.
  */
-function RankedCompany({ symbol, control, width, height, focused, onDetailChange }: InsiderOpenedCompany) {
+function RankedCompany({ symbol, title, control, width, height, focused, onDetailChange }: InsiderOpenedCompany) {
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const [resolved, setResolved] = useState<{ symbol: string; key: string | null; error: string | null } | null>(null);
@@ -571,32 +648,47 @@ function RankedCompany({ symbol, control, width, height, focused, onDetailChange
   const isKnown = !!known;
   useEffect(() => {
     if (isKnown || resolved?.symbol === symbol) return;
-    let alive = true;
+    let current = true;
     const registry = getSharedRegistry();
-    const fail = (error: string) => { if (alive) setResolved({ symbol, key: null, error }); };
+    const fail = (error: string) => setResolved({ symbol, key: null, error });
     if (!registry) {
       fail(tickerOpenFailureMessage(symbol));
       return;
     }
+    // The lookup saves a ticker it finds; once Back has closed the company it saves none.
+    const repository = registry.tickerRepository;
+    const closed = () => Promise.reject(new Error(`${symbol} was closed.`));
+    const tickerRepository: typeof repository = {
+      loadAllTickers: () => repository.loadAllTickers(),
+      loadTicker: (key) => repository.loadTicker(key),
+      saveTicker: (ticker) => current ? repository.saveTicker(ticker) : closed(),
+      createTicker: (metadata) => current ? repository.createTicker(metadata) : closed(),
+      deleteTicker: (key) => current ? repository.deleteTicker(key) : closed(),
+    };
     resolveTickerOpenTarget({
       query: symbol,
       tickers: stateRef.current.tickers,
       dataProvider: registry.marketData,
-      tickerRepository: registry.tickerRepository,
+      tickerRepository,
     }).then((target) => {
+      if (!current) return;
       if (!target) return fail(tickerOpenFailureMessage(symbol));
-      dispatch({ type: "UPDATE_TICKER", ticker: target.ticker });
-      if (target.created) registry.events.emit("ticker:added", { symbol: target.symbol, ticker: target.ticker });
-      if (alive) setResolved({ symbol, key: target.symbol, error: null });
-    }, (error: unknown) => fail(error instanceof Error ? error.message : tickerOpenFailureMessage(symbol)));
-    return () => { alive = false; };
+      publishTickerOpenTarget(target, { tickers: stateRef.current.tickers, dispatch, events: registry.events });
+      setResolved({ symbol, key: target.symbol, error: null });
+    }, (error: unknown) => {
+      if (!current) return;
+      // A symbol that names several listings is offered in ticker search, as any open offers it.
+      offerTickerListings(error, symbol, dispatch);
+      fail(error instanceof Error ? error.message : tickerOpenFailureMessage(symbol));
+    });
+    return () => { current = false; };
   }, [dispatch, isKnown, resolved?.symbol, stateRef, symbol]);
 
   if (!ticker) {
     const error = resolved?.symbol === symbol ? resolved.error : null;
     return error ? <EmptyState title={`Could not open ${symbol}.`} message={error} /> : <Spinner label={`Opening ${symbol}...`} />;
   }
-  return <InsiderView ticker={ticker} control={control} width={width} height={height} focused={focused} stacked onDetailChange={onDetailChange} />;
+  return <InsiderView ticker={ticker} control={control} width={width} height={height} focused={focused} stackTitle={title} onDetailChange={onDetailChange} />;
 }
 
 const renderRankedCompany = (company: InsiderOpenedCompany) => <RankedCompany {...company} />;

@@ -14,7 +14,7 @@ import type { TextFieldProps } from "../../../components/ui/fields";
 import type { DialogFrameProps } from "../../../components/ui/frame";
 import type { MessageComposerProps } from "../../../components/ui/message-composer";
 import type { PageStackViewProps } from "../../../components/ui/page-stack-view";
-import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
+import { STACK_DETAIL_ROLE, StackHeaderContext, type StackHeaderSlot } from "./stack-header";
 import { releasePointerFocus } from "../host/focus-scope";
 import { selectionStyle } from "../host/style";
 import { WebIcon, WebIconButton } from "./icons";
@@ -662,7 +662,7 @@ export function WebPageStackView({
       <div
         ref={containerRef}
         className="gloom-stack-detail"
-        data-gloom-role="page-stack-detail"
+        data-gloom-role={STACK_DETAIL_ROLE}
         style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, minHeight: 0, overflow: "hidden" }}
       >
         <StackHeaderContext.Provider value={slot}>

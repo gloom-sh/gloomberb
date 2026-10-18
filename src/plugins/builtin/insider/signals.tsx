@@ -56,6 +56,8 @@ import type { InsiderViewControl } from "./insiders";
 /** A company opened from the ranking: INS on its ticker, in the ranking's stack. */
 export interface InsiderOpenedCompany {
   symbol: string;
+  /** The stack's title, the ticker and the company; on the desktop it leads INS's own query bar. */
+  title: string;
   /** Opens on Insiders, over the ranking's window, its dollars sorted by the ranking's side. */
   control: InsiderViewControl;
   width: number;
@@ -116,6 +118,8 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
   // The opened company, by ticker, with the selected row, so a reload or a shared layout lands on it,
   // and what it shows: it opens on its insiders over the ranking's window.
   const [openTicker, setOpenTicker] = usePluginPaneState<string | null>("insider:signals:open", null);
+  // Its name as it was opened, so the title keeps it when a refreshed ranking no longer lists it.
+  const [openName, setOpenName] = usePluginPaneState<string | null>("insider:signals:openName", null);
   const [openView, setOpenView] = usePluginPaneState<InsiderViewMode>("insider:signals:openView", "insiders");
   const [openWindow, setOpenWindow] = usePluginPaneState<number>("insider:signals:openWindow", DEFAULT_INSIDER_SIGNAL_WINDOW);
   const [transactionOpen, setTransactionOpen] = useState(false);
@@ -170,6 +174,9 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
   const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
   // The company stays open while the ranking refreshes, ranked or not: it reads its own data.
   const openRow = openTicker ? rows.find((row) => row.ticker === openTicker) ?? null : null;
+  const openTitle = openRow
+    ? insiderSignalDetailTitle(openRow)
+    : openTicker && openName ? insiderSignalDetailTitle({ ticker: openTicker, company: openName }) : openTicker ?? "";
   const openControl = useMemo<InsiderViewControl>(() => ({
     view: insiderViewMode(openView),
     setView: setOpenView,
@@ -177,16 +184,18 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
     setWindow: setOpenWindow,
     side,
   }), [openView, openWindow, setOpenView, setOpenWindow, side]);
-  const openCompany = useCallback((ticker: string) => {
-    setSelectedTicker(ticker);
+  const openCompany = useCallback((row: InsiderSignalRow) => {
+    setSelectedTicker(row.ticker);
     setOpenView("insiders");
     setOpenWindow(query.window);
-    setOpenTicker(ticker);
-  }, [query.window, setOpenTicker, setOpenView, setOpenWindow, setSelectedTicker]);
+    setOpenName(row.company);
+    setOpenTicker(row.ticker);
+  }, [query.window, setOpenName, setOpenTicker, setOpenView, setOpenWindow, setSelectedTicker]);
   const closeCompany = useCallback(() => {
     setTransactionOpen(false);
     setOpenTicker(null);
-  }, [setOpenTicker]);
+    setOpenName(null);
+  }, [setOpenName, setOpenTicker]);
 
   usePaneStatusFooter({
     registrationId: "insider:signals",
@@ -313,7 +322,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
 
   const queryBar = <QueryBar width={width} filters={filters} />;
   const company = openTicker
-    ? renderCompany({ symbol: openTicker, control: openControl, width, height, focused, onDetailChange: setTransactionOpen })
+    ? renderCompany({ symbol: openTicker, title: openTitle, control: openControl, width, height, focused, onDetailChange: setTransactionOpen })
     : null;
   if (!data && !detailOpen) {
     // Loading, or a failure: the query bar stays above, so another side or filter is one click away.
@@ -336,7 +345,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
       focused={focused && !transactionOpen}
       detailOpen={detailOpen}
       onBack={closeCompany}
-      detailTitle={openRow ? insiderSignalDetailTitle(openRow) : openTicker ?? undefined}
+      detailTitle={openTitle || undefined}
       detailContent={company}
       rootWidth={width}
       rootHeight={height}
@@ -350,7 +359,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
         getId: (row) => row.ticker,
         onChange: (ticker) => setSelectedTicker(ticker),
       }}
-      onActivate={(row) => openCompany(row.ticker)}
+      onActivate={openCompany}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as InsiderSignalColumnId, {

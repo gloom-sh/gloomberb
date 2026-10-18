@@ -7,7 +7,7 @@ import { createInsiderHeadless } from "./headless";
 import type { ParsedInsiderFiling } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "../../../api-client/insider-signals";
-import { insiderSignalsCache } from "./signals-client";
+import { insiderSignalsCache, loadInsiderCompany } from "./signals-client";
 import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -385,6 +385,32 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
     await expect(headless.load(args({}), createTestHeadlessContext({ apiClient }))).rejects.toThrow("Insiders are not available yet.");
   } finally {
     setCliWidthOverride(null);
+    insiderSignalsCache.reset();
+  }
+});
+
+test("--view takes its aliases, an unknown view says which there are, and --company is gone", () => {
+  const capability = { id: "insider", botSafe: true, options: createInsiderHeadless().options } as unknown as PaneFunctionCapability;
+  const normalize = (options: Record<string, string>) => normalizeCapabilityOptions(capability, options, { strict: true, code: "INS" });
+  expect(["trades", "transactions", "insiders", "insider", "Insiders"].map((view) => normalize({ view }).view))
+    .toEqual(["trades", "trades", "insiders", "insiders", "insiders"]);
+  expect(normalize({}).view).toBe("trades");
+  expect(() => normalize({ view: "holders" })).toThrow('Invalid --view value "holders". Use one of: trades, insiders.');
+  expect(() => normalize({ company: "ESTC" })).toThrow("INS does not support --company.");
+});
+
+test("the server's echo names the company as the server keys symbols: BRK.B answered as BRK-B is the same company, BRK-A is not", async () => {
+  let echoed = "BRK-B";
+  const client = { getCloudSecInsiderSignals: async (params: CloudInsiderSignalsParams): Promise<InsiderSignalsPayload> => ({
+    ticker: echoed, side: params.side ?? "buy", window: params.window ?? 30, through: "2026-10-15", asOf: "2026-10-14",
+    coverage: { from: "2026-08-31", through: "2026-10-14" }, rows: [],
+  }) };
+  try {
+    const answer = await loadInsiderCompany({ ticker: "BRK.B", window: 30 }, { client, force: true });
+    expect([answer.payload.buy.ticker, answer.payload.sell.ticker]).toEqual(["BRK-B", "BRK-B"]);
+    echoed = "BRK-A";
+    await expect(loadInsiderCompany({ ticker: "BRK.B", window: 30 }, { client, force: true })).rejects.toThrow("Insiders are not available yet.");
+  } finally {
     insiderSignalsCache.reset();
   }
 });

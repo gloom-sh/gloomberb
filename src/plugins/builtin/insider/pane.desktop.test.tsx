@@ -20,6 +20,8 @@ import type { SecFilingItem } from "../../../types/data-provider";
 import { findPaneInstance } from "../../../types/config";
 import { UiHostProvider } from "../../../ui";
 import { insiderModule } from "./index";
+import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
+import type { TickerMetadata } from "../../../types/ticker";
 import { insiderSignalsCache } from "./signals-client";
 
 const InsiderView = insiderModule.panes![0]!.component;
@@ -87,12 +89,12 @@ test("opens on 60 already-read Form 4 filings without a render per filing", asyn
 
 const RANKING_ID = "insider:ranking:desktop:test";
 let rankingState: AppState | null = null;
-function RankingPane({ width = 120 }: { width?: number } = {}) {
+function RankingPane({ width = 120, known = true }: { width?: number; known?: boolean } = {}) {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-insider-signals-desktop-test"), { instanceId: RANKING_ID, paneId: "insider", title: "Insider Activity" });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({
     ...createInitialState(initialConfig),
     focusedPaneId: RANKING_ID,
-    tickers: new Map(RANKING.rows.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)])),
+    tickers: new Map(known ? RANKING.rows.map((row) => [row.ticker, createTestTicker(row.ticker, row.company)]) : []),
   }));
   rankingState = state;
   const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
@@ -205,7 +207,8 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
 }
 
 // On the desktop an opened company's bar also holds Back and its name, so its
-// Type choices go to a menu where a pane of its own would still show them all.
+// Type choices go to a menu where a pane of its own would still show them all:
+// the 80 cells they need, and Back (8) and "CTSO · Contoso Energy Corp" (26) with its padding (2).
 test("an opened company's trades keep the Type choices in a menu where Back and the name leave no room", async () => {
   spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => (params.ticker
     ? { ...RANKING, side: params.side ?? "buy", ticker: params.ticker, rows: params.side === "sell" ? [] : RANKING.rows.filter((row) => row.ticker === params.ticker) }
@@ -217,7 +220,7 @@ test("an opened company's trades keep the Type choices in a menu where Back and 
     getSecFilingContent: async () => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>RIVERA ANA</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Common</value></securityTitle><transactionDate><value>${day}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>`,
   })));
   await withViewport(async () => {
-    for (const [width, inline] of [[90, false], [100, true]] as const) {
+    for (const [width, inline] of [[115, false], [116, true]] as const) {
       const container = await dom.render(<RankingPane width={width} />);
       await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
       const row = [...container.querySelectorAll("[data-gloom-role='data-table-row']")].find((element) => element.textContent?.includes("CTSO"));
@@ -235,6 +238,139 @@ test("an opened company's trades keep the Type choices in a menu where Back and 
       expect(container.querySelector(".gloom-qb")?.textContent).toContain("CTSO \u00b7 Contoso Energy Corp");
       expect(!!container.querySelector(".gloom-qb-inline[data-item-id='type']")).toBe(inline);
     }
+  });
+});
+
+// A company the app has not seen is looked up first; Back before the lookup
+// answers leaves no trace of it: nothing saved, nothing added, no search offered.
+test("Back while an unseen company is looked up leaves nothing behind; a lookup that answers adds it as an open does", async () => {
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async () => RANKING);
+  let answer: (() => void) | null = null;
+  const created: string[] = [];
+  const emitted: string[] = [];
+  setSharedRegistryForTests({
+    marketData: createTestDataProvider({
+      search: async (query) => {
+        await new Promise<void>((resolve) => { answer = resolve; });
+        return [{ providerId: "test", symbol: query, name: "Contoso Energy Corp", exchange: "NASDAQ", currency: "USD", type: "EQUITY" }];
+      },
+    }),
+    tickerRepository: {
+      loadAllTickers: async () => [],
+      loadTicker: async () => null,
+      saveTicker: async () => {},
+      createTicker: async (metadata: TickerMetadata) => { created.push(metadata.ticker); return createTestTicker(metadata.ticker, metadata.name); },
+      deleteTicker: async () => {},
+    },
+    events: { emit: (name: string) => { emitted.push(name); } },
+  } as unknown as PluginRegistry);
+  try {
+    await withViewport(async () => {
+      const container = await dom.render(<RankingPane known={false} />);
+      await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
+      const open = async () => {
+        const row = [...container.querySelectorAll("[data-gloom-role='data-table-row']")].find((element) => element.textContent?.includes("CTSO"));
+        await act(async () => {
+          row!.dispatchEvent(new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 }) as unknown as Event);
+          await Bun.sleep(10);
+        });
+      };
+      await open();
+      await until(() => !!container.textContent?.includes("Opening CTSO...") && answer != null);
+      await act(async () => {
+        (container.querySelector("[data-gloom-role='page-stack-header'] button") as HTMLElement).click();
+        await Bun.sleep(10);
+      });
+      await until(() => !!container.textContent?.includes("Northwind Biologics Inc"));
+      await act(async () => {
+        answer!();
+        await Bun.sleep(50);
+      });
+      expect([created, emitted, [...rankingState!.tickers.keys()]]).toEqual([[], [], []]);
+      expect(container.querySelector(".gloom-command-bar, [data-gloom-role='command-bar']")).toBeNull();
+
+      // Opened again and left to answer: saved, added and announced once.
+      answer = null;
+      await open();
+      await until(() => answer != null);
+      await act(async () => {
+        answer!();
+        await Bun.sleep(50);
+      });
+      await until(() => rankingState!.tickers.has("CTSO"));
+      expect([created, emitted]).toEqual([["CTSO"], ["ticker:added"]]);
+    });
+  } finally {
+    setSharedRegistryForTests(undefined);
+  }
+});
+
+// A company opened from the ranking keeps its trade, Insider and Type only
+// while it is open: the outer Back with a trade still open, then the same
+// company again, finds Trades as a first visit would.
+test("a company opened again starts clean: no trade left open, no insider or type left from the last visit", async () => {
+  spyOn(apiClient, "getCloudSecInsiderSignals").mockImplementation(async (params = {}) => (params.ticker
+    ? { ...RANKING, side: params.side ?? "buy", ticker: params.ticker, rows: params.side === "sell" ? [] : RANKING.rows.filter((row) => row.ticker === params.ticker) }
+    : RANKING));
+  const day = new Date(Date.now() - 2 * DAY_MS);
+  const filings: SecFilingItem[] = ["a1", "a2"].map((accessionNumber) => ({ accessionNumber, form: "4", filingDate: day, cik: "9900001", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
+  const line = (owner: string, code: string, shares: number) => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${owner.length}</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Common</value></securityTitle><transactionDate><value>${day.toISOString().slice(0, 10)}</value></transactionDate><transactionCoding><transactionCode>${code}</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>`;
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getSecFilings: async () => filings,
+    getSecFilingContent: async (filing) => filing.accessionNumber === "a1" ? line("RIVERA ANA", "P", 100) : line("OKAFOR BEN", "M", 300),
+  })));
+  await withViewport(async () => {
+    const container = await dom.render(<RankingPane />);
+    await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
+    const rows = () => [...container.querySelectorAll("[data-gloom-role='data-table-row']")];
+    const dblclick = async (text: string) => {
+      const row = rows().find((element) => element.textContent?.includes(text));
+      expect(row).toBeDefined();
+      await act(async () => {
+        row!.dispatchEvent(new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 }) as unknown as Event);
+        await Bun.sleep(10);
+      });
+    };
+    const click = async (element: Element | null | undefined) => {
+      expect(element).toBeTruthy();
+      await act(async () => {
+        (element as HTMLElement).click();
+        await Bun.sleep(10);
+      });
+    };
+    const bands = () => container.querySelectorAll("[data-gloom-role='page-stack-header']");
+    const typeChoice = () => [...(container.querySelector(".gloom-qb-inline[data-item-id='type']")?.querySelectorAll("button") ?? [])]
+      .find((button) => button.getAttribute("data-active") === "true")?.textContent ?? "";
+    const insiderChoice = () => [...container.querySelectorAll(".gloom-qb-chip")].find((chip) => chip.textContent?.startsWith("Insider"))?.textContent ?? "";
+
+    // First visit: Ana Rivera's trades, every type, one trade opened.
+    await dblclick("CTSO");
+    await until(() => rows().some((row) => row.textContent?.includes("Ana Rivera")));
+    await dblclick("Ana Rivera");
+    await until(() => insiderChoice().includes("Ana Rivera") && typeChoice().startsWith("Buys and sells"));
+    await click([...container.querySelectorAll(".gloom-qb-inline[data-item-id='type'] button")].find((button) => button.textContent?.startsWith("All")));
+    await until(() => typeChoice().startsWith("All"));
+    await dblclick("BUY");
+    await until(() => bands().length === 2);
+
+    // The outer Back, the trade still open: the ranking, and nothing of the visit kept in its pane state.
+    await click(bands()[0]!.querySelector("button"));
+    await until(() => !!container.textContent?.includes("Northwind Biologics Inc"));
+    const kept = rankingState!.paneState[RANKING_ID]?.pluginState?.insider ?? {};
+    expect(Object.keys(kept).filter((key) => /^insider:(nameFilter|selectedId|openItemId|typeFilter)/.test(key))).toEqual([]);
+
+    // Again: Insiders first, then Trades as a first visit has it.
+    await dblclick("CTSO");
+    await until(() => !!container.querySelector(".gloom-qb-view"));
+    // The view strip; an inline filter's choices are segments of the same look.
+    const viewButtons = () => [...[...container.querySelectorAll(".gloom-qb-view")].find((strip) => !strip.classList.contains("gloom-qb-segments"))!.querySelectorAll("button")];
+    expect(viewButtons().find((button) => button.getAttribute("data-active") === "true")?.textContent).toBe("Insiders");
+    await click(viewButtons().find((button) => button.textContent === "Trades"));
+    await until(() => typeChoice() !== "");
+    expect(bands().length).toBe(0);
+    expect(insiderChoice()).toContain("All");
+    expect(typeChoice()).toStartWith("Buys and sells");
+    expect(container.textContent).not.toContain("Transaction Date");
   });
 });
 

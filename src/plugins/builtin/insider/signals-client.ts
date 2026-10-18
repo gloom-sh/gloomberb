@@ -130,11 +130,16 @@ function companyCacheKey(query: InsiderCompanyQuery, side: InsiderSignalSide): s
   return ["company", query.ticker.toUpperCase(), side, query.window].join(":");
 }
 
+/** A symbol as the server keys companies: BRK.B, BRK-B and brk.b are one company. */
+function insiderSymbolKey(symbol: string): string {
+  return symbol.toUpperCase().replace(/[.-]/g, "");
+}
+
 /** The company's answer; a server that predates the question answers the ranking, which is no answer. */
 function companyValidator(ticker: string) {
   return (payload: InsiderSignalsPayload): InsiderSignalsPayload => {
     const valid = validateInsiderSignals(payload);
-    if (valid.ticker?.toUpperCase() !== ticker.toUpperCase()) throw new Error(INSIDERS_NOT_AVAILABLE);
+    if (valid.ticker == null || insiderSymbolKey(valid.ticker) !== insiderSymbolKey(ticker)) throw new Error(INSIDERS_NOT_AVAILABLE);
     return valid;
   };
 }

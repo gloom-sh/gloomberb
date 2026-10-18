@@ -162,7 +162,7 @@ const INSIDERS_COLUMNS: HeadlessPaneColumn[] = [
   },
   { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
   { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
-  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
+  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : "--" },
 ];
 
 /** The insiders as the pane lists them first: the side's dollars largest first, then the largest either way. */
@@ -341,7 +341,7 @@ export function createInsiderHeadless(
       },
       {
         key: "side",
-        description: "Without a ticker: rank insider buying (open-market purchases) or selling (sales an insider chose: not under a Rule 10b5-1 plan, to cover tax, out of an option exercise or in an offering).",
+        description: "Buying (open-market purchases) or selling (sales an insider chose: not under a Rule 10b5-1 plan, to cover tax, out of an option exercise or in an offering). Without a ticker, the side to rank; with --view insiders, the side whose dollars sort first.",
         type: "enum",
         defaultValue: "buy",
         values: [

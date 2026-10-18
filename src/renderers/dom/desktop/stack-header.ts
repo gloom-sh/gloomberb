@@ -17,3 +17,6 @@ export interface StackHeaderSlot {
 }
 
 export const StackHeaderContext = createContext<StackHeaderSlot | null>(null);
+
+/** Marks an open stack detail's content, the element a query bar at its top looks for. */
+export const STACK_DETAIL_ROLE = "page-stack-detail";
