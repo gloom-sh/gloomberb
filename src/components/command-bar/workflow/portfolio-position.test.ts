@@ -1,0 +1,46 @@
+import { describe, expect, test } from "bun:test";
+import { createTestTicker } from "../../../test-support/ticker";
+import { createDefaultConfig } from "../../../types/config";
+import type { TickerPosition } from "../../../types/ticker";
+import { buildAddToPortfolioWorkflow, buildSetPortfolioPositionWorkflow } from "./portfolio-position";
+
+const config = createDefaultConfig("/unused-portfolio-position");
+const lot = (shares: number, avgCost: number, currency = "USD"): TickerPosition =>
+  ({ portfolio: "main", broker: "manual", shares, avgCost, currency });
+const apple = (...positions: TickerPosition[]) => createTestTicker("AAPL", "Apple", { portfolios: ["main"], positions });
+const form = (ticker: ReturnType<typeof apple>) => buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker })!;
+const hints = (workflow: ReturnType<typeof form>) => workflow.fields.flatMap((field) => field.description ?? []);
+
+describe("position form with several lots", () => {
+  test("fills the total shares, the share-weighted cost and the common currency, and says saving replaces the lots", () => {
+    for (const workflow of [
+      form(apple(lot(10, 150), lot(5, 170))),
+      buildSetPortfolioPositionWorkflow(config, { activeCollectionId: "main", activeTicker: apple(lot(10, 150), lot(5, 170)) })!,
+    ]) {
+      expect(workflow.values).toMatchObject({ ticker: "AAPL", shares: "15", currency: "USD" });
+      expect(Number(workflow.values.avgCost) * 15).toBeCloseTo(2350, 9);
+      expect(hints(workflow)).toEqual(['Totals of your 2 lots in "Main Portfolio". Saving replaces them with one position and clears their acquisition dates.']);
+    }
+  });
+
+  test("lots in different currencies are not totalled: nothing is filled in and the hint names the currencies", () => {
+    const workflow = buildAddToPortfolioWorkflow(config, {
+      preferredPortfolioId: "main",
+      ticker: apple(lot(10, 150), lot(5, 140, "EUR")),
+      defaultAvgCost: 190,
+    })!;
+
+    expect(workflow.values).toMatchObject({ shares: "", avgCost: "", currency: "" });
+    expect(hints(workflow)).toEqual(['2 lots in "Main Portfolio" are in different currencies (USD, EUR), so none is filled in. Saving replaces them with one position.']);
+  });
+
+  test("a single lot and no lot fill in as before, with no hint", () => {
+    const single = form(apple(lot(10, 150)));
+    expect(single.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "10", avgCost: "150", currency: "USD" });
+    expect(hints(single)).toEqual([]);
+
+    const empty = buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker: apple(), defaultAvgCost: 190 })!;
+    expect(empty.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "", avgCost: "190", currency: "" });
+    expect(hints(empty)).toEqual([]);
+  });
+});

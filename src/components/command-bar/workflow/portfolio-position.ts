@@ -1,7 +1,13 @@
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "./types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
-import { getManualPortfolioPosition, isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";
+import { tf } from "../../../i18n";
+import {
+  getManualPortfolioPositionPrefill,
+  isManualPortfolio,
+  resolveManualPositionCurrency,
+  type ManualPortfolioPositionPrefill,
+} from "../../../portfolio/mutations";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];
@@ -18,6 +24,21 @@ interface ManualPortfolioPositionWorkflowOptions {
   hidePortfolioFieldWhenSingleOption?: boolean;
 }
 
+/** Several lots become one position on save: say so, and what the fields hold. */
+function lotsReplacementHint(prefill: ManualPortfolioPositionPrefill, portfolioName: string): string | undefined {
+  if (prefill.lotCount < 2) return undefined;
+  const params = { count: prefill.lotCount, portfolio: portfolioName };
+  if (prefill.position) {
+    return tf("Totals of your {count} lots in \"{portfolio}\". Saving replaces them with one position and clears their acquisition dates.", params);
+  }
+  return prefill.currencies
+    ? tf("{count} lots in \"{portfolio}\" are in different currencies ({currencies}), so none is filled in. Saving replaces them with one position.", {
+      ...params,
+      currencies: prefill.currencies.map((currency) => currency || "none").join(", "),
+    })
+    : tf("{count} lots in \"{portfolio}\" cannot be totalled, so none is filled in. Saving replaces them with one position.", params);
+}
+
 function buildManualPortfolioPositionWorkflow(
   config: AppConfig,
   options: ManualPortfolioPositionWorkflowOptions,
@@ -26,9 +47,11 @@ function buildManualPortfolioPositionWorkflow(
   if (manualPortfolios.length === 0) return null;
 
   const preferredPortfolio = manualPortfolios.find((portfolio) => portfolio.id === options.preferredPortfolioId) ?? manualPortfolios[0]!;
-  const preferredPosition = options.ticker
-    ? getManualPortfolioPosition(options.ticker, preferredPortfolio.id)
-    : null;
+  const prefill = options.ticker ? getManualPortfolioPositionPrefill(options.ticker, preferredPortfolio.id) : null;
+  const preferredPosition = prefill?.position ?? null;
+  // Lots with nothing to total start blank, not at the default cost.
+  const hasUntotalledLots = (prefill?.lotCount ?? 0) > 1 && !preferredPosition;
+  const lotsHint = prefill ? lotsReplacementHint(prefill, preferredPortfolio.name) : undefined;
   const showPortfolioField = !options.hidePortfolioFieldWhenSingleOption || manualPortfolios.length > 1;
 
   const fields: CommandBarWorkflowField[] = [
@@ -55,6 +78,7 @@ function buildManualPortfolioPositionWorkflow(
       label: "Shares",
       type: "number",
       placeholder: "10",
+      ...(lotsHint ? { description: lotsHint } : {}),
       required: !options.positionOptional,
     },
     {
@@ -83,7 +107,7 @@ function buildManualPortfolioPositionWorkflow(
     shares: preferredPosition ? String(preferredPosition.shares) : "",
     avgCost: preferredPosition
       ? Number.isFinite(preferredPosition.avgCost) ? String(preferredPosition.avgCost) : ""
-      : Number.isFinite(options.defaultAvgCost)
+      : Number.isFinite(options.defaultAvgCost) && !hasUntotalledLots
         ? String(options.defaultAvgCost)
         : "",
     currency: preferredPosition?.currency ?? "",
