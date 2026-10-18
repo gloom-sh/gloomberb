@@ -147,6 +147,8 @@ test("the APR note names each funding interval's own annualisation, and venues a
     .toBe("APR annualises each market's current rate at its own interval (1h rate × 24 × 365, 4h rate × 6 × 365, 8h rate × 3 × 365), not funding actually paid.");
   expect(aprFootnote([at(null)])).toBeNull();
   expect(collectedVenueCount([{ source: "hyperliquid" }, { source: "hyperliquid:xyz" }, { source: "okx" }, { source: "compaction" }])).toBe(2);
+  // A venue that has not collected yet is not counted.
+  expect(collectedVenueCount([{ source: "binance", lastOkAt: "2026-10-18T10:00:00Z" }, { source: "bybit", lastOkAt: null }])).toBe(1);
   expect(collectedVenueCount([{ source: "underlying" }])).toBeNull();
   expect(collectedVenueCount(undefined)).toBeNull();
 });

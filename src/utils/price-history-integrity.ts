@@ -84,10 +84,11 @@ export function missingVolumeNotice(missing: number, total: number): string | un
 }
 
 /**
- * The bars of a history that reports volume left without it for no reason of their own: not still forming and not
- * blank for contradictory prices. 0 for a history that reports no volume at all, such as an index or a currency pair.
+ * The bars of a history that reports volume left without it for no reason of their own: not still forming, not
+ * rebuilt from hourly bars and not blank for contradictory prices, as `history` counts them. 0 for a history that
+ * reports no volume at all, such as an index or a currency pair.
  */
-export function missingVolumeCount(bars: readonly { volume: number | null; integrity?: unknown; partial?: boolean }[]): number {
+export function missingVolumeCount(bars: readonly { volume: number | null; integrity?: unknown; partial?: boolean; filled?: boolean }[]): number {
   if (!bars.some((bar) => bar.volume != null)) return 0;
-  return bars.filter((bar) => bar.volume == null && !bar.integrity && !bar.partial).length;
+  return bars.filter((bar) => bar.volume == null && !bar.integrity && !bar.partial && !bar.filled).length;
 }

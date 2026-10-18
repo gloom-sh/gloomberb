@@ -319,7 +319,8 @@ describe("study resolution", () => {
       study("sma", "sma", ["a"], { period: 100 }),
     ]);
 
-    expect(result.series.find(({ id }) => id === "volume")?.points).toEqual([]);
+    // No bar reports volume, so there is no panel to draw and no unit to warn about.
+    expect(result.series.find(({ id }) => id === "volume")).toBeUndefined();
     expect(result.warnings).toEqual([
       "sma: not enough valid history to calculate sma.",
     ]);
@@ -329,6 +330,13 @@ describe("study resolution", () => {
     const input = resolved("a");
     input.points = input.points.map((point, index) => ({ ...point, volume: index === input.points.length - 1 ? undefined : 0 }));
     expect(resolveStudies([input], [study("volume", "volume", ["a"])]).series).toEqual([]);
+    // A coin's feed leaves hours without volume, read as missing rather than 0: a window missing every bar's adds no
+    // panel, and one missing some plots only the bars that have it.
+    const coin = resolved("b");
+    coin.points = coin.points.map(({ volume: _volume, ...point }) => point);
+    expect(resolveStudies([coin], [study("volume", "volume", ["b"])]).series).toEqual([]);
+    coin.points[3] = { ...coin.points[3]!, volume: 5_000 };
+    expect(resolveStudies([coin], [study("volume", "volume", ["b"])]).series[0]?.points.map((point) => point.value)).toEqual([5_000]);
   });
 
   test("aligns pair formulas to the latest available value even when display interpolation is off", () => {

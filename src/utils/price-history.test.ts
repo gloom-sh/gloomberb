@@ -466,6 +466,9 @@ describe("leading zero-volume single-price bars", () => {
     expect(dropLeadingPlaceholderBars(daily)).toEqual(daily.slice(1));
     const intraday = [offer("2025-06-04T13:40:00Z"), traded("2025-06-04T16:35:00Z", 75.9), traded("2025-06-04T16:40:00Z", 88.88)];
     expect(dropLeadingPlaceholderBars(intraday)).toEqual(intraday.slice(1));
+    // A coin's feed sends 0 for no volume, which is read as missing: its placeholder goes the same way.
+    const coin = daily.map(({ volume, ...point }) => volume === 0 ? point : { ...point, volume });
+    expect(dropLeadingPlaceholderBars(coin)).toEqual(coin.slice(1));
     // Repeated reads of one array keep one result, so merged views stay stable.
     expect(dropLeadingPlaceholderBars(daily)).toBe(dropLeadingPlaceholderBars(daily));
   });

@@ -237,7 +237,8 @@ test("a report that shows the APR % column footnotes what it annualises, and the
 test("a free account's locked tables are left out, and one Pro line says what free shows and what Pro adds, apart from the errors", async () => {
   const locked = perpHistory({ locked: true, access: "preview" });
   // The venues counted are those Gloom Cloud reports collecting; other sources are not venues.
-  const sources = ["hyperliquid", "hyperliquid:xyz", "binance", "bybit", "underlying"].map((source) => ({ source, lastOkAt: null, failures: 0 }));
+  const sources = ["hyperliquid", "hyperliquid:xyz", "binance", "bybit", "okx", "underlying"]
+    .map((source) => ({ source, lastOkAt: source === "okx" ? null : "2026-10-03T23:20:00Z", failures: 0 }));
   const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [market], access: "preview" }), sources, evidence: [], methodologyUrl: "" }),
     getCloudPerpsHistory: async () => locked } as never;
   const run = async (tab: string) => {

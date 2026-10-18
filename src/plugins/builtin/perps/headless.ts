@@ -141,7 +141,11 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     if (tab === "rankings") {
       const rankings = await fetchPerpsRankings(ctx.apiClient);
-      const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => ({ title: ranking.label, columns: rankingTextColumns(ranking), rows: copy(rankingRows(rankings, ranking.key)) }));
+      // A ranking the free view leaves empty is locked, left out and said on the Pro line; one that has none to rank says so.
+      const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => {
+        const rows = copy(rankingRows(rankings, ranking.key));
+        return { title: ranking.label, columns: rankingTextColumns(ranking), rows, ...lockedTable(rankings.locked && !rows.length) };
+      });
       const notices = venueUnused(String(args.options.venue ?? "all"), "rankings");
       // Only the funding lists show funding.
       const funding = RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(rankings, ranking.key));

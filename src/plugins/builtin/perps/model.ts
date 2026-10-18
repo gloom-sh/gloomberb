@@ -104,11 +104,17 @@ export function perpHistoryProText(row: Pick<PerpBoardRow, "venue" | "baseAsset"
   return `${venueName(row.venue)} ${marketLabel(row)} history`
     + (venues ? ` and every market on ${venues} ${venues === 1 ? "venue" : "venues"}` : "");
 }
-/** The venues Gloom Cloud collects, counted from the sources a board or market payload reports (`binance`, `hyperliquid:xyz`); null when it reports none. */
+/**
+ * The venues Gloom Cloud collects, counted from the sources a board or market payload reports (`binance`,
+ * `hyperliquid:xyz`). A source that states its last successful collection counts only once it has one
+ * (`lastOkAt`); one from a server that does not say counts. Null when none counts.
+ */
 export function collectedVenueCount(sources: unknown): number | null {
   if (!Array.isArray(sources)) return null;
   const venues = new Set(sources.flatMap((entry: unknown) => {
-    const venue = isRecord(entry) && typeof entry.source === "string" ? entry.source.split(":")[0]! : "";
+    if (!isRecord(entry) || typeof entry.source !== "string") return [];
+    if ("lastOkAt" in entry && typeof entry.lastOkAt !== "string") return [];
+    const venue = entry.source.split(":")[0]!;
     return (VENUES as readonly string[]).includes(venue) ? [venue] : [];
   }));
   return venues.size || null;

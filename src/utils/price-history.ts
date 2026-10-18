@@ -468,8 +468,9 @@ export function reachesLatestSettledSession(
   return !isBarBeforeSession(latestTime, session.date, Math.max(intervalMs, DAY_MS), session.timeZone);
 }
 
+/** One price and no volume: 0, or missing where a coin's feed sends 0 for no data. */
 function isPlaceholderBar(point: PricePoint): boolean {
-  return point.volume === 0 && Number.isFinite(point.close)
+  return !point.volume && Number.isFinite(point.close)
     && point.open === point.close && point.high === point.close && point.low === point.close;
 }
 

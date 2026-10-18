@@ -206,6 +206,8 @@ const appCompanyRow = (row: AppCompany): AttentionRow => ({ id: row.symbol, symb
  */
 function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
   if (!data.symbol || filtered || data.apps.length || (data.page?.total ?? 0) > 0 || data.summary.appCount > 0) return null;
+  // Rows held back for Pro are apps it maps, so a capped preview is never read as none.
+  if (!Object.values(data.locked).every((count) => !count)) return null;
   if (!data.coverage.sources.some((source) => source.captures > 0)) return null;
   return `${data.symbol} has no mapped apps in the observed App Store and Google Play charts.`;
 }

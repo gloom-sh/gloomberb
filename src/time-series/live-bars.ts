@@ -149,6 +149,7 @@ export class LiveBarAccumulator {
   private version = 0;
   private gapPending = false;
   private folded: { source: PricePoint[]; key: string; value: PricePoint[] } | null = null;
+  private reported: { source: PricePoint[]; value: boolean } | null = null;
 
   apply(history: PricePoint[], quote: Quote | null | undefined, options: LiveBarOptions): PricePoint[] {
     const bars = this.onGrid(history, options);
@@ -411,8 +412,17 @@ export class LiveBarAccumulator {
     if (merged === latest && this.bars.length === 0) return history;
     const projected = history.slice();
     projected[projected.length - 1] = merged;
-    const volumeKnown = isFiniteNumber(latest.volume);
+    const volumeKnown = isFiniteNumber(latest.volume) || this.reportsVolume(history);
     for (const bar of this.bars) projected.push(this.barPoint(bar, volumeKnown));
     return projected;
+  }
+
+  /**
+   * Whether the history reports volume at all, read once per loaded history. A coin's feed leaves some bars without
+   * volume, so the latest bar alone cannot say whether the live bars after it should carry the quote's.
+   */
+  private reportsVolume(history: PricePoint[]): boolean {
+    if (this.reported?.source !== history) this.reported = { source: history, value: history.some((point) => isFiniteNumber(point.volume)) };
+    return this.reported.value;
   }
 }

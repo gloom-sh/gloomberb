@@ -59,6 +59,8 @@ export type HistoricalPriceRow = {
   timed: boolean;
   /** The bar's period had not ended: a week or month still running, or the day's session still trading. */
   partial: boolean;
+  /** A coin's day Gloom Cloud rebuilt from hourly bars, which has no volume of its own. */
+  filled: boolean;
   change: number | null;
   changePercent: number | null;
 };
@@ -129,7 +131,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
-      return date ? [{ point: pricePointValues(point), date, sourceIndex, partial: point.partial === true }] : [];
+      return date ? [{ point: pricePointValues(point), date, sourceIndex, partial: point.partial === true, filled: point.filled === true }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   const size = historyBarSize(sorted.map((entry) => entry.date.getTime()));
@@ -138,7 +140,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   const dayToDate = size === "1d" && sorted.at(-1)?.partial === true;
   const rows = sorted.map((entry, index) => {
     const previous = sorted[index - 1]?.point;
-    const { point, date, sourceIndex } = entry;
+    const { point, date, sourceIndex, filled } = entry;
     const newest = index === sorted.length - 1;
     const partial = newest && (!!forming || dayToDate);
     const change = previous?.close != null && point.close != null ? point.close - previous.close : null;
@@ -151,6 +153,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
       exportDate: shown,
       timed,
       partial,
+      filled,
       change,
       changePercent: previous?.close && change !== null ? change / previous.close : null,
     };
@@ -239,7 +242,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     [points, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
-  const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({ ...row.point, partial: row.partial }))), [rows]);
+  const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({ ...row.point, partial: row.partial, filled: row.filled }))), [rows]);
   const volumeNotice = missingVolumeNotice(volumeMissing, rows.length);
   // Daily and longer bars are dates; only intraday bars carry a time.
   const intraday = rows.length > 0 ? rows.some((row) => row.timed) : range === "1D" || range === "1W";

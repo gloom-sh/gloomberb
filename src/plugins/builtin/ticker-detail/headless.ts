@@ -326,6 +326,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
         ...pricePointValues(point),
         ...(point.partial ? { partial: true } : {}),
+        // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.
+        ...(point.filled ? { filled: true } : {}),
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
