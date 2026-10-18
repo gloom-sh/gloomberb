@@ -18,7 +18,9 @@ export const catalystsModule: PluginModule = {
   dispose() { catalystCache.reset(); catalystDetailCache.reset(); },
   panes: [
     { id: "catalysts", name: "Catalysts", icon: "C", component: CatalystsPane, defaultPosition: "right", tickerFollower: true, instruments: ["equity"], defaultMode: "floating", defaultFloatingSize: { width: 130, height: 32 }, tableExport: true, headless: catalystsHeadless },
-    { id: "litigation", name: "Litigation", icon: "L", component: LitigationPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 120, height: 30 }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: litigationHeadless },
+    { id: "litigation", name: "Litigation", icon: "L", component: LitigationPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 120, height: 30 }, tickerFollower: true,
+      // A fund's trust can be a party (a sponsor's case against the SEC); an index or a pair never is.
+      instruments: ["equity", "fund"], tableExport: true, headless: litigationHeadless },
   ],
   paneTemplates: [
     { id: "catalysts-pane", paneId: "catalysts", label: "Catalysts", description: "Pro regulatory, clinical, legal and trade-policy calendar with source evidence and revision history.", keywords: ["catalysts", "calendar", "FDA", "clinical", "regulatory", "deadlines", "antitrust", "sanctions"],
