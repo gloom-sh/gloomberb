@@ -302,7 +302,7 @@ describe("13F headless model", () => {
       // An uppercase word or a $ticker is meant as the ticker; no fund search.
       searched.length = 0;
       for (const word of ["MAN", "$man"])
-        expect((await load(word)).metadata?.notices?.some((notice) => notice.includes("13F filer"))).toBe(false);
+        expect(((await load(word)).metadata?.notices as string[]).some((notice) => notice.includes("13F filer"))).toBe(false);
       expect(searched).toEqual([]);
     });
 
