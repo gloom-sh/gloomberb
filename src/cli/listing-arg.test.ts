@@ -104,11 +104,12 @@ test("a broker's index code is the index, and a cashtag stays the stock it names
   persistences.push(persistence);
   const store = new TickerRepository(persistence.tickers);
   const quoted: string[] = [];
-  // VIX itself has no quote; MOVE is Corvex, AAPL Apple.
+  // No source lists VIX; MOVE is Corvex, AAPL Apple, and a quote for MID times out.
   const dataProvider = createTestDataProvider({
     getQuote: async (symbol) => {
       quoted.push(symbol);
-      if (symbol === "VIX") throw new Error("No data provider could resolve VIX");
+      if (symbol === "VIX") throw new Error("No provider available for VIX");
+      if (symbol === "MID") throw new Error("Request timed out after 10000ms");
       return createTestQuote({ symbol, instrumentType: "EQUITY" });
     },
   });
@@ -122,8 +123,10 @@ test("a broker's index code is the index, and a cashtag stays the stock it names
   expect((await resolveCliListing("$MOVE", undefined, deps)).key).toBe("MOVE");
   expect(await resolveCliListing("$AAPL", undefined, deps)).toMatchObject({ key: "AAPL", request: { symbol: "AAPL" } });
   expect((await resolveCliListing("$AAPL", undefined, deps)).readAs).toBeUndefined();
+  // A timeout says nothing about what trades as MID, so $MID stays the symbol typed rather than the index.
+  expect((await resolveCliListing("$MID", undefined, deps)).key).toBe("MID");
   // A root no index is known by is never looked up as one, and a named exchange keeps the symbol as typed.
-  expect(quoted).toEqual(["VIX", "MOVE"]);
+  expect(quoted).toEqual(["VIX", "MOVE", "MID"]);
   expect(parseListingArg("VIX.X", "NYSE").key).toBe("VIX.X:NYSE");
 });
 

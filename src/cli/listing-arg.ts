@@ -839,20 +839,28 @@ export async function resolveCliListing(
 
 /**
  * The index a broker's code names, as a listing: VIX.X and $VIX.X at once,
- * $VIX when VIX itself has no quote. `$MOVE` stays Corvex, whose quote then
- * names the index beside it, and `$AAPL` is AAPL, as no index is rooted at
- * it. Null for anything else.
+ * $VIX when the sources answer that nothing trades as VIX. `$MOVE` stays
+ * Corvex, whose quote then names the index beside it, and `$AAPL` is AAPL, as
+ * no index is rooted at it. A quote that fails another way (a timeout, the
+ * network) says nothing about what trades, so `$MID` stays MID as typed.
+ * Null for anything else.
  */
 export async function readBrokerIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
   const code = brokerIndexCode(stripStrayEdges(raw).text || raw);
   if (!code) return null;
-  if (code.bare) {
-    const quote = await Promise.resolve()
-      .then(() => deps.dataProvider.getQuote(code.bare!, ""))
-      .catch(logFailure("cli.listing-arg", "Quote broker index root failed", null));
-    if (quote) return null;
-  }
+  if (code.bare && !await nothingTradesAs(code.bare, deps)) return null;
   return { symbol: code.symbol, exchange: "", key: code.symbol, readAs: brokerIndexReadAs(code) };
+}
+
+/** Whether the sources answer that no security trades as `symbol`: no quote, or a no-provider miss. */
+async function nothingTradesAs(symbol: string, deps: Pick<ListingDeps, "dataProvider">): Promise<boolean> {
+  try {
+    return !await deps.dataProvider.getQuote(symbol, "");
+  } catch (error) {
+    if (isNoProviderError(error)) return true;
+    logFailure("cli.listing-arg", "Quote broker index root failed")(error);
+    return false;
+  }
 }
 
 /** `readBrokerIndexCode` for a `$ROOT` code only: the `ROOT.X` codes are read where the listing is parsed. */
