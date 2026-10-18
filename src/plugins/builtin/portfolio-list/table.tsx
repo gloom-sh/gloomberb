@@ -17,7 +17,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
-import { tickerDisplayName } from "./column-values";
+import { tickerDisplayName } from "../../../portfolio/column-values";
 import { displayWidth } from "../../../utils/format";
 import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";

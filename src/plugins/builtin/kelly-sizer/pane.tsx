@@ -39,7 +39,7 @@ import { getSharedRegistry } from "../../registry";
 import { resolveTickerOpenTarget } from "../../../tickers/open-target";
 import { calculatePortfolioSummaryTotals } from "../portfolio-list/metrics";
 import { resolvePortfolioNetLiquidation } from "../portfolio-list/account-metrics";
-import { resolvePortfolioCash } from "../portfolio-list/allocation";
+import { resolvePortfolioCash } from "../../../portfolio/allocation";
 import {
   buildTrackedCurrencies,
   getCollectionTickersFromConfig,

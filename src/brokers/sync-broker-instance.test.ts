@@ -9,7 +9,7 @@ import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
-import { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
+import { getColumnValue, getSortValue } from "../portfolio/column-values";
 import { showCollection } from "../plugins/builtin/portfolio-list/cli/render";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { bindPluginRegistryRuntimeAccess } from "../app/runtime/plugin-bindings";

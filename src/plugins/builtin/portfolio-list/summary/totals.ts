@@ -4,9 +4,9 @@ import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
-import { headlineQuoteDisplay } from "../column-values";
+import { headlineQuoteDisplay } from "../../../../portfolio/column-values";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
-import type { AllocationHolding } from "../allocation";
+import type { AllocationHolding } from "../../../../portfolio/allocation";
 import { getPortfolioValuationDisplay, type PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
 import {
   getPortfolioPositionMetrics,

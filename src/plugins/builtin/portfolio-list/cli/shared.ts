@@ -2,7 +2,7 @@ import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
 import { parseListingArg } from "../../../../cli/listing-arg";
 import { findPortfolio, isManualPortfolio } from "../../../../portfolio/mutations";
-import { CASH_SYMBOL } from "../allocation";
+import { CASH_SYMBOL } from "../../../../portfolio/allocation";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { readCurrencyAmount, readTypedNumber, TYPED_AMOUNT_FORMAT } from "../../../../utils/decimal-comma";
 import { isProviderBusy } from "../../../../sources/provider-errors";

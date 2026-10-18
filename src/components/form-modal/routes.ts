@@ -1,6 +1,6 @@
 import type { BrokerDirectoryEntry } from "../../brokers/directory";
 import { tf } from "../../i18n";
-import { buildAddToPortfolioWorkflow } from "../../plugins/builtin/portfolio-list/command-bar";
+import { buildAddToPortfolioWorkflow } from "../command-bar/workflow/portfolio-position";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
   getFocusedCollectionId,

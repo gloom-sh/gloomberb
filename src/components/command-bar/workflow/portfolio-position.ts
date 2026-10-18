@@ -1,4 +1,4 @@
-import type { CommandBarFieldValue, CommandBarWorkflowField } from "../../../components/command-bar/workflow/types";
+import type { CommandBarFieldValue, CommandBarWorkflowField } from "./types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { getManualPortfolioPosition, isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";

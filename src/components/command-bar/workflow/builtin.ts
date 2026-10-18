@@ -2,7 +2,7 @@ import type { AppState } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 import {
   buildSetPortfolioPositionWorkflow,
-} from "../../../plugins/builtin/portfolio-list/command-bar";
+} from "./portfolio-position";
 import type { CommandBarFieldOption, CommandBarWorkflowField, CommandBarWorkflowRoute } from "./types";
 import { buildCommandBarWorkflowRoute } from "./route-builder";
 import { teamPrefix } from "../../../team/model";

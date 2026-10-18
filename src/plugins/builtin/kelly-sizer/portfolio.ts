@@ -1,6 +1,6 @@
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
-import { allocationTotal, type AllocationHolding } from "../portfolio-list/allocation";
+import { allocationTotal, type AllocationHolding } from "../../../portfolio/allocation";
 import { getCollectionTypeFromConfig } from "../portfolio-list/pane/data";
 
 /**

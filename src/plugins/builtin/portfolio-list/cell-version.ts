@@ -1,4 +1,4 @@
-import type { ColumnContext } from "./column-values";
+import type { ColumnContext } from "../../../portfolio/column-values";
 
 const DAY_MS = 86_400_000;
 

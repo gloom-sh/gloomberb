@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
 import type { TickerFinancials } from "../types/financials";
-import { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
+import { getColumnValue, getSortValue } from "../portfolio/column-values";
 import { buildTrackedCurrencies } from "../plugins/builtin/portfolio-list/pane/data";
 import { buildOverviewStats } from "../plugins/builtin/ticker-detail/overview/model";
 import { createTestTicker } from "../test-support/ticker";

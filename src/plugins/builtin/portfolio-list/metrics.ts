@@ -1,7 +1,7 @@
 import type { CollectionSortPreference } from "../../../state/app/context";
 
-export type { ColumnContext } from "./column-values";
-export { getColumnValue, getSortValue, resolvePortfolioPriceValue } from "./column-values";
+export type { ColumnContext } from "../../../portfolio/column-values";
+export { getColumnValue, getSortValue, resolvePortfolioPriceValue } from "../../../portfolio/column-values";
 export type { PortfolioSummaryTotals } from "./summary/totals";
 export { calculatePortfolioSummaryTotals, resolvePortfolioTotalsCurrency } from "./summary/totals";
 

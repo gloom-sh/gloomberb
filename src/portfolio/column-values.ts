@@ -1,15 +1,15 @@
 // Public API: gloomberb/components re-exports getColumnValue, getSortValue and
 // ColumnContext from here, so external plugins depend on their names and shapes.
-import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
-import { convertMarketCapitalization, listedMarketCapitalization } from "../../../utils/market-capitalization";
-import type { ColumnConfig } from "../../../types/config";
-import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
-import type { EarningsEvent } from "../../../types/data-provider";
-import type { TickerRecord } from "../../../types/ticker";
-import { colors, priceColor } from "../../../theme/colors";
-import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
-import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
-import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { comparablePriceEarnings, formatPriceEarnings } from "../utils/price-earnings";
+import { convertMarketCapitalization, listedMarketCapitalization } from "../utils/market-capitalization";
+import type { ColumnConfig } from "../types/config";
+import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../types/financials";
+import type { EarningsEvent } from "../types/data-provider";
+import type { TickerRecord } from "../types/ticker";
+import { colors, priceColor } from "../theme/colors";
+import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
+import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
+import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
 import {
   formatMarketCost,
   quoteFormatOptions,
@@ -20,7 +20,7 @@ import {
   withCurrencyMinorDigits,
   withStablePriceDigits,
   type MarketFormatOptions,
-} from "../../../market-data/market/format";
+} from "../market-data/market/format";
 import {
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
@@ -30,15 +30,15 @@ import {
   marketStateDot,
   quoteDotMarketState,
   type ActiveQuoteDisplay,
-} from "../../../market-data/market/status";
-import { formatOptionTicker } from "../../../utils/options";
-import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../../../utils/forward-dividend";
-import { classifyInstrumentType } from "../../../tickers/instrument-kind";
-import { isIndexLevel, reportedQuoteVolume } from "../../../market-data/market/index-level";
-import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
-import { currentListingName } from "../../../tickers/listing-name";
-import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
-import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../../../components/price-sparkline/model";
+} from "../market-data/market/status";
+import { formatOptionTicker } from "../utils/options";
+import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../utils/forward-dividend";
+import { classifyInstrumentType } from "../tickers/instrument-kind";
+import { isIndexLevel, reportedQuoteVolume } from "../market-data/market/index-level";
+import { perpetualDisplaySymbol, perpetualListing } from "../tickers/perpetual-listing";
+import { currentListingName } from "../tickers/listing-name";
+import { PRICE_SPARKLINE_COLUMN_ID } from "../components/price-sparkline/view";
+import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../components/price-sparkline/model";
 import {
   liveDividendYield,
   liveFiftyTwoWeekRange,
@@ -46,7 +46,7 @@ import {
   liveMarketCapitalization,
   liveTrailingPE,
   targetReferencePrice,
-} from "../../../market-data/quotes/live-valuation";
+} from "../market-data/quotes/live-valuation";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,
@@ -55,13 +55,13 @@ import {
   portfolioPnlPercent,
   signedPositionDirection,
   type PortfolioPositionPnl,
-} from "../../../portfolio/position-metrics";
+} from "./position-metrics";
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
   type PortfolioValuationBasis,
-} from "../../../portfolio/valuation-basis";
-import { isFiniteNumber } from "../../../utils/guards";
+} from "./valuation-basis";
+import { isFiniteNumber } from "../utils/guards";
 import {
   allocationFigures,
   formatAllocationDrift,

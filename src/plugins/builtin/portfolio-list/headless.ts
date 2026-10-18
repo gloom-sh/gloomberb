@@ -32,7 +32,7 @@ import {
   formatAllocationDrift,
   formatAllocationWeight,
   formatTradeUnits,
-} from "./allocation";
+} from "../../../portfolio/allocation";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { quoteFreshnessFields } from "../shared/report-freshness";

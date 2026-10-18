@@ -18,7 +18,7 @@ import {
   type BrokerSnapshotBasis,
 } from "../account-metrics";
 import { formatPortfolioAmount, type PortfolioSummaryTotals } from "./totals";
-import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine } from "../allocation";
+import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine } from "../../../../portfolio/allocation";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";

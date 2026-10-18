@@ -102,7 +102,7 @@ import {
   CASH_SYMBOL,
   hasTargetWeights,
   resolvePortfolioCash,
-} from "../allocation";
+} from "../../../../portfolio/allocation";
 
 /** Columns that need the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);

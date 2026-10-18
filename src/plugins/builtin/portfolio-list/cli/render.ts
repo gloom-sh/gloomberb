@@ -33,7 +33,7 @@ import {
   type ExtendedSession,
   type ExtendedSessionDisplay,
 } from "../../../../market-data/market/status";
-import { formatPerpetualRate, headlineQuoteDisplay } from "../column-values";
+import { formatPerpetualRate, headlineQuoteDisplay } from "../../../../portfolio/column-values";
 import type { AppConfig } from "../../../../types/config";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { CliCommandContext } from "../../../../types/plugin";
@@ -66,7 +66,7 @@ import {
   resolvePortfolioCash,
   type AllocationHolding,
   type PortfolioAllocation,
-} from "../allocation";
+} from "../../../../portfolio/allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";

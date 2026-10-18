@@ -37,7 +37,7 @@ import {
   formatAllocationMoney,
   formatAllocationWeight,
   parseTargetWeight,
-} from "../allocation";
+} from "../../../../portfolio/allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { apiClient } from "../../../../api-client";
 import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImportLine } from "./import-13f";

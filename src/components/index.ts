@@ -50,8 +50,8 @@ export type { TickerListVisibleRange } from "./ticker/list-table-view";
 // What `TickerListTableView` puts in each configured column, and the value it
 // sorts on. A pane that shows the user's own column set has to read them the
 // same way or its rows disagree with the portfolio's.
-export { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
-export type { ColumnContext } from "../plugins/builtin/portfolio-list/column-values";
+export { getColumnValue, getSortValue } from "../portfolio/column-values";
+export type { ColumnContext } from "../portfolio/column-values";
 export { TickerBadgeList } from "./ticker/badge/list";
 export { TickerBadgeText } from "./ticker/badge/text";
 // One `useInlineTickers` catalog entry in running text. With `badgeQuotes`
