@@ -179,6 +179,8 @@ export function CompositeLegend({
     const markerWidth = isDesktopWeb ? cue ? DOM_LINE_CELLS : DOM_DOT_CELLS : displayWidth(marker);
     const toggleable = !!onToggleSeries && (isSeriesToggleable?.(entry) ?? true);
     const cursorValue = cursorValueById.get(entry.id);
+    // A stacked layer reads its own amount, not the top of the stack it is drawn to.
+    const legendValue = entry.stacked ? cursorValue?.point?.rawValue ?? null : cursorValue?.value ?? null;
     const changeText = showLatestChangePercent
         && !scene?.cursorDate
         && typeof entry.latestChangePercent === "number"
@@ -197,7 +199,7 @@ export function CompositeLegend({
       ? entry.hidden ? "" : "no data"
       : `${formatLegendSeriesValue(
         entry,
-        cursorValue?.value ?? null,
+        legendValue,
         formatValue,
         scene,
       )}${statedUnit}${valueTail}`;

@@ -350,6 +350,17 @@ interface HeadlessPaneResultBase {
   freshness?: HeadlessPaneFreshness;
 }
 
+/** A table only `--csv` and `--ndjson` write, after the report's own rows. */
+export interface HeadlessExportTable {
+  title: string;
+  columns: HeadlessPaneColumn[];
+  rows: HeadlessPaneRow[];
+  /** The unit every figure is in, which each exported row names in `currency_or_unit`. */
+  unit?: string;
+  /** The interval the rows are at (`1d`), which each exported row names in `interval`. */
+  interval?: string;
+}
+
 export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   columns?: HeadlessPaneColumn[];
   /**
@@ -363,6 +374,12 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   textRows?: HeadlessPaneRow[];
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;
+  /**
+   * Tables `--csv` and `--ndjson` write after the rows, each in its own
+   * section, such as the dated history the rows sum up. The text report and
+   * JSON leave them out.
+   */
+  exportTables?: HeadlessExportTable[];
 }
 
 export type HeadlessBundleSection =

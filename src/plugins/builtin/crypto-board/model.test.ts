@@ -94,6 +94,14 @@ test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", 
   expect(ids(60)).toEqual(["rank", "code", "price", "changePercent", "return7d", "marketCap"]);
   const wide = buildCryptoColumns(200).find((column) => column.id === "name")!;
   expect(wide.width).toBe(24);
+  // Stablecoins keep the peg and the low: the price's returns go first, then supply's dollar changes, and supply itself last.
+  const stable = (width: number) => buildCryptoColumns(width, "stablecoin").map((column) => column.id);
+  expect(stable(166)).toEqual([
+    "rank", "code", "name", "price", "pegText", "offPegBp", "low24h", "low24hAt", "high24h", "high24hAt",
+    "volume24h", "marketCap", "supply", "supply7dPercent", "supply30dPercent", "supplyShare",
+  ]);
+  expect(stable(94)).toEqual(["rank", "code", "price", "pegText", "offPegBp", "low24h", "low24hAt", "marketCap", "supply"]);
+  expect(stable(84)).toEqual(["rank", "code", "price", "pegText", "offPegBp", "low24h", "low24hAt", "supply"]);
 });
 
 test("a move that rounds to zero is unsigned", () => {

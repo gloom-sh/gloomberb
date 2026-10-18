@@ -27,7 +27,7 @@ import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload } from "./crypto-markets";
+import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
@@ -734,6 +734,19 @@ export class CloudDataApi {
 
   async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {
     return this.request<CryptoMarketsPayload>("/cloud/crypto/markets", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** Total stablecoin supply and the largest coins', daily, with 7D and 30D changes and shares. */
+  async getCloudStablecoinSupply(): Promise<StablecoinSupplyPayload> {
+    return this.request<StablecoinSupplyPayload>("/cloud/crypto/stablecoins/supply", { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** One listed stablecoin's daily supply, by symbol. */
+  async getCloudStablecoinSupplyHistory(symbol: string): Promise<StablecoinSupplyHistoryPayload> {
+    return this.request<StablecoinSupplyHistoryPayload>(
+      `/cloud/crypto/stablecoins/supply/${encodeURIComponent(symbol)}`,
+      { signal: AbortSignal.timeout(30_000) },
+    );
   }
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {

@@ -1,4 +1,54 @@
-import type { SeriesDefinition } from "../../../series/types";
+import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
+import { cachedSeriesWarning } from "../shared/series-warning";
+import { loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
+
+const DAY_MS = 86_400_000;
+
+/** Daily values from `start`, a missing day left a gap. */
+function dailyPoints(start: string, values: ReadonlyArray<number | null>): SeriesPoint[] {
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  return values.map((value, index) => ({ date: startMs + index * DAY_MS, value }));
+}
+
+/** The coin a pair names: USDT-USD charts USDT. */
+function stablecoinSymbol(ticker: string): string {
+  return ticker.trim().toUpperCase().split(/[-/]/)[0] ?? ticker;
+}
+
+/** Total stablecoin supply and any listed coin's, as CRYP's stablecoin list shows them. */
+const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
+  {
+    id: "crypto:stablecoin-supply",
+    name: "Total stablecoin supply",
+    unit: "USD",
+    frequency: "daily",
+    group: "Crypto",
+    tags: ["stablecoin", "stablecoins", "supply", "USDT", "USDC", "liquidity"],
+    description: "Total supply of all stablecoins, valued in USD, daily since 2017, as CRYP's stablecoin list totals it.",
+    load: async () => {
+      const resource = await loadStablecoinSupply();
+      const history = resource.payload.history;
+      if (!history) throw new Error("Stablecoin supply is not available yet.");
+      return { points: dailyPoints(history.start, history.total), warning: cachedSeriesWarning(resource) };
+    },
+  },
+  {
+    id: "crypto:stablecoin-coin-supply",
+    name: "Stablecoin supply",
+    unit: "USD",
+    frequency: "daily",
+    group: "Crypto",
+    tags: ["stablecoin", "stablecoins", "supply", "circulating"],
+    description: "One stablecoin's supply across chains, valued in USD, daily, for a coin on CRYP's stablecoin list (USDT-USD).",
+    input: "crypto",
+    load: async ({ ticker }) => {
+      const resource = await loadStablecoinSupplyHistory(stablecoinSymbol(ticker!));
+      const history = resource.payload.history;
+      if (!history) throw new Error(`${resource.payload.symbol} supply history is not available yet.`);
+      return { points: dailyPoints(history.start, history.values), warning: cachedSeriesWarning(resource) };
+    },
+  },
+];
 
 const PAIRS: ReadonlyArray<{ symbol: string; name: string }> = [
   { symbol: "BTC-USD", name: "Bitcoin" },
@@ -45,4 +95,5 @@ export const CRYPTO_SERIES: readonly SeriesDefinition[] = [
     input: "crypto",
     expression: "{ticker}:price",
   },
+  ...STABLECOIN_SUPPLY_SERIES,
 ];

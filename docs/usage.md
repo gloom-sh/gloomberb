@@ -308,7 +308,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues; a market opens its Pro history and evidence; free preview |
-| `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab, with peg, off peg in bp and the 24h low and high with UTC times |
+| `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab, with peg, off peg in bp, the 24h low and high with UTC times, total supply, a stacked supply chart and each coin's supply, 7D and 30D change and share |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates; `fn ECST` prints the 2s10s spread in bp and takes `--range 5Y|20Y|ALL` for the window of its percentiles, highs and lows. The daily rates add their 1D and 1W moves ranked against the series' whole history (`1D move  -1bp · 21 pctl since 1962`), and Treasury yields name their 15:30 ET cut-off ([move ranks and cut-offs](research-data.md#was-it-a-big-day-move-ranks)) |
 | `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab; CLI also accepts `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date) and `--tab world`; the table carries each tenor's 1D move in bp, and with `--compare` both curves and the difference in bp |
@@ -404,7 +404,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 `PERP` opens the [perpetuals board](perpetuals.md); `PERP [market]` opens that market's History.
 
-`CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
+`CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)).
 
 ### Workspace and App Controls
 

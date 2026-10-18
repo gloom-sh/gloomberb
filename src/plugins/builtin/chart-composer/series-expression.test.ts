@@ -94,6 +94,9 @@ describe("chart composer expressions", () => {
     expect(buildCustomChartPreset("EUR/USD").series).toHaveLength(1);
     expect(getSelectedPairStudies(buildCustomChartPreset("EUR/USD"))).toEqual([]);
     expect(buildCustomChartPreset("BTC/USD").series).toHaveLength(1);
+    expect(buildCustomChartPreset("CAP:short-volume:ratio/AAPL").series.map((series) => series.source)).toEqual([
+      expect.objectContaining({ kind: "capability", capabilityId: "short-volume", seriesId: "ratio/AAPL" }),
+    ]);
     expect(buildCustomChartPreset("AAPL:EV/EBITDA").series[0]?.source).toMatchObject({
       kind: "security",
       instrument: { symbol: "AAPL" },

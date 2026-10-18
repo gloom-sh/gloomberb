@@ -176,10 +176,25 @@ function downsampleProjectedSeries(
   return points === series.points ? series : { ...series, points };
 }
 
+/**
+ * The dates every stacked layer keeps: those the top layer keeps. Each layer
+ * is drawn from the one below it, so layers sampled apart would leave slivers
+ * and overlaps between their edges.
+ */
+function stackedSampleDates(panel: CompositePanelScene, pixelWidth: number): ReadonlySet<number> | null {
+  const top = panel.series.findLast((entry) => entry.source.stacked);
+  if (!top) return null;
+  const sampled = downsampleProjectedSeries(top, pixelWidth);
+  return sampled === top ? null : new Set(sampled.points.map((point) => point.timestamp));
+}
+
 function downsamplePanel(panel: CompositePanelScene, pixelWidth: number): CompositePanelScene {
   let changed = false;
+  const stackedDates = stackedSampleDates(panel, pixelWidth);
   const series = panel.series.map((entry) => {
-    const next = downsampleProjectedSeries(entry, pixelWidth);
+    const next = entry.source.stacked
+      ? stackedDates ? { ...entry, points: entry.points.filter((point) => stackedDates.has(point.timestamp)) } : entry
+      : downsampleProjectedSeries(entry, pixelWidth);
     if (next !== entry) changed = true;
     return next;
   });

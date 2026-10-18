@@ -219,6 +219,12 @@ export interface ResolvedSeries {
   warning?: string;
   /** Listed in the legend so it can be restored, but not drawn. */
   hidden?: boolean;
+  /**
+   * A layer of a stacked area (`stackedSeries`): a band from the layers below
+   * to its own top, each point's `value` the top and `rawValue` the layer's own
+   * amount, which the legend shows.
+   */
+  stacked?: boolean;
   /** Columns below zero take this colour instead, so a change reads by its sign. */
   negativeColor?: string;
   /**

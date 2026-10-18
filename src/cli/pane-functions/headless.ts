@@ -710,9 +710,16 @@ export function headlessReportTables(
   let tables: CliReportTable[];
   switch (definition.shape) {
     case "rows": {
-      const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };
+      const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
-      tables = [exportRowsTable(title, columns, rowsResult.rows)];
+      tables = [exportRowsTable(title, columns, rowsResult.rows), ...(rowsResult.exportTables ?? []).map((extra) => {
+        const identity = {
+          ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
+          ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),
+        };
+        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows);
+        return Object.keys(identity).length > 0 ? { ...table, identity } : table;
+      })];
       break;
     }
     case "bundle":

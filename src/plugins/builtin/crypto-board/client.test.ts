@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
-import { fetchCryptoMarkets, validateCryptoMarkets } from "./client";
-import { cryptoFixture } from "./test-fixture";
+import { fetchCryptoMarkets, validateCryptoMarkets, validateStablecoinSupply } from "./client";
+import { cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 test("the Cloud boundary accepts missing history and rejects malformed assets", () => {
   const data = cryptoFixture();
@@ -67,4 +67,24 @@ test("an absent or failing endpoint has a concise error", async () => {
       throw new ApiRequestError("Unavailable", 503);
     },
   })).rejects.toThrow("temporarily unavailable");
+});
+
+test("supply history must line every charted coin up with the total's days", () => {
+  expect(validateStablecoinSupply(stablecoinSupplyFixture()).history!.total[2]).toBeNull();
+  const mutations = [
+    (copy: ReturnType<typeof stablecoinSupplyFixture>) => {
+      copy.history!.coins[0]!.values.pop();
+    },
+    (copy: ReturnType<typeof stablecoinSupplyFixture>) => {
+      copy.history!.total[0] = -1;
+    },
+    (copy: ReturnType<typeof stablecoinSupplyFixture>) => {
+      (copy.coins[0] as { pegType: unknown }).pegType = null;
+    },
+  ];
+  for (const mutate of mutations) {
+    const copy = stablecoinSupplyFixture();
+    mutate(copy);
+    expect(() => validateStablecoinSupply(copy)).toThrow();
+  }
 });

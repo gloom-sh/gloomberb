@@ -23,7 +23,32 @@ export const CRYPTO_TABS: Array<{ value: CryptoAssetKind; label: string }> = [
   { value: "stablecoin", label: "Stablecoins" },
 ];
 
-export interface CryptoRow {
+/** A stablecoin's supply as its row shows it; every field is null on the coin tab and for a coin the supply list lacks. */
+export interface CryptoRowSupply {
+  /** USD. */
+  supply: number | null;
+  /** The change in units over 7 and 30 days, valued at today's price, and in percent. */
+  supply7d: number | null;
+  supply7dPercent: number | null;
+  supply30d: number | null;
+  supply30dPercent: number | null;
+  /** Percent of all stablecoin supply. */
+  supplyShare: number | null;
+  /** The coin's peg currency as the supply source names it (peggedUSD, peggedEUR). */
+  pegType: string | null;
+}
+
+const NO_SUPPLY: CryptoRowSupply = {
+  supply: null,
+  supply7d: null,
+  supply7dPercent: null,
+  supply30d: null,
+  supply30dPercent: null,
+  supplyShare: null,
+  pegType: null,
+};
+
+export interface CryptoRow extends CryptoRowSupply {
   asset: CryptoMarketAsset;
   id: string;
   rank: number;
@@ -161,6 +186,7 @@ function buildCryptoRow(
     ...range,
     low24hText: formatCryptoPrice(range.low24h, minimumDecimals, referencePrice),
     high24hText: formatCryptoPrice(range.high24h, minimumDecimals, referencePrice),
+    ...NO_SUPPLY,
   };
 }
 
@@ -248,6 +274,25 @@ export function buildCryptoRows(
     });
 }
 
+const suppliedRows = new WeakMap<CryptoRow, { supply: CryptoRowSupply; row: CryptoRow }>();
+
+/**
+ * Each row with its coin's supply, matched by code. A row keeps its identity
+ * while its price and its supply hold, so the table still skips it.
+ */
+export function withCryptoSupply(rows: readonly CryptoRow[], supply: ReadonlyMap<string, CryptoRowSupply>): CryptoRow[] {
+  if (supply.size === 0) return rows as CryptoRow[];
+  return rows.map((row) => {
+    const own = supply.get(row.code.toUpperCase());
+    if (!own) return row;
+    const cached = suppliedRows.get(row);
+    if (cached && cached.supply === own) return cached.row;
+    const supplied = { ...row, ...own };
+    suppliedRows.set(row, { supply: own, row: supplied });
+    return supplied;
+  });
+}
+
 /** What a capture and the footer read of each row: when its price is from, and whether it is streaming live. */
 export function cryptoRowObservations(rows: readonly CryptoRow[]): Array<{ quoteTime: string; dataSource: "live" | "delayed" }> {
   return rows.flatMap((row) => row.updatedAt == null ? [] : [{ quoteTime: new Date(row.updatedAt).toISOString(), dataSource: row.live ? "live" as const : "delayed" as const }]);
@@ -295,7 +340,13 @@ type CryptoColumnId =
   | "low24h"
   | "low24hAt"
   | "high24h"
-  | "high24hAt";
+  | "high24hAt"
+  | "supply"
+  | "supply7dPercent"
+  | "supply7d"
+  | "supply30dPercent"
+  | "supply30d"
+  | "supplyShare";
 
 export type CryptoColumn = DataTableColumn & { id: CryptoColumnId };
 
@@ -331,7 +382,9 @@ export function sortCryptoRows(rows: CryptoRow[], sort: CryptoSortPreference): C
 
 // Columns ---------------------------------------------------------------------
 
-const COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
+type CryptoColumnSpec = CryptoColumn & { optional?: number };
+
+const COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "rank", label: "#", width: 3, align: "right" },
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 1 },
@@ -347,11 +400,14 @@ const COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
 
 /**
  * A stablecoin is read by its peg: what it holds to, how far off it is, and
- * the 24-hour low and high with their times, before its returns. Narrowing,
- * the returns, the sparkline and the day change leave first, then volume, the
- * name and the high; the peg, the low and when it traded stay.
+ * the 24-hour low and high with their times, before its returns; its supply
+ * follows the market cap. Narrowing, the returns, the sparkline and the day
+ * change leave first, then the dollar changes in supply, volume, the supply's
+ * 30D, the name, share, the high, the supply's 7D and the market cap, which
+ * supply all but repeats; the peg, the low and when it traded stay, and supply
+ * goes last.
  */
-const STABLECOIN_COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
+const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "rank", label: "#", width: 3, align: "right" },
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 3 },
@@ -368,7 +424,13 @@ const STABLECOIN_COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 9 },
   { id: "trend", label: "30D", width: 12, align: "left", optional: 7 },
   { id: "volume24h", label: "VOL 24H", width: 8, align: "right", optional: 4 },
-  { id: "marketCap", label: "MCAP", width: 8, align: "right" },
+  { id: "marketCap", label: "MCAP", width: 8, align: "right", optional: 0.6 },
+  { id: "supply", label: "SUPPLY", width: 8, align: "right", optional: 0.4 },
+  { id: "supply7dPercent", label: "SUP 7D%", width: 8, align: "right", optional: 0.8 },
+  { id: "supply7d", label: "SUP 7D", width: 8, align: "right", optional: 4.6 },
+  { id: "supply30dPercent", label: "SUP 30D%", width: 8, align: "right", optional: 3.6 },
+  { id: "supply30d", label: "SUP 30D", width: 8, align: "right", optional: 4.8 },
+  { id: "supplyShare", label: "SHARE", width: 7, align: "right", optional: 2.6 },
 ];
 
 const MAX_NAME_WIDTH = 24;

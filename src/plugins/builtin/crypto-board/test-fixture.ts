@@ -1,4 +1,4 @@
-import type { CryptoMarketAsset, CryptoMarketsPayload } from "../../../api-client/crypto-markets";
+import type { CryptoMarketAsset, CryptoMarketsPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 
 /** 2026-09-23 12:00 UTC; closes run 2026-08-24 through 2026-09-22. */
 export const CRYPTO_FIXTURE_NOW = Date.parse("2026-09-23T12:00:00Z");
@@ -80,6 +80,42 @@ export function cryptoFixture(): CryptoMarketsPayload {
         },
       }),
     ],
+    warnings: [],
+  };
+}
+
+/**
+ * Supply for the fixture's USDT and one coin the board does not list, over
+ * five days from 2026-09-19: the total, USDT and USDC charted, the rest Other.
+ */
+export function stablecoinSupplyFixture(): StablecoinSupplyPayload {
+  return {
+    version: 1,
+    generatedAt: "2026-09-23T11:00:00.000Z",
+    fetchedAt: "2026-09-23T00:10:00.000Z",
+    asOf: "2026-09-23",
+    status: "available",
+    source: { name: "Gloom Cloud", url: "https://gloom.sh" },
+    total: { supply: 300e9, change7d: -1.5e9, change7dPercent: -0.5, change30d: 1.8e9, change30dPercent: 0.6 },
+    coins: [
+      {
+        symbol: "USDT", name: "Tether", pegType: "peggedUSD", pegMechanism: "fiat-backed", price: 0.9998, supply: 180e9,
+        change7d: -0.6e9, change7dPercent: -0.33, change30d: 0.2e9, change30dPercent: 0.11, share: 60,
+      },
+      {
+        symbol: "USDC", name: "USD Coin", pegType: "peggedUSD", pegMechanism: "fiat-backed", price: 1, supply: 72e9,
+        change7d: -0.6e9, change7dPercent: -0.87, change30d: -1.4e9, change30dPercent: -1.92, share: 24,
+      },
+    ],
+    history: {
+      start: "2026-09-19",
+      total: [296e9, 297e9, null, 299e9, 300e9],
+      coins: [
+        { symbol: "USDT", name: "Tether", values: [178e9, 179e9, null, 180e9, 180e9] },
+        // Before a coin existed its days are null, and a coin read later than the total can top it.
+        { symbol: "USDC", name: "USD Coin", values: [null, 70e9, 71e9, 72e9, 121e9] },
+      ],
+    },
     warnings: [],
   };
 }

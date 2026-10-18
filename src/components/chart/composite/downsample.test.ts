@@ -6,6 +6,7 @@ import {
   downsampleOhlcProjectedPoints,
 } from "./downsample";
 import { applyCompositeChartCursor, buildCompositeChartScene } from "./scene";
+import { stackedSeries } from "../static/series";
 import { createTestResolvedSeries as series, createTestSeriesPoint as point } from "../../../test-support/time-series";
 
 function ohlcPoint(
@@ -127,5 +128,26 @@ describe("composite downsample", () => {
     )!;
     const downsampled = downsampleCompositeChartScene(scene, 64);
     expect(downsampled.panels[0]!.series[0]!.points).toBe(scene.panels[0]!.series[0]!.points);
+  });
+
+  test("stacked layers thin on the same dates, so each layer's floor stays the top of the one below", () => {
+    const start = Date.parse("2024-01-01T00:00:00.000Z");
+    const dates = Array.from({ length: 600 }, (_, index) => new Date(start + index * 86_400_000));
+    // Layers that peak on different days would each keep their own days if thinned apart.
+    const layers = [0, 1, 2].map((layer) => ({
+      id: `layer-${layer}`,
+      label: `Layer ${layer}`,
+      color: "#4dabf7",
+      values: dates.map((_, index) => 10 + Math.sin(index / (5 + layer * 3)) * 5 + (index % (41 + layer) === 0 ? 20 : 0)),
+    }));
+    const stacked = stackedSeries(dates, layers, { calendarSpaced: true });
+    expect(stacked[1]!.points[7]).toMatchObject({ low: stacked[0]!.points[7]!.high, rawValue: layers[1]!.values[7] });
+    const scene = buildCompositeChartScene(stacked, [{ id: "main" }], { width: 80, height: 12 })!;
+    const thinned = downsampleCompositeChartScene(scene, 64).panels[0]!.series;
+    const days = (index: number) => thinned[index]!.points.map((point) => point.timestamp);
+    expect(days(0).length).toBeLessThan(600);
+    expect(days(0)).toEqual(days(2));
+    expect(days(1)).toEqual(days(2));
+    thinned[1]!.points.forEach((point, index) => expect(point.point.low).toBe(thinned[0]!.points[index]!.point.high!));
   });
 });

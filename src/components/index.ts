@@ -19,7 +19,7 @@ export type {
   ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
   ChartTableSelection,
 } from "./chart-table";
-export { scalarPoint, staticSeries } from "./chart/static/series";
+export { scalarPoint, stackedSeries, staticSeries, type StackedLayer } from "./chart/static/series";
 export type {
   CompositeAxisDomain,
   CompositeAxisSide,

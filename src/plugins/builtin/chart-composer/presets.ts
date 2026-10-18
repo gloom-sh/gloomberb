@@ -43,7 +43,8 @@ export function buildEmptyChartPreset(): ChartSpec {
 /**
  * `GAA/VOO`, `GAA / VOO`, and `CL=F - ES=F` are a ratio or a spread of two series.
  * A slash that is the symbol stays one series (`EUR/USD`, `BTC/USD`), and so does
- * a field written with a slash (`AAPL:EV/EBITDA`). A comma-separated list stays a list.
+ * a field written with a slash (`AAPL:EV/EBITDA`) and the symbol a catalog series
+ * takes after one (`CAP:short-volume:ratio/AAPL`). A comma-separated list stays a list.
  */
 function derivedPair(expression: string): { series: ParsedSeriesExpression[]; formula: PairStudySelection } | null {
   const trimmed = expression.trim();
@@ -58,6 +59,7 @@ function derivedPair(expression: string): { series: ParsedSeriesExpression[]; fo
   const tight = /^([^/\s]+)\/([^/\s]+)$/.exec(trimmed);
   if (!tight) return null;
   const [leftToken, rightToken] = [tight[1]!, tight[2]!];
+  if (/^CAP:/i.test(leftToken) && !/^CAP:/i.test(rightToken)) return null;
   const quote = rightToken.split(":")[0]!;
   if (currencyPairSpelling(`${leftToken}/${quote}`) || dashedCoinPair(`${leftToken}/${quote}`)) return null;
   const left = parseSeriesExpression(leftToken);

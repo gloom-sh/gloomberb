@@ -419,7 +419,7 @@
           {
             "code": "CRYP",
             "name": "Crypto",
-            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap."
+            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, and stablecoin supply."
           },
           {
             "code": "PERP",

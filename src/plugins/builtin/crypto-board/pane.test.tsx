@@ -10,9 +10,9 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { cryptoMarketsCache } from "./client";
+import { cryptoMarketsCache, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { CryptoBoardPane } from "./pane";
-import { cryptoFixture } from "./test-fixture";
+import { cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 let restore: (() => void) | undefined;
@@ -24,9 +24,10 @@ afterEach(() => {
   restore?.();
   restore = undefined;
   cryptoMarketsCache.reset();
+  for (const cache of STABLECOIN_SUPPLY_CACHES) cache.reset();
 });
 
-async function mountPane(width = 130) {
+async function mountPane(width = 130, height = 20) {
   const config = createTestPaneConfig("/tmp/crypto-pane-test-unused", {
     instanceId: "cryp",
     paneId: "crypto-board",
@@ -37,12 +38,12 @@ async function mountPane(width = 130) {
     const [current, dispatch] = useReducer(appReducer, state);
     return (
       <TestPaneProvider state={current} dispatch={dispatch} paneId="cryp" pluginId="market-overview" runtime={createTestPluginRuntime()}>
-        <CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={20} focused />
+        <CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={height} focused />
       </TestPaneProvider>
     );
   }
   await act(async () => {
-    await tui.render(<Harness />, { width, height: 20 });
+    await tui.render(<Harness />, { width, height });
   });
   await settleFrame(tui.setup(), 10);
 }
@@ -94,7 +95,11 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
     if (fail) throw new Error("Controlled crypto outage");
     return data;
   });
-  restore = () => query.mockRestore();
+  const supply = spyOn(apiClient, "getCloudStablecoinSupply").mockImplementation(async () => stablecoinSupplyFixture());
+  restore = () => {
+    query.mockRestore();
+    supply.mockRestore();
+  };
   await mountPane();
   const frame = tui.frame();
   expect(frame).toContain("Coins");
@@ -111,7 +116,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
 
   await tui.emitKeypress({ name: "l" });
   await settleFrame(tui.setup(), 8);
-  expect(tui.frame()).toContain("Tether USDt");
+  expect(tui.frame()).toMatch(/USDT\s+0\.9998/);
 
   await tui.emitKeypress({ name: "h" });
   await settleFrame(tui.setup(), 8);
@@ -121,4 +126,46 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   await exportPaneTable("cryp", "retained.csv");
   expect(takeSavedTextFile()!.text).toBe(csv);
   expect(query).toHaveBeenCalledTimes(2);
+});
+
+function mockBoard(supply: () => Promise<ReturnType<typeof stablecoinSupplyFixture>>) {
+  const query = spyOn(apiClient, "getCloudCryptoMarkets").mockImplementation(async () => cryptoFixture());
+  const supplyQuery = spyOn(apiClient, "getCloudStablecoinSupply").mockImplementation(supply);
+  restore = () => {
+    query.mockRestore();
+    supplyQuery.mockRestore();
+  };
+  return supplyQuery;
+}
+
+async function openStablecoins() {
+  await mountPane(130, 24);
+  await tui.emitKeypress({ name: "l" });
+  await settleFrame(tui.setup(), 10);
+  return tui.frame();
+}
+
+test("the stablecoin tab charts supply above its rows", async () => {
+  const supply = mockBoard(async () => stablecoinSupplyFixture());
+  await mountPane(130, 24);
+  // The coin tab never asks for supply.
+  expect(supply).not.toHaveBeenCalled();
+  await tui.emitKeypress({ name: "l" });
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toMatch(/Total supply\s+300\.00B/);
+  expect(frame).toMatch(/30D change\s+\+1\.80B/);
+  // The legend reads each coin's own supply, not the stack's height at it.
+  expect(frame).toMatch(/USDC 121\.00B/);
+  expect(frame).toMatch(/SUPPLY\s+SUP 7D%/);
+  expect(frame).toMatch(/USDT .*180\.00B\s+180\.00B\s+-0\.33%/);
+});
+
+test("a supply outage leaves the stablecoin prices and says the chart is unavailable", async () => {
+  mockBoard(async () => {
+    throw new Error("Controlled supply outage");
+  });
+  const frame = await openStablecoins();
+  expect(frame).toMatch(/USDT\s+0\.9998/);
+  expect(frame).toContain("Stablecoin supply is unavailable right now.");
 });
