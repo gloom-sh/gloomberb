@@ -368,3 +368,19 @@ test("canonical missing changes survive JSON roundtrip into default Quote Monito
   expect(text.split("\n").find(line => line.trim().startsWith("ZERO "))).toContain("0.00%");
   expect(text.split("\n").find(line => line.trim().startsWith("DERIVED "))).toContain("+20.00%");
 });
+
+test("historical prices count a coin's bars without volume as history does, not the latest trade its hourly bars end with", async () => {
+  const bar = (date: string, volume?: number) => ({ date: new Date(date), open: 81_000, high: 81_100, low: 80_900, close: 81_050, volume });
+  const latest = bar("2026-10-18T15:57:53Z");
+  const load = async (points: ReturnType<typeof bar>[]) => historicalPricesHeadless.load(args(["BTC-USD"], { range: "1W" }), createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "BTC-USD", exchange: "CCC" }),
+    marketData: createTestDataProvider({ getPriceHistory: async () => points }),
+  }));
+  const signedIn = await load([bar("2026-10-18T13:00:00Z", 61_200_000), bar("2026-10-18T14:00:00Z", 73_800_000),
+    bar("2026-10-18T15:00:00Z", 24_100_000), latest]);
+  expect(signedIn.rows.at(-1)).toMatchObject({ date: "2026-10-18T15:57:53.000Z", volume: null });
+  // Before: "1 of 4 bars has no reported volume (—)".
+  expect(signedIn.notes).toBeUndefined();
+  const hole = await load([bar("2026-10-18T13:00:00Z", 61_200_000), bar("2026-10-18T14:00:00Z"), bar("2026-10-18T15:00:00Z", 24_100_000), latest]);
+  expect(hole.notes).toEqual(["1 of 4 bars has no reported volume (\u2014)"]);
+});

@@ -57,6 +57,8 @@ export type HistoricalPriceRow = {
   exportDate: string;
   /** The bar carries a time of day, so the table dates it with one. */
   timed: boolean;
+  /** When the bar opens, or the time of the latest trade an intraday history can end with (latestTradeIndex). */
+  time: number;
   /** The bar's period had not ended: a week or month still running, or the day's session still trading. */
   partial: boolean;
   /** A coin's day Gloom Cloud rebuilt from hourly bars, which has no volume of its own. */
@@ -152,6 +154,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
       date: timed ? shown : historyBarDate(shown, size, partial),
       exportDate: shown,
       timed,
+      time: date.getTime(),
       partial,
       filled,
       change,
@@ -242,7 +245,9 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     [points, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
-  const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({ ...row.point, partial: row.partial, filled: row.filled }))), [rows]);
+  const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({
+    ...row.point, date: row.time, partial: row.partial, filled: row.filled,
+  }))), [rows]);
   const volumeNotice = missingVolumeNotice(volumeMissing, rows.length);
   // Daily and longer bars are dates; only intraday bars carry a time.
   const intraday = rows.length > 0 ? rows.some((row) => row.timed) : range === "1D" || range === "1W";

@@ -1,3 +1,4 @@
+import { medianBarGap } from "../time-series/bar-spacing";
 import type { PricePoint } from "../types/financials";
 import { isFiniteNumber } from "./guards";
 
@@ -74,21 +75,53 @@ export function priceHistoryIntegrityNotice(count: number): string | undefined {
 export const MISSING_VOLUME_TEXT = "\u2014";
 
 /**
- * "90 of 178 bars have no reported volume (\u2014)": the bars of a history that reports volume whose own is missing,
- * such as the hours a coin's feed leaves without volume, which are never read as 0. `missing` counts only bars without
- * a reason of their own (still forming, rebuilt, prices left blank as contradictory). Undefined when there are none.
+ * "2 of 178 bars have no reported volume (\u2014)": the bars of a history that reports volume whose own is missing,
+ * such as a coin's hours its trading venues did not report, which are never read as 0. `missing` counts only bars
+ * without a reason of their own (still forming, rebuilt, prices left blank as contradictory, the latest trade).
+ * Undefined when there are none.
  */
 export function missingVolumeNotice(missing: number, total: number): string | undefined {
   if (missing <= 0) return undefined;
   return `${missing} of ${total} ${missing === 1 && total === 1 ? "bar" : "bars"} ${missing === 1 ? "has" : "have"} no reported volume (${MISSING_VOLUME_TEXT})`;
 }
 
+/** Bars spaced less than this apart are intraday; daily bars can be stamped at a session open, hours from midnight. */
+const INTRADAY_BAR_MAX_MS = 20 * 60 * 60 * 1000;
+
+/**
+ * Where a history's newest point is the latest trade instead of a bar, else -1. Some sources end an intraday history
+ * with the latest trade stamped at its own time, inside the bar before it (15:57:53 after the 15:00 bar of hourly
+ * bars): less than a bar after it, off the bars' grid. It belongs to that bar, as charts fold it in (live-bars.ts), so
+ * it has no volume of its own and is never a bar without reported volume. `times` may be in any order.
+ */
+export function latestTradeIndex(times: readonly number[]): number {
+  const order = times.map((time, index) => ({ time, index }))
+    .filter(({ time }) => Number.isFinite(time))
+    .sort((left, right) => left.time - right.time);
+  if (order.length < 3) return -1;
+  const last = order.at(-1)!;
+  const gap = last.time - order.at(-2)!.time;
+  const step = medianBarGap(order.slice(0, -1).map(({ time }) => time));
+  return step != null && step < INTRADAY_BAR_MAX_MS && gap > 0 && gap < step ? last.index : -1;
+}
+
+/** A bar's time, whether it carries a Date, an ISO date or a timestamp; NaN without one. */
+function barTime(date: Date | string | number | undefined): number {
+  if (date instanceof Date) return date.getTime();
+  if (typeof date === "number") return date;
+  return typeof date === "string" ? Date.parse(date) : Number.NaN;
+}
+
 /**
  * The bars of a history that reports volume left without it for no reason of their own: not still forming, not
- * rebuilt from hourly bars and not blank for contradictory prices, as `history` counts them. 0 for a history that
- * reports no volume at all, such as an index or a currency pair.
+ * rebuilt from hourly bars, not blank for contradictory prices and not the latest trade (latestTradeIndex), as
+ * `history` counts them. 0 for a history that reports no volume at all, such as an index or a currency pair.
  */
-export function missingVolumeCount(bars: readonly { volume: number | null; integrity?: unknown; partial?: boolean; filled?: boolean }[]): number {
+export function missingVolumeCount(bars: readonly {
+  volume: number | null; integrity?: unknown; partial?: boolean; filled?: boolean; date?: Date | string | number;
+}[]): number {
   if (!bars.some((bar) => bar.volume != null)) return 0;
-  return bars.filter((bar) => bar.volume == null && !bar.integrity && !bar.partial && !bar.filled).length;
+  const latestTrade = latestTradeIndex(bars.map((bar) => barTime(bar.date)));
+  return bars.filter((bar, index) => bar.volume == null && !bar.integrity && !bar.partial && !bar.filled
+    && index !== latestTrade).length;
 }

@@ -14,7 +14,7 @@ import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
-import { missingVolumeNotice, pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
+import { latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
@@ -74,7 +74,7 @@ export interface HistoryRow {
   unsettled?: true;
   /** What the volume counts, when the history says: a coin's is traded value in its quote currency (`USD`). */
   volumeUnit?: string;
-  /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `not reported`. */
+  /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `latest trade` (not a bar), `not reported`. */
   volumeNote?: string;
 }
 
@@ -195,6 +195,8 @@ export function historyRows(
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
   const interval = historyInterval(times, resolution);
+  // The latest trade some sources end intraday bars with is part of the bar before it, with no volume of its own.
+  const latestTrade = intraday ? latestTradeIndex(times) : -1;
   const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
@@ -218,7 +220,10 @@ export function historyRows(
       ...(volume ? { volumeUnit: volume.unit } : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
-        ? { volumeNote: point.partial ? "day in progress" : point.filled ? "rebuilt from hourly bars" : "not reported" }
+        ? {
+          volumeNote: index === latestTrade ? "latest trade" : point.partial ? "day in progress"
+            : point.filled ? "rebuilt from hourly bars" : "not reported",
+        }
         : {}),
     };
   });
@@ -291,14 +296,16 @@ function listDates(dates: readonly string[]): string {
 /**
  * What the partial, filled and unsettled bars are: "2026-10-12 is still
  * forming (partial), with no volume until the day closes", the bars rebuilt
- * from hourly bars, and a future's closed session that "closes on its last
- * trade until its settlement is confirmed (unsettled)". Null when no bar is
- * any of them.
+ * from hourly bars, a future's closed session that "closes on its last trade
+ * until its settlement is confirmed (unsettled)", and the latest trade an
+ * intraday history ends with when it has no volume (latestTradeIndex). Null
+ * when no bar is any of them.
  */
 export function historyBarStatusNote(
   rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume">[],
 ): string | null {
   const partial = rows.filter((row) => row.partial);
+  const latest = rows[latestTradeIndex(rows.map((row) => Date.parse(row.date)))];
   const filled = rows.filter((row) => row.filled);
   const unsettled = rows.filter((row) => row.unsettled);
   const notes = [
@@ -314,6 +321,10 @@ export function historyBarStatusNote(
       ? `${listDates(unsettled.map((row) => row.date))} ${unsettled.length === 1 ? "closes" : "close"} on the last trade until the`
         + ` settlement is confirmed (unsettled)`
       : null,
+    // Its blank volume beside bars that have one, said once rather than counted as a bar without volume.
+    latest && latest.volume == null && historyReportsVolume(rows)
+      ? `${latest.date} is the latest trade, inside the bar before it, with no volume of its own`
+      : null,
   ].filter((note): note is string => note != null);
   return notes.length > 0 ? notes.join("; ") : null;
 }
@@ -327,13 +338,17 @@ export function historyReportsVolume(rows: readonly Pick<HistoryRow, "volume">[]
 }
 
 /**
- * "98 of 177 bars have no reported volume (\u2014)" for a history that reports volume, or null. A bar still forming,
- * rebuilt from hourly bars or left blank for contradictory prices is said by its own note and not counted.
+ * "2 of 177 bars have no reported volume (\u2014)" for a history that reports volume, or null. A bar still forming,
+ * rebuilt from hourly bars or left blank for contradictory prices, and the latest trade an intraday history ends with,
+ * are said by their own notes and not counted.
  */
-export function historyMissingVolumeNote(rows: readonly Pick<HistoryRow, "volume" | "partial" | "filled" | "flag">[]): string | null {
+export function historyMissingVolumeNote(
+  rows: readonly Pick<HistoryRow, "date" | "volume" | "partial" | "filled" | "flag">[],
+): string | null {
   if (!historyReportsVolume(rows)) return null;
-  const missing = rows.filter((row) => row.volume == null && !row.partial && !row.filled
-    && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code))).length;
+  const latestTrade = latestTradeIndex(rows.map((row) => Date.parse(row.date)));
+  const missing = rows.filter((row, index) => row.volume == null && !row.partial && !row.filled
+    && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code)) && index !== latestTrade).length;
   return missingVolumeNotice(missing, rows.length) ?? null;
 }
 

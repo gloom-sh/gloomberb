@@ -219,10 +219,10 @@ function parseCloudPricePointDate(
 }
 
 /**
- * One served bar. `coin`: the bars are a coin's, which trades every hour of every day, so a volume the feed sends
- * as 0 is volume it did not report, not a bar nothing traded in (BTC-USD's hourly bars carry 0 for about half the
- * hours). It is read as missing, so no table prints 0 and no sum or average counts it. Any other listing keeps a 0,
- * which a thin stock can truly trade.
+ * One served bar. `coin`: the bars are a coin's, which trades every hour of every day. Its intraday volume is the
+ * value traded in the bar on major spot venues, and a bar no venue reported has none rather than 0, so a 0 (from an
+ * older copy, or a daily bar) is volume not reported, not a bar nothing traded in. It is read as missing, so no table
+ * prints 0 and no sum or average counts it. Any other listing keeps a 0, which a thin stock can truly trade.
  */
 export function mapPricePoint(
   point: CloudPricePointPayload,
