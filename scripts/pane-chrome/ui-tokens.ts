@@ -21,8 +21,8 @@ import { FITTED } from "./ui-audit-report";
  * `--record` lets reads the snapshot lacks go upstream and keeps them: CI
  * does that on main to make the snapshot pull requests read.
  *
- *   bun run check:ui-tokens [--shard 0/8] [--widths 640,1280] [--replay <dir>]
- *                           [--record] [--out <dir>] [--web <dir>] [--no-build]
+ *   bun run check:ui-tokens [--shard 0/8] [--only DOCS,LAY] [--widths 640,1280] [--replay <dir>]
+ *                           [--record] [--out <dir>] [--web <dir>] [--no-build] [--root <checkout>]
  *   bun run check:ui-tokens --results <run>[,<run>]    check runs already made
  *
  * The static half, literals in the code, is src/architecture/ui-literals.test.ts.
@@ -197,6 +197,8 @@ async function main(): Promise<void> {
   } else {
     const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-tokens"));
     const shard = takeOption(args, "--shard");
+    const only = takeOption(args, "--only");
+    const root = takeOption(args, "--root");
     const audit = [
       "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-shots", "--no-report", "--themes", "white",
       "--widths", takeOption(args, "--widths") ?? "640,1280",
@@ -206,6 +208,8 @@ async function main(): Promise<void> {
       ...(args.includes("--record") ? [] : ["--offline"]),
       ...(args.includes("--no-build") ? [] : ["--build"]),
       ...(shard ? ["--shard", shard] : []),
+      ...(only ? ["--only", only] : []),
+      ...(root ? ["--root", resolve(root)] : []),
     ];
     await mkdir(out, { recursive: true });
     const run = Bun.spawnSync(audit, { stdout: "inherit", stderr: "inherit" });

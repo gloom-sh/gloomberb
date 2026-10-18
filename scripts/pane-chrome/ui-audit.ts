@@ -141,9 +141,10 @@ async function registryPluginDirs(builtIn: Set<string>): Promise<string[]> {
       if (clone.exitCode !== 0) { console.warn(`Left out ${plugin.id}: could not clone ${plugin.repo}`); continue; }
       Bun.spawnSync(["bun", "install", "--production", "--omit", "peer", "--ignore-scripts"], { cwd: dir });
     }
-    linkHostPackages(dir, undefined, pluginsDir);
     dirs.push(dir);
   }
+  // Linked once every plugin is checked out: a plugin's peer (ibkr-gateway's ibkr) may come after it.
+  for (const dir of dirs) linkHostPackages(dir, undefined, pluginsDir);
   return dirs;
 }
 
