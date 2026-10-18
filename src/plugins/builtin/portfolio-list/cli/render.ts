@@ -63,6 +63,7 @@ import {
   formatAllocationWeight,
   formatTradeUnits,
   hasTargetWeights,
+  lotWeight,
   resolvePortfolioCash,
   type AllocationHolding,
   type PortfolioAllocation,
@@ -644,8 +645,12 @@ async function showCollectionWithMarketData(
     // Never dropped on a narrow terminal, so --explain reads the terms off them.
     const allocationHeaders = showTargets ? ["Weight", "Target", "Drift", "Trade", "Trade Value"] : ["Weight"];
     explained = reportGlossary("PF", allocationHeaders.join("  "));
-    // A ticker held in several lots carries its allocation on its first row.
+    // A ticker held in several lots carries its allocation, the whole position's, on its first row.
     const firstRows = new Set<string>();
+    const lotCounts = new Map<string, number>();
+    for (const entry of valued) {
+      if (entry.position) lotCounts.set(entry.ticker.metadata.ticker, (lotCounts.get(entry.ticker.metadata.ticker) ?? 0) + 1);
+    }
     const positionsExport = valued.map((entry, index): Record<string, unknown> & {
       weight: number | null; targetWeight: number | null; drift: number | null; tradeShares: number | null; tradeValue: number | null;
       annualIncome: number | null; incomeYield: number | null;
@@ -655,6 +660,7 @@ async function showCollectionWithMarketData(
       firstRows.add(symbol);
       const figures = first ? allocationBySymbol.get(symbol) : undefined;
       const dividend = entry.position ? dividends.get(symbol) : undefined;
+      const lots = lotCounts.get(symbol) ?? 0;
       return {
         ...entry.row,
         weight: figures?.weight ?? null,
@@ -668,6 +674,8 @@ async function showCollectionWithMarketData(
         dividendCurrency: dividend?.currency ?? null,
         annualIncome: lotIncome[index]?.income ?? null,
         incomeYield: lotIncome[index]?.yield ?? null,
+        // Only the rows of a ticker held in several lots: `lots` says the allocation on its first row is the whole position's, `lotWeight` is this lot's own share.
+        ...(lots > 1 ? { lots, lotWeight: lotWeight(typeof entry.row.marketValue === "number" ? entry.row.marketValue : null, allocation.total) } : {}),
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
@@ -797,7 +805,10 @@ async function showCollectionWithMarketData(
       showIncome ? [money(income), formatIncomeYield(yieldPercent)] : [];
     const extendedSessions = extendedSessionsOf(valued.map(({ extended }) => extended?.session));
     const now = Date.now();
-    const rows: string[][] = valued.map(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced }, index) => {
+    // Where each ticker's lots end, to put its position line there.
+    const lastLot = new Map<string, number>();
+    valued.forEach((entry, index) => { if (entry.position) lastLot.set(entry.ticker.metadata.ticker, index); });
+    const rows: string[][] = valued.flatMap(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced }, index): string[][] => {
       const asOf = valuationTimeText(priced.valuationAsOf, now);
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
@@ -805,22 +816,28 @@ async function showCollectionWithMarketData(
       const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       const quoteCells = [priceText, changeText, ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory)];
       const exported = positionsExport[index]!;
-      const figures = exported.weight != null || exported.targetWeight != null || exported.tradeValue != null
-        ? { weight: exported.weight, targetWeight: exported.targetWeight, drift: exported.drift, tradeValue: exported.tradeValue, tradeUnits: exported.tradeShares }
-        : undefined;
-      const symbolUnits = allocationBySymbol.get(ticker.metadata.ticker)?.units ?? 0;
+      const symbol = ticker.metadata.ticker;
+      const lots = lotCounts.get(symbol) ?? 0;
+      // A lot of several weighs by its own value; its target, drift and trade belong to the position, on the line under its lots.
+      const figures = lots > 1
+        ? { weight: exported.lotWeight as number | null, targetWeight: null, drift: null, tradeValue: null, tradeUnits: null }
+        : exported.weight != null || exported.targetWeight != null || exported.tradeValue != null
+          ? { weight: exported.weight, targetWeight: exported.targetWeight, drift: exported.drift, tradeValue: exported.tradeValue, tradeUnits: exported.tradeShares }
+          : undefined;
+      const symbolUnits = allocationBySymbol.get(symbol)?.units ?? 0;
       if (!position || !metrics) {
-        return [listingLabel(ticker), ...quoteCells, "—", "—", "—",
+        return [[listingLabel(ticker), ...quoteCells, "—", "—", "—",
           ...allocationCells(figures, { unpriced: false, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
-          ...incomeCells(null, null), "—", asOf];
+          ...incomeCells(null, null), "—", asOf]];
       }
       const positionCurrency = metrics.positionCurrency;
       const marketValue = row.marketValue as number | null;
       const unpriced = marketValue == null;
-      return [
+      const quantityOptions = { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency };
+      const lotRow = [
         listingLabel(ticker),
         ...quoteCells,
-        formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency }),
+        formatMarketQuantity(metrics.totalShares, quantityOptions),
         formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
         unpriced ? NOT_AVAILABLE : wholeMoney(marketValue),
         ...allocationCells(figures, { unpriced, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
@@ -828,6 +845,14 @@ async function showCollectionWithMarketData(
         pnl == null || !Number.isFinite(pnl) ? "—" : colorBySign(money(pnl, { signed: true }), pnl),
         asOf,
       ];
+      if (lots < 2 || lastLot.get(symbol) !== index) return [lotRow];
+      // The whole position under its lots: its shares and value, and the weight, target, drift and trade they add up to.
+      const whole = allocationBySymbol.get(symbol);
+      const wholeValue = whole?.marketValue ?? null;
+      return [lotRow, [`${listingLabel(ticker)} (${lots} lots)`, "", "", ...extendedSessions.map(() => ""),
+        formatMarketQuantity(symbolUnits, quantityOptions), "", wholeValue == null ? NOT_AVAILABLE : wholeMoney(wholeValue),
+        ...allocationCells(whole, { unpriced: wholeValue == null, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
+        ...(showIncome ? ["", ""] : []), "", ""]];
     });
     if (cashExport) {
       const label = cashExport.currency && cashExport.currency !== currency ? `${CASH_SYMBOL} ${cashExport.currency}` : CASH_SYMBOL;

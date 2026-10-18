@@ -1074,6 +1074,33 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
   });
 
+  test("names an option's grid tile as the table's Ticker column does, by its contract and not its OCC code", async () => {
+    const portfolioId = "broker:ibkr-flex:DU12345";
+    const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID);
+    if (instance) instance.settings = { ...(instance.settings ?? {}), viewMode: "grid" };
+    const occ = "AAPL261218C00300000";
+    const option = makeTicker({ ticker: occ, assetCategory: "OPT" });
+
+    await tui.render(
+      <PortfolioHarness
+        config={config}
+        collectionId={portfolioId}
+        ticker={option}
+        stateMutator={(state) => {
+          state.tickers = new Map([[occ, option]]);
+          state.financials = new Map([[occ, createTestFinancials({ quote: makeQuote({ symbol: occ }) })]]);
+        }}
+      />,
+      { width: 100, height: 12 },
+    );
+    await flushFrame();
+
+    const frame = tui.frame();
+    expect(frame).toContain("AAPL C $300 Dec'26");
+    expect(frame).not.toContain(occ);
+  });
+
   test("keeps the grid's arrows on its tiles and leaves h and l to the collection tabs", async () => {
     const portfolioId = "broker:ibkr-flex:DU12345";
     const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);

@@ -818,7 +818,7 @@ export function renderHeadlessPaneText(
   else switch (definition.shape) {
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
-      lines.push(renderRows(rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
+      lines.push(renderRows(rowsResult.textRows ?? rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
       break;
     }
     case "bundle":

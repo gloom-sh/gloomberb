@@ -105,6 +105,14 @@ export function allocationFigures(
   return { weight, targetWeight, drift, tradeValue, tradeUnits };
 }
 
+/**
+ * One lot's share of the total, in percent. A ticker held in several lots
+ * weighs each by its own value; the lots add up to the ticker's weight.
+ */
+export function lotWeight(marketValue: number | null | undefined, total: number | null | undefined): number | null {
+  return allocationFigures({ held: true, marketValue: marketValue ?? null, units: 0, unitPrice: null }, total, null).weight;
+}
+
 /** The total weights divide by: every priced holding plus the cash. */
 export function allocationTotal(holdings: readonly AllocationHolding[], cashValue: number | null | undefined): number | null {
   // Cash that cannot be converted leaves the total unknown rather than smaller.

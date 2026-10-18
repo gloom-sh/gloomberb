@@ -298,3 +298,31 @@ test("portfolio show --explain follows the report with the terms its table shows
   // Only show reads it; another action says where it belongs.
   await expect(portfolioCliCommand.execute(["target", "show", "Main", "--explain"], cli.context)).rejects.toThrow("--explain is an option of portfolio show");
 });
+
+test("portfolio show weighs each lot of a ticker by its own value and gives its target, drift and trade once, on a position line", async () => {
+  const config = createDefaultConfig("/unused-lots");
+  config.portfolios = [{ id: "main", name: "Main", currency: "USD", targetWeights: { AAPL: 50 } }];
+  const lot = (shares: number, avgCost: number) => ({ portfolio: "main", shares, avgCost, currency: "USD", broker: "manual" });
+  const held: TickerRecord = { metadata: { ...ticker.metadata, positions: [lot(10, 80), lot(20, 70)] } };
+  const output: string[] = [];
+  const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+  try { await showCollection("Main", createTestCliContext({ config, store: { loadAllTickers: async () => [held] }, dataProvider: createTestDataProvider({ getQuote: async () => quote }) }).context); }
+  finally { logger.mockRestore(); }
+  const lines = output.join("\n").replace(/\x1b\[[0-9;]*m/g, "").split("\n").filter((line) => line.startsWith("AAPL")).map((line) => line.replace(/\s+/g, " "));
+
+  // At 90 the lots are worth 900 and 1,800: 33.3% and 66.7% of the total, with no target, drift or trade of their own.
+  expect(lines).toEqual([
+    expect.stringMatching(/^AAPL:NASDAQ .* 10 \$80\.00 \$900 33\.3% — — — — /),
+    expect.stringMatching(/^AAPL:NASDAQ .* 20 \$70\.00 \$1,800 66\.7% — — — — /),
+    // The position's: 30 shares, 2,700, all of the total against a 50.0% target, sell 15 (-1,350).
+    "AAPL:NASDAQ (2 lots) 30 $2,700 100.0% 50.0% +50.0pp -15 -$1,350",
+  ]);
+
+  // JSON keeps one row per lot, the first with the position's figures, and marks them.
+  const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [held] }, dataProvider: createTestDataProvider({ getQuote: async () => quote }) }, { format: "json" });
+  await showCollection("Main", cli.context);
+  const { data } = cli.printed[0]!.result;
+  expect(data[0]).toMatchObject({ weight: 100, targetWeight: 50, lots: 2 });
+  expect(data[0].lotWeight).toBeCloseTo(100 / 3, 8);
+  expect(data[1]).toMatchObject({ weight: null, targetWeight: null, lots: 2 });
+});

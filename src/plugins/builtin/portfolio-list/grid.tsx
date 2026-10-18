@@ -18,6 +18,7 @@ import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay } from "../../../portfolio/position-metrics";
+import { tickerDisplayName } from "../../../portfolio/column-values";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
 import { useThrottledMemo } from "./use-throttled-memo";
@@ -125,7 +126,8 @@ function buildPortfolioGridItem(
 
   return {
     id: symbol,
-    label: symbol,
+    // As the table's Ticker column names it: an option reads as its contract, not its OCC code.
+    label: tickerDisplayName(ticker),
     weight: layoutWeight ?? tileWeight(ticker, financials, context, isPortfolioTab),
     colorValue: positionAdjustedChangePercent(ticker, financials, context, isPortfolioTab),
     primaryText: primary,

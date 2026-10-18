@@ -22,6 +22,7 @@ import {
   valuePortfolioAllocation,
   valuePortfolioPositions,
   type CollectionMatch,
+  type PortfolioValuation,
 } from "./cli/render";
 import { VALUATION_BASIS_LABELS, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
 import { EXTENDED_SESSION_LABELS, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
@@ -32,6 +33,8 @@ import {
   formatAllocationDrift,
   formatAllocationWeight,
   formatTradeUnits,
+  lotWeight,
+  type PortfolioAllocation,
 } from "../../../portfolio/allocation";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
@@ -192,6 +195,68 @@ function resolveTarget(rawArgument: string, ctx: HeadlessPaneContext): Collectio
   );
 }
 
+/**
+ * What a report cannot price, said for each cause. A holding without a market
+ * value is out of the totals and weights; one with a value but no cost is in
+ * them, and only its P&L is unknown.
+ */
+function unavailableFigureErrors(
+  { unavailableMarketValue, unavailablePnl, unavailableCost }: Pick<PortfolioValuation, "unavailableMarketValue" | "unavailablePnl" | "unavailableCost">,
+): string[] {
+  const noValue = [...unavailableMarketValue];
+  const pnlOnly = [...unavailablePnl].filter((symbol) => !unavailableMarketValue.has(symbol));
+  const noCost = pnlOnly.filter((symbol) => unavailableCost.has(symbol));
+  const noPnl = pnlOnly.filter((symbol) => !unavailableCost.has(symbol));
+  const them = (symbols: readonly string[]) => (symbols.length === 1 ? "it" : "them");
+  return [
+    ...(noValue.length ? [`No market value for ${noValue.join(", ")}; totals and weights leave ${them(noValue)} out.`] : []),
+    ...(noCost.length ? [`No cost for ${noCost.join(", ")}, so ${noCost.length === 1 ? "its" : "their"} P&L is unknown; totals and weights still count ${them(noCost)}.`] : []),
+    ...(noPnl.length ? [`P&L unavailable for ${noPnl.join(", ")}; totals and weights still count ${them(noPnl)}.`] : []),
+  ];
+}
+
+/** What a position line fills in; every other column of it prints blank. */
+const POSITION_LINE_KEYS = new Set(["symbol", "shares", "marketValue", "weight", "targetWeight", "drift", "tradeShares", "tradeValue"]);
+
+/**
+ * The text report of a ticker held in several lots. Each lot weighs by its own
+ * value, and a line under its lots gives the whole position: its shares, value,
+ * weight, target, drift and trade, which no single lot owns. Null when no
+ * ticker has several lots, so the report is the rows as they are. JSON and CSV
+ * keep one row per lot.
+ */
+function withPositionLines(
+  rows: readonly HeadlessPaneRow[],
+  columns: HeadlessPaneColumn[],
+  positions: ReadonlyMap<string, PortfolioAllocation["rows"][number]>,
+): { rows: HeadlessPaneRow[]; columns: HeadlessPaneColumn[] } | null {
+  const lotted = (row: HeadlessPaneRow): row is HeadlessPaneRow & { lots: number } => typeof row.lots === "number";
+  if (!rows.some(lotted)) return null;
+  const lastLot = new Map<string, number>();
+  rows.forEach((row, index) => { if (lotted(row)) lastLot.set(String(row.symbol), index); });
+  return {
+    rows: rows.flatMap((row, index): HeadlessPaneRow[] => {
+      if (!lotted(row)) return [row];
+      const symbol = String(row.symbol);
+      const lot = { ...row, weight: row.lotWeight, targetWeight: null, drift: null, tradeShares: null, tradeValue: null };
+      const whole = positions.get(symbol);
+      if (!whole || lastLot.get(symbol) !== index) return [lot];
+      return [lot, {
+        positionLots: row.lots, symbol, exchange: row.exchange, assetCategory: row.assetCategory, shares: whole.units,
+        marketValue: whole.marketValue, weight: whole.weight, targetWeight: whole.targetWeight, drift: whole.drift,
+        tradeShares: whole.tradeUnits, tradeValue: whole.tradeValue,
+      }];
+    }),
+    columns: columns.map((column) => {
+      const text = (value: unknown, row: HeadlessPaneRow) => (column.textFormat ?? column.format)?.(value, row) ?? textOf(value) ?? formatNumber(undefined);
+      if (column.key === "symbol") {
+        return { ...column, textFormat: (value, row) => typeof row.positionLots === "number" ? `${text(value, row)} (${row.positionLots} lots)` : text(value, row) };
+      }
+      return POSITION_LINE_KEYS.has(column.key) ? column : { ...column, textFormat: (value, row) => typeof row.positionLots === "number" ? "" : text(value, row) };
+    }),
+  };
+}
+
 async function portfolioHoldings(
   target: Extract<CollectionMatch, { kind: "portfolio" }>,
   limit: number,
@@ -223,12 +288,28 @@ async function portfolioHoldings(
   const sum = (key: string) => held.reduce((total, entry) => total + (finite(entry.row[key]) ?? 0), 0);
   const seen = new Set<string>();
   const extendedSessions = extendedSessionsOf(held.map(({ extended }) => extended?.session));
-  const rows = held
+  const lotCounts = new Map<string, number>();
+  // What a position is worth sorts its lots together; one lot without a market value leaves the whole position last.
+  const positionExposure = new Map<string, number>();
+  for (const { ticker, row } of held) {
+    const symbol = ticker.metadata.ticker;
+    const value = finite(row.marketValue);
+    lotCounts.set(symbol, (lotCounts.get(symbol) ?? 0) + 1);
+    positionExposure.set(symbol, positionExposure.get(symbol) === -1 || value == null ? -1 : (positionExposure.get(symbol) ?? 0) + Math.abs(value));
+  }
+  // Largest position first, its lots together, the largest lot first; a position without a market value sorts last.
+  const ordered = [...held].sort((left, right) => (
+    positionExposure.get(right.ticker.metadata.ticker)! - positionExposure.get(left.ticker.metadata.ticker)!
+    || left.ticker.metadata.ticker.localeCompare(right.ticker.metadata.ticker)
+    || exposure(finite(right.row.marketValue)) - exposure(finite(left.row.marketValue))
+  ));
+  const rows = ordered
     .map(({ ticker, headline, extended, row, valuation: priced }) => {
       const marketValue = finite(row.marketValue);
-      // A ticker held in several lots carries its allocation on its first row.
+      // A ticker held in several lots carries its allocation, the whole position's, on its first row.
       const figures = seen.has(ticker.metadata.ticker) ? undefined : allocationBySymbol.get(ticker.metadata.ticker);
       seen.add(ticker.metadata.ticker);
+      const lots = lotCounts.get(ticker.metadata.ticker) ?? 0;
       return {
         ...quoteFreshnessFields(quotes.get(ticker.metadata.ticker)),
         // When the price shown was observed, as `quote` dates it (quoteHeadlineTime).
@@ -254,13 +335,10 @@ async function portfolioHoldings(
         tradeShares: figures?.tradeUnits ?? null,
         tradeValue: figures?.tradeValue ?? null,
         ...priced,
+        // Only on a ticker held in several lots: `lots` says the allocation on its first row is the whole position's, `lotWeight` is this lot's own share.
+        ...(lots > 1 ? { lots, lotWeight: lotWeight(marketValue, allocation.total) } : {}),
       };
-    })
-    // Largest exposure first; a position without a market value sorts last.
-    .sort((left, right) => (
-      exposure(right.marketValue) - exposure(left.marketValue)
-      || left.symbol.localeCompare(right.symbol)
-    ));
+    });
   const shown: HeadlessPaneRow[] = rows.slice(0, limit);
   // The cash line follows the positions, whatever the limit.
   if (allocation.cash) {
@@ -276,7 +354,7 @@ async function portfolioHoldings(
       tradeValue: allocation.cash.tradeValue,
     });
   }
-  const unavailable = [...new Set([...valuation.unavailableMarketValue, ...valuation.unavailablePnl])];
+  const errors = unavailableFigureErrors(valuation);
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
   const showTargets = allocation.targetSum != null;
   const targetNote = describeTargetSum(allocation.targetSum);
@@ -293,6 +371,12 @@ async function portfolioHoldings(
     ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
   ];
 
+  const columns = withListingLabels(
+    withExtendedColumns([...POSITION_COLUMNS, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
+    tickers,
+  );
+  const lotted = withPositionLines(shown, columns, allocationBySymbol);
+
   return {
     // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
     freshness: {
@@ -301,15 +385,11 @@ async function portfolioHoldings(
       citeOldest: true,
       note: `priced at ${VALUATION_BASIS_LABELS[basis]}`,
     },
-    columns: withListingLabels(
-      withExtendedColumns([...POSITION_COLUMNS, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
-      tickers,
-    ),
+    columns,
     rows: shown,
-    complete: unavailable.length === 0,
-    ...(unavailable.length
-      ? { errors: [`No market value or P&L for ${unavailable.join(", ")}; totals and weights leave them out.`] }
-      : {}),
+    ...(lotted ? { textColumns: lotted.columns, textRows: lotted.rows } : {}),
+    complete: errors.length === 0,
+    ...(errors.length ? { errors } : {}),
     metadata: {
       collection: { kind: "portfolio", id: target.id, name: target.name, broker },
       ...(target.portfolio.importedFrom ? { importedFrom: target.portfolio.importedFrom } : {}),
