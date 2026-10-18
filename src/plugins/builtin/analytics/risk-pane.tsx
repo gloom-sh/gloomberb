@@ -121,10 +121,11 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
   }));
 }
 /**
- * Cumulative return of the current-weight basket and of its benchmark across
- * the window of paired sessions the return rows measure (the last 60, or those
- * since a 13F filing): the path behind the two rows, whose values the legend
- * ends on. The series take the rows' names.
+ * Cumulative return of the basket and of its benchmark across the window of
+ * paired sessions the return rows measure (the last 60 at current weights, or
+ * those since a 13F filing, bought and held unless current weights are
+ * chosen): the path behind the two rows, whose values the legend ends on. The
+ * series take the rows' names.
  */
 function basketReturnSeries(model: PortfolioRiskModel): ChartTableChart["series"] {
   // A snapshot saved before the window existed covers the trailing 60.
@@ -269,8 +270,12 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const [equity] = usePaneSettingValue("equityShift", -10),
     [rates] = usePaneSettingValue("rateShift", 100),
     [volatility] = usePaneSettingValue("volShift", 10),
-    [since] = usePaneSettingValue("riskSince", "trailing");
-  const riskWindow = useMemo(() => (since === "filed" ? { since: "filed" as const } : {}), [since]);
+    [since] = usePaneSettingValue("riskSince", "trailing"),
+    [weights] = usePaneSettingValue("riskWeights", "13f");
+  const riskWindow = useMemo(
+    () => (since === "filed" ? { since: "filed" as const, weights: weights === "current" ? "current" as const : "13f" as const } : {}),
+    [since, weights],
+  );
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [selected, setSelected] = usePluginPaneState<string | null>(
     "risk:selected",

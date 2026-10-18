@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  buyAndHoldReturns,
   concentration,
   historicalTail,
   pairedReturns,
@@ -100,6 +101,17 @@ test("risk since a filing date runs from the last close on or before it, over th
   // A missing session after the filing restarts the window after the gap.
   const gapped = sample.filter((row) => row.dateKey !== window[3]!.dateKey);
   expect(sinceBasketRisk(gapped, "2025-05-10")[0]!.startDate).toBe(window[4]!.startDateKey);
+});
+test("a held basket starts at the close on or before the filing, drifts with prices, and stops where a holding has no session", () => {
+  const point = (startDateKey: string, dateKey: string, value: number) => ({ startDateKey, dateKey, value });
+  // Filed on Saturday 15 Aug: bought at Friday's close. B has no session on 19 Aug (a halt).
+  const a = [point("2026-08-13", "2026-08-14", 0.5), point("2026-08-14", "2026-08-17", 0.1), point("2026-08-17", "2026-08-18", 0), point("2026-08-18", "2026-08-19", 0.2)];
+  const b = [point("2026-08-13", "2026-08-14", -0.5), point("2026-08-14", "2026-08-17", -0.1), point("2026-08-17", "2026-08-18", 0.1), point("2026-08-18", "2026-08-20", 0)];
+  const held = buyAndHoldReturns([{ weight: 0.5, returns: a }, { weight: 0.5, returns: b }], "2026-08-15");
+  expect(held.map((row) => row.dateKey)).toEqual(["2026-08-17", "2026-08-18"]);
+  // 0.55 + 0.45 = 1 after the first session; the second is B's 10% on its 0.45 share, not on half.
+  expect(held[0]!.value).toBeCloseTo(0, 12);
+  expect(held[1]!.value).toBeCloseTo(0.045, 12);
 });
 test("concentration uses gross signed exposure and never renormalizes an unvalued holding", () => {
   const result = concentration([

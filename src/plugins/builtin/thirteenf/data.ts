@@ -5,6 +5,7 @@ import {
   listThirteenFForms,
   listThirteenFFilings,
   listTopThirteenFFunds,
+  loadThirteenFFilerStatus,
   lookupThirteenFHoldersByCusip,
   lookupThirteenFTickers,
   normalizeCik,
@@ -13,6 +14,7 @@ import {
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import {
   buildBrowserRows,
+  filingGapFor,
   latestLikely13FQuarter,
   oneFundPerCik,
   buildPeriodReports,
@@ -22,6 +24,7 @@ import type {
   FundBrowserRow,
   FundDetailData,
   ThirteenFBrowserTab,
+  ThirteenFFilingGap,
   ThirteenFFund,
   ThirteenFHoldingRecord,
   ThirteenFTopFund,
@@ -258,6 +261,26 @@ async function loadBrowserPage(
   return result;
 }
 
+/**
+ * What the fund filed for the newest quarter past its deadline, when its
+ * latest report (`latestPeriod`) predates that quarter: EDGAR says whether it
+ * was a 13F-NT and who reported instead. Null when the report is current; a
+ * gap with `checked: false` when EDGAR could not be asked.
+ */
+export async function loadFilingGap(
+  cik: string,
+  latestPeriod: string | null | undefined,
+  signal?: AbortSignal,
+  now = new Date(),
+): Promise<ThirteenFFilingGap | null> {
+  if (!filingGapFor(latestPeriod, null, now)) return null;
+  const status = await loadThirteenFFilerStatus(cik, signal).catch((error: unknown) => {
+    if (signal?.aborted) throw error;
+    return null;
+  });
+  return filingGapFor(latestPeriod, status, now);
+}
+
 export async function loadFundDetail(
   cik: string,
   fallbackName: string,
@@ -297,7 +320,7 @@ export async function loadFundDetail(
     }
     return holdings;
   }
-  const [latestHoldings, previousHoldings] = await Promise.all([
+  const [latestHoldings, previousHoldings, filingGap] = await Promise.all([
     loadReport(latestReport),
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
@@ -305,6 +328,7 @@ export async function loadFundDetail(
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
     }),
+    loadFilingGap(cik, latestForm?.periodOfReport, signal, now),
   ]);
   return {
     cik: normalizeCik(cik),
@@ -317,6 +341,7 @@ export async function loadFundDetail(
     latestReport,
     previousReport,
     warnings,
+    filingGap,
   };
 }
 

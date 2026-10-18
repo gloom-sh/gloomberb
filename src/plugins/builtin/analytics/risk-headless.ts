@@ -17,6 +17,7 @@ import {
   riskPercentile,
   riskValue,
   sinceFallbackNote,
+  sinceFiledMethod,
   type PortfolioRiskModel,
   type RiskCoverage,
   type RiskDisplayRow,
@@ -142,6 +143,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
     limitations: [
       `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out.`,
+      "--since filed buys the 13F's own weights at the filing-date close and holds them (--weights current holds today's weights fixed instead).",
       "No account performance inferred.",
       "ETF price-return factor proxies.",
       "Historical percentiles need 20 rolling samples.",
@@ -162,6 +164,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       settingKey: "riskSince",
       values: [{ value: "filed" }],
       description: "Risk rows since the 13F filing date of a portfolio made with portfolio import --13f, instead of the trailing 60 sessions.",
+    },
+    {
+      key: "weights",
+      type: "enum",
+      settingKey: "riskWeights",
+      values: [{ value: "13f" }, { value: "current" }],
+      description: "With --since filed: 13f (when left out) buys the 13F's own weights at the filing-date close and holds them; current holds today's weights fixed over the same sessions.",
     },
     {
       key: "evidence",
@@ -254,16 +263,19 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         rates: Number(args.options["rate-shift"] ?? 100),
         volatility: Number(args.options["vol-shift"] ?? 10),
       },
-      args.options.since === "filed" ? { since: "filed" } : {},
+      args.options.since === "filed"
+        ? { since: "filed", weights: args.options.weights === "current" ? "current" : "13f" }
+        : {},
     );
     // Options for views the report does not print are named, not dropped silently; the fallback from --since opens the report.
     const fallback = sinceFallbackNote(local.portfolio);
     const shifted = ["equity-shift", "rate-shift", "vol-shift"].filter((key) => args.options[key] != null);
     const notices = [
-      ...(model.window.kind === "since-filed" ? [`Risk rows since the 13F filing on ${model.window.filed}, against ${model.benchmark}`] : []),
+      ...(model.window.kind === "since-filed" ? [sinceFiledMethod(model.window, model.benchmark)] : []),
       ...(args.options.since === "filed" && model.window.kind !== "since-filed" ? [fallback] : []),
       ...(requestedView && requestedView !== "stress" && shifted.length ? [`${shifted.map((key) => `--${key}`).join(", ")} change${shifted.length === 1 ? "s" : ""} the stress view only, not --view ${requestedView}`] : []),
       ...(requestedView && args.options.since != null && requestedView !== "risk" ? [`--since changes the risk view only, not --view ${requestedView}`] : []),
+      ...(args.options.weights != null && args.options.since !== "filed" ? ["--weights applies with --since filed only"] : []),
     ];
     // A basket view is complete only when the basket covers every holding.
     const covered = model.coverage.leftOut.length === 0;

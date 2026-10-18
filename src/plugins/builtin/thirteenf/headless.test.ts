@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -232,15 +232,109 @@ describe("13F headless model", () => {
       expect(missing.metadata?.notices).toContain("CAR is not in this ranking | full ranking: fn 13F --view crowding | its 13F holders: fn 13F CAR");
     });
 
-    test("falls back to the holders listing for a ticker without a mapped CUSIP", async () => {
-      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => { throw new Error("No 13F CUSIP found for ZZZZ"); }) as never);
+    test("a ticker in any case lists its holders; without holders it falls back to its holders' books, then to funds of that name", async () => {
+      const asked: string[] = [];
+      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_view: string, params: { tickers: string }) => {
+        asked.push(params.tickers);
+        if (params.tickers === "KO" || params.tickers === "BRK.B" || params.tickers === "BRK-B") return page(0, 2, false);
+        throw new Error(`No 13F CUSIP found for ${params.tickers}`);
+      }) as never);
       const tabs: string[] = [];
-      const headless = createThirteenFHeadless({ loadBrowser: async (tab) => { tabs.push(tab); return { rows: [], warning: "No 13F holders for ZZZZ" }; }, loadDetail: async () => detail });
-      const result = await headless.load({ ...args("auto"), argument: "ZZZZ", rawArgument: "ZZZZ" }, createTestHeadlessContext());
-      expect(tabs).toEqual(["byTicker"]);
-      expect(result.metadata).toMatchObject({ view: "byTicker" });
-      await expect(headless.load({ ...args("ticker-holdings"), argument: "ZZZZ", rawArgument: "ZZZZ" }, createTestHeadlessContext())).rejects.toThrow(/No 13F CUSIP/);
+      const tiger = { id: "tiger", cik: "0001167483", name: "Tiger Global Management LLC", periodOfReport: "2026-06-30", source: "funds" as const };
+      const headless = createThirteenFHeadless({
+        loadBrowser: async (tab, query) => {
+          tabs.push(`${tab}:${query}`);
+          return tab === "funds" && query.toLowerCase() === "tiger" ? { rows: [tiger] } : { rows: [], ...(tab === "byTicker" ? { warning: `No CUSIP found for ${query.toUpperCase()}` } : {}) };
+        },
+        loadDetail: async () => detail,
+      });
+      const load = (word: string, view = "auto") => headless.load({ ...args(view), argument: word, rawArgument: word }, createTestHeadlessContext());
+
+      for (const word of ["ko", "$ko", "brk.b", "BRK-B"]) expect((await load(word)).metadata).toMatchObject({ view: "ticker-holdings" });
+      expect(asked).toEqual(["KO", "KO", "BRK.B", "BRK-B"]);
+      expect(tabs).toEqual([]);
+
+      // A lowercase fund name that is no ticker still finds the fund, without a word about tickers.
+      const lower = await load("tiger");
+      expect(tabs).toEqual(["byTicker:tiger", "funds:tiger"]);
+      expect(lower.rows).toEqual([expect.objectContaining({ cik: tiger.cik })]);
+      expect(lower.errors).toBeUndefined();
+      expect(lower.metadata?.notices).toEqual([]);
+      expect((await load("TIGER")).metadata?.notices).toEqual(["No 13F holders found for the ticker TIGER; funds named like it"]);
+
+      // Nothing anywhere: how to search instead, not "No data.".
+      const none = await load("ZZZZ");
+      expect(none.metadata).toMatchObject({ view: "funds" });
+      expect(none.errors).toBeUndefined();
+      expect(renderHeadlessPaneText(headless, none, args("auto"), "13F")).toContain(
+        'No 13F filer or ticker matches "ZZZZ". Search by fund name or CIK, as in fn 13F "Berkshire Hathaway".',
+      );
+      await expect(load("ZZZZ", "ticker-holdings")).rejects.toThrow(/No 13F CUSIP/);
     });
+  });
+});
+
+describe("13F empty searches, limits and missing filings", () => {
+  afterEach(() => setSystemTime());
+
+  test("a name with no 13F filer says to search by fund name or CIK", async () => {
+    const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
+    const loadArgs = { ...args("auto"), argument: "Warren Buffett", rawArgument: "Warren Buffett" };
+    const text = renderHeadlessPaneText(headless, await headless.load(loadArgs, createTestHeadlessContext()), loadArgs, "13F");
+    expect(text).toContain('No 13F filer matches "Warren Buffett". Search by fund name or CIK, as in fn 13F "Berkshire Hathaway".');
+    expect(text).not.toContain("No data.");
+    await expect(headless.load({ ...loadArgs, options: { view: "holdings", limit: 50 } }, createTestHeadlessContext()))
+      .rejects.toThrow('No 13F fund found for "Warren Buffett". Search by fund name or CIK, as in fn 13F "Berkshire Hathaway".');
+  });
+
+  test("the performance ranking reads a --limit over 100 as 100, says so, and never offers more than it serves", async () => {
+    const limits: number[] = [];
+    const headless = createThirteenFHeadless({
+      loadBrowser: async (_tab, _query, limit) => {
+        limits.push(limit);
+        return { rows: Array.from({ length: limit }, (_, index) => ({ id: `${index}`, cik: `${index}`, name: `Fund ${index}`, source: "performance" as const })), hasMore: true };
+      },
+      loadDetail: async () => detail,
+    });
+    const over = await headless.load({ ...args("performance", 101), argument: null, rawArgument: "" }, createTestHeadlessContext());
+    expect(limits).toEqual([100]);
+    expect(over.rows).toHaveLength(100);
+    expect(over.metadata?.notices).toEqual(["Showing the first 100 | the performance ranking stops at 100 (--limit 101 read as 100)"]);
+    const under = await headless.load({ ...args("performance", 50), argument: null, rawArgument: "" }, createTestHeadlessContext());
+    expect(under.metadata?.notices).toEqual(["Showing the first 50 | more: --limit 100"]);
+  });
+
+  test("a fund behind the newest due quarter names its 13F-NT and the manager that reported, or says no 13F was filed", async () => {
+    setSystemTime(new Date("2026-10-18T12:00:00Z"));
+    const notice = {
+      period: "2026-06-30", due: "2026-08-14", checked: true,
+      filing: { form: "13F-NT", period: "2026-06-30", filed: "2026-08-14", accession: "0001172661-26-003777", url: "https://www.sec.gov/nt",
+        otherManagers: [{ cik: "0002026053", name: "PERSHING SQUARE INC.", fileNumber: "028-25746" }] },
+    };
+    const rows = [
+      { id: "psc", cik: "0001336528", name: "Pershing Square Capital Management, L.P.", periodOfReport: "2026-03-31", source: "funds" as const },
+      { id: "psi", cik: "0002026053", name: "PERSHING SQUARE INC.", periodOfReport: "2026-06-30", source: "funds" as const },
+      { id: "quiet", cik: "0000000007", name: "Quiet Fund", periodOfReport: "2026-03-31", source: "funds" as const },
+    ];
+    const asked: string[] = [];
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows }),
+      loadDetail: async () => ({ ...detail, filingGap: notice }),
+      loadFilingGap: async (cik) => {
+        asked.push(cik);
+        return cik === "0001336528" ? notice : { period: "2026-06-30", due: "2026-08-14", filing: null, checked: true };
+      },
+    });
+    const search = await headless.load({ ...args("auto"), argument: "Pershing", rawArgument: "Pershing" }, createTestHeadlessContext());
+    // Only the funds behind are looked up.
+    expect(asked).toEqual(["0001336528", "0000000007"]);
+    expect(search.metadata?.notices).toEqual([
+      "Pershing Square Capital Management, L.P.: 13F-NT for Q2 2026, filed 14 Aug; holdings reported by PERSHING SQUARE INC. | open: fn 13F 0002026053",
+      "Quiet Fund: no 13F for Q2 2026, due 14 Aug",
+    ]);
+    const holdings = await headless.load(args("holdings"), createTestHeadlessContext());
+    expect(holdings.metadata?.notices).toContain("13F-NT for Q2 2026, filed 14 Aug; holdings reported by PERSHING SQUARE INC. | open: fn 13F 0002026053");
+    expect(holdings.metadata?.filingGap).toMatchObject({ filing: { url: "https://www.sec.gov/nt" } });
   });
 });
 

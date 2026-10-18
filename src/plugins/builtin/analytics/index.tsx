@@ -453,9 +453,10 @@ export const portfolioAnalyticsModule: PluginModule = {
       headless: portfolioRiskHeadless,
       tableExport: true,
       // The risk window reads as trailing until it is set.
-      settings: (context) => ({ values: { riskSince: context.settings.riskSince ?? "trailing" }, fields: [
+      settings: (context) => ({ values: { riskSince: context.settings.riskSince ?? "trailing", riskWeights: context.settings.riskWeights ?? "13f" }, fields: [
         { key: "analyticsView", label: "View", type: "select", options: [{ value: "overview", label: "Overview" }, { value: "risk", label: "Risk depth" }] },
         { key: "riskSince", label: "Risk window", type: "select", options: [{ value: "trailing", label: "Trailing 60 sessions" }, { value: "filed", label: "Since 13F filing" }] },
+        { key: "riskWeights", label: "Since-filing weights", type: "select", options: [{ value: "13f", label: "13F weights, bought and held" }, { value: "current", label: "Current weights, held fixed" }] },
         { key: "riskEvidence", label: "Local evidence JSON", type: "text" },
         { key: "equityShift", label: "Index shift (%)", type: "text" },
         { key: "rateShift", label: "10Y shift (bp)", type: "text" },

@@ -340,6 +340,40 @@ export function sinceBasketRisk(
   });
 }
 
+/**
+ * Daily returns of a basket bought at the close on or before `since` (a 13F
+ * filing date) at `weights` and held: each holding's share drifts with its
+ * price, nothing is rebalanced. The run starts with the first session after
+ * that close and stops at the first session a holding has no matched return
+ * for, since a held basket cannot skip a day.
+ */
+export function buyAndHoldReturns(
+  holdings: readonly { weight: number; returns: readonly DatedReturn[] }[],
+  since: string,
+): DatedReturn[] {
+  const held = holdings.filter((row) => Number.isFinite(row.weight) && row.weight > 0);
+  if (!held.length) return [];
+  const series = held.map((row) => byInterval(row.returns));
+  // Every session after the start close, in date order, from the first holding's calendar.
+  const sessions = held[0]!.returns
+    .filter((point) => valid(point) && point.dateKey > since)
+    .toSorted((left, right) => left.dateKey.localeCompare(right.dateKey));
+  if (!sessions.length || sessions[0]!.startDateKey > since) return [];
+  const values = held.map((row) => row.weight);
+  const result: DatedReturn[] = [];
+  for (const [index, session] of sessions.entries()) {
+    if (index > 0 && session.startDateKey !== sessions[index - 1]!.dateKey) break;
+    const key = interval(session);
+    const returns = series.map((map) => map.get(key));
+    if (returns.some((value) => value === undefined || value <= -1)) break;
+    const before = values.reduce((sum, value) => sum + value, 0);
+    values.forEach((value, holding) => (values[holding] = value * (1 + returns[holding]!)));
+    const after = values.reduce((sum, value) => sum + value, 0);
+    result.push({ startDateKey: session.startDateKey, dateKey: session.dateKey, value: after / before - 1 });
+  }
+  return result;
+}
+
 export function rollingBeta(
   asset: readonly DatedReturn[],
   factor: readonly DatedReturn[],

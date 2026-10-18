@@ -695,15 +695,18 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
         nextConfig = created.config;
         portfolio = created.portfolio;
       }
+      // The 13F's own weights, by the listing each line became: what PORT --since filed buys at the filing-date close.
+      const weights: Record<string, number> = {};
       for (const [index, position] of positions.entries()) {
         const resolved = picked[index]!.ticker;
+        weights[resolved.metadata.ticker] = (weights[resolved.metadata.ticker] ?? 0) + position.weight;
         // Reread: replacing the old positions may have saved this listing since it resolved.
         const ticker = await store.loadTicker(resolved.metadata.ticker) ?? resolved;
         const result = setManualPortfolioPosition(ticker, portfolio.id, { shares: position.shares, avgCost: position.avgCost, currency: "USD" });
         await store.saveTicker(result.ticker);
       }
       nextConfig = adoptFirstPositionCurrency(nextConfig, portfolio.id, "USD") ?? nextConfig;
-      nextConfig = { ...nextConfig, portfolios: nextConfig.portfolios.map((entry) => entry.id === portfolio.id ? { ...entry, importedFrom: source } : entry) };
+      nextConfig = { ...nextConfig, portfolios: nextConfig.portfolios.map((entry) => entry.id === portfolio.id ? { ...entry, importedFrom: { ...source, weights } } : entry) };
       await saveConfig(nextConfig);
 
       const importedShare = filingValue ? picked.reduce((sum, entry) => sum + entry.line.value, 0) / filingValue : null;

@@ -53,7 +53,7 @@ import {
   sortHoldingRows,
   sortTimelineRows,
 } from "./model";
-import { isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
+import { filingGapText, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
 import {
   renderBrowserCell,
   renderFilingPositionCell,
@@ -507,9 +507,12 @@ export function FundDetailView({
       : []),
   ];
 
+  // A 13F-NT, or no 13F, for the newest quarter past its deadline; a stale filing's age is in the stats already.
+  const filingGap = data?.filingGap && (data.filingGap.filing || !staleFiling) ? filingGapText(data.filingGap, { command: false }) : null;
+  const holdingNotices = useMemo(() => [...(filingGap ? [filingGap] : []), ...(data?.warnings ?? [])], [filingGap, data?.warnings]);
   usePaneNoticeFooter({
     registrationId: "thirteenf-holdings-notices",
-    notices: data?.warnings ?? [],
+    notices: holdingNotices,
     focused,
     enabled: !openFiling && activeTab !== "overlap",
   });

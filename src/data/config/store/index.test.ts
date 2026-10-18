@@ -111,17 +111,20 @@ test("recent panes survive a save and reload", async () => {
 
 test("a portfolio's cash, target weights and 13F import source survive a save and reload, and malformed ones are dropped", async () => {
   const dataDir = await createTempConfigDir();
-  const importedFrom = { kind: "13f", cik: "0001067983", name: "BERKSHIRE HATHAWAY INC", period: "2026-06-30", filed: "2026-08-14" };
+  const importedFrom = { kind: "13f", cik: "0001067983", name: "BERKSHIRE HATHAWAY INC", period: "2026-06-30", filed: "2026-08-14", weights: { AAPL: 0.6, AXP: 0.4 } };
   await writeConfigJson(dataDir, createSavedConfig({
     portfolios: [
       { id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 }, importedFrom },
+      { id: "junk-weights", name: "Junk", currency: "USD", importedFrom: { ...importedFrom, weights: { AAPL: 0.5, KO: "half", BAC: -0.1 } } },
       { id: "bad", name: "Bad", currency: "USD", cash: { amount: "lots", currency: "USD" }, targetWeights: { VTI: 140, GLD: -1, BIL: "ten" }, importedFrom: { kind: "13f", cik: "1" } },
     ],
   }));
   const loaded = await loadConfig(dataDir);
   await saveConfig(loaded);
-  const [main, bad] = (await loadConfig(dataDir)).portfolios;
+  const [main, junk, bad] = (await loadConfig(dataDir)).portfolios;
   expect(main).toEqual({ id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 }, importedFrom });
+  // Weights the 13F could not have (negative, not numbers) leave the source without weights, never with some of them.
+  expect(junk!.importedFrom).toEqual({ kind: "13f", cik: "0001067983", name: "BERKSHIRE HATHAWAY INC", period: "2026-06-30", filed: "2026-08-14" });
   expect(bad).toEqual({ id: "bad", name: "Bad", currency: "USD" });
 });
 
