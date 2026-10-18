@@ -36,6 +36,27 @@ export interface AttentionModel {
   /** `since`: the first capture, so a chart still collecting says when it began. */
   chart: { label: string; unit: string; points: Array<{ date: string; value: number | null }>; since?: string | null };
 }
+/** The views a report has: a company's hiring and every apps report all five, the hiring board only its table. */
+export function attentionTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionTab[] {
+  return kind === "apps" || symbol ? ["table", "chart", "mix", "peers", "evidence"] : ["table"];
+}
+
+/**
+ * A view's heading where the report prints it in full, as `fn HIRE` does:
+ * what its rows are (Open roles, Hiring trend), where the pane's tab says it
+ * in a word. The mix is the grouping the model chose.
+ */
+export function attentionSectionTitle(kind: AttentionKind, tab: AttentionTab, symbol: string | null | undefined, mix?: string): string {
+  if (kind === "hiring") {
+    return { table: symbol ? "Open roles" : "Companies hiring", chart: "Hiring trend", mix: HIRING_MIX_TITLES[mix ?? "functions"] ?? "Role family",
+      peers: "Peers", evidence: "Posting evidence" }[tab];
+  }
+  return { table: "App ranks", chart: "Attention trend", mix: mix === "spreads" ? "Rank spreads" : "Countries",
+    peers: symbol ? "Peers" : "Companies", evidence: "Chart evidence" }[tab];
+}
+
+const HIRING_MIX_TITLES: Record<string, string> = { functions: "Role family", seniority: "Seniority", countries: "Countries", locations: "Locations", signals: "Signals" };
+
 export const count = (value: number | null | undefined) => value == null ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: 0 });
 /** Decimals per column: percentages and scores to one place, ratings and z-scores to two, counts and remote shares whole. */
 const DECIMALS: Record<string, number> = { score: 1, remote: 0, share: 1, confidence: 0, velocity: 2, rating: 2, drift: 2, z: 2, change: 1 };

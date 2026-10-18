@@ -91,9 +91,17 @@ test("the report prints shares as the pane does, and a remote share with the rol
   };
   // 0.30454545... of the roles, and NET's 16.2% of 401 roles with a stated work mode.
   expect(text("Role family", "share")).toBe("30.5");
-  expect(text("peers", "remote", 2)).toBe("16% of 401 known");
-  expect(text("peers", "remote", 0)).toBe("100% of 185 known");
+  expect(text("Peers", "remote", 2)).toBe("16% of 401 known");
+  expect(text("Peers", "remote", 0)).toBe("100% of 185 known");
   expect(hiringModel(payload).figures.find((figure) => figure.label === "Remote")).toMatchObject({ value: "100%", detail: "of 5 known" });
+});
+
+test("a hiring report heads each view by what its rows are, and the board has only its table, as the pane's tabs do", async () => {
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture() } as never }));
+  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence"]);
+  const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
+  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board } as never }));
+  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
 });
 
 test("headless pages expose continuation and never claim a truncated report is complete", async () => {
@@ -147,7 +155,7 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }));
   expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
   expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
-  expect(hire.sections.find((section) => section.title === "chart")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
+  expect(hire.sections.find((section) => section.title === "Hiring trend")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
 
   // A preview that holds nothing back (a company with no captures) has nothing to unlock.
   hiring.locked = { history: 0, evidence: 0, peers: 0, signals: 0, mix: 0 };

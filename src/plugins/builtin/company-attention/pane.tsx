@@ -19,7 +19,7 @@ import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, loadAttention, validateAttention, type AttentionPayload } from "./client";
-import { appsModel, attentionNumber, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
+import { appsModel, attentionNumber, attentionSeries, attentionTabs, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
 
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
@@ -67,7 +67,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const upgrade = useCloudUpgradeAction(kind === "hiring" ? "hire" : "apps");
   const [openingTab] = usePaneSettingValue<string>("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>(`${kind}:${symbol ?? "board"}:tab`, openingTab);
-  const tab: AttentionTab = ["chart", "mix", "peers", "evidence"].includes(savedTab) && (kind === "apps" || symbol) ? savedTab as AttentionTab : "table";
+  const tab: AttentionTab = (attentionTabs(kind, symbol) as string[]).includes(savedTab) ? savedTab as AttentionTab : "table";
   const [openingCountry] = usePaneSettingValue<string>("country", "");
   const [country, setCountry] = usePluginPaneState<string>(`${kind}:country`, openingCountry);
   const [openingChart] = usePaneSettingValue<string>("chart", "");
@@ -116,7 +116,8 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const evidence = rows.find((row) => row.id === openEvidence) ?? null;
   const app = rows.find((row) => row.id === openAppId)?.app ?? null;
   const detailOpen = !!openCompany || !!evidence || !!app;
-  const tabs = [{ value: "table", label: "Table" }, ...(kind === "apps" || symbol ? [{ value: "chart", label: "Chart" }, { value: "mix", label: kind === "hiring" ? "Mix" : "Markets" }, { value: "peers", label: kind === "apps" && !symbol ? "Companies" : "Peers" }, { value: "evidence", label: "Evidence" }] : [])];
+  const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
+  const tabs = attentionTabs(kind, symbol).map((value) => ({ value, label: tabLabels[value] }));
   const { strip, rows: tabRows } = usePaneTabs(model && !openCompany && !app ? { tabs, activeValue: tab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
   const series = useMemo(() => model ? attentionSeries(model, colors.textBright) : [], [model, colors.textBright]);
