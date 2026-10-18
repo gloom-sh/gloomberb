@@ -1,0 +1,29 @@
+G AAPL
+Range
+1D
+1W
+1M
+3M
+6M
+1Y
+5Y
+ALL
+Auto (W)
+D
+W
+M
+AAPL:XNAS Price $343.46
+$300
+$250
+$200
+$150
+$343.46
+2021
+2023
+2024
+2025
+2026
+[s]eries
+ [i]ndicators
+ [t]imeframe
+ [p]in

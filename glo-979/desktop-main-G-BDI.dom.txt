@@ -1,0 +1,28 @@
+G BDI
+Range
+1D
+1W
+1M
+3M
+6M
+1Y
+5Y
+ALL
+Auto (W)
+D
+W
+M
+BDI Price 20.0
+20
+15
+10
+5
+2021
+2023
+2024
+2025
+2026
+[s]eries
+ [i]ndicators
+ [t]imeframe
+ [p]in

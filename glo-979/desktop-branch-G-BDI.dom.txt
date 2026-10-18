@@ -1,0 +1,32 @@
+G BDI
+Range
+1D
+1W
+1M
+3M
+6M
+1Y
+5Y
+ALL
+Auto
+1m
+5m
+15m
+30m
+45m
+1h
+D
+W
+M
+Choose an exchange for BDI.
+Oct 18 2021
+Jan 2023
+Jul
+Jan 2024
+Jul
+Jan 2025
+Jul
+Oct 18 2026
+[s]eries
+ [i]ndicators
+ [t]imeframe
