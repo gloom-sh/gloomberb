@@ -59,11 +59,13 @@ interface ShootOptions { base: string; out: string; replay: string; widths: stri
 /**
  * One pass of the audit, white theme only, no report: `fetch` opens every view
  * once to fill the replay (no pictures, the widest width); `before` and
- * `after` picture each side from the replay, offline.
+ * `after` picture each side from the replay, offline; `again` pictures the
+ * head's moved views a second time, to tell a change from a view that is
+ * never drawn the same twice.
  */
-function audit(pass: "fetch" | "before" | "after", root: string, options: ShootOptions): void {
-  const side = pass === "after" ? "after" : "before";
-  const build = pass !== "before" || options.offline;
+function audit(pass: "fetch" | "before" | "after" | "again", root: string, options: ShootOptions): void {
+  const side = pass === "after" || pass === "again" ? "after" : "before";
+  const build = pass === "fetch" || pass === "after" || (pass === "before" && options.offline);
   sh([
     "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-report", "--themes", "white", "--root", root,
     "--widths", pass === "fetch" ? options.widths.split(",").at(-1)! : options.widths,
@@ -86,10 +88,27 @@ async function shoot(options: ShootOptions): Promise<void> {
     await rm(join(options.out, "fetch"), { recursive: true, force: true });
   }
   audit("before", base, options);
-  audit("after", resolve(join(import.meta.dir, "../..")), options);
+  const head = resolve(join(import.meta.dir, "../.."));
+  audit("after", head, options);
+  // A view that moved is pictured on the head once more: if the two pictures of the same code
+  // differ, the view is unsteady (a 3D surface's labels, a value read from the clock), not changed.
+  const moving = (await changes(join(options.out, "before"), join(options.out, "after"))).filter(moved);
+  const unsteady: string[] = [];
+  if (moving.length) {
+    audit("again", head, { ...options, only: [...new Set(moving.map((change) => change.view.split("--")[0]!))].join(",") });
+    const again = await changes(join(options.out, "after"), join(options.out, "again"));
+    const twice = new Map(again.map((change) => [change.view, change]));
+    for (const change of moving) {
+      const second = twice.get(change.view);
+      // Drawn differently, or opened only once of the two times (a detail Enter opened while the root was still moving).
+      if (second && moved(second)) unsteady.push(change.view);
+    }
+  }
+  await Bun.write(join(options.out, "unsteady.json"), JSON.stringify(unsteady));
   // The builds are large and each side's results and pictures are what the report reads.
   await rm(join(options.out, "web-before"), { recursive: true, force: true });
   await rm(join(options.out, "web-after"), { recursive: true, force: true });
+  await rm(join(options.out, "again"), { recursive: true, force: true });
 }
 
 async function lines(file: string): Promise<string[]> {
@@ -97,7 +116,7 @@ async function lines(file: string): Promise<string[]> {
 }
 
 /** Shard runs (one folder each, with before/ and after/) folded into one before/ and one after/. */
-async function merge(shardsDir: string, out: string): Promise<{ base: string; head: string; dirty?: boolean; offline: boolean; shards: number }> {
+async function merge(shardsDir: string, out: string): Promise<{ base: string; head: string; dirty?: boolean; offline: boolean; shards: number; unsteady: string[] }> {
   const shards = (await readdir(shardsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(shardsDir, entry.name));
   let sides: { base: string; head: string; dirty?: boolean; offline: boolean } = { base: "", head: "", offline: false };
   for (const side of ["before", "after"] as const) {
@@ -115,24 +134,26 @@ async function merge(shardsDir: string, out: string): Promise<{ base: string; he
     await Bun.write(join(target, "results.jsonl"), results.length ? `${results.join("\n")}\n` : "");
     await Bun.write(join(target, "views.jsonl"), views.length ? `${views.join("\n")}\n` : "");
   }
-  return { ...sides, shards: shards.length };
+  const unsteady: string[] = [];
+  for (const shard of shards) if (existsSync(join(shard, "unsteady.json"))) unsteady.push(...await Bun.file(join(shard, "unsteady.json")).json() as string[]);
+  return { ...sides, shards: shards.length, unsteady };
 }
 
 interface ViewChange { view: string; widths: Record<string, number | "resized" | "missing" | "error"> }
 
-/** Every pictured view, its body's change per width: a share of pixels, or why it could not be compared. */
-async function changes(out: string): Promise<ViewChange[]> {
+/** Every view pictured in either run, its body's change per width: a share of pixels, or why it could not be compared. */
+async function changes(beforeDir: string, afterDir: string): Promise<ViewChange[]> {
   const byView = new Map<string, ViewChange>();
-  for (const side of ["before", "after"] as const) {
-    const shots = join(out, side, "shots", "white");
+  for (const dir of [beforeDir, afterDir]) {
+    const shots = join(dir, "shots", "white");
     for (const width of existsSync(shots) ? await readdir(shots) : []) {
       for (const file of await readdir(join(shots, width))) {
         const view = file.replace(/\.jpg$/, "");
         const entry = byView.get(view) ?? { view, widths: {} };
         byView.set(view, entry);
         if (entry.widths[width] !== undefined) continue;
-        const before = join(out, "before", "shots", "white", width, file);
-        const after = join(out, "after", "shots", "white", width, file);
+        const before = join(beforeDir, "shots", "white", width, file);
+        const after = join(afterDir, "shots", "white", width, file);
         if (!existsSync(before) || !existsSync(after)) { entry.widths[width] = "missing"; continue; }
         const result = pixelChange(before, after, undefined, BODY_INSET);
         entry.widths[width] = result.status === "compared" ? result.change : result.status;
@@ -190,8 +211,9 @@ async function changedSheets(out: string, moving: ViewChange[]): Promise<string[
 
 async function report(shardsDir: string, out: string, comment: string | null): Promise<void> {
   const sides = await merge(shardsDir, out);
-  const all = await changes(out);
-  const moving = all.filter(moved).sort((a, b) => worst(b) - worst(a));
+  const all = await changes(join(out, "before"), join(out, "after"));
+  const unsteady = new Set(sides.unsteady);
+  const moving = all.filter((change) => moved(change) && !unsteady.has(change.view)).sort((a, b) => worst(b) - worst(a));
   const sheets = await changedSheets(out, moving);
   // The per-family sheets and the audit numbers, for the views a family's change reached.
   Bun.spawnSync(["bun", join(import.meta.dir, "ui-audit-compare.ts"), "--before", join(out, "before"), "--after", join(out, "after"), "--out", join(out, "compare"), "--sheets", "--body-inset", `${BODY_INSET.top},${BODY_INSET.bottom}`], { stdout: "inherit", stderr: "inherit" });
@@ -209,12 +231,13 @@ async function report(shardsDir: string, out: string, comment: string | null): P
         ...moving.slice(0, 30).map((change) => `| ${change.view} | ${widths.map((width) => change.widths[width] === undefined ? "" : percent(change.widths[width]!)).join(" | ")} |`),
         ...(moving.length > 30 ? [`| and ${moving.length - 30} more | |`] : [])]
       : ["No pane body moved."]),
+    ...(unsteady.size ? ["", `Left out of the count, unsteady (two pictures of the same head differ): ${[...unsteady].sort().join(", ")}.`] : []),
     ...(failed.length ? ["", `Did not open on the head: ${failed.join(", ")}.`] : []),
     "",
     run ? `Sheets (before, after and the difference of every view that moved, and per family): the \`ui-benchmark\` artifact of [this run](${run}).` : `Sheets: ${join(out, "sheets")} (${sheets.length}), ${join(out, "compare", "diff-sheets")}.`,
   ].join("\n");
   await Bun.write(join(out, "summary.md"), `${md}\n`);
-  await Bun.write(join(out, "changes.json"), JSON.stringify({ ...sides, views: all.length, changed: moving.length, changes: all }, null, 1));
+  await Bun.write(join(out, "changes.json"), JSON.stringify({ ...sides, views: all.length, changed: moving.length, changedViews: moving.map((change) => change.view), changes: all }, null, 1));
   console.log(`\n${md}`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${md}\n`);
   if (comment) postComment(comment, join(out, "summary.md"));
