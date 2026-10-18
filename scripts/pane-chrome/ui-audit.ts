@@ -127,11 +127,25 @@ async function registryPluginDirs(builtIn: Set<string>): Promise<string[]> {
   const { loadRegistry } = await import("../../src/plugins/marketplace/feed");
   const { linkHostPackages } = await import("../../src/plugins/host-link");
   const { WEB_BUNDLED_PLUGIN_PACKAGES } = await import("../../src/plugins/web-bundled");
-  const feed = await loadRegistry();
   const pluginsDir = cacheDir("ui-audit-plugins");
   await mkdir(pluginsDir, { recursive: true });
+  // The list is kept with the checkouts: a run that cannot read the registry (a network blip) builds
+  // the same plugins as the last one instead of none, so two sides of a comparison never differ by it.
+  const kept = join(pluginsDir, "registry.json");
+  let plugins: Awaited<ReturnType<typeof loadRegistry>>["plugins"] = [];
+  for (let attempt = 0; attempt < 3 && plugins.length === 0; attempt += 1) {
+    if (attempt) await sleep(2_000 * attempt);
+    plugins = (await loadRegistry({ force: attempt > 0 })).plugins;
+  }
+  if (plugins.length) await Bun.write(kept, JSON.stringify(plugins));
+  else if (existsSync(kept)) {
+    plugins = await Bun.file(kept).json();
+    console.warn(`The plugin registry could not be read: building the ${plugins.length} plugins listed when it last was.`);
+  } else {
+    throw new Error("The plugin registry could not be read, and no list of its plugins is kept to build from.");
+  }
   const dirs: string[] = [];
-  for (const plugin of feed.plugins) {
+  for (const plugin of plugins) {
     if (!plugin.repo || plugin.bundled || builtIn.has(plugin.id)) continue;
     const name = plugin.repo.split("/")[1]!;
     if ((WEB_BUNDLED_PLUGIN_PACKAGES as readonly string[]).includes(name)) continue;
@@ -432,7 +446,9 @@ async function main(): Promise<void> {
 
   if (!report) return;
   const pluginsDir = cacheDir("ui-audit-plugins");
-  const extraDirs = withRegistry && existsSync(pluginsDir) ? (await readdir(pluginsDir)).map((name) => join(pluginsDir, name)) : [];
+  const extraDirs = withRegistry && existsSync(pluginsDir)
+    ? (await readdir(pluginsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(pluginsDir, entry.name))
+    : [];
   await writeAuditReport(out, { root, extraDirs });
   console.log(`\n${join(out, "report.md")}`);
 }
