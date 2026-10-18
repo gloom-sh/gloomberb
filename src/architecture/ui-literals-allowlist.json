@@ -17,9 +17,10 @@
     "literals": {
       "font size": 1,
       "font weight": 1,
-      "radius": 1
+      "radius": 1,
+      "spacing": 1
     },
-    "why": "Treemap labels are fitted to their tile's size."
+    "why": "Treemap labels are fitted and padded to their tile's size."
   },
   "src/components/onboarding/onboarding-frame.tsx": {
     "literals": {
@@ -33,11 +34,18 @@
     },
     "why": "A flag is a data mark with its own small rounding."
   },
+  "src/components/ui/fields.tsx": {
+    "literals": {
+      "spacing": 1
+    },
+    "why": "A framed text area's text keeps 6px off its frame above and below, the padding its fields were given in #1426; its sides are the inset."
+  },
   "src/components/ui/range-track.tsx": {
     "literals": {
-      "radius": 1
+      "radius": 1,
+      "spacing": 1
     },
-    "why": "The range track is a data mark rounded at its ends."
+    "why": "The range track is a data mark rounded at its ends; its marker is centred on its value by a negative margin."
   },
   "src/components/ui/ratio-bar.tsx": {
     "literals": {
@@ -54,20 +62,23 @@
   "src/plugins/builtin/chat/attachments/desktop.tsx": {
     "literals": {
       "font size": 3,
-      "radius": 5
+      "radius": 5,
+      "spacing": 2
     },
     "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
   },
   "src/plugins/builtin/chat/content/handle-prompt.tsx": {
     "literals": {
-      "font weight": 1
+      "font weight": 1,
+      "spacing": 2
     },
     "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
   },
   "src/plugins/builtin/chat/message/pane-chip.tsx": {
     "literals": {
       "font weight": 1,
-      "radius": 3
+      "radius": 3,
+      "spacing": 2
     },
     "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
   },
@@ -85,15 +96,17 @@
   },
   "src/plugins/builtin/gpu/ladder.tsx": {
     "literals": {
-      "radius": 4
+      "radius": 4,
+      "spacing": 6
     },
-    "why": "Ladder rungs, ranges and markers are data marks."
+    "why": "Ladder rungs, ranges and markers are data marks, centred on their values by negative margins."
   },
   "src/plugins/builtin/revenue-breakdown/bars.tsx": {
     "literals": {
-      "radius": 1
+      "radius": 1,
+      "spacing": 3
     },
-    "why": "Revenue bars are data marks."
+    "why": "Revenue bars are data marks, spaced by their own gaps."
   },
   "src/plugins/builtin/supply-chain/graph-pane.tsx": {
     "literals": {
@@ -122,9 +135,10 @@
   "src/renderers/dom/desktop/controls.tsx": {
     "literals": {
       "font size": 1,
-      "grey": 4
+      "grey": 4,
+      "spacing": 2
     },
-    "why": "The checkbox's tick is white on the accent for contrast in every theme; the message composer belongs to chat."
+    "why": "The checkbox's tick is white on the accent for contrast in every theme; the message composer (its size and padding) belongs to chat."
   },
   "src/renderers/dom/host/media-surface.tsx": {
     "literals": {
@@ -149,15 +163,17 @@
     "literals": {
       "font size": 2,
       "grey": 9,
-      "radius": 1
+      "radius": 1,
+      "spacing": 17
     },
-    "why": "The root font size the tokens scale from, the fatal page drawn when the app could not start (its own size, button and fallbacks), theme fallbacks inside var(), and Windows' red close button."
+    "why": "The root font size the tokens scale from, the fatal page drawn when the app could not start (its own size, button, spacing and fallbacks), theme fallbacks inside var(), Windows' red close button, the pane header's 7px beside its 1px edge, the 1px a band or bar leaves its hairline, the toast's own layout (indicator, heading, actions) and the call player's thumb centred on its track."
   },
   "src/renderers/share/styles.css": {
     "literals": {
       "font size": 8,
       "grey": 2,
-      "radius": 2
+      "radius": 2,
+      "spacing": 43
     },
     "why": "Share pages are a separate public page with their own styles."
   },
