@@ -8,6 +8,7 @@ import { createThirteenFHeadless, thirteenFHeadless } from "./headless";
 import { AS_FILED_VALUE, filingGapText, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
 import type { FundPerformanceResult } from "./data";
 import type { FundDetailData } from "./types";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const detail: FundDetailData = {
@@ -89,6 +90,37 @@ describe("13F headless model", () => {
       action: "exit", previousShares: 632890, sharesChange: -632890,
       shares: null, value: null, estimatedPnl: null,
     });
+  });
+
+  test("holdings price a line that moved as across a split by its corporate actions, and name the lines split-adjusted or left without a figure", async () => {
+    // KLAC 10:1 at 120 a share before the split and 12 after (-88 on each old share, read naively); ODD moves the same way.
+    const line = (ticker: string, cusip: string, value: number, shares: number, accessionNumber: string) =>
+      ({ ...detail.latestHoldings[0]!, ticker, cusip, issuer: `${ticker} Corp`, value, shares, accessionNumber });
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({
+        ...detail,
+        latestHoldings: [line("KLAC", "482480100", 1200, 100, "latest"), line("ODD", "999999999", 1200, 100, "latest"), detail.latestHoldings[0]!],
+        previousHoldings: [line("KLAC", "482480100", 1000, 10, "previous"), line("ODD", "999999999", 1000, 10, "previous"), detail.previousHoldings[0]!],
+      }),
+    });
+    const looked: string[] = [];
+    const actions = (ticker: string) => ticker === "KLAC"
+      ? { symbol: ticker, dividends: [], earnings: [], splits: [{ date: "2026-05-04", fromFactor: 1, toFactor: 10 }] }
+      : Promise.reject(new Error("corporate actions down"));
+    const context = createTestHeadlessContext({ marketData: createTestDataProvider({
+      getCorporateActions: async (ticker) => { looked.push(ticker); return actions(ticker); },
+    }) });
+    const result = await headless.load(args("holdings"), context);
+    // Only the lines that move like a split are looked up; AAPL, added to at a flat price, is read as it stands.
+    expect(looked.sort()).toEqual(["KLAC", "ODD"]);
+    expect(result.rows.find((row) => row.ticker === "KLAC")).toMatchObject({ estimatedPnl: 200, splitRatio: 10 });
+    expect(result.rows.find((row) => row.ticker === "ODD")).toMatchObject({ estimatedPnl: null, splitUnread: true });
+    expect(result.rows.find((row) => row.ticker === "AAPL")).toMatchObject({ estimatedPnl: 0 });
+    expect(result.metadata?.notices).toEqual(expect.arrayContaining([
+      "Est P&L split-adjusted: KLAC 10:1 (split between the filings, as the corporate actions show)",
+      "No Est P&L: ODD (shares and value per share moved as across a split, and the corporate actions could not be read to tell)",
+    ]));
   });
 
   test("dates holdings by their filing, flags a fund that stopped filing and marks option rows in text only", async () => {

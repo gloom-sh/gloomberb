@@ -171,6 +171,10 @@ export interface FundHoldingRow {
   previousShares: number | null;
   valueChange: number | null;
   estimatedPnl: number | null;
+  /** New shares per old (10 for 10:1) when Est P&L is priced on split-adjusted shares: the filings straddle a split its corporate actions show. */
+  splitRatio?: number;
+  /** The line moved as across a split and its corporate actions could not be read to tell: Est P&L is left empty, not priced as a crash or a surge. */
+  splitUnread?: boolean;
   sharesChange: number | null;
   sharesChangePercent: number | null;
   action: HoldingAction;

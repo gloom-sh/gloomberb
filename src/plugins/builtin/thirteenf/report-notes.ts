@@ -1,5 +1,6 @@
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
+import { formatSplitRatio } from "./model";
 import type { ThirteenFFilingGap, ThirteenFOtherManager } from "./types";
 
 /**
@@ -120,6 +121,38 @@ export function staleFundsText(funds: readonly { name: string; quarters: number 
   if (funds.length === 1) return `${funds[0]!.name}: latest filing is ${quartersOldText(funds[0]!.quarters)}; ${NOTHING_LATER}`;
   const named = funds.slice(0, shown).map((fund) => `${fund.name} (${quartersOldText(fund.quarters)})`).join(", ");
   return `Latest filing 2+ quarters old: ${named}${funds.length > shown ? ` and ${count(funds.length - shown)} more` : ""}`;
+}
+
+interface SplitLine {
+  ticker: string;
+  issuer: string;
+}
+
+const lineName = (line: SplitLine) => line.ticker || line.issuer;
+
+/** The first few lines as `text` gives them, then a count of the rest. */
+function listedLines<T>(lines: readonly T[], text: (line: T) => string, shown = 5): string {
+  return `${lines.slice(0, shown).map(text).join(", ")}${lines.length > shown ? ` and ${count(lines.length - shown)} more` : ""}`;
+}
+
+/** "Split-adjusted: NVDA 10:1, Odd Co 1:10 (split between the filings, as the corporate actions show)": lines priced on split-adjusted shares. */
+export function splitAdjustedText(lines: readonly (SplitLine & { ratio: number })[], prefix = "Split-adjusted"): string {
+  return `${prefix}: ${listedLines(lines, (line) => `${lineName(line)} ${formatSplitRatio(line.ratio)}`)} (split between the filings, as the corporate actions show)`;
+}
+
+/** "No Est P&L: XYZ (shares and value per share moved as across a split, and the corporate actions could not be read to tell)": lines left without a figure, `leftOut` opening it. */
+export function splitUnreadText(lines: readonly SplitLine[], leftOut: string): string {
+  return `${leftOut}: ${listedLines(lines, lineName)} (shares and value per share moved as across a split, and the corporate actions could not be read to tell)`;
+}
+
+/** What a Holdings table's Est P&L says of its lines that moved as across a split: the ones priced split-adjusted, and the ones left without a figure. */
+export function holdingSplitNotes(rows: readonly (SplitLine & { splitRatio?: number; splitUnread?: boolean })[]): string[] {
+  const adjusted = rows.flatMap((row) => row.splitRatio ? [{ ...row, ratio: row.splitRatio }] : []);
+  const unread = rows.filter((row) => row.splitUnread);
+  return [
+    ...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []),
+    ...(unread.length ? [splitUnreadText(unread, "No Est P&L")] : []),
+  ];
 }
 
 /** "Q2 2026" for the quarter ending 30 Jun 2026. */

@@ -23,11 +23,14 @@ import {
   filingDayText,
   filingGapText,
   filingLagDays,
+  holdingSplitNotes,
   isOptionType,
   isStaleFiling,
   markedPositionType,
   OPTION_ROWS_NOTE,
   restatedValuesText,
+  splitAdjustedText,
+  splitUnreadText,
   staleFilingText,
   staleFundsText,
   summarizeTickerHoldings,
@@ -42,6 +45,7 @@ import {
   loadFundDetail,
   corporateSplitFactor,
   loadFundPerformance,
+  loadSplitFactors,
   type BrowserLoadResult,
   type FundPerformanceResult,
 } from "./data";
@@ -51,7 +55,6 @@ import {
   DEFAULT_HOLDING_SORT,
   DEFAULT_TIMELINE_SORT,
   buildFundHoldingRows,
-  formatSplitRatio,
   buildTimelineRows,
   filingGapFor,
   inferBrowserTabFromQuery,
@@ -212,6 +215,8 @@ export interface ThirteenFHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<FundDetailData>;
+  /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L. */
+  loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext): Promise<Map<string, number | null>>;
   /** What a fund in a search filed for the newest quarter past its deadline, from EDGAR. */
   loadFilingGap?(cik: string, latestPeriod: string | null | undefined, ctx: HeadlessPaneContext): Promise<ThirteenFFilingGap | null>;
   /** 13F filers whose names contain `query`, without their reports. */
@@ -233,6 +238,11 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   ),
   // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
   loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args) }),
+  loadSplitFactors: (detail, ctx) => loadSplitFactors(
+    detail,
+    (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
+    ctx.signal,
+  ),
   loadFilingGap: (cik, latestPeriod, ctx) => loadFilingGap(cik, latestPeriod, ctx.signal),
   searchFunds: (query, ctx) => searchThirteenFFunds(query, THIRTEENF_MAX_LIMIT, ctx.signal),
   loadPerformance: (cik, name, ctx) => loadFundPerformance(cik, name, ctx.signal, {
@@ -715,8 +725,9 @@ export function createThirteenFHeadless(
             },
           };
         }
+        // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
         const all = sortHoldingRows(
-          buildFundHoldingRows(detail),
+          buildFundHoldingRows(detail, await dependencies.loadSplitFactors(detail, ctx)),
           DEFAULT_HOLDING_SORT,
         );
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
@@ -765,6 +776,7 @@ export function createThirteenFHeadless(
               [`CIK ${detail.cik}`, filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null)].filter(Boolean).join(" | "),
               AS_FILED_VALUE,
               ...(restated ? [restated] : []),
+              ...holdingSplitNotes(rows),
               ...gapNotes,
               ...(cut ? [`${cut[0]!.toUpperCase()}${cut.slice(1)}`] : []),
             ],
@@ -774,7 +786,7 @@ export function createThirteenFHeadless(
             currentReportedValue: detail.latestReport?.complete ? detail.latestReport.tableValueTotal : null,
             changeBasis: "Changes compare disclosed quarter-end positions, not trades. Omitted or confidential holdings can affect apparent entries and exits.",
             valueBasis: THIRTEENF_OPTIONS_NOTE,
-            estimatedPnlBasis: "Quarter-end unit-value change on overlapping reported shares; excludes options, trading costs and dividends; not actual fund P&L.",
+            estimatedPnlBasis: "Quarter-end unit-value change on overlapping reported shares, split-adjusted across a split between the filings; excludes options, trading costs and dividends; not actual fund P&L.",
           },
         };
       }
@@ -793,7 +805,6 @@ export function createThirteenFHeadless(
           : performance.ranking === "ranked" ? `the ${quarter} ranking lists it without a return`
             : performance.ranking === "unranked" ? `not in the ${quarter} ranking`
               : performance.ranking === "unavailable" ? `the ${quarter} ranking did not load` : null;
-        const lineText = (line: { ticker: string; issuer: string }) => line.ticker || line.issuer;
         return {
           columns: browserColumns("performance", performance.rows),
           rows: performance.rows.map((entry) => ({ ...entry, ...Object.fromEntries((entry.priorReturns ?? []).map((point, index) => [`return${index + 1}`, point.value])) })),
@@ -815,12 +826,8 @@ export function createThirteenFHeadless(
             notices: [
               ...flagNotices,
               estimated ? `Est 13F: from the ${estimated} filings, the Est P&L of positions held through the quarter over their value at its start${rankingText ? ` (${rankingText})` : ""}` : "",
-              performance.splits?.length
-                ? `Split-adjusted: ${performance.splits.map((line) => `${lineText(line)} ${formatSplitRatio(line.ratio)}`).join(", ")} (split between the filings, as the corporate actions show)`
-                : "",
-              performance.skipped?.length
-                ? `Left out of Est 13F: ${performance.skipped.map(lineText).join(", ")} (shares and value per share moved as across a split, and the corporate actions could not be read to tell)`
-                : "",
+              performance.splits?.length ? splitAdjustedText(performance.splits) : "",
+              performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F") : "",
               performance.unavailable ? `No Est 13F${rankingText ? ` (${rankingText})` : ""}: ${performance.unavailable}` : "",
               ...filingGapNotes(performance.period ?? null, performance.filingGap ?? null),
               `Copy this basket: gloomberb portfolio import --13f ${row.cik}`,

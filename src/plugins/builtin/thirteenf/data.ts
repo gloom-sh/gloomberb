@@ -12,7 +12,7 @@ import {
   searchThirteenFFunds,
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
-import { withDeadline } from "../../../utils/async-deadline";
+import { abortable, withDeadline } from "../../../utils/async-deadline";
 import {
   buildBrowserRows,
   filingGapFor,
@@ -368,6 +368,35 @@ export async function corporateSplitFactor(marketData: Pick<DataProvider, "getCo
 
 /** Corporate-action lookups in flight at once for one fund's split candidates. */
 const SPLIT_LOOKUP_CONCURRENCY = 6;
+/** How long one ticker's corporate actions are waited for before its split reads as unconfirmed. */
+const SPLIT_LOOKUP_TIMEOUT_MS = 10_000;
+
+/**
+ * The split factor between a fund's two quarter ends for each of its split
+ * candidates (filingSplitCandidates), by row id, for estimateFilingQuarterReturn
+ * and the Holdings rows: a few lookups at once, each as the lookup answers it.
+ * A line the lookup cannot answer for (no ticker, a failure, no answer in time)
+ * is null, unconfirmed. Only an abort rejects. A fund with no candidates, or
+ * without two comparable quarters, makes no lookup.
+ */
+export async function loadSplitFactors(detail: FundDetailData, lookup: SplitFactorLookup, signal?: AbortSignal): Promise<Map<string, number | null>> {
+  const period = detail.latestForm?.periodOfReport;
+  const previousPeriod = detail.previousForm?.periodOfReport;
+  if (!period || !previousPeriod) return new Map();
+  return new Map(await mapWithConcurrency(filingSplitCandidates(detail), SPLIT_LOOKUP_CONCURRENCY, async (line) => {
+    signal?.throwIfAborted();
+    if (!line.ticker) return [line.id, null] as const;
+    const factor = await abortable(
+      withDeadline(lookup(line.ticker, previousPeriod, period), SPLIT_LOOKUP_TIMEOUT_MS, `${line.ticker} split lookup timed out`),
+      signal,
+      "Split lookup aborted",
+    ).catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      return null;
+    });
+    return [line.id, factor] as const;
+  }));
+}
 
 /**
  * One fund's row of the performance list, with the list's columns: its
@@ -402,16 +431,7 @@ export async function loadFundPerformance(
   const own = ranked?.find((fund) => fund.cik === detail.cik && fund.periodOfReport === period);
   const ranking = !quarter ? null : !ranked ? "unavailable" : own ? "ranked" : "unranked";
   // A line that moved as across a split is priced by its corporate actions: split-adjusted, as a trade, or left out unread.
-  const previousPeriod = detail.previousForm?.periodOfReport;
-  const candidates = own?.pnl != null || !period || !previousPeriod || !options.splitFactor ? [] : filingSplitCandidates(detail);
-  const factors = new Map(await mapWithConcurrency(candidates, SPLIT_LOOKUP_CONCURRENCY, async (line) => {
-    if (!line.ticker) return [line.id, null] as const;
-    const factor = await options.splitFactor!(line.ticker, previousPeriod!, period!).catch((error: unknown) => {
-      if (signal?.aborted) throw error;
-      return null;
-    });
-    return [line.id, factor] as const;
-  }));
+  const factors = own?.pnl != null || !options.splitFactor ? new Map<string, number | null>() : await loadSplitFactors(detail, options.splitFactor, signal);
   const filed = own?.pnl != null ? null : estimateFilingQuarterReturn(detail, factors);
   const estimate = own?.pnl ?? filed?.percent ?? null;
   const basis = own?.pnl != null ? "ranking" : estimate != null ? "filings" : null;

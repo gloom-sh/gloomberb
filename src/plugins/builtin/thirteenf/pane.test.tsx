@@ -2,8 +2,11 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import type { DataProvider } from "../../../types/data-provider";
+import type { CorporateActionsData } from "../../../types/financials";
 import type { TickerResearchTabDef } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
@@ -26,14 +29,14 @@ afterEach(() => {
   setSystemTime();
 });
 
-function Harness() {
+function Harness({ marketData = null }: { marketData?: DataProvider | null }) {
   const initialState = createInitialState(createDefaultConfig("/tmp/gloomberb-thirteenf-pane-test"));
   initialState.focusedPaneId = PANE_ID;
   const [state, dispatch] = useReducer(appReducer, initialState);
   latestState = state;
 
   return (
-    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => marketData })}>
       <ThirteenFPane
         paneId={PANE_ID}
         paneType="thirteenf-funds"
@@ -282,6 +285,44 @@ describe("ThirteenFPane", () => {
     expect(holdingsFrame).toContain("filed 2026-05-15, restated");
     expect(holdingsFrame).toContain("AAPL");
     expect(holdingsFrame).not.toContain("Accession");
+  });
+
+  test("a line that moved as across a split has no Est P&L until its corporate actions answer, then the split-adjusted figure, never the crash", async () => {
+    // KLAC 10:1: 10 shares at 100 become 100 at 12. Read as value over shares that is -$880; split-adjusted it is +$200.
+    const holdings = { "0000000001-26-000001": { value: 1200, ssh_prnamt: 100 }, "0000000001-25-000004": { value: 1000, ssh_prnamt: 10 } };
+    installAlpha13FTransport([], (path, parsed) => {
+      if (path.endsWith("/forms")) return json([
+        { cik: "0000000001", accession_number: "0000000001-26-000001", submission_type: "13F-HR", period_of_report: "2026-03-31", filed_as_of_date: "2026-05-15", company_name: "Alpha Capital", table_value_total: 1200, table_entry_total: 1, is_amendment: false },
+        { cik: "0000000001", accession_number: "0000000001-25-000004", submission_type: "13F-HR", period_of_report: "2025-12-31", filed_as_of_date: "2026-02-14", company_name: "Alpha Capital", table_value_total: 1000, table_entry_total: 1, is_amendment: false },
+      ]);
+      const accession = parsed.searchParams.get("accession_number") as keyof typeof holdings;
+      return path.endsWith("/form")
+        ? json([{ cik: "0000000001", accession_number: accession, name_of_issuer: "KLA Corp", title_of_class: "COM", cusip: "482480100", ticker: "KLAC", ssh_prnamt_type: "SH", ...holdings[accession] }])
+        : null;
+    });
+    const actions = Promise.withResolvers<CorporateActionsData>();
+    const lookups: string[] = [];
+    const marketData = createTestDataProvider({ getCorporateActions: (ticker) => { lookups.push(ticker); return actions.promise; } });
+
+    await act(async () => {
+      await tui.render(<Harness marketData={marketData} />, { width: 100, height: 24 });
+    });
+    await renderFrames();
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+
+    // The table is up while the lookup is out, with no figure to read as a crash.
+    expect(lookups).toEqual(["KLAC"]);
+    const waiting = tui.frame();
+    expect(waiting).toContain("KLAC");
+    expect(waiting).not.toContain("-$880");
+    expect(waiting).not.toContain("$200");
+
+    actions.resolve({ symbol: "KLAC", dividends: [], earnings: [], splits: [{ date: "2026-02-05", fromFactor: 1, toFactor: 10 }] });
+    await renderFrames(4);
+    const answered = tui.frame();
+    expect(answered).toContain("$200");
+    expect(answered).not.toContain("-$880");
   });
 
   test("filing detail owns refresh requests and backspace returns to filings", async () => {

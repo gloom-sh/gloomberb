@@ -19,10 +19,10 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort } from "../../../utils/sort-values";
-import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
-import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
+import { corporateSplitFactor, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
@@ -53,7 +53,7 @@ import {
   sortHoldingRows,
   sortTimelineRows,
 } from "./model";
-import { filingGapText, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
+import { filingGapText, holdingSplitNotes, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
 import {
   renderBrowserCell,
   renderFilingPositionCell,
@@ -345,9 +345,14 @@ export function FundDetailView({
   const [openFilingId, setOpenFilingId] = usePluginPaneState<string | null>("openFilingId", null);
   const [filingReturnTab, setFilingReturnTab] = useState<ThirteenFDetailTab | null>(null);
   const [data, setData] = useState<FundDetailData | null>(null);
+  // The split factors of the lines that moved as across a split; null until their corporate actions answer.
+  const [splitFactors, setSplitFactors] = useState<ReadonlyMap<string, number | null> | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const marketData = useAssetData();
+  const marketDataRef = useRef(marketData);
+  marketDataRef.current = marketData;
   // In the Research pane's 13F tab, h/l move between these sections while the
   // fund is open, as they do in the 13F pane.
   useClaimResearchTabKeys(focused);
@@ -362,7 +367,16 @@ export function FundDetailView({
       .then((nextData) => {
         if (abortRef.current !== controller) return;
         setData(nextData);
+        setSplitFactors(null);
         setStatus("loaded");
+        // The table is up already: a line that moved as across a split has no Est P&L until its corporate actions say whether one happened.
+        const provider = marketDataRef.current;
+        void (provider
+          ? loadSplitFactors(nextData, (ticker, after, through) => corporateSplitFactor(provider, ticker, after, through), controller.signal)
+          : Promise.resolve(new Map<string, number | null>())
+        ).then((factors) => {
+          if (abortRef.current === controller) setSplitFactors(factors);
+        }, () => {});
       })
       .catch((loadError) => {
         if (abortRef.current !== controller) return;
@@ -380,7 +394,7 @@ export function FundDetailView({
     };
   }, [load]);
 
-  const holdingRows = useMemo(() => buildFundHoldingRows(data), [data]);
+  const holdingRows = useMemo(() => buildFundHoldingRows(data, splitFactors ?? undefined), [data, splitFactors]);
   const visibleHoldingRows = useMemo(() => (
     sortHoldingRows(holdingRows.filter(row => !mineOnly || mine.has(row.ticker)).map(row => ({ ...row, mine: mine.has(row.ticker) })), holdingSort)
   ), [holdingRows, holdingSort, mineOnly, mine]);
@@ -509,7 +523,9 @@ export function FundDetailView({
 
   // A 13F-NT, or no 13F, for the newest quarter past its deadline; a stale filing's age is in the stats already.
   const filingGap = data?.filingGap && (data.filingGap.filing || !staleFiling) ? filingGapText(data.filingGap, { command: false }) : null;
-  const holdingNotices = useMemo(() => [...(filingGap ? [filingGap] : []), ...(data?.warnings ?? [])], [filingGap, data?.warnings]);
+  // What Est P&L did with the lines that moved as across a split, said once their corporate actions have answered.
+  const splitNotices = useMemo(() => (activeTab === "holdings" && splitFactors ? holdingSplitNotes(visibleHoldingRows) : []), [activeTab, splitFactors, visibleHoldingRows]);
+  const holdingNotices = useMemo(() => [...(filingGap ? [filingGap] : []), ...splitNotices, ...(data?.warnings ?? [])], [filingGap, splitNotices, data?.warnings]);
   usePaneNoticeFooter({
     registrationId: "thirteenf-holdings-notices",
     notices: holdingNotices,
