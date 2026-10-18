@@ -192,6 +192,9 @@ test("historical prices mark a monthly bar whose month runs on and date it by th
     const complete = await historicalPricesHeadless.load(args(["CSCO:NASDAQ"], { range: "ALL" }), september);
     expect(complete.rows.some((row) => row.partial)).toBe(false);
     expect(complete.freshness).not.toHaveProperty("periodToDate");
+    // Dated by its last session, the day its close is from, not the 1st it is filed under.
+    expect(complete.freshness).toMatchObject({ asOf: "2026-09-30" });
+    expect(renderHeadlessPaneText(historicalPricesHeadless, complete, args(["CSCO:NASDAQ"], { range: "ALL" }), "HP CSCO")).toContain("Wed 30 Sep 2026");
   } finally {
     setSystemTime();
   }
@@ -304,6 +307,15 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     expect(text).toContain("2026-10 MTD");
     expect(text).toContain("2026-09");
     expect(text).not.toContain("2026-10-01");
+    // Without October's bar, September's is complete and dated by its last session.
+    const september = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "CSCO", exchange: "NASDAQ" }),
+      marketData: createTestDataProvider({ getDetailedPriceHistoryWithMetadata: async () => ({ points: monthly.slice(0, 2), resolution: "1mo" }) }),
+    });
+    const complete = await returnsHeadless.load(input, september);
+    expect(complete.freshness).toMatchObject({ asOf: "2026-09-30" });
+    expect(complete.freshness).not.toHaveProperty("periodToDate");
+    expect(renderHeadlessPaneText(returnsHeadless, complete, input, "RETURN CSCO")).toContain("Wed 30 Sep 2026");
   } finally {
     setSystemTime();
   }

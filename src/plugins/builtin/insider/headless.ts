@@ -57,6 +57,7 @@ import {
   insiderStakeValue,
   insiderUsualRatio,
 } from "./signals-model";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -307,7 +308,6 @@ export function createInsiderHeadless(
         description: "Exact reporting owner name.",
         type: "string",
         defaultValue: "",
-        pluginState: { pluginId: "ticker-research", key: "nameFilter" },
       },
       {
         key: "type",
@@ -322,6 +322,7 @@ export function createInsiderHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         aliases: ["count", "rows"],
         description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
         type: "integer",
@@ -416,6 +417,18 @@ export function createInsiderHeadless(
       },
     ],
     columns: INSIDER_COLUMNS,
+    // The Trades view filters by insider as the pane's own filter does, kept by ticker.
+    shotState: (args, _load, given) => {
+      const name = String(args.options.name ?? "").trim();
+      if (!given.has("name") || !name) return {};
+      const symbol = args.symbols[0];
+      if (!symbol || args.options.view === "insiders") {
+        throw new Error(symbol
+          ? `--name filters ${symbol}'s trades, not its insiders. Drop --view insiders or --name from shot.`
+          : `--name filters one company's trades: gloomberb shot INS <ticker> --name ${JSON.stringify(name)}`);
+      }
+      return { pluginState: { "ticker-research": { [`insider:nameFilter:${parsePublicTickerKey(symbol).symbol}`]: name } } };
+    },
     describe: (args) => {
       const symbol = args.symbols[0];
       if (symbol) return args.options.view === "insiders" ? `Insiders | ${symbol}` : `Insider Transactions | ${symbol}`;

@@ -19,6 +19,7 @@ import { isUsListingExchange } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -228,7 +229,7 @@ export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies =
     freshness: EARNINGS_CALENDAR,
     argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
     options: [
-      { key: "limit", description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
+      { key: "limit", shot: REPORT_ROWS, description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
     describe: () => "Earnings Calendar",
@@ -250,7 +251,7 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
       maximum: 100,
     },
     options: [
-      { key: "limit", description: "Maximum rows on the market board or a ticker list.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
+      { key: "limit", shot: REPORT_ROWS, description: "Maximum rows on the market board or a ticker list.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
     describe: (args) => (args.symbols.length === 0 ? "Earnings Calendar" : `ERN ${args.symbols.join(", ")}`),

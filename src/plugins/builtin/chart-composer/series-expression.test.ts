@@ -75,7 +75,9 @@ describe("chart composer expressions", () => {
   test("a stray separator in a pasted list adds no series: trailing, leading and doubled commas", () => {
     const symbols = (value: string) => parseChartExpression(value).map((leg) => leg.kind === "security" ? leg.symbol : leg.kind);
     for (const value of ["BRK.B,SPY,", ",BRK.B,SPY", "BRK.B,,SPY", " BRK.B , ; SPY ,\n"]) expect(symbols(value), value).toEqual(["BRK.B", "SPY"]);
-    expect(parseChartExpression(" , ;")).toEqual([]);
+    // Separators alone are an error, as an empty leg was; no input at all is no chart yet.
+    expect(() => parseChartExpression(" , ;")).toThrow('Invalid chart series ", ;": no series between its separators.');
+    expect(parseChartExpression("  ")).toEqual([]);
   });
 
   test("an unspaced slash between two tickers is their ratio, and a real pair stays one series", () => {

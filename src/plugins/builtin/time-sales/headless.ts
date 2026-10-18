@@ -5,6 +5,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { fetchTape } from "./client";
 import { newestFirst, quoteSpread, tapePrice, tapePriceDigits, tapeStatistics } from "./model";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 type Format = NonNullable<HeadlessPaneColumn["format"]>;
 const fixedPrice = (digits: number): Format => (value) => tapePrice(typeof value === "number" ? value : null, digits);
@@ -31,7 +32,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", placeholder: "ticker", description: "US equity ticker." },
   usListingsOnly: "Time and sales",
   usListingsOnlyHint: subMinuteDataMessage,
-  options: [{ key: "limit", type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." }],
+  options: [{ key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." }],
   discovery: { aliases: ["TAS", "QR"], dataRequirements: ["Gloom Cloud SIP trade and quote feed"],
     limitations: ["Bounded observed window, not a complete session.", "SIP is delayed fifteen minutes without realtime entitlement.", "Quote sizes are round lots.", "No Level 2 or inferred aggressor side."] },
   describe: (args) => `Time and sales ${args.argument ?? ""}`,

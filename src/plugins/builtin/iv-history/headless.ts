@@ -95,6 +95,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   usListingsOnly: "Implied volatility",
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
+  // The pane names its universe `scope`; symbols typed open their own (custom), which a preset does not replace.
+  shotState: (args) => args.symbols.length ? {} : { settings: { scope: String(args.options.preset) === "megacaps" ? "megacaps" : "etfs" } },
   discovery: { aliases: ["VCA"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
     limitations: ["Rich and cheap are relative to each symbol's own 52 weeks, not a fair-value model."] },
   async load(args, ctx) {

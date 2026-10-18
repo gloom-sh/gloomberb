@@ -21,7 +21,7 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
     limitations: ["Published policy observations with individual dates.", "Policy instruments differ.",
       "Next meetings come from each bank's published calendar; SAMA publishes none, and China's date is the monthly LPR fixing."] },
   shape: "bundle",
-  options: [{ key: "history", type: "boolean", defaultValue: false, description: "Add each row's one-year daily history to the JSON metadata." }],
+  options: [{ key: "history", shot: { reportOnly: "adds each row's one-year history to the JSON report" }, type: "boolean", defaultValue: false, description: "Add each row's one-year daily history to the JSON metadata." }],
   argument: { kind: "none" }, describe: "Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ",
   // Each row is dated apart (BIS reports weekly, some banks weeks late), so exports cite the oldest as well.
   freshness: { source: "BIS and FRED", publisher: "each row's central_bank, via BIS and FRED", status: "not-a-feed",

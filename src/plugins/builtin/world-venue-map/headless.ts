@@ -8,6 +8,7 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import { REFERENCE_DATA } from "../shared/report-freshness";
 import { columnValue, layerCoverageNote, parseLayerTokens, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
+import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
 /**
  * A layer's status from its own cadence, as the pane's footer shows it. The
@@ -106,8 +107,8 @@ export const mapHeadless = {
   },
   options: [
     { key: "layer", aliases: ["layers"], settingKey: "layers", description: "Layer id or group to list, such as vessels or energy.", type: "string" },
-    { key: "query", aliases: ["q", "search"], description: "Filter by name or any field.", type: "string" },
-    { key: "limit", description: "Rows to return.", type: "integer", defaultValue: 100, minimum: 1, maximum: 500 },
+    { key: "query", shot: REPORT_FILTER, aliases: ["q", "search"], description: "Filter by name or any field.", type: "string" },
+    { key: "limit", shot: REPORT_ROWS, description: "Rows to return.", type: "integer", defaultValue: 100, minimum: 1, maximum: 500 },
   ],
   discovery: {
     id: "world-map",

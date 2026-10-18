@@ -17,6 +17,7 @@ export const paneSchemas = {
       },
       {
         key: "columns",
+        shot: { reportOnly: "adds columns to the text report, and the pane keeps its own" },
         type: "string",
         settingKey: "extraColumns",
         placeholder: "fields",

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { PricePoint, Quote } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
@@ -56,6 +56,20 @@ describe("normalized market price comparison", () => {
       expect(seeded?.priceComparison?.start).toBe(result.priceComparison?.start);
     });
   }
+
+  test("a weekly comparison's notice dates its shared bars by their last sessions, a daily one by their dates", async () => {
+    // Thu 10 Sep 2026 18:00 UTC, as the sources read it: New York is trading, so the week of Mon 7 Sep runs through today.
+    setSystemTime(date("2026-09-10T18:00:00Z"));
+    try {
+      expect((await resolveChartSpecData(spec("1d"), sources())).priceComparison?.notice)
+        .toContain("Shared calendar dates: 2022-05-02 to 2026-09-07;");
+      // The week of Mon 2 May 2022 closed on Fri 6 May.
+      expect((await resolveChartSpecData(spec("1wk"), sources())).priceComparison?.notice)
+        .toContain("Shared calendar dates: 2022-05-06 to 2026-09-10;");
+    } finally {
+      setSystemTime();
+    }
+  });
 
   test("missing holiday dates use an exact overlap without carrying or rounding observations", async () => {
     const result = await resolveChartSpecData(spec(), sources({

@@ -4,8 +4,9 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { mapForm } from "./api";
-import { createThirteenFHeadless } from "./headless";
-import { AS_FILED_VALUE, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
+import { createThirteenFHeadless, thirteenFHeadless } from "./headless";
+import { AS_FILED_VALUE, filingGapText, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
+import type { FundPerformanceResult } from "./data";
 import type { FundDetailData } from "./types";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -160,14 +161,27 @@ describe("13F headless model", () => {
         quarter: "2026Q2",
       }),
       loadDetail: async () => detail,
+      loadPerformance: async (cik, name) => ({
+        rows: [{ id: "own", cik, name, periodOfReport: "2026-06-30", estQuarterReturn: 7.99, priorReturns: [{ quarter: "2026Q1", value: null }], source: "performance" }],
+        quarter: "2026Q2", period: "2026-06-30", basis: "filings", ranking: "unranked",
+      }),
     });
 
-    const browser = await headless.load(args("performance", 1), createTestHeadlessContext());
+    const browser = await headless.load({ ...args("performance", 1), argument: null, rawArgument: "" }, createTestHeadlessContext());
     expect(browser.rows).toEqual([expect.objectContaining({
       cik: detail.cik,
       name: detail.name,
       estQuarterReturn: 8.2,
     })]);
+
+    // A named fund gets its own row, in the list's columns, and the command that copies it.
+    const own = await headless.load(args("performance"), createTestHeadlessContext());
+    expect(own.rows).toEqual([expect.objectContaining({ cik: detail.cik, estQuarterReturn: 7.99, return1: null })]);
+    expect(own.columns?.map((column) => column.header)).toEqual(["Fund", "CIK", "Period", "Est 13F", "Value (USD)", "2026Q1"]);
+    expect(own.metadata?.notices).toEqual([
+      "Est 13F: from the 2026-03-31 and 2026-06-30 filings, the Est P&L of positions held through the quarter over their value at its start (not in the 2026Q2 ranking)",
+      "Copy this basket: gloomberb portfolio import --13f 0001067983",
+    ]);
 
     const holdings = await headless.load(args("holdings", 5), createTestHeadlessContext());
     expect(holdings.rows).toEqual([expect.objectContaining({
@@ -178,6 +192,96 @@ describe("13F headless model", () => {
       actionLabel: "Add",
     })]);
     expect(holdings.metadata).toMatchObject({ view: "holdings", fund: detail.name });
+  });
+
+  test("a fund's own performance row says truly where its estimate comes from, and a name that matches no fund points to the ranking", async () => {
+    let result: Partial<FundPerformanceResult> = {};
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => detail,
+      loadPerformance: async (cik, name) => ({
+        rows: [{ id: "own", cik, name, periodOfReport: "2026-06-30", estQuarterReturn: 7.99, priorReturns: [], source: "performance" }],
+        quarter: "2026Q2", period: "2026-06-30", basis: "filings", ranking: "unranked", ...result,
+      }),
+    });
+    const notices = async (next: Partial<FundPerformanceResult>) => {
+      result = next;
+      return ((await headless.load(args("performance"), createTestHeadlessContext())).metadata?.notices as string[]).slice(0, -1);
+    };
+    const est = "Est 13F: from the 2026-03-31 and 2026-06-30 filings, the Est P&L of positions held through the quarter over their value at its start";
+    expect(await notices({ ranking: "ranked" })).toEqual([`${est} (the 2026Q2 ranking lists it without a return)`]);
+    expect(await notices({ ranking: "unavailable" })).toEqual([`${est} (the 2026Q2 ranking did not load)`]);
+    expect(await notices({ basis: "ranking", ranking: "ranked" })).toEqual([]);
+    expect(await notices({
+      splits: [{ ticker: "NVDA", issuer: "NVIDIA", ratio: 10 }, { ticker: "", issuer: "Odd Co", ratio: 0.1 }],
+      skipped: [{ ticker: "XYZ", issuer: "Xyz" }],
+    })).toEqual([
+      `${est} (not in the 2026Q2 ranking)`,
+      "Split-adjusted: NVDA 10:1, Odd Co 1:10 (split between the filings, as the corporate actions show)",
+      "Left out of Est 13F: XYZ (shares and value per share moved as across a split, and the corporate actions could not be read to tell)",
+    ]);
+    expect(await notices({ basis: null, ranking: "ranked", unavailable: "No comparable quarter before 2026-06-30 to estimate a return from." }))
+      .toEqual(["No Est 13F (the 2026Q2 ranking lists it without a return): No comparable quarter before 2026-06-30 to estimate a return from."]);
+    expect(await notices({ basis: null, ranking: null, quarter: undefined, unavailable: "No 13F filing in the last four years." }))
+      .toEqual(["No Est 13F: No 13F filing in the last four years."]);
+    // A fund behind on its filings says so beside its row, as its holdings do.
+    const gap = { period: "2026-09-30", due: "2026-11-16", checked: true, filing: { form: "13F-NT", period: "2026-09-30", filed: "2026-11-14", accession: "0000000000-26-000001", url: "https://www.sec.gov/" } };
+    expect((await notices({ basis: "ranking", ranking: "ranked", filingGap: gap })).at(-1)).toBe(filingGapText(gap));
+
+    await expect(headless.load({ ...args("performance"), argument: "Nobody Capital", rawArgument: "Nobody Capital" }, createTestHeadlessContext()))
+      .rejects.toThrow('No 13F fund matched "Nobody Capital". For the performance ranking, run gloomberb fn 13F --view performance; for one fund, give its CIK, as in gloomberb fn 13F 0001067983 --view performance.');
+  });
+
+  test("the performance ranking without a fund prints as it did before a fund could have its own row", async () => {
+    setSystemTime(new Date("2026-10-18T12:00:00Z"));
+    try {
+      const ranked = [
+        { cik: "0001336528", name: "PERSHING SQUARE CAPITAL MANAGEMENT, L.P.", estQuarterReturn: 12.4, value: 15_200_000_000, entries: 11, prior: [3.1, -2.2, null] },
+        { cik: "0001649339", name: "SCION ASSET MANAGEMENT, LLC", estQuarterReturn: 9.87, value: 263_000_000, entries: 8, prior: [null, 14.5, 6] },
+        { cik: "0001037389", name: "RENAISSANCE TECHNOLOGIES LLC", estQuarterReturn: -1.05, value: 75_400_000_000, entries: 3_412, prior: [0.5, 1.25, -0.75] },
+      ];
+      const headless = createThirteenFHeadless({
+        loadBrowser: async (tab) => {
+          expect(tab).toBe("performance");
+          return {
+            rows: ranked.map((fund) => ({
+              id: `performance:${fund.cik}`, cik: fund.cik, name: fund.name, periodOfReport: "2026-06-30", filedAsOfDate: "2026-08-14",
+              tableValueTotal: fund.value, tableEntryTotal: fund.entries, estQuarterReturn: fund.estQuarterReturn,
+              priorReturns: ["2026Q1", "2025Q4", "2025Q3"].map((quarter, index) => ({ quarter, value: fund.prior[index] ?? null })), source: "performance" as const,
+            })),
+            quarter: "2026Q2", hasMore: false,
+          };
+        },
+        loadDetail: async () => detail,
+      });
+      const input = { rawArgument: "", argument: null, symbols: [], options: { view: "performance", limit: 50 } };
+      const result = await headless.load(input, createTestHeadlessContext());
+      expect(renderHeadlessPaneText(headless, result, input, "13F")).toMatchInlineSnapshot(`
+        "13F Performance
+
+        Fund                                      CIK         Period      Est 13F  Value (USD)  2026Q1   2025Q4  2025Q3
+        ────────────────────────────────────────  ──────────  ──────────  ───────  ───────────  ──────  ───────  ──────
+        PERSHING SQUARE CAPITAL MANAGEMENT, L.P.  0001336528  2026-06-30  +12.40%      $15.20B  +3.10%   -2.20%      --
+        SCION ASSET MANAGEMENT, LLC               0001649339  2026-06-30   +9.87%     $263.00M      --  +14.50%  +6.00%
+        RENAISSANCE TECHNOLOGIES LLC              0001037389  2026-06-30   -1.05%      $75.40B  +0.50%   +1.25%  -0.75%
+
+        Source: SEC EDGAR · Fri 14 Aug 2026 · not a live feed (13F filings)"
+      `);
+      expect(result.metadata).toMatchInlineSnapshot(`
+        {
+          "hasMore": false,
+          "notices": [],
+          "period": null,
+          "quarter": "2026Q2",
+          "query": null,
+          "shown": 3,
+          "truncated": false,
+          "view": "performance",
+        }
+      `);
+    } finally {
+      setSystemTime();
+    }
   });
 
   describe("ticker argument", () => {
@@ -454,3 +558,40 @@ describe("13F overlap against an ETF and flags", () => {
     ]));
   });
 });
+
+describe("13F shot state", () => {
+  const shotState = (metadata: Record<string, unknown>, argument = "0001067983", options: Record<string, string | number> = {}) => thirteenFHeadless.shotState!(
+    { rawArgument: argument, argument: argument || null, symbols: [], options: { view: "auto", limit: 50, ...options } },
+    async () => ({ rows: [], metadata }),
+    new Set(Object.keys(options)),
+  );
+
+  test("opens the fund a name resolved to on its view's tab, with the overlap's second fund or ETF", async () => {
+    expect(await shotState({ view: "filings", cik: "0001067983" }, "Berkshire Hathaway")).toEqual({
+      settings: { initialCik: "0001067983" },
+      pluginState: { "ticker-research": { browserTab: "funds", detailTab: "filings" } },
+    });
+    expect((await shotState({ view: "overlap", cik: "0001067983", etf: { symbol: "SPY", ticker: "IVV", name: "S&P 500", asOf: "2026-10-08" } })).pluginState).toEqual({
+      "ticker-research": { browserTab: "funds", detailTab: "overlap", "overlap:etf": { symbol: "SPY", ticker: "IVV", name: "S&P 500" }, "overlap:target": null },
+    });
+    expect((await shotState({ view: "overlap", cik: "0001067983", secondCik: "0001336528", secondFund: "Pershing Square" })).pluginState?.["ticker-research"]).toMatchObject({
+      "overlap:etf": null, "overlap:target": { cik: "0001336528", name: "Pershing Square" },
+    });
+    // A CIK asked for as a funds search lists it rather than opening it.
+    expect(await shotState({ view: "funds" }, "0001067983", { view: "funds" })).toEqual({
+      settings: { query: "0001067983", initialCik: "" },
+      pluginState: { "ticker-research": { browserTab: "funds", query: "0001067983" } },
+    });
+    expect((await shotState({ view: "crowding", rank: "exits" }, "", { view: "crowding", rank: "exits" })).pluginState).toEqual({
+      "ticker-research": { browserTab: "crowding", "13f-crowding:ranking": "exitCount" },
+    });
+  });
+
+  test("refuses the views the pane draws only another way", async () => {
+    await expect(shotState({ view: "performance", cik: "0001067983", fund: "BERKSHIRE HATHAWAY INC" }, "0001067983", { view: "performance" }))
+      .rejects.toThrow("The 13F pane draws the performance ranking, not one fund's row.");
+    await expect(shotState({ view: "crowding", rank: "new" }, "AAPL", { view: "crowding" })).rejects.toThrow(/not one ticker's rank/);
+    await expect(shotState({ view: "holdings", cik: "0001067983" }, "0001067983", { rank: "exits" })).rejects.toThrow(/--rank orders the crowding ranking only/);
+  });
+});
+

@@ -1,5 +1,6 @@
 import type { DistressFilingKind } from "../../../../api-client/distress";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneOptionDef, HeadlessRowsResult } from "../../../../types/plugin";
+import { REPORT_ROWS } from "../../shared/headless-options";
 import { fetchDesignations, fetchDistressFilings, fetchGoingConcern, fetchInsolvencyNotices } from "./client";
 import {
   ALL,
@@ -98,7 +99,7 @@ const OPTIONS: HeadlessPaneOptionDef[] = [
     type: "string",
     pluginState: tabState("insolvency:query"),
   },
-  { key: "limit", aliases: ["count", "rows"], description: "Maximum rows.", type: "integer", defaultValue: 50, minimum: 1, maximum: 200 },
+  { key: "limit", shot: REPORT_ROWS, aliases: ["count", "rows"], description: "Maximum rows.", type: "integer", defaultValue: 50, minimum: 1, maximum: 200 },
 ];
 
 const COLUMNS: Record<DistressViewId, HeadlessPaneColumn[]> = {

@@ -2,6 +2,7 @@ import type { CotClass, CotClassSummary } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
 import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope, cotUnknownMarketMessage } from "./model";
+import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 const camelClass = (id: CotClass) => id.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase());
 const rounded = (value: number | null, digits: number) => value == null ? null : Number(value.toFixed(digits));
@@ -30,8 +31,10 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 },
   argument: { kind: "free-text", optional: true, placeholder: "code or root", description: "CFTC market code or verified futures root; omit for the extremes board." },
   options: [{ key: "report", type: "enum", values: [{ value: "legacy" }, { value: "disaggregated" }], defaultValue: "legacy", description: "CFTC report family." },
-    { key: "traderClass", type: "enum", values: ["noncommercial", "commercial", "producer", "swap", "managed-money", "other-reportable", "nonreportable"].map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family." },
-    { key: "scope", type: "enum", values: COT_SCOPES.map(({ value }) => ({ value })), defaultValue: "major", description: "Markets on the extremes board, as in the pane." }],
+    { key: "traderClass", type: "enum", values: ["noncommercial", "commercial", "producer", "swap", "managed-money", "other-reportable", "nonreportable"].map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family.",
+      pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "class" } },
+    { key: "scope", type: "enum", values: COT_SCOPES.map(({ value }) => ({ value })), defaultValue: "major", description: "Markets on the extremes board, as in the pane.",
+      pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "scope" } }],
   discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC history"], limitations: ["Futures-only positions aggregate all maturities.", "Legacy and disaggregated classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
   describe: "CFTC positioning",
   async load(args, ctx) {

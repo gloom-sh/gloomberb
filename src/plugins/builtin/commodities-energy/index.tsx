@@ -18,6 +18,7 @@ import { curveTitle, normalizeCurveRoot, paneCurveRoot } from "../futures-curve/
 import { JodiPane } from "../jodi/pane";
 import { jodiModule } from "../jodi";
 import type { PluginModule } from "../plugin-module";
+import { COMMODITIES_VIEW_STATE } from "./view-state";
 
 const COMMODITIES_ENERGY_PANE_ID = "commodities-energy";
 const COMMODITIES_ENERGY_TITLE = "Commodities & Energy";
@@ -42,11 +43,11 @@ const TABS = [
 ] as const;
 type WorkspaceTab = typeof TABS[number]["value"];
 
-const CURVE_SURFACE = withPluginStateNamespace("market-overview:futures-curve", FuturesCurvePane);
-const COT_SURFACE = withPluginStateNamespace("market-overview:cot", CotPane);
-const DOE_SURFACE = withPluginStateNamespace("market-overview:doe", DoePane);
-const CROP_SURFACE = withPluginStateNamespace("commodity-balances", CommodityBalancesPane);
-const JODI_SURFACE = withPluginStateNamespace("jodi", JodiPane);
+const CURVE_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.curve, FuturesCurvePane);
+const COT_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.cot, CotPane);
+const DOE_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.doe, DoePane);
+const CROP_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.crops, CommodityBalancesPane);
+const JODI_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.balances, JodiPane);
 
 const SURFACES = {
   markets: FuturesPane,

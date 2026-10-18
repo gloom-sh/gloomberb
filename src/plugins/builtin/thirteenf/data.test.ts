@@ -7,7 +7,7 @@ import {
   resetThirteenFApiPersistence,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
-import { loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail } from "./data";
+import { corporateSplitFactor, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance } from "./data";
 import { filingGapText } from "./report-notes";
 import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
 
@@ -422,4 +422,90 @@ test("performance history joins by CIK, rejects mismatched periods and leaves ab
   expect(requested).toHaveLength(4);
   expect(result.rows[0]?.priorReturns?.map(point => point.value)).toEqual([null, null, null]);
   expect(result.rows[1]?.priorReturns?.map(point => point.value)).toEqual([-5, null, null]);
+});
+
+test("a fund's own performance row takes the ranking's return when it gives one, else estimates it from the fund's filings and says why", async () => {
+  type Line = { cusip: string; value: number; shares: number };
+  // AAA is held through the quarter at 10 then 12 a share; BBB is bought and CCC sold, so neither has a return.
+  const held: { current: Line[]; previous: Line[] } = {
+    current: [{ cusip: "111111111", value: 120, shares: 10 }, { cusip: "222222222", value: 50, shares: 5 }],
+    previous: [{ cusip: "111111111", value: 100, shares: 10 }, { cusip: "333333333", value: 30, shares: 3 }],
+  };
+  let scenario: { ranked: unknown[] | "down"; forms: Array<"current" | "previous">; lines: typeof held } = { ranked: [], forms: ["current", "previous"], lines: held };
+  const form = { current: { period: "2026-06-30", filed: "2026-08-14", total: 170 }, previous: { period: "2026-03-31", filed: "2026-05-14", total: 130 } };
+  setHttpFetchTransport(async url => {
+    const request = new URL(String(url));
+    if (request.pathname.endsWith("/topfunds")) {
+      if (request.searchParams.get("quarter") !== "2026Q2") return json([]);
+      if (scenario.ranked === "down") throw new Error("ranking down");
+      return json(scenario.ranked);
+    }
+    if (request.pathname.endsWith("/forms")) return json(scenario.forms.map((key) => ({
+      accession_number: key, period_of_report: form[key].period, table_value_total: form[key].total, table_entry_total: scenario.lines[key].length,
+      filed_as_of_date: form[key].filed, submission_type: "13F-HR", cik: "1067983",
+    })));
+    const accession = request.searchParams.get("accession_number") as "current" | "previous";
+    return json(scenario.lines[accession].map((line) => ({ accession_number: accession, cik: "1067983", cusip: line.cusip, ticker: line.cusip === "111111111" ? "AAA" : "", value: line.value, ssh_prnamt: line.shares })));
+  });
+  const load = async (next: Partial<typeof scenario>, splitFactor?: Parameters<typeof loadFundPerformance>[3] extends infer O ? O extends { splitFactor?: infer F } ? F : never : never) => {
+    scenario = { ...scenario, ...next };
+    return loadFundPerformance("1067983", "Fund", undefined, { forceRefresh: true, splitFactor });
+  };
+
+  const unranked = await load({});
+  expect(unranked).toMatchObject({ basis: "filings", ranking: "unranked", quarter: "2026Q2", period: "2026-06-30" });
+  expect(unranked.rows).toEqual([expect.objectContaining({ periodOfReport: "2026-06-30", tableValueTotal: 170, source: "performance" })]);
+  expect(unranked.rows[0]?.estQuarterReturn).toBeCloseTo(20);
+  expect(unranked.rows[0]?.priorReturns?.map(point => point.quarter)).toEqual(["2026Q1", "2025Q4", "2025Q3"]);
+
+  // A ranked fund keeps the ranking's figure, so its row reads as it does in the list.
+  const listed = await load({ ranked: [{ cik: "0001067983", name: "Fund", period_of_report: "2026-06-30", pnl: 4 }] });
+  expect(listed).toMatchObject({ basis: "ranking", ranking: "ranked" });
+  expect(listed.rows[0]?.estQuarterReturn).toBe(4);
+
+  // Ranked without a return, or with the ranking down, the fund is not called unranked.
+  const rankedWithout = await load({ ranked: [{ cik: "0001067983", name: "Fund", period_of_report: "2026-06-30", pnl: null }] });
+  expect(rankedWithout).toMatchObject({ basis: "filings", ranking: "ranked" });
+  expect(rankedWithout.rows[0]?.estQuarterReturn).toBeCloseTo(20);
+  const down = await load({ ranked: "down" });
+  expect(down).toMatchObject({ basis: "filings", ranking: "unavailable" });
+  expect(down.warning).toContain("2026Q2: performance ranking unavailable.");
+
+  // Each reason there is no estimate.
+  const noEstimate = async (next: Partial<typeof scenario>) => {
+    const result = await load({ ranked: [], ...next });
+    expect(result.rows[0]?.estQuarterReturn).toBeNull();
+    expect(result.basis).toBeNull();
+    return result;
+  };
+  expect(await noEstimate({ forms: [] })).toMatchObject({ ranking: null, unavailable: "No 13F filing in the last four years." });
+  expect(await noEstimate({ forms: ["current"] })).toMatchObject({ ranking: "unranked", unavailable: "No comparable quarter before 2026-06-30 to estimate a return from." });
+  const sold = { current: [held.current[1]!], previous: [held.previous[1]!] };
+  expect(await noEstimate({ forms: ["current", "previous"], lines: sold })).toMatchObject({ unavailable: "No share position held through the quarter to 2026-06-30." });
+  // A line that moved as across a split is priced by its corporate actions, and left out when they cannot be read.
+  const split = { current: [{ cusip: "111111111", value: 120, shares: 100 }], previous: [{ cusip: "111111111", value: 100, shares: 10 }] };
+  expect(await noEstimate({ lines: split })).toMatchObject({
+    unavailable: "No share position held through the quarter to 2026-06-30 that could be priced across it.",
+    skipped: [expect.objectContaining({ ticker: "AAA" })],
+  });
+  const looked: unknown[][] = [];
+  const priced = await load({ lines: split }, async (...lookup) => { looked.push(lookup); return 10; });
+  expect(priced).toMatchObject({ basis: "filings", splits: [expect.objectContaining({ ratio: 10 })] });
+  expect(priced.rows[0]?.estQuarterReturn).toBeCloseTo(20);
+  expect(looked).toEqual([["AAA", "2026-03-31", "2026-06-30"]]);
+  expect(await noEstimate({ lines: split }), "a failed lookup").toMatchObject({ skipped: [expect.anything()] });
+});
+
+test("a ticker's split factor is the product of its share splits between the quarter ends, and unknown without its actions", async () => {
+  const actions = (splits: Array<{ date: string; ratio?: number; fromFactor?: number; toFactor?: number }>, coverage?: "available" | "unavailable") => ({
+    getCorporateActions: async () => ({ symbol: "AAA", dividends: [], earnings: [], splits, ...(coverage ? { coverage: { splits: coverage } } : {}) }),
+  });
+  const between = (provider: Parameters<typeof corporateSplitFactor>[0]) => corporateSplitFactor(provider, "AAA", "2026-03-31", "2026-06-30");
+  // 10:1 in June counts; a split on the quarter's first day, or after its end, does not.
+  expect(await between(actions([{ date: "2026-06-10", fromFactor: 1, toFactor: 10 }, { date: "2026-03-31", ratio: 2 }, { date: "2026-07-01", ratio: 4 }]))).toBe(10);
+  expect(await between(actions([{ date: "2026-04-02", ratio: 0.1 }, { date: "2026-06-30", ratio: 3 }]))).toBeCloseTo(0.3);
+  // A spinoff's price adjustment is no share split.
+  expect(await between(actions([{ date: "2026-05-01", ratio: 1.04 }], "available"))).toBe(1);
+  expect(await between(actions([], "unavailable"))).toBeNull();
+  expect(await between({})).toBeNull();
 });

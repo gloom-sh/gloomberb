@@ -48,7 +48,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
       normalize: (value) => isoDateOption(value, "end") },
     { key: "include-partial", settingKey: "includePartial", type: "boolean", defaultValue: false,
       description: "Keep a session still forming (partial), which is left out by default because its close moves until the day ends" },
-    { key: "equity", type: "boolean", defaultValue: false, example: "--csv --equity > curve.csv",
+    { key: "equity", shot: { reportOnly: "prints the daily equity curve in place of the summary" }, type: "boolean", defaultValue: false, example: "--csv --equity > curve.csv",
       description: "Report the daily curve instead: date, close in the listing's currency, position (1 long, 0 flat), strategy and"
         + " buy-and-hold growth of 1 and drawdown in percent, every digit in --csv and --json" },
     { key: "tab", type: "enum", defaultValue: "summary", values: [{ value: "summary" }, { value: "trades" }], description: "Initial view",

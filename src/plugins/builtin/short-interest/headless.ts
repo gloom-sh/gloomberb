@@ -14,6 +14,7 @@ import {
 import { shortInterestFreshness } from "./schedule";
 import type { ShortInterestRecord } from "./types";
 import { loadShortInterestWithFloat } from "./watch-client";
+import { REPORT_ROWS, REPORT_SORT } from "../shared/headless-options";
 
 const SHORT_INTEREST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "settlementDate", header: "Date" },
@@ -77,6 +78,7 @@ export function createShortInterestHeadless(
     options: [
       {
         key: "order",
+        shot: REPORT_SORT,
         description: "Settlement date order.",
         type: "enum",
         values: [{ value: "newest" }, { value: "oldest" }],
@@ -84,6 +86,7 @@ export function createShortInterestHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         aliases: ["count", "rows"],
         description: "Maximum settlement rows.",
         type: "integer",

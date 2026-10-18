@@ -12,6 +12,13 @@ export const riskFactorsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "refresh", type: "boolean", defaultValue: false, description: "Refresh the selected report and, for latest, report discovery." },
   ],
   describe: (args) => `Risk Factors | ${String(args.argument)} | ${String(args.options.year ?? "latest")}`,
+  // The pane's year, as its year picker keeps it: null follows the newest filing.
+  shotState: (args, _load, given) => {
+    if (!given.has("year")) return {};
+    const year = String(args.options.year).trim().toLowerCase();
+    if (year !== "latest" && !/^\d{4}$/.test(year)) throw new Error("Risk report year must be a four-digit filing year or latest.");
+    return { pluginState: { "ticker-research": { filingYear: year === "latest" ? null : Number(year) } } };
+  },
   async load(args, context) {
     const ticker = String(args.argument);
     const selection = String(args.options.year ?? "latest").trim().toLowerCase();

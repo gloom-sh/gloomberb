@@ -41,6 +41,7 @@ import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
+import { shotOptionRefusal } from "./shot-options";
 import {
   GLOSSARY,
   glossaryRecord,
@@ -343,6 +344,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
           + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
         );
       }
+      // An option the pane cannot draw fails here, before a capture of its default is saved as if it were the view asked for.
+      const refusal = shotOptionRefusal(resolved, parsed.arg, parsed.options, { explain: parsed.explain === true });
+      if (refusal) throw new Error(refusal);
       const outputPath = parsed.outputPath
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);

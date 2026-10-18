@@ -90,6 +90,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     },
     {
       key: "group",
+      shot: { reportOnly: "groups the text report's table, and the map groups by sector itself" },
       description: "Group the stocks by sector, or by industry within each sector.",
       type: "enum",
       values: [{ value: "sector", aliases: ["sectors"] }, { value: "industry", aliases: ["industries"] }],

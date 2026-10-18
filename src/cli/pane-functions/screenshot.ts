@@ -6,7 +6,7 @@ import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
 import { toMarketDataContext } from "../../market-data/selectors";
 import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
-import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
+import { buildHeadlessPaneLoadArgs, loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
 import { dirname, resolve } from "path";
 import { mkdir } from "fs/promises";
 import type { PaneRuntimeState } from "../../core/state/app/state";
@@ -35,7 +35,7 @@ import {
 import { optionPaneState, SHOT_SIZE_LIMITS, type ShotSizeClamp } from "./options";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
-import { capabilityPluginState } from "./capabilities";
+import { capabilityPluginState, findCapabilityOption } from "./capabilities";
 import { resolvePersistedCloudSessionToken } from "./cloud-session";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
@@ -492,6 +492,11 @@ export function shotSizeWarnings(
   });
 }
 
+/** The options typed, by their key: an alias or another spelling (`--min-amount`) reads as the option it names. */
+function givenOptionKeys(capability: ResolvedPaneFunction["capability"], options: Record<string, string | true>): ReadonlySet<string> {
+  return new Set(Object.keys(options).flatMap((key) => findCapabilityOption(capability, key)?.key ?? []));
+}
+
 export async function buildDesktopShotPayload(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -525,10 +530,26 @@ export async function buildDesktopShotPayload(
   if (isFinancialAnalysisFunction(resolved) && !initialPaneState.activeTabId) {
     initialPaneState.activeTabId = "financials";
   }
+  // The pane opens on what the report found (13F: the fund a name resolved to, on its view's tab).
+  const opened = resolved.headless?.shotState
+    ? await resolved.headless.shotState(
+      buildHeadlessPaneLoadArgs(resolved.headless, resolved.token, rawArg, resolved.options),
+      async () => (await loadModel()).result as never,
+      givenOptionKeys(resolved.capability, options),
+    )
+    : null;
+  for (const [pluginId, state] of Object.entries(opened?.pluginState ?? {})) {
+    initialPaneState.pluginState = {
+      ...(initialPaneState.pluginState ?? {}),
+      [pluginId]: { ...(initialPaneState.pluginState?.[pluginId] ?? {}), ...state },
+    };
+  }
   const paneState = stripDesktopShotCredentials<Record<string, PaneRuntimeState>>({
     [resolved.instance.instanceId]: initialPaneState,
   });
-  let shotInstance = stripDesktopShotCredentials<typeof resolved.instance>(resolved.instance);
+  let shotInstance = stripDesktopShotCredentials<typeof resolved.instance>(
+    opened?.settings ? { ...resolved.instance, settings: { ...resolved.instance.settings, ...opened.settings } } : resolved.instance,
+  );
   const layout = {
     dockRoot: null,
     instances: [shotInstance],

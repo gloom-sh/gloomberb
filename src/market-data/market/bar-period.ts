@@ -43,16 +43,6 @@ function periodEnd(date: string, period: BarPeriod): string | null {
 }
 
 /**
- * Whether the weekly or monthly bar dated `date` (in its period, periodEnd)
- * was still forming at `now`, and through which day: October's monthly bar
- * on Fri 16 Oct before the open runs through Thu 15 Oct. It forms while its
- * venue trades a regular session in the period or has one still to come in
- * it, so October's bar is complete once the last session of October closes,
- * though the month runs on. A coin trades every day, so its bar forms until
- * the period's last UTC day ends. A venue whose sessions are unknown is read
- * by the calendar alone, with no day to name. Null for a complete bar.
- */
-/**
  * The day a weekly or monthly bar dated `date` (its period's start, as
  * periodEnd reads it) ends on, `YYYY-MM-DD` at its venue: the last session
  * that closed in its period, so the week of Mon 12 Oct 2026 is dated Fri 16
@@ -88,6 +78,16 @@ export function barLastSession(date: string, period: BarPeriod, venue: string | 
   return utcDate(day) >= start ? utcDate(day) : null;
 }
 
+/**
+ * Whether the weekly or monthly bar dated `date` (in its period, periodEnd)
+ * was still forming at `now`, and through which day: October's monthly bar
+ * on Fri 16 Oct before the open runs through Thu 15 Oct. It forms while its
+ * venue trades a regular session in the period or has one still to come in
+ * it, so October's bar is complete once the last session of October closes,
+ * though the month runs on. A coin trades every day, so its bar forms until
+ * the period's last UTC day ends. A venue whose sessions are unknown is read
+ * by the calendar alone, with no day to name. Null for a complete bar.
+ */
 export function barPeriodToDate(date: string, period: BarPeriod, venue: string | undefined, now: number): BarPeriodToDate | null {
   const start = date.slice(0, 10);
   const end = periodEnd(start, period);

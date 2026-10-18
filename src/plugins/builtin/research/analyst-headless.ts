@@ -22,6 +22,7 @@ import {
   type RatingColumnId,
 } from "./analyst-model";
 import { REPORTED_DATA } from "../shared/report-freshness";
+import { REPORT_ROWS, REPORT_SORT } from "../shared/headless-options";
 
 const RATING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
@@ -119,6 +120,7 @@ export function createAnalystResearchHeadless(
     options: [
       {
         key: "sort",
+        shot: REPORT_SORT,
         description: "Column used to sort analyst actions.",
         type: "enum",
         values: Object.keys(SORT_COLUMNS).map((value) => ({ value })),
@@ -126,6 +128,7 @@ export function createAnalystResearchHeadless(
       },
       {
         key: "order",
+        shot: REPORT_SORT,
         description: "Sort direction.",
         type: "enum",
         values: [{ value: "desc" }, { value: "asc" }],
@@ -133,6 +136,7 @@ export function createAnalystResearchHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         aliases: ["count", "rows"],
         description: "Maximum analyst action rows.",
         type: "integer",

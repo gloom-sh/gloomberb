@@ -33,6 +33,7 @@ export interface HeadlessPaneOptionValue {
   aliases?: string[];
 }
 
+
 /**
  * Declarative option schema shared by headless panes and the pane function CLI.
  * `settingKey` and `pluginState` keep existing screenshot state wiring compatible.
@@ -51,6 +52,15 @@ export interface HeadlessPaneOptionDef {
     pluginId: string;
     key?: string;
   };
+  /**
+   * Set when the pane does not draw the option and only the report reads it
+   * (`--limit`'s rows of text): `shot` refuses it rather than capture the
+   * pane without it; `reportOnly` says what the report does with it, for
+   * the refusal (`sets how many rows the report lists`). Left out, the pane
+   * draws it, through `settingKey`, `pluginState`, a setting of the option's
+   * own key, or `shotState`.
+   */
+  shot?: { reportOnly: string };
   /** The value's name in the catalog's flag, `--expiration <date|unix>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
@@ -491,6 +501,22 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<HeadlessArgumentExpansion | null>;
+  /**
+   * How `shot` opens the pane on a request, past the settings its options
+   * name: 13F opens the fund a name resolved to, on the tab its view names.
+   * `load` is the report's own load, for state that depends on what it found.
+   * `given` names the options typed, by key: `args` carries every option's
+   * default too, which the pane may open on differently (M&A of one company
+   * opens on every status, its report on pending), so state an option sets
+   * is written only when it was asked for.
+   * Throws when the pane cannot draw the request, which `shot` reports
+   * instead of capturing another view.
+   */
+  shotState?(
+    args: HeadlessPaneLoadArgs,
+    load: () => Promise<HeadlessPaneResultByShape[Shape]>,
+    given: ReadonlySet<string>,
+  ): HeadlessShotState | Promise<HeadlessShotState>;
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
   /**
@@ -521,6 +547,14 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
 }
 
 export type HeadlessPaneResult = HeadlessPaneResultByShape[HeadlessPaneShape];
+
+/** What `shot` merges into the captured pane for a request (`shotState`). */
+export interface HeadlessShotState {
+  /** Merged into the pane's settings. */
+  settings?: Record<string, unknown>;
+  /** Merged into the pane's plugin state, by plugin id. */
+  pluginState?: Record<string, Record<string, unknown>>;
+}
 
 /** What a function runs with once it has widened its argument (`expandArgument`). */
 export interface HeadlessArgumentExpansion {

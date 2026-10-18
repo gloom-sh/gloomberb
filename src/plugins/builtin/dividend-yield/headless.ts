@@ -15,6 +15,7 @@ import { regularSessionValuationPrice } from "../../../market-data/quotes/regula
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { projectDividendRanking, type DividendRankingEntry } from "./ranking";
+import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
 /** Symbols one `fn DVD` ranks at most, and how many it reads at once. */
 const MAX_RANKED_SYMBOLS = 25;
@@ -173,6 +174,7 @@ export function createDividendYieldHeadless(
     options: [
       {
         key: "type",
+        shot: REPORT_FILTER,
         description: "Dividend payment type to include.",
         type: "enum",
         values: [
@@ -186,6 +188,7 @@ export function createDividendYieldHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         description: "Maximum historical payments to return.",
         type: "integer",
         defaultValue: DEFAULT_LIMIT,

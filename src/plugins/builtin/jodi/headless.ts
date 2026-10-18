@@ -1,6 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchBalances } from "./client";
 import { balanceTitle, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
+import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 const number = (value: unknown) => typeof value === "number" ? formatBalance(value) : "—";
 
@@ -33,6 +34,7 @@ export const jodiHeadless: HeadlessPaneDefinition<"bundle"> = {
     values: [{ value: "oil" }, { value: "gas" }],
     defaultValue: "oil",
     description: "Crude oil or natural gas.",
+    pluginState: { pluginId: COMMODITIES_VIEW_STATE.balances, key: "commodity" },
   }],
   discovery: {
     aliases: ["JODI"],

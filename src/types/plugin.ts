@@ -28,6 +28,7 @@ export type {
   HeadlessSeries,
   HeadlessSeriesPoint,
   HeadlessSeriesResult,
+  HeadlessShotState,
   HeadlessSnapshotResult,
 } from "./headless";
 import type { ConnectionHealthRegistry } from "../core/connection-health";

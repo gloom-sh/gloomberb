@@ -6,6 +6,7 @@ import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
 import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, shortDatedBasisNote, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -98,7 +99,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   // Only the pane reads the tab; the report always carries both.
   options: [{ key: "tab", description: "Curve or the full contract table.", type: "enum",
     values: [{ value: "curve" }, { value: "contracts", aliases: ["contract", "table"] }], defaultValue: "curve",
-    pluginState: { pluginId: "market-overview", key: "tab" } },
+    pluginState: { pluginId: COMMODITIES_VIEW_STATE.curve, key: "tab" } },
   { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Past date, as ${DATE_OPTION_EXAMPLES}: the curve as the daily settlement archive held it, with the curves a week and a month before.` }],
   describe: (args) => `Futures curve ${args.argument || DEFAULT_ROOT}`,
   async load(args, ctx) {

@@ -31,6 +31,7 @@ import {
   holderReportRows,
   holderReportUnits,
 } from "./report-rows";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 /** The same sort keys order the 13D/13G rows; `value` and `held` are the percent of class. */
 const BENEFICIAL_SORT_COLUMNS: Record<string, BeneficialColumnId> = {
@@ -104,6 +105,7 @@ export function createHoldersHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         aliases: ["count", "rows"],
         description: "Maximum holder rows.",
         type: "integer",
@@ -121,6 +123,7 @@ export function createHoldersHeadless(
       },
       {
         key: "form",
+        shot: { reportOnly: "picks the text report's rows; the pane shows 13D/13G owners with --view 13dg" },
         description: "Rows: 13f for institutional holders, 13d or 13g for beneficial owners over 5% of the class (activists, crowding into large stakes), all for both kinds.",
         type: "enum",
         values: HOLDER_FORMS.map((value) => ({ value })),
@@ -128,6 +131,7 @@ export function createHoldersHeadless(
       },
       {
         key: "history",
+        shot: { reportOnly: "lists every 13D/13G report in the text report" },
         description: "With a 13d, 13g or all form, every report newest first instead of the latest per filer.",
         type: "boolean",
         defaultValue: false,
@@ -135,6 +139,14 @@ export function createHoldersHeadless(
     ],
     columns: HOLDER_REPORT_COLUMNS,
     describe: (args) => `Holders | ${args.symbols[0]}`,
+    // The table's sort, or the 13D/13G list's on that view, as the report orders its rows.
+    shotState: (args, _load, given) => {
+      if (!given.has("sort") && !given.has("order")) return {};
+      const direction = args.options.order === "asc" ? "asc" : "desc";
+      return { pluginState: { "ticker-research": args.options.view === "13dg"
+        ? { beneficialSort: { columnId: BENEFICIAL_SORT_COLUMNS[String(args.options.sort)] ?? "percentOfClass", direction } }
+        : { sortPreference: { columnId: HOLDER_SORT_KEYS[String(args.options.sort)] ?? "value", direction } } } };
+    },
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const requestedForm = parseHolderForm(args.options.form) ?? "13f";

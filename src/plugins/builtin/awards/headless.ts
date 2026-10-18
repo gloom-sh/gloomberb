@@ -5,6 +5,7 @@ import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-dat
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, awardScope, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
+import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
  * "Not a ticker: ZZZZQ." when no listing has the symbol, so a preview that
@@ -91,10 +92,10 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
         normalize: (value: string) => isoDateOption(value, key) }
       : { key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` }),
     { key: "type", type: "enum", settingKey: "awardType", defaultValue: "prime", values: [{ value: "prime" }, { value: "subaward" }, { value: "notice" }, { value: "modification" }], description: "Keep record types separate." },
-    { key: "cursor", type: "string", description: "Continue after the previous response's nextCursor." },
-    { key: "limit", type: "integer", minimum: 1, maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." },
+    { key: "cursor", shot: REPORT_PAGE, type: "string", description: "Continue after the previous response's nextCursor." },
+    { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." },
     { key: "award", type: "string", settingKey: "award", description: "Open one award's evidence, revisions, subawards and modifications by stable id." },
-    { key: "revisionsCursor", type: "string", description: "Continue a detail response's revisions using nextRevisionsCursor." },
+    { key: "revisionsCursor", shot: REPORT_PAGE, type: "string", description: "Continue a detail response's revisions using nextRevisionsCursor." },
   ],
   describe: "Government awards, agency concentration and company exposure (Pro)",
   async load(args, ctx) {

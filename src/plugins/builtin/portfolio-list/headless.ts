@@ -39,6 +39,7 @@ import { quoteFreshnessFields } from "../shared/report-freshness";
 import { importedFromText } from "./imported-from";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
@@ -399,6 +400,7 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   options: [
     {
       key: "limit",
+      shot: REPORT_ROWS,
       type: "integer",
       defaultValue: DEFAULT_ROW_LIMIT,
       minimum: 1,

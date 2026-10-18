@@ -163,6 +163,7 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     {
       key: "roles",
+      shot: { reportOnly: "sets how many open roles the text report lists" },
       aliases: ["limit"],
       description: "Open roles listed for a company, newest first; companies listed without one.",
       type: "integer",

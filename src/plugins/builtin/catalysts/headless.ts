@@ -3,6 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
 import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystParties, catalystQuery, catalystTickers } from "./model";
+import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -18,8 +19,8 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       { key: "to", type: "string", placeholder: "date", description: `End of the calendar window, as ${DATE_OPTION_EXAMPLES}.`, normalize: (value) => isoDateOption(value, "to") },
       { key: "dateField", type: "enum", values: ["any", "announced", "effective", "deadline", "observed"].map((value) => ({ value })), defaultValue: "any", description: "Date field for the calendar window." },
       { key: "upcoming", type: "boolean", defaultValue: false, description: "Only future effective dates and deadlines." },
-      { key: "offset", type: "integer", defaultValue: 0, description: "Zero-based event offset." },
-      { key: "limit", type: "integer", defaultValue: 100, description: "Rows to return, up to 500." },
+      { key: "offset", shot: REPORT_PAGE, type: "integer", defaultValue: 0, description: "Zero-based event offset." },
+      { key: "limit", shot: REPORT_ROWS, type: "integer", defaultValue: 100, description: "Rows to return, up to 500." },
       { key: "detailTab", type: "enum", values: [{ value: "evidence" }, { value: "history" }], defaultValue: "evidence", description: "Detail section for screenshots." },
       { key: "event", type: "string", settingKey: "open", description: "Event ID for evidence and revision history." },
     ],

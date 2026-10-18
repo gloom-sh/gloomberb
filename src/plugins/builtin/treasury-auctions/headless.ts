@@ -6,6 +6,7 @@ import { formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
 import type { TreasuryAuction } from "./types";
+import { FIXED_INCOME_VIEW_STATE } from "../fixed-income/model";
 import {
   AUCTION_HISTORY_WINDOWS,
   AUCTION_SEARCH_FIELDS,
@@ -118,6 +119,7 @@ function createTreasuryAuctionsHeadless(
         type: "enum",
         values: [{ value: "all" }, { value: "bill" }, { value: "note" }, { value: "bond" }],
         defaultValue: "all",
+        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "activeTab" },
       },
     ],
     columns: COLUMNS,

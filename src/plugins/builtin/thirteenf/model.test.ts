@@ -5,6 +5,9 @@ import {
   buildFundHoldingRows,
   buildTimelineRows,
   filingGapFor,
+  estimateFilingQuarterReturn,
+  filingSplitCandidates,
+  formatSplitRatio,
   inferBrowserTabFromQuery,
   latestLikely13FQuarter,
   newestDueQuarter,
@@ -232,6 +235,43 @@ describe("13F model", () => {
     expect(rows.find((row) => row.putCall === "PUT"))
       .toMatchObject({ estimatedPnl: null, shares: 10, action: "held" });
     expect(rows.find((row) => row.shareType === "PRN")?.shares).toBe(500);
+  });
+
+  test("a fund's quarter estimate prices a split its corporate actions show on split-adjusted shares, a trade as it is, and leaves out one it cannot check", () => {
+    const fund = (previous: ThirteenFHoldingRecord[], current: ThirteenFHoldingRecord[]): FundDetailData => ({
+      cik: "0001067983", name: "Fund", forms: [],
+      latestForm: form({}), previousForm: form({ periodOfReport: "2025-12-31" }),
+      latestHoldings: current, previousHoldings: previous,
+    });
+    // Each candidate line's split factor, by its ticker, as its corporate actions would give it.
+    const quarter = (data: FundDetailData, factors: Record<string, number | null> = {}) => {
+      const candidates = filingSplitCandidates(data);
+      return estimateFilingQuarterReturn(data, new Map(candidates.map((line) => [line.id, factors[line.ticker] ?? null])));
+    };
+    // BBB is held through at 10 then 11 a share: +10%. Read naively, a 10:1 split of AAA at 100 a share
+    // then 12 (120 before the split) is -88%; split-adjusted it is +20%, so the fund is +15% on equal stakes.
+    const steady = { previous: holding({ cusip: "B", ticker: "BBB", value: 1000, shares: 100 }), current: holding({ cusip: "B", ticker: "BBB", value: 1100, shares: 100 }) };
+    const forward = fund([holding({ cusip: "A", value: 1000, shares: 10 }), steady.previous], [holding({ cusip: "A", value: 1200, shares: 100 }), steady.current]);
+    expect(filingSplitCandidates(forward)).toEqual([expect.objectContaining({ ticker: "AAA" })]);
+    expect(quarter(forward, { AAA: 10 })).toEqual({ percent: expect.closeTo(15), splits: [{ ticker: "AAA", issuer: "Issuer", ratio: 10 }], skipped: [] });
+    // Sold down to 73 of the 100 split shares, the 73 held through gain 2 each on a start of 10: (146 + 100) / (730 + 1000).
+    const traded = fund([holding({ cusip: "A", value: 1000, shares: 10 }), steady.previous], [holding({ cusip: "A", value: 876, shares: 73 }), steady.current]);
+    expect(quarter(traded, { AAA: 10 })).toMatchObject({ percent: expect.closeTo((246 / 1730) * 100), splits: [expect.objectContaining({ ratio: 10 })] });
+    // A 1:10 reverse split of AAA at 1 a share then 9 (0.90 before it): -10%, not +800%.
+    const reverse = fund([holding({ cusip: "A", value: 1000, shares: 1000 }), steady.previous], [holding({ cusip: "A", value: 900, shares: 100 }), steady.current]);
+    const reversed = quarter(reverse, { AAA: 0.1 });
+    expect(reversed.percent).toBeCloseTo(0);
+    expect(reversed.splits.map((line) => formatSplitRatio(line.ratio))).toEqual(["1:10"]);
+    expect([1.5, 1.25, 50].map(formatSplitRatio)).toEqual(["3:2", "5:4", "50:1"]);
+    // Half the shares sold into a 32% rally (Berkshire's Nucor in 2026Q2) moves the same way; with no split it is a trim.
+    const trim = fund([holding({ cusip: "A", value: 660_686_383, shares: 3_907_075 })], [holding({ cusip: "A", value: 413_814_258, shares: 1_857_752 })]);
+    expect(quarter(trim, { AAA: 1 })).toEqual({ percent: expect.closeTo((222.75 / 169.1 - 1) * 100, 1), splits: [], skipped: [] });
+    // Unchecked, a candidate is left out rather than read as a crash or a split it may not be.
+    expect(quarter(forward)).toEqual({ percent: expect.closeTo(10), splits: [], skipped: [{ ticker: "AAA", issuer: "Issuer" }] });
+    // A crash without a share change, or an add with the price flat, is no candidate.
+    for (const current of [holding({ cusip: "A", value: 100, shares: 10 }), holding({ cusip: "A", value: 10000, shares: 100 })]) {
+      expect(filingSplitCandidates(fund([holding({ cusip: "A", value: 1000, shares: 10 })], [current]))).toEqual([]);
+    }
   });
 
   test("does not call a first filing or a missing-quarter comparison new buying", () => {

@@ -12,6 +12,7 @@ import { ETF_FILING_FORMS, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -65,6 +66,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
     },
     options: [{
       key: "limit",
+      shot: REPORT_ROWS,
       aliases: ["count", "rows"],
       description: "Maximum recent filings.",
       type: "integer",
@@ -110,6 +112,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
     argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker." },
     options: [{
       key: "limit",
+      shot: REPORT_ROWS,
       aliases: ["count", "rows"],
       description: "Maximum recent fund filings.",
       type: "integer",

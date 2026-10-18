@@ -4,6 +4,7 @@ import type { AppAttentionPayload, AppChart } from "../../../api-client/app-atte
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention } from "./client";
 import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
+import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
  * Numbers print as the pane draws them: shares to a tenth, ratings and
@@ -26,8 +27,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       : { source: "App Store and Google Play charts", status: "not-a-feed", basis: "observed chart ranks", dataset: true },
     argument: { kind: "ticker", optional: true, placeholder: "ticker", description: "Company ticker, including exchange for non-US listings. Omit for the global board." },
     options: [
-      { key: "limit", type: "string", defaultValue: "100", description: "Rows per REST page, up to 200 for hiring and 500 for apps." },
-      { key: "offset", type: "string", defaultValue: "0", description: "Continuation offset from the prior report metadata." },
+      { key: "limit", shot: REPORT_ROWS, type: "string", defaultValue: "100", description: "Rows per REST page, up to 200 for hiring and 500 for apps." },
+      { key: "offset", shot: REPORT_PAGE, type: "string", defaultValue: "0", description: "Continuation offset from the prior report metadata." },
       { key: "tab", type: "enum", settingKey: "tab", values: ["table", "chart", "mix", "peers", "evidence"].map((value) => ({ value })), defaultValue: "table", description: "Table, dated history, geographic or role mix, peers, or source evidence." },
       ...(kind === "apps" ? [
         { key: "appId", aliases: ["app-id"], type: "string" as const, settingKey: "appId", description: "Open one app's exact country/chart rank history instead of a company." },

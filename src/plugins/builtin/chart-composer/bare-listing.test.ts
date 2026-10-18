@@ -106,6 +106,17 @@ test("a charted listing names its company and its currency", async () => {
   }
 });
 
+test("fn G charts the series of a list pasted with stray separators, and nothing for the empty items", async () => {
+  const { failure, printed } = await run(["G", "AAPL,,2222:TADAWUL,"], "fn");
+  expect(failure.message).toBeUndefined();
+  expect((printed!.result.data as { series: Array<{ name?: string }> }).series.map((series) => series.name))
+    .toEqual(["Apple Inc.", "Saudi Arabian Oil Co."]);
+  // Separators alone are no list.
+  const none = await run(["G", ",, ,"], "fn");
+  expect(none.printed).toBeUndefined();
+  expect(none.failure.message).toStartWith('Invalid chart series ",, ,": no series between its separators.');
+});
+
 test("a retry names the listing in place of the bare symbol, wherever the argument has it", () => {
   expect(argumentWithListing("BDI", "BDI", "BDI:TSX")).toBe("BDI:TSX");
   expect(argumentWithListing("aapl, bdi:volume", "BDI", "BDI:TSX")).toBe("aapl, BDI:TSX:volume");

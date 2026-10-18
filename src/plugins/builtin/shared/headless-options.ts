@@ -31,3 +31,13 @@ export const FINANCIAL_PERIOD_COUNT_OPTION: HeadlessPaneOptionDef = {
   minimum: 1,
   maximum: 40,
 };
+
+/**
+ * `shot` refusals (`HeadlessPaneOptionDef.shot`) for the options only the
+ * report reads: how many rows it prints, and where its page starts. The pane
+ * lists every row it loads and loads more as it scrolls.
+ */
+export const REPORT_ROWS = { reportOnly: "sets how many rows the text report prints" };
+export const REPORT_PAGE = { reportOnly: "pages the text report" };
+export const REPORT_FILTER = { reportOnly: "filters the text report, and the pane opens unfiltered" };
+export const REPORT_SORT = { reportOnly: "orders the text report, and the pane opens in its own order" };

@@ -68,7 +68,7 @@ export const cdxHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "DTCC", status: "not-a-feed", basis: "daily medians of public trades", cadence: "daily", observedKey: "date" },
   argument: { kind: "free-text", optional: true, placeholder: "index",
     description: "An index (IG, HY, EM, MAIN, XOVER) for its daily history; omit for the board." },
-  options: [{ key: "days", type: "integer", minimum: 30, maximum: CDX_MAX_DAYS, defaultValue: 365,
+  options: [{ key: "days", shot: { reportOnly: "sets how many days of an index's history the text report prints" }, type: "integer", minimum: 30, maximum: CDX_MAX_DAYS, defaultValue: 365,
     description: "Days of a named index's daily levels." }],
   describe: "Index CDS",
   async load(args, ctx) {

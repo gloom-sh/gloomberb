@@ -124,7 +124,8 @@ export function getPaneFunctionCapability(
   };
 }
 
-function resolveOptionDef(
+/** The option a key names, by its own name or an alias, in any spelling (`min-pct`, `minPct`). */
+export function findCapabilityOption(
   capability: PaneFunctionCapability,
   rawKey: string,
 ): PaneFunctionOptionDef | undefined {
@@ -137,7 +138,7 @@ function resolveOptionDef(
 
 /** Whether the function has an option of its own under this name or an alias. */
 export function capabilityHasOption(capability: PaneFunctionCapability, key: string): boolean {
-  return resolveOptionDef(capability, key) !== undefined;
+  return findCapabilityOption(capability, key) !== undefined;
 }
 
 function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string, argument: string | null): string {
@@ -193,7 +194,7 @@ export function normalizeCapabilityOptions(
   if (!capability.botSafe) {
     // A rendered view takes any pane setting; the options it declares are checked.
     return Object.fromEntries(Object.entries(options).map(([key, value]) => {
-      const option = resolveOptionDef(capability, key);
+      const option = findCapabilityOption(capability, key);
       return option ? [option.key, normalizeOptionValue(option, value, settings.argument)] : [key, value];
     }));
   }
@@ -203,7 +204,7 @@ export function normalizeCapabilityOptions(
     if (option.defaultValue !== undefined) normalized[option.key] = option.defaultValue;
   }
   for (const [rawKey, rawValue] of Object.entries(options)) {
-    const option = resolveOptionDef(capability, rawKey);
+    const option = findCapabilityOption(capability, rawKey);
     if (!option) {
       if (settings.strict === false) {
         normalized[rawKey] = rawValue;

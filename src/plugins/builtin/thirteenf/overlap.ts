@@ -40,7 +40,7 @@ export interface EtfHoldingLine {
   weight: number | null;
 }
 
-interface ManagerEtfRow {
+export interface ManagerEtfRow {
   id: string;
   ticker: string;
   issuer: string;

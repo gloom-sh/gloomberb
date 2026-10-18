@@ -13,6 +13,7 @@ import { buildEventRows, eventSourceNotice, type EventRow } from "./event-model"
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
+import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
 export interface EarningsEstimateSources {
   actions: CorporateActionsData | null;
@@ -103,6 +104,7 @@ export function createEarningsEstimatesHeadless(
     options: [
       {
         key: "kind",
+        shot: REPORT_FILTER,
         description: "Estimate or reported rows to include.",
         type: "enum",
         values: [
@@ -114,6 +116,7 @@ export function createEarningsEstimatesHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         description: "Maximum rows to return.",
         type: "integer",
         defaultValue: 50,

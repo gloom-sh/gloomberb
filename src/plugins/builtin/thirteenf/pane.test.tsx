@@ -58,11 +58,13 @@ const emitKeypress = (event: TestKeyEvent) => tui.emitKeypress(event, { trackPro
 
 const emitKeypressBatch = (events: TestKeyEvent[]) => tui.emitKeypress(events, { trackPropagation: true });
 
-function installAlpha13FTransport(urls: string[] = []) {
+function installAlpha13FTransport(urls: string[] = [], override?: (path: string, parsed: URL) => Response | null) {
   setHttpFetchTransport(async (url) => {
     urls.push(String(url));
     const parsed = new URL(String(url));
     const path = parsed.pathname;
+    const answer = override?.(path, parsed);
+    if (answer) return answer;
     if (path.endsWith("/topfunds")) {
       return json([
         { cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: null },
@@ -351,6 +353,58 @@ describe("ThirteenFPane", () => {
     expect(frame).toContain("Overlap");
     expect(frame).not.toContain("SECOND %");
   });
+
+  test("a covered ETF's ticker in the overlap search compares the fund with the ETF's holdings file", async () => {
+    // Alpha Capital holds AAPL and MSFT shares, 60 and 40; the IVV file holds them at 7% and 6%, NVDA at 7% and cash for the rest.
+    const member = (id: string, symbol: string | null, weight: number) => ({
+      id, symbol, name: symbol ?? "Cash", sector: null, weight, shares: 1, holdingPrice: 1, marketValue: weight, price: null, priceAsOf: null,
+      changePercent: null, dailyAsOf: null, return1WPercent: null, return1MPercent: null, returnYtdPercent: null, contribution: null, stale: false,
+    });
+    const fund = { ticker: "IVV", name: "iShares Core S&P 500", aliases: ["SPY", "SPX"], changes: "sp500" };
+    installAlpha13FTransport([], (path, parsed) => {
+      if (path.endsWith("/cloud/members")) return json({ funds: [{ ...fund, asOf: "2026-05-14" }] });
+      if (path.endsWith("/cloud/members/IVV")) return json({
+        fund, asOf: "2026-05-14T00:00:00Z", fetchedAt: "2026-05-14T00:00:00Z", excludedDerivatives: 0, stale: false, quotesUnavailable: false,
+        snapshotAsOf: null, fundDailyAsOf: null, quoteCap: 0,
+        members: [member("aapl", "AAPL", 7), member("msft", "MSFT", 6), member("nvda", "NVDA", 7), member("cash", null, 80)],
+        aggregate: { sum: 0, fundReturn: null, residual: null, tolerancePp: 0, withinTolerance: null, covered: 0, total: 4, coveredWeight: 0, holdingsWeight: 100, fresh1D: 0 },
+      });
+      if (path.endsWith("/form")) return json([["Apple Inc.", "037833100", "AAPL", 60], ["Microsoft Corp", "594918104", "MSFT", 40]].map(([issuer, cusip, ticker, value]) => ({
+        cik: "0000000001", accession_number: parsed.searchParams.get("accession_number"), name_of_issuer: issuer, title_of_class: "COM", cusip, ticker,
+        value, ssh_prnamt: 10, ssh_prnamt_type: "SH", investment_discretion: "SOLE", voting_authority_sole: 10, voting_authority_shared: 0, voting_authority_none: 0,
+      })));
+      return null;
+    });
+    await act(async () => { await tui.render(<Harness />, { width: 110, height: 26 }); });
+    await renderFrames();
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "/", sequence: "/" });
+    await act(async () => { await tui.setup().mockInput.typeText("SPY"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    await renderFrames(4);
+    // Offered above the managers, by the ticker asked for and the file it reads.
+    expect(tui.frame()).toContain("SPY · iShares Core S&P 500 holdings");
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await renderFrames(2);
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+    const frame = tui.frame();
+    expect(frame).toContain("SPY holdings");
+    expect(frame).toContain("IVV file");
+    expect(frame).toMatch(/Overlap\s+13\.0%\s+active share 87\.0%/);
+    expect(frame).toMatch(/AAPL\s+Apple Inc\.\s+60\.0%\s+7\.00%\s+7\.00%/);
+    expect(frame).toContain("SPY %");
+    // Back returns to the picker, the fund still open.
+    await emitKeypress({ name: "backspace", sequence: "\u007f" });
+    await renderFrames(2);
+    expect(tui.frame()).toContain("Back Alpha Capital");
+    expect(tui.frame()).not.toContain("SPY %");
+  }, 20_000);
 
   test("slash in a fund opened from a ticker query reaches the overlap search", async () => {
     installAlpha13FTransport();

@@ -21,6 +21,7 @@ import {
   DEFAULT_IPO_SORT,
   type IpoTab,
 } from "./model";
+import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
 const COLUMNS: HeadlessPaneColumn[] = [
   { key: "ticker", header: "Ticker" },
@@ -134,6 +135,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     },
     {
       key: "status",
+      shot: REPORT_FILTER,
       description: "IPO stage to include; upcoming takes in the deals listed as offering or overdue.",
       type: "enum",
       defaultValue: "all",
@@ -142,6 +144,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     },
     {
       key: "limit",
+      shot: REPORT_ROWS,
       description: "Maximum IPO rows to return.",
       type: "integer",
       defaultValue: 50,

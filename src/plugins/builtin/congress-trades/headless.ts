@@ -20,6 +20,7 @@ import {
   tradeAssetLabel,
 } from "./model";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
+import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "filingDate", header: "Filed", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
@@ -99,6 +100,16 @@ const defaultDependencies: CongressHeadlessDependencies = {
   }, ctx.apiClient, ctx.signal),
 };
 
+/** The filter bar's state for the filters asked for, as the pane stores it: "all" and a zero minimum are no filter. Null when none was. */
+function shotFilters(options: HeadlessPaneLoadArgs["options"], given: ReadonlySet<string>): Record<string, string | number> | null {
+  const keys = ["chamber", "side", "owner", "assetType", "minAmount"].filter((key) => given.has(key));
+  if (!keys.length) return null;
+  return Object.fromEntries(keys.flatMap((key) => {
+    const value = options[key];
+    return value === "all" || (key === "minAmount" && !Number(value)) ? [] : [[key, key === "minAmount" ? Number(value) : String(value)]];
+  }));
+}
+
 export function createCongressHeadless(
   dependencies: CongressHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -112,8 +123,8 @@ export function createCongressHeadless(
     },
     options: [
       { key: "chamber", description: "House, Senate, or both merged by filing date.", type: "enum", defaultValue: "all", values: ["all", "house", "senate"].map((value) => ({ value })) },
-      { key: "offset", description: "Trade offset within the filing window.", type: "integer", defaultValue: 0, minimum: 0 },
-      { key: "filingOffset", description: "Offset into the year's filing index.", type: "integer", defaultValue: 0, minimum: 0 },
+      { key: "offset", shot: REPORT_PAGE, description: "Trade offset within the filing window.", type: "integer", defaultValue: 0, minimum: 0 },
+      { key: "filingOffset", shot: REPORT_PAGE, description: "Offset into the year's filing index.", type: "integer", defaultValue: 0, minimum: 0 },
       {
         key: "tab",
         description: "Congress pane tab.",
@@ -124,6 +135,7 @@ export function createCongressHeadless(
       },
       {
         key: "year",
+        shot: { reportOnly: "reads one disclosure year, and the pane opens on the latest" },
         description: "Disclosure year.",
         type: "integer",
         defaultValue: new Date().getUTCFullYear(),
@@ -132,6 +144,7 @@ export function createCongressHeadless(
       },
       {
         key: "limit",
+        shot: REPORT_ROWS,
         aliases: ["count", "rows"],
         description: "Maximum rows.",
         type: "integer",
@@ -145,6 +158,14 @@ export function createCongressHeadless(
       { key: "minAmount", description: "Minimum disclosed lower dollar bound.", type: "integer", defaultValue: 0, minimum: 0 },
     ],
     describe: (args) => `Congress Trades | ${args.options.tab === "members" ? "Members" : args.options.tab === "tickers" ? "Tickers" : "Trades"}`,
+    // A ticker's pane lists its trades only. The filters are the pane's filter bar, kept apart for a ticker's pane.
+    shotState: (args, _load, given) => {
+      if (args.symbols.length && args.options.tab !== "trades") {
+        throw new Error(`The Congress pane for one ticker lists its trades only. Drop --tab ${args.options.tab} or ${args.symbols[0]} from shot, or run the report: gloomberb fn CG ${args.symbols[0]} --tab ${args.options.tab}`);
+      }
+      const filters = shotFilters(args.options, given);
+      return filters ? { pluginState: { "gloomberb-cloud": { [`${args.symbols.length ? "congressTicker." : ""}filters`]: filters } } } : {};
+    },
     async load(args, ctx) {
       const payload = await dependencies.loadHouse(args, ctx);
       const limit = Number(args.options.limit);
