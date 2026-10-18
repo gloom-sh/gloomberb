@@ -22,6 +22,7 @@ import {
 } from "./model";
 
 export {
+  datesPaneData,
   hasPaneFooterContent,
   type CombinedPaneFooter,
   type PaneFooterPressEvent,

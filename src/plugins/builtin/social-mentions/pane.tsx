@@ -5,20 +5,19 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneSta
 import { CompositeChart, DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { SocialMentionPost, SocialMentionsRange } from "../../../api-client/social-mentions";
-import { ApiRequestError } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { cachedSocialMentions, loadSocialMentionPosts, loadSocialMentions } from "./client";
+import { asSessionRequired, cachedSocialMentions, loadSocialMentionPosts, loadSocialMentions } from "./client";
 import { SOCIAL_COLUMNS, socialChartPoints, socialCount, socialDayRows, socialRatio, socialStance, socialSummary, sortedSocialRows, stanceWord, topPostCell, type SocialColumn, type SocialDayRow, type SocialSort } from "./model";
 
 const PANELS = [{ id: "main" }];
 const WITH_WIKI_PANELS = [{ id: "main", height: 2 }, { id: "wiki", height: 1 }];
 const PENDING_RETRY_MS = 5_000;
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
+const clearDenied = (error: unknown) => error instanceof Error && isCloudSessionRequired(error.message);
 const stanceColor = (value: number | null) => value == null ? colors.textMuted : value >= .15 ? colors.positive : value <= -.15 ? colors.negative : colors.text;
 const RANGES: SocialMentionsRange[] = ["1y", "5y", "max"];
 
@@ -77,7 +76,8 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
   const listing = listingIdentity(ticker?.metadata.ticker);
   const symbol = listing?.symbol && /^[A-Z][A-Z0-9]{0,5}$/.test(listing.symbol) ? listing.symbol : null;
   const session = useResearchCloudSession();
-  const loader = useCallback((force: boolean) => loadSocialMentions(symbol!, range, force), [symbol, range, session.requestKey]);
+  const loader = useCallback((force: boolean) => loadSocialMentions(symbol!, range, force).catch((error: unknown) => { throw asSessionRequired(error); }),
+    [symbol, range, session.requestKey]);
   const resource = useAsyncResource(symbol ? loader : null, {
     initialData: () => symbol ? cachedSocialMentions(symbol, range) : null, clearOnError: clearDenied,
   });
@@ -112,14 +112,16 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
   useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "social-mentions:notices", focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: resource.error,
+  // The wall says it; a missing sign-in is not a failure for the footer to repeat.
+  const signInWall = !data && isCloudSessionRequired(resource.error);
+  usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: signInWall ? null : resource.error,
     url: selected?.topPost?.url ?? (symbol ? `https://x.com/search?q=%24${symbol}` : null), showOpenHint: true,
     info: data ? [
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ] : [],
   });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="social-mentions-signin" action="view social mentions" needsVerification={session.needsVerification} />;
+  if (signInWall) return <SignInWall placement="social-mentions-signin" action="view social mentions" needsVerification={session.needsVerification} />;
   if (!listing?.symbol) return <EmptyState title="No ticker selected." message="Select a ticker to view social mentions." />;
   if (!symbol) return <EmptyState title="This ticker cannot be searched as a cashtag." message="Use a symbol of up to six letters and digits, starting with a letter." />;
   const latest = summary?.latest ?? null;

@@ -1,6 +1,8 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
+import * as activity from "../../../api-client/research-activity";
 import type { SocialMentionsPayload } from "../../../api-client/social-mentions";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
@@ -88,4 +90,21 @@ test("opening a closed day loads its top posts", async () => {
   expect(posts).toHaveBeenCalledWith("SOUN", "2026-09-26");
   expect(frame).toContain("Spike day post about $SOUN");
   expect(frame).toContain("4,901 views");
+});
+
+test("signed out, the route's 401 shows the sign-in wall, not a red failure; a server failure still says unavailable", async () => {
+  spies.push(spyOn(activity, "exposeWallTeaser").mockImplementation(async () => null), spyOn(activity, "recordWallViewed").mockImplementation(() => {}));
+  const request = spyOn(apiClient, "getCloudSocialMentions").mockImplementation(async () => { throw new ApiRequestError("Sign in to see social mentions", 401); });
+  spies.push(request);
+  const wall = await render(96, 30, undefined, "NVDA");
+  expect(wall).toContain("Sign in to view social mentions.");
+  expect(wall).toContain("Log in");
+  expect(wall).toContain("Sign up free");
+  expect(wall).not.toContain("unavailable");
+
+  request.mockImplementation(async () => { throw new ApiRequestError("Upstream timed out", 502); });
+  const failed = await render(96, 30, undefined, "AMD");
+  expect(failed).toContain("social mentions unavailable.");
+  expect(failed).toContain("Upstream timed out");
+  expect(failed).not.toContain("Sign in");
 });

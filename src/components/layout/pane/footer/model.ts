@@ -29,6 +29,8 @@ export interface PaneFooterSegment {
    * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
    * shot` whose status line already dates that data leaves it out, so the
    * date is not said twice, and gives it up before its status line is cut.
+   * A segment that reads `as of <date>` is one without saying so; set it for
+   * a segment worded another way (`holdings 2026-06-30`).
    */
   asOf?: boolean;
   /**
@@ -48,6 +50,11 @@ export interface PaneFooterSegment {
   shortcut?: string;
   onPress?: () => void;
   disabled?: boolean;
+}
+
+/** Whether the segment only dates the pane's data: marked `asOf`, or reading `as of <date>`. */
+export function datesPaneData(segment: Pick<PaneFooterSegment, "asOf" | "parts">): boolean {
+  return segment.asOf ?? /^as of\b/i.test(segment.parts[0]?.text ?? "");
 }
 
 export interface PaneFooterPressEvent {
