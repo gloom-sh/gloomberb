@@ -13,7 +13,7 @@ export interface DetailScrollBodyProps {
  * to the pane footer, and its inset is padding inside what scrolls: text goes
  * under the footer edge rather than stopping a blank band above it.
  */
-const NATIVE_DETAIL_INSET = { padding: "12px 8px 16px" } as const;
+const NATIVE_DETAIL_INSET = { padding: "var(--gloom-space-md) var(--gloom-inset) var(--gloom-space-lg)" } as const;
 
 /**
  * The scrolling body of a stack detail, filling the space under the stack

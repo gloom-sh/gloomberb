@@ -1,0 +1,40 @@
+{
+  "ADJ": [
+    {
+      "measure": "inset",
+      "value": 0,
+      "component": "LevelLine",
+      "why": "Registry plugin (gloomberb-adjacent-indices): its detail's level line is its own code and is fixed in its repository."
+    }
+  ],
+  "CFNG": [
+    {
+      "measure": "font size",
+      "value": 31,
+      "component": "SvgText",
+      "why": "Registry plugin (gloomberb-crypto-fear-greed): the gauge's figure is drawn to the gauge's size, a fitted chart label."
+    },
+    {
+      "measure": "font weight",
+      "value": 800,
+      "component": "SvgText",
+      "why": "Registry plugin (gloomberb-crypto-fear-greed): the gauge's figure, as above."
+    }
+  ],
+  "CHAT": [
+    {
+      "measure": "inset",
+      "value": 7.2,
+      "component": "PaneSidebarRow",
+      "why": "Chat has its own owner: its channel rows start 7px in (reported, not changed, in GLO-768)."
+    }
+  ],
+  "FXMD_REST_HEALTH": [
+    {
+      "measure": "inset",
+      "value": 0,
+      "component": "ResearchPane",
+      "why": "Registry plugin (gloomberb-fxmacrodata): its results line is its own code and is fixed in its repository."
+    }
+  ]
+}

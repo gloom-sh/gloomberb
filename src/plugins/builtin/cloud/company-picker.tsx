@@ -488,7 +488,7 @@ export function CompanyPicker({
                 }}
               />
             ) : (
-              <Text fg={colors.textMuted} style={{ padding: "8px 2px" }}>
+              <Text fg={colors.textMuted} style={{ padding: "var(--gloom-space-sm) var(--gloom-space-xs)" }}>
                 {searching ? t("Searching…") : tf("No company matches {query}.", { query: query.trim() })}
               </Text>
             )

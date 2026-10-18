@@ -6,7 +6,7 @@ const ROOT = resolve(import.meta.dir, "../..");
 const ALLOWLIST = new URL("./ui-literals-allowlist.json", import.meta.url);
 const UPDATE = "bun scripts/update-ui-literals-allowlist.ts";
 
-test("the desktop and the web take type, radii, shadows and greys from the tokens", async () => {
+test("the desktop and the web take type, radii, shadows, greys and spacing from the tokens", async () => {
   const allowlist: Record<string, UiLiteralsEntry> = await Bun.file(ALLOWLIST).json();
   const current = collectUiLiterals(ROOT);
   const grown: string[] = [];
@@ -23,8 +23,8 @@ test("the desktop and the web take type, radii, shadows and greys from the token
   }
   const failures: string[] = [];
   if (grown.length) {
-    failures.push("New literal type, radius, shadow or grey values:\n" + grown.join("\n")
-      + "\nUse the design system's tokens (docs/pane-conventions.md, \"Design system\"): var(--gloom-type-*), var(--gloom-weight-*), var(--gloom-radius-*), var(--gloom-elevation) and the theme's colour roles, or TYPE, WEIGHT, RADIUS from src/theme/ui-tokens.ts."
+    failures.push("New literal type, radius, shadow, grey or spacing values:\n" + grown.join("\n")
+      + "\nUse the design system's tokens (docs/pane-conventions.md, \"Design system\"): var(--gloom-type-*), var(--gloom-weight-*), var(--gloom-radius-*), var(--gloom-space-*), var(--gloom-inset), var(--gloom-elevation) and the theme's colour roles, or TYPE, WEIGHT, RADIUS, SPACE from src/theme/ui-tokens.ts."
       + ` A deliberate exception (a data mark, a label fitted to a chart's shape) goes in the allowlist with its reason: \`${UPDATE}\`.`);
   }
   if (shrunk.length) {

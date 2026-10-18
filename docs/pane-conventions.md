@@ -40,9 +40,9 @@ not the rule. Details follow below.
    not cell counts. The terminal keeps its own cell layout, byte for byte.
 
 A UI change says in its description what it was checked against: all views,
-both themes, a narrow and a wide pane. Rules 2, 6 and 8 are enforced by CI as
-the checks land (Linear GLO-768); until a check exists, the reviewer enforces
-them.
+both themes, a narrow and a wide pane. CI enforces rules 2, 6 and 8 ("Holding
+the line", below): every UI change is benchmarked across all panes and
+plugins, and its blast-radius sheet is attached to the pull request.
 
 ## Design system (desktop and web)
 
@@ -114,8 +114,9 @@ column under 480px steps every reading level down together (13.2px body).
 ### Exceptions
 
 A value written out instead of taken from a token (a font size, a weight
-other than 400 and 700, a corner radius, a drop shadow, and in DOM-only code
-a grey) is counted per file by `src/architecture/ui-literals.test.ts`. A file
+other than 400 and 700, a corner radius, a drop shadow, padding, a margin or a
+gap in pixels, and in DOM-only code a grey) is counted per file by
+`src/architecture/ui-literals.test.ts`. A file
 may keep what `src/architecture/ui-literals-allowlist.json` records for it,
 and every entry says why:
 
@@ -141,6 +142,53 @@ white and paper themes, at any width (`scripts/pane-chrome/kit-page.ts`;
 benchmark a UI change is compared against; `bun run audit:ui` measures the
 whole app against it and `bun run audit:ui:compare --before <run> --after <run>`
 says how far two runs differ, family by family (CONTRIBUTING.md).
+
+### Holding the line
+
+**Every UI change is benchmarked across all panes and plugins, and its
+blast-radius sheet is attached to the pull request.** Two checks hold the
+system in CI, and both run locally:
+
+- **Tokens** (`bun run check:ui-tokens`, the UI tokens workflow, every pull
+  request; it fails). Every function's views, the bundled and registry
+  plugins' panes and the shell, docked at 640 and 1280 px on the real web
+  build, with their details and tabs, measured by the UI audit. It fails on a
+  text size off the type scale (10, 12, 14, 16, 20px), a weight other than
+  400 and 700, a kit element's corner off 0, 3, 6, 8 and 999px, and pane-body
+  text closer than the inset (8px) to the pane's left edge. Labels a chart
+  fits to its shapes, a chart's axes and legends, and a spinner's turning
+  glyph are left out. A deliberate exception is an entry in
+  `src/architecture/ui-tokens-allowlist.json` (the function, the measure, the
+  value, the component, and why). The page reads Gloom Cloud only from a
+  snapshot kept in the Actions cache, so a pull request is measured on the
+  same data every time; with no snapshot every pane draws its offline state
+  and that is what is held. In the code, `src/architecture/ui-literals.test.ts`
+  (Verify) counts type sizes, weights, radii, drop shadows, greys and pixel
+  spacing written out instead of taken from the tokens, per file, against
+  `src/architecture/ui-literals-allowlist.json`; the count only goes down.
+- **Blast radius** (`bun run ui:benchmark`, the UI benchmark workflow, on pull
+  requests that touch the DOM renderer, components, `src/ui`, plugin code,
+  layouts, the theme or styles.css; it reports and never fails). Every view
+  pictured on the base and on the head at 640 and 1280 px in Chromium, pane
+  bodies compared pixel by pixel. One comment on the pull request, edited on
+  every run, says how many of how many views changed and lists them; the
+  `ui-benchmark` artifact has the sheets: before, after and the difference of
+  every view that moved, and a sheet per family. Locally,
+  `bun run ui:benchmark --base origin/main` writes the same under
+  `~/.cache/gloomberb-pane-chrome/ui-benchmark/run` (`--only T,MAP` for a few
+  functions while working).
+
+Read the sheet before asking for review: every view that moved is one the
+change meant to move. A view that moved and should not have is a regression,
+however small. Attach the sheet (or the comment's count and the views you
+looked at) to the pull request, with the neighbours you compared.
+
+Not covered by the checks, so the reviewer still looks: the right edge and
+vertical spacing (a wrapped line's box and a table that scrolls sideways reach
+the edge on purpose), colours (the audit's report lists them), hover and focus
+states, WebKit (Linux WebKit crashes on several panes; the local audit
+pictures it), signed-in and Pro panes beyond their walls, and the terminal
+(its own frames, held byte for byte by the terminal tests).
 
 ## 1. Anatomy
 

@@ -1,0 +1,97 @@
+name: UI tokens
+
+# Holds every view of the desktop and web app to the design system's tokens
+# (scripts/pane-chrome/ui-tokens.ts, docs/pane-conventions.md "Holding the
+# line"): every function, the bundled plugins' panes and the registry's, with
+# their details and tabs, docked at 640 and 1280 px on the real web build. A
+# text's size or weight, a kit element's corner radius or a pane body's left
+# inset off the tokens fails, unless src/architecture/ui-tokens-allowlist.json
+# covers it with a why. The literals in the code are held by
+# src/architecture/ui-literals.test.ts in Verify.
+#
+# Stable: the page reads Gloom Cloud only from a snapshot kept in the Actions
+# cache, offline, so a pull request is measured on the same data every time;
+# with no snapshot every pane draws its offline state, measured the same way.
+# Main records the week's snapshot when it has none and keeps it for pull
+# requests. Shards split the functions by a hash of their token.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-tokens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tokens:
+    name: UI tokens (${{ matrix.shard }} of 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      SNAPSHOT: ~/.cache/gloomberb-pane-chrome/ui-replay
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: keys
+        name: Read the pinned Chrome version and this week
+        run: |
+          echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.keys.outputs.chrome }}
+          key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
+
+      # The registry's plugins, checked out at their registry refs: kept a week.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
+          key: ui-audit-plugins-${{ steps.keys.outputs.week }}
+          restore-keys: ui-audit-plugins-
+
+      # Main takes only this week's snapshot and records it when it is missing;
+      # a pull request takes the newest kept.
+      - id: snapshot
+        name: Restore the data snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-replay
+          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v1-{0}of8-', matrix.shard) || '' }}
+
+      - name: Hold every view to the tokens
+        run: >-
+          bun run check:ui-tokens --shard ${{ matrix.shard }}/8 --replay ${{ env.SNAPSHOT }}
+          ${{ github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true' && '--record' || '' }}
+
+      - name: Keep this week's snapshot
+        if: github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-replay
+          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
+
+      - name: Keep the measures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-tokens-${{ matrix.shard }}
+          path: |
+            ~/.cache/gloomberb-pane-chrome/ui-tokens/results.jsonl
+            ~/.cache/gloomberb-pane-chrome/ui-tokens/views.jsonl
+          if-no-files-found: ignore

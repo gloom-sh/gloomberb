@@ -8,8 +8,9 @@ import { join, relative, sep } from "node:path";
  * The desktop and the web size text, round corners and cast shadows from the
  * tokens in src/renderers/dom/styles.css and src/theme/ui-tokens.ts. This
  * counts, per file, every literal that bypasses them: a font size, a weight
- * other than 400 and 700, a corner radius, a drop shadow, and in DOM-only code
- * a grey of its own. `src/architecture/ui-literals.test.ts` holds each file to
+ * other than 400 and 700, a corner radius, a drop shadow, in DOM-only code
+ * a grey of its own, and padding, margin or gap in pixels.
+ * `src/architecture/ui-literals.test.ts` holds each file to
  * its count in `src/architecture/ui-literals-allowlist.json`, where every entry
  * says why it stays (a data mark, a label fitted to a chart's shape, a page
  * drawn before the app's styles). The count can only go down.
@@ -35,6 +36,9 @@ const PATTERNS: Array<{ kind: string; pattern: RegExp; domOnly?: boolean }> = [
   { kind: "shadow", pattern: /(?:boxShadow:\s*["'`]|box-shadow:\s*)(?!inset)[^;"'`]*?-?\d+(?:px)?\s+-?\d+px\s+[1-9]\d*px/g },
   // #rgb / #rrggbb with equal channels.
   { kind: "grey", pattern: /#(?:([0-9a-fA-F])\1\1|([0-9a-fA-F]{2})\2\2)\b/g, domOnly: true },
+  // Padding, margin or gap written in pixels: a CSS declaration, or a style value in a string
+  // ("6px 10px", "-4px"). A bare number may be cells shared with the terminal, so only pixels count.
+  { kind: "spacing", pattern: /(?<![\w-])(?:padding|margin|gap)(?:-[a-z]+)?:\s*[^;{}\n]*?(?<![\w.-])-?[1-9]\d*(?:\.\d+)?px|\b(?:padding|margin|gap|rowGap|columnGap)(?:Left|Right|Top|Bottom|Inline|Block|InlineStart|InlineEnd|BlockStart|BlockEnd)?:\s*["'`][^"'`\n]*?(?<![\w.-])-?[1-9]\d*(?:\.\d+)?px/g },
 ];
 
 function sourceFiles(dir: string, result: string[] = []): string[] {
