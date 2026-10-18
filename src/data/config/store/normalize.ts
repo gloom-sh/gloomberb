@@ -364,6 +364,12 @@ function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
   if (isRecord(importedFrom) && importedFrom.kind === "13f"
     && [importedFrom.cik, importedFrom.name, importedFrom.period, importedFrom.filed].every((value) => typeof value === "string" && value)) {
     next.importedFrom = { kind: "13f", cik: importedFrom.cik, name: importedFrom.name, period: importedFrom.period, filed: importedFrom.filed };
+    // All of the 13F weights or none: a subset would renormalise into other weights than the filing's.
+    const weights = isRecord(importedFrom.weights) ? Object.entries(importedFrom.weights) : [];
+    if (weights.length > 0 && weights.every(([symbol, weight]) =>
+      !!symbol.trim() && typeof weight === "number" && Number.isFinite(weight) && weight > 0 && weight <= 1)) {
+      next.importedFrom.weights = Object.fromEntries(weights) as Record<string, number>;
+    }
   }
   if (isRecord(cash) && typeof cash.amount === "number" && Number.isFinite(cash.amount)
     && typeof cash.currency === "string" && /^[A-Z]{3}$/.test(cash.currency)) {

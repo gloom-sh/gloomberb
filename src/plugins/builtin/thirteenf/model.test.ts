@@ -4,8 +4,11 @@ import {
   buildFilingPositionRows,
   buildFundHoldingRows,
   buildTimelineRows,
+  filingGapFor,
   inferBrowserTabFromQuery,
   latestLikely13FQuarter,
+  newestDueQuarter,
+  thirteenFDueDate,
   buildPeriodReports,
   oneFundPerCik,
   quartersBehindLatest,
@@ -81,6 +84,30 @@ describe("13F model", () => {
     expect(quartersBehindLatest("2026-09-30", now)).toBe(0);
     expect(quartersBehindLatest("2025-12-31", new Date("2026-02-20T00:00:00Z"))).toBe(0);
     expect(quartersBehindLatest(undefined, now)).toBeNull();
+  });
+
+  test("a 13F is due 45 days after its quarter, past weekends and Presidents' Day, and missed once that day ends in New York", () => {
+    expect(thirteenFDueDate("2026-06-30")).toBe("2026-08-14");
+    // 14 Nov 2026 is a Saturday; 14 Feb 2026 a Saturday before Presidents' Day.
+    expect(thirteenFDueDate("2026-09-30")).toBe("2026-11-16");
+    expect(thirteenFDueDate("2025-12-31")).toBe("2026-02-17");
+    // Still 14 Aug in New York, so Q2 is not missed yet; four hours later it is.
+    expect(newestDueQuarter(new Date("2026-08-15T03:00:00Z"))).toEqual({ period: "2026-03-31", due: "2026-05-15" });
+    expect(newestDueQuarter(new Date("2026-08-15T05:00:00Z"))).toEqual({ period: "2026-06-30", due: "2026-08-14" });
+  });
+
+  test("the latest EDGAR filing for the missed quarter decides what a fund behind it filed", () => {
+    const now = new Date("2026-10-18T12:00:00Z");
+    const filing = (form: string, period: string, filed: string) => ({ form, period, filed, accession: `${form}-${filed}`, url: "" });
+    const status = { cik: "0001336528", name: "Pershing", source: "", filings: [
+      filing("13F-NT", "2026-06-30", "2026-08-14"),
+      filing("13F-HR", "2026-06-30", "2026-08-01"),
+      filing("13F-HR", "2026-03-31", "2026-05-15"),
+    ] };
+    expect(filingGapFor("2026-06-30", status, now)).toBeNull();
+    expect(filingGapFor("2026-03-31", status, now)).toMatchObject({ period: "2026-06-30", due: "2026-08-14", checked: true, filing: { form: "13F-NT" } });
+    expect(filingGapFor("2026-03-31", { ...status, filings: status.filings.slice(2) }, now)).toMatchObject({ filing: null, checked: true });
+    expect(filingGapFor("2026-03-31", null, now)).toMatchObject({ filing: null, checked: false });
   });
 
   test("lists a manager once under the name of its latest filing", () => {

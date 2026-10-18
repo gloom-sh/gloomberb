@@ -16,6 +16,7 @@ import {
   syntheticPositionUnsupportedReason,
 } from "./metrics";
 import {
+  buyAndHoldReturns,
   concentration,
   pairedReturns,
   regressReturns,
@@ -149,6 +150,63 @@ const RISK_BENCHMARK = "SPY";
  */
 export interface RiskWindowRequest {
   since?: "filed";
+  /**
+   * Since the filing: "13f" (the default) buys the 13F's own weights at the
+   * filing-date close and holds them; "current" holds today's weights fixed
+   * over the same sessions.
+   */
+  weights?: "13f" | "current";
+}
+
+/** How the since-filing basket is weighted, and where 13F weights came from. */
+type RiskWeighting =
+  | { kind: "13f"; weights: ReadonlyMap<string, number>; source: "stored" | "cost" }
+  | { kind: "current"; reason?: string };
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "14 Aug 2026" for 2026-08-14. */
+const dayText = (date: string) => `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1] ?? ""} ${date.slice(0, 4)}`;
+
+/**
+ * The 13F's own weights of an imported portfolio, by ticker: stored by the
+ * import, else rebuilt from its positions. An import sizes every position at
+ * the filing's reported shares, scaled, and costs it at the filing's implied
+ * price, so shares times cost is each line's reported value. A position
+ * without a USD cost cannot be rebuilt, and the basket says so.
+ */
+function thirteenFWeighting(
+  portfolio: Portfolio,
+  tickers: readonly TickerRecord[],
+): RiskWeighting {
+  const stored = Object.entries(portfolio.importedFrom?.weights ?? {})
+    .filter(([, weight]) => Number.isFinite(weight) && weight > 0);
+  if (stored.length) return { kind: "13f", weights: new Map(stored), source: "stored" };
+  const values = new Map<string, number>();
+  for (const ticker of portfolioRiskTickers(tickers, portfolio.id)) {
+    const lots = positions(ticker, portfolio.id);
+    const value = lots.reduce((sum, lot) =>
+      lot.side !== "short" && lot.shares > 0 && Number.isFinite(lot.avgCost) && lot.avgCost! > 0 && (lot.currency ?? "USD") === "USD"
+        ? sum + lot.shares * lot.avgCost!
+        : Number.NaN, 0);
+    if (!Number.isFinite(value) || value <= 0)
+      return {
+        kind: "current",
+        reason: `"${portfolio.name}" has no stored 13F weights and ${ticker.metadata.ticker} has no USD cost to rebuild them from, so the rows hold today's weights fixed. Re-import it (portfolio import --13f ${portfolio.importedFrom?.cik ?? "<CIK>"} --replace) for buy-and-hold.`,
+      };
+    values.set(ticker.metadata.ticker, value);
+  }
+  const total = [...values.values()].reduce((sum, value) => sum + value, 0);
+  return total > 0
+    ? { kind: "13f", weights: new Map([...values].map(([symbol, value]) => [symbol, value / total])), source: "cost" }
+    : { kind: "current", reason: `"${portfolio.name}" has no positions to weight.` };
+}
+
+/** One line naming how the since-filing rows are measured, from the close they start at. */
+export function sinceFiledMethod(window: { start: string | null; filed: string; weights: "13f" | "current" }, benchmark: string): string {
+  const close = dayText(window.start ?? window.filed);
+  return window.weights === "13f"
+    ? `Buy-and-hold from the ${close} close at the 13F's weights, against ${benchmark}`
+    : `Current weights held fixed since the ${close} close, against ${benchmark}; not buy-and-hold`;
 }
 
 /** Why a portfolio asked for risk since its filing shows the trailing window instead. */
@@ -552,12 +610,40 @@ export function buildPortfolioRisk(
     );
     return (instrument && byId.get(riskInstrumentId(instrument))?.returns) || [];
   };
-  const benchmark = proxy(RISK_BENCHMARK),
-    sample = pairedReturns(basket, benchmark);
+  const benchmark = proxy(RISK_BENCHMARK);
   // Since the filing only for a portfolio that has one; any other keeps the trailing window and says why.
   const filed = window.since === "filed" ? portfolio.importedFrom?.filed ?? null : null;
   if (window.since === "filed" && !filed)
     notes.push(sinceFallbackNote(portfolio));
+  // Since the filing, the copier's basket by default: the 13F's weights bought at the filing-date close and held.
+  const weighting: RiskWeighting | null = !filed ? null
+    : window.weights === "current" ? { kind: "current" } : thirteenFWeighting(portfolio, tickers);
+  if (weighting?.kind === "current" && weighting.reason) notes.push(weighting.reason);
+  let sample = pairedReturns(basket, benchmark);
+  if (filed && weighting?.kind === "13f") {
+    const weights = weighting.weights;
+    const held = members.filter((row) => weights.has(row.symbol));
+    const outside = members.filter((row) => !weights.has(row.symbol)).map((row) => row.symbol);
+    const owned = new Set(holdings.map((row) => row.symbol));
+    const sold = [...weights.keys()].filter((symbol) => !owned.has(symbol));
+    if (weighting.source === "cost")
+      notes.push("13F weights rebuilt from each position's shares and cost, as imported; this portfolio predates stored 13F weights.");
+    if (outside.length)
+      notes.push(`Not in the 13F import, so outside the buy-and-hold basket: ${outside.join(", ")}.`);
+    if (sold.length)
+      notes.push(`No longer held, so the 13F weights are renormalised without: ${sold.join(", ")}.`);
+    const basket = buyAndHoldReturns(
+      held.map((row) => ({ weight: weights.get(row.symbol)!, returns: row.returns })),
+      filed,
+      benchmark,
+    );
+    // A basket that stops early, or a holding it could not buy, is named rather than read as the whole span.
+    if (basket.cutShort)
+      notes.push(`The buy-and-hold rows end on ${basket.cutShort.date}: ${held[basket.cutShort.holding]!.symbol} has no daily close after it.`);
+    if (basket.unpriced.length)
+      notes.push(`No close on or before the ${filed} filing, so outside the buy-and-hold basket: ${basket.unpriced.map((index) => held[index]!.symbol).join(", ")}.`);
+    sample = pairedReturns(basket.returns, benchmark);
+  }
   const metrics = filed
     ? sinceBasketRisk(sample, filed, RISK_BENCHMARK)
     : rollingBasketRisk(sample, undefined, RISK_BENCHMARK);
@@ -662,7 +748,7 @@ export function buildPortfolioRisk(
       return {
         ...row,
         percentile: row.rank.percentile,
-        // The method (price returns at fixed current weights) is in docs; the footer keeps room for coverage.
+        // The method (price returns, bought and held or at fixed current weights) is in docs; the footer keeps room for coverage.
         detail: filed && row.value == null && TAIL_ROW_IDS.has(row.id) ? `${row.samples} sessions; needs 60` : `${row.samples} sessions`,
         ...(tail
           ? { amount: (row.value! / 100) * coverage.coveredValue, amountCurrency: coverage.currency, amountBase: coverage.coveredValue }
@@ -862,7 +948,14 @@ export function buildPortfolioRisk(
     fetchedAt: market.fetchedAt,
     benchmark: RISK_BENCHMARK,
     window: filed
-      ? { kind: "since-filed" as const, filed, start: metrics[0]?.startDate ?? null, sessions: metrics[0]?.samples ?? 0 }
+      ? {
+          kind: "since-filed" as const,
+          filed,
+          start: metrics[0]?.startDate ?? null,
+          sessions: metrics[0]?.samples ?? 0,
+          weights: weighting?.kind ?? "current",
+          ...(weighting?.kind === "13f" ? { weightsSource: weighting.source } : {}),
+        }
       : { kind: "trailing" as const, sessions: 60 },
   };
 }

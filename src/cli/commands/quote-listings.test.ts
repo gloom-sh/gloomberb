@@ -275,6 +275,51 @@ test("a symbol whose company moved says so in one line and in its JSON row; the 
   expect(offline.rows[0]).not.toHaveProperty("tickerChange");
 });
 
+test("a symbol whose company merged into another names it in one line and its JSON row; the old name searches as the company it merged into", async () => {
+  // Golden Ocean merged into CMB.Tech (CMBT) in 2025 and Eagle Bulk into Star Bulk (SBLK) in 2024; funds list there now.
+  const formerIssuer = (symbol: string, name: string, until: string, successor: { symbol: string; name: string }) => ({
+    symbol, moved: null, formerly: null, listedName: null, changes: [], formerIssuer: { symbol, name, until, successor, source: `https://www.sec.gov/${symbol}` },
+  });
+  const changes: Record<string, TickerChanges> = {
+    GOGL: formerIssuer("GOGL", "Golden Ocean Group Ltd", "2025-08-20", { symbol: "CMBT", name: "Cmb.Tech NV" }),
+    EGLE: formerIssuer("EGLE", "Eagle Bulk Shipping Inc.", "2024-04-09", { symbol: "SBLK", name: "Star Bulk Carriers Corp." }),
+  };
+  const fund = (symbol: string, name: string) => createTestQuote({ symbol, name, listingExchangeName: "BATS", exchangeName: "BATS" });
+  const source = venueSource("GOGL", [], { GOGL: fund("GOGL", "Corgi GOOGL 2x Daily ETF"), EGLE: fund("EGLE", "Global X S&P 500 U.S. Revenue Leaders ETF") });
+  const quoted = await runQuote(["GOGL", "EGLE"], { ...source, dataProvider: { ...source.dataProvider, getTickerChanges: async (symbol) => changes[symbol] ?? null } });
+  expect(quoted.warnings).toEqual([
+    "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT",
+    "EGLE was Eagle Bulk Shipping until 2024, now Star Bulk Carriers: SBLK",
+  ]);
+  expect((quoted.rows[0] as { formerIssuer?: unknown }).formerIssuer).toEqual({
+    ...changes.GOGL!.formerIssuer, note: "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT",
+  });
+
+  // Search sends the company it merged into for the old name, naming it; the line is quote's. It is the
+  // primary listing though the old company's leftover line matches the name better, and that line,
+  // linked by its name, says what it became; a namesake search cannot link stays below.
+  const former = { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20", successor: { symbol: "CMBT", name: "Cmb.Tech NV" } };
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "GOGLC", name: "GOLDEN OCEAN GROUP", exchange: "BYMA", type: "Common Stock", currency: "ARS" },
+      { providerId: "test", symbol: "GOMH", name: "Golden Ocean Mining Holdings", exchange: "TSXV", type: "Common Stock", currency: "CAD" },
+      {
+        providerId: "test", symbol: "CMBT", name: "Cmb.Tech NV", exchange: "NYSE", type: "Common Stock", currency: "USD",
+        searchAliases: ["Golden Ocean Group Ltd"], formerIssuer: former,
+      },
+    ],
+  });
+  const printed: PrintedCliResult["result"][] = [];
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  await search("Golden Ocean", { initMarketData, printResult: (result) => { printed.push(result); } });
+  expect(printed[0]!.warnings).toEqual(["GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT"]);
+  expect((printed[0]!.data as Array<Record<string, unknown>>).map(({ category, symbol, formerIssuer }) => ({ category, symbol, formerIssuer }))).toEqual([
+    { category: "Primary Listing", symbol: "CMBT", formerIssuer: former },
+    { category: "Other Listings", symbol: "GOGLC", formerIssuer: former },
+    { category: "Other Listings", symbol: "GOMH", formerIssuer: undefined },
+  ]);
+});
+
 test("search lists a symbol it no longer finds as no longer trading with its last date, and says when a company left a symbol it finds", async () => {
   const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
   const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true });

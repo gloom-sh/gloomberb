@@ -1,4 +1,6 @@
 import type {
+  ThirteenFEdgarFiling,
+  ThirteenFFilerStatus,
   ThirteenFFormSummary,
   ThirteenFFund,
   ThirteenFHoldingRecord,
@@ -34,6 +36,8 @@ export interface Forms13FReadOptions {
 interface Forms13FRequestOptions extends Forms13FReadOptions {
   cache?: boolean;
   signal?: AbortSignal;
+  /** Gloom Cloud only: a path the public 13F source does not serve. */
+  cloudOnly?: boolean;
 }
 
 let forms13FPersistence: PluginPersistence | null = null;
@@ -123,8 +127,9 @@ async function fetchForms13F<T>(
       let value: T;
       try {
         value = await apiClient.getCloudSec13F(path, params, { signal: options.signal }) as T;
-      } catch {
+      } catch (error) {
         options.signal?.throwIfAborted();
+        if (options.cloudOnly) throw error;
         const url = `${FORMS_13F_BASE_URL}${path}?${searchParams.toString()}`;
         const response = await httpFetch(url, {
           headers: { Accept: "application/json" },
@@ -260,6 +265,9 @@ export async function searchThirteenFFunds(
   return arrayResponse(raw).map(mapFund).filter((fund): fund is ThirteenFFund => !!fund);
 }
 
+/** The most funds one page of the performance ranking holds; the source refuses more. */
+export const TOP_FUNDS_MAX_LIMIT = 100;
+
 export async function listTopThirteenFFunds(
   quarter: string,
   limit = 50,
@@ -268,7 +276,7 @@ export async function listTopThirteenFFunds(
 ): Promise<ThirteenFTopFund[]> {
   const raw = await fetchForms13F<unknown>("/topfunds", {
     quarter,
-    limit,
+    limit: Math.min(limit, TOP_FUNDS_MAX_LIMIT),
     offset: options.offset ?? 0,
   }, { ...options, signal });
   return arrayResponse(raw).map(mapTopFund).filter((fund): fund is ThirteenFTopFund => !!fund);
@@ -379,5 +387,45 @@ export async function lookupThirteenFHoldersByCusip(
     ciks: Array.isArray(raw.ciks)
       ? raw.ciks.map((cik: unknown) => normalizeCik(stringOrEmpty(cik))).filter(Boolean)
       : [],
+  };
+}
+
+function mapEdgarFiling(raw: any): ThirteenFEdgarFiling | null {
+  const form = stringOrEmpty(raw?.form), period = stringOrEmpty(raw?.period), filed = stringOrEmpty(raw?.filed);
+  if (!form.startsWith("13F") || !period || !filed) return null;
+  const managers = Array.isArray(raw.otherManagers) ? raw.otherManagers : null;
+  return {
+    form,
+    period,
+    filed,
+    accession: stringOrEmpty(raw.accession),
+    url: stringOrEmpty(raw.url),
+    ...(managers ? {
+      otherManagers: managers
+        .map((manager: any) => ({
+          cik: stringOrEmpty(manager?.cik) ? normalizeCik(stringOrEmpty(manager.cik)) : null,
+          name: stringOrEmpty(manager?.name).trim(),
+          fileNumber: stringOrEmpty(manager?.fileNumber) || null,
+        }))
+        .filter((manager: { name: string }) => manager.name),
+    } : {}),
+  };
+}
+
+/**
+ * The fund's 13F filings as EDGAR lists them, 13F-NT notices included, from
+ * Gloom Cloud. A notice names the managers that reported its holdings.
+ */
+export async function loadThirteenFFilerStatus(
+  cik: string,
+  signal?: AbortSignal,
+  options: Forms13FReadOptions = {},
+): Promise<ThirteenFFilerStatus> {
+  const raw = asRecord(await fetchForms13F<unknown>("/filer", { cik: normalizeCik(cik) }, { ...options, signal, cloudOnly: true }));
+  return {
+    cik: normalizeCik(stringOrEmpty(raw.cik) || cik),
+    name: stringOrEmpty(raw.name),
+    source: stringOrEmpty(raw.source),
+    filings: arrayResponse(raw.filings).map(mapEdgarFiling).filter((filing): filing is ThirteenFEdgarFiling => !!filing),
   };
 }

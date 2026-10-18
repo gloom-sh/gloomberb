@@ -9,11 +9,13 @@ import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import {
+  describeFormerIssuer,
   describeTickerChange,
   isUsSymbolVenue,
   quotedListing,
   startTickerChangeLookup,
   tickerChangeLine,
+  type FormerIssuer,
   type TickerChange,
 } from "../../../../tickers/ticker-changes";
 
@@ -30,6 +32,8 @@ interface ResolvedQuickAdd {
   quote: Quote | null;
   /** The symbol changed (FB became META), as `watchlist add` says it. */
   change: TickerChange | null;
+  /** The company that last held the symbol merged into another (GOGL, now CMB.Tech's CMBT), as `watchlist add` says it. */
+  formerIssuer?: FormerIssuer | null;
 }
 
 export type QuickAddValidation =
@@ -156,8 +160,9 @@ export async function resolveQuickAddValidation({
       dataProvider: registry.marketData,
     });
     if (!resolved) {
-      const change = describeTickerChange(query, await changes.settle(), null);
-      return { status: "missing", query, message: tickerChangeLine(change) ?? "No exact ticker match" };
+      const payload = await changes.settle();
+      const line = tickerChangeLine(describeTickerChange(query, payload, null)) ?? describeFormerIssuer(query, payload, null)?.note;
+      return { status: "missing", query, message: line ?? "No exact ticker match" };
     }
 
     const symbol = resolved.symbol;
@@ -191,6 +196,7 @@ export async function resolveQuickAddValidation({
       ticker,
       quote,
       change: describeTickerChange(query, payload, quote ? quotedListing(quote) : { name }),
+      formerIssuer: describeFormerIssuer(query, payload, quote ? quotedListing(quote) : { name }),
     };
   } catch (error) {
     if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) {

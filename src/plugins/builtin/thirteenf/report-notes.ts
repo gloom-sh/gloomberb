@@ -1,5 +1,6 @@
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
+import type { ThirteenFFilingGap, ThirteenFOtherManager } from "./types";
 
 /**
  * Summary lines for the 13F text reports. Each says which quarters the rows
@@ -119,6 +120,48 @@ export function staleFundsText(funds: readonly { name: string; quarters: number 
   if (funds.length === 1) return `${funds[0]!.name}: latest filing is ${quartersOldText(funds[0]!.quarters)}; ${NOTHING_LATER}`;
   const named = funds.slice(0, shown).map((fund) => `${fund.name} (${quartersOldText(fund.quarters)})`).join(", ");
   return `Latest filing 2+ quarters old: ${named}${funds.length > shown ? ` and ${count(funds.length - shown)} more` : ""}`;
+}
+
+/** "Q2 2026" for the quarter ending 30 Jun 2026. */
+function quarterText(period: string): string {
+  const day = calendarDay(period);
+  return day ? `Q${Math.floor(day.getUTCMonth() / 3) + 1} ${day.getUTCFullYear()}` : period;
+}
+
+/** The fund to open for a manager: its CIK, else its quoted name. */
+function openCommand(manager: ThirteenFOtherManager): string {
+  return manager.cik ? `fn 13F ${manager.cik}` : `fn 13F "${manager.name}"`;
+}
+
+/**
+ * What a fund filed for the newest quarter past its deadline instead of a
+ * holdings report: "13F-NT for Q2 2026, filed 14 Aug; holdings reported by
+ * PERSHING SQUARE INC. | open: fn 13F 0002026053", or "No 13F for Q2 2026,
+ * due 14 Aug" once EDGAR shows nothing. `command: false` names the CIK instead
+ * of the command, for the pane.
+ */
+export function filingGapText(gap: ThirteenFFilingGap, { command = true }: { command?: boolean } = {}): string {
+  const quarter = quarterText(gap.period);
+  const year = Number(gap.due.slice(0, 4));
+  const filing = gap.filing;
+  if (filing?.form.startsWith("13F-NT")) {
+    const [first, ...others] = filing.otherManagers ?? [];
+    const filed = `13F-NT for ${quarter}, filed ${filingDayText(filing.filed, year)}`;
+    if (!first) return `${filed}; another manager reported its holdings`;
+    const more = others.length ? ` and ${count(others.length)} more` : "";
+    return command
+      ? `${filed}; holdings reported by ${first.name}${more} | open: ${openCommand(first)}`
+      : `${filed}; holdings reported by ${first.name}${first.cik ? ` (CIK ${first.cik})` : ""}${more}`;
+  }
+  if (filing) return `${filing.form} for ${quarter} filed ${filingDayText(filing.filed, year)}; its holdings are not loaded yet`;
+  // Unasked, EDGAR may well hold a 13F-NT or a report the source has not loaded: say only what the loaded filings show.
+  if (!gap.checked) return `${quarter} 13F (due ${filingDayText(gap.due, year)}) not in the loaded filings; EDGAR not checked`;
+  return `No 13F for ${quarter}, due ${filingDayText(gap.due, year)}`;
+}
+
+/** A search asks EDGAR about a few lagging funds only: "EDGAR checked for the first 10 of 14 funds with no Q2 2026 13F loaded; ...". */
+export function uncheckedFundsText(asked: number, behind: number, period: string): string {
+  return `EDGAR checked for the first ${count(asked)} of ${count(behind)} funds with no ${quarterText(period)} 13F loaded; fn 13F <CIK> checks any other`;
 }
 
 /** "showing 50 of 374" from the start of the list, "showing 51-100 of 374" past it. */

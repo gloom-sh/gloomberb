@@ -340,6 +340,89 @@ export function sinceBasketRisk(
   });
 }
 
+/** A held basket's daily returns, and why it stops or leaves a holding out when it does. */
+export interface HeldBasket {
+  returns: DatedReturn[];
+  /**
+   * Set when the basket ends before the last session: the holding (its index
+   * in the input) whose daily closes end first, and the day they end.
+   */
+  cutShort: { holding: number; date: string } | null;
+  /** Holdings with no close on or before `since`, which cannot be bought at it and are left out. */
+  unpriced: number[];
+}
+
+/**
+ * Daily returns of a basket bought at the close on or before `since` (a 13F
+ * filing date) at `weights` and held: each holding's share drifts with its
+ * price, nothing is rebalanced. The basket is valued at every session of
+ * `calendar` (the benchmark's, so the two pair; the holdings' own dates when
+ * left out). A holding with no close for a session (a halt, a missing bar)
+ * holds its value flat, and its multi-day return lands on the session it
+ * arrives. The basket ends where the first holding's closes end, and says
+ * which.
+ */
+export function buyAndHoldReturns(
+  holdings: readonly { weight: number; returns: readonly DatedReturn[] }[],
+  since: string,
+  calendar?: readonly DatedReturn[],
+): HeldBasket {
+  const unpriced: number[] = [];
+  // Each holding's price relative to its start close, by date, along its own unbroken run of closes.
+  const paths = holdings.flatMap((row, index) => {
+    if (!Number.isFinite(row.weight) || row.weight <= 0) return [];
+    const points = row.returns
+      .filter((point) => valid(point) && point.dateKey > since)
+      .toSorted((left, right) => left.dateKey.localeCompare(right.dateKey));
+    if (!points.length || points[0]!.startDateKey > since) {
+      unpriced.push(index);
+      return [];
+    }
+    const levels: Array<{ date: string; level: number }> = [];
+    let level = 1;
+    for (const [at, point] of points.entries()) {
+      if (at > 0 && point.startDateKey !== points[at - 1]!.dateKey) break;
+      level *= 1 + point.value;
+      levels.push({ date: point.dateKey, level });
+    }
+    return [{ index, weight: row.weight, start: points[0]!.startDateKey, levels }];
+  });
+  if (!paths.length) return { returns: [], cutShort: null, unpriced };
+  const sessions = (calendar
+    ? calendar.filter((point) => valid(point) && point.dateKey > since).map((point) => point.dateKey)
+    : [...new Set(paths.flatMap((path) => path.levels.map((point) => point.date)))]
+  ).toSorted();
+  // Known up to the earliest last close: past it a holding's value is unknown, not flat.
+  const last = paths.reduce((first, path) => (path.levels.at(-1)!.date < first.levels.at(-1)!.date ? path : first));
+  const end = last.levels.at(-1)!.date;
+  const total = paths.reduce((sum, path) => sum + path.weight, 0);
+  // The close the basket is bought at: the latest start close among the holdings.
+  const bought = paths.reduce((latest, path) => (path.start > latest ? path.start : latest), "");
+  const cursor = paths.map(() => -1);
+  const returns: DatedReturn[] = [];
+  let previous = { date: since, value: 1 };
+  for (const date of sessions) {
+    if (date > end) break;
+    let value = 0;
+    for (const [at, path] of paths.entries()) {
+      let next = cursor[at]!;
+      while (next + 1 < path.levels.length && path.levels[next + 1]!.date <= date) next += 1;
+      cursor[at] = next;
+      value += (path.weight / total) * (next < 0 ? 1 : path.levels[next]!.level);
+    }
+    const start = returns.length ? previous.date
+      : (calendar?.find((point) => point.dateKey === date)?.startDateKey ?? bought);
+    returns.push({ startDateKey: start, dateKey: date, value: value / previous.value - 1 });
+    previous = { date, value };
+  }
+  const lastSession = sessions.at(-1);
+  return {
+    returns,
+    cutShort: lastSession && end < lastSession ? { holding: last.index, date: end } : null,
+    unpriced,
+  };
+}
+
 export function rollingBeta(
   asset: readonly DatedReturn[],
   factor: readonly DatedReturn[],

@@ -5,7 +5,8 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { normalizeCik } from "./api";
+import { normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
+import { ApiRequestError } from "../../../api-client/errors";
 import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overlap";
 import type { FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import { fetchFunds, fetchMembers } from "../members/client";
@@ -18,6 +19,7 @@ import {
   cutText,
   filedPeriodText,
   filingDayText,
+  filingGapText,
   filingLagDays,
   isOptionType,
   isStaleFiling,
@@ -30,9 +32,11 @@ import {
   THIRTEENF_LIMITS,
   THIRTEENF_MAX_LIMIT,
   THIRTEENF_OPTIONS_NOTE,
+  uncheckedFundsText,
 } from "./report-notes";
 import {
   loadBrowserRows,
+  loadFilingGap,
   loadFundDetail,
   type BrowserLoadResult,
 } from "./data";
@@ -43,9 +47,13 @@ import {
   DEFAULT_TIMELINE_SORT,
   buildFundHoldingRows,
   buildTimelineRows,
+  filingGapFor,
   inferBrowserTabFromQuery,
   hasComparable13FQuarter,
   isCikQuery,
+  isTickerShapedQuery,
+  newestDueQuarter,
+  oneFundPerCik,
   positionType,
   quartersBehindLatest,
   sortBrowserRows,
@@ -65,6 +73,8 @@ import {
 import type {
   FundDetailData,
   ThirteenFBrowserTab,
+  ThirteenFFilingGap,
+  ThirteenFFund,
 } from "./types";
 import { finiteOrNull } from "../../../utils/guards";
 import { SEC_FILINGS } from "../shared/report-freshness";
@@ -196,6 +206,10 @@ export interface ThirteenFHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<FundDetailData>;
+  /** What a fund in a search filed for the newest quarter past its deadline, from EDGAR. */
+  loadFilingGap?(cik: string, latestPeriod: string | null | undefined, ctx: HeadlessPaneContext): Promise<ThirteenFFilingGap | null>;
+  /** 13F filers whose names contain `query`, without their reports. */
+  searchFunds?(query: string, ctx: HeadlessPaneContext): Promise<ThirteenFFund[]>;
   /** The ETFs whose holdings files MEMB serves. */
   loadEtfFunds?(ctx: HeadlessPaneContext): Promise<MemberFundsPayload["funds"]>;
   /** One covered ETF's holdings file, as `fn MEMB` reads it. */
@@ -209,10 +223,17 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
     ctx.signal,
     { limit },
   ),
-  loadDetail: (cik, name, _args, ctx) => loadFundDetail(cik, name, ctx.signal),
+  // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
+  loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args) }),
+  loadFilingGap: (cik, latestPeriod, ctx) => loadFilingGap(cik, latestPeriod, ctx.signal),
+  searchFunds: (query, ctx) => searchThirteenFFunds(query, THIRTEENF_MAX_LIMIT, ctx.signal),
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
   loadEtfHoldings: (ticker, ctx) => fetchMembers(ticker, ctx.apiClient),
 };
+
+function isOverlapLoad(args: HeadlessPaneLoadArgs): boolean {
+  return args.options.view === "overlap" || (typeof args.options.compare === "string" && args.options.compare.trim() !== "");
+}
 
 const VIEW_TITLES: Record<string, string> = {
   overlap: "13F Overlap",
@@ -244,6 +265,9 @@ function browserTab(view: HeadlessThirteenFView, query: string): ThirteenFBrowse
   return inferBrowserTabFromQuery(query);
 }
 
+/** What to search by instead, after a search that found no 13F filer. */
+const SEARCH_HINT = 'Search by fund name or CIK, as in fn 13F "Berkshire Hathaway".';
+
 /**
  * The manager a fund name or CIK names: a CIK as given, else the one fund
  * whose name matches exactly, else the only match. `search` lists funds by
@@ -263,7 +287,7 @@ async function findThirteenFFund(
   if (exactOnly) return exact.length === 1 ? { cik: exact[0]!.cik, name: exact[0]!.name } : null;
   const fund = exact.length === 1 ? exact[0]
     : candidates.length === 1 && !result.hasMore ? candidates[0] : undefined;
-  if (candidates.length === 0) throw new Error(`No 13F fund found for "${query}".`);
+  if (candidates.length === 0) throw new Error(`No 13F fund found for "${query}". ${SEARCH_HINT}`);
   if (!fund) {
     const choices = candidates.slice(0, 5).map((row) => `${row.name} (${row.cik})`).join("; ");
     throw new Error(`Ambiguous 13F fund "${query}". Use an exact fund name or CIK: ${choices}.`);
@@ -324,6 +348,44 @@ async function resolveComparison(
 
 const percentText = (value: number) => `${(value * 100).toFixed(1)}%`;
 
+/** Funds in one search whose filings EDGAR is asked about. */
+const FILING_GAP_LOOKUPS = 10;
+
+/** "No 13F for Q2 2026, due 14 Aug: A, B, C and 2 more", or one fund's own line. */
+function missingFilingsText(names: readonly string[], gap: ThirteenFFilingGap, shown = 3): string {
+  const text = filingGapText(gap);
+  if (names.length === 1) return `${names[0]}: ${text.startsWith("No ") ? `n${text.slice(1)}` : text}`;
+  return `${text}: ${names.slice(0, shown).join(", ")}${names.length > shown ? ` and ${names.length - shown} more` : ""}`;
+}
+
+/** What a ticker search answers when the word names no security 13F filers report; any other failure is said as one. */
+function isTickerMiss(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404;
+}
+
+/** The holders listing's own word for a ticker it has no single CUSIP for. */
+const TICKER_MISS_WARNING = /^(?:No CUSIP found|Ambiguous CUSIP) for /;
+
+/**
+ * Filers with `word` as a whole word in their name, those it starts first:
+ * "man" in Man Group plc and Prudent Man Advisors, not in Ackerman Asset
+ * Management.
+ */
+function fundsNamed(word: string, funds: readonly ThirteenFFund[]): ThirteenFFund[] {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const named = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "i");
+  const leading = new RegExp(`^${escaped}(?:$|[^a-z0-9])`, "i");
+  return oneFundPerCik(funds.filter((fund) => named.test(fund.name)))
+    .toSorted((left, right) => Number(leading.test(right.name)) - Number(leading.test(left.name)));
+}
+
+/** The funds a lowercase word also names, each with the command that opens it, beside the ticker holders it was read as. */
+function shadowedFundsText(word: string, funds: readonly ThirteenFFund[], shown = 3): string {
+  const listed = funds.slice(0, shown).map((fund) => `${fund.name} (fn 13F ${fund.cik})`).join("; ");
+  const more = funds.length > shown ? ` and ${funds.length - shown} more` : "";
+  return `"${word}" also names ${funds.length === 1 ? "a 13F filer" : "13F filers"}: ${listed}${more}`;
+}
+
 export function createThirteenFHeadless(
   overrides: ThirteenFHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -383,7 +445,8 @@ export function createThirteenFHeadless(
       const view = compare ? "overlap"
         : requestedView !== "auto" ? requestedView
           : isCikQuery(query) ? "holdings"
-            : inferBrowserTabFromQuery(query) === "byTicker" ? "ticker-holdings"
+            // A ticker in any case (aapl, brk.b): its holders, else a fund of that name below.
+            : isTickerShapedQuery(query) ? "ticker-holdings"
               : requestedView;
       // A flag the view does not use is named, never dropped without a word.
       const flagNotices = [
@@ -466,9 +529,19 @@ export function createThirteenFHeadless(
           freshness: { asOf: metadata.period }, errors: metadata.warnings };
       }
       let holdings: TickerHoldings | null = null;
+      let shadowed: Promise<ThirteenFFund[]> = Promise.resolve([]);
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
         const ticker = query.replace(/^\$/, "").toUpperCase();
+        // A lowercase word read as a ticker may name a fund too ("ares"); asked alongside, so it costs no wait.
+        if (requestedView === "auto" && !query.startsWith("$") && query !== query.toUpperCase()) {
+          // The name search matches anywhere ("man" in every Management); the word and a space keeps it to whole words.
+          shadowed = dependencies.searchFunds(`${query} `, ctx).then((funds) => fundsNamed(query, funds)).catch((error: unknown) => {
+            if (ctx.signal?.aborted) throw error;
+            return [];
+          });
+          shadowed.catch(() => {});
+        }
         try {
           holdings = await loadTickerHoldings(ticker, Number(args.options.offset ?? 0), ctx.signal);
           // The endpoint pages 25 funds at a time.
@@ -476,12 +549,15 @@ export function createThirteenFHeadless(
             holdings = appendTickerHoldings(holdings, await loadTickerHoldings(ticker, holdings.nextOffset, ctx.signal));
           }
         } catch (error) {
-          // A ticker without a mapped CUSIP falls back to the holders listing.
+          // Only a ticker without a mapped CUSIP falls back to the holders listing; an outage is said, not read as no match.
           if (requestedView !== "auto" || ctx.signal?.aborted) throw error;
+          if (!isTickerMiss(error))
+            throw new Error(`13F holders of ${ticker} could not be loaded: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
       }
       if (holdings) {
         const { rows, ...metadata } = holdings;
+        const alsoFunds = await shadowed;
         const offset = Number(args.options.offset ?? 0);
         const summary = summarizeTickerHoldings({ ...metadata, offset, limit, loaded: rows });
         const shown = rows.slice(0, limit).map(row => ({ ...row }));
@@ -503,7 +579,7 @@ export function createThirteenFHeadless(
             totalValue: summary.shownValue,
             valueScope: "shown funds",
             valueBasis: "as reported at period end",
-            notices: [...flagNotices, ...summary.notices],
+            notices: [...flagNotices, ...summary.notices, ...(alsoFunds.length ? [shadowedFundsText(query, alsoFunds)] : [])],
           },
           freshness: { asOf: metadata.period },
           errors: metadata.warnings,
@@ -514,6 +590,14 @@ export function createThirteenFHeadless(
         const fund = await resolveFund(query, args, ctx, dependencies);
         const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx);
         const latestPeriod = detail.latestForm?.periodOfReport ?? null;
+        const quartersBehind = quartersBehindLatest(latestPeriod);
+        // A filing EDGAR shows for a later quarter (a 13F-NT) says more than "nothing filed".
+        const gap = detail.filingGap ?? null;
+        const stale = isStaleFiling(quartersBehind) && !gap?.filing;
+        const gapNotes = [
+          ...(stale ? [staleFilingText(quartersBehind)] : []),
+          ...(gap && !stale ? [filingGapText(gap)] : []),
+        ];
         if (view === "filings") {
           const all = sortTimelineRows(buildTimelineRows(detail.forms), DEFAULT_TIMELINE_SORT);
           const rows = all
@@ -534,7 +618,8 @@ export function createThirteenFHeadless(
               shown: rows.length,
               total: all.length,
               truncated: all.length > limit,
-              notices: [...flagNotices, [`CIK ${detail.cik}`, cut].filter(Boolean).join(" | "), ...(restated ? [restated] : [])],
+              ...(gap ? { filingGap: gap } : {}),
+              notices: [...flagNotices, [`CIK ${detail.cik}`, cut].filter(Boolean).join(" | "), ...(restated ? [restated] : []), ...gapNotes],
             },
           };
         }
@@ -545,7 +630,6 @@ export function createThirteenFHeadless(
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
         const comparable = hasComparable13FQuarter(detail);
         const filed = detail.latestForm?.filedAsOfDate || null;
-        const quartersBehind = quartersBehindLatest(latestPeriod);
         const cut = cutText(all.length, limit, "positions, exits included");
         // Values, weights and Est P&L read both compared quarters' filings.
         const reportForms = (report: typeof detail.latestReport, form: typeof detail.latestForm) =>
@@ -579,6 +663,7 @@ export function createThirteenFHeadless(
             latestFiled: filed,
             filingLagDays: filingLagDays(latestPeriod, filed),
             quartersBehind,
+            ...(gap ? { filingGap: gap } : {}),
             previousPeriod,
             shown: rows.length,
             total: all.length,
@@ -588,7 +673,7 @@ export function createThirteenFHeadless(
               [`CIK ${detail.cik}`, filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null)].filter(Boolean).join(" | "),
               AS_FILED_VALUE,
               ...(restated ? [restated] : []),
-              ...(isStaleFiling(quartersBehind) ? [staleFilingText(quartersBehind)] : []),
+              ...gapNotes,
               ...(cut ? [`${cut[0]!.toUpperCase()}${cut.slice(1)}`] : []),
             ],
             comparisonAvailable: comparable,
@@ -602,35 +687,84 @@ export function createThirteenFHeadless(
         };
       }
 
-      const tab = browserTab(view === "ticker-holdings" ? requestedView : view, query);
-      const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
+      // Reached as "ticker-holdings" only when a ticker-shaped word had no holders: its holders' books, else funds of that name.
+      const tickerMiss = view === "ticker-holdings";
+      let tab: ThirteenFBrowserTab = tickerMiss ? "byTicker" : browserTab(view, query);
+      // The performance ranking pages at most 100 funds; a larger --limit is read as 100, and said so.
+      const viewMax = tab === "performance" ? TOP_FUNDS_MAX_LIMIT : THIRTEENF_MAX_LIMIT;
+      const rowLimit = Math.min(limit, viewMax);
+      let result = await dependencies.loadBrowser(tab, query, rowLimit, args, ctx);
       await result.reportsLoaded;
-      const more = result.hasMore || result.rows.length > limit;
-      const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab)).slice(0, limit);
-      // A search finds managers that stopped filing; say which, since the Period column alone reads like any other.
+      // A holder lookup that failed is said; only a ticker with no CUSIP is a miss that moves on to fund names.
+      let tickerFailure: string | undefined;
+      if (tickerMiss && result.rows.length === 0) {
+        if (result.warning && !TICKER_MISS_WARNING.test(result.warning)) tickerFailure = result.warning;
+        tab = "funds";
+        result = await dependencies.loadBrowser(tab, query, rowLimit, args, ctx);
+        await result.reportsLoaded;
+      }
+      const more = result.hasMore || result.rows.length > rowLimit;
+      const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab)).slice(0, rowLimit);
+      const warning = [tickerFailure, result.warning].filter(Boolean).join(" ") || undefined;
+      // A search finds managers behind on their filings. EDGAR says whether one filed a 13F-NT, whose holdings another manager reported.
+      const lagging = tab === "funds" ? browserRows.filter((row) => filingGapFor(row.periodOfReport, null)) : [];
+      const behind = lagging.slice(0, FILING_GAP_LOOKUPS);
+      const gaps = await Promise.all(behind.map(async (row) => {
+        const gap = await dependencies.loadFilingGap(row.cik, row.periodOfReport, ctx).catch((error: unknown) => {
+          if (ctx.signal.aborted) throw error;
+          return filingGapFor(row.periodOfReport, null);
+        });
+        return gap ? { row, gap } : null;
+      }));
+      const filed = gaps.filter((entry): entry is NonNullable<typeof entry> => !!entry?.gap.filing);
+      const filedCiks = new Set(filed.map((entry) => entry.row.cik));
+      // Managers that stopped filing; the Period column alone reads like any other.
       const stale = tab === "funds"
         ? browserRows.flatMap((row) => {
           const quarters = quartersBehindLatest(row.periodOfReport);
-          return isStaleFiling(quarters) ? [{ name: row.name, quarters }] : [];
+          return isStaleFiling(quarters) && !filedCiks.has(row.cik) ? [{ name: row.name, quarters }] : [];
         })
         : [];
+      const staleNames = new Set(stale.map((row) => row.name));
+      const missing = gaps.filter((entry): entry is NonNullable<typeof entry> => !!entry && !entry.gap.filing && !staleNames.has(entry.row.name));
+      // EDGAR's "nothing filed" and an unasked EDGAR read differently, so each is its own line.
+      const missingLines = [true, false].flatMap((checked) => {
+        const group = missing.filter((entry) => entry.gap.checked === checked);
+        return group.length ? [missingFilingsText(group.map((entry) => entry.row.name), group[0]!.gap)] : [];
+      });
+      const unasked = lagging.length - behind.length;
+      // Nothing found: say how to search, not a bare "No data.".
+      const empty = browserRows.length === 0 && !warning && query && (tab === "funds" || tab === "byTicker")
+        ? `No 13F filer${isTickerShapedQuery(query) ? " or ticker" : ""} matches "${query}". ${SEARCH_HINT}`
+        : undefined;
       return {
         columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))]
           : tab === "performance" ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn"),
         rows: browserRows
           .map((row) => ({ ...row, ...Object.fromEntries((row.priorReturns ?? []).map((point, index) => [`return${index + 1}`, point.value])) })),
-        ...(result.warning ? { errors: [result.warning] } : {}),
+        ...(empty ? { empty } : {}),
+        ...(warning ? { errors: [warning] } : {}),
         metadata: {
           view: tab,
           query: query || null,
           period: result.period ?? null,
           quarter: result.quarter ?? null,
           hasMore: result.hasMore ?? false,
-          shown: Math.min(result.rows.length, limit),
+          shown: Math.min(result.rows.length, rowLimit),
           truncated: more,
+          ...(limit > viewMax ? { limit: rowLimit, maxLimit: viewMax } : {}),
+          ...(gaps.some(Boolean) ? { filingGaps: gaps.flatMap((entry) => entry ? [{ cik: entry.row.cik, fund: entry.row.name, ...entry.gap }] : []) } : {}),
           notices: [
             ...flagNotices,
-            ...(more ? [[`Showing the first ${Math.min(result.rows.length, limit)}`, limit < THIRTEENF_MAX_LIMIT ? `more: --limit ${THIRTEENF_MAX_LIMIT}` : ""].filter(Boolean).join(" | ")] : []),
+            // An uppercase word was meant as a ticker; a lowercase one may be a fund name all along.
+            ...(tickerMiss && tab === "funds" && browserRows.length && query === query.toUpperCase() ? [`No 13F holders found for the ticker ${query.replace(/^\$/, "")}; funds named like it`] : []),
+            ...(more || limit > viewMax ? [[
+              `Showing the first ${Math.min(result.rows.length, rowLimit)}`,
+              limit > viewMax ? `the performance ranking stops at ${viewMax} (--limit ${limit} read as ${viewMax})` : more && rowLimit < viewMax ? `more: --limit ${viewMax}` : "",
+            ].filter(Boolean).join(" | ")] : []),
+            ...filed.map((entry) => `${entry.row.name}: ${filingGapText(entry.gap)}`),
+            ...missingLines,
+            ...(unasked > 0 ? [uncheckedFundsText(behind.length, lagging.length, newestDueQuarter().period)] : []),
             ...(stale.length ? [staleFundsText(stale)] : []),
           ],
         },

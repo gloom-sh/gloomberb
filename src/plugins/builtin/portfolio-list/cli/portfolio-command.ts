@@ -174,13 +174,14 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
   try {
     rejectCashSymbol(symbol, exchange, portfolio.name);
     // A bare symbol is stored on the listing `quote` reads it as, and the notes say which, as `watchlist add` does.
-    const { ticker, notes, change } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
+    const { ticker, notes, change, formerIssuer } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
       retry: (key) => `gloomberb portfolio add ${portfolio.name} ${key}`,
     });
     const result = addTickerToPortfolio(ticker, portfolio.id);
     // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
     const saved = savedListingName(ticker);
-    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name, ...change ? { tickerChange: change } : {} };
+    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name,
+      ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {} };
     const warnings = notes.length > 0 ? notes : undefined;
     if (!result.changed) {
       ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${portfolio.name}".`) });
@@ -695,15 +696,18 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
         nextConfig = created.config;
         portfolio = created.portfolio;
       }
+      // The 13F's own weights, by the listing each line became: what PORT --since filed buys at the filing-date close.
+      const weights: Record<string, number> = {};
       for (const [index, position] of positions.entries()) {
         const resolved = picked[index]!.ticker;
+        weights[resolved.metadata.ticker] = (weights[resolved.metadata.ticker] ?? 0) + position.weight;
         // Reread: replacing the old positions may have saved this listing since it resolved.
         const ticker = await store.loadTicker(resolved.metadata.ticker) ?? resolved;
         const result = setManualPortfolioPosition(ticker, portfolio.id, { shares: position.shares, avgCost: position.avgCost, currency: "USD" });
         await store.saveTicker(result.ticker);
       }
       nextConfig = adoptFirstPositionCurrency(nextConfig, portfolio.id, "USD") ?? nextConfig;
-      nextConfig = { ...nextConfig, portfolios: nextConfig.portfolios.map((entry) => entry.id === portfolio.id ? { ...entry, importedFrom: source } : entry) };
+      nextConfig = { ...nextConfig, portfolios: nextConfig.portfolios.map((entry) => entry.id === portfolio.id ? { ...entry, importedFrom: { ...source, weights } } : entry) };
       await saveConfig(nextConfig);
 
       const importedShare = filingValue ? picked.reduce((sum, entry) => sum + entry.line.value, 0) / filingValue : null;

@@ -80,6 +80,13 @@ export interface PortfolioImportSource {
   period: string;
   /** The day it was filed, YYYY-MM-DD: `PORT --since filed` measures from that day's close. */
   filed: string;
+  /**
+   * The 13F's own weights of the imported holdings, by ticker: each line's
+   * reported value over the imported lines' total. `PORT --since filed` buys
+   * them at the filing-date close and holds them. Absent on portfolios
+   * imported before they were stored.
+   */
+  weights?: Record<string, number>;
 }
 
 export interface PortfolioCash {

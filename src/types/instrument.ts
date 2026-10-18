@@ -71,4 +71,10 @@ export interface InstrumentSearchResult {
    * Albemarle, which the lithium funds hold), sent by newer cloud servers on a
    * row a theme query added. Matched like the name, ranked after name matches. */
   searchKeywords?: string[];
+  /** The company that merged into this one whose old name the query is
+   * (Golden Ocean Group Ltd, GOGL until 2025-08-20, on CMB.Tech's CMBT), sent
+   * by newer cloud servers on a row such a query added. `searchAliases` then
+   * carries that name. A leftover listing of the merged company (GOGLC on
+   * BYMA) is linked to it by search, naming the `successor`. */
+  formerIssuer?: { symbol: string; name: string; until: string; successor?: { symbol: string; name: string | null } };
 }

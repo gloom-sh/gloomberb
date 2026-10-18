@@ -6,7 +6,9 @@ import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
 } from "./api";
-import { loadBrowserRows as loadRankedRows, loadFilingPositions, loadFundDetail } from "./data";
+import { ApiRequestError } from "../../../api-client/errors";
+import { loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail } from "./data";
+import { filingGapText } from "./report-notes";
 import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
 
 async function loadBrowserRows(...args: Parameters<typeof loadRankedRows>) {
@@ -308,6 +310,54 @@ test("abort during a holdings page stops the walk", async () => {
   try {
     await expect(loadFundDetail("1067983", "Fund", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
     expect(formCalls).toBe(1);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a fund behind on its filings reads EDGAR's 13F-NT; a missing route, a server failure or a hang leaves it unchecked, never 'no 13F'", async () => {
+  // 18 October 2026: Q2 2026 was due 14 August; the fund's latest loaded report is Q1.
+  const now = new Date("2026-10-18T12:00:00Z");
+  let answer: (signal?: AbortSignal) => Promise<unknown> = async () => ({});
+  const asked: Array<{ path: string; params: unknown }> = [];
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: unknown, options?: { signal?: AbortSignal }) => {
+    asked.push({ path, params });
+    return answer(options?.signal);
+  }) as never);
+  // The filing list is Gloom Cloud's alone; no failure falls through to the public 13F source.
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  const gap = (timeoutMs?: number) => loadFilingGap("1336528", "2026-03-31", undefined, now, { timeoutMs });
+  try {
+    answer = async () => ({
+      cik: "0001336528", name: "Pershing Square Capital Management, L.P.", source: "SEC EDGAR",
+      filings: [
+        { form: "13F-HR", period: "2026-03-31", filed: "2026-05-15", accession: "a", url: "https://www.sec.gov/a" },
+        { form: "13F-NT", period: "2026-06-30", filed: "2026-08-14", accession: "0001172661-26-003777", url: "https://www.sec.gov/nt",
+          otherManagers: [{ cik: "2026053", name: "PERSHING SQUARE INC.", fileNumber: "028-25746" }] },
+      ],
+    });
+    const notice = await gap();
+    expect(asked).toEqual([{ path: "/filer", params: { cik: "0001336528" } }]);
+    expect(notice).toMatchObject({ period: "2026-06-30", due: "2026-08-14", checked: true, filing: { form: "13F-NT", otherManagers: [{ cik: "0002026053" }] } });
+    expect(filingGapText(notice!)).toBe("13F-NT for Q2 2026, filed 14 Aug; holdings reported by PERSHING SQUARE INC. | open: fn 13F 0002026053");
+
+    const unchecked = "Q2 2026 13F (due 14 Aug) not in the loaded filings; EDGAR not checked";
+    for (const failure of [new ApiRequestError("Not found", 404), new ApiRequestError("Bad gateway", 502)]) {
+      answer = async () => { throw failure; };
+      const result = await gap();
+      expect(result).toEqual({ period: "2026-06-30", due: "2026-08-14", filing: null, checked: false });
+      expect(filingGapText(result!)).toBe(unchecked);
+    }
+    // No answer: the deadline aborts the request and the report goes out unchecked.
+    let aborted = false;
+    answer = (signal) => new Promise((_resolve, reject) => signal?.addEventListener("abort", () => { aborted = true; reject(signal.reason); }));
+    const hung = await gap(20);
+    expect(aborted).toBe(true);
+    expect(filingGapText(hung!)).toBe(unchecked);
+    // A current report asks nothing.
+    asked.length = 0;
+    expect(await loadFilingGap("1336528", "2026-06-30", undefined, now)).toBeNull();
+    expect(asked).toEqual([]);
   } finally {
     spy.mockRestore();
   }

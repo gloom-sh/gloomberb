@@ -73,6 +73,18 @@ test("70 relationships remain bounded and every band page is reachable without i
   expect(mixed.find((node) => node.id === "scoped")?.weight).toBeNull();
 });
 
+test("shares rank by their basis, revenue before receivables, in the table and the flow", () => {
+  // NVIDIA's customer shares are scoped XBRL facts, so none sets a ribbon width and the order is the share sort's alone.
+  const rows = [
+    supplyRow("ar-a", { pctOfRevenue: 30, pctBasis: "receivables" }), supplyRow("rev-a", { pctOfRevenue: 21, pctScope: "Compute", sourceKind: "xbrl" }),
+    supplyRow("ar-b", { pctOfRevenue: 22, pctBasis: "receivables" }), supplyRow("rev-b", { pctOfRevenue: 16, pctScope: "Compute", sourceKind: "xbrl" }),
+    supplyRow("none", { pctOfRevenue: null, pctBasis: null }),
+  ];
+  expect(sortRows(rows, { column: "pct", direction: "desc" }).map((row) => row.id)).toEqual(["rev-a", "rev-b", "ar-a", "ar-b", "none"]);
+  expect(sortRows(rows, { column: "pct", direction: "asc" }).map((row) => row.id)).toEqual(["rev-b", "rev-a", "ar-b", "ar-a", "none"]);
+  expect(flowBands(rows, 12).customers.map((node) => node.id)).toEqual(["rev-a", "rev-b", "ar-a", "ar-b", "none"]);
+});
+
 test("role counts are companies the tab draws, with preview disclosures locked apart, the same for table and flow", () => {
   // A free preview of FN: its filings name three of eleven customer disclosures, and the reverse
   // view repeats NVIDIA twice. The flow draws three customer cards; the server counts disclosures.

@@ -35,6 +35,7 @@ import {
 
 import { typedPerpetualListing } from "../perpetual-listing";
 import { settleWithin } from "../../utils/async-deadline";
+import { companyNameExtraWords } from "../company-name";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -272,8 +273,42 @@ export function buildTickerSearchCandidates({
     query,
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
-  const ranked = rankTickerSearchItems([...localItems, ...providerItems], query);
+  const ranked = withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query);
   return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
+}
+
+/** Whether a query is the start of a merged company's name, as the service matched it ("Golden Ocean"). */
+function namesFormerIssuer(query: string, former: InstrumentSearchResult["formerIssuer"]): boolean {
+  const asked = normalizeSearchText(query);
+  return !!former?.name && asked.length > 0 && normalizeSearchText(former.name).startsWith(asked);
+}
+
+/**
+ * A query naming a company that merged away ("Golden Ocean") lists the
+ * company it merged into first (CMB.Tech's CMBT, the row the service added
+ * for the old name), so it is the primary listing, though a leftover line of
+ * the old company (GOLDEN OCEAN GROUP, GOGLC on BYMA) matches the name
+ * better. The old company's lines follow it, each linked to it when its name
+ * is the merged company's, so they say what it became; a line search cannot
+ * link keeps its place below. Saved tickers keep theirs.
+ */
+function withSuccessorFirst<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
+  const successor = items.find((item) => item.kind === "search" && !item.saved && item.instrumentClass === "equity"
+    && namesFormerIssuer(query, item.result?.formerIssuer));
+  const former = successor?.result?.formerIssuer;
+  if (!successor || !former) return items;
+  // The successor as the service names it beside a quote too, so both print the same line.
+  const linked = { ...former, successor: former.successor ?? { symbol: successor.symbol, name: successor.result?.name ?? null } };
+  const leftovers = items.filter((item) => item !== successor && item.kind === "search" && !item.saved
+    && !item.result?.formerIssuer && companyNameExtraWords(former.name, item.result?.name) === 0);
+  const at = items.findIndex((item) => item.kind === "search" && !item.saved);
+  const rest = items.filter((item) => item !== successor && !leftovers.includes(item));
+  return [
+    ...rest.slice(0, at),
+    successor,
+    ...leftovers.map((item) => ({ ...item, result: { ...item.result!, formerIssuer: linked } })),
+    ...rest.slice(at),
+  ];
 }
 
 interface ResolveTickerSearchOptions {

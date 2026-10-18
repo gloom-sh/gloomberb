@@ -2,7 +2,7 @@ import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createDefaultConfig } from "../../../types/config";
 import { portfolioRiskHeadless } from "./risk-headless";
-import { BROKER_PORTFOLIO, brokerFixtureTickers, brokerRiskClient, now } from "./risk-test-data";
+import { BROKER_PORTFOLIO, brokerFixtureHoldings, brokerFixtureTickers, brokerRiskClient, now, sessionHistory } from "./risk-test-data";
 
 test("local evidence reports keep account identity and work without market network access", async () => {
   const portfolio = { id: "local", name: "Local account", currency: "USD" };
@@ -128,29 +128,74 @@ test("the report and its compact form state what the basket covers and why each 
   }
 });
 
-test("--since filed measures the risk rows from a 13F import's filing date, and says so when the portfolio has none", async () => {
+test("--since filed buys the 13F's weights at the filing-date close and holds them; --weights current holds today's", async () => {
   setSystemTime(now);
   try {
-    const tickers = brokerFixtureTickers();
-    const imported = { ...BROKER_PORTFOLIO, importedFrom: { kind: "13f" as const, cik: "0001067983", name: "Fund", period: "2026-06-30", filed: "2026-08-14" } };
-    const context = (portfolio: typeof BROKER_PORTFOLIO) => ({
+    // Three holdings, today worth 100, 200 and 300 at $100, imported at 13F weights of 50%, 30% and 20%.
+    const holdings = brokerFixtureHoldings().filter((row) => ["US01", "US02", "US03"].includes(row.symbol));
+    const withCost = (costs: Record<string, number | undefined>) => brokerFixtureTickers(holdings).map((ticker) => ({
+      metadata: { ...ticker.metadata, positions: ticker.metadata.positions.map((lot) => ({ ...lot, avgCost: costs[ticker.metadata.ticker] })) },
+    }));
+    const source = { kind: "13f" as const, cik: "0001067983", name: "Fund", period: "2026-06-30", filed: "2026-08-14" };
+    const weights = { US01: 0.5, US02: 0.3, US03: 0.2 };
+    const context = (portfolio: typeof BROKER_PORTFOLIO, tickers = brokerFixtureTickers(holdings)) => ({
       config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [portfolio] },
       signal: new AbortController().signal,
-      apiClient: brokerRiskClient(now),
+      apiClient: brokerRiskClient(now, holdings),
       resolvePortfolio: async () => ({ portfolio, tickers }),
     } as unknown as HeadlessPaneContext);
-    const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "risk", since: "filed" } };
+    const args = (options: Record<string, string> = {}) => ({ rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "risk", since: "filed", ...options } });
+    const value = (result: Awaited<ReturnType<typeof portfolioRiskHeadless.load>>, id: string) =>
+      (result.metadata as { model: { rows: { risk: Array<{ id: string; value: number | null }> } } }).model.rows.risk.find((row) => row.id === id)!.value;
 
-    const since = await portfolioRiskHeadless.load(args, context(imported));
-    expect(since.sections.map((section) => section.title)).toEqual(["risk"]);
-    const labels = since.sections[0]!.rows!.map((row) => row.label);
-    expect(labels).toContain("Basket return since 2026-08-14");
-    expect(labels).toContain("Benchmark return (SPY) since 2026-08-14");
+    // Independently, from each holding's closes: a copier's basket is worth sum(w * end / start).
+    const closes = (symbol: string) => new Map(sessionHistory(symbol, "NASDAQ").data!.map((row) => [row.date.slice(0, 10), row.close]));
+    const series = Object.keys(weights).map((symbol) => closes(symbol));
+    const end = [...series[0]!.keys()].at(-1)!;
+    const held = Object.values(weights).reduce((sum, weight, index) => sum + weight * series[index]!.get(end)! / series[index]!.get("2026-08-14")!, 0);
+
+    const imported = { ...BROKER_PORTFOLIO, importedFrom: { ...source, weights } };
+    const since = await portfolioRiskHeadless.load(args(), context(imported));
+    expect(since.sections[0]!.rows!.map((row) => row.label)).toContain("Basket return since 2026-08-14");
+    expect(value(since, "return")).toBeCloseTo((held - 1) * 100, 10);
     // Sessions from the 14 August close to the last completed one, 21 September.
-    expect(since.metadata).toMatchObject({ benchmark: "SPY", window: { kind: "since-filed", filed: "2026-08-14", start: "2026-08-14", sessions: 25 } });
-    expect(since.metadata?.notices).toEqual(["Risk rows since the 13F filing on 2026-08-14, against SPY"]);
+    expect(since.metadata).toMatchObject({ benchmark: "SPY", window: { kind: "since-filed", filed: "2026-08-14", start: "2026-08-14", sessions: 25, weights: "13f", weightsSource: "stored" } });
+    expect(since.metadata?.notices).toEqual(["Buy-and-hold from the 14 Aug 2026 close at the 13F's weights, against SPY"]);
 
-    const fallback = await portfolioRiskHeadless.load(args, context(BROKER_PORTFOLIO));
+    // Today's weights (1:2:3 by value) held fixed every session is another basket, and says so.
+    const dates = [...series[0]!.keys()].filter((date) => date >= "2026-08-14");
+    const fixed = dates.slice(1).reduce((wealth, date, index) => wealth * (1 + [1, 2, 3].reduce((sum, weight, holding) =>
+      sum + weight / 6 * (series[holding]!.get(date)! / series[holding]!.get(dates[index]!)! - 1), 0)), 1);
+    const current = await portfolioRiskHeadless.load(args({ weights: "current" }), context(imported));
+    expect(Math.abs(fixed - held)).toBeGreaterThan(1e-4);
+    expect(value(current, "return")).toBeCloseTo((fixed - 1) * 100, 10);
+    expect(current.metadata?.notices).toEqual(["Current weights held fixed since the 14 Aug 2026 close, against SPY; not buy-and-hold"]);
+
+    // Imported before weights were stored: shares times the 13F's cost rebuilds them (1 x 5, 2 x 1.5, 3 x 2/3).
+    const legacy = { ...BROKER_PORTFOLIO, importedFrom: source };
+    const rebuilt = await portfolioRiskHeadless.load(args(), context(legacy, withCost({ US01: 5, US02: 1.5, US03: 2 / 3 })));
+    expect(value(rebuilt, "return")).toBeCloseTo((held - 1) * 100, 10);
+    expect(rebuilt.notes).toContain("13F weights rebuilt from each position's shares and cost, as imported; this portfolio predates stored 13F weights.");
+    // Without a cost to rebuild from, the rows are today's weights and the report says why.
+    const uncosted = await portfolioRiskHeadless.load(args(), context(legacy, withCost({ US01: 5, US02: 1.5 })));
+    expect(value(uncosted, "return")).toBeCloseTo((fixed - 1) * 100, 10);
+    expect(uncosted.metadata?.notices).toEqual(["Current weights held fixed since the 14 Aug 2026 close, against SPY; not buy-and-hold"]);
+    expect(uncosted.notes).toContain(`"Broker account" has no stored 13F weights and US03 has no USD cost to rebuild them from, so the rows hold today's weights fixed. Re-import it (portfolio import --13f 0001067983 --replace) for buy-and-hold.`);
+
+    // US03's closes end on 17 September (a halt): the rows stop there and say which holding stopped them.
+    const halted = context(imported);
+    const client = halted.apiClient as unknown as ReturnType<typeof brokerRiskClient>;
+    const history = client.getCloudHistory;
+    client.getCloudHistory = async (symbol: string, exchange: string) => {
+      const answer = await history(symbol, exchange);
+      return symbol === "US03" && answer.data ? { ...answer, data: answer.data.filter((row) => row.date.slice(0, 10) <= "2026-09-17") } : answer;
+    };
+    const cut = await portfolioRiskHeadless.load(args(), halted);
+    const through = (date: string) => Object.values(weights).reduce((sum, weight, index) => sum + weight * series[index]!.get(date)! / series[index]!.get("2026-08-14")!, 0);
+    expect(value(cut, "return")).toBeCloseTo((through("2026-09-17") - 1) * 100, 10);
+    expect(cut.notes).toContain("The buy-and-hold rows end on 2026-09-17: US03 has no daily close after it.");
+
+    const fallback = await portfolioRiskHeadless.load(args(), context(BROKER_PORTFOLIO));
     expect(fallback.sections[0]!.rows!.map((row) => row.label)).toContain("60D benchmark return (SPY)");
     expect(fallback.metadata?.notices).toEqual([`"Broker account" was not imported from a 13F, so it has no filing date; the risk rows cover the trailing 60 sessions.`]);
     expect(fallback.notes?.some((note) => note.includes("not imported from a 13F"))).toBe(false);

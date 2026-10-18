@@ -121,6 +121,8 @@ export function cellText(row: SupplyRow, column: string): string {
     : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
 }
 export type SupplySort = { column: string; direction: "asc" | "desc" };
+/** Shares of different bases never rank against each other: revenue first, receivables last. */
+const SHARE_BASIS_ORDER: readonly SupplyRow["pctBasis"][] = ["revenue", "cost", "purchases", "receivables"];
 export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
   const value = (row: SupplyRow): string | number | null => sort.column === "pct" ? row.pctOfRevenue : sort.column === "usd" ? row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd
     : sort.column === "confidence" ? row.confidence : sort.column === "evidence" ? trustTier(row) : cellText(row, sort.column).toLowerCase();
@@ -129,6 +131,11 @@ export function sortRows(rows: SupplyRow[], sort: SupplySort): SupplyRow[] {
     if (sort.column === "usd" && x !== null && y !== null) {
       const currency = (row: SupplyRow) => row.nativeAmount != null ? row.nativeCurrency! : "USD";
       const difference = currency(a).localeCompare(currency(b));
+      if (difference) return difference;
+    }
+    // Group bases before comparing shares: 30% of receivables is not more than 21% of revenue.
+    if (sort.column === "pct" && x !== null && y !== null) {
+      const difference = SHARE_BASIS_ORDER.indexOf(a.pctBasis) - SHARE_BASIS_ORDER.indexOf(b.pctBasis);
       if (difference) return difference;
     }
     return x === null || y === null ? x === y ? 0 : x === null ? 1 : -1

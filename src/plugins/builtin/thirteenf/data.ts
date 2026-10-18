@@ -5,14 +5,17 @@ import {
   listThirteenFForms,
   listThirteenFFilings,
   listTopThirteenFFunds,
+  loadThirteenFFilerStatus,
   lookupThirteenFHoldersByCusip,
   lookupThirteenFTickers,
   normalizeCik,
   searchThirteenFFunds,
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
+import { withDeadline } from "../../../utils/async-deadline";
 import {
   buildBrowserRows,
+  filingGapFor,
   latestLikely13FQuarter,
   oneFundPerCik,
   buildPeriodReports,
@@ -22,6 +25,7 @@ import type {
   FundBrowserRow,
   FundDetailData,
   ThirteenFBrowserTab,
+  ThirteenFFilingGap,
   ThirteenFFund,
   ThirteenFHoldingRecord,
   ThirteenFTopFund,
@@ -258,11 +262,51 @@ async function loadBrowserPage(
   return result;
 }
 
+/** How long a fund's report waits on EDGAR's filing list before it goes out unchecked. */
+const FILER_STATUS_TIMEOUT_MS = 4_000;
+
+/**
+ * What the fund filed for the newest quarter past its deadline, when its
+ * latest report (`latestPeriod`) predates that quarter: EDGAR says whether it
+ * was a 13F-NT and who reported instead. Null when the report is current; a
+ * gap with `checked: false` when EDGAR could not be asked (a server without
+ * the route, a failure, or no answer within the deadline).
+ */
+export async function loadFilingGap(
+  cik: string,
+  latestPeriod: string | null | undefined,
+  signal?: AbortSignal,
+  now = new Date(),
+  options: { forceRefresh?: boolean; timeoutMs?: number } = {},
+): Promise<ThirteenFFilingGap | null> {
+  if (!filingGapFor(latestPeriod, null, now)) return null;
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timeoutMs = options.timeoutMs ?? FILER_STATUS_TIMEOUT_MS;
+  try {
+    const status = await withDeadline(
+      loadThirteenFFilerStatus(cik, controller.signal, { forceRefresh: options.forceRefresh }),
+      timeoutMs,
+      `13F filer status timed out after ${timeoutMs}ms`,
+      (error) => controller.abort(error),
+    ).catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      return null;
+    });
+    return filingGapFor(latestPeriod, status, now);
+  } finally {
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
 export async function loadFundDetail(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
-  options: { forceRefresh?: boolean } = {},
+  /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
+  options: { forceRefresh?: boolean; filingGap?: boolean } = {},
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
@@ -297,7 +341,7 @@ export async function loadFundDetail(
     }
     return holdings;
   }
-  const [latestHoldings, previousHoldings] = await Promise.all([
+  const [latestHoldings, previousHoldings, filingGap] = await Promise.all([
     loadReport(latestReport),
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
@@ -305,6 +349,8 @@ export async function loadFundDetail(
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
     }),
+    options.filingGap === false ? null
+      : loadFilingGap(cik, latestForm?.periodOfReport, signal, now, { forceRefresh: options.forceRefresh }),
   ]);
   return {
     cik: normalizeCik(cik),
@@ -317,6 +363,7 @@ export async function loadFundDetail(
     latestReport,
     previousReport,
     warnings,
+    filingGap,
   };
 }
 

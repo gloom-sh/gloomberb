@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  buyAndHoldReturns,
   concentration,
   historicalTail,
   pairedReturns,
@@ -101,6 +102,29 @@ test("risk since a filing date runs from the last close on or before it, over th
   const gapped = sample.filter((row) => row.dateKey !== window[3]!.dateKey);
   expect(sinceBasketRisk(gapped, "2025-05-10")[0]!.startDate).toBe(window[4]!.startDateKey);
 });
+test("a held basket starts at the close on or before the filing, holds a halted holding flat until its return lands, and names what ends it", () => {
+  const point = (startDateKey: string, dateKey: string, value: number) => ({ startDateKey, dateKey, value });
+  // Filed on Saturday 15 Aug: bought at Friday's close, valued on the benchmark's sessions.
+  const calendar = [point("2026-08-13", "2026-08-14", 0), point("2026-08-14", "2026-08-17", 0), point("2026-08-17", "2026-08-18", 0), point("2026-08-18", "2026-08-19", 0), point("2026-08-19", "2026-08-20", 0)];
+  const a = [point("2026-08-13", "2026-08-14", 0.5), point("2026-08-14", "2026-08-17", 0.1), point("2026-08-17", "2026-08-18", 0), point("2026-08-18", "2026-08-19", 0.2), point("2026-08-19", "2026-08-20", 0)];
+  // B is halted on 19 Aug: no close that day, then one return over both days.
+  const b = [point("2026-08-13", "2026-08-14", -0.5), point("2026-08-14", "2026-08-17", -0.1), point("2026-08-17", "2026-08-18", 0.1), point("2026-08-18", "2026-08-20", 0.1)];
+  const held = buyAndHoldReturns([{ weight: 0.5, returns: a }, { weight: 0.5, returns: b }], "2026-08-15", calendar);
+  expect(held.returns.map((row) => `${row.startDateKey}/${row.dateKey}`)).toEqual(["2026-08-14/2026-08-17", "2026-08-17/2026-08-18", "2026-08-18/2026-08-19", "2026-08-19/2026-08-20"]);
+  // 1.1 and 0.9 after the first session; B's 10% lands on its 0.495 share on the 20th, flat the day before.
+  expect(held.returns.map((row) => row.value)).toEqual([0, 0.045, 1.155 / 1.045 - 1, 1.2045 / 1.155 - 1].map((value) => expect.closeTo(value, 12) as unknown as number));
+  // Over the run, the basket is worth each holding's weight times its own price move: 0.5 x 1.32 + 0.5 x 1.089.
+  expect(held.returns.reduce((wealth, row) => wealth * (1 + row.value), 1)).toBeCloseTo(1.2045, 12);
+  expect(held).toMatchObject({ cutShort: null, unpriced: [] });
+
+  // C's closes stop on the 18th, so the basket stops there and says so; D has no close by the filing and is left out.
+  const c = a.slice(0, 3);
+  const d = [point("2026-08-17", "2026-08-18", 0.3)];
+  const short = buyAndHoldReturns([{ weight: 0.5, returns: a }, { weight: 0.3, returns: c }, { weight: 0.2, returns: d }], "2026-08-15", calendar);
+  expect(short.returns.at(-1)!.dateKey).toBe("2026-08-18");
+  expect(short).toMatchObject({ cutShort: { holding: 1, date: "2026-08-18" }, unpriced: [2] });
+});
+
 test("concentration uses gross signed exposure and never renormalizes an unvalued holding", () => {
   const result = concentration([
     { id: "a", value: 60 },

@@ -1,4 +1,5 @@
 import { compareSortValues } from "../../../utils/sort-values";
+import { zonedDateKey } from "../../../utils/zoned-date-time";
 import type {
   FilingPositionColumn,
   FilingPositionColumnId,
@@ -17,6 +18,8 @@ import type {
   HoldingAction,
   ThirteenFBrowserTab,
   ThirteenFDetailTab,
+  ThirteenFFilerStatus,
+  ThirteenFFilingGap,
   ThirteenFFormSummary,
   ThirteenFFund,
   ThirteenFHoldingRecord,
@@ -68,6 +71,17 @@ export const DEFAULT_FILING_POSITION_SORT: FundSortPreference<FilingPositionColu
 const TICKER_LIKE_RE = /^[A-Z][A-Z0-9.-]{0,5}$/;
 const CIK_RE = /^\d{6,10}$/;
 
+/**
+ * A word shaped like a ticker in any case (aapl, BRK.B, brk-b), for a report
+ * that tries it as a ticker before a fund name. The pane's live search keeps
+ * lowercase words for fund names (`inferBrowserTabFromQuery`).
+ */
+export function isTickerShapedQuery(query: string): boolean {
+  const trimmed = query.trim();
+  return !CIK_RE.test(trimmed) && !/^(latest|recent)$/i.test(trimmed)
+    && TICKER_LIKE_RE.test(trimmed.replace(/^\$/, "").toUpperCase());
+}
+
 export function inferBrowserTabFromQuery(query: string): ThirteenFBrowserTab {
   const trimmed = query.trim();
   if (!trimmed) return "performance";
@@ -82,6 +96,64 @@ function normalizeQuarterDate(value: Date): string {
   const month = value.getUTCMonth();
   const quarter = Math.floor(month / 3) + 1;
   return `${year}Q${quarter}`;
+}
+
+const DUE_DAYS = 45;
+
+/** The third Monday of February, a federal holiday a February deadline can fall on. */
+function presidentsDay(year: number): number {
+  const first = new Date(Date.UTC(year, 1, 1)).getUTCDay();
+  return 1 + ((8 - first) % 7) + 14;
+}
+
+/**
+ * The day a quarter's 13F is due: 45 days after the quarter ends, moved past a
+ * weekend, and past Presidents' Day, the one federal holiday a 13F deadline
+ * (14 Feb, 15 May, 14 Aug, 14 Nov) can roll onto.
+ */
+export function thirteenFDueDate(period: string): string {
+  const due = new Date(`${period}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + DUE_DAYS);
+  for (;;) {
+    const day = due.getUTCDay();
+    const holiday = due.getUTCMonth() === 1 && due.getUTCDate() === presidentsDay(due.getUTCFullYear());
+    if (day !== 0 && day !== 6 && !holiday) break;
+    due.setUTCDate(due.getUTCDate() + 1);
+  }
+  return due.toISOString().slice(0, 10);
+}
+
+/** The newest quarter whose 13F deadline has passed in New York, with that deadline. */
+export function newestDueQuarter(now = new Date()): { period: string; due: string } {
+  const today = zonedDateKey(now.getTime(), "America/New_York");
+  const month = Number(today.slice(5, 7)) - 1;
+  const quarterStart = month - (month % 3);
+  // The current quarter ends after today; its predecessors end before it.
+  for (let back = 0; ; back += 1) {
+    const period = new Date(Date.UTC(Number(today.slice(0, 4)), quarterStart - back * 3, 0)).toISOString().slice(0, 10);
+    const due = thirteenFDueDate(period);
+    if (due < today) return { period, due };
+  }
+}
+
+/**
+ * What a fund whose latest report is `latestPeriod` filed for the newest
+ * quarter past its deadline, or null when that report is not behind it.
+ * `status` is EDGAR's list of the fund's filings, null when it could not be
+ * read. The latest filing for the quarter decides: a 13F-NT, or a report the
+ * loaded filings do not have yet.
+ */
+export function filingGapFor(
+  latestPeriod: string | null | undefined,
+  status: ThirteenFFilerStatus | null,
+  now = new Date(),
+): ThirteenFFilingGap | null {
+  const { period, due } = newestDueQuarter(now);
+  if (!latestPeriod || latestPeriod >= period) return null;
+  const filing = status?.filings
+    .filter((entry) => entry.period === period)
+    .sort((left, right) => right.filed.localeCompare(left.filed) || right.accession.localeCompare(left.accession))[0] ?? null;
+  return { period, due, filing, checked: status != null };
 }
 
 export function latestLikely13FQuarter(now = new Date()): string {

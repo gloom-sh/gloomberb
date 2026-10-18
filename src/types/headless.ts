@@ -98,6 +98,14 @@ export interface HeadlessPaneContext {
   resolveWatchlist?: (id: string) => Promise<import("./ticker").TickerRecord[] | null>;
   /** Resolve locally remembered exchange identities without coupling plugins to storage. */
   resolveInstrument?: (symbol: string) => Promise<{ symbol: string; exchange?: string }>;
+  /**
+   * Read a bare symbol as `quote` reads it: the listing its quote is for and
+   * that listing's company, or null when nothing better than the symbol is
+   * known. A code several companies list (BDI) throws asking which, with
+   * `quote`'s message; `argumentWith(key)` is the function's argument naming
+   * that listing instead (`BDI:TSX`), for the retry each listing offers.
+   */
+  resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string } | null>;
 }
 
 export type HeadlessPaneRow = Record<string, unknown>;
@@ -408,6 +416,8 @@ export interface HeadlessSeriesPoint extends HeadlessPaneRow {
 export interface HeadlessSeries {
   id: string;
   label: string;
+  /** The company or security a security's series is of (Apple Inc.), from its quote. */
+  name?: string;
   /** Explicit unit of the point values; report formatting does not rescale them. */
   unit?: string;
   /** The symbol or series ID the series was asked for as (`USDZAR=X`, `DEXSFUS`), which exports name each row by. */
