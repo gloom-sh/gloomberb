@@ -192,7 +192,11 @@ async function changedSheets(out: string, moving: ViewChange[]): Promise<string[
       Bun.spawnSync(["compare", "-fuzz", "2%", before, after, "-compose", "src", "-highlight-color", "#ff3b6b", "-lowlight-color", "#1b1b1b", diff]);
       sh(["convert", "-background", "#1b1b1b", "(", before, "-resize", scale, ")", "(", "-size", "12x12", "xc:#1b1b1b", ")", "(", after, "-resize", scale, ")", "(", "-size", "12x12", "xc:#1b1b1b", ")", "(", diff, "-resize", scale, ")", "+append", "+repage", row], { quiet: true });
     } else {
-      sh(["convert", "-size", "640x60", "xc:#1b1b1b", row], { quiet: true });
+      // A view only one side has (a tab added or gone): that side's picture, on its side of the row.
+      const only = existsSync(before) ? before : existsSync(after) ? after : null;
+      const blank = ["(", "-size", width === "1280" ? "640x400" : "448x560", "xc:#1b1b1b", ")"];
+      if (only) sh(["convert", "-background", "#1b1b1b", ...(only === after ? blank : []), "(", only, "-resize", scale, ")", ...(only === before ? blank : []), "+append", "+repage", row], { quiet: true });
+      else sh(["convert", "-size", "640x60", "xc:#1b1b1b", row], { quiet: true });
     }
     sh(["convert", "-background", "#1b1b1b", "-fill", "#e6e6e6", ...font, "-pointsize", "15", `label:${label}`, row, "-gravity", "west", "-append", "+repage", row], { quiet: true });
     rows.push(row);
