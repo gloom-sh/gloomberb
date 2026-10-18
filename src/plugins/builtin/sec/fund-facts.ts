@@ -65,14 +65,29 @@ function formatNetAssets(value: number): string {
   return `$${formatCompact(value)}`;
 }
 
-/** A trust charges a sponsor fee; a fund states an expense ratio, net or gross of waivers, which its detail says. */
-function expenseRatioLabel(facts: Pick<FundFactsPayload, "expenseRatio" | "structure">): string {
-  return facts.expenseRatio?.kind === "sponsor-fee" || facts.structure === "trust" ? "Sponsor fee" : "Expense ratio";
+/**
+ * The fee as the server says it is: a sponsor fee (IBIT, GLD), or an expense
+ * ratio, net or gross of waivers, which its detail says. A pool's total
+ * expense ratio (USO, DBC) stays an expense ratio: a trust is not enough to
+ * call a fee a sponsor fee.
+ */
+function expenseRatioLabel(facts: Pick<FundFactsPayload, "expenseRatio">): string {
+  return facts.expenseRatio?.kind === "sponsor-fee" ? "Sponsor fee" : "Expense ratio";
 }
 
 function feeBasis(facts: FundFactsPayload): "net" | "gross" | null {
   const kind = facts.expenseRatio?.kind;
-  return facts.structure === "trust" || kind === "sponsor-fee" ? null : kind === "gross" ? "gross" : kind === "net" ? "net" : null;
+  return kind === "gross" ? "gross" : kind === "net" ? "net" : null;
+}
+
+/**
+ * Net assets of the whole fund, every share class (N-PORT's, a fund family's
+ * figure), not the ETF class alone: the label says so, `Fund net assets`,
+ * which no narrow column drops; a report says `all share classes`. A trust
+ * has no classes to tell apart.
+ */
+function wholeFund(facts: FundFactsPayload): boolean {
+  return facts.netAssets?.scope === "fund" && facts.structure !== "trust";
 }
 
 /**
@@ -115,7 +130,9 @@ function datedFigures(facts: FundFactsPayload): Record<"nav" | "premium" | "fee"
     },
     fee: {
       detail: feeDate
-        ? prospectus ? tf("prospectus {date}", { date: feeDate })
+        ? prospectus
+          ? basis === "gross" ? tf("gross, prospectus {date}", { date: feeDate })
+            : basis === "net" ? tf("net, prospectus {date}", { date: feeDate }) : tf("prospectus {date}", { date: feeDate })
           : basis === "gross" ? tf("gross {date}", { date: feeDate }) : basis === "net" ? tf("net {date}", { date: feeDate }) : feeDate
         : basis ?? undefined,
       marked: facts.stale,
@@ -145,7 +162,7 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   if (facts.nav) items.push(cell("nav", "NAV", formatNav(facts.nav.value), dated.nav));
   if (facts.premiumDiscount) items.push(cell("premium", "Premium/discount", formatPremiumPercent(facts.premiumDiscount.value), dated.premium));
   if (facts.expenseRatio) items.push(cell("fee", expenseRatioLabel(facts), formatFeePercent(facts.expenseRatio.value), dated.fee));
-  if (facts.netAssets) items.push(cell("assets", "Net assets", formatNetAssets(facts.netAssets.value), dated.netAssets));
+  if (facts.netAssets) items.push(cell("assets", wholeFund(facts) ? "Fund net assets" : "Net assets", formatNetAssets(facts.netAssets.value), dated.netAssets));
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
   if (facts.index) items.push({ id: "index", label: BENCHMARK_LABEL, value: facts.index.value, wide: true });
@@ -181,10 +198,10 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
   if (facts.netAssets) {
     // N-PORT's long form gives way to the month end alone before the bare date.
     const monthEnd = facts.netAssets.document && facts.netAssets.asOf ? tf("{date} month-end", { date: facts.netAssets.asOf }) : undefined;
-    fields.push(field("Net Assets", formatNetAssets(facts.netAssets.value), dated.netAssets, monthEnd));
+    fields.push(field(wholeFund(facts) ? "Fund Assets" : "Net Assets", formatNetAssets(facts.netAssets.value), dated.netAssets, monthEnd));
   }
   if (facts.expenseRatio) {
-    const fee = facts.expenseRatio.kind === "sponsor-fee" || facts.structure === "trust";
+    const fee = facts.expenseRatio.kind === "sponsor-fee";
     fields.push(field(fee ? "Sponsor Fee" : "Exp Ratio", formatFeePercent(facts.expenseRatio.value), dated.fee, facts.expenseRatio.asOf ?? undefined));
   }
   if (facts.inception) fields.push({ label: "Inception", value: facts.inception.value });
@@ -223,7 +240,7 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
       provenance(formatPremiumPercent(facts.premiumDiscount.value), facts.premiumDiscount.asOf, basis, facts.premiumDiscount.source), "%");
   }
   if (facts.netAssets) {
-    const scope = facts.netAssets.scope === "fund" && facts.structure !== "trust" ? "all share classes" : null;
+    const scope = wholeFund(facts) ? "all share classes" : null;
     const date = facts.netAssets.asOf && facts.netAssets.period === "month-end"
       ? `${facts.netAssets.asOf} month-end${facts.netAssets.document ? ` ${facts.netAssets.document}` : ""}` : facts.netAssets.asOf;
     add("netAssets", "Net assets", facts.netAssets.value, provenance(formatNetAssets(facts.netAssets.value), date, scope, facts.netAssets.source), "USD");

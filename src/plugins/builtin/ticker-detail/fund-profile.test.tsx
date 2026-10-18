@@ -139,7 +139,8 @@ test("a US-listed fund's overview shows its fund facts where a company's fundame
     expect(frame).toContain("Fund Facts");
     expect(frame).toMatch(/NAV\s+\$766\.76\s+2026-10-16/);
     // Every figure is dated; a narrow column takes the date without its year.
-    expect(frame).toMatch(/Net Assets\s+\$712\.34B\s+(?:2026-)?10-16/);
+    // iShares states the whole fund's net assets, which the label says.
+    expect(frame).toMatch(/Fund Assets\s+\$712\.34B\s+(?:2026-)?10-16/);
     expect(frame).toMatch(/Exp Ratio\s+0\.03%\s+net (?:2026-)?10-16/);
 
     // Vanguard's month-end net assets read as month end; a stale NAV says so.

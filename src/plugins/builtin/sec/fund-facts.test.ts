@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { setLanguage, t } from "../../../i18n";
-import { fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
+import { fundFactEntries, fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 
 const IVV: FundFactsPayload = {
   ticker: "IVV", covered: true, name: "iShares Core S&P 500 ETF", structure: "registered",
@@ -80,28 +80,38 @@ const DFAC: FundFactsPayload = {
   ticker: "DFAC", covered: true, status: "covered", name: "Dimensional U.S. Core Equity 2 ETF", structure: "registered",
   expenseRatio: { value: 0.17, asOf: "2026-02-27", source: "SEC EDGAR", kind: "gross", document: "prospectus" },
   nav: null, closingPrice: null, premiumDiscount: null,
-  netAssets: { value: 47.89e9, asOf: "2026-07-31", source: "SEC EDGAR", scope: "share-class", period: "month-end", document: "N-PORT" },
+  netAssets: { value: 47.89e9, asOf: "2026-07-31", source: "SEC EDGAR", scope: "fund", period: "month-end", document: "N-PORT" },
   sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
 };
 
-test("figures from the SEC's data sets say which filing they come from: the prospectus's fee, N-PORT's month-end net assets", () => {
+test("figures from the SEC's data sets say which filing they come from: the prospectus's fee, net or gross, and N-PORT's month-end net assets of the whole fund", () => {
   const items = byId(DFAC);
   expect(Object.keys(items)).toEqual(["fee", "assets"]);
-  expect(items.fee).toMatchObject({ value: "0.17%", detail: "prospectus 2026-02-27" });
-  expect(items.assets).toMatchObject({ detail: "2026-07-31 month-end · N-PORT" });
+  expect(items.fee).toMatchObject({ value: "0.17%", detail: "gross, prospectus 2026-02-27" });
+  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: "net" } }).fee!.detail).toBe("net, prospectus 2026-02-27");
+  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: undefined as never } }).fee!.detail).toBe("prospectus 2026-02-27");
+  // N-PORT's figure is the whole fund's, every share class: the label says so.
+  expect(items.assets).toMatchObject({ label: "Fund net assets", detail: "2026-07-31 month-end · N-PORT" });
   // Without a NAV to compare with, neither is marked.
   expect(items.fee!.tone).toBeUndefined();
   expect(items.assets!.tone).toBeUndefined();
-  expect(fundFactOverviewFields(DFAC).find((field) => field.label === "Net Assets")!.detail)
+  expect(fundFactOverviewFields(DFAC).find((field) => field.label === "Fund Assets")!.detail)
     .toEqual(["2026-07-31 month-end · N-PORT", "07-31 month-end · N-PORT", "2026-07-31 month-end", "07-31 month-end"]);
+  expect(fundFactEntries(DFAC).find((entry) => entry.key === "netAssets")!.formatted)
+    .toBe("$47.89B · 2026-07-31 month-end N-PORT · all share classes · SEC EDGAR");
+  // A share class's own figure (Vanguard's) and a trust's are plain net assets.
+  expect(byId({ ...DFAC, netAssets: { ...DFAC.netAssets!, scope: "share-class" } }).assets!.label).toBe("Net assets");
+  expect(byId({ ...DFAC, structure: "trust" }).assets!.label).toBe("Net assets");
+  expect(fundFactOverviewFields({ ...DFAC, structure: "trust" }).map((field) => field.label)).toContain("Net Assets");
   expect(fundFactPublishers(DFAC)).toEqual(["SEC EDGAR"]);
   // A sponsor's NAV beside N-PORT's net assets: both publishers, and the month end is not marked as lagging.
   const soxl = byId({ ...DFAC, nav: { value: 107.36, asOf: "2026-10-15", source: "Direxion" } });
   expect(soxl.assets!.tone).toBeUndefined();
   expect(fundFactPublishers({ ...DFAC, nav: { value: 107.36, asOf: "2026-10-15", source: "Direxion" } })).toEqual(["Direxion", "SEC EDGAR"]);
   setLanguage("es");
-  expect(byId(DFAC).fee!.detail).toBe("folleto 2026-02-27");
+  expect(byId(DFAC).fee!.detail).toBe("bruto, folleto 2026-02-27");
   expect(byId(DFAC).assets!.detail).toBe("2026-07-31 fin de mes · N-PORT");
+  expect(t(byId(DFAC).assets!.label)).toBe("Patrimonio neto del fondo");
 });
 
 test("a fund without figures says not collected yet when a source Gloom reads covers it, and not published only when none does", () => {
@@ -119,4 +129,22 @@ test("a fund without figures says not collected yet when a source Gloom reads co
   setLanguage("ko");
   expect(fundFactsEmptyText("USO", { ...empty, status: "not-collected-yet", structure: "trust" }))
     .toBe("USO의 수치는 아직 수집되지 않았습니다. 다음 읽기에서 저장됩니다.");
+});
+
+test("a pool's total expense ratio reads as an expense ratio, gross, though the pool is a trust; only a sponsor fee reads as one", () => {
+  const uso: FundFactsPayload = {
+    ...IVV, ticker: "USO", name: "United States Oil Fund, LP", structure: "trust",
+    expenseRatio: { value: 0.86, asOf: "2026-10-16", source: "USCF", kind: "gross" },
+    netAssets: { value: 1.897e9, asOf: "2026-10-16", source: "USCF", scope: "fund", period: "day" },
+  };
+  expect(byId(uso).fee).toMatchObject({ label: "Expense ratio", value: "0.86%", detail: "gross 2026-10-16" });
+  expect(fundFactOverviewFields(uso).find((field) => field.value === "0.86%")!.label).toBe("Exp Ratio");
+  expect(fundFactEntries(uso).find((entry) => entry.key === "expenseRatioPercent")).toMatchObject({
+    label: "Expense ratio", formatted: "0.86% gross · 2026-10-16 · USCF",
+  });
+  // A trust's net assets are the trust's: no share classes to speak of.
+  expect(byId(uso).assets!.detail).toBe("2026-10-16");
+  const ibit: FundFactsPayload = { ...uso, ticker: "IBIT", expenseRatio: { value: 0.25, asOf: "2026-10-16", source: "iShares", kind: "sponsor-fee" } };
+  expect(byId(ibit).fee).toMatchObject({ label: "Sponsor fee", detail: "2026-10-16" });
+  expect(fundFactOverviewFields(ibit).find((field) => field.value === "0.25%")!.label).toBe("Sponsor Fee");
 });

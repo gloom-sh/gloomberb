@@ -311,7 +311,7 @@ test("the fund view leads with the fund's facts, each dated, and cites who publi
     await settleFrame(tui.setup(), 8);
     const shown = frame();
     expect(facts).toHaveBeenCalledWith("IVV");
-    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "net 2026-10-16", "Net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
+    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "net 2026-10-16", "Fund net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
       expect(shown).toContain(text);
     }
     // The filings stay below the facts.
