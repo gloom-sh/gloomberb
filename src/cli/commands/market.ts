@@ -11,7 +11,7 @@ import type {
   Quote,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import {
   EXTENDED_SESSION_LABELS,
@@ -168,6 +168,7 @@ import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListi
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
+import { primeBoardCoins } from "../board-coins";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
@@ -397,6 +398,21 @@ function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "stale" | 
   return quote.dataSource === "live" || quote.dataSource === "delayed" ? quote.dataSource : "";
 }
 
+/** A hundredth of a cent, one basis point of a dollar peg: the decimals CRYP prints a stablecoin to. */
+const STABLECOIN_PRICE_DIGITS = 4;
+
+/**
+ * A coin trading near a dollar, a dollar stablecoin, prints to four decimals
+ * either side of par (0.9987, 1.0003), as CRYP does, whatever digits its
+ * source sent (0.99874, 0.99968725); below a dollar a coin otherwise keeps up to eight.
+ */
+function nearParCoin(quote: QuoteCliRecord["quote"]): boolean {
+  if (!quote || resolveAssetDisplayKind({ assetCategory: quote.instrumentType }) !== "crypto") return false;
+  if ((quote.currency ?? "USD").trim().toUpperCase() !== "USD") return false;
+  const reference = [quote.previousClose, quote.price].find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
+  return reference != null && reference >= 0.9 && reference < 1.1;
+}
+
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
@@ -412,6 +428,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const options = {
       ...quoteFormatOptions(quote),
       minimumFractionDigits: indexPoints ? 2 : currencyPriceMinDigits(quote?.currency),
+      ...nearParCoin(quote) ? { fixedFractionDigits: STABLECOIN_PRICE_DIGITS } : {},
     };
     const price = (value: number | undefined) => (
       quote && value != null
@@ -728,6 +745,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
     ];
     const columns = commandName === "compare" ? compareColumns() : quoteColumns();
+    if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({

@@ -48,6 +48,7 @@ import {
 } from "./pane-functions";
 import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
+import { primeBoardCoins } from "./board-coins";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
 
@@ -453,6 +454,8 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
+    // A coin typed without its quote currency (USDT) is named by its one symbol (USDT-USD) in the hint.
+    if (parsed.options.format !== "json") await primeBoardCoins([error instanceof Error ? error.message : String(error)]);
     printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs,
       isFredSeries: (id) => catalogFredSeriesIds(registry.plugins).has(id) });
     process.exitCode = 1;

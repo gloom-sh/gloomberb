@@ -16,6 +16,7 @@ import {
 } from "../../../time-series/resolution";
 import type { ChartResolution } from "../../../time-series/range";
 import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
+import { sessionRangeReport } from "./session-range";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
@@ -509,6 +510,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const points = data.priceHistory.filter(({ date }) => date >= start && date <= end);
           intradayHistories.push({
             target, symbol, exchange, points, bufferedPoints: data.priceHistory, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
+            ...data.quote ? { quote: data.quote } : {},
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
             resolution: historyResolution, requestedSession: null,
             sessionDates: intradaySessionDates(points, intradaySessionTimeZone(symbol, exchange)),
@@ -517,6 +519,16 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
+      // On a depeg or a crash the question is how low it went and when: each listing's low and high, with their times.
+      // Named as the series are: a window read before the listing was settled takes the venue the chart resolved.
+      const listingExchange = (symbol: string, exchange: string) => exchange || model.spec.series.flatMap(({ source }) => (
+        source.kind === "security" && source.instrument.symbol.toUpperCase() === symbol.toUpperCase() ? [source.instrument.exchange ?? ""] : []
+      )).find(Boolean) || "";
+      const ranges = sessionRangeReport(intradayHistories.map((window) => ({ ...window, exchange: listingExchange(window.symbol, window.exchange) })));
+      if (ranges.entries.length) {
+        model.stats = [...model.stats ? Array.isArray(model.stats) ? model.stats : Object.entries(model.stats).map(([label, value]) => ({ label, value })) : [], ...ranges.entries];
+        model.metadata = { ...model.metadata, sessionRanges: ranges.ranges };
+      }
       // Exports name each series by what it was asked as and the bars or frequency it came back in.
       const asked = new Map(parsed.series.map((series) => [series.id, askedSymbol(series.source)]));
       model.series = model.series.map((series) => {

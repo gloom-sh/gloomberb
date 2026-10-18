@@ -73,6 +73,11 @@ export function cryptoFixture(): CryptoMarketsPayload {
         low52w: 0.998,
         yearAgoPrice: 1,
         history: { start: "2026-08-24", closes: Array.from({ length: 30 }, () => 1) },
+        peg: { currency: "USD", accrues: false, price: 1, asOf: null },
+        range24h: {
+          low: 0.9983, lowAt: "2026-09-22T23:30:00.000Z", high: 1.0004, highAt: "2026-09-23T03:05:00.000Z",
+          start: "2026-09-22T11:59:00.000Z", end: "2026-09-23T11:59:00.000Z",
+        },
       }),
     ],
     warnings: [],

@@ -1,4 +1,5 @@
 import { notATickerSymbol } from "../sources/provider-errors";
+import { boardCoinFor } from "./board-coins";
 import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
 import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
@@ -36,8 +37,10 @@ export type FredSeriesCheck = (seriesId: string) => boolean;
 /**
  * Adds the search hint after each "Not a ticker: APPLE." in text meant for a person. The router
  * only knows the symbol upper-cased, so the hint reads the user's own spelling from `args`. A FRED
- * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead, and a
- * Treasury yield typed as a ticker (US10Y) names the commands that have it.
+ * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead, a
+ * coin on the crypto board typed bare (USDT, TETHER) names its one symbol, USDT-USD, once
+ * `primeBoardCoins` has read the board, and a Treasury yield typed as a ticker (US10Y) names the
+ * commands that have it.
  */
 export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
   return text.includes("Not a ticker: ")
@@ -45,6 +48,8 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
       if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloomberb fred ${id}\`.`;
+      const coin = boardCoinFor(id);
+      if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);
       return `${sentence} ${tenor ? treasuryYieldHint(tenor) : searchHint(typed)}`;
     })

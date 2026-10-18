@@ -1,4 +1,4 @@
-import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
+import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -7,6 +7,8 @@ import type { PricePoint, Quote } from "../../../types/financials";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { isFiniteNumber } from "../../../utils/guards";
+import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
+import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 
 const DAY_MS = 86_400_000;
 
@@ -41,6 +43,20 @@ export interface CryptoRow {
   /** Epoch ms of the price shown. */
   updatedAt: number | null;
   live: boolean;
+  /** A stablecoin's peg; null for a coin, or a server that does not send it. */
+  peg: CryptoPeg | null;
+  /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`; empty without a peg. */
+  pegText: string;
+  /** How far the price is off its target, in basis points; null when it accrues yield or the target is unknown. */
+  offPegBp: number | null;
+  /** The 24-hour low and high, the price shown included, and when each traded (epoch ms). */
+  low24h: number | null;
+  low24hAt: number | null;
+  high24h: number | null;
+  high24hAt: number | null;
+  /** The low and high at the price's decimals. */
+  low24hText: string;
+  high24hText: string;
 }
 
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
@@ -116,6 +132,12 @@ function buildCryptoRow(
   // The digits follow a price that holds still for the day, so a tick across a
   // power of ten (0.9998 to 1.0002) keeps the row's decimals.
   const referencePrice = [asset.previousClose, quote?.previousClose, quote?.open].find(positive) ?? asset.price;
+  const peg = asset.kind === "stablecoin" ? asset.peg ?? null : null;
+  const updated = isFiniteNumber(updatedAt) ? updatedAt : null;
+  const minimumDecimals = asset.kind === "stablecoin" ? 4 : 2;
+  const range = asset.kind === "stablecoin"
+    ? dayRange(asset, price, updated)
+    : { low24h: null, low24hAt: null, high24h: null, high24hAt: null };
   return {
     asset,
     id: asset.symbol,
@@ -123,7 +145,7 @@ function buildCryptoRow(
     code: asset.code,
     name: asset.name,
     price,
-    priceText: formatCryptoPrice(price, asset.kind === "stablecoin" ? 4 : 2, referencePrice),
+    priceText: formatCryptoPrice(price, minimumDecimals, referencePrice),
     changePercent,
     return7d: percentChange(price, closeDaysAgo(asset, 7, now)),
     return30d: percentChange(price, closeDaysAgo(asset, 30, now)),
@@ -131,9 +153,76 @@ function buildCryptoRow(
     volume24h: asset.volume24h,
     marketCap,
     history,
-    updatedAt: isFiniteNumber(updatedAt) ? updatedAt : null,
+    updatedAt: updated,
     live: !!quote && quote.delivery === "stream" && quote.stale !== true,
+    peg,
+    pegText: formatPegTarget(peg),
+    offPegBp: offPegBasisPoints(price, peg),
+    ...range,
+    low24hText: formatCryptoPrice(range.low24h, minimumDecimals, referencePrice),
+    high24hText: formatCryptoPrice(range.high24h, minimumDecimals, referencePrice),
   };
+}
+
+/**
+ * What a stablecoin's price is measured against: `USD`; a coin on another
+ * currency by its target in dollars, `EUR 1.1242`, so EURC at 1.1234 does not
+ * read as a 12% premium; a coin whose yield accrues into its price (USDY) is
+ * marked so and has no par to be off.
+ */
+export function formatPegTarget(peg: CryptoPeg | null | undefined): string {
+  if (!peg) return "";
+  if (peg.accrues) return `${peg.currency} yield`;
+  if (peg.currency === "USD") return "USD";
+  return peg.price == null ? peg.currency : `${peg.currency} ${peg.price.toFixed(4)}`;
+}
+
+/** Basis points off the peg, to a tenth: (price / target - 1) x 10,000. Null when the coin accrues yield or the target is unknown. */
+export function offPegBasisPoints(price: number, peg: CryptoPeg | null | undefined): number | null {
+  if (!peg || peg.accrues || peg.price == null || !(peg.price > 0) || !(price > 0)) return null;
+  return toBasisPoints((price / peg.price - 1) * 100, 1);
+}
+
+/** `-12.9bp`; a coin on its peg reads `0.0bp`; blank when there is no par to be off. */
+export function formatOffPeg(bp: number | null): string {
+  return bp == null ? "" : formatBasisPoints(bp / 100, 1);
+}
+
+/** Off by this many basis points either way a stablecoin is worth a look; by a percent it has lost its peg. */
+const OFF_PEG_WATCH_BP = 25;
+const OFF_PEG_BROKEN_BP = 100;
+
+export function offPegSeverity(bp: number | null): "none" | "watch" | "broken" {
+  if (bp == null) return "none";
+  const size = Math.abs(bp);
+  return size >= OFF_PEG_BROKEN_BP ? "broken" : size >= OFF_PEG_WATCH_BP ? "watch" : "none";
+}
+
+/**
+ * The 24-hour low and high the board reported, widened by a newer price than
+ * it had seen, so a live tick below the low is the low, at its time.
+ */
+function dayRange(asset: CryptoMarketAsset, price: number, updatedAt: number | null) {
+  const range = asset.range24h;
+  if (!range) return { low24h: null, low24hAt: null, high24h: null, high24hAt: null };
+  let low24h = range.low;
+  let low24hAt: number | null = Date.parse(range.lowAt);
+  let high24h = range.high;
+  let high24hAt: number | null = Date.parse(range.highAt);
+  const newer = updatedAt != null && updatedAt > Date.parse(range.end);
+  if (newer && price < low24h) [low24h, low24hAt] = [price, updatedAt];
+  if (newer && price > high24h) [high24h, high24hAt] = [price, updatedAt];
+  return {
+    low24h,
+    low24hAt: isFiniteNumber(low24hAt) ? low24hAt : null,
+    high24h,
+    high24hAt: isFiniteNumber(high24hAt) ? high24hAt : null,
+  };
+}
+
+/** `Sat 11:30` UTC; a dash when unknown. */
+export function formatDayRangeTime(ms: number | null): string {
+  return ms == null ? "—" : formatUtcWeekdayTime(ms) || "—";
 }
 
 const rowsByAsset = new WeakMap<CryptoMarketAsset, { quote: Quote | null; day: number; row: CryptoRow }>();
@@ -200,7 +289,13 @@ type CryptoColumnId =
   | "return1y"
   | "trend"
   | "volume24h"
-  | "marketCap";
+  | "marketCap"
+  | "pegText"
+  | "offPegBp"
+  | "low24h"
+  | "low24hAt"
+  | "high24h"
+  | "high24hAt";
 
 export type CryptoColumn = DataTableColumn & { id: CryptoColumnId };
 
@@ -211,7 +306,7 @@ export interface CryptoSortPreference {
 
 export const DEFAULT_CRYPTO_SORT: CryptoSortPreference = { columnId: null, direction: "asc" };
 
-const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name"]);
+const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name", "pegText"]);
 
 /** Numbers open largest-first (top gainers, biggest caps); names open A-Z. */
 export function nextCryptoSort(current: CryptoSortPreference, columnId: string): CryptoSortPreference {
@@ -223,10 +318,15 @@ export function nextCryptoSort(current: CryptoSortPreference, columnId: string):
   });
 }
 
+/** Off peg sorts by size, so the first click puts the furthest from its peg on top, above or below it. */
+function sortValue(row: CryptoRow, columnId: Exclude<CryptoColumnId, "trend">) {
+  return columnId === "offPegBp" ? row.offPegBp == null ? null : Math.abs(row.offPegBp) : row[columnId];
+}
+
 export function sortCryptoRows(rows: CryptoRow[], sort: CryptoSortPreference): CryptoRow[] {
   const columnId = sort.columnId;
   if (!columnId || columnId === "trend") return rows;
-  return [...rows].sort((left, right) => compareSortValues(left[columnId], right[columnId], sort.direction));
+  return [...rows].sort((left, right) => compareSortValues(sortValue(left, columnId), sortValue(right, columnId), sort.direction));
 }
 
 // Columns ---------------------------------------------------------------------
@@ -245,19 +345,46 @@ const COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
   { id: "marketCap", label: "MCAP", width: 8, align: "right" },
 ];
 
+/**
+ * A stablecoin is read by its peg: what it holds to, how far off it is, and
+ * the 24-hour low and high with their times, before its returns. Narrowing,
+ * the returns, the sparkline and the day change leave first, then volume, the
+ * name and the high; the peg, the low and when it traded stay.
+ */
+const STABLECOIN_COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
+  { id: "rank", label: "#", width: 3, align: "right" },
+  { id: "code", label: "COIN", width: 7, align: "left" },
+  { id: "name", label: "NAME", width: 10, align: "left", optional: 3 },
+  { id: "price", label: "PRICE", width: 8, align: "right" },
+  { id: "pegText", label: "PEG", width: 10, align: "left" },
+  { id: "offPegBp", label: "OFF PEG", width: 8, align: "right" },
+  { id: "low24h", label: "24H LOW", width: 8, align: "right" },
+  { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
+  { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
+  { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
+  { id: "changePercent", label: "CHG%", width: 8, align: "right", optional: 5 },
+  { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
+  { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },
+  { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 9 },
+  { id: "trend", label: "30D", width: 12, align: "left", optional: 7 },
+  { id: "volume24h", label: "VOL 24H", width: 8, align: "right", optional: 4 },
+  { id: "marketCap", label: "MCAP", width: 8, align: "right" },
+];
+
 const MAX_NAME_WIDTH = 24;
 
 /**
  * Optional columns leave in a fixed order as the pane narrows (1Y, then the
  * sparkline, 30D, volume and the name); the name takes what width is left.
  */
-export function buildCryptoColumns(width: number): CryptoColumn[] {
-  const optional = COLUMN_SPECS.flatMap((column) => column.optional ?? []).sort((a, b) => b - a);
+export function buildCryptoColumns(width: number, kind: CryptoAssetKind = "coin"): CryptoColumn[] {
+  const specs = kind === "stablecoin" ? STABLECOIN_COLUMN_SPECS : COLUMN_SPECS;
+  const optional = specs.flatMap((column) => column.optional ?? []).sort((a, b) => b - a);
   let dropped = new Set<number>();
   // Measured the way the table draws them (header floors, gaps, padding and the
   // extra gutter after a right-aligned column), so the last column never clips.
-  const fits = (columns: typeof COLUMN_SPECS) => getTableWidth(columns) <= width;
-  const visible = () => COLUMN_SPECS.filter((column) => !column.optional || !dropped.has(column.optional));
+  const fits = (columns: typeof specs) => getTableWidth(columns) <= width;
+  const visible = () => specs.filter((column) => !column.optional || !dropped.has(column.optional));
   for (const priority of optional) {
     if (fits(visible())) break;
     dropped = new Set([...dropped, priority]);

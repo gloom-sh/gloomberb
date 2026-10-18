@@ -118,10 +118,11 @@ export function topicPointer(query: string): { message: string; codes: string[] 
 }
 
 /**
- * Settings and reports people look for by name that are a command, not a function or a ticker: the line `search`
+ * Settings, reports and a function's view people look for by a word its name does not hold: the line `search`
  * and `catalog` print beside whatever else the query finds. A query asks for one when every word is a word of that
  * command and one of them names it: "light theme", "dark", "colour-blind", but not "ai theme" (THEM's basket) or
- * "dark pool"; "drip", "dividend income", but not "income statement" or "net income".
+ * "dark pool"; "drip", "dividend income", but not "income statement" or "net income"; "tether", "depeg",
+ * "usdc peg", but not "peg ratio".
  */
 const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string }> = [
   {
@@ -134,6 +135,11 @@ const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonl
     words: ["dividend", "dividends", "portfolio", "my", "annual", "yearly", "passive", "projection", "project", "projected",
       "plan", "planner", "calculator", "forecast", "yield", "growth"],
     line: "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip",
+  },
+  {
+    names: ["tether", "usdt", "usdc", "depeg", "depegs", "depegged", "depegging", "peg", "pegs", "pegged", "stablecoin", "stablecoins"],
+    words: ["stable", "coin", "coins", "off", "check", "monitor", "watch", "scare", "risk", "dollar", "usd", "status", "price", "prices", "low"],
+    line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin",
   },
 ];
 

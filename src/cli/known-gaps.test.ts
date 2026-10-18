@@ -116,3 +116,13 @@ test("an income or reinvestment query names portfolio show --drip; a statement o
   for (const query of ["income statement", "net income", "fixed income", "dark pool"]) expect(commandPointer(query), query).toBeNull();
   expect(commandPointer("light theme")).toBe("Themes: gloomberb config themes");
 });
+
+test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its letters start; a PEG ratio does not", () => {
+  const line = "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin";
+  for (const query of ["tether", "USDT", "usdc", "depeg", "peg", "USDC peg", "stablecoin depeg check"]) expect(commandPointer(query), query).toBe(line);
+  expect(commandPointer("peg ratio")).toBeNull();
+  const series = [{ id: "fx:twd", name: "Taiwan dollar (TWD per USD)", unit: "TWD", frequency: "daily", publisher: "FRED", expression: "FRED:DEXTAUS", exact: false }];
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["usdt"]), lookupGlossary("usdt"), null, series, commandPointer("usdt"));
+  expect(catalog.indexOf(line)).toBe(0);
+  expect(catalog).toContain("Taiwan dollar");
+});

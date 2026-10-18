@@ -1010,6 +1010,14 @@ CHG% is the change since the 00:00 UTC open. 7D% and 30D% compare the price with
 
 Enter or click opens the coin in the ticker pane for its chart, quote and news. Column headers sort (numbers largest first), `r` refreshes, and narrow panes drop 1Y, the sparkline, 30D, volume and the name in that order. `gloomberb fn CRYP --json` returns the board; `--list stablecoin` returns the stablecoin tab.
 
+Every coin on the board has one symbol, `<COIN>-USD` (`USDT-USD`, `USDE-USD`), and `quote`, `history`, `GIP` and the ticker pane all read it by that symbol, bare or on its crypto venue. A coin typed without its quote currency (`USDT`, `TETHER`) is not a ticker, and the hint names its symbol: `Did you mean USDT-USD (Tether USDt)?`.
+
+#### Stablecoins and their peg
+
+The stablecoin tab is read against each coin's peg. PEG is what the coin holds to: `USD`; a coin on another currency by its target in dollars (`EUR 1.1242`, the latest EUR/USD rate), so EURC at 1.1234 reads as 7bp under its euro rather than a 12% premium to the dollar; `USD yield` for a coin whose yield accrues into its price (USDY, sUSDe-style tokens), which has no par to be off. OFF PEG is the price against that target in basis points, `(price / target - 1) x 10,000` to a tenth: `-12.9bp` for USDT at 0.99871. A yield coin's OFF PEG is blank, never a deviation. Off by 25bp or more either way the cell is shown as a warning, by 100bp or more as a loss; sorting OFF PEG puts the furthest from its peg first, above or below. 24H LOW and 24H HIGH are the lowest and highest trade in the 24 hours to the board's price, from 5-minute bars, each with the UTC time of the first bar that reached it (`Sat 11:30`; the weekday tells the day inside 24 hours), and a newer live price beyond either extends it. A narrow pane drops the returns, the sparkline, the day change, volume, the name and then the high, keeping the peg, OFF PEG and the low with its time. `--json` carries `peg` (`currency`, `accrues`, the target `price` and its `asOf`), `offPegBp` and the low and high with ISO times.
+
+`gloomberb catalog tether` (or `usdt`, `usdc`, `depeg`, `peg`) and the same words in `search` point to `gloomberb fn CRYP --list stablecoin`. `quote` prints a coin trading near a dollar to four decimals, as CRYP does. For one session's path, `gloomberb fn GIP USDT-USD --session 2026-10-17` prints the session low and high with their UTC times under Statistics (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`); a window of several sessions says low and high, and `--json` carries them as `metadata.sessionRanges`.
+
 ### Relative rotation (RRG / GRR)
 
 The default universe is the eleven US sector ETFs versus SPY. All prices come

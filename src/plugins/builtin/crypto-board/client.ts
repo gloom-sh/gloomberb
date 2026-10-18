@@ -49,6 +49,15 @@ function validAsset(asset: CryptoMarketAsset): boolean {
       asset.yearAgoPrice,
     ].every(nullableNumber)
     && nullableInstant(asset.quoteTime)
+    && (asset.peg == null
+      || (typeof asset.peg.currency === "string"
+        && /^[A-Z]{3}$/.test(asset.peg.currency)
+        && typeof asset.peg.accrues === "boolean"
+        && (asset.peg.price === null || (isFiniteNumber(asset.peg.price) && asset.peg.price > 0))
+        && nullableInstant(asset.peg.asOf)))
+    && (asset.range24h == null
+      || ([asset.range24h.low, asset.range24h.high].every((value) => isFiniteNumber(value) && value > 0)
+        && [asset.range24h.lowAt, asset.range24h.highAt, asset.range24h.start, asset.range24h.end].every(instant)))
     && (asset.history === null
       || (!!asset.history
         && date(asset.history.start)

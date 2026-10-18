@@ -40,7 +40,10 @@ import {
   cryptoRowObservations,
   DEFAULT_CRYPTO_SORT,
   formatCryptoPercent,
+  formatDayRangeTime,
+  formatOffPeg,
   nextCryptoSort,
+  offPegSeverity,
   sortCryptoRows,
   type CryptoColumn,
   type CryptoRow,
@@ -105,6 +108,25 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
       return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: colors.textDim };
     case "marketCap":
       return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: colors.textDim };
+    case "pegText":
+      return { text: row.pegText || "—", color: row.peg?.accrues || (row.peg && row.peg.currency !== "USD") ? colors.text : colors.textDim };
+    case "offPegBp": {
+      const severity = offPegSeverity(row.offPegBp);
+      return {
+        text: formatOffPeg(row.offPegBp),
+        value: row.offPegBp,
+        color: severity === "broken" ? colors.negative : severity === "watch" ? colors.warning : colors.text,
+        keepColorWhenSelected: severity !== "none",
+      };
+    }
+    case "low24h":
+      return { text: row.low24hText, value: row.low24h };
+    case "high24h":
+      return { text: row.high24hText, value: row.high24h };
+    case "low24hAt":
+      return { text: formatDayRangeTime(row.low24hAt), value: row.low24hAt == null ? null : new Date(row.low24hAt), color: colors.textDim };
+    case "high24hAt":
+      return { text: formatDayRangeTime(row.high24hAt), value: row.high24hAt == null ? null : new Date(row.high24hAt), color: colors.textDim };
   }
 }
 
@@ -168,7 +190,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const statusLine = useMemo(() => observations.length
     ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: observations, freshness: CRYPTO_BOARD_FRESHNESS }, now))
     : null, [now, observations]);
-  const columns = useMemo(() => buildCryptoColumns(width), [width]);
+  const columns = useMemo(() => buildCryptoColumns(width, activeTab), [activeTab, width]);
 
   const tabItems = CRYPTO_TABS.map((tab) => ({
     label: tab.label,

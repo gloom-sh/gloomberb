@@ -130,6 +130,16 @@ export function formatUtcDayTime(value: ReportTime, now = Date.now()): string {
   return value.dateOnly ? day : `${day} ${date.toISOString().slice(11, 16)}`;
 }
 
+/**
+ * `Sat 11:30` in UTC, for a cell inside a window shorter than a week (a
+ * 24-hour low) whose header names the zone: the weekday tells the day.
+ */
+export function formatUtcWeekdayTime(time: number): string {
+  if (!Number.isFinite(time)) return "";
+  const date = new Date(time);
+  return `${WEEKDAYS[date.getUTCDay()]} ${date.toISOString().slice(11, 16)}`;
+}
+
 /** The newest of some report times, as given, so a loader can declare its as-of from the rows it means. */
 export function newestReportTime<T>(values: Iterable<T>): T | null {
   let best: { value: T; time: number } | null = null;

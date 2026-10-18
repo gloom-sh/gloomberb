@@ -717,6 +717,9 @@ export function renderPaneCatalogReport(
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
+    // With no function to list, the command the query names comes first: "usdt" is CRYP's stablecoins
+    // before the USD/TWD series its letters start.
+    if (setting && charted) return [gap ? wrapText(gap, width).join("\n") : "", setting, charted, terms].filter(Boolean).join("\n\n");
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
     if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
