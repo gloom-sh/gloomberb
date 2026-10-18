@@ -48,6 +48,11 @@ export function failWithFields(message: string, code: string, fields: Record<str
   throw new CliFailure(message, undefined, code, undefined, fields);
 }
 
+/** Fails with what asking again shortly may get past (a busy service): `--json` marks it `retryable`. */
+export function failRetryable(message: string, code: string): never {
+  throw new CliFailure(message, undefined, code, true);
+}
+
 export function closeAndFail(persistence: AppPersistence, message: string, details?: string): never {
   persistence.close();
   fail(message, details);

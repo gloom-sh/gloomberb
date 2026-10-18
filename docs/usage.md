@@ -120,6 +120,8 @@ Text that no command claims searches symbols and names, and every result carries
 
 A symbol that trades in several places lists its exchanges after a colon: `NET:` shows each one, your saved listing first and the rest in search order. The list reads as many search rows as the CLI does, so a symbol several companies use lists them all: `CAR:` offers CAR Group on ASX as well as Avis and Carrefour. Letters after the colon narrow the list (`NET:L` keeps exchanges whose name or code starts with L), and `NET:XLON` names one listing.
 
+When Gloom Cloud is too busy to run a search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloomberb search` then fails with `Search is busy, try again in a moment.` and exits 1; its `--json` error has `code` `search_busy` and `retryable` `true`. A search that ran and found nothing still says `No matches`.
+
 ### Company Research
 
 | Shortcut | Function |

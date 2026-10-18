@@ -102,6 +102,8 @@ export const es: Record<string, string> = {
   "No focused pane": "Ningún panel activo",
   "Search failed": "Error de búsqueda",
   "Check your connection": "Revisa tu conexión",
+  "Search is busy": "La búsqueda está saturada",
+  "Try again in a moment": "Inténtalo de nuevo en un momento",
   "Commands": "Comandos",
 
   // ── Command bar categories ───────────────────────────────────

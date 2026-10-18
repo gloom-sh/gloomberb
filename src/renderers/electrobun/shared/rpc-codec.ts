@@ -1,5 +1,6 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import { isHistoryRetentionError, parseHistoryRetentionError } from "../../../sources/history-retention";
+import { isProviderBusy, ProviderBusyError } from "../../../sources/provider-errors";
 
 const DATE_MARKER = "__gloomDate";
 const MAP_MARKER = "__gloomMap";
@@ -15,6 +16,8 @@ export async function encodeRpcResponse(load: () => unknown | Promise<unknown>):
       ok: false,
       error: { kind: "history-retention", retention: error.retention, candidates: error.candidates, outcomes: error.outcomes },
     };
+    // A search the view runs must tell a busy source from one that found nothing.
+    if (isProviderBusy(error)) return { [RESPONSE_MARKER]: 1, ok: false, error: { kind: "provider-busy", message: error.message } };
     if (!(error instanceof ApiRequestError)) throw error;
     return {
       [RESPONSE_MARKER]: 1,
@@ -35,6 +38,10 @@ export function decodeRpcResponse<T = unknown>(value: unknown): T {
     const retention = parseHistoryRetentionError(error);
     if (!retention) throw new Error("Invalid desktop response");
     throw retention;
+  }
+  if (response.ok === false && error && typeof error === "object" && error.kind === "provider-busy") {
+    if (typeof error.message !== "string") throw new Error("Invalid desktop response");
+    throw new ProviderBusyError(error.message);
   }
   if (response.ok !== false || !error || typeof error !== "object"
     || (error.kind !== undefined && error.kind !== "api")

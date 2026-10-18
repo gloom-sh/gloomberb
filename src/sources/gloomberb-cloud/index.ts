@@ -43,7 +43,8 @@ import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
-import { createProviderMiss, providerMissReason } from "../provider-errors";
+import { createProviderMiss, ProviderBusyError, providerMissReason } from "../provider-errors";
+import { isRetryableApiError } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
 import { nonUsSecListingVenue } from "../../utils/sec";
 import { publicListingTarget } from "../listing-target";
@@ -578,7 +579,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const listings = await withCloudFallback(
       () => apiClient.searchInstruments(query, context?.limit ?? 10),
       "Cloud search is unavailable",
-    );
+    ).catch((error: unknown) => {
+      // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
+      throw isRetryableApiError(error) ? new ProviderBusyError("Cloud search is busy", { cause: error }) : error;
+    });
     const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) ? 2_000 : context?.interactive ? 250 : 2_000) ?? [];
     // Ahead of the listings, so a contract found by its plain name ("brent" for BZUSDT:BINANCE) is not cut
     // behind every warrant that names it; an exact symbol still leads.

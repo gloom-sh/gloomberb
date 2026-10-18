@@ -101,6 +101,8 @@ export const ko: Record<string, string> = {
   "No focused pane": "포커스된 패널 없음",
   "Search failed": "검색 실패",
   "Check your connection": "연결을 확인하세요",
+  "Search is busy": "검색이 혼잡합니다",
+  "Try again in a moment": "잠시 후 다시 시도하세요",
   "Commands": "명령",
 
   // ── Command bar categories ───────────────────────────────────

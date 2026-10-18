@@ -2,9 +2,9 @@ import { logFailure } from "../../utils/log-failure";
 import type { DataProvider, SearchRequestContext } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { BrokerCandidate } from "./brokers";
-import { shouldLogProviderError } from "../provider-errors";
+import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE, shouldLogProviderError } from "../provider-errors";
 import { searchInstrumentKey } from "../../tickers/search/identity";
-import { settleWithin } from "../../utils/async-deadline";
+import { OperationTimeoutError, settleWithin, withDeadline } from "../../utils/async-deadline";
 
 const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 100;
@@ -119,6 +119,10 @@ export class ProviderRouterSearchRoutes {
    * Ordering still matters, it just no longer costs latency: `mergeSearchResults`
    * keeps the richest entry per symbol, so a broker arriving after the cloud
    * still upgrades the row, and `onPartial` hands that upgrade to the caller.
+   *
+   * A search nothing answered because a provider was busy (rate limited,
+   * overloaded, out of time) rejects with a `ProviderBusyError` instead of
+   * reading as an empty one, and is not cached, so asking again asks again.
    */
   private fetchSearchResults(
     query: string,
@@ -142,10 +146,13 @@ export class ProviderRouterSearchRoutes {
     };
 
     let resolveFirst!: (value: InstrumentSearchResult[]) => void;
-    const first = new Promise<InstrumentSearchResult[]>((resolve) => {
+    let rejectFirst!: (error: unknown) => void;
+    const first = new Promise<InstrumentSearchResult[]>((resolve, reject) => {
       resolveFirst = resolve;
+      rejectFirst = reject;
     });
     let answered = false;
+    let busy = false;
 
     const record = (items: InstrumentSearchResult[] | null) => {
       if (!items?.length) return;
@@ -175,9 +182,13 @@ export class ProviderRouterSearchRoutes {
 
     const searchProvider = (provider: DataProvider) => (async () => {
       try {
-        record(await settleWithin(provider.search(query, context), timeoutMs));
+        record(await withDeadline(provider.search(query, context), timeoutMs, `${provider.id} search timed out`));
       } catch (error) {
-        if (shouldLogProviderError(error)) {
+        const timedOut = error instanceof OperationTimeoutError;
+        // A keystroke gives up on a slow source by design and asks again on the next one; only a full wait is busy.
+        if (isProviderBusy(error) || (timedOut && !context?.interactive)) {
+          busy = true;
+        } else if (!timedOut && shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
         }
       }
@@ -199,13 +210,16 @@ export class ProviderRouterSearchRoutes {
         await Promise.allSettled(fallbacks.map(searchProvider));
       }
     })().then(() => {
-      if (!answered) {
-        answered = true;
-        // Nothing matched anywhere, so hold the empty answer briefly rather
-        // than asking every source again on the next keystroke.
-        cacheResults(Math.min(SEARCH_CACHE_TTL_MS, 5_000));
-        resolveFirst([]);
+      if (answered) return;
+      answered = true;
+      if (busy) {
+        rejectFirst(new ProviderBusyError(SEARCH_BUSY_MESSAGE));
+        return;
       }
+      // Nothing matched anywhere, so hold the empty answer briefly rather
+      // than asking every source again on the next keystroke.
+      cacheResults(Math.min(SEARCH_CACHE_TTL_MS, 5_000));
+      resolveFirst([]);
     });
 
     return { first, settled };

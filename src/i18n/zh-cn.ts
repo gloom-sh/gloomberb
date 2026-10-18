@@ -103,6 +103,8 @@ export const zhCN: Record<string, string> = {
   "No focused pane": "没有聚焦的面板",
   "Search failed": "搜索失败",
   "Check your connection": "请检查网络连接",
+  "Search is busy": "搜索繁忙",
+  "Try again in a moment": "请稍后重试",
   "Commands": "命令",
 
   // ── Command bar categories ───────────────────────────────────

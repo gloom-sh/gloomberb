@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createGloomberbCloudCapabilities, GloomberbCloudProvider } from "./index";
 import type { NewsCapability } from "../../capabilities";
-import { apiClient, type CloudNewsPayload } from "../../api-client";
+import { apiClient, setCloudApiFetchTransport, type CloudNewsPayload } from "../../api-client";
 import { cloudNewsParams } from "./news";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import { ProviderMissError, providerMissReason } from "../provider-errors";
+import { ProviderBusyError, ProviderMissError, providerMissReason } from "../provider-errors";
 import { verifiedUser } from "../../test-support/cloud-api";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
@@ -127,6 +127,21 @@ describe("GloomberbCloudProvider", () => {
       expect(results).toHaveLength(2);
       expect(results.every((result) => result.quote === null && result.error instanceof ProviderMissError)).toBe(true);
       provider.subscribeQuotes(targets, () => { throw new Error("ambiguous listing delivered"); })();
+    }
+  });
+
+  test("a search the service could not run is busy, which a search that found nothing is not", async () => {
+    const provider = new GloomberbCloudProvider();
+    let answer = () => Response.json({ status: "retryable_error", data: null, reasonCode: "UPSTREAM_RATE_LIMIT" });
+    setCloudApiFetchTransport(async (url) => new URL(url).pathname === "/market/search" ? answer() : Response.json({ status: "empty", data: null }));
+    try {
+      await expect(provider.search("Eagle Bulk")).rejects.toBeInstanceOf(ProviderBusyError);
+      answer = () => Response.json({ error: "rate_limited" }, { status: 429 });
+      await expect(provider.search("Eagle Bulk")).rejects.toBeInstanceOf(ProviderBusyError);
+      answer = () => Response.json({ status: "empty", data: null, reasonCode: "NO_DATA" });
+      expect(await provider.search("zzqqxv")).toEqual([]);
+    } finally {
+      setCloudApiFetchTransport(null);
     }
   });
 

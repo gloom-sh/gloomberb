@@ -103,6 +103,8 @@ export const ja: Record<string, string> = {
   "No focused pane": "選択中のペインはありません",
   "Search failed": "検索に失敗しました",
   "Check your connection": "接続を確認してください",
+  "Search is busy": "検索が混み合っています",
+  "Try again in a moment": "しばらくしてから再試行してください",
   "Commands": "コマンド",
 
   // ── Command bar categories ───────────────────────────────────

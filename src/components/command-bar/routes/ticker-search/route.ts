@@ -6,6 +6,7 @@ import { LISTING_SEARCH_LIMIT, searchTickerCandidates, symbolSearchQuery } from 
 import {
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
+  tickerSearchFailureItems,
 } from "./results";
 import type { ResultItem } from "../../list/model";
 
@@ -116,17 +117,9 @@ export function useTickerSearchRouteResults(options: {
           buildTickerSearchResultItems(combined, searchQuery),
           localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
-      } catch {
+      } catch (error) {
         if (requestId !== searchRequestIdRef.current) return;
-        const nextItems: ResultItem[] = [{
-          id: "search-error",
-          label: "Search failed",
-          detail: "Check your connection",
-          category: "Search",
-          kind: "info",
-          action: () => {},
-        }];
-        setTickerSearchResults(nextItems);
+        setTickerSearchResults(tickerSearchFailureItems(error, searchQuery, localTickerSearchResultItems(searchQuery, { limit: 6 })));
       } finally {
         if (requestId === searchRequestIdRef.current) {
           setTickerSearchPending(false);

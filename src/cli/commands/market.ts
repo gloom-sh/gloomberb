@@ -762,8 +762,10 @@ async function answerPhrase(phrase: string, market: MarketContext, ctx: Paramete
   }
   process.exitCode = CLI_EXIT_CODES.error;
   if (ctx.cliOptions.quiet) return;
+  // Searched first: a busy search fails on its own, without the line saying the phrase names nothing.
+  const report = await phraseSearchReport(phrase, market, ctx.plugins);
   console.error(`${cliStyles.warning("warning:")} ${said} What search finds for it:`);
-  console.log(await phraseSearchReport(phrase, market, ctx.plugins));
+  console.log(report);
 }
 
 /**

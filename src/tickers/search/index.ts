@@ -34,6 +34,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
+import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
 export type {
@@ -235,13 +236,17 @@ export async function searchTickerCandidates({
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
   });
-  return assemble(await searchProviderResults(
+  const { results, busy } = await searchProviderResults(
     dataProvider,
     query,
     searchContext,
-    onPartial ? (results) => onPartial(assemble(results)) : undefined,
+    onPartial ? (found) => onPartial(assemble(found)) : undefined,
     true,
-  ));
+  );
+  const candidates = assemble(results);
+  // Saved tickers or another source's rows still answer. Nothing at all, because a source was busy, is no answer.
+  if (busy && candidates.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE);
+  return candidates;
 }
 
 export function buildTickerSearchCandidates({
@@ -430,8 +435,9 @@ async function resolveTickerSymbol(
   const saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
   if (saved && !pickerQuery) return saved;
 
+  // A search a busy source left unanswered resolves nothing, as an empty one does.
   const providerItems = createProviderTickerSearchCandidates(
-    await searchProviderResults(dataProvider, symbol, searchContext),
+    (await searchProviderResults(dataProvider, symbol, searchContext)).results,
     tickers,
   );
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
@@ -549,6 +555,12 @@ function searchResultPopularity(result: InstrumentSearchResult): number | undefi
   return typeof result.popularity === "number" && Number.isFinite(result.popularity) ? result.popularity : undefined;
 }
 
+interface ProviderSearch {
+  results: InstrumentSearchResult[];
+  /** A spelling went unanswered because a source was busy, so an empty list may not mean nothing matches. */
+  busy: boolean;
+}
+
 async function searchProviderResults(
   dataProvider: DataProvider,
   rawQuery: string,
@@ -556,7 +568,7 @@ async function searchProviderResults(
   onPartial?: (results: InstrumentSearchResult[]) => void,
   /** Also look for the funds of a sector word, for a list of matches rather than one resolved symbol. */
   withThemeFunds = false,
-): Promise<InstrumentSearchResult[]> {
+): Promise<ProviderSearch> {
   // "ES FUT" looks up ES, and ES=F as well: the catalogue answers a bare root
   // with stocks only. The ranking keeps the futures.
   const assetClass = parseAssetClassQuery(rawQuery);
@@ -583,6 +595,7 @@ async function searchProviderResults(
   // the continuous symbol only: NG finds NovaGold and NG=F.
   const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
   if (boardFuture && !searchQueries.includes(boardFuture)) searchQueries.push(boardFuture);
+  let busy = false;
   await Promise.all(searchQueries.map(async (searchQuery) => {
     try {
       const results = await dataProvider.search(searchQuery, {
@@ -598,7 +611,8 @@ async function searchProviderResults(
       });
       add(results);
     } catch (error) {
-      logFailure("tickers-search", "Could not search ticker spelling")(error);
+      if (isProviderBusy(error)) busy = true;
+      else logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
   }));
 
@@ -658,7 +672,7 @@ async function searchProviderResults(
     }
   }
 
-  return [...byKey.values()];
+  return { results: [...byKey.values()], busy };
 }
 
 function buildProviderSearchQueries(query: string): string[] {

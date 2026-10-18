@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { HistoryRetentionError, type HistoryRecoveryCandidate, type HistoryRetention } from "../../../sources/history-retention";
+import { ProviderBusyError } from "../../../sources/provider-errors";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "./rpc-codec";
 
@@ -27,6 +28,12 @@ test("successful research preserves dates, maps, nulls and response-shaped paylo
   expect(await requestThroughRpc(() => null)).toBeNull();
   expect(await requestThroughRpc(() => undefined)).toBeUndefined();
   expect(decodeRpcValue(encodeRpcValue(value.dated))).toEqual(value.dated);
+});
+
+test("a busy search reaches the view as busy, so its search does not read it as nothing found", async () => {
+  const failure = await requestThroughRpc(() => { throw new ProviderBusyError("busy"); }).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(ProviderBusyError);
+  expect(failure.message).toBe("busy");
 });
 
 test("generic failures retain their message without inventing API status", async () => {

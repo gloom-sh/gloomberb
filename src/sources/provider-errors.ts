@@ -47,6 +47,25 @@ function isProviderMiss(error: unknown): error is ProviderMissError {
     || (!!error && typeof error === "object" && PROVIDER_MISS_BRAND in error);
 }
 
+/**
+ * A source that could not answer just now (rate limited, overloaded, timed
+ * out) and may if asked again shortly. Unlike a miss, it says nothing about
+ * whether what was asked for exists.
+ */
+export class ProviderBusyError extends Error {
+  constructor(message = "The data service is busy", options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ProviderBusyError";
+  }
+}
+
+export function isProviderBusy(error: unknown): error is ProviderBusyError {
+  return error instanceof ProviderBusyError;
+}
+
+/** What a search its sources could not answer says, rather than that nothing matched. */
+export const SEARCH_BUSY_MESSAGE = "Search is busy, try again in a moment.";
+
 /** The reason a provider gave for a miss, or undefined when it gave none. */
 export function providerMissReason(error: unknown): string | undefined {
   return isProviderMiss(error) ? error.reason : undefined;

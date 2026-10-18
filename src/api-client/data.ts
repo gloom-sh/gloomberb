@@ -46,6 +46,7 @@ import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQu
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeSnapshot } from "./tape";
 import { signalWithTimeout } from "../utils/async-deadline";
+import { ApiRequestError } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
@@ -244,6 +245,10 @@ export class CloudDataApi {
     const response = await this.request<
       CloudMarketResponse<InstrumentSearchResult[]>
     >(cloudMarketSearchPath(query, limit));
+    // A search the service could not run (its catalogue rate limited, say) is no answer, not an empty one.
+    if (response.status === "retryable_error" || response.status === "fatal_error") {
+      throw new ApiRequestError(response.reasonCode ?? "Cloud search failed", undefined, undefined, response.status);
+    }
     return response.data ?? [];
   }
 

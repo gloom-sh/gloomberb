@@ -13,6 +13,7 @@ import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
 import { answersToFutureName, answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
+import { isProviderBusy } from "../../../../sources/provider-errors";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
@@ -106,6 +107,39 @@ export function mergeTickerSearchResultItems(
       : item);
 }
 
+const SEARCH_BUSY_ITEM_ID = "search-busy";
+
+/** The busy row among a search's rows: a list left with no instruments keeps it, so nothing there reads as no listing. */
+function searchBusyRows(items: readonly ResultItem[]): ResultItem[] {
+  return items.filter((item) => item.id === SEARCH_BUSY_ITEM_ID);
+}
+
+/**
+ * The rows for a ticker search that threw. A busy service says so rather
+ * than "No matches", unless saved tickers still match, which then answer on
+ * their own; any other failure is a failed search.
+ */
+export function tickerSearchFailureItems(error: unknown, query: string, localItems: ResultItem[]): ResultItem[] {
+  if (isProviderBusy(error)) {
+    return mergeTickerSearchResultItems(query, [{
+      id: SEARCH_BUSY_ITEM_ID,
+      label: "Search is busy",
+      detail: "Try again in a moment",
+      category: "Search",
+      kind: "info",
+      action: () => {},
+    }], localItems);
+  }
+  return [{
+    id: "search-error",
+    label: "Search failed",
+    detail: "Check your connection",
+    category: "Search",
+    kind: "info",
+    action: () => {},
+  }];
+}
+
 const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
 
 /** Enough to surface the listing the user means without burying the sections below. */
@@ -156,7 +190,10 @@ export function mergePlainRootTickerResults(
     candidates.push(item);
   }
   const instruments = pickRootInstruments(candidates, isExact);
-  if (instruments.length === 0) return rootItems;
+  if (instruments.length === 0) {
+    const busy = searchBusyRows(providerItems);
+    return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
+  }
 
   return [
     ...instruments.filter(isExact).map((item) => ({ ...item, category: "Exact Match" })),
@@ -195,7 +232,7 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
     if (!venueMatchesSuffix(item, suffix)) continue;
     rows.push(item.category === "Exact Match" ? item : { ...item, category: "Exact Match" });
   }
-  return rows;
+  return rows.length > 0 ? rows : searchBusyRows(items);
 }
 
 /**
