@@ -48,7 +48,7 @@ function useCursorRowInView(selected: boolean) {
 }
 
 /** Every sidebar row starts at the pane's inset; the row's fill still runs to the edge. */
-const ROW_INSET = { paddingLeft: "var(--gloom-inset)", boxSizing: "border-box" } as const;
+const ROW_INSET = { paddingLeft: "0px", boxSizing: "border-box" } as const;
 
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({

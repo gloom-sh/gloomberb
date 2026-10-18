@@ -157,7 +157,7 @@ function Block({ block, width, onOpenLink, first = false }: { block: DocsBlock; 
       return (
         <Box flexDirection="column" paddingLeft={2}>
           {block.code.split("\n").map((line, index) => (
-            <Text key={index} fg={colors.textBright} selectable>{line || " "}</Text>
+            <Text key={index} fg={colors.textBright} selectable style={{ fontSize: 13 }}>{line || " "}</Text>
           ))}
         </Box>
       );
