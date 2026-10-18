@@ -75,3 +75,48 @@ test("the pane's labels, dates and notices are translated", () => {
   expect(t("Premium/discount")).toBe("乖離率");
   expect(byId(IVV).premium!.detail).toBe("2026-10-16 終値");
 });
+
+const DFAC: FundFactsPayload = {
+  ticker: "DFAC", covered: true, status: "covered", name: "Dimensional U.S. Core Equity 2 ETF", structure: "registered",
+  expenseRatio: { value: 0.17, asOf: "2026-02-27", source: "SEC EDGAR", kind: "gross", document: "prospectus" },
+  nav: null, closingPrice: null, premiumDiscount: null,
+  netAssets: { value: 47.89e9, asOf: "2026-07-31", source: "SEC EDGAR", scope: "share-class", period: "month-end", document: "N-PORT" },
+  sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+};
+
+test("figures from the SEC's data sets say which filing they come from: the prospectus's fee, N-PORT's month-end net assets", () => {
+  const items = byId(DFAC);
+  expect(Object.keys(items)).toEqual(["fee", "assets"]);
+  expect(items.fee).toMatchObject({ value: "0.17%", detail: "prospectus 2026-02-27" });
+  expect(items.assets).toMatchObject({ detail: "2026-07-31 month-end · N-PORT" });
+  // Without a NAV to compare with, neither is marked.
+  expect(items.fee!.tone).toBeUndefined();
+  expect(items.assets!.tone).toBeUndefined();
+  expect(fundFactOverviewFields(DFAC).find((field) => field.label === "Net Assets")!.detail)
+    .toEqual(["2026-07-31 month-end · N-PORT", "07-31 month-end · N-PORT", "2026-07-31 month-end", "07-31 month-end"]);
+  expect(fundFactPublishers(DFAC)).toEqual(["SEC EDGAR"]);
+  // A sponsor's NAV beside N-PORT's net assets: both publishers, and the month end is not marked as lagging.
+  const soxl = byId({ ...DFAC, nav: { value: 107.36, asOf: "2026-10-15", source: "Direxion" } });
+  expect(soxl.assets!.tone).toBeUndefined();
+  expect(fundFactPublishers({ ...DFAC, nav: { value: 107.36, asOf: "2026-10-15", source: "Direxion" } })).toEqual(["Direxion", "SEC EDGAR"]);
+  setLanguage("es");
+  expect(byId(DFAC).fee!.detail).toBe("folleto 2026-02-27");
+  expect(byId(DFAC).assets!.detail).toBe("2026-07-31 fin de mes · N-PORT");
+});
+
+test("a fund without figures says not collected yet when a source Gloom reads covers it, and not published only when none does", () => {
+  const empty = { ...IVV, covered: false };
+  expect(fundFactsEmptyText("USO", { ...empty, status: "not-collected-yet", structure: "trust" }))
+    .toBe("USO's figures are not collected yet; the next read stores them.");
+  expect(fundFactsEmptyText("GBTC", { ...empty, status: "not-published", structure: "trust" }))
+    .toBe("GBTC files with the SEC as a trust or pool, not as an open-end fund, and its sponsor's site is not one Gloom reads.");
+  expect(fundFactsEmptyText("NEWF", { ...empty, status: "not-published", structure: "registered" }))
+    .toBe("No figures for NEWF: its sponsor's site is not one Gloom reads, and the SEC's prospectus and N-PORT data sets list none for it yet.");
+  expect(fundFactsEmptyText("DRAM", { ...empty, status: "not-published", structure: null }))
+    .toBe("No figures for DRAM: it lists as a fund, but the SEC's lists do not name it yet and its sponsor's site is not one Gloom reads.");
+  expect(fundFactsEmptyText("AAPL", { ...empty, status: "not-a-fund", structure: null }))
+    .toBe("No fund facts for AAPL: it is not on the SEC's lists of US-listed funds.");
+  setLanguage("ko");
+  expect(fundFactsEmptyText("USO", { ...empty, status: "not-collected-yet", structure: "trust" }))
+    .toBe("USO의 수치는 아직 수집되지 않았습니다. 다음 읽기에서 저장됩니다.");
+});
