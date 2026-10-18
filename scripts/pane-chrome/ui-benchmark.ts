@@ -46,10 +46,8 @@ function git(args: string[], cwd = process.cwd()): string {
 /** A detached worktree of `sha`, its dependencies installed, reused while it exists. */
 function baseWorktree(sha: string): string {
   const dir = cacheDir("ui-benchmark", `base-${sha.slice(0, 12)}`);
-  if (!existsSync(join(dir, "package.json"))) {
-    Bun.spawnSync(["git", "worktree", "prune"]);
-    sh(["git", "worktree", "add", "--detach", "--force", dir, sha]);
-  }
+  // --force takes over a worktree whose folder was deleted but is still registered.
+  if (!existsSync(join(dir, "package.json"))) sh(["git", "worktree", "add", "--detach", "--force", dir, sha]);
   if (!existsSync(join(dir, "node_modules"))) sh(["bun", "install", "--frozen-lockfile"], { cwd: dir });
   return dir;
 }
