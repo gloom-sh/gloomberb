@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filedPeriodText, summarizeTickerHoldings } from "./report-notes";
+import { filedPeriodText, holdingSplitNotes, holdingUnreadNotes, summarizeTickerHoldings } from "./report-notes";
 
 const row = (cik: string, value: number | null = 100, action: "held" | "exit" = "held") => ({ cik, value, action });
 const quarter = { period: "2026-06-30", previousPeriod: "2026-03-31", holderCount: 3, newCount: 1, exitCount: 1 };
@@ -49,5 +49,19 @@ describe("13F filing dates", () => {
     expect(filedPeriodText("2026-03-31", "2026-05-15", "2025-12-31"))
       .toBe("Period 31 Mar · filed 15 May 2026 (45 days after quarter end) | QoQ vs 31 Dec 2025");
     expect(filedPeriodText("2026-06-30", null)).toBe("Period 2026-06-30");
+  });
+});
+
+describe("13F Holdings split notes", () => {
+  test("a confirmed split is a report note only; the pane's notice is the lines left without an Est P&L", () => {
+    const klac = { ticker: "KLAC", issuer: "KLA Corp", splitRatio: 10 };
+    const odd = { ticker: "", issuer: "Odd Co", splitUnread: true };
+    const unread = "No Est P&L: Odd Co (shares and value per share moved as across a split, and the corporate actions could not be read to tell)";
+    expect(holdingSplitNotes([klac, odd])).toEqual([
+      "Est P&L split-adjusted: KLAC 10:1 (split between the filings, as the corporate actions show)",
+      unread,
+    ]);
+    expect(holdingUnreadNotes([klac, odd])).toEqual([unread]);
+    expect(holdingUnreadNotes([klac])).toEqual([]);
   });
 });

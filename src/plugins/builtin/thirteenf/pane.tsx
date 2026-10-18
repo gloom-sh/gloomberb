@@ -53,7 +53,7 @@ import {
   sortHoldingRows,
   sortTimelineRows,
 } from "./model";
-import { filingGapText, holdingSplitNotes, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
+import { filingGapText, holdingUnreadNotes, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
 import {
   renderBrowserCell,
   renderFilingPositionCell,
@@ -523,8 +523,8 @@ export function FundDetailView({
 
   // A 13F-NT, or no 13F, for the newest quarter past its deadline; a stale filing's age is in the stats already.
   const filingGap = data?.filingGap && (data.filingGap.filing || !staleFiling) ? filingGapText(data.filingGap, { command: false }) : null;
-  // What Est P&L did with the lines that moved as across a split, said once their corporate actions have answered.
-  const splitNotices = useMemo(() => (activeTab === "holdings" && splitFactors ? holdingSplitNotes(visibleHoldingRows) : []), [activeTab, splitFactors, visibleHoldingRows]);
+  // Lines left without an Est P&L because their split could not be confirmed, said once their corporate actions have answered; a confirmed split is method, not a warning.
+  const splitNotices = useMemo(() => (activeTab === "holdings" && splitFactors ? holdingUnreadNotes(visibleHoldingRows) : []), [activeTab, splitFactors, visibleHoldingRows]);
   const holdingNotices = useMemo(() => [...(filingGap ? [filingGap] : []), ...splitNotices, ...(data?.warnings ?? [])], [filingGap, splitNotices, data?.warnings]);
   usePaneNoticeFooter({
     registrationId: "thirteenf-holdings-notices",

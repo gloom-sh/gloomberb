@@ -145,14 +145,16 @@ export function splitUnreadText(lines: readonly SplitLine[], leftOut: string): s
   return `${leftOut}: ${listedLines(lines, lineName)} (shares and value per share moved as across a split, and the corporate actions could not be read to tell)`;
 }
 
-/** What a Holdings table's Est P&L says of its lines that moved as across a split: the ones priced split-adjusted, and the ones left without a figure. */
+/** The note for the lines of a Holdings table left without an Est P&L because their split could not be confirmed: a data limitation, the pane's notice as well as the report's. */
+export function holdingUnreadNotes(rows: readonly (SplitLine & { splitUnread?: boolean })[]): string[] {
+  const unread = rows.filter((row) => row.splitUnread);
+  return unread.length ? [splitUnreadText(unread, "No Est P&L")] : [];
+}
+
+/** What a Holdings report says of its lines that moved as across a split: the ones priced split-adjusted (method, so a report's note only), and the ones left without a figure. */
 export function holdingSplitNotes(rows: readonly (SplitLine & { splitRatio?: number; splitUnread?: boolean })[]): string[] {
   const adjusted = rows.flatMap((row) => row.splitRatio ? [{ ...row, ratio: row.splitRatio }] : []);
-  const unread = rows.filter((row) => row.splitUnread);
-  return [
-    ...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []),
-    ...(unread.length ? [splitUnreadText(unread, "No Est P&L")] : []),
-  ];
+  return [...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []), ...holdingUnreadNotes(rows)];
 }
 
 /** "Q2 2026" for the quarter ending 30 Jun 2026. */

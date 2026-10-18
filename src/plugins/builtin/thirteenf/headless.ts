@@ -784,7 +784,7 @@ export function createThirteenFHeadless(
             currentFilings: detail.latestReport?.filings.map((form) => form.accessionNumber) ?? [],
             previousFilings: detail.previousReport?.filings.map((form) => form.accessionNumber) ?? [],
             currentReportedValue: detail.latestReport?.complete ? detail.latestReport.tableValueTotal : null,
-            changeBasis: "Changes compare disclosed quarter-end positions, not trades. Omitted or confidential holdings can affect apparent entries and exits.",
+            changeBasis: "Changes compare disclosed quarter-end positions, not trades, with the prior shares of a line split between the filings carried across the split. Omitted or confidential holdings can affect apparent entries and exits.",
             valueBasis: THIRTEENF_OPTIONS_NOTE,
             estimatedPnlBasis: "Quarter-end unit-value change on overlapping reported shares, split-adjusted across a split between the filings; excludes options, trading costs and dividends; not actual fund P&L.",
           },

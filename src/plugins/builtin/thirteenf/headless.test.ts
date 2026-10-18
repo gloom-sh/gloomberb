@@ -93,7 +93,7 @@ describe("13F headless model", () => {
   });
 
   test("holdings price a line that moved as across a split by its corporate actions, and name the lines split-adjusted or left without a figure", async () => {
-    // KLAC 10:1 at 120 a share before the split and 12 after (-88 on each old share, read naively); ODD moves the same way.
+    // KLAC 10:1 at 120 a share before the split and 12 after (-88 on each old share, read naively): 10 shares became 100, so it is held, not an add. ODD moves the same way.
     const line = (ticker: string, cusip: string, value: number, shares: number, accessionNumber: string) =>
       ({ ...detail.latestHoldings[0]!, ticker, cusip, issuer: `${ticker} Corp`, value, shares, accessionNumber });
     const headless = createThirteenFHeadless({
@@ -114,8 +114,8 @@ describe("13F headless model", () => {
     const result = await headless.load(args("holdings"), context);
     // Only the lines that move like a split are looked up; AAPL, added to at a flat price, is read as it stands.
     expect(looked.sort()).toEqual(["KLAC", "ODD"]);
-    expect(result.rows.find((row) => row.ticker === "KLAC")).toMatchObject({ estimatedPnl: 200, splitRatio: 10 });
-    expect(result.rows.find((row) => row.ticker === "ODD")).toMatchObject({ estimatedPnl: null, splitUnread: true });
+    expect(result.rows.find((row) => row.ticker === "KLAC")).toMatchObject({ estimatedPnl: 200, splitRatio: 10, sharesChange: 0, action: "held" });
+    expect(result.rows.find((row) => row.ticker === "ODD")).toMatchObject({ estimatedPnl: null, splitUnread: true, sharesChange: 90, action: "add" });
     expect(result.rows.find((row) => row.ticker === "AAPL")).toMatchObject({ estimatedPnl: 0 });
     expect(result.metadata?.notices).toEqual(expect.arrayContaining([
       "Est P&L split-adjusted: KLAC 10:1 (split between the filings, as the corporate actions show)",

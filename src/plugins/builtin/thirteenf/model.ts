@@ -378,12 +378,22 @@ function aggregateHoldings(holdings: ThirteenFHoldingRecord[]): Map<string, Hold
   return aggregates;
 }
 
-function resolveAction(current: HoldingAggregate | undefined, previous: HoldingAggregate | undefined): HoldingAction {
+/**
+ * The change from `previous` shares to `shares`, with the previous ones carried
+ * across a split of `ratio` new shares per old (1 for none, as filed). A line
+ * held through a split is not a change, whatever float noise (70 × 0.1) says.
+ */
+function sharesDelta(shares: number, previous: number, ratio: number): number {
+  const delta = shares - previous * ratio;
+  return ratio === 1 ? delta : Math.round(delta * 1e3) / 1e3 || 0;
+}
+
+function resolveAction(current: HoldingAggregate | undefined, previous: HoldingAggregate | undefined, ratio = 1): HoldingAction {
   if (current && !previous) return "new";
   if (!current && previous) return "exit";
   if (!current || !previous) return "held";
   if (current.shares == null || previous.shares == null) return "unknown";
-  const delta = current.shares - previous.shares;
+  const delta = sharesDelta(current.shares, previous.shares, ratio);
   if (delta > 0) return "add";
   if (delta < 0) return "trim";
   return "held";
@@ -553,8 +563,11 @@ function adjacentQuarterPeriods(current: string | undefined, previous: string | 
 /**
  * A fund's holdings with their change from the prior quarter. `splits` says,
  * for the lines that moved as across a split (filingSplitCandidates), whether
- * a split happened between the filings (estimateHolding); without a factor
- * such a line has no Est P&L (`splitUnread`).
+ * a split happened between the filings (estimateHolding). A confirmed split
+ * prices Est P&L on split-adjusted shares and measures the change in shares
+ * and the action from the prior shares carried across it (`splitRatio`); a
+ * line without a factor has no Est P&L (`splitUnread`) and keeps its change
+ * as filed.
  */
 export function buildFundHoldingRows(data: FundDetailData | null, splits?: SplitFactors): FundHoldingRow[] {
   if (!data?.latestForm) return [];
@@ -577,13 +590,15 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
     const valueChange = comparable && (!currentHolding || value != null) && (!previousHolding || previousValue != null)
       ? (value ?? 0) - (previousValue ?? 0)
       : null;
+    // The split ratio estimateHolding confirmed carries the prior shares to today's basis for the change and the action too: one rule.
+    const estimate = estimateHolding({ id, putCall: display.putCall, value, shares, previousValue, previousShares }, splits);
+    const ratio = estimate.kind === "priced" ? estimate.ratio : 1;
     const sharesChange = comparable && (!currentHolding || shares != null) && (!previousHolding || previousShares != null)
-      ? (shares ?? 0) - (previousShares ?? 0)
+      ? sharesDelta(shares ?? 0, previousShares ?? 0, ratio)
       : null;
     const sharesChangePercent = sharesChange != null && previousShares && previousShares !== 0
-      ? sharesChange / previousShares
+      ? sharesChange / (previousShares * ratio)
       : null;
-    const estimate = estimateHolding({ id, putCall: display.putCall, value, shares, previousValue, previousShares }, splits);
     return {
       id,
       ticker: display.ticker,
@@ -599,11 +614,11 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
       previousShares,
       valueChange,
       estimatedPnl: estimate.kind === "priced" ? estimate.pnl : null,
-      ...(estimate.kind === "priced" && estimate.ratio !== 1 ? { splitRatio: estimate.ratio } : {}),
+      ...(ratio !== 1 ? { splitRatio: ratio } : {}),
       ...(estimate.kind === "unread" ? { splitUnread: true } : {}),
       sharesChange,
       sharesChangePercent,
-      action: comparable ? resolveAction(currentHolding, previousHolding) : "unknown",
+      action: comparable ? resolveAction(currentHolding, previousHolding, ratio) : "unknown",
       accessionNumber: display.accessionNumber,
     };
   });

@@ -309,6 +309,26 @@ describe("13F model", () => {
     expect(buildFundHoldingRows(fund([steady.previous], [steady.current]), new Map()).every((row) => !row.splitUnread && row.estimatedPnl === 100)).toBe(true);
   });
 
+  test("a confirmed split carries the prior shares to today's basis for the share change and the action; a trade or an unread line keeps the change as filed", () => {
+    const fund = (previous: ThirteenFHoldingRecord[], current: ThirteenFHoldingRecord[]): FundDetailData => ({
+      cik: "0001067983", name: "Fund", forms: [],
+      latestForm: form({}), previousForm: form({ periodOfReport: "2025-12-31" }),
+      latestHoldings: current, previousHoldings: previous,
+    });
+    // 10 shares at 100 became 100 at 10:1, of which 50 are left at 12: cut in half. Read as filed that is +40 shares, an add.
+    const cut = fund([holding({ cusip: "A", value: 1000, shares: 10 })], [holding({ cusip: "A", value: 600, shares: 50 })]);
+    const id = buildFundHoldingRows(cut)[0]!.id;
+    expect(buildFundHoldingRows(cut, new Map([[id, 10]]))[0]).toMatchObject({
+      previousShares: 10, shares: 50, sharesChange: -50, sharesChangePercent: -0.5, action: "trim", splitRatio: 10, estimatedPnl: 100,
+    });
+    for (const splits of [new Map([[id, 1]]), new Map([[id, null]]), undefined]) {
+      expect(buildFundHoldingRows(cut, splits)[0]).toMatchObject({ sharesChange: 40, sharesChangePercent: 4, action: "add" });
+    }
+    // 70 shares held through a 1:10 reverse split are 7: unchanged, though 70 × 0.1 is 7.000000000000001.
+    const held = fund([holding({ cusip: "A", value: 700, shares: 70 })], [holding({ cusip: "A", value: 700, shares: 7 })]);
+    expect(buildFundHoldingRows(held, new Map([[id, 0.1]]))[0]).toMatchObject({ sharesChange: 0, sharesChangePercent: 0, action: "held", splitRatio: 0.1 });
+  });
+
   test("does not call a first filing or a missing-quarter comparison new buying", () => {
     for (const previousForm of [null, form({ periodOfReport: "2025-09-30" })]) {
       const rows = buildFundHoldingRows({
