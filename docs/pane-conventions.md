@@ -170,7 +170,11 @@ system in CI, and both run locally:
   requests that touch the DOM renderer, components, `src/ui`, plugin code,
   layouts, the theme or styles.css; it reports and never fails). Every view
   pictured on the base and on the head at 640 and 1280 px in Chromium, pane
-  bodies compared pixel by pixel. One comment on the pull request, edited on
+  bodies compared pixel by pixel, both sides from the same data (the week's
+  snapshot, or one fetch by the base). A view that moved is pictured on the
+  head a second time; one whose two pictures differ (a 3D surface's labels, a
+  value read from the clock) is named as unsteady and left out of the count.
+  One comment on the pull request, edited on
   every run, says how many of how many views changed and lists them; the
   `ui-benchmark` artifact has the sheets: before, after and the difference of
   every view that moved, and a sheet per family. Locally,
