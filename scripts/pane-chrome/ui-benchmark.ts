@@ -17,10 +17,12 @@ import { pixelChange } from "./ui-audit-compare";
  *   bun run ui:benchmark shoot --base <ref> --shard 0/8 --out <dir>     one shard (CI)
  *   bun run ui:benchmark report --shards <dir> --out <dir> [--comment <pr>]
  *
- * Both sides read Gloom Cloud from one replay folder (web-app.ts): the base
- * reads first and keeps what it fetched, the head reads only what was kept,
- * so both draw the same data; `--offline` keeps the base from fetching too (a
- * kept snapshot, as CI restores it). The base is a worktree of `--base`
+ * Both sides read Gloom Cloud from one replay folder (web-app.ts), offline,
+ * so both draw the same data and neither is pictured while a fetch is still
+ * out: first the base is opened once without pictures, fetching what the
+ * replay lacks and keeping it, then both sides are pictured from what was
+ * kept. `--offline` skips the fetching pass (a kept snapshot, as CI restores
+ * it), so a read the snapshot lacks draws the same offline state on both. The base is a worktree of `--base`
  * (default: where HEAD left origin/main) under the cache folder; the head is
  * this checkout. The audit of each side is ui-audit.ts, from this checkout.
  */
@@ -54,13 +56,20 @@ function baseWorktree(sha: string): string {
 
 interface ShootOptions { base: string; out: string; replay: string; widths: string; shard?: string; only?: string; offline: boolean }
 
-/** One side's views, pictured: the audit, white theme only, no report. */
-function audit(side: "before" | "after", root: string, options: ShootOptions): void {
+/**
+ * One pass of the audit, white theme only, no report: `fetch` opens every view
+ * once to fill the replay (no pictures, the widest width); `before` and
+ * `after` picture each side from the replay, offline.
+ */
+function audit(pass: "fetch" | "before" | "after", root: string, options: ShootOptions): void {
+  const side = pass === "after" ? "after" : "before";
+  const build = pass !== "before" || options.offline;
   sh([
-    "bun", join(import.meta.dir, "ui-audit.ts"), "--build", "--registry", "--no-report", "--themes", "white",
-    "--widths", options.widths, "--root", root,
-    "--out", join(options.out, side), "--web", join(options.out, `web-${side}`), "--replay", options.replay,
-    ...(side === "after" || options.offline ? ["--offline"] : []),
+    "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-report", "--themes", "white", "--root", root,
+    "--widths", pass === "fetch" ? options.widths.split(",").at(-1)! : options.widths,
+    "--out", join(options.out, pass), "--web", join(options.out, `web-${side}`), "--replay", options.replay,
+    ...(build ? ["--build"] : []),
+    ...(pass === "fetch" ? ["--no-shots"] : ["--offline"]),
     ...(options.shard ? ["--shard", options.shard] : []),
     ...(options.only ? ["--only", options.only] : []),
   ]);
@@ -69,8 +78,14 @@ function audit(side: "before" | "after", root: string, options: ShootOptions): v
 async function shoot(options: ShootOptions): Promise<void> {
   const sha = git(["rev-parse", options.base]);
   await mkdir(options.out, { recursive: true });
-  await Bun.write(join(options.out, "sides.json"), JSON.stringify({ base: sha, head: git(["rev-parse", "HEAD"]), shard: options.shard ?? "0/1", offline: options.offline }));
-  audit("before", baseWorktree(sha), options);
+  const dirty = git(["status", "--porcelain", "--untracked-files=no"]) !== "";
+  await Bun.write(join(options.out, "sides.json"), JSON.stringify({ base: sha, head: git(["rev-parse", "HEAD"]), dirty, shard: options.shard ?? "0/1", offline: options.offline }));
+  const base = baseWorktree(sha);
+  if (!options.offline) {
+    audit("fetch", base, options);
+    await rm(join(options.out, "fetch"), { recursive: true, force: true });
+  }
+  audit("before", base, options);
   audit("after", resolve(join(import.meta.dir, "../..")), options);
   // The builds are large and each side's results and pictures are what the report reads.
   await rm(join(options.out, "web-before"), { recursive: true, force: true });
@@ -82,9 +97,9 @@ async function lines(file: string): Promise<string[]> {
 }
 
 /** Shard runs (one folder each, with before/ and after/) folded into one before/ and one after/. */
-async function merge(shardsDir: string, out: string): Promise<{ base: string; head: string; offline: boolean; shards: number }> {
+async function merge(shardsDir: string, out: string): Promise<{ base: string; head: string; dirty?: boolean; offline: boolean; shards: number }> {
   const shards = (await readdir(shardsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(shardsDir, entry.name));
-  let sides = { base: "", head: "", offline: false };
+  let sides: { base: string; head: string; dirty?: boolean; offline: boolean } = { base: "", head: "", offline: false };
   for (const side of ["before", "after"] as const) {
     const target = join(out, side);
     await rm(target, { recursive: true, force: true });
@@ -187,7 +202,7 @@ async function report(shardsDir: string, out: string, comment: string | null): P
     MARKER,
     `### UI blast radius: ${moving.length} of ${all.length} views changed`,
     "",
-    `Base \`${sides.base.slice(0, 9)}\`, head \`${sides.head.slice(0, 9)}\`: every function, bundled and registry plugin pane and shell view, Chromium, white theme, ${widths.join(" and ")}px, pane bodies compared (the window's top and bottom ${BODY_INSET.top}px left out). ${sides.offline ? "Data: the kept snapshot, offline." : "Data: one replay, the base's reads kept for the head."}`,
+    `Base \`${sides.base.slice(0, 9)}\`, head \`${sides.head.slice(0, 9)}\`${sides.dirty ? " with uncommitted changes" : ""}: every function, bundled and registry plugin pane and shell view, Chromium, white theme, ${widths.join(" and ")}px, pane bodies compared (the window's top and bottom ${BODY_INSET.top}px left out). ${sides.offline ? "Data: the week's kept snapshot, offline on both sides." : "Data: fetched once by the base, then read offline by both sides."}`,
     "",
     ...(moving.length
       ? ["| View | " + widths.map((width) => `${width}px`).join(" | ") + " |", "|---|" + widths.map(() => "---:").join("|") + "|",
