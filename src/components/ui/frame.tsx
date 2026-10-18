@@ -35,20 +35,27 @@ export function modalSurfaceStyle(colors: ThemeColors, options: ModalSurfaceOpti
 }
 
 /**
- * Desktop and web: what the pointer is over, explained (a heat map tile, a
- * map feature, a flow's relationship): the floating surface at its smallest,
- * the raised fill, the control border, the surface radius and the one
- * elevation, the app's type, 4px by 8px inside. A tooltip never takes the
- * pointer.
+ * Desktop and web: a small panel that sits on a chart rather than over it (a
+ * legend's key): the raised fill, the control border, the surface radius, the
+ * app's type, 4px by 8px inside, and no elevation.
  */
-export const TOOLTIP_SURFACE_STYLE = {
+export const FLAT_SURFACE_STYLE = {
   background: "var(--gloom-surface-raised)",
   border: "1px solid var(--gloom-control-border)",
   borderRadius: "var(--gloom-radius-lg)",
-  boxShadow: "var(--gloom-elevation)",
   padding: "var(--gloom-space-xs) var(--gloom-space-sm)",
   fontSize: "var(--gloom-type-ui)",
   boxSizing: "border-box",
+} as const;
+
+/**
+ * Desktop and web: what the pointer is over, explained (a heat map tile, a
+ * map feature, a flow's relationship): the flat surface lifted by the one
+ * elevation, as everything floating is. A tooltip never takes the pointer.
+ */
+export const TOOLTIP_SURFACE_STYLE = {
+  ...FLAT_SURFACE_STYLE,
+  boxShadow: "var(--gloom-elevation)",
   pointerEvents: "none",
 } as const;
 

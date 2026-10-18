@@ -292,6 +292,7 @@ export const UI_AUDIT_MEASURE = (scope: string | null) => `(() => {
   const has = (el, re) => re.test(rootOf(el));
   const role = (el) => el.getAttribute("data-gloom-role") ?? el.getAttribute("data-gloom-ui") ?? "";
   const R = (...names) => (el) => names.includes(role(el));
+  const chipNamed = (el) => has(el, /^\\w*(Badge|Chip|Pill|Tag|Pip)$/) || /chip|badge/.test(role(el));
   const drawsMark = (el) => { const s = css(el); return !transparent(s.backgroundColor) || ["Top", "Right", "Bottom", "Left"].some((side) => px(s["border" + side + "Width"]) > 0); };
   const FAMILY_RULES = [
     ["pane-title-bar", R("pane-header")],
@@ -334,8 +335,11 @@ export const UI_AUDIT_MEASURE = (scope: string | null) => `(() => {
     // A chip is a mark: the box that draws a fill or a border. The box around one, or a word
     // a component happens to call a chip (a status bar item, a query bar segment), is not one.
     // A chip that opens something (a ticker) is still a chip: this comes before buttons.
-    ["chip", (el) => (has(el, /^\\w*(Badge|Chip|Pill|Tag|Pip)$/) || /chip|badge/.test(role(el))) && drawsMark(el)],
+    ["chip", (el) => chipNamed(el) && drawsMark(el)],
     ["button", (el) => el.tagName === "BUTTON" || el.getAttribute("role") === "button" || R("desktop-button", "icon-button", "pane-action", "pane-close", "pane-restore", "data-table-section-action", "pane-sidebar-action")(el)],
+    // What is named a chip but draws no mark, counted on its own: the boxes around chips and
+    // the words called chips, and a chip that has lost its fill, which would otherwise vanish.
+    ["chip-unmarked", (el) => chipNamed(el)],
     ["legend", (el) => /legend/.test(role(el))],
     ["axis", (el) => /axis/.test(role(el))],
   ];
@@ -380,7 +384,7 @@ export const UI_AUDIT_MEASURE = (scope: string | null) => `(() => {
     const iconOnly = (el.textContent ?? "").trim().length <= 2;
     const shape = [
       "h=" + Math.round(r.height),
-      ["button", "chip", "keycap", "tab", "input", "select", "toggle"].includes(family) ? "w=" + (iconOnly ? Math.round(r.width) : "auto") : "",
+      ["button", "chip", "chip-unmarked", "keycap", "tab", "input", "select", "toggle"].includes(family) ? "w=" + (iconOnly ? Math.round(r.width) : "auto") : "",
       "pad=" + [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(px).join(" "),
       "border=" + border.label,
       "radius=" + (radius.every((v) => v === radius[0]) ? radius[0] : radius.join(" ")),

@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { act, useState } from "react";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { EmptyState } from "./status";
 
@@ -35,4 +36,23 @@ test("a state flush with its pane's edge takes the inset; one placed by its cont
   expect(state("bare").style.padding).toContain("var(--gloom-inset)");
   expect(state("placed").style.padding).toBe("");
   expect(state("hidden").style.padding).toBe("");
+});
+
+test("a state 4px in is placed, and one whose container stops padding it takes the inset on the next render", async () => {
+  layOut();
+  let setLeft!: (left: string) => void;
+  function Pane() {
+    const [left, update] = useState("103.99");
+    setLeft = update;
+    return (
+      <div data-gloom-role="pane-window" data-left="100">
+        <div data-left={left}><EmptyState title="Nothing yet." /></div>
+      </div>
+    );
+  }
+  const container = await render(<Pane />);
+  const state = () => container.querySelector('[data-gloom-ui="empty-state"]') as HTMLElement;
+  expect(state().style.padding).toBe("");
+  await act(async () => { setLeft("100"); });
+  expect(state().style.padding).toContain("var(--gloom-inset)");
 });

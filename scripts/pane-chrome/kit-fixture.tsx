@@ -20,7 +20,7 @@ import { quoteBlockStyle } from "../../src/components/ui/quote";
 import { ListView } from "../../src/components/ui/list-view";
 import { InputSearchBar } from "../../src/components/input-search-bar";
 import { Checkbox } from "../../src/components/ui/checkbox";
-import { DialogFrame, TOOLTIP_SURFACE_STYLE } from "../../src/components/ui/frame";
+import { DialogFrame, FLAT_SURFACE_STYLE, TOOLTIP_SURFACE_STYLE } from "../../src/components/ui/frame";
 import { EmptyState, Notice, PaneStatusBody } from "../../src/components/ui/status";
 import { ExternalLinkText } from "../../src/components/ui/external-link";
 import { Tabs } from "../../src/components/ui/tabs";
@@ -469,6 +469,12 @@ function SurfacesFamily() {
         <Box flexDirection="column" style={{ ...TOOLTIP_SURFACE_STYLE, position: "static" }}>
           <Text>Port of Rotterdam</Text>
           <Text fg="var(--gloom-text-dim)">12 vessels waiting</Text>
+        </Box>
+      </Sample>
+      <Sample label="a chart's key (flat)" width={220}>
+        <Box flexDirection="column" style={FLAT_SURFACE_STYLE}>
+          <Text>Tanker</Text>
+          <Text>Cargo</Text>
         </Box>
       </Sample>
       <Sample label="toast" width={380}>

@@ -162,20 +162,29 @@ async function pluginEntries(): Promise<AuditEntry[]> {
 const dock = (instance: Record<string, unknown>) => ({ dockRoot: { kind: "pane", instanceId: instance.instanceId }, instances: [instance], floating: [], detached: [] });
 const EMPTY_LAYOUT = { dockRoot: null, instances: [], floating: [], detached: [] };
 const SAMPLE_PANE = { instanceId: "world-indices:audit", paneId: "world-indices", binding: { kind: "none" } };
+const COMMAND_BAR = "[data-gloom-role=command-bar-panel]";
 
-/** The shell around the panes: views with no pane of their own to scope to. */
-const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: SeedOptions; open(cdp: Cdp): Promise<void> }> = [
+/**
+ * The shell around the panes: views with no pane of their own to scope to.
+ * `surface` is what opening the view must put on the page; a view whose
+ * surface is not there fails the run instead of measuring the page under it.
+ * Not here: the onboarding, which the web build always marks done
+ * (renderers/browser/config-host.ts), and the title bar's right-click menu,
+ * which is the desktop's native menu and draws nothing in the page.
+ */
+const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: SeedOptions; surface?: string; open(cdp: Cdp): Promise<void> }> = [
   { id: "shell", layout: EMPTY_LAYOUT, async open() {} },
-  { id: "command-bar", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await key(cdp, "p", "KeyP", 80, 2); } },
-  { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "apple", { submit: false }); } },
+  { id: "command-bar", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: COMMAND_BAR, async open(cdp) { await key(cdp, "p", "KeyP", 80, 2); } },
+  { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: COMMAND_BAR, async open(cdp) { await runCommand(cdp, "apple", { submit: false }); } },
   // "TH" and a space is the theme list; Enter would pick the highlighted theme and close it.
-  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "TH ", { submit: false }); } },
-  { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "FB"); } },
-  { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "PS"); } },
+  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: '[aria-label="Theme picker"]', async open(cdp) { await runCommand(cdp, "TH ", { submit: false }); } },
+  { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog", async open(cdp) { await runCommand(cdp, "FB"); } },
+  { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=pane-setting-row]", async open(cdp) { await runCommand(cdp, "PS"); } },
   {
     id: "pane-menu",
     layout: dock(SAMPLE_PANE),
     focused: SAMPLE_PANE.instanceId,
+    surface: ".gloom-menu, [role=menu]",
     // The pane's actions button (its "more" icon) opens the pane menu.
     async open(cdp) {
       const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-action] > *")?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
@@ -183,7 +192,6 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
       await click(cdp, at);
     },
   },
-  { id: "onboarding", layout: EMPTY_LAYOUT, seed: { onboardingComplete: false }, async open() {} },
 ];
 
 async function writeLine(file: string, value: unknown): Promise<void> {
@@ -286,16 +294,29 @@ async function main(): Promise<void> {
     for (const shell of shells) {
       if (done.has(shell.id)) continue;
       const view: AuditView = { id: shell.id, kind: "shell", token: shell.id, view: "root" };
+      let unopened: string | null = null;
       for (const width of widths) {
+        if (unopened) break;
         await viewport(width);
         for (const [index, theme] of themes.entries()) {
           await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
           await settle(browser.cdp, "body", 700, 6_000);
           await shell.open(browser.cdp);
           await settle(browser.cdp, "body", 600, 4_000);
+          if (shell.surface && !await evaluate<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`)) {
+            unopened = `${shell.surface} is not on the page at ${width}px in ${theme}`;
+            break;
+          }
           await record(view, null, width, theme, index === 0);
           await key(browser.cdp, "Escape", "Escape", 27);
         }
+      }
+      if (unopened) {
+        // Measuring the page under a surface that did not open would pass for a measure of it.
+        console.error(`${shell.id}: did not open: ${unopened}`);
+        await writeLine(viewsFile, { id: `${shell.id}--failed`, kind: "shell", token: shell.id, view: "failed" });
+        process.exitCode = 1;
+        continue;
       }
       await writeLine(viewsFile, view);
       console.log(`${shell.id}: measured`);

@@ -8,7 +8,7 @@ import { drawCircle, drawLine, fillOpaque, parseHex } from "../../../components/
 import type { NativeChartBitmap } from "../../../components/chart/native/chart-rasterizer";
 import { getLocalPlotPointer, type ChartMouseEvent } from "../../../components/chart/core/pointer";
 import { usePaneFooter } from "../../../components/layout/pane/footer";
-import { TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
+import { FLAT_SURFACE_STYLE, TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
 import {
   clampWorldMapViewport,
   closestWorldVenueCluster,
@@ -1059,7 +1059,8 @@ function GeoLegend({ overlay, venues, tones }: { overlay: GeoMapOverlay; venues:
           gridTemplateColumns: "14px auto",
           alignItems: "center",
           gap: "var(--gloom-space-xs) var(--gloom-space-sm)",
-          ...TOOLTIP_SURFACE_STYLE,
+          // Part of the legend, not floating over the map: the flat surface.
+          ...FLAT_SURFACE_STYLE,
         },
       },
       ...SHIP_CLASS_KEY.flatMap(({ id, label, tone, symbol }) => [

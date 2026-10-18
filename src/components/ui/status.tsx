@@ -143,29 +143,44 @@ function useFlushInPane(enabled: boolean) {
   // A Box ref is cell geometry, not the element: the state finds itself by its DOM id.
   const id = `gloom-state-${useId()}`;
   const [flush, setFlush] = useState(false);
+  // Read on every render (two rects; a state seldom renders) and whenever the state or its
+  // pane changes size: a tab mounted hidden, a container whose padding moved the state's edge.
+  // The inset is padding, so it never moves the edge this reads and the answer settles.
   useLayoutEffect(() => {
-    if (!enabled || typeof document === "undefined") return;
+    if (enabled) measureFlush(id, setFlush);
+  });
+  useLayoutEffect(() => {
+    if (!enabled || typeof ResizeObserver !== "function" || typeof document === "undefined") return;
     const element = document.getElementById(id);
-    const pane = element?.closest("[data-gloom-role=pane-window], [data-gloom-role=detached-pane-window]");
+    const pane = element?.closest(PANE_WINDOW_SELECTOR);
     if (!element || !pane) return;
-    // The inset is padding, so it never moves the edge this reads and the answer settles.
-    const measure = () => {
-      const box = element.getBoundingClientRect();
-      // Not laid out yet (a tab mounted hidden): wait until it has a size.
-      if (box.width === 0 && box.height === 0) return;
-      setFlush(box.left - pane.getBoundingClientRect().left < STATE_FLUSH_PX);
-    };
-    measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => measureFlush(id, setFlush));
     observer.observe(element);
+    observer.observe(pane);
     return () => observer.disconnect();
   }, [enabled, id]);
   return { id: enabled ? id : undefined, flush };
 }
 
-/** Closer to the pane's edge than this, a state has not been placed by anything. */
-const STATE_FLUSH_PX = 4;
+const PANE_WINDOW_SELECTOR = "[data-gloom-role=pane-window], [data-gloom-role=detached-pane-window]";
+
+function measureFlush(id: string, setFlush: (flush: boolean) => void) {
+  if (typeof document === "undefined") return;
+  const element = document.getElementById(id);
+  const pane = element?.closest(PANE_WINDOW_SELECTOR);
+  if (!element || !pane) return;
+  const box = element.getBoundingClientRect();
+  // Not laid out yet (a tab mounted hidden): the resize that shows it reads it again.
+  if (box.width === 0 && box.height === 0) return;
+  setFlush(box.left - pane.getBoundingClientRect().left < STATE_FLUSH_PX);
+}
+
+/**
+ * Closer to the pane's edge than this, a state has not been placed by anything.
+ * Below the smallest padding a container gives it (`--gloom-space-xs`, 4px), so
+ * a state 4px in, or 3.99 after rounding, is never inset a second time.
+ */
+const STATE_FLUSH_PX = 2;
 
 export function EmptyState(props: EmptyStateProps) {
   const feedback = useRetryFeedback(props.retry, props.retry ? props.status ?? "empty" : null);

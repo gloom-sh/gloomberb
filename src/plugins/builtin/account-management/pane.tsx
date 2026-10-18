@@ -924,8 +924,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   border={!nativePaneChrome}
                   borderColor={activeField === "bio" ? colors.borderFocused : colors.border}
                   backgroundColor={colors.panel}
-                  // The field look, as every other field of the form has it.
-                  {...(nativePaneChrome ? { style: { ...fieldFrameStyle(activeField === "bio"), overflow: "hidden" } } : {})}
+                  // The field look, as every other field of the form has it. OpenTUI applies `style`
+                  // too: the terminal keeps the clip it always had.
+                  style={nativePaneChrome ? { ...fieldFrameStyle(activeField === "bio"), overflow: "hidden" } : { overflow: "hidden" }}
                 >
                   <Textarea
                     key={`bio:${profile?.updatedAt ?? "empty"}`}
