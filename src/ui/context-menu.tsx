@@ -45,6 +45,8 @@ const MENU_SURFACE_SELECTOR = [
   "[data-gloom-role='pane-restore']",
   "[data-gloom-role='status-bar']",
   "[data-gloom-role='tab-button']",
+  // A strip's "+" (a tab's close mark sits inside its tab-button).
+  "[data-gloom-role='tab-add']",
 ].join(", ");
 
 function isDivider(item: ContextMenuItem): item is ContextMenuDividerItem {

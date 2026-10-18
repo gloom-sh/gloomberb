@@ -105,6 +105,7 @@ export const zhCN: Record<string, string> = {
   "Check your connection": "请检查网络连接",
   "Search is busy": "搜索繁忙",
   "Try again in a moment": "请稍后重试",
+  "Search is busy, try again in a moment.": "搜索繁忙，请稍后重试。",
   "Commands": "命令",
 
   // ── Command bar categories ───────────────────────────────────

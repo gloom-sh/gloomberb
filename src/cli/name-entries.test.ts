@@ -4,6 +4,7 @@ import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import { createTestQuote } from "../test-support/data-provider";
 import { readNameEntries, readPhraseArgument } from "./name-entries";
 import { quotedPhrase, splitSymbolArgs } from "./symbol-args";
+import { ProviderBusyError } from "../sources/provider-errors";
 
 test("an entry with spaces is a company's name when search finds one, else the symbols it holds; a plain symbol costs no search", async () => {
   const asked: string[] = [];
@@ -47,4 +48,19 @@ test("one quoted argument with spaces is a company, a line of tickers, or a phra
   // A word the source could not answer for, as in an outage, is not taken as proof of a phrase.
   const down = { ...provider, getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => ({ target, quote: null, error: new Error("timeout") })) };
   expect(await readPhraseArgument("AAPL MSFT", down)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });
+});
+
+test("a name search too busy to answer is no answer: its words are not other companies' symbols, unless each has a quote", async () => {
+  // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK (GLO-994).
+  const quoted = new Set(["EAGLE", "AAPL", "MSFT"]);
+  const busy = {
+    search: async (): Promise<InstrumentSearchResult[]> => { throw new ProviderBusyError(); },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => quoted.has(target.symbol)
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`No quote provider available for ${target.symbol}`) }),
+  };
+  await expect(readPhraseArgument("Eagle Bulk", busy)).rejects.toBeInstanceOf(ProviderBusyError);
+  expect(await readPhraseArgument("AAPL MSFT", busy)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });
+  // In a list it stays whole, for its own lookup to say search was busy.
+  expect(await readNameEntries(["AAPL", "Eagle Bulk"], busy)).toEqual(["AAPL", "Eagle Bulk"]);
 });

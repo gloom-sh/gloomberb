@@ -16,6 +16,7 @@ import type { TickerOpenTarget } from "./search/types";
 import { isSharedExchangeCode, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { settleTypedListingKey } from "./listing-venues";
+import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 
 export type { TickerOpenTarget } from "./search/types";
 
@@ -57,6 +58,8 @@ export async function resolveTickerOpenTarget({
   const preserveListingKey = (!!requested.exchange && !isSharedExchangeCode(typedExchangeCode(symbol))) || tickerHasListingSuffix(symbol);
 
   let resolved: Awaited<ReturnType<typeof resolveTickerSearch>> | null = null;
+  // Search too busy to answer: a quote may still vouch for the listing, else the open says search was busy.
+  let busy: ProviderBusyError | null = null;
   try {
     resolved = publicOnly ? null : await resolveTickerSearch({
       query: symbol,
@@ -67,6 +70,7 @@ export async function resolveTickerOpenTarget({
     });
   } catch (error) {
     if (error instanceof AmbiguousTickerError) throw error;
+    if (isProviderBusy(error)) busy = error;
     resolved = null;
   }
 
@@ -108,6 +112,7 @@ export async function resolveTickerOpenTarget({
   // or the one that answers prices another venue, search still lists it as
   // the command bar reads it, and the pane shows the quote's own state.
   if (!quote || (preserveListingKey && !quoteNamesListing(quote))) {
+    if (busy) throw busy;
     return publicOnly ? openListedPublicTarget() : null;
   }
 
@@ -171,7 +176,7 @@ export async function resolveTickerOpenTarget({
       });
       return { symbol: ticker.metadata.ticker, ticker, created, ...tickerSelectionFromSearchResult(listed.result) };
     } catch (error) {
-      if (error instanceof AmbiguousTickerError) throw error;
+      if (error instanceof AmbiguousTickerError || isProviderBusy(error)) throw error;
       return null;
     }
   }

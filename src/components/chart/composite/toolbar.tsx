@@ -7,7 +7,7 @@ import { CHART_TOOLS } from "./tool-catalog";
 /** Icon cells plus the gap between chips. */
 export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
 
-function ChartToolChip({
+function ChartToolButton({
   tool,
   active,
   isDesktopWeb,
@@ -40,6 +40,10 @@ function ChartToolChip({
       data-gloom-label={label}
       data-active={active ? "true" : "false"}
       title={isDesktopWeb ? label : undefined}
+      // A tool is a toggle button: the icon button family, pressed while it is the chart's tool.
+      role={isDesktopWeb ? "button" : undefined}
+      aria-label={isDesktopWeb ? label : undefined}
+      aria-pressed={isDesktopWeb ? active : undefined}
       // Cells size the terminal strip; the desktop chip sizes to its icon.
       // The icon button's look: the control radius, the hover fill.
       style={isDesktopWeb ? { width: "auto", paddingInline: "var(--gloom-space-xs)", borderRadius: "var(--gloom-radius-md)" } : undefined}
@@ -164,7 +168,7 @@ export function ChartToolbar({
       data-gloom-role="composite-chart-toolbar"
     >
       {CHART_TOOLS.filter((tool) => levelTool || tool.kind !== "level").map((tool) => (
-        <ChartToolChip
+        <ChartToolButton
           key={tool.kind ?? "pan"}
           tool={tool}
           active={armedTool === tool.kind}

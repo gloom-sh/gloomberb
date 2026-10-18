@@ -5,6 +5,7 @@ import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "..
 import { companyNameExtraWords, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { classifyInstrumentKind } from "./search/ranking";
+import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -32,7 +33,8 @@ export function isCompanyNameInput(input: string): boolean {
  * shares the word (Whirlpool of India) does not; then its line on a US
  * exchange, then a plain line before a depositary receipt, the shortest
  * symbol (WHR before WHR-A) and search's order. Contracts, preferred shares
- * and notes are never the listing. Null when none matches.
+ * and notes are never the listing. Null when none matches; when none does
+ * because search was too busy to answer, `ProviderBusyError`.
  */
 export async function findListingOfCompanyName(
   dataProvider: Pick<DataProvider, "search">,
@@ -41,8 +43,14 @@ export async function findListingOfCompanyName(
   const name = typed.trim();
   if (!name) return null;
   const queries = [...new Set([name, shortCompanyName(name)])].filter(Boolean);
-  const results = (await Promise.all(queries.map((query) => dataProvider.search(query, { limit: LISTING_SEARCH_LIMIT })
-    .catch(logFailure("tickers-company-name-listing", "Could not search company listings", [] as InstrumentSearchResult[]))))).flat();
+  const answers = await Promise.all(queries.map((query) => dataProvider.search(query, { limit: LISTING_SEARCH_LIMIT })
+    .catch((error: unknown): InstrumentSearchResult[] | ProviderBusyError => {
+      if (isProviderBusy(error)) return error;
+      logFailure("tickers-company-name-listing", "Could not search company listings")(error);
+      return [];
+    })));
+  const busy = answers.find(isProviderBusy);
+  const results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
   const ranked = results.flatMap((result, order) => {
     const exchange = canonicalExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange);
     const type = result.brokerContract?.secType || result.type || "";
@@ -55,5 +63,6 @@ export async function findListingOfCompanyName(
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
   const best = ranked[0];
+  if (!best && busy) throw busy;
   return best ? { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name } : null;
 }

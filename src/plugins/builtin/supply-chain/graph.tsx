@@ -10,6 +10,7 @@ import { useScrollBoxLayout } from "../../../components/use-scrollbox-layout";
 import { isPlainKey } from "../../../utils/keyboard";
 import { displayWidth } from "../../../utils/format";
 import { ClippedText } from "../../../components/ui/display";
+import { cardSurfaceStyle } from "../../../components/ui/card";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import { entityLabel, graphNodes } from "./graph-model";
@@ -144,9 +145,9 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
         const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
         return <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" overflow="hidden"
-          backgroundColor={active ? desktop ? blendHex(colors.bg, accent, 0.2) : colors.selected : node.hops ? blendHex(colors.bg, accent, desktop ? 0.09 : 0.12) : colors.panel}
-          style={desktop ? { borderLeft: role ? `3px solid ${accent}` : undefined, border: role ? undefined : `1px solid ${blendHex(colors.bg, colors.textBright, 0.35)}`,
-            borderRadius: role ? 3 : 6, paddingLeft: 6, cursor: "pointer", boxShadow: active ? `inset 0 0 0 1px ${blendHex(colors.bg, accent, 0.6)}` : undefined } : undefined}
+          backgroundColor={desktop ? undefined : active ? colors.selected : node.hops ? blendHex(colors.bg, accent, 0.12) : colors.panel}
+          // The flow's card (flow.tsx): in the relationship's colour, the focus company plain.
+          style={desktop ? { ...cardSurfaceStyle({ selected: active, accent: role ? accent : undefined, padding: "0 0 0 var(--gloom-space-sm)" }), cursor: "pointer" } : undefined}
           onMouseOver={() => onSelect(node.entity.id)} data-gloom-role="supply-graph-node">
           <Button label={`${prefix}${entityLabel(node.entity)}`} title={node.entity.name} variant="plain" compact flush stopPropagation height={2} width={cellWidth - (desktop ? 5 : 3)} onPress={() => onRecenter(node.entity)}>
             <Box flexDirection="column" width="100%">

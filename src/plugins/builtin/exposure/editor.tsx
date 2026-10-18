@@ -44,13 +44,13 @@ export function ExposureEditor({ initial, sources, focused, width, onSave, onCan
     return <Box ref={ring.nodeRef(id)}>{numeric ? <NumberField {...props} allowNegative /> : <TextField {...props} />}</Box>;
   };
   return <ScrollBox ref={scrollRef} flexGrow={1} flexBasis={0} minHeight={0} scrollY><Box paddingX={1} flexDirection="column" gap={1}>
-    <Box ref={ring.nodeRef("source")}><SelectButton label="Holdings source" value={draft.source} options={sources} onChange={source => setDraft(d => ({ ...d, source }))} controlRef={sourceControl} onFocus={() => setActive("source")} emphasized={active === "source"} /></Box>
+    <Box ref={ring.nodeRef("source")}><SelectButton variant="form" width={fieldWidth} label="Holdings source" value={draft.source} options={sources} onChange={source => setDraft(d => ({ ...d, source }))} controlRef={sourceControl} onFocus={() => setActive("source")} emphasized={active === "source"} /></Box>
     {text("input", "Tickers / signed NAV weights", draft.input, input => setDraft(d => ({ ...d, input })))}
     {text("nav", "Portfolio NAV (portfolio currency)", draft.nav, nav => setDraft(d => ({ ...d, nav })), true)}
     {text("cash", "Cash weight (NAV fraction, optional)", draft.cash, cash => setDraft(d => ({ ...d, cash })), true)}
-    <Box ref={ring.nodeRef("depth")}><SelectButton label="Relationship depth" value={String(draft.depth)} options={[1, 2, 3, 4].map(n => ({ value: String(n), label: String(n) }))} onChange={depth => setDraft(d => ({ ...d, depth: Number(depth) }))} controlRef={depthControl} onFocus={() => setActive("depth")} emphasized={active === "depth"} /></Box>
+    <Box ref={ring.nodeRef("depth")}><SelectButton variant="form" width={fieldWidth} label="Relationship depth" value={String(draft.depth)} options={[1, 2, 3, 4].map(n => ({ value: String(n), label: String(n) }))} onChange={depth => setDraft(d => ({ ...d, depth: Number(depth) }))} controlRef={depthControl} onFocus={() => setActive("depth")} emphasized={active === "depth"} /></Box>
     {text("label", "Scenario name", label, setLabel)}
-    <Box ref={ring.nodeRef("kind")}><SelectButton label="Shock kind" value={kind} options={["country", "supplier", "customer", "commodity", "rate", "fx", "tariff"].map(value => ({ value, label: value }))} onChange={value => setKind(value as typeof kind)} controlRef={kindControl} onFocus={() => setActive("kind")} emphasized={active === "kind"} /></Box>
+    <Box ref={ring.nodeRef("kind")}><SelectButton variant="form" width={fieldWidth} label="Shock kind" value={kind} options={["country", "supplier", "customer", "commodity", "rate", "fx", "tariff"].map(value => ({ value, label: value }))} onChange={value => setKind(value as typeof kind)} controlRef={kindControl} onFocus={() => setActive("kind")} emphasized={active === "kind"} /></Box>
     {text("target", "Country / entity / commodity / currency", target, setTarget)}
     {text("size", kind === "rate" ? "Rate change (basis points)" : "Shock change (%)", size, setSize, true)}
     {text("products", "Product restriction (comma separated, optional)", products, setProducts)}

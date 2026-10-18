@@ -502,12 +502,31 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="tab-button"][data-active="true"]::after { opacity: 1; }
 [data-gloom-role="tab-button"]:disabled { color: var(--gloom-text-muted); cursor: default; }
 [data-gloom-role="tab-button"]:focus-visible { outline: none; }
-[data-gloom-role="tab-close"] {
-  cursor: pointer;
-  border-radius: var(--gloom-radius-sm);
+/* A tab's close mark and a strip's plus are the icon button: 20 by 18, the control radius, the hover fill. */
+[data-gloom-role="tab-add"] {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  margin-inline-start: var(--gloom-space-xs);
 }
+[data-gloom-role="tab-add"]:focus-visible { outline: none; background: var(--gloom-hover-fill); }
+[data-gloom-role="tab-add"],
+[data-gloom-role="tab-close"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 var(--gloom-space-xs);
+  box-sizing: border-box;
+  cursor: pointer;
+  border-radius: var(--gloom-radius-md);
+  color: var(--gloom-text-muted);
+}
+[data-gloom-role="tab-add"]:hover,
 [data-gloom-role="tab-close"]:hover {
   background: var(--gloom-hover-fill);
+  color: var(--gloom-text-bright);
 }
 [data-gloom-scrollbar-x],
 [data-gloom-scrollbar-y] {
@@ -842,6 +861,13 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   cursor: text;
 }
 .gloom-qb-search:hover { background: var(--qb-fill); }
+/* A search field standing on its own (input-search-bar.tsx) takes the query
+   bar's search look: the hover fill, and the accent under it while typing. */
+[data-gloom-role="search-strip"]:hover { background: var(--gloom-hover-fill) !important; }
+[data-gloom-role="search-strip"][data-active="true"] {
+  background: var(--gloom-hover-fill) !important;
+  box-shadow: inset 0 -2px 0 var(--gloom-border-focused) !important;
+}
 .gloom-qb-search[data-active="true"] {
   background: var(--qb-fill);
   color: var(--gloom-text);

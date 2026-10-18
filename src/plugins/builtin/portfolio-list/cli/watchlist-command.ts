@@ -25,6 +25,7 @@ import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
+import { isProviderBusy } from "../../../../sources/provider-errors";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
 const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
@@ -112,6 +113,8 @@ async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string,
     await store.saveTicker(result.ticker);
     ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${watchlist.name}".`) });
   } catch (caught) {
+    // Search too busy to look the symbol up is no miss: the CLI says so as a failure worth retrying.
+    if (isProviderBusy(caught)) throw caught;
     const error = await withSuggestion(caught, symbol, { store, dataProvider });
     ctx.fail(
       error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`,

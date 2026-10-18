@@ -287,9 +287,9 @@ const RETRY_WAITS_MS = [6_000, 15_000, 30_000];
 
 /**
  * Counts the data service's market requests that fail while it watches. A
- * lookup reads a refused search (rate limited, offline) as no match, and a
- * refused quote as a listing it cannot settle, so a symbol looked up while
- * one failed may be there after all.
+ * lookup fails as busy while search refuses it (rate limited), reads a search
+ * it cannot reach (offline) as no match, and a refused quote as a listing it
+ * cannot settle, so a symbol looked up while one failed may be there after all.
  */
 function watchFailedRequests(): { count: () => number; stop: () => void } {
   const dispose = connectionHealth.hasSource(GLOOM_CLOUD_HTTP_CONNECTION_ID)

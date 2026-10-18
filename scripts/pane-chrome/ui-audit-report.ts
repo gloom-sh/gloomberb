@@ -51,7 +51,7 @@ export const FITTED = /HeatTreemap|DomHeatTile|WorldVenueMap|CountryNames|Supply
 
 /** What each family is, for the report's reader. */
 const FAMILY_LABEL: Record<string, string> = {
-  "button": "Buttons", "tab": "Tabs", "tab-bar": "Tab bars", "segmented": "Segmented controls", "chip": "Chips and badges",
+  "button": "Buttons", "tab": "Tabs", "tab-bar": "Tab bars", "segmented": "Segmented controls", "chip": "Chips and badges", "chip-unmarked": "Named chips that draw no mark",
   "keycap": "Key caps", "toggle": "Toggles and checkboxes", "input": "Inputs and search boxes", "select": "Selects",
   "link": "Links", "field-label": "Form labels", "toolbar": "Toolbars and filter rows", "sort-indicator": "Sort indicators",
   "table-header-row": "Table header rows", "table-header-cell": "Table header cells", "table-row": "Table rows",

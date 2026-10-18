@@ -31,7 +31,7 @@ import {
 } from "../../../ui";
 import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
-import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "../../../components/ui/fields";
+import { FRAMED_TEXTAREA_DESKTOP_STYLE, fieldFrameStyle } from "../../../components/ui/fields";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
@@ -921,13 +921,12 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 <Box
                   height={3}
                   width={Math.max(18, formWidth - formLabelWidth - 1)}
-                  border
+                  border={!nativePaneChrome}
                   borderColor={activeField === "bio" ? colors.borderFocused : colors.border}
                   backgroundColor={colors.panel}
-                  style={{
-                    borderRadius: 6,
-                    overflow: "hidden",
-                  }}
+                  // The field look, as every other field of the form has it. OpenTUI applies `style`
+                  // too: the terminal keeps the clip it always had.
+                  style={nativePaneChrome ? { ...fieldFrameStyle(activeField === "bio"), overflow: "hidden" } : { overflow: "hidden" }}
                 >
                   <Textarea
                     key={`bio:${profile?.updatedAt ?? "empty"}`}
@@ -937,7 +936,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                     focused={focused && activeField === "bio"}
                     textColor={colors.text}
                     placeholderColor={colors.textDim}
-                    backgroundColor={colors.panel}
+                    backgroundColor={nativePaneChrome ? "transparent" : colors.panel}
                     flexGrow={1}
                     wrapText
                     {...(nativePaneChrome ? { style: FRAMED_TEXTAREA_DESKTOP_STYLE } : {})}

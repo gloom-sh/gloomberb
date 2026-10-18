@@ -104,6 +104,7 @@ export const es: Record<string, string> = {
   "Check your connection": "Revisa tu conexión",
   "Search is busy": "La búsqueda está saturada",
   "Try again in a moment": "Inténtalo de nuevo en un momento",
+  "Search is busy, try again in a moment.": "La búsqueda está saturada, inténtalo de nuevo en un momento.",
   "Commands": "Comandos",
 
   // ── Command bar categories ───────────────────────────────────

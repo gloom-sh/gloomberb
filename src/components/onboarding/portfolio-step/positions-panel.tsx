@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
-import { blendHex, priceColor } from "../../../theme/colors";
+import { priceColor } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
@@ -125,9 +125,9 @@ function DesktopPositionRow({
       onMouseOut={() => setHovered(false)}
       style={{
         height: 32,
-        padding: "0 10px",
-        borderRadius: 6,
-        backgroundColor: lit ? blendHex(colors.panel, colors.textBright, 0.05) : "transparent",
+        padding: "0 var(--gloom-space-sm)",
+        borderRadius: "var(--gloom-radius-md)",
+        backgroundColor: lit ? "var(--gloom-hover-fill)" : "transparent",
       }}
       data-gloom-role="onboarding-position"
     >
@@ -137,7 +137,7 @@ function DesktopPositionRow({
       <Box flexGrow={1} minWidth={0} overflow="hidden">
         <Text fg={colors.textDim}>{row.name}</Text>
       </Box>
-      <Box flexShrink={0} style={{ marginLeft: 16 }}>
+      <Box flexShrink={0} style={{ marginLeft: "var(--gloom-space-lg)" }}>
         <Text fg={colors.text}>{positionSummary(row)}</Text>
       </Box>
       <Box flexShrink={0} justifyContent="flex-end" flexDirection="row" style={{ width: 96 }}>

@@ -5,6 +5,7 @@ import { findPortfolio, isManualPortfolio } from "../../../../portfolio/mutation
 import { CASH_SYMBOL } from "../allocation";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { readCurrencyAmount, readTypedNumber, TYPED_AMOUNT_FORMAT } from "../../../../utils/decimal-comma";
+import { isProviderBusy } from "../../../../sources/provider-errors";
 
 export { listingFields } from "../../../../cli/listing-arg";
 
@@ -16,8 +17,13 @@ export class PortfolioCliError extends Error {
   }
 }
 
-/** Fails the command with the error's message and hint, or the fallback for anything unexpected. */
+/**
+ * Fails the command with the error's message and hint, or the fallback for
+ * anything unexpected. A lookup search was too busy for goes on as it is, for
+ * the CLI to say so as a failure worth retrying.
+ */
 export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fallback: string): never {
+  if (isProviderBusy(error)) throw error;
   if (error instanceof Error) {
     const details = (error as { details?: unknown }).details;
     return ctx.fail(error.message, typeof details === "string" ? details : undefined);

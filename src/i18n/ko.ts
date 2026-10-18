@@ -103,6 +103,7 @@ export const ko: Record<string, string> = {
   "Check your connection": "연결을 확인하세요",
   "Search is busy": "검색이 혼잡합니다",
   "Try again in a moment": "잠시 후 다시 시도하세요",
+  "Search is busy, try again in a moment.": "검색이 혼잡합니다. 잠시 후 다시 시도하세요.",
   "Commands": "명령",
 
   // ── Command bar categories ───────────────────────────────────

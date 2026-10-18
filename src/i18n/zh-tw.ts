@@ -105,6 +105,7 @@ export const zhTW: Record<string, string> = {
   "Check your connection": "請檢查網路連線",
   "Search is busy": "搜尋忙碌中",
   "Try again in a moment": "請稍後再試",
+  "Search is busy, try again in a moment.": "搜尋忙碌中，請稍後再試。",
   "Commands": "命令",
 
   // ── Command bar categories ───────────────────────────────────

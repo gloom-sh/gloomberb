@@ -10,6 +10,7 @@ import { parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerOpenTarget, type TickerOpenTarget } from "../../../tickers/open-target";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
+import { isProviderBusy } from "../../../sources/provider-errors";
 import { isSharedExchangeCode, parsePublicTickerKey, publicTickerKey, typedExchangeCode } from "../../../utils/exchanges";
 import { captureAttentionAction } from "../../../telemetry/attention-counts";
 
@@ -144,7 +145,7 @@ export async function resolveTickerInput(
   activeTicker: string | null,
   collectionId: string | null,
   deps: SharedWorkflowDeps,
-  options: { preserveAmbiguity?: boolean; preserveListingKey?: boolean } = {},
+  options: { throwUnresolved?: boolean; preserveListingKey?: boolean } = {},
 ): Promise<ResolvedTickerInput | null> {
   const state = deps.getState();
   let resolvedTicker;
@@ -184,8 +185,9 @@ export async function resolveTickerInput(
       searchContext: getTickerSearchContext(state, collectionId),
     });
   } catch (error) {
-    // Interactive callers already open a listing picker for unresolved input.
-    if (error instanceof AmbiguousTickerError && !options.preserveAmbiguity) return null;
+    // Interactive callers already open ticker search for unresolved input: it
+    // offers the listings, and says so when search is too busy to answer.
+    if ((error instanceof AmbiguousTickerError || isProviderBusy(error)) && !options.throwUnresolved) return null;
     throw error;
   }
   if (!resolvedTicker) return null;
@@ -199,7 +201,7 @@ export async function resolveTickerInputOrThrow(
   deps: SharedWorkflowDeps,
   options: { preserveListingKey?: boolean } = {},
 ): Promise<ResolvedTickerInput> {
-  const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps, { ...options, preserveAmbiguity: true });
+  const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps, { ...options, throwUnresolved: true });
   if (!resolved) {
     throw new Error(`No ticker match found for "${rawInput ?? activeTicker ?? ""}".`);
   }

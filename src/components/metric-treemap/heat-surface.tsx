@@ -3,6 +3,7 @@ import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from
 import { useLiveStretch } from "../../ui/live-stretch";
 import { useSettledLayoutSize } from "../../ui/resize-settle";
 import { blendHex } from "../../theme/colors";
+import { TOOLTIP_SURFACE_STYLE } from "../ui/frame";
 import {
   heatmapColorDistance,
   resolveHeatmapSelectedTileColors,
@@ -515,12 +516,7 @@ function DomTooltip<T>({ state, itemsById, otherLines }: {
         top: state.y + (flipY ? -10 : 16),
         transform: `translate(${flipX ? "-100%" : "0"}, ${flipY ? "-100%" : "0"})`,
         zIndex: 5,
-        pointerEvents: "none",
-        backgroundColor: blendHex(colors.bg, colors.panel, 0.5),
-        border: `1px solid ${colors.border}`,
-        borderRadius: 3,
-        padding: "4px 7px",
-        boxShadow: `0 4px 14px ${blendHex(colors.bg, "#000000", 0.6)}`,
+        ...TOOLTIP_SURFACE_STYLE,
         display: "flex",
         flexDirection: "column",
         gap: 2,
@@ -535,7 +531,6 @@ function DomTooltip<T>({ state, itemsById, otherLines }: {
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            fontSize: 11.5,
             lineHeight: 1.25,
             fontWeight: index === 0 ? 700 : 400,
             color: index === 0 ? colors.textBright : colors.textDim,

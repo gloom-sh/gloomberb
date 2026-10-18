@@ -273,14 +273,9 @@ export function WebTabs({
                 data-gloom-role="tab-close"
                 aria-label={`Close ${tab.label}`}
                 role="button"
+                // The icon button's look (styles.css): a tab's close is a control in its own right.
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 16,
-                  height: 16,
                   marginRight: "calc(-1 * var(--gloom-space-xs))",
-                  color: "var(--gloom-text-muted)",
                   lineHeight: 1,
                 }}
                 onClick={(event) => {
@@ -297,10 +292,11 @@ export function WebTabs({
       })}
       {onAdd && (
         <button
-          data-gloom-role="tab-button"
+          // A plus is the icon button (styles.css, as a tab's close); a worded add is a tab of its own.
+          data-gloom-role={addLabel === "+" ? "tab-add" : "tab-button"}
           data-dense={dense || compact ? "true" : undefined}
           type="button"
-          style={{ flex: "0 0 auto", margin: 0, cursor: "pointer" }}
+          style={{ flex: "0 0 auto", margin: 0, cursor: "pointer", ...(addLabel === "+" ? { alignSelf: "center" } : {}) }}
           aria-label={addLabel === "+" ? "Add tab" : undefined}
           onClick={onAdd}
         >

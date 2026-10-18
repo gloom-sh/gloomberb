@@ -13,6 +13,8 @@ import {
   resolveCollectionTicker,
 } from "../components/command-bar/workflow/collection-ticker";
 import type { RemoteChangePrompt } from "./types";
+import { RemoteOperationError } from "./controller-utils";
+import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 
 /**
  * `watchlist.add` and `watchlist.remove`: one ticker on one of the person's
@@ -126,6 +128,7 @@ function listingLabel(symbol: string, exchange: string): string {
 }
 
 async function resolveListing(
+  action: WatchlistAction,
   input: WatchlistChangeInput,
   deps: SharedWorkflowDeps,
 ): Promise<ResolvedTickerSearch | null> {
@@ -146,6 +149,11 @@ async function resolveListing(
       throw new WatchlistRefusal(error.listings.length > 0
         ? `${query} matches more than one listing: ${error.listings.slice(0, 6).join(", ")}. Pass exchange to pick one.`
         : error.message);
+    }
+    // Search too busy to look the listing up is no miss. A remove has nothing to do: what is not saved is on no list.
+    if (isProviderBusy(error)) {
+      if (action === "remove") return null;
+      throw new RemoteOperationError(SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE);
     }
     throw error;
   }
@@ -168,7 +176,7 @@ export async function planWatchlistChange(
   deps: SharedWorkflowDeps,
 ): Promise<WatchlistChangePlan> {
   const watchlist = resolveWatchlistTarget(deps.getState().config, input.watchlist);
-  const resolved = await resolveListing(input, deps);
+  const resolved = await resolveListing(action, input, deps);
   let listing: ResolvedListing;
   let symbol: string;
   let exchange: string;

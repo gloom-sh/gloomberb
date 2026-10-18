@@ -366,12 +366,22 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   // Most input has no venue code to retry: hand back the literal lookup
   // itself, so it settles no later than it did before the retry existed.
   if (alternatives.length === 0 && !quoted) return literal;
-  return literal.then(async (resolved) => {
+  // A spelling search was too busy to answer is no miss: the others still get
+  // their turn, and only when none resolves does the lookup say search was busy.
+  let busy: ProviderBusyError | null = null;
+  const unlessBusy = (lookup: Promise<ResolvedTickerSearch | null>) => lookup.catch((error: unknown) => {
+    if (!isProviderBusy(error)) throw error;
+    busy ??= error;
+    return null;
+  });
+  return unlessBusy(literal).then(async (resolved) => {
     for (const alternative of resolved ? [] : alternatives) {
-      const match = await resolveTickerSymbol(alternative, options, null);
+      const match = await unlessBusy(resolveTickerSymbol(alternative, options, null));
       if (match) return match;
     }
-    return resolved ?? (quoted ? quotedSuffixListing(symbol, options) : null);
+    const found = resolved ?? (quoted ? await quotedSuffixListing(symbol, options) : null);
+    if (!found && busy) throw busy;
+    return found;
   });
 }
 
@@ -435,16 +445,17 @@ async function resolveTickerSymbol(
   const saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
   if (saved && !pickerQuery) return saved;
 
-  // A search a busy source left unanswered resolves nothing, as an empty one does.
-  const providerItems = createProviderTickerSearchCandidates(
-    (await searchProviderResults(dataProvider, symbol, searchContext)).results,
-    tickers,
-  );
+  const { results, busy } = await searchProviderResults(dataProvider, symbol, searchContext);
+  const providerItems = createProviderTickerSearchCandidates(results, tickers);
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
   const matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
   let exactMatch = matches[0];
-  if (!exactMatch?.result) return saved;
+  if (!exactMatch?.result) {
+    // Nothing matched while a source was too busy to answer: that is no answer, not a miss.
+    if (busy && !saved) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE);
+    return saved;
+  }
 
   const contracts = new Set(matches.map((item) => item.contractKey).filter(Boolean));
   if (contracts.size > 1 || (contracts.size && matches.some((item) => !item.contractKey))) {

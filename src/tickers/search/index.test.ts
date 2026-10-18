@@ -18,6 +18,7 @@ import {
 import { createTestTicker } from "../../test-support/ticker";
 import { resolveManualPositionCurrency } from "../../portfolio/mutations";
 import { parsePublicTickerKey } from "../../utils/exchanges";
+import { ProviderBusyError } from "../../sources/provider-errors";
 
 function makeSearchResult(
   symbol: string,
@@ -574,6 +575,22 @@ describe("ticker-search utilities", () => {
     expect(await resolve("OMV.VI", quote("OMV.VI", { listingExchangeName: "LSE" }))).toBeNull();
     // A bare symbol is search's to resolve; its quote is never read as a listing.
     expect(await resolve("CEZ", quote("CEZ"))).toBeNull();
+  });
+
+  test("a lookup search was too busy to answer is no miss: it says so, unless a saved ticker or the listing's own quote settles it", async () => {
+    const busy = async (): Promise<InstrumentSearchResult[]> => { throw new ProviderBusyError(); };
+    const resolve = (query: string, search: () => Promise<InstrumentSearchResult[]>, tickers = new Map<string, TickerRecord>()) => resolveTickerSearch({
+      query, activeTicker: null, tickers,
+      dataProvider: createTestDataProvider({ search, getQuote: async () => ({ symbol: "CEZ.PR", name: "CEZ, a. s.", listingExchangeName: "PSE",
+        currency: "CZK", price: 1365, instrumentType: "EQUITY", lastUpdated: 1, change: 0, changePercent: 0 }) }),
+    });
+    await expect(resolve("SBLK", busy)).rejects.toBeInstanceOf(ProviderBusyError);
+    // Only a search that answered with nothing is a miss.
+    expect(await resolve("SBLK", async () => [])).toBeNull();
+    const saved = createTestTicker("SBLK", "Star Bulk Carriers", { exchange: "NASDAQ" });
+    expect(await resolve("SBLK", busy, new Map([["SBLK", saved]]))).toMatchObject({ kind: "local", ticker: saved });
+    // The busy literal lookup does not cut the fallbacks short.
+    expect(await resolve("CEZ.PR", busy)).toMatchObject({ kind: "provider", symbol: "CEZ.PR", result: { exchange: "PSE" } });
   });
 
   test("a suffixed listing whose quote never answers reads as unmatched, without waiting on it", async () => {

@@ -65,6 +65,8 @@ export function isProviderBusy(error: unknown): error is ProviderBusyError {
 
 /** What a search its sources could not answer says, rather than that nothing matched. */
 export const SEARCH_BUSY_MESSAGE = "Search is busy, try again in a moment.";
+/** The code a structured answer (CLI `--json`, remote control) gives that failure. */
+export const SEARCH_BUSY_CODE = "search_busy";
 
 /** The reason a provider gave for a miss, or undefined when it gave none. */
 export function providerMissReason(error: unknown): string | undefined {

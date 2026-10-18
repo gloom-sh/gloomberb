@@ -5,7 +5,9 @@ import { Box, ChartSurface, Span, Text, TextAttributes, useUiCapabilities } from
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { displayWidth } from "../../../utils/format";
-import { ClippedText } from "../../../components/ui/display";
+import { BADGE_TINT, ClippedText, NATIVE_BADGE_STYLE } from "../../../components/ui/display";
+import { cardSurfaceStyle } from "../../../components/ui/card";
+import { TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
@@ -259,8 +261,8 @@ function FocusCard({ symbol, name, x, y, width, height, desktop }: { symbol: str
   // The terminal's border takes two rows; the name shows only when the symbol keeps its own.
   const showName = !!name && name.toUpperCase() !== symbol.toUpperCase() && height >= (desktop ? 3 : 4);
   return <Box position="absolute" left={x} top={y} width={width} height={height} flexDirection="column" alignItems="center" justifyContent="center"
-    backgroundColor={desktop ? colors.panel : undefined} border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
-    style={desktop ? { border: `1px solid ${blendHex(colors.bg, colors.textBright, 0.35)}`, borderRadius: 6, boxShadow: `0 0 0 3px ${blendHex(colors.bg, colors.textBright, 0.06)}` } : undefined}>
+    border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
+    style={desktop ? cardSurfaceStyle({ padding: "0" }) : undefined}>
     <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{symbol}</Text>
     {showName ? <ClippedText fg={colors.textDim} text={name!} width={width - 4} /> : null}
   </Box>;
@@ -280,9 +282,10 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
   const nameWidth = Math.max(4, inner - (ticker ? displayWidth(ticker) + 1 : 0));
   const titleColor = node.more ? colors.textDim : company ? colors.textBright : colors.text;
   return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={node.more ? 1 : node.height} flexDirection="column"
-    backgroundColor={node.more ? undefined : active ? desktop ? blendHex(colors.bg, accent, 0.2) : colors.selected : blendHex(colors.bg, accent, desktop ? 0.09 : 0.12)}
-    style={desktop ? { borderLeft: `3px ${node.more ? "dotted" : "solid"} ${node.more ? blendHex(colors.bg, accent, 0.5) : accent}`, borderRadius: 3, paddingLeft: 6, cursor: "pointer",
-      boxShadow: active ? `inset 0 0 0 1px ${blendHex(colors.bg, accent, 0.6)}` : undefined } : undefined}
+    backgroundColor={desktop ? undefined : node.more ? undefined : active ? colors.selected : blendHex(colors.bg, accent, 0.12)}
+    // The card, in the relationship's colour; "+N more" is the same card without a fill, its rule dotted.
+    style={desktop ? { ...cardSurfaceStyle({ selected: active, accent, padding: "0 var(--gloom-space-sm)" }),
+      ...(node.more ? { background: "transparent", borderLeftStyle: "dotted" } : {}), cursor: "pointer" } : undefined}
     onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-node"
     role="button" aria-label={flowNodeName(node)}>
     {/* The ticker shows only beside the whole name. On the desktop that is CSS: the row wraps, one line shows, and a ticker that does not fit goes to the hidden line. */}
@@ -301,13 +304,16 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
 function FlowChip({ node, desktop, active, onPress, onHover }: { node: PositionedNode; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void }) {
   const colors = useThemeColors();
   const accent = node.role ? ROLE_COLORS[node.role] : colors.textMuted;
-  const background = active ? blendHex(colors.bg, accent, desktop ? 0.32 : 0.45) : node.more ? undefined : blendHex(colors.bg, accent, 0.14);
-  const text = <ClippedText fg={node.more ? colors.textDim : active ? colors.textBright : accent} text={flowChipLabel(node)} width={node.width - 2} />;
+  // Desktop: the one chip (Badge), tinted toward the role, solid when chosen.
+  const background = desktop
+    ? active ? accent : node.more ? undefined : blendHex(colors.bg, accent, BADGE_TINT)
+    : active ? blendHex(colors.bg, accent, 0.45) : node.more ? undefined : blendHex(colors.bg, accent, 0.14);
+  const text = <ClippedText fg={node.more ? colors.textDim : active ? desktop ? colors.bg : colors.textBright : accent} text={flowChipLabel(node)} width={node.width - 2} />;
   return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={1} justifyContent={desktop ? "center" : undefined}
     onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-chip"
     role="button" aria-label={flowNodeName(node)}>
     {/* The desktop chip leaves a hairline of row above and below, like ticker chips. */}
-    {desktop ? <Box paddingX={1} minWidth={0} backgroundColor={background} justifyContent="center" style={{ height: "calc(100% - 4px)", borderRadius: 3, cursor: "pointer" }}>{text}</Box>
+    {desktop ? <Box paddingX={1} minWidth={0} backgroundColor={background} justifyContent="center" style={{ ...NATIVE_BADGE_STYLE, cursor: "pointer" }}>{text}</Box>
       : <Box paddingX={1} height={1} backgroundColor={background}>{text}</Box>}
   </Box>;
 }
@@ -326,8 +332,8 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
   ];
   const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));
   return <Box position="absolute" left={Math.max(1, Math.min(width - tooltipWidth - 1, anchor.x))} top={anchor.y} width={tooltipWidth} height={lines.length + 1}
-    flexDirection="column" paddingX={1} backgroundColor={colors.panel} border={!desktop} borderColor={ROLE_COLORS[row.role]}
-    style={desktop ? { border: `1px solid ${blendHex(colors.bg, ROLE_COLORS[row.role], 0.7)}`, borderRadius: 4, boxShadow: "0 6px 18px rgba(0,0,0,0.45)", zIndex: 20, pointerEvents: "none" } : undefined}
+    flexDirection="column" paddingX={1} backgroundColor={desktop ? undefined : colors.panel} border={!desktop} borderColor={ROLE_COLORS[row.role]}
+    style={desktop ? { ...TOOLTIP_SURFACE_STYLE, padding: "0 var(--gloom-space-sm)", zIndex: 20 } : undefined}
     data-gloom-role="supply-flow-tooltip">
     <ClippedText fg={colors.textBright} attributes={TextAttributes.BOLD} text={counterpartyLabel(row)} width={tooltipWidth - 2} />
     {lines.map((line, index) => <ClippedText key={index} fg={index === 0 ? colors.text : colors.textDim} text={line} width={tooltipWidth - 2} />)}
