@@ -188,7 +188,8 @@ async function searchFate(
 function formerIssuerNote(candidate: TickerSearchCandidate): string | null {
   const former = candidate.result?.formerIssuer;
   if (!former?.symbol || !former.name || !former.until || former.symbol.toUpperCase() === candidate.symbol.toUpperCase()) return null;
-  return formerIssuerLine(former.symbol, former, { symbol: candidate.label, name: resolveSearchName(candidate) });
+  // A leftover line of the merged company names the listing it became; the successor's own row is that listing.
+  return formerIssuerLine(former.symbol, former, former.successor ?? { symbol: candidate.label, name: resolveSearchName(candidate) });
 }
 
 /** The merged companies' lines, once each, unless the symbol's own line already says it. */

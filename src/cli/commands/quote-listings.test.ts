@@ -295,20 +295,29 @@ test("a symbol whose company merged into another names it in one line and its JS
     ...changes.GOGL!.formerIssuer, note: "GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT",
   });
 
-  // Search sends the company it merged into for the old name, naming it; the line is quote's.
+  // Search sends the company it merged into for the old name, naming it; the line is quote's. It is the
+  // primary listing though the old company's leftover line matches the name better, and that line,
+  // linked by its name, says what it became; a namesake search cannot link stays below.
+  const former = { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20" };
   const dataProvider = createTestDataProvider({
-    search: async () => [{
-      providerId: "test", symbol: "CMBT", name: "Cmb.Tech NV", exchange: "NYSE", type: "Common Stock", currency: "USD",
-      searchAliases: ["Golden Ocean Group Ltd"], formerIssuer: { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20" },
-    }],
+    search: async () => [
+      { providerId: "test", symbol: "GOGLC", name: "GOLDEN OCEAN GROUP", exchange: "BYMA", type: "Common Stock", currency: "ARS" },
+      { providerId: "test", symbol: "GOMH", name: "Golden Ocean Mining Holdings", exchange: "TSXV", type: "Common Stock", currency: "CAD" },
+      {
+        providerId: "test", symbol: "CMBT", name: "Cmb.Tech NV", exchange: "NYSE", type: "Common Stock", currency: "USD",
+        searchAliases: ["Golden Ocean Group Ltd"], formerIssuer: former,
+      },
+    ],
   });
   const printed: PrintedCliResult["result"][] = [];
   const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
   await search("Golden Ocean", { initMarketData, printResult: (result) => { printed.push(result); } });
   expect(printed[0]!.warnings).toEqual(["GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT"]);
-  expect(printed[0]!.data).toEqual([expect.objectContaining({
-    symbol: "CMBT", formerIssuer: { symbol: "GOGL", name: "Golden Ocean Group Ltd", until: "2025-08-20" },
-  })]);
+  expect((printed[0]!.data as Array<Record<string, unknown>>).map(({ category, symbol, formerIssuer }) => ({ category, symbol, formerIssuer }))).toEqual([
+    { category: "Primary Listing", symbol: "CMBT", formerIssuer: former },
+    { category: "Other Listings", symbol: "GOGLC", formerIssuer: { ...former, successor: { symbol: "CMBT", name: "Cmb.Tech NV" } } },
+    { category: "Other Listings", symbol: "GOMH", formerIssuer: undefined },
+  ]);
 });
 
 test("search lists a symbol it no longer finds as no longer trading with its last date, and says when a company left a symbol it finds", async () => {

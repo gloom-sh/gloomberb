@@ -31,6 +31,8 @@ import {
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
+import { shortCompanyName } from "../../../tickers/company-name";
+import { useSeriesListings } from "./series-listings";
 import { LIVE_CHART_TERMINAL_FRAME_MS } from "../../../time-series/live-quotes";
 import { FORWARD_VALUATION_BASIS_NOTICES } from "../../../time-series/forward-valuation";
 import { chartSeriesSourceKey } from "../../../capabilities";
@@ -193,6 +195,8 @@ interface ChartComposerSurfaceProps {
   height: number;
   footerId: string;
   onCapture?: (capturing: boolean) => void;
+  /** The legend names each series' company; a ticker's own research tab already does. */
+  nameSeries?: boolean;
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
@@ -280,6 +284,7 @@ function ChartComposerSurface({
   height,
   footerId,
   onCapture,
+  nameSeries = true,
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
@@ -348,7 +353,9 @@ function ChartComposerSurface({
   // small zoom keeps the bars it already has. Read from the previous render:
   // the resolver only consults it when the viewport moves.
   const currentResolutionRef = useRef<ManualChartResolution | null>(null);
-  const resolution = useResolvedChartSpec(spec, {
+  // Bare series are read as `quote` reads them before anything is loaded for them.
+  const listings = useSeriesListings(spec);
+  const resolution = useResolvedChartSpec(listings.spec, {
     autoViewport: spec.viewport.resolution === "auto"
       ? activeRuntimeViewport?.adaptiveViewport
       : null,
@@ -407,10 +414,18 @@ function ChartComposerSurface({
   // them. Without a placeholder they vanish from the legend entirely and the
   // only way back is the series dialog.
   const legendSeries = useMemo(() => {
-    const resolved = resolution.legendSeries ?? [];
+    // Each security series names its company once, beside its label: "AAPL Price · Apple".
+    const named = new Set<string>();
+    const resolved = (resolution.legendSeries ?? []).map((entry) => {
+      const name = nameSeries ? listings.names.get(entry.id) : undefined;
+      const company = name ? shortCompanyName(name) : "";
+      if (!company || named.has(company)) return entry;
+      named.add(company);
+      return { ...entry, label: `${entry.label} · ${company}` };
+    });
     const resolvedIds = new Set(resolved.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
-    if (missing.length === 0) return resolution.legendSeries;
+    if (missing.length === 0) return named.size > 0 ? resolved : resolution.legendSeries;
     const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
     return [
       ...resolved,
@@ -431,7 +446,7 @@ function ChartComposerSurface({
         points: [],
       })),
     ].sort((a, b) => (bySpecOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (bySpecOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER));
-  }, [resolution.legendSeries, spec.series]);
+  }, [listings.names, nameSeries, resolution.legendSeries, spec.series]);
   const plottedSeries = useMemo(
     () => projectVisibleChartSeries(
       spec,
@@ -912,7 +927,9 @@ function ChartComposerSurface({
   const comparisonUnavailable = comparisonHasNoWindow && !resolution.loading
     ? "Comparison unavailable: need two shared dates and a nonzero baseline."
     : null;
-  const statusError = resolution.errors[0];
+  const loading = resolution.loading || listings.pending;
+  // A bare code several companies list asks which, as `quote` does, before anything else is said.
+  const statusError = listings.errors[0] ?? resolution.errors[0];
   // A spread or formula error names its legs and their units; the study's id adds nothing to it.
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
     && statusError?.startsWith(`${study.id}: `));
@@ -920,7 +937,9 @@ function ChartComposerSurface({
   // Failed series use their authored id in errors and their display label in warnings.
   const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
   const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
-  const errorSeriesLabel = legendSeries?.find((entry) => entry.id === errorSeries?.id)?.label;
+  // The label the resolver wrote its warnings with, before the legend named the company.
+  const errorSeriesLabel = (resolution.legendSeries?.find((entry) => entry.id === errorSeries?.id)
+    ?? legendSeries?.find((entry) => entry.id === errorSeries?.id))?.label;
   const duplicateErrorNotices = new Set([statusError, errorMessage,
     errorSeriesLabel && errorMessage ? `${errorSeriesLabel}: ${errorMessage}` : undefined]);
   // A failed shared window empties every compared leg; one comparison message explains it.
@@ -939,7 +958,8 @@ function ChartComposerSurface({
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
-  const statusNotices = [...new Set([...(statusErrorNotice ? [statusErrorNotice] : []), ...(comparisonUnavailable ? [comparisonUnavailable] : []), ...statusWarnings])];
+  const statusNotices = [...new Set([...(statusErrorNotice ? [statusErrorNotice] : []), ...listings.errors, ...listings.notices,
+    ...(comparisonUnavailable ? [comparisonUnavailable] : []), ...statusWarnings])];
   usePaneNoticeFooter({
     registrationId: `${footerId}:notices`,
     notices: statusNotices,
@@ -980,7 +1000,7 @@ function ChartComposerSurface({
     return newest > end ? formatCompositeDatasetDate(new Date(newest), end) : null;
   }, [activeRuntimeViewport, plottedSeries, spec, viewport]);
   usePaneFooter(footerId, () => ({
-    info: resolution.loading
+    info: loading
       ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
       : pickingAnchor
         ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
@@ -994,7 +1014,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [resolution.loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
+  }), [loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -1058,10 +1078,10 @@ function ChartComposerSurface({
     : [];
 
   // A company that reports no quarterly figures says so, and where its annual ones are.
-  const unreported = legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
+  const unreported = resolution.legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
-    : resolution.loading
+    : loading
       ? "Loading chart data"
       : statusErrorNotice ?? comparisonUnavailable
         ?? (unreported ? `${unreported.label} has no ${unreported.unreportedPeriod} figures. Set Period to Annual in Series.` : "No observations in this range");
@@ -1277,6 +1297,7 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
       height={height}
       footerId="chart-composer:research"
       onCapture={onCapture}
+      nameSeries={false}
     />
   );
 }
