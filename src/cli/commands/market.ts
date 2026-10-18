@@ -12,7 +12,7 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
-import { isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -723,6 +723,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       freshness: quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
     }, {
       rows: quoteRows,
+      // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
+      exportIdentity: (row) => ({
+        symbolOrSeries: row.symbol,
+        currencyOrUnit: row.currency || (row.yieldIndex ? "pct" : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+      }),
       details: quoteDetailsText,
       columns,
       ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),

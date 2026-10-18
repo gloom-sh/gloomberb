@@ -39,6 +39,22 @@ test("a Cboe yield index is a yield in percent moving in basis points from its r
   expect(rows.map((row) => [row.price, row.changePercent])).toEqual([["5.24", 0.25], ["4.06", -0.34]]);
 });
 
+// The quote's own currency stays in --json; a level's CSV row names its unit, and a 0 volume nobody counts is blank.
+test("an index exports no currency: CSV names points or pct, and JSON keeps the quote as sent", async () => {
+  const vix = { ...base, symbol: "^VIX", price: 19.99, change: 3.53, changePercent: 21.45, volume: 0 } as Quote;
+  for (const command of ["quote", "compare"]) {
+    const { result, options } = await quote([vix, yields[0]!, { ...stock, volume: 1000 }], command);
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    const header = csv[0]!.split(",");
+    const cell = (symbol: string, column: string) => csv.find((line) => line.startsWith(symbol))!.split(",")[header.indexOf(column)];
+    expect([cell("^VIX", "Cur"), cell("^VIX", "currency_or_unit")]).toEqual(["", "index points"]);
+    expect(cell("^TNX", "currency_or_unit")).toBe("pct");
+    expect([cell("AAPL", "Cur"), cell("AAPL", "currency_or_unit")]).toEqual(["USD", "USD"]);
+    if (command === "compare") expect([cell("^VIX", "Volume"), cell("AAPL", "Volume")]).toEqual(["", "1000"]);
+    expect((result.data as Array<{ quote: Quote }>)[0]!.quote).toMatchObject({ currency: "USD", volume: 0 });
+  }
+});
+
 test("beside other symbols the yield rows keep their own units and the header stays Chg%", async () => {
   const { text, result } = await quote([yields[0]!, stock]);
   const lines = text.split("\n");

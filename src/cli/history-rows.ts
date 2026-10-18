@@ -1,4 +1,4 @@
-import { INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
+import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import type { PricePoint } from "../types/financials";
 import { marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
@@ -373,7 +373,7 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
     const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
-  if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: "index points" };
+  if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   const code = quote?.currency?.trim();
   return code
     ? { kind: "currency", currency: code, unit: currencyUnitLabel(code, { ofMajor: true }) }
