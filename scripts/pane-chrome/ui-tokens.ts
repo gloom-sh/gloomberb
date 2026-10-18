@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
+import { readPluginLock } from "./plugin-lock";
 import type { AuditElement, AuditMeasure, AuditTextRun } from "./ui-audit-measure";
 import { FITTED } from "./ui-audit-report";
 
@@ -17,13 +18,24 @@ import { FITTED } from "./ui-audit-report";
  *
  * The page reads Gloom Cloud only from a kept snapshot (`--replay`, offline:
  * web-app.ts), so a run draws the same views every time; with no snapshot
- * every pane draws its offline state, which is checked the same way.
- * `--record` lets reads the snapshot lacks go upstream and keeps them: CI
- * does that on main to make the snapshot pull requests read.
+ * every pane draws its offline state, which is checked the same way. The
+ * registry's plugins build at the commits the snapshot's lock pins
+ * (plugin-lock.ts).
  *
- *   bun run check:ui-tokens [--shard 0/8] [--only DOCS,LAY] [--widths 640,1280] [--replay <dir>]
+ * `--record` makes the snapshot: CI does it on main once a week. It opens
+ * every view once live, keeping what each reads and pinning the registry's
+ * plugins, then checks from what it kept, offline, as a pull request will.
+ * What it finds in a registry plugin's views is the plugin's own: it warns,
+ * and it is kept with the snapshot (`ui-tokens-known.json`). A pull request
+ * on that snapshot fails on a registry plugin's view only for a value the
+ * recording did not have: the plugin's code and data are the same, so the
+ * change under check made it. With no recording to compare with, a registry
+ * plugin's values warn. Built-in panes and the plugins bundled by `bun.lock`
+ * always fail.
+ *
+ *   bun run check:ui-tokens [--shard 0/4] [--only DOCS,LAY] [--widths 640,1280] [--replay <dir>]
  *                           [--record] [--out <dir>] [--web <dir>] [--no-build] [--root <checkout>]
- *   bun run check:ui-tokens --results <run>[,<run>]    check runs already made
+ *   bun run check:ui-tokens --results <run>[,<run>] [--replay <dir>]    check runs already made
  *
  * The static half, literals in the code, is src/architecture/ui-literals.test.ts.
  */
@@ -45,6 +57,8 @@ export interface TokenViolation {
   view: string;
   /** The function, or the shell view, the view belongs to. */
   token: string;
+  /** The plugin whose pane it is, for a plugin's view. */
+  plugin?: string;
   width: number;
   measure: TokenMeasure;
   value: number;
@@ -57,6 +71,7 @@ export interface ResultLine {
   id: string;
   kind: "pane" | "shell";
   token: string;
+  plugin?: string;
   view: string;
   width: number;
   measure: AuditMeasure;
@@ -102,7 +117,7 @@ export function violationsOf(result: ResultLine): TokenViolation[] {
   const found = new Map<string, TokenViolation>();
   const add = (measure: TokenMeasure, value: number, component: string, chain: string, sample: string) => {
     const key = `${measure}|${value}|${component}`;
-    if (!found.has(key)) found.set(key, { view: result.id, token: result.token, width: result.width, measure, value, component, chain, sample });
+    if (!found.has(key)) found.set(key, { view: result.id, token: result.token, ...(result.plugin ? { plugin: result.plugin } : {}), width: result.width, measure, value, component, chain, sample });
   };
   for (const run of result.measure.texts ?? []) {
     if (fitted(run)) continue;
@@ -127,31 +142,68 @@ export function allows(entry: TokenAllowance, violation: TokenViolation): boolea
     && (entry.component === undefined || entry.component === violation.component);
 }
 
+/**
+ * How a registry plugin's values are held: the plugins built (the lock's
+ * ids), and what the snapshot's recording found in their views, or null when
+ * there is no recording to compare with.
+ */
+export interface RegistryPolicy {
+  plugins: ReadonlySet<string>;
+  known: KnownValues | null;
+}
+
+/** A recording's registry plugin views (`view|width`) and the values off the tokens it found in them. */
+export interface KnownValues {
+  views: string[];
+  values: string[];
+}
+
+/** A view at a width: a result line's id, or a violation's view. */
+export const viewKey = (id: string, width: number) => `${id}|${width}`;
+export const valueKey = (violation: TokenViolation) => `${violation.view}|${violation.width}|${violation.measure}|${violation.value}|${violation.component}`;
+
 export interface TokenCheck {
   failing: TokenViolation[];
   allowed: TokenViolation[];
+  /** A registry plugin's own values: warned, not failed. */
+  warned: TokenViolation[];
   /** Entries of measured functions that matched nothing (`function: index`). */
   unused: string[];
 }
 
-export function checkTokens(results: ResultLine[], allowlist: TokenAllowlist): TokenCheck {
+/** Whether a value off the tokens in a registry plugin's view is the plugin's own (warned) rather than the change's. */
+function pluginsOwn(violation: TokenViolation, registry: RegistryPolicy | undefined): boolean {
+  if (!registry || !violation.plugin || !registry.plugins.has(violation.plugin)) return false;
+  if (!registry.known) return true;
+  // A view the recording did not measure has nothing to compare with.
+  if (!registry.known.views.includes(viewKey(violation.view, violation.width))) return true;
+  return registry.known.values.includes(valueKey(violation));
+}
+
+export function checkTokens(results: ResultLine[], allowlist: TokenAllowlist, registry?: RegistryPolicy): TokenCheck {
   const used = new Set<string>();
   const failing: TokenViolation[] = [];
   const allowed: TokenViolation[] = [];
+  const warned: TokenViolation[] = [];
   for (const result of results) {
     for (const violation of violationsOf(result)) {
       const entries = allowlist[violation.token] ?? [];
       const index = entries.findIndex((entry) => allows(entry, violation));
-      if (index < 0) { failing.push(violation); continue; }
-      used.add(`${violation.token}: ${index}`);
-      allowed.push(violation);
+      if (index >= 0) {
+        used.add(`${violation.token}: ${index}`);
+        allowed.push(violation);
+      } else if (pluginsOwn(violation, registry)) {
+        warned.push(violation);
+      } else {
+        failing.push(violation);
+      }
     }
   }
   const measured = new Set(results.map((result) => result.token));
   const unused = Object.entries(allowlist).flatMap(([token, entries]) => measured.has(token)
     ? entries.map((_, index) => `${token}: ${index}`).filter((key) => !used.has(key))
     : []);
-  return { failing, allowed, unused };
+  return { failing, allowed, warned, unused };
 }
 
 /** The allowlist as it is kept: functions sorted, two-space JSON, a newline at the end. */
@@ -187,10 +239,15 @@ async function readFailedViews(dir: string): Promise<string[]> {
 }
 
 export const ALLOWLIST_PATH = join(import.meta.dir, "../../src/architecture/ui-tokens-allowlist.json");
+/** What the snapshot's recording found in the registry plugins' views, kept beside it. */
+export const KNOWN_FILE = "ui-tokens-known.json";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const resultsArg = takeOption(args, "--results");
+  const replayArg = takeOption(args, "--replay");
+  const replayDir = resolve(replayArg ?? cacheDir("ui-tokens-replay"));
+  const record = args.includes("--record");
   let dirs: string[];
   if (resultsArg) {
     dirs = resultsArg.split(",").map((dir) => resolve(dir));
@@ -199,31 +256,58 @@ async function main(): Promise<void> {
     const shard = takeOption(args, "--shard");
     const only = takeOption(args, "--only");
     const root = takeOption(args, "--root");
-    const audit = [
-      "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-shots", "--no-report", "--themes", "white",
-      "--widths", takeOption(args, "--widths") ?? "640,1280",
-      "--out", out,
-      "--web", resolve(takeOption(args, "--web") ?? cacheDir("ui-tokens-web")),
-      "--replay", resolve(takeOption(args, "--replay") ?? cacheDir("ui-tokens-replay")),
-      ...(args.includes("--record") ? [] : ["--offline"]),
-      ...(args.includes("--no-build") ? [] : ["--build"]),
-      ...(shard ? ["--shard", shard] : []),
-      ...(only ? ["--only", only] : []),
-      ...(root ? ["--root", resolve(root)] : []),
-    ];
+    const widths = takeOption(args, "--widths") ?? "640,1280";
+    const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-tokens-web"));
+    const build = !args.includes("--no-build");
+    const audit = (pass: { out: string; offline: boolean; build: boolean }) => {
+      const command = [
+        "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-shots", "--no-report", "--themes", "white",
+        "--widths", widths,
+        "--out", pass.out,
+        "--web", web,
+        "--replay", replayDir,
+        ...(pass.offline ? ["--offline"] : []),
+        ...(pass.build ? ["--build"] : []),
+        ...(shard ? ["--shard", shard] : []),
+        ...(only ? ["--only", only] : []),
+        ...(root ? ["--root", resolve(root)] : []),
+      ];
+      const run = Bun.spawnSync(command, { stdout: "inherit", stderr: "inherit" });
+      if (run.exitCode !== 0) throw new Error(`The UI audit stopped (exit ${run.exitCode})`);
+    };
     await mkdir(out, { recursive: true });
-    const run = Bun.spawnSync(audit, { stdout: "inherit", stderr: "inherit" });
-    if (run.exitCode !== 0) throw new Error(`The UI audit stopped (exit ${run.exitCode})`);
+    if (record) {
+      // Live once, keeping every read and pinning the registry's plugins; then checked from what
+      // was kept, as a pull request reads it, so what this finds is what a pull request finds.
+      console.log("Recording: every view once, live.");
+      audit({ out: `${out}-recording`, offline: false, build });
+      console.log("Checking from the recording, offline.");
+      audit({ out, offline: true, build: false });
+    } else {
+      audit({ out, offline: true, build });
+    }
     dirs = [out];
   }
   const results = (await Promise.all(dirs.map(readResults))).flat();
   const failedViews = (await Promise.all(dirs.map(readFailedViews))).flat();
   if (!results.length) throw new Error(`No measured views in ${dirs.join(", ")}`);
   const allowlist: TokenAllowlist = await Bun.file(ALLOWLIST_PATH).json();
-  const { failing, allowed, unused } = checkTokens(results, allowlist);
+  const lock = resultsArg && !replayArg ? null : await readPluginLock(replayDir);
+  const knownFile = join(replayDir, KNOWN_FILE);
+  const registry: RegistryPolicy | undefined = lock ? {
+    plugins: new Set(lock.plugins.map((plugin) => plugin.id)),
+    known: !record && existsSync(knownFile) ? await Bun.file(knownFile).json() as KnownValues : null,
+  } : undefined;
+  const { failing, allowed, warned, unused } = checkTokens(results, allowlist, registry);
+  if (record && registry) {
+    const views = results.filter((result) => result.plugin && registry.plugins.has(result.plugin)).map((result) => viewKey(result.id, result.width));
+    const known: KnownValues = { views: [...new Set(views)].sort(), values: [...new Set(warned.map(valueKey))].sort() };
+    await Bun.write(knownFile, `${JSON.stringify(known, null, 1)}\n`);
+  }
 
   const views = new Set(results.map((result) => result.id));
   const functions = new Set(results.map((result) => result.token));
+  const recorded = registry?.known ? "values the snapshot's recording had" : record ? "recorded with this snapshot" : "no recording to compare with";
   const lines = [
     `## UI tokens`,
     "",
@@ -231,13 +315,15 @@ async function main(): Promise<void> {
     failing.length
       ? `**${failing.length} values outside the tokens.** Use the design system's tokens (docs/pane-conventions.md, "Design system"), or add an entry with its reason to \`src/architecture/ui-tokens-allowlist.json\`:`
       : `Every value is on the tokens or allowed (${allowed.length} allowed by \`src/architecture/ui-tokens-allowlist.json\`).`,
-    ...failing.map((violation) => `- ${describe(violation)}`),
+    ...failing.map((violation) => `- ${describe(violation)}${violation.plugin && registry?.plugins.has(violation.plugin) ? " (a registry plugin's view: its code and data are the snapshot's, and the recording did not have this value)" : ""}`),
+    ...(warned.length ? ["", `Warnings, not failures: ${warned.length} values in registry plugins' views are the plugins' own (${recorded}). Their authors fix them in the plugins' repos:`, ...warned.map((violation) => `- ${describe(violation)}`)] : []),
     ...(failedViews.length ? ["", `Not measured (the function did not open): ${failedViews.join(", ")}.`] : []),
     ...(unused.length ? ["", `Allowlist entries nothing matched this run (an offline run draws less): ${unused.join(", ")}.`] : []),
   ];
   const summary = lines.join("\n");
   console.log(`\n${summary}`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+  for (const violation of warned) console.log(`::warning title=UI tokens (registry plugin ${violation.plugin})::${describe(violation)}`);
   if (failing.length) process.exitCode = 1;
 }
 

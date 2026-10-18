@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { checkoutPlugin, pluginLock } from "./plugin-lock";
 import { pathName, visitAlternatives } from "./tab-visits";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
@@ -14,7 +15,8 @@ import {
 /**
  * The UI audit: every view of the desktop and web app, measured. For each
  * function in the catalog, the panes of the plugins the web app bundles and,
- * with `--registry`, of every plugin the registry lists, it opens the pane
+ * with `--registry`, of every plugin the registry lists (at the commits the
+ * replay folder's lock pins: plugin-lock.ts), it opens the pane
  * docked on the real web build at each width, then its detail (Enter) and
  * each of its tabs, each opened from the pane as it first shows and measured
  * only once the page says it is selected (tab-visits.ts; a tab it could not
@@ -60,7 +62,8 @@ const height = Number(takeOption(args, "--height") ?? 800);
 const themes = (takeOption(args, "--themes") ?? "white,paper").split(",");
 const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-audit"));
 const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-audit-web"));
-const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay")), { offline: args.includes("--offline") });
+const replayDir = resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay"));
+const replay = createReplay(replayDir, { offline: args.includes("--offline") });
 const shard = parseShard(takeOption(args, "--shard"));
 const report = !args.includes("--no-report");
 const shots = !args.includes("--no-shots");
@@ -122,39 +125,22 @@ export function shardOf(token: string, count: number): number {
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "tab";
 
-/** Registry plugins that are not built in, checked out at their registry ref and installed beside each other. */
+/**
+ * Registry plugins that are not built in, checked out at the commits the
+ * replay folder's lock pins (plugin-lock.ts) and installed beside each other.
+ */
 async function registryPluginDirs(builtIn: Set<string>): Promise<string[]> {
-  const { loadRegistry } = await import("../../src/plugins/marketplace/feed");
   const { linkHostPackages } = await import("../../src/plugins/host-link");
   const { WEB_BUNDLED_PLUGIN_PACKAGES } = await import("../../src/plugins/web-bundled");
   const pluginsDir = cacheDir("ui-audit-plugins");
   await mkdir(pluginsDir, { recursive: true });
-  // The list is kept with the checkouts: a run that cannot read the registry (a network blip) builds
-  // the same plugins as the last one instead of none, so two sides of a comparison never differ by it.
-  const kept = join(pluginsDir, "registry.json");
-  let plugins: Awaited<ReturnType<typeof loadRegistry>>["plugins"] = [];
-  for (let attempt = 0; attempt < 3 && plugins.length === 0; attempt += 1) {
-    if (attempt) await sleep(2_000 * attempt);
-    plugins = (await loadRegistry({ force: attempt > 0 })).plugins;
-  }
-  if (plugins.length) await Bun.write(kept, JSON.stringify(plugins));
-  else if (existsSync(kept)) {
-    plugins = await Bun.file(kept).json();
-    console.warn(`The plugin registry could not be read: building the ${plugins.length} plugins listed when it last was.`);
-  } else {
-    throw new Error("The plugin registry could not be read, and no list of its plugins is kept to build from.");
-  }
+  const lock = await pluginLock(replayDir, pluginsDir);
   const dirs: string[] = [];
-  for (const plugin of plugins) {
-    if (!plugin.repo || plugin.bundled || builtIn.has(plugin.id)) continue;
-    const name = plugin.repo.split("/")[1]!;
-    if ((WEB_BUNDLED_PLUGIN_PACKAGES as readonly string[]).includes(name)) continue;
-    const dir = join(pluginsDir, name);
-    if (!existsSync(join(dir, "package.json"))) {
-      const clone = Bun.spawnSync(["git", "clone", "--quiet", "--depth", "1", ...(plugin.ref ? ["--branch", plugin.ref] : []), `https://github.com/${plugin.repo}.git`, dir]);
-      if (clone.exitCode !== 0) { console.warn(`Left out ${plugin.id}: could not clone ${plugin.repo}`); continue; }
-      Bun.spawnSync(["bun", "install", "--production", "--omit", "peer", "--ignore-scripts"], { cwd: dir });
-    }
+  for (const plugin of lock.plugins) {
+    if (builtIn.has(plugin.id)) continue;
+    if ((WEB_BUNDLED_PLUGIN_PACKAGES as readonly string[]).includes(plugin.repo.split("/")[1]!)) continue;
+    const dir = await checkoutPlugin(plugin, pluginsDir);
+    if (!dir) { console.warn(`Left out ${plugin.id}: could not fetch ${plugin.repo}@${plugin.commit.slice(0, 12)}`); continue; }
     dirs.push(dir);
   }
   // Linked once every plugin is checked out: a plugin's peer (ibkr-gateway's ibkr) may come after it.

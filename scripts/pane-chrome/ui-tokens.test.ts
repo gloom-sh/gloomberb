@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ALLOWLIST_PATH, checkTokens, formatTokenAllowlist, type ResultLine, type TokenAllowlist } from "./ui-tokens";
+import { ALLOWLIST_PATH, checkTokens, formatTokenAllowlist, valueKey, viewKey, type ResultLine, type TokenAllowlist } from "./ui-tokens";
 
 const run = (over: Record<string, unknown> = {}) => ({
   region: "pane-body", roles: "pane-content", tags: "", component: "Text", chain: "Text<Pane", fontSize: 12, lineHeight: 18, fontWeight: 400,
@@ -7,8 +7,8 @@ const run = (over: Record<string, unknown> = {}) => ({
   left: 8, rightGap: 8, top: 4, sample: "Text", ...over,
 });
 const element = (shape: string) => ({ family: "button", region: "pane-body", component: "Button", chain: "Button<Pane", roles: "", state: "", shape, color: "", background: "", borderColor: "", count: 1, sample: null, text: "Go" });
-function view(id: string, texts: unknown[], elements: unknown[] = [], kind: "pane" | "shell" = "pane"): ResultLine {
-  return { id, kind, token: id.split("--")[0]!, view: "root", width: 1280, measure: { texts, elements } as never };
+function view(id: string, texts: unknown[], elements: unknown[] = [], kind: "pane" | "shell" = "pane", plugin?: string): ResultLine {
+  return { id, kind, token: id.split("--")[0]!, ...(plugin ? { plugin } : {}), view: "root", width: 1280, measure: { texts, elements } as never };
 }
 
 test("values off the tokens fail, and what a chart fits, a spinner turns or a shell has no inset for does not", () => {
@@ -43,6 +43,24 @@ test("an allowlist entry covers its function's matching values only, and one not
   expect(allowed.map((violation) => violation.view)).toEqual(["AAA--root"]);
   expect(failing.map((violation) => `${violation.view} ${violation.component}`)).toEqual(["AAA--root Other", "BBB--root SvgText"]);
   expect(unused).toEqual(["AAA: 1"]);
+});
+
+test("a registry plugin's value warns when its recording had it or cannot tell, and fails when the change made it", () => {
+  const results = [
+    view("REG--root", [run({ fontSize: 13, component: "Own" }), run({ fontSize: 11, component: "New" })], [], "pane", "reg"),
+    view("REG--detail", [run({ fontSize: 13, component: "Own" })], [], "pane", "reg"),
+    view("BUN--root", [run({ fontSize: 13, component: "Own" })], [], "pane", "bundled"),
+  ];
+  const plugins = new Set(["reg"]);
+  const recording = checkTokens(results, {}, { plugins, known: null });
+  // Nothing to compare with: the registry plugin's values warn, a bundled plugin's still fail.
+  expect(recording.failing.map((violation) => violation.view)).toEqual(["BUN--root"]);
+  expect(recording.warned).toHaveLength(3);
+  // On the recording's snapshot, a value it had warns; one it had not fails; a view it never measured warns.
+  const known = { views: [viewKey("REG--root", 1280)], values: [valueKey(recording.warned[0]!)] };
+  const later = checkTokens(results, {}, { plugins, known });
+  expect(later.failing.map((violation) => `${violation.view} ${violation.component}`)).toEqual(["REG--root New", "BUN--root Own"]);
+  expect(later.warned.map((violation) => `${violation.view} ${violation.component}`)).toEqual(["REG--root Own", "REG--detail Own"]);
 });
 
 test("the UI tokens allowlist is sorted and says why each value stays", async () => {
