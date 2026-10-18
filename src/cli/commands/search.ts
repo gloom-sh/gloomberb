@@ -24,6 +24,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
+import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
@@ -408,6 +409,7 @@ export function buildSearchReport({
   functions = [],
   fate = NO_SEARCH_FATE,
   pointToCatalog = false,
+  readAs,
 }: {
   query: string;
   candidates: TickerSearchCandidate[];
@@ -419,8 +421,11 @@ export function buildSearchReport({
   fate?: SearchFate;
   /** End with the catalog hint whatever search found: `quote` searched a phrase the user did not ask to search. */
   pointToCatalog?: boolean;
+  /** What the query was searched as: "Read VIX.X as ^VIX (Cboe Volatility Index)." */
+  readAs?: string;
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
+  if (readAs) lines.push("", readAs);
   if (fate.notes.length > 0) lines.push("", ...fate.notes);
   const gap = knownGapMessage(query);
   const indexNote = gap ? null : indexRootNote(query, candidates);
@@ -516,14 +521,16 @@ export async function search(query: string, dependencies: SearchCommandDependenc
   await withMarketData(initMarketDataFn, async (context) => {
     const { store, dataProvider } = context;
     const tickers = await store.loadAllTickers();
-    const symbol = trimmedQuery.toUpperCase();
+    // A broker's code for an index (VIX.X, $VIX) searches for the index, as `quote` reads it.
+    const index = await readBrokerIndexCode(trimmedQuery, context);
+    const symbol = (index?.symbol ?? trimmedQuery).toUpperCase();
     // A bare symbol's quote and whether it changed (FB is now META) are asked beside the search, so they cost no wait.
     const bare = BARE_SYMBOL.test(symbol);
     const savedExchange = tickers.find((ticker) => ticker.metadata.ticker.toUpperCase() === symbol)?.metadata.exchange ?? "";
     const quote = bare ? loadSearchedQuote(symbol, savedExchange, dataProvider) : null;
     const changes = bare ? startTickerChangeLookup(dataProvider, symbol) : null;
     const candidates = await searchCandidatesForCli({
-      query: trimmedQuery,
+      query: index?.symbol ?? trimmedQuery,
       tickers,
       dataProvider,
       ...quote ? { quote } : {},
@@ -538,9 +545,9 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({
         data: [...fate.stopped ? [stoppedListingRow(fate.stopped)] : [], ...searchCandidateRows(candidates)],
-        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}),
+        metadata: { query: trimmedQuery, ...(index ? { searched: index.symbol } : {}), ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}),
           ...(bank ? { centralBank: { id: bank.id, name: bank.name, place: bank.place, function: "CBR" } } : {}) },
-        warnings: warnings.length ? warnings : undefined,
+        warnings: index?.readAs || warnings.length ? [...index?.readAs ? [index.readAs] : [], ...warnings] : undefined,
       }, {
         columns: [
           { key: "category", header: "Category" },
@@ -561,6 +568,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       series,
       functions,
       fate,
+      readAs: index?.readAs,
     }));
   });
 }

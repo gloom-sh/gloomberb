@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
-import { createTestDataProvider } from "../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
   ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
 } from "./listing-arg";
@@ -97,6 +97,34 @@ test("an index typed with the venue search files it under resolves as the bare s
   // Another code is still a typo, and says where the index is listed.
   const refused = await resolveCliListing("^VIX:ZZZ", undefined, deps).catch((error: unknown) => error);
   expect((refused as Error).message).toBe("Unknown exchange ZZZ for ^VIX. ^VIX trades on: CXI.");
+});
+
+test("a broker's index code is the index, and a cashtag stays the stock it names", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const quoted: string[] = [];
+  // VIX itself has no quote; MOVE is Corvex, AAPL Apple.
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      quoted.push(symbol);
+      if (symbol === "VIX") throw new Error("No data provider could resolve VIX");
+      return createTestQuote({ symbol, instrumentType: "EQUITY" });
+    },
+  });
+  const deps = { store, dataProvider };
+  // thinkorswim's VIX.X and $VIX.X are only ever the index, so they are read without a request.
+  for (const typed of ["VIX.X", "$vix.x", "SPX.X"]) expect(parseListingArg(typed).key).toBe(typed.toUpperCase().includes("SPX") ? "^SPX" : "^VIX");
+  expect(parseListingArg("VIX.X").readAs).toBe("Read VIX.X as ^VIX (Cboe Volatility Index).");
+  expect(quoted).toEqual([]);
+  // Schwab's $VIX is the index because VIX quotes nothing; $MOVE and $AAPL are the securities that trade as MOVE and AAPL.
+  expect(await resolveCliListing("$VIX", undefined, deps)).toMatchObject({ key: "^VIX", request: { symbol: "^VIX" } });
+  expect((await resolveCliListing("$MOVE", undefined, deps)).key).toBe("MOVE");
+  expect(await resolveCliListing("$AAPL", undefined, deps)).toMatchObject({ key: "AAPL", request: { symbol: "AAPL" } });
+  expect((await resolveCliListing("$AAPL", undefined, deps)).readAs).toBeUndefined();
+  // A root no index is known by is never looked up as one, and a named exchange keeps the symbol as typed.
+  expect(quoted).toEqual(["VIX", "MOVE"]);
+  expect(parseListingArg("VIX.X", "NYSE").key).toBe("VIX.X:NYSE");
 });
 
 test("a perpetual is a listing on its venue, typed by PERP's market id or Hyperliquid's dex name", async () => {

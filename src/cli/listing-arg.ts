@@ -38,6 +38,7 @@ import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
+import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -101,6 +102,9 @@ function parseCleanListingArg(
 ): ListingArg {
   const optionCode = (exchangeOption ?? "").trim().toUpperCase();
   const option = canonicalExchange(optionCode);
+  // VIX.X and $VIX.X, a broker's code for an index, are its own symbol ^VIX; $VIX is read in `resolveCliListing`.
+  const index = option ? null : brokerIndexCode(raw);
+  if (index && !index.bare) return { symbol: index.symbol, exchange: "", key: index.symbol, readAs: brokerIndexReadAs(index) };
   // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
   let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.
@@ -804,6 +808,9 @@ export async function resolveCliListing(
   const named = await companyNameListingArg(raw, deps);
   let parsed = named ?? parseListingArg(raw, exchangeOption, options);
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
+  // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
+  const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
+  if (index) parsed = index;
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
@@ -826,6 +833,29 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/**
+ * The index a broker's code names, as a listing: VIX.X and $VIX.X at once,
+ * $VIX when VIX itself has no quote. `$MOVE` stays Corvex, whose quote then
+ * names the index beside it, and `$AAPL` is AAPL, as no index is rooted at
+ * it. Null for anything else.
+ */
+export async function readBrokerIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  const code = brokerIndexCode(stripStrayEdges(raw).text || raw);
+  if (!code) return null;
+  if (code.bare) {
+    const quote = await Promise.resolve()
+      .then(() => deps.dataProvider.getQuote(code.bare!, ""))
+      .catch(logFailure("cli.listing-arg", "Quote broker index root failed", null));
+    if (quote) return null;
+  }
+  return { symbol: code.symbol, exchange: "", key: code.symbol, readAs: brokerIndexReadAs(code) };
+}
+
+/** `readBrokerIndexCode` for a `$ROOT` code only: the `ROOT.X` codes are read where the listing is parsed. */
+function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  return brokerIndexCode(stripStrayEdges(raw).text || raw)?.bare ? readBrokerIndexCode(raw, deps) : Promise.resolve(null);
 }
 
 /**
