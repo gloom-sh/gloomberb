@@ -99,7 +99,7 @@ test("--start takes a year or a month as the first day of it, and a series that 
   expect(queries[1]!.get("startDate")).toBe("1999-07-01");
   for (const bad of ["1960-13", "99", "abc", "1960-1-1"]) {
     await expect(fred.execute(["T10Y2Y", "--start", bad], createTestCliContext().context))
-      .rejects.toThrow(`--start takes a date as yyyy-mm-dd, yyyy-mm or yyyy, got "${bad}".`);
+      .rejects.toThrow(`--start takes a date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026, 14 October 2026, YYYY-MM or YYYY, got "${bad}".`);
   }
 });
 

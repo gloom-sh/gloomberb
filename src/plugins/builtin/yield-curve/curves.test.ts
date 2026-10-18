@@ -12,7 +12,7 @@ describe("the compare input", () => {
 
   test("anything else gets the help for both forms, whether or not it looks like a date", () => {
     for (const input of ["latest", "nope", "1X", "0D", "1996", "2026-13-40", "10/02/2026"]) {
-      expect(() => parseCompareInput(input, now)).toThrow("Compare with a date in YYYY-MM-DD format or a span such as 1D, 1W, 3M or 1Y.");
+      expect(() => parseCompareInput(input, now)).toThrow("Compare with a date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, or a span such as 1D, 1W, 3M or 1Y.");
     }
     // A real date still cannot be in the future.
     expect(() => parseCompareInput("2026-10-11", now)).toThrow("future date");

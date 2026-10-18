@@ -4,6 +4,7 @@ import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
+import { DATE_OPTION_FORMATS, readCalendarDate } from "../../utils/calendar-date";
 import {
   fetchScreenerResult,
   fetchTrending,
@@ -293,14 +294,11 @@ function parseDateOption(
   value: string | undefined,
   flag: string,
   ctx: Parameters<CliCommandDef["execute"]>[1],
-  { expand = (text: string) => text, form = "yyyy-mm-dd" }: { expand?: (text: string) => string; form?: string } = {},
+  { expand = (text: string) => text, form = DATE_OPTION_FORMATS }: { expand?: (text: string) => string; form?: string } = {},
 ): string | null {
   if (value == null) return null;
-  const date = expand(value.trim());
-  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
-  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
-    ctx.fail(`${flag} takes a date as ${form}, got "${value}".`);
-  }
+  const date = readCalendarDate(expand(value.trim()));
+  if (!date) ctx.fail(`${flag} takes a date as ${form}, got "${value}".`);
   return date;
 }
 
@@ -378,7 +376,7 @@ function startOfPeriod(text: string): string {
 
 /** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd, so yyyy and yyyy-mm are spelled out. */
 function parseStartDate(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
-  return parseDateOption(value, "--start", ctx, { expand: startOfPeriod, form: "yyyy-mm-dd, yyyy-mm or yyyy" }) ?? DEFAULT_FRED_START;
+  return parseDateOption(value, "--start", ctx, { expand: startOfPeriod, form: `${DATE_OPTION_FORMATS.replace(" or ", ", ")}, YYYY-MM or YYYY` }) ?? DEFAULT_FRED_START;
 }
 
 /** Gloom Cloud serves a curated set of FRED series and answers 400 for any other id. */

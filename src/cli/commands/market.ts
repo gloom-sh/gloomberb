@@ -71,7 +71,7 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
-import { missingExpiryMessage } from "../../utils/option-expiry";
+import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT } from "../../utils/option-expiry";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
@@ -1652,7 +1652,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     if (parsed == null) {
       ctx.fail(
         expiration == null ? "--expiration needs a date." : `Invalid --expiration "${expiration}".`,
-        `Use YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600).\nUsage: gloomberb ${OPTIONS_USAGE}`,
+        `Use ${OPTION_EXPIRATION_FORMAT}.\nUsage: gloomberb ${OPTIONS_USAGE}`,
       );
     }
     expirationDate = parsed;

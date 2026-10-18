@@ -5,6 +5,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-rules";
 import { evaluateSurfaceSmile, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceFilterCounts, type SurfaceSnapshot } from "./model";
 import { isFiniteNumber } from "../../../utils/guards";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 
 /** The platform's compact expiry: fit, forward, rate and the quoted OTM points of one close capture. */
 interface StoredExpiry {
@@ -73,13 +74,9 @@ export function formatCaptureTime(iso: string): string {
 }
 
 /** A session date as `--date` takes it: YYYY-MM-DD, a day the calendar has. */
-export function storedSurfaceDate(value: string): string {
-  const date = value.trim();
-  const time = Date.parse(`${date}T00:00:00Z`);
-  // A month or day out of range parses to NaN or rolls over; both are refused.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
-    throw new Error("Use a session date in YYYY-MM-DD format, such as --date 2026-10-09.");
-  }
+export function storedSurfaceDate(value: string, now = new Date()): string {
+  const date = readCalendarDate(value);
+  if (!date) throw new Error(dateOptionError(value, "--date", now, "a session date"));
   return date;
 }
 

@@ -142,9 +142,11 @@ describe("pane function capabilities", () => {
       const capability = getPaneFunctionCapability({ id, paneId: dummyPane.id, label: id, description: id, headless }, dummyPane);
       expect(normalizeCapabilityOptions(capability, { [key]: "2027-01-15" })[key]).toBe(read);
       expect(normalizeCapabilityOptions(capability, { [key]: "1799971200" })[key]).toBe(read);
+      // A date reads as a date option reads it.
+      for (const date of ["15.01.2027", "Jan 15 2027", "15 January 2027"]) expect(normalizeCapabilityOptions(capability, { [key]: date })[key]).toBe(read);
       for (const bad of ["2027-02-30", "15/01/2027", "1799971200000"]) {
         expect(() => normalizeCapabilityOptions(capability, { [key]: bad }))
-          .toThrow(`Invalid --${key} "${bad}". Use YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600).`);
+          .toThrow(`Invalid --${key} "${bad}". Use YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Jan 21 2028, 21 January 2028 or Unix seconds (1832025600).`);
       }
     }
   });

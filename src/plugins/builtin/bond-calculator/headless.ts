@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { isoDateOption } from "../../../utils/calendar-date";
 import { loadBondBenchmark } from "./client";
 import { bondDraftFromOptions, calculateBond } from "./model";
 
@@ -7,8 +8,8 @@ export const bondCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
   argument: { kind: "none" },
   describe: "Bond Calculator",
   options: [
-    { key: "settlement", type: "string", description: "Settlement date YYYY-MM-DD; defaults to today", settingKey: "settlement" },
-    { key: "maturity", type: "string", description: "Maturity date YYYY-MM-DD; defaults to five years from today", settingKey: "maturity" },
+    { key: "settlement", type: "string", description: "Settlement date YYYY-MM-DD; defaults to today", settingKey: "settlement", normalize: (value) => isoDateOption(value, "settlement") },
+    { key: "maturity", type: "string", description: "Maturity date YYYY-MM-DD; defaults to five years from today", settingKey: "maturity", normalize: (value) => isoDateOption(value, "maturity") },
     { key: "coupon", type: "string", description: "Annual coupon percent; defaults to 5", settingKey: "coupon" },
     { key: "yield", type: "string", description: "Yield percent to calculate clean price; defaults to 4.25", settingKey: "yield" },
     { key: "price", type: "string", description: "Clean price per 100 face to solve yield", settingKey: "price" },

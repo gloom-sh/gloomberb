@@ -4,14 +4,15 @@
  * convert both ways, and two stamps on the same UTC date are the same expiry.
  */
 
+import { readCalendarDate } from "./calendar-date";
+
 // 9999-12-31 in Unix seconds; a longer number is milliseconds or a typo.
 const MAX_UNIX_SECONDS = 253_402_300_799;
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UNIX_SECONDS = /^\d{1,12}$/;
 const DAY_MS = 86_400_000;
 
 /** How `--expiration` is written, for usage lines and errors. */
-export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600)";
+export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Jan 21 2028, 21 January 2028 or Unix seconds (1832025600)";
 /** The value's name in a catalog flag, `--expiration <YYYY-MM-DD|unix>`. */
 export const OPTION_EXPIRATION_PLACEHOLDER = "YYYY-MM-DD|unix";
 
@@ -22,18 +23,17 @@ export function expiryIsoDate(seconds: number): string {
 }
 
 /**
- * `--expiration` as the Unix seconds a chain request takes: `2028-01-21` is that
- * date at 00:00 UTC, a bare integer is already Unix seconds. Anything else,
- * including a date the calendar does not have, is null.
+ * `--expiration` as the Unix seconds a chain request takes: a date, as a date
+ * option reads it (`2028-01-21`, `21.01.2028`, `Jan 21 2028`), is that date at
+ * 00:00 UTC, a bare integer is already Unix seconds. Anything else, including a
+ * date the calendar does not have, is null.
  */
 export function parseOptionExpiration(raw: string): number | null {
   const text = raw.trim();
-  const date = ISO_DATE.exec(text);
+  const date = readCalendarDate(text);
   if (date) {
-    const [year, month, day] = [Number(date[1]), Number(date[2]), Number(date[3])];
-    const at = new Date(Date.UTC(year, month - 1, day));
-    const real = at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day;
-    return real && at.getTime() > 0 ? at.getTime() / 1000 : null;
+    const at = Date.parse(`${date}T00:00:00Z`);
+    return at > 0 ? at / 1000 : null;
   }
   if (!UNIX_SECONDS.test(text)) return null;
   const seconds = Number(text);

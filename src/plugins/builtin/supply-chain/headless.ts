@@ -1,4 +1,5 @@
 import type { SupplyRow } from "../../../api-client/supply-chain";
+import { isoDateOption } from "../../../utils/calendar-date";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { HeadlessBundleResult, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { fetchSupplyChain } from "./client";
@@ -106,7 +107,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "min-confidence", type: "string", settingKey: "minConfidence", defaultValue: "0", description: "Minimum edge confidence, 0 to 1." },
     { key: "limit", type: "integer", settingKey: "limit", minimum: 1, maximum: 50, defaultValue: 50, description: "Maximum results per graph section or paths." },
     { key: "ranking", type: "enum", settingKey: "ranking", defaultValue: "score", values: [{ value: "score" }, { value: "shortest" }], description: "Rank paths by edge-weight product or fewest hops." },
-    { key: "as-of", type: "string", settingKey: "asOf", description: "Include disclosures known by this date (YYYY-MM-DD)." },
+    { key: "as-of", type: "string", settingKey: "asOf", description: "Include disclosures known by this date (YYYY-MM-DD).", normalize: (value) => isoDateOption(value, "as-of") },
     { key: "to", type: "string", settingKey: "to", description: "Target company ticker or id:<entity-id>; required for Path." },
   ],
   describe: (args) => `Supply chain | ${args.symbols[0]}${args.options.to ? ` → ${args.options.to}` : ""}`,

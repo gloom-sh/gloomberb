@@ -17,20 +17,21 @@ test("calendar horizons clamp missing dates without making month end sticky or l
   }
 });
 
-test("a date option takes YYYY-MM-DD and shows a date written another way as the option to type", () => {
+test("a date option takes ISO, day-first dotted and month-named dates, and never a slashed one", () => {
   const now = new Date("2026-10-14T12:00:00Z");
   const fails = (value: string) => { try { isoDateOption(value, "from", now); return null; } catch (error) { return (error as Error).message; } };
   expect(isoDateOption(" 2026-10-14 ", "from", now)).toBe("2026-10-14");
   expect(isoDateOption("", "from", now)).toBe("");
-  expect(fails("14/10/2026")).toBe("Use a --from date in YYYY-MM-DD format: type --from 2026-10-14 for 14/10/2026.");
-  // A part over 12 is the day, whichever side it is on, and any of the usual separators reads.
-  expect(["14.10.2026", "14-10-2026", "10/14/2026", "2026/10/14", "2026.10.14", "2026-10-4"].map((value) => fails(value)?.match(/--from (\S+) for/)?.[1]))
-    .toEqual(["2026-10-14", "2026-10-14", "2026-10-14", "2026-10-14", "2026-10-14", "2026-10-04"]);
-  // Dots are written day first; a slash or a dash is written both ways round, so it only names the format.
-  expect(fails("03.04.2026")).toBe("Use a --from date in YYYY-MM-DD format: type --from 2026-04-03 for 03.04.2026 (day first).");
-  expect(fails("03/04/2026")).toBe("Use a --from date in YYYY-MM-DD format, such as --from 2026-10-14.");
-  expect(fails("03-04-2026")).toBe("Use a --from date in YYYY-MM-DD format, such as --from 2026-10-14.");
-  for (const value of ["foo", "2026-02-30", "31/02/2026", "14/14/2026", "14/10/26", "20261014"]) {
-    expect(fails(value)).toBe("Use a --from date in YYYY-MM-DD format, such as --from 2026-10-14.");
+  // Dots are written day first; a month is named on either side of the day, in full or in three letters, in any case.
+  for (const value of ["1.10.2026", "01.10.2026", "Oct 1 2026", "Oct 1, 2026", "oct. 1st 2026", "October 1, 2026", "1 Oct 2026", "1 October 2026", "1st october, 2026", "Sept 1 2026"]) {
+    expect(isoDateOption(value, "from", now)).toBe(value.startsWith("Sept") ? "2026-09-01" : "2026-10-01");
+  }
+  expect(isoDateOption("03.04.2026", "from", now)).toBe("2026-04-03");
+  // A slash is written both ways round, so it only gets the date to type when one part is plainly the day.
+  expect(fails("14/10/2026")).toBe("Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026: type --from 2026-10-14 for 14/10/2026.");
+  expect(["10/14/2026", "14-10-2026", "2026/10/14", "2026.10.14", "2026-10-4", "10.14.2026"].map((value) => fails(value)?.match(/--from (\S+) for/)?.[1]))
+    .toEqual(["2026-10-14", "2026-10-14", "2026-10-14", "2026-10-14", "2026-10-04", "2026-10-14"]);
+  for (const value of ["03/04/2026", "03-04-2026", "foo", "2026-02-30", "31.02.2026", "Feb 30 2026", "Octember 1 2026", "Oct 2026", "31/02/2026", "14/14/2026", "14/10/26", "20261014"]) {
+    expect(fails(value)).toBe("Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, such as --from 2026-10-14.");
   }
 });
