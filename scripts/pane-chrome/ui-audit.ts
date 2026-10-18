@@ -31,6 +31,13 @@ import {
  *   bun run audit:ui [--only TOP,CHG] [--widths 640,1280] [--themes white,paper]
  *                    [--registry] [--build] [--no-shots] [--resume] [--list]
  *                    [--out <dir>] [--web <dir>] [--replay <dir>] [--root <checkout>]
+ *                    [--offline] [--shard 0/4] [--no-report]
+ *
+ * `--offline` reads only what the replay kept (web-app.ts); `--shard i/n`
+ * takes the functions whose token hashes to `i` of `n` (the shell views go
+ * with shard 0), so shards stay put as functions come and go; `--no-report`
+ * skips the report, for the checks that read `results.jsonl` themselves
+ * (ui-tokens.ts, ui-benchmark.ts).
  *
  * It builds its own copy of the web app (`build-web.ts --keep-names`, so the
  * components keep their names) under the cache folder, and reads Gloom Cloud
@@ -53,7 +60,9 @@ const height = Number(takeOption(args, "--height") ?? 800);
 const themes = (takeOption(args, "--themes") ?? "white,paper").split(",");
 const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-audit"));
 const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-audit-web"));
-const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay")));
+const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay")), { offline: args.includes("--offline") });
+const shard = parseShard(takeOption(args, "--shard"));
+const report = !args.includes("--no-report");
 const shots = !args.includes("--no-shots");
 const resume = args.includes("--resume");
 const withRegistry = args.includes("--registry");
@@ -96,6 +105,19 @@ interface AuditResult extends AuditView {
   height: number;
   theme: string;
   measure: AuditMeasure;
+}
+
+/** `i/n`, or every function. */
+function parseShard(value: string | undefined): { index: number; count: number } {
+  if (!value) return { index: 0, count: 1 };
+  const [index, count] = value.split("/").map(Number) as [number, number];
+  if (!(count >= 1) || !(index >= 0 && index < count)) throw new Error(`--shard takes i/n with 0 <= i < n, not ${value}`);
+  return { index, count };
+}
+
+/** The shard a function belongs to: by its token, so adding a function moves no other. */
+export function shardOf(token: string, count: number): number {
+  return Number.parseInt(new Bun.CryptoHasher("sha1").update(token).digest("hex").slice(0, 8), 16) % count;
 }
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "tab";
@@ -210,8 +232,9 @@ async function main(): Promise<void> {
     await buildWeb(withRegistry ? await registryPluginDirs(builtIn) : []);
   }
   const entries = [...catalog, ...(await pluginEntries()).filter((entry) => !builtIn.has(entry.paneId))]
-    .filter((entry) => !only || only.includes(entry.token));
-  const shells = SHELL_VIEWS.filter((view) => !only || only.includes(view.id));
+    .filter((entry) => !only || only.includes(entry.token))
+    .filter((entry) => shardOf(entry.token, shard.count) === shard.index);
+  const shells = SHELL_VIEWS.filter((view) => (!only || only.includes(view.id)) && shard.index === 0);
   if (args.includes("--list")) {
     for (const entry of entries) console.log(`${entry.token}\t${entry.paneId}\t${entry.plugin ?? ""}`);
     for (const shell of shells) console.log(`${shell.id}\tshell`);
@@ -406,6 +429,7 @@ async function main(): Promise<void> {
     return [...views.values()];
   }
 
+  if (!report) return;
   const pluginsDir = cacheDir("ui-audit-plugins");
   const extraDirs = withRegistry && existsSync(pluginsDir) ? (await readdir(pluginsDir)).map((name) => join(pluginsDir, name)) : [];
   await writeAuditReport(out, { root, extraDirs });

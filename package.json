@@ -87,6 +87,8 @@
     "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",
     "check:pane-rest": "bun run scripts/pane-chrome/rest-diff.ts",
     "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
+    "check:ui-tokens": "bun run scripts/pane-chrome/ui-tokens.ts",
+    "ui:benchmark": "bun run scripts/pane-chrome/ui-benchmark.ts",
     "audit:ui": "bun run scripts/pane-chrome/ui-audit.ts",
     "check:call-player": "bun run scripts/pane-chrome/call-player.ts",
     "kit:page": "bun run scripts/pane-chrome/kit-page.ts",

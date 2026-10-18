@@ -1,0 +1,149 @@
+name: UI benchmark
+
+# The blast radius of a pull request's UI change (scripts/pane-chrome/
+# ui-benchmark.ts, docs/pane-conventions.md "Holding the line"): every
+# function's views, the bundled and registry plugins' panes and the shell,
+# pictured on the base and on the head at 640 and 1280 px, pane bodies
+# compared pixel by pixel. The sheets of the views that moved go up as the
+# `ui-benchmark` artifact and one comment on the pull request, edited on every
+# run, says how many of how many views changed. It reports and never fails the
+# pull request.
+#
+# Chromium only: WebKit on Linux crashes on several panes and takes three
+# times as long, so it stays in the local audit (scripts/pane-chrome). Both
+# sides read the week's data snapshot (the UI tokens workflow keeps it) or,
+# without one, one replay the base fills and the head reads.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/renderers/dom/**"
+      - "src/renderers/browser/**"
+      - "src/components/**"
+      - "src/ui/**"
+      - "src/plugins/**"
+      - "src/layout/**"
+      - "src/theme/**"
+      - "src/layout-marketplace/**"
+      - "scripts/pane-chrome/ui-audit*.ts"
+      - "scripts/pane-chrome/ui-benchmark.ts"
+      - "scripts/pane-chrome/web-app.ts"
+      - "scripts/pane-chrome/tab-visits.ts"
+      - "scripts/build-web.ts"
+      - ".github/workflows/ui-benchmark.yml"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: The ref to compare the branch with
+        required: false
+        default: origin/main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shoot:
+    name: Picture base and head (${{ matrix.shard }} of 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install ImageMagick
+        run: command -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
+
+      - id: keys
+        name: Read the pinned Chrome version and this week
+        run: |
+          echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.keys.outputs.chrome }}
+          key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
+          key: ui-audit-plugins-${{ steps.keys.outputs.week }}
+          restore-keys: ui-audit-plugins-
+
+      - id: snapshot
+        name: Restore the data snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-replay
+          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
+          restore-keys: ui-replay-v1-${{ matrix.shard }}of8-
+
+      - name: Picture this shard's views on the base and on the head
+        run: >-
+          bun run ui:benchmark shoot --shard ${{ matrix.shard }}/8 --out ~/ui-benchmark-shard
+          --base ${{ github.event.pull_request.base.sha || inputs.base || 'origin/main' }}
+          --replay ~/.cache/gloomberb-pane-chrome/ui-replay
+          ${{ steps.snapshot.outputs.cache-matched-key != '' && '--offline' || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-benchmark-shard-${{ matrix.shard }}
+          path: ~/ui-benchmark-shard
+          retention-days: 7
+          if-no-files-found: ignore
+
+  report:
+    name: Report the blast radius
+    needs: shoot
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install ImageMagick
+        run: command -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ui-benchmark-shard-*
+          path: ~/ui-benchmark/shards
+
+      - name: Compare, lay out the sheets and update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark
+          ${{ github.event.pull_request.number && format('--comment {0}', github.event.pull_request.number) || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-benchmark
+          path: |
+            ~/ui-benchmark/summary.md
+            ~/ui-benchmark/changes.json
+            ~/ui-benchmark/sheets
+            ~/ui-benchmark/compare/compare.md
+            ~/ui-benchmark/compare/diff-sheets
+          retention-days: 14
+          if-no-files-found: ignore
