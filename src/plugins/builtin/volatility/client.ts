@@ -68,16 +68,22 @@ function termDependencies(): VolatilityLoaderDependencies {
     : standaloneDependencies ??= createVolatilityDependencies(createGloomberbCloudProvider());
 }
 
+/** The first reason any of a publisher's two legs gave for failing or not refreshing. */
+const legError = (legs: ReadonlyArray<{ error?: string | null } | undefined>) => legs.map((leg) => leg?.error).find(Boolean) ?? null;
+
 /**
  * The 3M/30D ratio's history as the board builds it: the board's own VIX and
  * VIX 3M daily closes (one year, the same request and cache), FRED's
- * republished closes from `start` on the dates those lack. A leg that fails
- * leaves FRED to stand in; the warning says which closes were stale.
+ * republished closes from `start` on the dates those lack. When Cboe's closes
+ * fail FRED stands in, a day behind, and the warning says so; a ratio read
+ * from cached closes names whose. With neither publisher's pair it rejects
+ * with both reasons rather than return an empty history.
  */
 export async function loadVolatilityTermHistory(
   { start, signal }: { start?: Date; signal?: AbortSignal } = {},
-  dependencies: VolatilityLoaderDependencies = termDependencies(),
+  dependencies: VolatilityLoaderDependencies & { loadFredPoints?: typeof loadFredPoints } = termDependencies(),
 ): Promise<{ term: VolatilityTermHistory; warning?: string }> {
+  const loadFred = dependencies.loadFredPoints ?? loadFredPoints;
   const now = dependencies.now?.() ?? Date.now();
   const history: NonNullable<VolatilityInputs["history"]> = {};
   const fred: NonNullable<VolatilityInputs["fred"]> = {};
@@ -92,7 +98,7 @@ export async function loadVolatilityTermHistory(
     }),
     ...VOLATILITY_SERIES.map(async ({ seriesId }) => {
       try {
-        const loaded = await loadFredPoints(seriesId, start);
+        const loaded = await loadFred(seriesId, start);
         fred[seriesId] = { observations: loaded.points, info: null, stale: loaded.points.length > 0 && loaded.stale,
           error: loaded.refreshError ?? null };
       } catch (error) {
@@ -101,7 +107,23 @@ export async function loadVolatilityTermHistory(
     }),
   ]), signal, CANCELLED);
   const term = buildVolatilityTermHistory({ history, fred });
-  return term.stale ? { term, warning: "Showing cached closes; the source has not updated since." } : { term };
+  const cboeError = legError([history.vix, history.vix3m]);
+  const fredError = legError(VOLATILITY_SERIES.map(({ seriesId }) => fred[seriesId]));
+  if (!term.ratioHistory.length) {
+    throw new Error(`VIX 3M / VIX history unavailable: Cboe closes (${cboeError ?? "no data"}); FRED closes (${fredError ?? "no data"})`);
+  }
+  const notes: string[] = [];
+  if (term.publisher === "FRED") {
+    notes.push(`Cboe closes ${cboeError ? `unavailable (${cboeError})` : "not updated"}; showing FRED's, through ${term.termDate}.`);
+  } else if (fredError && !term.ratioHistory.some((point) => point.publisher === "FRED")) {
+    notes.push(`FRED closes unavailable (${fredError}); showing Cboe's from ${term.ratioHistory[0]!.date}.`);
+  }
+  if (term.stale) {
+    const error = term.publisher === "FRED" ? fredError : cboeError;
+    notes.push(error ? `Refresh failed (${error}); showing cached ${term.publisher} closes.`
+      : `Showing cached ${term.publisher} closes; the source has not updated since.`);
+  }
+  return notes.length ? { term, warning: notes.join(" ") } : { term };
 }
 
 /** A CBOE daily close as a daily bar dated at the 16:15 New York settlement. */

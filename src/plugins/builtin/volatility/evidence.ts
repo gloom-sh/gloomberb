@@ -13,7 +13,8 @@ interface EvidenceSeries {
 }
 export interface VolatilityEvidence {
   kind: "volatility-indices";
-  version: 1;
+  /** 2 since the history legs are `vix` and `vix3m` (Cboe, FRED standing in), not FRED's VIXCLS and VXVCLS. */
+  version: 2;
   view: "curve" | "history" | "board";
   loading: boolean;
   stale: boolean;
@@ -72,7 +73,7 @@ export function volatilitySemanticEvidence(result: VolatilityLoadResult | null |
   const plottedValueCount = series.reduce((sum, entry) => sum + entry.points.filter((point) => isFiniteNumber(point.value)).length, 0)
     + rows.filter((row) => isFiniteNumber(row.value)).length;
   const pending = loading || !result || result.loaded < result.total;
-  return { kind: "volatility-indices", version: 1, view: activeView, loading: pending, stale,
+  return { kind: "volatility-indices", version: 2, view: activeView, loading: pending, stale,
     complete: !pending && !stale && unavailableSources.length === 0 && plottedValueCount > 0,
     asOf: activeView === "history" ? data?.term.termDate ?? null : activeView === "board" ? selected?.date ?? null : data?.curve.date ?? null,
     selectedIndexId: activeView === "board" ? selected?.id ?? null : null,
@@ -90,7 +91,7 @@ export function useVolatilityEvidence(result: VolatilityLoadResult | null | unde
 
 /** Recount finite projections and check the plotted ratio against its dated legs. */
 export function readVolatilityEvidence(value: unknown): VolatilityEvidence | null {
-  if (!isRecord(value) || value.kind !== "volatility-indices" || value.version !== 1
+  if (!isRecord(value) || value.kind !== "volatility-indices" || value.version !== 2
     || !["curve", "history", "board"].includes(String(value.view)) || typeof value.loading !== "boolean"
     || typeof value.stale !== "boolean" || typeof value.complete !== "boolean"
     || (value.asOf !== null && !isDateString(value.asOf)) || !isStringArray(value.unavailableSources)

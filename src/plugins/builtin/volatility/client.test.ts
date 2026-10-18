@@ -5,7 +5,7 @@ import type { ChartRequest } from "../../../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
-import { createVolatilityDependencies, getCachedVolatilityData, loadVolatilityData, volatilityHistoryRequest,
+import { createVolatilityDependencies, getCachedVolatilityData, loadVolatilityData, loadVolatilityTermHistory, volatilityHistoryRequest,
   type VolatilityLoaderDependencies, type VolatilityLoadResult } from "./client";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -198,5 +198,31 @@ describe("volatility source loader", () => {
     expect(calls).toBe(4);
     // Completed shared FRED requests remain cached for the next consumer.
     expect(getCachedVolatilityData(dependencies)?.data.fred.termDate).toBe("2026-09-18");
+  });
+
+  test("the ratio history names FRED when it stands in for Cboe, whose cached closes it reads, and fails with both reasons when neither has a pair", async () => {
+    const cboe = (data: PricePoint[]) => ({ ...ready(data), source: "test" });
+    const fredPoints = (stale = false, refreshError?: string) => async (id: string) => ({ stale, ...(refreshError ? { refreshError } : {}),
+      points: [{ date: "2026-09-17", value: id === "VIXCLS" ? 20 : 24 }, { date: "2026-09-18", value: id === "VIXCLS" ? 20 : 25 }] });
+    const load = (dependencies: Partial<NonNullable<Parameters<typeof loadVolatilityTermHistory>[1]>>) => loadVolatilityTermHistory({}, {
+      now: () => now, loadFred: async () => { throw new Error("unused"); }, loadChart: async () => cboe(points), loadFredPoints: fredPoints(), ...dependencies });
+    // Both publishers: Cboe's closes end the history, with nothing to say.
+    expect(await load({})).toMatchObject({ term: { termDate: "2026-09-21", publisher: "Cboe" } });
+    expect((await load({})).warning).toBeUndefined();
+    // Cboe down: FRED's closes end a day earlier, and the report says why.
+    const fallback = await load({ loadChart: async () => { throw new Error("timeout"); } });
+    expect(fallback.term).toMatchObject({ termDate: "2026-09-18", publisher: "FRED", ratio: 1.25 });
+    expect(fallback.warning).toBe("Cboe closes unavailable (timeout); showing FRED's, through 2026-09-18.");
+    // FRED down: Cboe's year alone, starting where it starts.
+    expect((await load({ loadFredPoints: async () => { throw new Error("FRED offline"); } })).warning)
+      .toBe("FRED closes unavailable (FRED offline); showing Cboe's from 2026-09-18.");
+    // A cached pair names whose closes it is and why they were not refreshed.
+    const cached = await load({ loadChart: async () => ({ ...cboe(points), error: { reasonCode: "UPSTREAM_ERROR", message: "router failed" } }) });
+    expect(cached.warning).toBe("Refresh failed (router failed); showing cached Cboe closes.");
+    expect((await load({ loadChart: async () => cboe([]), loadFredPoints: fredPoints(true) })).warning)
+      .toBe("Cboe closes unavailable (Daily index history unavailable); showing FRED's, through 2026-09-18. Showing cached FRED closes; the source has not updated since.");
+    // Neither: an error, never an empty series.
+    await expect(load({ loadChart: async () => { throw new Error("timeout"); }, loadFredPoints: async () => { throw new Error("FRED offline"); } }))
+      .rejects.toThrow("VIX 3M / VIX history unavailable: Cboe closes (timeout); FRED closes (FRED offline)");
   });
 });

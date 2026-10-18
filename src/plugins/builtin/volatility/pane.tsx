@@ -16,10 +16,10 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { MarketState } from "../../../types/financials";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
+import { useIndexCloseSettled, useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
+import { DAY_SO_FAR_TEXT } from "../../../time-series/session-bar";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, termStateLabel, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES, volatilityCurveLookbacks, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
 import { VolatilityHistoryChart, VolatilityIndexHistoryChart } from "./charts";
@@ -45,8 +45,6 @@ const BOARD_COLUMNS: DataTableColumn[] = [
  * the change in points beside the change in percent, then the percentile.
  */
 const BOARD_DROP_ORDER = ["label", "change1d", "percentile1y"];
-/** Sessions in which a streamed index level is still moving; in any other its market has closed. */
-const MOVING_STATES = new Set<MarketState>(["PRE", "REGULAR"]);
 const TERM_HISTORY_TARGETS = VOLATILITY_INDICES.filter((definition) => definition.id === "vix" || definition.id === "vix3m");
 const CURVE_COLUMNS: DataTableColumn[] = [
   { id: "tenor", label: "Tenor", width: 7, align: "left" },
@@ -114,8 +112,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     for (const definition of VOLATILITY_INDICES) {
       const quote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: definition.symbol, exchange: "" })));
       if (quote && !quote.stale && quote.price > 0 && Number.isFinite(quote.price) && Number.isFinite(quote.lastUpdated)) {
-        levels.set(definition.id, { value: quote.price, observedAt: quote.lastUpdated,
-          closed: !!quote.marketState && !MOVING_STATES.has(quote.marketState) });
+        levels.set(definition.id, { value: quote.price, observedAt: quote.lastUpdated });
       }
     }
     return levels;
@@ -144,15 +141,19 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const notices = [resource.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
     ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
-  const cycleTab = () => setTab(TABS[(TABS.findIndex((entry) => entry.value === tab) + 1) % TABS.length]!.value);
+  // From the tab the press finds, so the footer's hint never holds an old one.
+  const cycleTab = useCallback(() => setTab((current) =>
+    TABS[(TABS.findIndex((entry) => entry.value === current) + 1) % TABS.length]!.value), [setTab]);
   // One binding for every tab and for the loading and failed bodies, where no
   // table is mounted; the footer binds the `v` hint.
   usePaneRefreshKey(() => {
     if (!resource.loading) void resource.reload();
   }, { focused });
   const asOf = tab === "history" ? data?.term.termDate : tab === "board" ? selected?.date : data?.curve.date;
-  // A streamed level is labelled intraday with its time while its market is
-  // open; after the close it is that day's close, dated as the closes are.
+  // A day's level is its close once Cboe settles it (16:15 New York); before
+  // that a streamed level is intraday with its time, and a daily bar of the
+  // session still trading is the day so far.
+  const settled = useIndexCloseSettled(asOf);
   const streamed = (id: VolatilityIndexId | undefined, date: string | null | undefined) => {
     const level = id ? liveLevels.get(id) : undefined;
     return level && date === new Date(level.observedAt).toISOString().slice(0, 10) ? level : null;
@@ -160,18 +161,18 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const latestLevel = tab === "board" ? streamed(selected?.id, selected?.date)
     : tab === "curve" && data?.curve.source === "market-history" ? streamed("vix", data.curve.date)
       : tab === "history" && data?.term.publisher === "Cboe" ? streamed("vix", data.term.termDate) : null;
-  const intraday = latestLevel && !latestLevel.closed ? latestLevel : null;
+  const intraday = latestLevel && !settled ? latestLevel : null;
   // An isolated print is no close; it keeps its source time.
   const sparse = tab === "board" && !latestLevel && selected?.sampleSize === 1;
   const observationTime = intraday ? new Date(intraday.observedAt).toISOString()
     : sparse ? selected.history.at(-1)?.observedAt : null;
-  const observationBasis = intraday ? "intraday" : sparse ? "observation" : "close";
+  const observationBasis = intraday ? "intraday" : sparse ? "observation" : settled ? "close" : DAY_SO_FAR_TEXT;
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
     ...(asOf ? [{ id: "date", parts: [{ text: observationTime ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis]);
+  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, cycleTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);
   // The board needs only its rows; the selected index history takes the rest.

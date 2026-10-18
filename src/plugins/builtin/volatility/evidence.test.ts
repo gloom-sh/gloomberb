@@ -26,6 +26,8 @@ test("history evidence proves plotted legs, dated ratios and gaps independently 
   wrongDate.series[2]!.points[0]!.date = "2026-09-17T00:00:00.000Z";
   expect(readVolatilityEvidence(wrongDate)).toBeNull();
   expect(readVolatilityEvidence({ ...evidence, plottedValueCount: 100 })).toBeNull();
+  // Evidence read before the legs were renamed from FRED ids is not this shape.
+  expect(readVolatilityEvidence({ ...evidence, version: 1 })).toBeNull();
 });
 
 test("loading, stale closes and missing curve tenors cannot claim complete evidence", () => {

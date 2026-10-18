@@ -1,13 +1,12 @@
-import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { setSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { ChartRequest } from "../../../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PricePoint } from "../../../types/financials";
 import { VolatilityPane } from "./pane";
@@ -56,6 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   setSharedMarketDataCoordinator(null);
   for (const spy of spies) spy.mockRestore();
 });
@@ -73,19 +73,26 @@ async function renderPane(width: number, height: number, initialTab = "curve") {
     instanceId: paneId, paneId: "volatility-term-structure", binding: { kind: "none" }, settings: { initialTab },
   }));
   const runtime = createTestPluginRuntime();
+  // The pane's own height, with the footer bar and its keys under it.
   function Harness() {
     const [paneState, setPaneState] = useState(state.paneState);
     state.paneState = paneState;
-    return <TestPaneProvider state={state} dispatch={(action) => setPaneState(appReducer(state, action).paneState)} paneId={paneId}
-      pluginId="volatility" runtime={runtime}>
-      <PaneFooterProvider>{() => <VolatilityPane paneId={paneId} paneType="volatility-term-structure" width={width} height={height} focused />}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={(action) => setPaneState(appReducer(state, action).paneState)} paneId={paneId}
+      pluginId="volatility" runtime={runtime} width={width} height={height + 1} footerKeys>
+      {(body) => <VolatilityPane paneId={paneId} paneType="volatility-term-structure" {...body} focused />}
+    </TestPaneFrame>;
   }
-  await act(async () => { await tui.render(<Harness />, { width, height }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: height + 1 }); });
   await settle();
 }
 
 const lines = () => tui.frame().replace(/\n+$/, "").split("\n");
+/** The footer bar's status: its basis and date, then the hints. */
+const footer = () => lines().at(-1)!.replace(/^└(⚠\[!\])?\s*|┘$/g, "").trim();
+const view = () => {
+  const frame = tui.frame();
+  return frame.includes("IV % by tenor") ? "curve" : /LEVEL +1D PTS/.test(frame) ? "board" : frame.includes("VIX 30D") ? "history" : "none";
+};
 const readout = () => lines().find((line) => /^ \d+[DMY] \d+\.\d\d/.test(line))?.trim() ?? "";
 const tenorRows = () => lines().filter((line) => /^ (9D|30D|3M|6M|1Y) +\d+\.\d\d/.test(line));
 
@@ -140,4 +147,28 @@ test("a narrow board drops the name column before it cuts a date", async () => {
   expect(lines().some((line) => /^ VIX +14\.87 .* 2026-09-25 *$/.test(line))).toBe(true);
   await renderPane(110, 24, "board");
   expect(lines().find((line) => line.includes("LEVEL"))).toContain("NAME");
+});
+
+test("v steps through every view and back to the curve, though every view ends on the same close", async () => {
+  await renderPane(108, 32);
+  const seen = [[view(), footer()]];
+  for (let press = 0; press < 3; press += 1) {
+    await tui.emitKeypress({ name: "v", sequence: "v" });
+    await settle();
+    seen.push([view(), footer()]);
+  }
+  expect(seen.map(([name]) => name)).toEqual(["curve", "history", "board", "curve"]);
+  expect(seen.map(([, line]) => line!.split(/ {2,}/)[0])).toEqual(Array(4).fill("close 2026-09-25"));
+});
+
+test("a day still trading is no close: the session so far until Cboe settles it at 16:15 New York", async () => {
+  // Friday Sep 25, 15:00 and then 16:10 New York: the daily bar is the session so far.
+  for (const now of ["2026-09-25T19:00:00Z", "2026-09-25T20:10:00Z"]) {
+    setSystemTime(new Date(now));
+    await renderPane(108, 32);
+    expect(footer()).toMatch(/^today so far 2026-09-25 /);
+  }
+  setSystemTime(new Date("2026-09-25T20:16:00Z"));
+  await renderPane(108, 32);
+  expect(footer()).toMatch(/^close 2026-09-25 /);
 });

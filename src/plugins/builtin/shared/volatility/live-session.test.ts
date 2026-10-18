@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act, createElement, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { setAppVisible } from "../../../../state/app/activity";
-import { useLiveSessionRefresh, usOptionsSession } from "./live-session";
+import { indexCloseSettlement, useLiveSessionRefresh, usOptionsSession } from "./live-session";
 
 const realNow = Date.now;
 const tui = createOpenTuiTestHarness({ width: 10, height: 2 });
@@ -25,6 +25,18 @@ test("the options session follows published hours, early closes and holidays", (
   expect(at("2026-11-26T16:00:00Z")).toEqual({ open: false, nextChangeAt: Date.parse("2026-11-27T14:30:00Z") });
   expect(at("2026-11-27T17:30:00Z")).toEqual({ open: true, nextChangeAt: Date.parse("2026-11-27T18:00:00Z") });
   expect(at("2026-11-27T18:30:00Z").open).toBe(false);
+});
+
+test("an index day settles 15 minutes after the equity close, early closes included", () => {
+  const settled = (date: string, iso: string) => indexCloseSettlement(date, Date.parse(iso)).settled;
+  // 16:14:59 and 16:15 New York on daylight time.
+  expect(settled("2026-09-25", "2026-09-25T20:14:59Z")).toBe(false);
+  expect(settled("2026-09-25", "2026-09-25T20:15:00Z")).toBe(true);
+  // The day after Thanksgiving closes at 13:00, so it settles at 13:15 (18:15 UTC).
+  expect(settled("2026-11-27", "2026-11-27T18:10:00Z")).toBe(false);
+  expect(settled("2026-11-27", "2026-11-27T18:15:00Z")).toBe(true);
+  // A day without a session has nothing still trading.
+  expect(indexCloseSettlement("2026-09-26", Date.parse("2026-09-26T15:00:00Z"))).toEqual({ settled: true, settlesAt: null });
 });
 
 async function renderRefresh(now: number, enabled = true) {

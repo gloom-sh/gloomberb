@@ -426,12 +426,8 @@ export function volatilityCurveLookbacks(data: Pick<VolatilityData, "curve" | "b
   });
 }
 
-/**
- * An index level observed by the quote stream, in index points at a
- * millisecond instant. `closed` once its market has closed: the level is then
- * that session's close, not an intraday reading.
- */
-export interface VolatilityLiveLevel { value: number; observedAt: number; closed?: boolean }
+/** An index level observed by the quote stream, in index points at a millisecond instant. */
+export interface VolatilityLiveLevel { value: number; observedAt: number }
 
 /**
  * Today's streamed level becomes the latest observation of its index history,

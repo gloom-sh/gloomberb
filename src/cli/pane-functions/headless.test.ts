@@ -472,6 +472,25 @@ test("series text distinguishes explicit percent, basis-point, multiple and inde
   expect(renderHeadlessPaneText(definition, { series: [result.series.find(({ id }) => id === "missing")!] }, args, "Unknown")).not.toContain("Unit");
 });
 
+test("a series observed by the day is dated without a time in text and CSV, one read at a time of day keeps it, and ratios and scores print rounded", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "ratio", label: "VIX 3M / VIX ratio", unit: "ratio", interval: "daily", points: [
+      { date: Date.parse("2026-10-15T00:00:00Z"), value: 1.12332928311 }, { date: Date.parse("2026-10-16T00:00:00Z"), value: 1.02551275638 }] },
+    { id: "score", label: "Fear & Greed index", unit: "score", interval: "daily", points: [
+      { date: Date.parse("2026-10-15T00:00:00Z"), value: 31.5428571428 }, { date: Date.parse("2026-10-16T23:59:49Z"), value: 17.9383219955 }] },
+  ] };
+  const lines = renderHeadlessPaneText(definition, result, args, "Custom Chart").split("\n");
+  expect(lines.find((line) => line.startsWith("VIX 3M / VIX ratio"))).toMatch(/ 2026-10-16 +1\.03 +ratio /);
+  expect(lines.find((line) => line.startsWith("Fear & Greed index"))).toMatch(/ 2026-10-16 23:59 UTC +17\.9 +score /);
+  // The export keeps every digit, dated as the text is.
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Custom Chart", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+  expect(csv).toContain("\n2026-10-15,1.12332928311,");
+  expect(csv).toContain("\n2026-10-16,1.02551275638,");
+  expect(csv).toContain("\n2026-10-16T23:59:49Z,17.9383219955,");
+});
+
 async function reportOf(definition: HeadlessPaneDefinition, rawArgument = "") {
   return buildHeadlessFunctionReport({
     headless: definition, token: "TEST", label: "Test report", options: {}, instance: {}, capability: { id: "test" },

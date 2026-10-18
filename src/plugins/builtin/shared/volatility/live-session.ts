@@ -53,6 +53,40 @@ export function usOptionsSession(now: number): OptionsSessionState {
 }
 
 /**
+ * Cboe calculates VIX and its sibling indices from SPX options, which trade 15
+ * minutes past the equity close: a day's level settles at 16:15 New York
+ * (13:15 after an early close), not at the 16:00 bell.
+ */
+const INDEX_SETTLEMENT_LAG_MS = 15 * 60_000;
+
+/**
+ * Whether an index level dated `date` (its New York `YYYY-MM-DD`) is that
+ * session's settled close at `now`, and when it settles if not yet. A date
+ * without a session (a weekend, a holiday) has nothing still trading.
+ */
+export function indexCloseSettlement(date: string, now: number): { settled: boolean; settlesAt: number | null } {
+  const session = regularSession(date);
+  const settlesAt = session ? session.close + INDEX_SETTLEMENT_LAG_MS : Number.NaN;
+  return Number.isFinite(settlesAt) ? { settled: now >= settlesAt, settlesAt } : { settled: true, settlesAt: null };
+}
+
+/**
+ * `indexCloseSettlement` for a pane, re-read at the settlement so a label
+ * turns to close without waiting on new data. No date has nothing to settle.
+ */
+export function useIndexCloseSettled(date: string | null | undefined): boolean {
+  const [check, setCheck] = useState(0);
+  const { settled, settlesAt } = date ? indexCloseSettlement(date, Date.now()) : { settled: true, settlesAt: null };
+  useEffect(() => {
+    if (settled || settlesAt == null) return;
+    const wait = Math.min(MAX_BOUNDARY_WAIT_MS, Math.max(1_000, settlesAt - Date.now() + 250));
+    const timer = setTimeout(() => setCheck((value) => value + 1), wait);
+    return () => clearTimeout(timer);
+  }, [settled, settlesAt, check]);
+  return settled;
+}
+
+/**
  * Whether the US options market is in its regular session. Re-evaluated at the
  * next open or close while the pane can be seen; a hidden app or a covered
  * pane keeps its last answer, which is recomputed if its boundary has passed.
