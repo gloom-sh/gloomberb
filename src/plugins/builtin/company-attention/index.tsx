@@ -27,6 +27,6 @@ export const companyAttentionModule: PluginModule = {
     ctx.registerTickerResearchTab({ id: "app-attention", name: "Apps", order: 39, component: AppsPane, instruments: ["equity"] });
   },
   dispose() { attentionCache.reset(); appRankCache.reset(); },
-  panes: definitions.map((def) => ({ id: def.id, name: def.label, icon: def.prefix[0]!, component: def.component, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 32 }, tickerFollower: true, tableExport: true, headless: attentionHeadless(def.id) })),
+  panes: definitions.map((def) => ({ id: def.id, name: def.label, icon: def.prefix[0]!, component: def.component, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 32 }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: attentionHeadless(def.id) })),
   paneTemplates: templates,
 };

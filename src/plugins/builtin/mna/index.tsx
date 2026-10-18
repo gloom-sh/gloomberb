@@ -36,6 +36,7 @@ export const mnaModule: PluginModule = {
       identitySettings: ["ticker"],
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 120, height: 30 },
       tableExport: true,

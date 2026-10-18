@@ -40,6 +40,7 @@ export const jobsModule: PluginModule = {
       component: JobsPane,
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 34 },
       tableExport: true,

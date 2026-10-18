@@ -6,7 +6,7 @@ import { LOOKBACK_OPTIONS, PeBandPane } from "./pane";
 export const peBandModule: PluginModule = {
   panes: [{
     id: "pe-band", name: "P/E Band", icon: "P", component: PeBandPane,
-    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 },
+    defaultPosition: "right", tickerFollower: true, instruments: ["equity"], defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 },
     tableExport: true,
     settings: { title: "P/E Band Settings", fields: [
       { key: "lookbackYears", label: "Lookback", type: "select", options: LOOKBACK_OPTIONS },

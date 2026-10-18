@@ -10,6 +10,7 @@ import { Button } from "../../ui/button";
 import { PaneStatusBody } from "../../ui/status";
 import type { PaneDef } from "../../../types/plugin";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import { InstrumentCoverageGate } from "./instrument-coverage-gate";
 
 const NO_PANES: ReadonlyMap<string, PaneDef> = new Map();
 
@@ -27,10 +28,15 @@ const NO_PANES: ReadonlyMap<string, PaneDef> = new Map();
 export function PaneTickerFateGate({ paneId, children }: { paneId: string; children: ReactNode }) {
   const instance = usePaneInstance();
   const panes = getSharedRegistry()?.panes ?? NO_PANES;
+  const pane = instance ? panes.get(instance.paneId) : undefined;
   // Whether this kind of pane can show one ticker. A pane's kind does not change while it is open, so the tree
   // under it keeps its shape: a chart that gains a second security stops being gated without being mounted again.
-  if (!instance || !(instance.paneId === TICKER_RESEARCH_PANE_ID || panes.get(instance.paneId)?.tickerFollower)) return children;
-  return <TickerFateGate paneId={paneId} scoped={isTickerLinkPeer(instance, panes)}>{children}</TickerFateGate>;
+  if (!instance || !(instance.paneId === TICKER_RESEARCH_PANE_ID || pane?.tickerFollower)) return children;
+  // A pane with company data only answers an index or an ETF with what it is (`PaneDef.instruments`).
+  const covered = pane?.instruments?.length
+    ? <InstrumentCoverageGate pane={pane}>{children}</InstrumentCoverageGate>
+    : children;
+  return <TickerFateGate paneId={paneId} scoped={isTickerLinkPeer(instance, panes)}>{covered}</TickerFateGate>;
 }
 
 function TickerFateGate({ paneId, scoped, children }: { paneId: string; scoped: boolean; children: ReactNode }) {

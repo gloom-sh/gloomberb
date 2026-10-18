@@ -15,6 +15,7 @@ export const estimateRevisionsModule: PluginModule = {
       component: EstimateRevisionsPane,
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 30 },
       tableExport: true,

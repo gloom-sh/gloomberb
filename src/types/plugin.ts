@@ -144,6 +144,13 @@ export interface PaneDef {
    */
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
   /**
+   * Instrument kinds this pane has data for, such as `["equity"]` for company
+   * data, as a research tab declares them. Bound to a ticker of another known
+   * kind (an index, an ETF), the pane says so in place of its data, and `fn`
+   * and `shot` answer before loading. Omit when every ticker has it.
+   */
+  instruments?: readonly TickerInstrumentKind[];
+  /**
    * For a pane type that two or more functions open (ERN and EVTS): the settings that say
    * what a window shows, as against how (a range, a toggle, a column choice). Opening a
    * function again focuses a window whose binding, params and settings match what the

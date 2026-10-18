@@ -34,6 +34,7 @@ export const revenueBreakdownModule: PluginModule = {
       component: RevenueBreakdownPane,
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 16 },
       tableExport: true,

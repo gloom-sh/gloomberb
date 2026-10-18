@@ -7,6 +7,7 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { scopedBrokerContractIdentityKey } from "../../../utils/instrument-identity";
 import { tickerSelectionFromSearchResult } from "../../../tickers/selection";
 import { tickerInstrumentLabel } from "../../../tickers/instrument-label";
+import { knownInstrumentOfTicker, uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../../tickers/instrument-coverage";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { PluginOffError } from "../../../plugins/plugin-off";
 import { formatTickerListInput } from "../../../tickers/list";
@@ -184,6 +185,24 @@ async function resolvePaneTemplateOptions(
   };
 }
 
+/**
+ * Why a function with company data refused a ticker it has none for, as `fn`
+ * says it: "INS covers companies only, and ^VIX is an index." Null for any
+ * other refusal.
+ */
+function uncoveredTemplateMessage(
+  template: PaneTemplateDef,
+  registry: Pick<PluginRegistry, "panes">,
+  options: PaneTemplateCreateOptions | undefined,
+): string | null {
+  const covered = registry.panes.get(template.paneId)?.instruments;
+  const symbol = options?.ticker?.metadata.ticker ?? options?.symbol;
+  if (!covered?.length || !symbol) return null;
+  const instrument = knownInstrumentOfTicker(symbol, options?.ticker);
+  if (!instrument || !uncoveredInstrumentKind(covered, instrument.kind)) return null;
+  return uncoveredInstrumentMessage(template.shortcut?.prefix ?? getPaneTemplateDisplayLabel(template), covered, instrument);
+}
+
 export async function createPaneTemplateOrThrow(
   templateId: string,
   options: PaneTemplateCreateOptions | undefined,
@@ -208,7 +227,8 @@ export async function createPaneTemplateOrThrow(
   const { context, resolvedOptions } = await resolvePaneTemplateOptions(template, options, deps);
 
   if (template.canCreate && !template.canCreate(context, resolvedOptions)) {
-    throw new Error(`Can't create ${getPaneTemplateDisplayLabel(template).toLowerCase()} right now.`);
+    throw new Error(uncoveredTemplateMessage(template, deps.pluginRegistry, resolvedOptions)
+      ?? `Can't create ${getPaneTemplateDisplayLabel(template).toLowerCase()} right now.`);
   }
 
   const createInstanceResult = await template.createInstance?.(context, resolvedOptions);

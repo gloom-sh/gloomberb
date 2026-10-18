@@ -63,6 +63,7 @@ export const tickerDetailModule: PluginModule = {
       headless: financialStatementsHeadless,
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 98, height: 30 },
       tableExport: true,

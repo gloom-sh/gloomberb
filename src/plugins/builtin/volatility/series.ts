@@ -1,7 +1,8 @@
 import { apiClient } from "../../../api-client";
 import type { SeriesAttribution, SeriesDefinition } from "../../../series/types";
 import { loadVolatilityTermHistory } from "./client";
-import { IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, type VolatilityTermHistory } from "./model";
+import { IMPLIED_CORRELATION_ROWS, type VolatilityTermHistory } from "./model";
+import { VOLATILITY_INDICES } from "../shared/volatility-indices";
 
 /** VIX and VIX 3M come from FRED's daily closes, listed with the other FRED series. */
 const FRED_LISTED = new Set(["vix", "vix3m"]);

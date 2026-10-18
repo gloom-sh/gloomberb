@@ -11,9 +11,9 @@ export const companyKpisModule: PluginModule = {
   dispose() { companyKpisCache.reset(); },
   panes: [
     { id: "company-kpis", name: "Company KPIs", icon: "K", component: CompanyKpisPane, defaultPosition: "right", defaultMode: "floating",
-      defaultFloatingSize: { width: 130, height: 30 }, tickerFollower: true, tableExport: true, headless: kpisHeadless },
+      defaultFloatingSize: { width: 130, height: 30 }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: kpisHeadless },
     { id: "company-guidance", name: "Company Guidance", icon: "G", component: CompanyGuidancePane, defaultPosition: "right", defaultMode: "floating",
-      defaultFloatingSize: { width: 130, height: 30 }, tickerFollower: true, tableExport: true, headless: guidanceHeadless },
+      defaultFloatingSize: { width: 130, height: 30 }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: guidanceHeadless },
   ],
   paneTemplates: [
     { ...createTickerSurfacePaneTemplate({ id: "company-kpis-pane", paneId: "company-kpis", label: "Company KPIs", shortcut: "KPIS",

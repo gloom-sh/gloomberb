@@ -54,6 +54,7 @@ export const executivesModule: PluginModule = {
       component: ExecutivesPane,
       defaultPosition: "right",
       tickerFollower: true,
+      instruments: ["equity"],
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
     },

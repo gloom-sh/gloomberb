@@ -38,6 +38,8 @@ import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
+import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
+import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
 
 /** The `--exchange` option of every command that takes a ticker. */
@@ -946,6 +948,28 @@ export async function loadListingQuoteAnswer(
   } catch (error) {
     return { quote: null, error };
   }
+}
+
+/**
+ * What a listing is: an index, a pair, a future or a coin by its symbol
+ * (^VIX, EURUSD=X), anything else by its quote's type, then its saved record's.
+ * A specific kind outranks a generic equity type, as brokers file funds as
+ * stocks. Null when nothing says, as for a symbol whose quote fails.
+ */
+export async function listingInstrument(
+  listing: Pick<CliListing, "key" | "exchange" | "request" | "saved">,
+  deps: Pick<ListingDeps, "dataProvider">,
+): Promise<InstrumentOfKind | null> {
+  const syntax = kindFromListingSyntax(listing.key, listing.exchange);
+  if (syntax) return { symbol: listing.key, kind: syntax };
+  const quote = await loadListingQuote(deps.dataProvider, listing);
+  const types = [quote?.instrumentType, listing.saved?.metadata.broker_contracts?.[0]?.secType, listing.saved?.metadata.assetCategory];
+  const typed = types.flatMap((type) => {
+    const kind = classifyInstrumentType(type);
+    return kind ? [{ kind, type }] : [];
+  });
+  const found = typed.find(({ kind }) => kind !== "equity") ?? typed[0];
+  return found ? { symbol: listing.key, kind: found.kind, type: found.type ?? null } : null;
 }
 
 /** One line above a table naming what it is about: "Sanofi  ·  Euronext Paris (EPA)". */

@@ -11,7 +11,9 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
-import { ListingArgError, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import { ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
+import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
@@ -145,10 +147,30 @@ export async function applyListingArgument(
   let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
+  const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
+  // A function with company data answers an index or an ETF with what it is and where its data is, before
+  // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
+  const covered = found.pane.instruments;
+  if (covered?.length) {
+    const outside = (await Promise.all(listings.map(async (listing) => {
+      const instrument = await listingInstrument(listing, context);
+      return instrument && uncoveredInstrumentKind(covered, instrument.kind) ? { listing, instrument } : null;
+    }))).filter((entry) => entry != null);
+    if (outside.length > 0) {
+      const answers = outside.map(({ instrument }) => ({
+        message: uncoveredInstrumentMessage(token, covered, instrument),
+        details: `Try: ${uncoveredInstrumentCommand(instrument)}`,
+      }));
+      listings = listings.filter((listing) => !outside.some((entry) => entry.listing === listing));
+      if (listings.length === 0) {
+        throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
+      }
+      notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
+    }
+  }
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
-    const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
     const answers = await Promise.all(abroad.map(async (listing) => {
       const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`);
       const hint = headless?.usListingsOnlyHint?.(listing.key);

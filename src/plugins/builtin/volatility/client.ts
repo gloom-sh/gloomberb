@@ -8,7 +8,8 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 import { loadFredPoints } from "../shared/fred-points";
-import { buildVolatilityData, buildVolatilityTermHistory, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLATILITY_SERIES,
+import { VOLATILITY_INDICES } from "../shared/volatility-indices";
+import { buildVolatilityData, buildVolatilityTermHistory, IMPLIED_CORRELATION_ROWS, VOLATILITY_SERIES,
   type VolatilityData, type VolatilityHistoryInput, type VolatilityInputs,
   type VolatilitySeriesId, type VolatilitySeriesInput, type VolatilityTermHistory } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
