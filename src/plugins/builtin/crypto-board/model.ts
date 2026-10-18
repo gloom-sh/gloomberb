@@ -27,7 +27,7 @@ export const CRYPTO_TABS: Array<{ value: CryptoAssetKind; label: string }> = [
 export interface CryptoRowSupply {
   /** USD. */
   supply: number | null;
-  /** The change in units over 7 and 30 days, valued at today's price, and in percent. */
+  /** The change in USD over 7 and 30 days on the coin's daily supply, and in percent. */
   supply7d: number | null;
   supply7dPercent: number | null;
   supply30d: number | null;
@@ -400,12 +400,9 @@ const COLUMN_SPECS: CryptoColumnSpec[] = [
 
 /**
  * A stablecoin is read by its peg: what it holds to, how far off it is, and
- * the 24-hour low and high with their times, before its returns; its supply
- * follows the market cap. Narrowing, the returns, the sparkline and the day
- * change leave first, then the dollar changes in supply, volume, the supply's
- * 30D, the name, share, the high, the supply's 7D and the market cap, which
- * supply all but repeats; the peg, the low and when it traded stay, and supply
- * goes last.
+ * the 24-hour low and high with their times, before its returns. Narrowing,
+ * the returns, the sparkline and the day change leave first, then volume, the
+ * name and the high; the peg, the low and when it traded stay.
  */
 const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "rank", label: "#", width: 3, align: "right" },
@@ -424,13 +421,23 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 9 },
   { id: "trend", label: "30D", width: 12, align: "left", optional: 7 },
   { id: "volume24h", label: "VOL 24H", width: 8, align: "right", optional: 4 },
-  { id: "marketCap", label: "MCAP", width: 8, align: "right", optional: 0.6 },
-  { id: "supply", label: "SUPPLY", width: 8, align: "right", optional: 0.4 },
-  { id: "supply7dPercent", label: "SUP 7D%", width: 8, align: "right", optional: 0.8 },
+  { id: "marketCap", label: "MCAP", width: 8, align: "right" },
+];
+
+/**
+ * With supply loaded, each coin's supply follows the market cap. Every supply
+ * column leaves before the name, so the peg columns narrow as they do without
+ * supply: the dollar changes go with the price returns, then (after volume)
+ * share, the 30D and 7D change and supply itself.
+ */
+const STABLECOIN_SUPPLY_COLUMN_SPECS: CryptoColumnSpec[] = [
+  ...STABLECOIN_COLUMN_SPECS,
+  { id: "supply", label: "SUPPLY", width: 8, align: "right", optional: 3.2 },
+  { id: "supply7dPercent", label: "SUP 7D%", width: 8, align: "right", optional: 3.4 },
   { id: "supply7d", label: "SUP 7D", width: 8, align: "right", optional: 4.6 },
   { id: "supply30dPercent", label: "SUP 30D%", width: 8, align: "right", optional: 3.6 },
   { id: "supply30d", label: "SUP 30D", width: 8, align: "right", optional: 4.8 },
-  { id: "supplyShare", label: "SHARE", width: 7, align: "right", optional: 2.6 },
+  { id: "supplyShare", label: "SHARE", width: 7, align: "right", optional: 3.8 },
 ];
 
 const MAX_NAME_WIDTH = 24;
@@ -438,9 +445,11 @@ const MAX_NAME_WIDTH = 24;
 /**
  * Optional columns leave in a fixed order as the pane narrows (1Y, then the
  * sparkline, 30D, volume and the name); the name takes what width is left.
+ * The stablecoin tab adds the supply columns only `withSupply`, so a supply
+ * outage leaves the price columns as they are.
  */
-export function buildCryptoColumns(width: number, kind: CryptoAssetKind = "coin"): CryptoColumn[] {
-  const specs = kind === "stablecoin" ? STABLECOIN_COLUMN_SPECS : COLUMN_SPECS;
+export function buildCryptoColumns(width: number, kind: CryptoAssetKind = "coin", withSupply = false): CryptoColumn[] {
+  const specs = kind !== "stablecoin" ? COLUMN_SPECS : withSupply ? STABLECOIN_SUPPLY_COLUMN_SPECS : STABLECOIN_COLUMN_SPECS;
   const optional = specs.flatMap((column) => column.optional ?? []).sort((a, b) => b - a);
   let dropped = new Set<number>();
   // Measured the way the table draws them (header floors, gaps, padding and the

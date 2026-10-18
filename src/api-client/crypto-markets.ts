@@ -74,18 +74,18 @@ export interface CryptoMarketsPayload {
   warnings: string[];
 }
 
-/** One stablecoin's supply: units outstanding across chains, valued in USD. */
+/** One stablecoin's supply across chains in USD, on the board's as-of day. */
 export interface StablecoinSupplyCoin {
   symbol: string;
   name: string;
   /** The currency the coin is pegged to, as the source names it: peggedUSD, peggedEUR, peggedVAR (a floating target). */
   pegType: string;
   pegMechanism: string | null;
-  /** The USD price the supply is valued at; null for a dollar coin the source prices at none (valued at one dollar). */
+  /** USD per unit the day's supply is valued at; null when the source states no units that day. */
   price: number | null;
-  /** USD. */
+  /** USD on the as-of day: the same figure the coin's daily supply ends on. */
   supply: number;
-  /** Change in units over 7 and 30 days, valued in USD at today's price, and in percent. */
+  /** Change in USD over 7 and 30 days on the coin's daily supply, and in percent of the value then. */
   change7d: number | null;
   change7dPercent: number | null;
   change30d: number | null;

@@ -245,7 +245,7 @@ export function loadStablecoinSupplyHistory(symbol: string) {
     try {
       return validateStablecoinSupplyHistory(await apiClient.getCloudStablecoinSupplyHistory(key));
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 404) throw new Error(`${key} is not among the stablecoins CRYP lists.`);
+      if (error instanceof ApiRequestError && error.status === 404) throw new Error(`No stablecoin supply series for ${key}: it is not among the stablecoins CRYP lists.`);
       throw supplyError(error, `${key} supply history`);
     }
   }, { validate: validateStablecoinSupplyHistory });

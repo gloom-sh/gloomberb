@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
-import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { headlessReportTables, type LoadedHeadlessPaneModel, renderHeadlessPaneText, reportCoverage } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
 import type { HeadlessPaneContext } from "../../../types/headless";
@@ -32,12 +32,18 @@ test("the stablecoin list states the total, adds each coin's supply, and exports
   expect(series[4]).toStartWith("2026-09-21,,,71000000000,,,USD,1d,");
 });
 
-test("without supply the list still prices every coin and says why its supply is blank", async () => {
+test("a supply outage is a note: the prices stay a complete report, with the market cap and no blank supply", async () => {
   const result = await load(async () => {
     throw new ApiRequestError("Unavailable", 503);
   });
   expect(result.rows[0]).toMatchObject({ code: "USDT", price: 0.9998, supply: null, supplyShare: null });
-  expect(result.errors).toEqual(["Stablecoin supply is temporarily unavailable"]);
+  expect(result.errors).toEqual([]);
+  expect(result.notes).toEqual(["Stablecoin supply is temporarily unavailable; the prices are complete without it."]);
+  expect(reportCoverage({ definition: cryptoBoardHeadless, args: ARGS, result } as LoadedHeadlessPaneModel).complete).toBe(true);
   expect(result.metadata).not.toHaveProperty("notices");
   expect("exportTables" in result).toBe(false);
+  const freshness = deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW);
+  const text = renderHeadlessPaneText(cryptoBoardHeadless, result, ARGS, "CRYP", freshness);
+  expect(text).toMatch(/Vol 24h  Market cap\n/);
+  expect(text).not.toMatch(/Supply\s/);
 });

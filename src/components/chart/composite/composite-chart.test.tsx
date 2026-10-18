@@ -712,11 +712,11 @@ describe("CompositeChart", () => {
     await tui.render(
       <CompositeChart
         width={38}
-        height={10}
+        height={6}
         series={overflowingSeries}
         panels={[{ id: "main" }]}
       />,
-      { width: 40, height: 12 },
+      { width: 40, height: 8 },
     );
 
     await act(async () => {
@@ -734,6 +734,34 @@ describe("CompositeChart", () => {
     expect(tui.frame().split("\n")[0]).toContain("LAST LONG SERIES");
   });
 
+  test("wraps a legend that cannot share one line onto the lines a tall chart has room for", async () => {
+    const labels = ["USDT", "USDC", "USDS", "USDE", "DAI", "USD1", "Other"];
+    const stacked = labels.map((label, index) => ({
+      ...series(`series-${index}`, "main", "left", "USD", [180 / (index + 1), 181 / (index + 1)]),
+      label,
+    }));
+    const frameLines = async (height: number) => {
+      await tui.render(
+        <CompositeChart width={46} height={height} series={stacked} panels={[{ id: "main" }]} />,
+        { width: 48, height: height + 2 },
+      );
+      await act(async () => {
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n");
+    };
+    const named = (line = "") => labels.filter((label) => new RegExp(` ${label} \\$[\\d.]+( |$)`).test(line));
+    // Each entry whole and none left off, two or three to a line.
+    const tall = await frameLines(20);
+    expect(tall.slice(0, 4).map((line) => named(line).length)).toEqual([3, 3, 1, 0]);
+    expect(tall.slice(0, 3).flatMap((line) => named(line))).toEqual(labels);
+    // A chart with no rows to spare keeps its plot: one line that scrolls.
+    const short = await frameLines(6);
+    expect(named(short[0]).length).toBeGreaterThan(0);
+    expect(named(short[1])).toEqual([]);
+  });
+
   test("reaches and toggles overflowing legend series from the keyboard", async () => {
     const toggled: string[] = [];
     const labels = ["FIRST LONG SERIES", "SECOND LONG SERIES", "THIRD LONG SERIES", "LAST LONG SERIES"];
@@ -745,14 +773,14 @@ describe("CompositeChart", () => {
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
           width={38}
-          height={10}
+          height={6}
           focused
           series={overflowingSeries}
           panels={[{ id: "main" }]}
           onToggleSeries={(seriesId) => toggled.push(seriesId)}
         />
       </InputHostProvider>,
-      { width: 40, height: 12 },
+      { width: 40, height: 8 },
     );
 
     await act(async () => {

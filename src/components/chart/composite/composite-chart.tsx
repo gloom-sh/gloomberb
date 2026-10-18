@@ -50,6 +50,10 @@ import type {
 const WATERMARK_BASE_WIDTH_PX = 216;
 const WATERMARK_BASE_HEIGHT_PX = 48;
 
+/** The most lines a legend wraps to, and the plot rows each panel keeps when it does. */
+const MAX_LEGEND_ROWS = 3;
+const MIN_PANEL_ROWS_BESIDE_WRAPPED_LEGEND = 4;
+
 /**
  * Size the screenshot wordmark to roughly half the plot width, capped so it
  * stays a mark rather than a poster. Plots too small for a legible mark get
@@ -229,13 +233,18 @@ function ThemedCompositeChart({
   });
   // The pane's range control asks for this when its selected range is chosen again.
   useChartViewResetListener(resetViewport, interactive && navigable);
-  const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
-    ? 1
-    : 0;
   const timeAxisRows = showTimeAxis ? 1 : 0;
   const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
   const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
   const panelCount = new Set(panelSeries.map((entry) => entry.panelId)).size;
+  // One legend line, or up to a few when its entries cannot share one and each
+  // panel keeps a readable plot: the legend says how many it needs while no
+  // cursor moves its values.
+  const [legendWantedRows, setLegendWantedRows] = useState(1);
+  const legendRoom = totalHeight - timeAxisRows - xMarkerRows - MIN_PANEL_ROWS_BESIDE_WRAPPED_LEGEND * Math.max(1, panelCount);
+  const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
+    ? Math.max(1, Math.min(legendWantedRows, MAX_LEGEND_ROWS, legendRoom))
+    : 0;
   // A forming bar can change its extremes or volume without moving its close.
   const lastTickKey = visibleSeries.map((entry) => {
     const last = entry.points.at(-1);
@@ -697,6 +706,8 @@ function ThemedCompositeChart({
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           keyboardIndex={legendKeyboardIndex}
+          rows={legendRows}
+          onWantedRowsChange={setLegendWantedRows}
         />
       ) : null}
       {showToolbar ? (

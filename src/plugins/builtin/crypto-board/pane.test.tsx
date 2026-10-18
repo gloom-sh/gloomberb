@@ -116,7 +116,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
 
   await tui.emitKeypress({ name: "l" });
   await settleFrame(tui.setup(), 8);
-  expect(tui.frame()).toMatch(/USDT\s+0\.9998/);
+  expect(tui.frame()).toContain("Tether USDt");
 
   await tui.emitKeypress({ name: "h" });
   await settleFrame(tui.setup(), 8);
@@ -138,16 +138,16 @@ function mockBoard(supply: () => Promise<ReturnType<typeof stablecoinSupplyFixtu
   return supplyQuery;
 }
 
-async function openStablecoins() {
-  await mountPane(130, 24);
+async function openStablecoins(width = 130) {
+  await mountPane(width, 24);
   await tui.emitKeypress({ name: "l" });
   await settleFrame(tui.setup(), 10);
   return tui.frame();
 }
 
-test("the stablecoin tab charts supply above its rows", async () => {
+test("the stablecoin tab charts supply above its rows, the legend and the table reading one figure", async () => {
   const supply = mockBoard(async () => stablecoinSupplyFixture());
-  await mountPane(130, 24);
+  await mountPane(180, 24);
   // The coin tab never asks for supply.
   expect(supply).not.toHaveBeenCalled();
   await tui.emitKeypress({ name: "l" });
@@ -156,16 +156,18 @@ test("the stablecoin tab charts supply above its rows", async () => {
   expect(frame).toMatch(/Total supply\s+300\.00B/);
   expect(frame).toMatch(/30D change\s+\+1\.80B/);
   // The legend reads each coin's own supply, not the stack's height at it.
-  expect(frame).toMatch(/USDC 121\.00B/);
-  expect(frame).toMatch(/SUPPLY\s+SUP 7D%/);
-  expect(frame).toMatch(/USDT .*180\.00B\s+180\.00B\s+-0\.33%/);
+  expect(frame).toMatch(/USDT 180\.00B \+ USDC 72\.00B × Other 48\.00B/);
+  expect(frame).toMatch(/MCAP\s+SUPPLY\s+SUP 7D%\s+SUP 7D\s+SUP 30D%\s+SUP 30D\s+SHARE/);
+  expect(frame).toMatch(/1\s+USDT\s+Tether USDt .*180\.00B\s+180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
 });
 
-test("a supply outage leaves the stablecoin prices and says the chart is unavailable", async () => {
+test("a supply outage leaves the stablecoin board as it is without supply and says the chart is unavailable", async () => {
   mockBoard(async () => {
     throw new Error("Controlled supply outage");
   });
   const frame = await openStablecoins();
-  expect(frame).toMatch(/USDT\s+0\.9998/);
+  expect(frame).toContain("Tether USDt");
+  expect(frame).toContain("MCAP");
+  expect(frame).not.toContain("SUPPLY");
   expect(frame).toContain("Stablecoin supply is unavailable right now.");
 });

@@ -112,8 +112,8 @@ export function stablecoinSupplyFixture(): StablecoinSupplyPayload {
       total: [296e9, 297e9, null, 299e9, 300e9],
       coins: [
         { symbol: "USDT", name: "Tether", values: [178e9, 179e9, null, 180e9, 180e9] },
-        // Before a coin existed its days are null, and a coin read later than the total can top it.
-        { symbol: "USDC", name: "USD Coin", values: [null, 70e9, 71e9, 72e9, 121e9] },
+        // Before a coin existed its days are null.
+        { symbol: "USDC", name: "USD Coin", values: [null, 70e9, 71e9, 72e9, 72e9] },
       ],
     },
     warnings: [],

@@ -98,6 +98,27 @@ function withoutListingExchange(label: string): string {
   ));
 }
 
+/**
+ * Entries laid left to right into lines of `available` cells, one cell apart,
+ * a new line when the next does not fit. With `maxLines`, what does not fit in
+ * the last line stays on it (that line scrolls).
+ */
+function packLegendLines(widths: readonly number[], available: number, maxLines = Infinity): number[][] {
+  const lines: number[][] = [];
+  let used = 0;
+  widths.forEach((width, index) => {
+    const line = lines.at(-1);
+    if (line && (used + 1 + width <= available || lines.length >= maxLines)) {
+      line.push(index);
+      used += 1 + width;
+    } else {
+      lines.push([index]);
+      used = width;
+    }
+  });
+  return lines;
+}
+
 /** The legend's marker for a series on the desktop: its line as the plot strokes it, or a dot. */
 function CompositeSeriesSwatch({ series, cue, filled = true }: {
   series: ResolvedSeries;
@@ -149,6 +170,8 @@ export function CompositeLegend({
   onToggleSeries,
   isSeriesToggleable,
   keyboardIndex,
+  rows = 1,
+  onWantedRowsChange,
 }: {
   scene: CompositeChartScene | null;
   series: ResolvedSeries[];
@@ -166,6 +189,10 @@ export function CompositeLegend({
   onToggleSeries: CompositeChartProps["onToggleSeries"];
   isSeriesToggleable: CompositeChartProps["isSeriesToggleable"];
   keyboardIndex?: number | null;
+  /** Lines the chart gives the legend; more than one lets entries that cannot share a line wrap. */
+  rows?: number;
+  /** The lines the legend needs to show every entry whole, told while no cursor moves the values. */
+  onWantedRowsChange?: (rows: number) => void;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -272,7 +299,31 @@ export function CompositeLegend({
     entries = buildEntries(false);
   }
   const minimumSeriesWidth = minimumWidthOf(entries);
-  if (minimumSeriesWidth <= widthBeforeAccessory) {
+  const fitsOneLine = minimumSeriesWidth <= widthBeforeAccessory;
+  // Entries that cannot share a line even with names cut to fragments wrap onto
+  // more lines when the chart gives them room, each whole, its name only cut
+  // past a line's width; with one line they keep the old 30-cell entries and scroll.
+  let lines: number[][] | null = null;
+  let wantedRows = 1;
+  if (!fitsOneLine) {
+    const wrappedLabelWidth = (entry: LegendEntry) => Math.min(
+      displayWidth(entry.compactLabel),
+      Math.max(1, widthBeforeAccessory - entry.markerWidth - (entry.valueText ? displayWidth(entry.valueText) + 1 : 0)),
+    );
+    const wrappedWidths = entries.map((entry) => entry.markerWidth + Math.max(1, displayWidth(
+      [truncateToDisplayWidth(entry.compactLabel, wrappedLabelWidth(entry)), entry.valueText].filter(Boolean).join(" "),
+    )));
+    wantedRows = packLegendLines(wrappedWidths, widthBeforeAccessory).length;
+    if (rows > 1) {
+      for (const entry of entries) setEntryLabel(entry, entry.compactLabel, wrappedLabelWidth(entry));
+      lines = packLegendLines(wrappedWidths, widthBeforeAccessory, rows);
+    }
+  }
+  const idle = !scene?.cursorDate;
+  useEffect(() => {
+    if (idle) onWantedRowsChange?.(wantedRows);
+  }, [idle, onWantedRowsChange, wantedRows]);
+  if (fitsOneLine) {
     while (measureSeriesWidth() > widthBeforeAccessory) {
       const shrinkable = entries
         .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > 8)
@@ -284,18 +335,22 @@ export function CompositeLegend({
         setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
       }
     }
-  } else {
+  } else if (!lines) {
     for (const entry of entries) {
       const budget = Math.max(0, 30 - (entry.valueText ? displayWidth(entry.valueText) + 1 : 0));
       if (entry.labelWidth > budget) setEntryLabel(entry, entry.compactLabel, budget);
     }
   }
-  const desiredSeriesWidth = measureSeriesWidth();
-  const seriesWidth = Math.min(desiredSeriesWidth, widthBeforeAccessory);
+  const lineWidth = (line: readonly number[]) => line.reduce(
+    (total, index, position) => total + entries[index]!.width + (position > 0 ? 1 : 0),
+    0,
+  );
+  const desiredSeriesWidth = lines ? lineWidth(lines.at(-1)!) : measureSeriesWidth();
+  const seriesWidth = lines ? widthBeforeAccessory : Math.min(desiredSeriesWidth, widthBeforeAccessory);
   const accessorySpacerWidth = accessory
     ? Math.max(reservedAccessoryGap, innerWidth - seriesWidth - resolvedAccessoryWidth)
     : 0;
-  const keyboardEntryStart = keyboardIndex === null || keyboardIndex === undefined
+  const keyboardEntryStart = keyboardIndex === null || keyboardIndex === undefined || lines
     ? null
     : entries.slice(0, keyboardIndex).reduce(
       (total, entry, index) => total + entry.width + (index > 0 ? 1 : 0),
@@ -346,12 +401,82 @@ export function CompositeLegend({
     scrollBox.scrollLeft = nextLeft;
     scrollBox.scrollTo({ x: nextLeft, y: scrollBox.scrollTop });
   };
+  const renderEntry = (
+    { entry, cue, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }: LegendEntry,
+    index: number,
+  ) => {
+    const entryVisible = visibleSeriesIds.has(entry.id);
+    const unitAt = statedUnit ? text.length - statedUnit.length - valueTail.length : -1;
+    return (
+      <Box
+        key={entry.id}
+        flexDirection="row"
+        alignItems="center"
+        width={entryWidth}
+        height={1}
+        flexShrink={0}
+        overflow="hidden"
+        backgroundColor={keyboardIndex === index ? themeColors.selected : undefined}
+        hoverBackgroundColor={toggleable ? hoverBg() : undefined}
+        onMouseDown={toggleable ? (event: ChartMouseEvent) => {
+          onActivate?.();
+          consumeChartMouseEvent(event);
+          onToggleSeries?.(entry.id);
+        } : undefined}
+        cursor={toggleable ? "pointer" : undefined}
+        data-gloom-interactive={toggleable ? "true" : undefined}
+        data-gloom-role="composite-chart-legend-series"
+        data-gloom-label={`${toggleable
+          ? `${entryVisible ? "Hide" : "Show"} `
+          : ""}${tooltip}`}
+        data-visible={entryVisible ? "true" : "false"}
+        data-carried={carried ? "true" : undefined}
+        title={isDesktopWeb ? tooltip : undefined}
+      >
+        {isDesktopWeb ? (
+          <CompositeSeriesSwatch series={entry} cue={cue} filled={entryVisible} />
+        ) : (
+          <Text fg={entryVisible ? entry.color : themeColors.textMuted}>{marker}</Text>
+        )}
+        {/* The filled/hollow marker already says whether a series is
+            shown; the word only repeated it in every legend slot. */}
+        <Text fg={entryVisible && !carried ? themeColors.text : themeColors.textDim}>
+          {unitAt >= 0 ? (
+            <>
+              {text.slice(0, unitAt)}
+              <Span fg={themeColors.textDim}>{statedUnit}</Span>
+              {valueTail}
+            </>
+          ) : text}
+        </Text>
+      </Box>
+    );
+  };
+  const scrollLine = (line: number[] | null, key: string | number, ref: typeof scrollRef | undefined) => (
+    <ScrollBox
+      key={key}
+      ref={ref}
+      width={seriesWidth}
+      height={1}
+      flexShrink={0}
+      scrollX
+      focusable={false}
+      horizontalScrollbarOptions={{ visible: false }}
+      onMouseScroll={ref ? handleMouseScroll : undefined}
+      data-gloom-role="composite-chart-legend-scroll"
+    >
+      <Box flexDirection="row" width={line ? lineWidth(line) : desiredSeriesWidth} height={1} gap={1}>
+        {line ? line.map((index) => renderEntry(entries[index]!, index)) : entries.map(renderEntry)}
+      </Box>
+    </ScrollBox>
+  );
+  const lineCount = lines?.length ?? 1;
   return (
     <Box
       flexDirection="row"
-      alignItems="flex-end"
+      alignItems={lines ? "flex-start" : "flex-end"}
       width={width}
-      height={1}
+      height={lineCount}
       paddingLeft={inset}
       overflow="visible"
       // Accessory dropdowns must escape above the sibling drawing toolbar.
@@ -363,70 +488,11 @@ export function CompositeLegend({
           <Text fg={themeColors.textMuted}>{valueDates.lead}</Text>
         </Box>
       ) : null}
-      {seriesWidth > 0 ? (
-        <ScrollBox
-          ref={scrollRef}
-          width={seriesWidth}
-          height={1}
-          flexShrink={0}
-          scrollX
-          focusable={false}
-          horizontalScrollbarOptions={{ visible: false }}
-          onMouseScroll={handleMouseScroll}
-          data-gloom-role="composite-chart-legend-scroll"
-        >
-          <Box flexDirection="row" width={desiredSeriesWidth} height={1} gap={1}>
-            {entries.map(({ entry, cue, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }, index) => {
-              const entryVisible = visibleSeriesIds.has(entry.id);
-              const unitAt = statedUnit ? text.length - statedUnit.length - valueTail.length : -1;
-              return (
-              <Box
-                key={entry.id}
-                flexDirection="row"
-                alignItems="center"
-                width={entryWidth}
-                height={1}
-                flexShrink={0}
-                overflow="hidden"
-                backgroundColor={keyboardIndex === index ? themeColors.selected : undefined}
-                hoverBackgroundColor={toggleable ? hoverBg() : undefined}
-                onMouseDown={toggleable ? (event: ChartMouseEvent) => {
-                  onActivate?.();
-                  consumeChartMouseEvent(event);
-                  onToggleSeries?.(entry.id);
-                } : undefined}
-                cursor={toggleable ? "pointer" : undefined}
-                data-gloom-interactive={toggleable ? "true" : undefined}
-                data-gloom-role="composite-chart-legend-series"
-                data-gloom-label={`${toggleable
-                  ? `${entryVisible ? "Hide" : "Show"} `
-                  : ""}${tooltip}`}
-                data-visible={entryVisible ? "true" : "false"}
-                data-carried={carried ? "true" : undefined}
-                title={isDesktopWeb ? tooltip : undefined}
-              >
-                {isDesktopWeb ? (
-                  <CompositeSeriesSwatch series={entry} cue={cue} filled={entryVisible} />
-                ) : (
-                  <Text fg={entryVisible ? entry.color : themeColors.textMuted}>{marker}</Text>
-                )}
-                {/* The filled/hollow marker already says whether a series is
-                    shown; the word only repeated it in every legend slot. */}
-                <Text fg={entryVisible && !carried ? themeColors.text : themeColors.textDim}>
-                  {unitAt >= 0 ? (
-                    <>
-                      {text.slice(0, unitAt)}
-                      <Span fg={themeColors.textDim}>{statedUnit}</Span>
-                      {valueTail}
-                    </>
-                  ) : text}
-                </Text>
-              </Box>
-              );
-            })}
-          </Box>
-        </ScrollBox>
-      ) : null}
+      {seriesWidth > 0 && lines ? (
+        <Box flexDirection="column" width={seriesWidth} height={lineCount} flexShrink={0}>
+          {lines.map((line, index) => scrollLine(line, index, index === lines!.length - 1 ? scrollRef : undefined))}
+        </Box>
+      ) : seriesWidth > 0 ? scrollLine(null, "line", scrollRef) : null}
       {accessorySpacerWidth > 0 ? (
         <Box width={accessorySpacerWidth} flexShrink={0} />
       ) : null}

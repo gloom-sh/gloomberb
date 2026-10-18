@@ -4,12 +4,15 @@ import { stackedSupply, supplyByCode } from "./supply";
 import { CRYPTO_FIXTURE_NOW, cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 test("the stack is the charted coins, then Other: the total less them, never below zero", () => {
-  const stacked = stackedSupply(stablecoinSupplyFixture(), "ALL")!;
+  const payload = stablecoinSupplyFixture();
+  // A coin read above the total (an old cached board) leaves Other at 0.
+  payload.history!.coins[1]!.values[4] = 121e9;
+  const stacked = stackedSupply(payload, "ALL")!;
   expect(stacked.dates.map((date) => date.toISOString().slice(0, 10))).toEqual([
     "2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23",
   ]);
   expect(stacked.layers.map((layer) => layer.id)).toEqual(["USDT", "USDC", "other"]);
-  // A coin not yet issued adds nothing; a day without a total has no Other; a coin read above the total leaves Other at 0.
+  // A coin not yet issued adds nothing; a day without a total has no Other.
   expect(stacked.layers[2]!.values).toEqual([118e9, 48e9, null, 47e9, 0]);
 });
 

@@ -252,7 +252,9 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const statusLine = useMemo(() => observations.length
     ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: observations, freshness: CRYPTO_BOARD_FRESHNESS }, now))
     : null, [now, observations]);
-  const columns = useMemo(() => buildCryptoColumns(width, activeTab), [activeTab, width]);
+  // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
+  const hasSupply = !!supplyRows && supplyRows.size > 0;
+  const columns = useMemo(() => buildCryptoColumns(width, activeTab, hasSupply), [activeTab, hasSupply, width]);
 
   // Other is muted against the theme it is drawn on; the coins take the shared series palette, which the chart themes.
   const otherColor = useThemeColors().textMuted;

@@ -83,7 +83,7 @@ export function stackedSupply(payload: StablecoinSupplyPayload | null | undefine
   const other = history.total.slice(first, last + 1).map((total, day) => {
     if (total == null) return null;
     const charted = coins.reduce((sum, coin) => sum + (coin.values[day] ?? 0), 0);
-    // A coin read later in the day than the total can top it by a rounding.
+    // The total and each coin are separate daily series; their rounding can put the coins a hair above it.
     return Math.max(0, total - charted);
   });
   return { dates, layers: [...coins, { id: "other", label: "Other", values: other }] };

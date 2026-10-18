@@ -40,8 +40,7 @@ const COIN_COLUMNS: HeadlessPaneColumn[] = [
 
 /**
  * A stablecoin's peg, how far off it is and its 24-hour low and high with
- * their times follow its price; its supply follows the market cap. Fitted to a
- * narrow terminal, the returns, the supply's dollar changes, its share and
+ * their times follow its price. Fitted to a narrow terminal, the returns and
  * volume leave the table first.
  */
 const STABLECOIN_COLUMNS: HeadlessPaneColumn[] = [
@@ -55,6 +54,14 @@ const STABLECOIN_COLUMNS: HeadlessPaneColumn[] = [
   ...COIN_COLUMNS.slice(4).map((column, index) => column.key === "marketCap"
     ? column
     : { ...column, stackPriority: 4 - index, stackRows: 0 }),
+];
+
+/**
+ * With supply loaded, each coin's supply follows the market cap. In a narrow
+ * terminal the supply's dollar changes and its share leave after the returns.
+ */
+const STABLECOIN_SUPPLY_COLUMNS: HeadlessPaneColumn[] = [
+  ...STABLECOIN_COLUMNS,
   { key: "supply", header: "Supply", align: "right", format: compact },
   { key: "supply7dPercent", header: "Supply 7D %", align: "right", format: percent },
   { key: "supply7d", header: "Supply 7D", align: "right", format: signedCompact, stackPriority: 0.6, stackRows: 0 },
@@ -164,15 +171,19 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     if (kind !== "stablecoin") return { rows, errors: data.warnings, metadata };
     const summary = supply ? supplySummaryLine(supply) : null;
     const history = supply ? supplyHistoryTable(supply) : null;
+    // A supply outage is a caveat, not a failure: the prices are the report, and they are complete.
+    const notes = [
+      ...(supply?.warnings ?? []),
+      ...(supplyResult && "error" in supplyResult
+        ? [`${supplyFailure(errorMessage(supplyResult.error)).replace(/\.$/, "")}; the prices are complete without it.`]
+        : []),
+    ];
     return {
       rows,
-      columns: STABLECOIN_COLUMNS,
+      columns: supply?.coins.length ? STABLECOIN_SUPPLY_COLUMNS : STABLECOIN_COLUMNS,
       ...(history ? { exportTables: [history] } : {}),
-      errors: [
-        ...data.warnings,
-        ...(supplyResult && "error" in supplyResult ? [supplyFailure(errorMessage(supplyResult.error))] : []),
-      ],
-      ...(supply?.warnings.length ? { notes: supply.warnings } : {}),
+      errors: data.warnings,
+      ...(notes.length ? { notes } : {}),
       metadata: { ...metadata, ...(summary ? { notices: [summary] } : {}), ...(supply ? { supply: supplyMetadata(supply) } : {}) },
     };
   },
