@@ -271,6 +271,25 @@ describe("createPaneTemplateOrThrow", () => {
     expect(await open("quote-monitor:1")).toMatchObject([{ binding: { kind: "fixed", symbol: "TSLA" }, title: "INS TSLA" }]);
   });
 
+  // A company function refused for an index or a fund says what the ticker is;
+  // a refusal for any other reason keeps the generic line.
+  test("names what an uncovered ticker is when a company-only template refuses it", async () => {
+    const template = insiderModule.paneTemplates![0]!;
+    const open = (symbol: string, canCreate?: () => boolean) => {
+      const state = createInitialState(createDefaultConfig("/tmp/gloomberb-workflow-ops-test"));
+      const assetCategory = { "^VIX": "IND", VOO: "ETF" }[symbol] ?? "STK";
+      state.tickers.set(symbol, createTestTicker(symbol, symbol, { broker_contracts: [], assetCategory }));
+      return createPaneTemplateOrThrow(template.id, { symbol }, templateDeps(state, {
+        template: { ...template, ...(canCreate ? { canCreate } : {}) } as never,
+        pane: { id: "insider", name: "Insider", component: () => null, defaultPosition: "right", instruments: ["equity"] },
+        buildPaneInstance: () => ({ instanceId: "insider:1", paneId: "insider" }),
+      }));
+    };
+    await expect(open("^VIX")).rejects.toThrow("INS covers companies only, and ^VIX is an index.");
+    await expect(open("VOO")).rejects.toThrow("INS covers companies only, and VOO is an ETF.");
+    await expect(open("AAPL", () => false)).rejects.toThrow("Can't create insider right now.");
+  });
+
   test("passes pane template instance ids through to pane creation", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
     const state = createInitialState(config);
