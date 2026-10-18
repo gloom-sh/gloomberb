@@ -137,8 +137,8 @@ function openCommand(manager: ThirteenFOtherManager): string {
  * What a fund filed for the newest quarter past its deadline instead of a
  * holdings report: "13F-NT for Q2 2026, filed 14 Aug; holdings reported by
  * PERSHING SQUARE INC. | open: fn 13F 0002026053", or "No 13F for Q2 2026,
- * due 14 Aug". `command: false` names the CIK instead of the command, for the
- * pane.
+ * due 14 Aug" once EDGAR shows nothing. `command: false` names the CIK instead
+ * of the command, for the pane.
  */
 export function filingGapText(gap: ThirteenFFilingGap, { command = true }: { command?: boolean } = {}): string {
   const quarter = quarterText(gap.period);
@@ -154,7 +154,14 @@ export function filingGapText(gap: ThirteenFFilingGap, { command = true }: { com
       : `${filed}; holdings reported by ${first.name}${first.cik ? ` (CIK ${first.cik})` : ""}${more}`;
   }
   if (filing) return `${filing.form} for ${quarter} filed ${filingDayText(filing.filed, year)}; its holdings are not loaded yet`;
+  // Unasked, EDGAR may well hold a 13F-NT or a report the source has not loaded: say only what the loaded filings show.
+  if (!gap.checked) return `${quarter} 13F (due ${filingDayText(gap.due, year)}) not in the loaded filings; EDGAR not checked`;
   return `No 13F for ${quarter}, due ${filingDayText(gap.due, year)}`;
+}
+
+/** A search asks EDGAR about a few lagging funds only: "EDGAR checked for the first 10 of 14 funds with no Q2 2026 13F loaded; ...". */
+export function uncheckedFundsText(asked: number, behind: number, period: string): string {
+  return `EDGAR checked for the first ${count(asked)} of ${count(behind)} funds with no ${quarterText(period)} 13F loaded; fn 13F <CIK> checks any other`;
 }
 
 /** "showing 50 of 374" from the start of the list, "showing 51-100 of 374" past it. */

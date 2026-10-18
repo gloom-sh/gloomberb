@@ -182,6 +182,19 @@ test("--since filed buys the 13F's weights at the filing-date close and holds th
     expect(uncosted.metadata?.notices).toEqual(["Current weights held fixed since the 14 Aug 2026 close, against SPY; not buy-and-hold"]);
     expect(uncosted.notes).toContain(`"Broker account" has no stored 13F weights and US03 has no USD cost to rebuild them from, so the rows hold today's weights fixed. Re-import it (portfolio import --13f 0001067983 --replace) for buy-and-hold.`);
 
+    // US03's closes end on 17 September (a halt): the rows stop there and say which holding stopped them.
+    const halted = context(imported);
+    const client = halted.apiClient as unknown as ReturnType<typeof brokerRiskClient>;
+    const history = client.getCloudHistory;
+    client.getCloudHistory = async (symbol: string, exchange: string) => {
+      const answer = await history(symbol, exchange);
+      return symbol === "US03" && answer.data ? { ...answer, data: answer.data.filter((row) => row.date.slice(0, 10) <= "2026-09-17") } : answer;
+    };
+    const cut = await portfolioRiskHeadless.load(args(), halted);
+    const through = (date: string) => Object.values(weights).reduce((sum, weight, index) => sum + weight * series[index]!.get(date)! / series[index]!.get("2026-08-14")!, 0);
+    expect(value(cut, "return")).toBeCloseTo((through("2026-09-17") - 1) * 100, 10);
+    expect(cut.notes).toContain("The buy-and-hold rows end on 2026-09-17: US03 has no daily close after it.");
+
     const fallback = await portfolioRiskHeadless.load(args(), context(BROKER_PORTFOLIO));
     expect(fallback.sections[0]!.rows!.map((row) => row.label)).toContain("60D benchmark return (SPY)");
     expect(fallback.metadata?.notices).toEqual([`"Broker account" was not imported from a 13F, so it has no filing date; the risk rows cover the trailing 60 sessions.`]);

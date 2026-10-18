@@ -55,7 +55,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     setLoading(true);
     const forceRefresh = refresh !== lastRefresh.current;
     lastRefresh.current = refresh;
-    void loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh })
+    void loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh, filingGap: false })
       .then(result => { if (!controller.signal.aborted) setPeer(result); })
       .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });

@@ -632,10 +632,17 @@ export function buildPortfolioRisk(
       notes.push(`Not in the 13F import, so outside the buy-and-hold basket: ${outside.join(", ")}.`);
     if (sold.length)
       notes.push(`No longer held, so the 13F weights are renormalised without: ${sold.join(", ")}.`);
-    sample = pairedReturns(
-      buyAndHoldReturns(held.map((row) => ({ weight: weights.get(row.symbol)!, returns: row.returns })), filed),
+    const basket = buyAndHoldReturns(
+      held.map((row) => ({ weight: weights.get(row.symbol)!, returns: row.returns })),
+      filed,
       benchmark,
     );
+    // A basket that stops early, or a holding it could not buy, is named rather than read as the whole span.
+    if (basket.cutShort)
+      notes.push(`The buy-and-hold rows end on ${basket.cutShort.date}: ${held[basket.cutShort.holding]!.symbol} has no daily close after it.`);
+    if (basket.unpriced.length)
+      notes.push(`No close on or before the ${filed} filing, so outside the buy-and-hold basket: ${basket.unpriced.map((index) => held[index]!.symbol).join(", ")}.`);
+    sample = pairedReturns(basket.returns, benchmark);
   }
   const metrics = filed
     ? sinceBasketRisk(sample, filed, RISK_BENCHMARK)

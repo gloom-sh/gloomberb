@@ -412,11 +412,13 @@ export class CloudApiRequestTransport {
     // layers, which a server without them answers with 404, or a ticker
     // change lookup: a note beside a quote, never one of the refused market
     // requests a lookup of many symbols waits out and retries. Nor the
-    // tickers beside a list of organization names, which say so in place.
+    // tickers beside a list of organization names, which say so in place,
+    // or a 13F filer's EDGAR filing list, whose report says it went unchecked.
     if (
       path.startsWith("/telemetry/")
       || path === "/assist/searches"
       || path === "/cloud/geo/layers"
+      || path.startsWith("/cloud/sec/13f/filer?")
       || path.startsWith("/market/ticker-changes?")
       || path === "/market/organization-tickers"
     ) return request();
