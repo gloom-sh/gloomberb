@@ -62,7 +62,8 @@ describe("supply chain graph headless integration", () => {
     expect(() => normalizeCapabilityOptions(capability, { limit: "1.5" }, { strict: true })).toThrow();
     const invalidFilters: Record<string, string>[] = [{ "min-pct": "101" }, { "min-confidence": "NaN" }, { tiers: "unknown" }, { "as-of": "2025-02-29" }];
     for (const invalid of invalidFilters) {
-      await expect(supplyChainHeadless.load(args({ tab: "graph", ...invalid }), context(graphPayload(), requests))).rejects.toThrow("Invalid supply chain graph filters");
+      await expect(supplyChainHeadless.load(args({ tab: "graph", ...invalid }), context(graphPayload(), requests)))
+        .rejects.toThrow(invalid["as-of"] ? "Use a filing cutoff as YYYY-MM-DD" : "Invalid supply chain graph filters");
     }
     expect(requests).toHaveLength(1);
   });

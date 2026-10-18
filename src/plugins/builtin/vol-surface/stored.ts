@@ -76,7 +76,7 @@ export function formatCaptureTime(iso: string): string {
 /** A session date as `--date` takes it: YYYY-MM-DD, a day the calendar has. */
 export function storedSurfaceDate(value: string, now = new Date()): string {
   const date = readCalendarDate(value);
-  if (!date) throw new Error(dateOptionError(value, "--date", now, "a session date"));
+  if (!date) throw new Error(dateOptionError(value, "--date", { now, subject: "a session date" }));
   return date;
 }
 

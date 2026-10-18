@@ -9,6 +9,7 @@ import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-out
 import { errorMessage } from "../../utils/errors";
 import { numberErrorMessage, rangeErrorMessage } from "../../utils/decimal-comma";
 import { expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
+import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
@@ -123,9 +124,7 @@ function parseWholeNumber(flag: string, value: string, unit: string, example: nu
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseExpiryDate(flag: string, value: string, example: string): string | { error: string } {
-  const text = value.trim();
-  if (ISO_DATE.test(text) && parseOptionExpiration(text) != null) return text;
-  return { error: `Invalid ${flag} "${value}". Use a date as YYYY-MM-DD, such as ${flag} ${example}.` };
+  return readCalendarDate(value) ?? { error: `Invalid ${flag} "${value}". ${dateOptionError(value, flag, { subject: "an expiry date", example })}` };
 }
 
 /** Whole calendar days to an expiry date's close, as the Days column counts them. */

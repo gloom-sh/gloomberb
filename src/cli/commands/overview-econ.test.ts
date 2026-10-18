@@ -60,6 +60,8 @@ test("a calendar that ended with last week says so instead of listing last week"
   expect(tail).toContain("No events listed after 2026-10-09");
   const from = await econText(weekOnly, ["--from", "2026-10-07", "--country", "US"]);
   expect(from).toContain("FOMC Meeting Minutes");
+  // A month-name date, as a shell passes the quoted "Oct 1 2026", reads as the same kind of day.
+  expect(await econText(weekOnly, ["--from", "Oct 1 2026", "--country", "US"])).toContain("FOMC Meeting Minutes");
 });
 
 test("a calendar two weeks ahead lists from today on a Saturday, with nothing to flag", async () => {

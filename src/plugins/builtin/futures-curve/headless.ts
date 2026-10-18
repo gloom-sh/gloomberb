@@ -2,6 +2,7 @@ import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/f
 import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { formatPercentRaw } from "../../../utils/format";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
 import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, shortDatedBasisNote, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
@@ -98,7 +99,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [{ key: "tab", description: "Curve or the full contract table.", type: "enum",
     values: [{ value: "curve" }, { value: "contracts", aliases: ["contract", "table"] }], defaultValue: "curve",
     pluginState: { pluginId: "market-overview", key: "tab" } },
-  { key: "date", type: "string", settingKey: "asOfDate", description: "Past date (YYYY-MM-DD): the curve as the daily settlement archive held it, with the curves a week and a month before." }],
+  { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Past date, as ${DATE_OPTION_EXAMPLES}: the curve as the daily settlement archive held it, with the curves a week and a month before.` }],
   describe: (args) => `Futures curve ${args.argument || DEFAULT_ROOT}`,
   async load(args, ctx) {
     const input = args.argument || DEFAULT_ROOT;

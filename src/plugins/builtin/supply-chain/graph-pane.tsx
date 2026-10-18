@@ -23,6 +23,7 @@ import { SupplySources, SupplyVerification } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
+import { DATE_FIELD_EXAMPLES } from "../../../utils/calendar-date";
 import { displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
@@ -43,10 +44,11 @@ function GraphInputs({ options, focused, width, onSave, onCancel }: { options: G
     if (event.name === "tab") { event.preventDefault(); event.stopPropagation(); setActive(old => keys[(keys.indexOf(old) + (event.shift ? -1 : 1) + keys.length) % keys.length]!); }
     else if (event.name === "escape") { event.preventDefault(); event.stopPropagation(); onCancel(); }
   }, { enabled: focused, phase: "before", allowEditable: true, scope: "supply-graph-inputs" });
-  const labels = { minPct: "Minimum disclosed percentage (0–100)", minConfidence: "Minimum confidence (0–1)", limit: "Maximum paths / companies per section (1–50)", asOf: "Filing cutoff (YYYY-MM-DD, blank for latest)" };
+  const labels = { minPct: "Minimum disclosed percentage (0–100)", minConfidence: "Minimum confidence (0–1)", limit: "Maximum paths / companies per section (1–50)", asOf: "Filing cutoff (blank for latest)" };
   return <ScrollBox scrollY flexGrow={1} flexBasis={0} minHeight={0}><Box flexDirection="column" gap={1} paddingX={1}>
     {keys.map(key => {
       const props = { label: labels[key], value: fields[key], width: Math.min(width - 2, 47), focused: focused && active === key,
+        placeholder: key === "asOf" ? DATE_FIELD_EXAMPLES : undefined,
         onMouseDown: () => setActive(key), onChange: (value: string) => setFields(old => ({ ...old, [key]: value })), onSubmit: submit };
       return key === "asOf" ? <TextField key={key} {...props} /> : <NumberField key={key} {...props} allowDecimal={key !== "limit"} />;
     })}

@@ -51,7 +51,7 @@ export interface HeadlessPaneOptionDef {
     pluginId: string;
     key?: string;
   };
-  /** The value's name in the catalog's flag, `--expiration <YYYY-MM-DD|unix>`; the type when absent. */
+  /** The value's name in the catalog's flag, `--expiration <date|unix>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
   example?: string;

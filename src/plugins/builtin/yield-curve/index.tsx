@@ -478,7 +478,7 @@ export const yieldCurveModule: PluginModule = {
     description: "Government bond curves: US Treasury, TIPS real, breakevens, euro AAA, Bund, Gilt, JGB and Canada, with a world grid.",
     keywords: ["yield", "curve", "treasury", "bonds", "rates", "gc", "interest", "tips", "breakeven", "bund", "gilt", "jgb",
       "sovereign", "world", "forward"],
-    shortcut: { prefix: "GC", argPlaceholder: "[curve] [YYYY-MM-DD]", argKind: "text", argOptional: true },
+    shortcut: { prefix: "GC", argPlaceholder: "[curve] [date]", argKind: "text", argOptional: true },
     headless: yieldCurveHeadless,
     createInstance: (_context, options) => {
       const { curve, date } = parseCurveArgument(options?.arg);

@@ -97,10 +97,14 @@ test("--start takes a year or a month as the first day of it, and a series that 
   expect(year.text).not.toContain("Showing from");
   await runFred(["T10Y2Y", "--start", "1999-07"]);
   expect(queries[1]!.get("startDate")).toBe("1999-07-01");
-  for (const bad of ["1960-13", "99", "abc", "1960-1-1"]) {
-    await expect(fred.execute(["T10Y2Y", "--start", bad], createTestCliContext().context))
-      .rejects.toThrow(`--start takes a date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026, 14 October 2026, YYYY-MM or YYYY, got "${bad}".`);
+  await runFred(["T10Y2Y", "--start", "01.10.2026"]);
+  expect(queries[2]!.get("startDate")).toBe("2026-10-01");
+  const formats = "Use a --start date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026, 14 October 2026, YYYY-MM or YYYY";
+  for (const bad of ["1960-13", "99", "abc"]) {
+    await expect(fred.execute(["T10Y2Y", "--start", bad], createTestCliContext().context)).rejects.toThrow(`${formats}, such as --start `);
   }
+  await expect(fred.execute(["T10Y2Y", "--start", "1960-1-1"], createTestCliContext().context))
+    .rejects.toThrow(`${formats}: type --start 1960-01-01 for 1960-1-1.`);
 });
 
 test("a start before the series begins starts every format at its first observation, and the CSV says where it begins", async () => {

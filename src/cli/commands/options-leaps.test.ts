@@ -219,6 +219,7 @@ test("the expiry window: a lower bound replaces the one-year floor, and one no e
   expect(window({ "--max-days": "730" })).toEqual([365, 730, null, null]);
   expect(window({ "--min-days": "180" })).toEqual([180, null, null, null]);
   expect(window({ "--expiry-from": "2027-04-01", "--max-days": "400" })).toEqual([null, 400, "2027-04-01", null]);
+  expect(window({ "--expiry-from": "1.4.2027", "--expiry-to": "Jan 21 2028" })).toEqual([null, null, "2027-04-01", "2028-01-21"]);
   expect(window({ "--expiration": "1832025600" })).toEqual([null, null, "2028-01-21", "2028-01-21"]);
   expect(window({ "--min-days": "730", "--max-days": "365" })).toContain("--min-days 730 is more than --max-days 365");
   expect(window({ "--expiry-from": "2028-06-01", "--expiry-to": "2027-06-01" })).toContain("such as --expiry-from 2027-06-01 --expiry-to 2028-06-01");
@@ -227,7 +228,8 @@ test("the expiry window: a lower bound replaces the one-year floor, and one no e
   expect(window({ "--min-days": "100", "--expiry-to": "2026-12-01" })).toContain("under --min-days 100");
   expect(window({ "--expiry-from": "2029-06-01", "--max-days": "730" })).toContain("past --max-days 730");
   expect(window({ "--expiry-to": "2026-10-09" })).toContain("has passed");
-  expect(window({ "--expiry-from": "2027-02-30" })).toContain('Invalid --expiry-from "2027-02-30"');
+  expect(window({ "--expiry-from": "2027-02-30" })).toBe('Invalid --expiry-from "2027-02-30". '
+    + "Use an expiry date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, such as --expiry-from 2027-06-18.");
   expect(window({ "--expiration": "2028-01-21", "--expiry-to": "2028-06-30" })).toContain("--expiration reads one expiry");
 });
 

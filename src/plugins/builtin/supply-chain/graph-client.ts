@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphPayload, type GraphPath } from "../../../api-client/supply-chain-graph";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { normalizeSupplyRow, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
@@ -67,17 +68,19 @@ const key = (symbol: string, target: string, options: GraphOptions, access: stri
 export const cachedGraph = (symbol: string, target: string, options: GraphOptions, access: string) => cachedCloudResource(graphCache, key(symbol, target, options, access), validateGraph);
 export const loadGraph = (symbol: string, target: string, options: GraphOptions, access: string, force = false) => loadCloudResource(graphCache, key(symbol, target, options, access), () => fetchSupplyGraph(symbol, options, target), { force, validate: validateGraph });
 export function graphOptions(input: Record<string, unknown>): GraphOptions {
+  const asOfText = String(input.asOf || input["as-of"] || "").trim();
+  const asOf = asOfText ? readCalendarDate(asOfText) : null;
+  if (asOfText && !asOf) throw new Error(dateOptionError(asOfText, "", { subject: "a filing cutoff" }));
   const csv = (key: string) => String(input[key] ?? "").split(",").filter(Boolean);
   const options = { ...DEFAULT_GRAPH_OPTIONS, depth: Number(input.depth ?? 2), direction: String(input.direction ?? "both") as GraphOptions["direction"],
     roles: csv("roles") as GraphOptions["roles"], sources: csv("sources") as GraphOptions["sources"], tiers: csv("tiers") as GraphOptions["tiers"],
     minPct: Number(input.minPct ?? input["min-pct"] ?? 0), minConfidence: Number(input.minConfidence ?? input["min-confidence"] ?? 0), limit: Number(input.limit ?? 50),
-    ranking: String(input.ranking ?? "score") as GraphOptions["ranking"], ...(input.asOf || input["as-of"] ? { asOf: String(input.asOf ?? input["as-of"]) } : {}) };
+    ranking: String(input.ranking ?? "score") as GraphOptions["ranking"], ...(asOf ? { asOf } : {}) };
   if (!Number.isInteger(options.depth) || options.depth < 1 || options.depth > 4 || !["both", "upstream", "downstream"].includes(options.direction)
     || !Number.isInteger(options.limit) || options.limit < 1 || options.limit > 50 || !["score", "shortest"].includes(options.ranking)
     || !unit(options.minConfidence) || !Number.isFinite(options.minPct) || options.minPct < 0 || options.minPct > 100
     || options.roles.some(value => !["customer", "supplier", "partner", "competitor", "investee"].includes(value))
     || options.sources.some(value => !["xbrl", "filing_text", "call", "news", "web", "import", "press_release"].includes(value))
-    || options.tiers.some(value => !["structured", "primary", "secondary", "imported"].includes(value))
-    || options.asOf && (!/^\d{4}-\d{2}-\d{2}$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf)) || new Date(options.asOf).toISOString().slice(0, 10) !== options.asOf)) throw new Error("Invalid supply chain graph filters");
+    || options.tiers.some(value => !["structured", "primary", "secondary", "imported"].includes(value))) throw new Error("Invalid supply chain graph filters");
   return options;
 }

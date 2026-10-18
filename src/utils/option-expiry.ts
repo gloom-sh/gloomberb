@@ -13,8 +13,8 @@ const DAY_MS = 86_400_000;
 
 /** How `--expiration` is written, for usage lines and errors. */
 export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Jan 21 2028, 21 January 2028 or Unix seconds (1832025600)";
-/** The value's name in a catalog flag, `--expiration <YYYY-MM-DD|unix>`. */
-export const OPTION_EXPIRATION_PLACEHOLDER = "YYYY-MM-DD|unix";
+/** The value's name in a catalog flag, `--expiration <date|unix>`. */
+export const OPTION_EXPIRATION_PLACEHOLDER = "date|unix";
 
 /** The expiry's calendar date, `2028-01-21`; empty for a stamp that is not a time. */
 export function expiryIsoDate(seconds: number): string {

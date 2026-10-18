@@ -4,7 +4,7 @@ import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
-import { DATE_OPTION_FORMATS, readCalendarDate } from "../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES, DATE_OPTION_FORMATS, dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import {
   fetchScreenerResult,
   fetchTrending,
@@ -118,8 +118,8 @@ const MOVER_COLUMNS = [
   { ...MARKET_CAP_CELL, format: formatCompactCell },
 ];
 const START_OPTION = {
-  flags: "--start <yyyy-mm-dd>",
-  description: `First observation date; yyyy or yyyy-mm start at the first of that year or month (default ${DEFAULT_FRED_START})`,
+  flags: "--start <date>",
+  description: `First observation date, as ${DATE_OPTION_EXAMPLES}; yyyy or yyyy-mm start at the first of that year or month (default ${DEFAULT_FRED_START})`,
 };
 
 const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
@@ -269,7 +269,7 @@ function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${localTimeSuffix(date.getTime())}`;
 }
 
-const ECON_USAGE = "econ [--country <region>] [--impact <level>] [--from <yyyy-mm-dd>]";
+const ECON_USAGE = "econ [--country <region>] [--impact <level>] [--from <date>]";
 const DAY_MS = 86_400_000;
 
 /**
@@ -286,7 +286,7 @@ function econEmptyMessage(from: string | null, listedThrough: string | null, sto
 }
 
 /**
- * A `yyyy-mm-dd` option, checked here; null when it was not given. `expand`
+ * A date option, read as an ISO date; null when it was not given. `expand`
  * reads a shorthand as a full date first, and `form` is how the message names
  * what the option takes.
  */
@@ -298,7 +298,7 @@ function parseDateOption(
 ): string | null {
   if (value == null) return null;
   const date = readCalendarDate(expand(value.trim()));
-  if (!date) ctx.fail(`${flag} takes a date as ${form}, got "${value}".`);
+  if (!date) ctx.fail(dateOptionError(value, flag, { formats: form }));
   return date;
 }
 
@@ -365,7 +365,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   });
 }
 
-const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc] [--change 1D|1W]";
+const FRED_USAGE = "fred <series-id> [--start <date>] [--sort desc|asc] [--change 1D|1W]";
 const FRED_LIST_USAGE = "fred --list [filter]";
 
 /** A year or a month stands for the first day of it. */
@@ -511,7 +511,7 @@ const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: 
 async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const startDate = parseStartDate(takeOption(args, "--start"), ctx);
-  rejectArgs(args, "yield-curve [--start <yyyy-mm-dd>]", ctx);
+  rejectArgs(args, "yield-curve [--start <date>]", ctx);
   const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
     const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
@@ -658,7 +658,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--from <yyyy-mm-dd>", description: "First day listed (default today, UTC); an earlier day reaches past events" },
+        { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day reaches past events` },
       ],
       examples: ["econ", "econ --country US --impact high", "econ --tail 20"],
     },
@@ -694,7 +694,7 @@ export const overviewCliCommands: CliCommandDef[] = [
     description: "Show the latest 3M, 2Y, 10Y, and 30Y Treasury yields",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["yield-curve [--start <yyyy-mm-dd>]"],
+      usage: ["yield-curve [--start <date>]"],
       options: [START_OPTION],
     },
     execute: runYieldCurve,

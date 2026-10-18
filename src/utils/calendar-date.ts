@@ -53,6 +53,10 @@ const MONTHS = ["january", "february", "march", "april", "may", "june", "july", 
 
 /** The formats a date option takes, as its error lists them. */
 export const DATE_OPTION_FORMATS = "YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026";
+/** The same, briefly, for an option's help: a date with spaces is quoted, as a shell needs it. */
+export const DATE_OPTION_EXAMPLES = '2026-10-01, 1.10.2026 or "Oct 1 2026"';
+/** The same for a form's date field, typed without quotes. */
+export const DATE_FIELD_EXAMPLES = "2026-10-01, 1.10.2026 or Oct 1 2026";
 
 /** 1 to 12 for a month's name or its first three letters (Sept too); null for any other word. */
 function monthNumber(name: string): number | null {
@@ -108,15 +112,24 @@ function isoDateReading(value: string): string | null {
 /**
  * Why a date option's value is no date, naming the formats it takes: with
  * the date to type for one written another way that plainly names it
- * (`--from 2026-10-14` for 14/10/2026), else an example. `subject` is what
- * the date is ("an as-of date"); `option` how it is typed (`--from`).
+ * (`--from 2026-10-14` for 14/10/2026), else an example, today unless the
+ * option has a better one. `option` is how it is typed (`--from`), or empty
+ * for a form's field; `subject` what the date is ("a session date");
+ * `formats` an option's own list, where it takes more (a year or a month).
  */
-export function dateOptionError(value: string, option: string, now = new Date(), subject = `a ${option} date`): string {
-  const format = `Use ${subject} as ${DATE_OPTION_FORMATS}`;
+export function dateOptionError(
+  value: string,
+  option: string,
+  { now = new Date(), subject = `a ${option} date`, formats = DATE_OPTION_FORMATS, example }: {
+    now?: Date; subject?: string; formats?: string; example?: string;
+  } = {},
+): string {
+  const format = `Use ${subject} as ${formats}`;
+  const typed = option ? `${option} ` : "";
   const reading = isoDateReading(value);
   return reading
-    ? `${format}: type ${option} ${reading} for ${value.trim()}.`
-    : `${format}, such as ${option} ${isoDateToday(now)}.`;
+    ? `${format}: type ${typed}${reading} for ${value.trim()}.`
+    : `${format}, such as ${typed}${example ?? isoDateToday(now)}.`;
 }
 
 /**
@@ -129,5 +142,5 @@ export function isoDateOption(value: string, flag: string, now = new Date()): st
   if (!text) return text;
   const date = readCalendarDate(text);
   if (date) return date;
-  throw new Error(dateOptionError(text, `--${flag}`, now));
+  throw new Error(dateOptionError(text, `--${flag}`, { now }));
 }

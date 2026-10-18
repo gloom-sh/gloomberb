@@ -11,6 +11,7 @@ import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { loadWorldRows, type WorldRow } from "./world";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
@@ -117,12 +118,12 @@ export function createYieldCurveHeadless(
   const loadWorld = dependencies.world ?? defaultDependencies.world;
   return {
     shape: "rows",
-    argument: { kind: "free-text", optional: true, placeholder: "[curve] [YYYY-MM-DD]",
+    argument: { kind: "free-text", optional: true, placeholder: "[curve] [date]",
       description: "A curve (ust, tips, breakeven, euro, bund, gilt, jgb, canada) and a historical as-of date; omit for the latest UST curve." },
     options: [
-      { key: "date", type: "string", description: "Historical as-of date (YYYY-MM-DD); uses the latest session on or before it." },
+      { key: "date", type: "string", placeholder: "date", description: `Historical as-of date, as ${DATE_OPTION_EXAMPLES}; uses the latest session on or before it.` },
       { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb or canada." },
-      { key: "compare", type: "string", description: "Compare with a date (YYYY-MM-DD) or a span back from the curve's session (1D, 1W, 1M, 3M, 1Y)." },
+      { key: "compare", type: "string", description: `Compare with a date (${DATE_OPTION_EXAMPLES}) or a span back from the curve's session (1D, 1W, 1M, 3M, 1Y).` },
       { key: "view", type: "enum", values: [{ value: "curve" }, { value: "difference", aliases: ["diff"] }],
         description: "With a compare date: both curves, or the bp change by tenor as bars.",
         pluginState: { pluginId: "macro", key: "yield-curve:view" } },

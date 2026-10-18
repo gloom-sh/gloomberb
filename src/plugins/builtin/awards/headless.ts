@@ -1,7 +1,7 @@
 import type { AwardFilter, AwardRow, AwardType } from "../../../api-client/awards";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
-import { isoDateOption } from "../../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, awardScope, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
@@ -87,7 +87,7 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "tab", type: "enum", settingKey: "tab", defaultValue: "feed", values: [...AWARD_TABS.map(({ value }) => ({ value })), { value: "all" }], description: "Feed, company history, agencies, sectors, events, or all sections." },
     { key: "view", type: "enum", settingKey: "leaderView", defaultValue: "companies", values: [{ value: "companies" }, { value: "sectors" }], description: "Sectors tab: company leaders or sector totals." },
     ...FILTER_KEYS.map((key) => key === "from" || key === "to"
-      ? { key, type: "string" as const, settingKey: key, placeholder: "YYYY-MM-DD", description: `${key === "from" ? "Start" : "End"} of the date range. Dates use YYYY-MM-DD.`,
+      ? { key, type: "string" as const, settingKey: key, placeholder: "date", description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.`,
         normalize: (value: string) => isoDateOption(value, key) }
       : { key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` }),
     { key: "type", type: "enum", settingKey: "awardType", defaultValue: "prime", values: [{ value: "prime" }, { value: "subaward" }, { value: "notice" }, { value: "modification" }], description: "Keep record types separate." },

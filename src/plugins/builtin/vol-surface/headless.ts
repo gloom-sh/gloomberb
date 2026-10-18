@@ -3,6 +3,7 @@ import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshne
 import {
   expirationOptionSeconds, findListedExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { skewHeader } from "../iv-history/format";
 import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
@@ -143,8 +144,8 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
       description: `Selected expiry, as ${OPTION_EXPIRATION_FORMAT}; the first at least four weeks out when omitted`,
       settingKey: "expiration", normalize: (value) => expirationOptionSeconds(value) },
-    { key: "date", type: "string", placeholder: "YYYY-MM-DD", example: "--date 2026-10-09 --tab skew",
-      description: "Stored close surface of that session instead of the live chain; a date with no capture lists the stored dates",
+    { key: "date", type: "string", placeholder: "date", example: "--date 2026-10-09 --tab skew",
+      description: `Stored close surface of that session, as ${DATE_OPTION_EXAMPLES}, instead of the live chain; a date with no capture lists the stored dates`,
       pluginState: { pluginId: "ticker-research", key: "historyDate" }, normalize: (value) => storedSurfaceDate(value) },
   ],
   async load(args, ctx) {

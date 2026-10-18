@@ -1,6 +1,6 @@
 import type { HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import type { InstrumentRef } from "../../../market-data/request-types";
-import { isoDateOption } from "../../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
 import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
@@ -43,8 +43,8 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "exit", type: "string", defaultValue: "", description: "Custom exit rule, for example 'close < sma(200)'" },
     { key: "lookback", type: "enum", defaultValue: "10", values: [{ value: "5" }, { value: "10" }, { value: "max" }], description: "Evaluation years after indicator warmup" },
     { key: "cost", type: "integer", defaultValue: 5, minimum: 0, maximum: 100, description: "Cost per side in basis points" },
-    { key: "end", type: "string", defaultValue: "", placeholder: "YYYY-MM-DD", example: "--end 2026-10-16 --json",
-      description: "Last session to test, so the same run gives the same curve, trades and statistics; the newest complete session when omitted",
+    { key: "end", type: "string", defaultValue: "", placeholder: "date", example: "--end 2026-10-16 --json",
+      description: `Last session to test, as ${DATE_OPTION_EXAMPLES}, so the same run gives the same curve, trades and statistics; the newest complete session when omitted`,
       normalize: (value) => isoDateOption(value, "end") },
     { key: "include-partial", settingKey: "includePartial", type: "boolean", defaultValue: false,
       description: "Keep a session still forming (partial), which is left out by default because its close moves until the day ends" },

@@ -13,10 +13,10 @@ import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
-import { expiryIsoDate, parseOptionExpiration } from "../../utils/option-expiry";
+import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
 
-export const OPTIONS_USAGE = "options <symbol> [--expiration <YYYY-MM-DD|unix>]";
+export const OPTIONS_USAGE = `options <symbol> [--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>]`;
 
 export { parseOptionExpiration };
 

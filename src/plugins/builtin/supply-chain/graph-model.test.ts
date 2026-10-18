@@ -28,7 +28,10 @@ test("graph boundary rejects disconnected hops, unsupported source URLs and unla
 });
 test("filters reject impossible dates, thresholds, dimensions and fractional hops", () => {
   expect(graphOptions({ depth: 4, "min-confidence": ".6", tiers: "primary,structured", "as-of": "2024-02-29" }).minConfidence).toBe(.6);
-  for (const options of [{ asOf: "2025-02-29" }, { depth: 1.5 }, { minPct: "NaN" }, { minConfidence: 1.1 }, { roles: "owner" }, { limit: 51 }]) expect(() => graphOptions(options)).toThrow("Invalid");
+  for (const options of [{ depth: 1.5 }, { minPct: "NaN" }, { minConfidence: 1.1 }, { roles: "owner" }, { limit: 51 }]) expect(() => graphOptions(options)).toThrow("Invalid");
+  // The As-of field reads a date as every date option does, and names the formats for one it cannot.
+  expect(graphOptions({ asOf: "31.12.2025" }).asOf).toBe("2025-12-31");
+  expect(() => graphOptions({ asOf: "2025-02-29" })).toThrow("Use a filing cutoff as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, such as ");
 });
 
 test("layer placement retains connectors omitted by endpoint limits and follows the ranked route", () => {

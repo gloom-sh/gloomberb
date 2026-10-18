@@ -72,7 +72,8 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
-import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT } from "../../utils/option-expiry";
+import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../utils/option-expiry";
+import { DATE_OPTION_EXAMPLES } from "../../utils/calendar-date";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
@@ -1986,7 +1987,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       usage: [OPTIONS_USAGE, LEAPS_USAGE],
       options: [
         {
-          flags: "--expiration <YYYY-MM-DD|unix>",
+          flags: `--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>`,
           description: "Expiration as a date (2028-01-21) or Unix seconds; defaults to the nearest one, and lists the others. With --leaps: rank that expiry alone",
         },
         EXCHANGE_OPTION,
@@ -2006,8 +2007,8 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
           description: `With --leaps: fewest calendar days to expiry (default ${DEFAULT_LEAPS_CRITERIA.minDays}); 180 reaches six months out`,
         },
         { flags: "--max-days <days>", description: "With --leaps: most calendar days to expiry; --min-days 365 --max-days 730 is 12 to 24 months" },
-        { flags: "--expiry-from <YYYY-MM-DD>", description: "With --leaps: first expiry date kept; replaces the one-year floor" },
-        { flags: "--expiry-to <YYYY-MM-DD>", description: "With --leaps: last expiry date kept" },
+        { flags: "--expiry-from <date>", description: `With --leaps: first expiry date kept, as ${DATE_OPTION_EXAMPLES}; replaces the one-year floor` },
+        { flags: "--expiry-to <date>", description: "With --leaps: last expiry date kept" },
         {
           flags: "--columns <list>",
           description: `With --leaps: add figures, comma-separated: ${LEAPS_EXTRA_COLUMNS.join(", ")}`,
