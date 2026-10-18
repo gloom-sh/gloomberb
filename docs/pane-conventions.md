@@ -162,7 +162,16 @@ system in CI, and both run locally:
   value, the component, and why). The page reads Gloom Cloud only from a
   snapshot kept in the Actions cache, so a pull request is measured on the
   same data every time; with no snapshot every pane draws its offline state
-  and that is what is held. In the code, `src/architecture/ui-literals.test.ts`
+  and that is what is held. Main records the week's snapshot (`--record`:
+  every view once live, then checked offline from what it kept, as a pull
+  request reads it), and with it pins each registry plugin to the commit its
+  ref points to, so a plugin author's push reaches the check only with the
+  next snapshot. A value off the tokens in a registry plugin's view fails only
+  when the recording did not have it: the plugin's code and data are the
+  same, so the change under check made it. The plugin's own values are
+  warnings for its author; the bundled plugins (pinned by `bun.lock`) fail
+  like built-in panes. Branch protection requires the one job named UI
+  tokens, which passes when its four shards do. In the code, `src/architecture/ui-literals.test.ts`
   (Verify) counts type sizes, weights, radii, drop shadows, greys and pixel
   spacing written out instead of taken from the tokens, per file, against
   `src/architecture/ui-literals-allowlist.json`; the count only goes down.
@@ -174,11 +183,14 @@ system in CI, and both run locally:
   snapshot, or one fetch by the base). A view that moved is pictured on each
   side a second time; one whose two pictures of the same code differ (a 3D
   surface's labels, a value read from the clock) is named as unsteady and left
-  out of the count.
-  One comment on the pull request, edited on
-  every run, says how many of how many views changed and lists them; the
-  `ui-benchmark` artifact has the sheets: before, after and the difference of
-  every view that moved, and a sheet per family. Locally,
+  out of the count. A shard that did not finish, a view pictured on one side
+  only and a view that did not open are named above the count, which then
+  says it is incomplete. Four shards run two at a time, so the report waits
+  rather than hold runners the required checks need. One comment on the pull
+  request (the workflow bot's, found by its marker), edited on every run, says
+  how many of how many views changed and lists them; the `ui-benchmark`
+  artifact has the sheets: before, after and the difference of every view that
+  moved, and a sheet per family. Locally,
   `bun run ui:benchmark --base origin/main` writes the same under
   `~/.cache/gloomberb-pane-chrome/ui-benchmark/run` (`--only T,MAP` for a few
   functions while working).

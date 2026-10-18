@@ -14,8 +14,8 @@ import { pixelChange } from "./ui-audit-compare";
  * reports; it never fails a change for moving pixels.
  *
  *   bun run ui:benchmark [--base <ref>] [--out <dir>] [--replay <dir>] [--widths 640,1280] [--only T,MAP]
- *   bun run ui:benchmark shoot --base <ref> --shard 0/8 --out <dir>     one shard (CI)
- *   bun run ui:benchmark report --shards <dir> --out <dir> [--comment <pr>]
+ *   bun run ui:benchmark shoot --base <ref> --shard 0/4 --out <dir>     one shard (CI)
+ *   bun run ui:benchmark report --shards <dir> --out <dir> [--expect-shards 4] [--comment <pr>]
  *
  * Both sides read Gloom Cloud from one replay folder (web-app.ts), offline,
  * so both draw the same data and neither is pictured while a fetch is still
@@ -25,9 +25,15 @@ import { pixelChange } from "./ui-audit-compare";
  * it), so a read the snapshot lacks draws the same offline state on both. The base is a worktree of `--base`
  * (default: where HEAD left origin/main) under the cache folder; the head is
  * this checkout. The audit of each side is ui-audit.ts, from this checkout.
+ *
+ * The report says when it is incomplete: a shard that did not finish, and the
+ * views pictured on one side only (a view the head lost or gained is a
+ * change; one a side failed to draw is not), are named above the count.
  */
 
 const MARKER = "<!-- ui-benchmark -->";
+/** The comment is this bot's: a person quoting the marker keeps their comment. */
+const COMMENT_AUTHOR = "github-actions[bot]";
 /** A view changed when this share of its body's pixels differs in some width (ui-audit-compare.ts). */
 const MOVED = 0.0005;
 const BODY_INSET = { top: 42, bottom: 42 };
@@ -67,7 +73,7 @@ function audit(pass: "fetch" | "before" | "after" | "before-again" | "after-agai
   sh([
     "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-report", "--themes", "white", "--root", root,
     "--widths", pass === "fetch" ? options.widths.split(",").at(-1)! : options.widths,
-    "--out", join(options.out, pass), "--web", join(options.out, `web-${side}`), "--replay", options.replay,
+    "--out", join(options.out, pass), "--web", join(options.out, `web-${side}`), "--replay", options.replay, "--no-variants",
     ...(build ? ["--build"] : []),
     ...(pass === "fetch" ? ["--no-shots"] : ["--offline"]),
     ...(options.shard ? ["--shard", options.shard] : []),
@@ -76,7 +82,8 @@ function audit(pass: "fetch" | "before" | "after" | "before-again" | "after-agai
 }
 
 async function shoot(options: ShootOptions): Promise<void> {
-  const sha = git(["rev-parse", options.base]);
+  // --end-of-options: a ref is never read as an option, whatever a dispatch passes.
+  const sha = git(["rev-parse", "--verify", "--end-of-options", `${options.base}^{commit}`]);
   await mkdir(options.out, { recursive: true });
   const dirty = git(["status", "--porcelain", "--untracked-files=no"]) !== "";
   await Bun.write(join(options.out, "sides.json"), JSON.stringify({ base: sha, head: git(["rev-parse", "HEAD"]), dirty, shard: options.shard ?? "0/1", offline: options.offline }));
@@ -104,6 +111,7 @@ async function shoot(options: ShootOptions): Promise<void> {
       }
     }
   }
+  // Written last: a shard with this file finished.
   await Bun.write(join(options.out, "unsteady.json"), JSON.stringify([...unsteady]));
   // The builds are large and each side's results and pictures are what the report reads.
   await rm(join(options.out, "web-before"), { recursive: true, force: true });
@@ -116,10 +124,24 @@ async function lines(file: string): Promise<string[]> {
   return existsSync(file) ? (await Bun.file(file).text()).split("\n").filter(Boolean) : [];
 }
 
-/** Shard runs (one folder each, with before/ and after/) folded into one before/ and one after/. */
-async function merge(shardsDir: string, out: string): Promise<{ base: string; head: string; dirty?: boolean; offline: boolean; shards: number; unsteady: string[] }> {
-  const shards = (await readdir(shardsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(shardsDir, entry.name));
-  let sides: { base: string; head: string; dirty?: boolean; offline: boolean } = { base: "", head: "", offline: false };
+interface Sides { base: string; head: string; dirty?: boolean; offline: boolean; shard?: string }
+
+/**
+ * Shard runs (one folder each, with before/ and after/) folded into one
+ * before/ and one after/, and which of the shards expected finished.
+ */
+async function merge(shardsDir: string, out: string, expected: number | null): Promise<Sides & { shards: { expected: number; finished: number[]; unfinished: number[] }; unsteady: string[] }> {
+  const shards = existsSync(shardsDir) ? (await readdir(shardsDir, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => join(shardsDir, entry.name)) : [];
+  let sides: Sides = { base: "", head: "", offline: false };
+  const finished: number[] = [];
+  let count = expected ?? 0;
+  for (const shard of shards) {
+    if (!existsSync(join(shard, "sides.json"))) continue;
+    const own: Sides = await Bun.file(join(shard, "sides.json")).json();
+    const [index, of] = (own.shard ?? "0/1").split("/").map(Number) as [number, number];
+    count = expected ?? Math.max(count, of);
+    if (existsSync(join(shard, "unsteady.json"))) finished.push(index);
+  }
   for (const side of ["before", "after"] as const) {
     const target = join(out, side);
     await rm(target, { recursive: true, force: true });
@@ -137,10 +159,13 @@ async function merge(shardsDir: string, out: string): Promise<{ base: string; he
   }
   const unsteady: string[] = [];
   for (const shard of shards) if (existsSync(join(shard, "unsteady.json"))) unsteady.push(...await Bun.file(join(shard, "unsteady.json")).json() as string[]);
-  return { ...sides, shards: shards.length, unsteady };
+  const total = Math.max(count, 1);
+  const unfinished = Array.from({ length: total }, (_, index) => index).filter((index) => !finished.includes(index));
+  return { ...sides, shards: { expected: total, finished: finished.sort((a, b) => a - b), unfinished }, unsteady };
 }
 
-interface ViewChange { view: string; widths: Record<string, number | "resized" | "missing" | "error"> }
+/** Per width: the share of the body's pixels that differ, or why it was not compared: pictured on the base only (`gone`), on the head only (`new`). */
+interface ViewChange { view: string; widths: Record<string, number | "resized" | "gone" | "new" | "error"> }
 
 /** Every view pictured in either run, its body's change per width: a share of pixels, or why it could not be compared. */
 async function changes(beforeDir: string, afterDir: string): Promise<ViewChange[]> {
@@ -155,7 +180,7 @@ async function changes(beforeDir: string, afterDir: string): Promise<ViewChange[
         if (entry.widths[width] !== undefined) continue;
         const before = join(beforeDir, "shots", "white", width, file);
         const after = join(afterDir, "shots", "white", width, file);
-        if (!existsSync(before) || !existsSync(after)) { entry.widths[width] = "missing"; continue; }
+        if (!existsSync(before) || !existsSync(after)) { entry.widths[width] = existsSync(before) ? "gone" : "new"; continue; }
         const result = pixelChange(before, after, undefined, BODY_INSET);
         entry.widths[width] = result.status === "compared" ? result.change : result.status;
       }
@@ -164,7 +189,8 @@ async function changes(beforeDir: string, afterDir: string): Promise<ViewChange[
   return [...byView.values()].sort((a, b) => a.view.localeCompare(b.view));
 }
 
-const moved = (change: ViewChange) => Object.values(change.widths).some((value) => value === "resized" || value === "missing" || (typeof value === "number" && value > MOVED));
+const moved = (change: ViewChange) => Object.values(change.widths).some((value) => (typeof value === "string" && value !== "error") || (typeof value === "number" && value > MOVED));
+const oneSided = (change: ViewChange) => Object.values(change.widths).some((value) => value === "gone" || value === "new");
 const worst = (change: ViewChange) => Math.max(0, ...Object.values(change.widths).map((value) => typeof value === "number" ? value : 1));
 const percent = (value: number | string) => typeof value === "number" ? `${(value * 100).toFixed(value < 0.01 ? 2 : 1)}%` : value;
 
@@ -214,35 +240,64 @@ async function changedSheets(out: string, moving: ViewChange[]): Promise<string[
   return sheets;
 }
 
-async function report(shardsDir: string, out: string, comment: string | null): Promise<void> {
-  const sides = await merge(shardsDir, out);
+const viewCount = (count: number) => `${count} view${count === 1 ? "" : "s"}`;
+const list = (views: string[], limit = 20) => views.length > limit ? `${views.slice(0, limit).join(", ")} and ${views.length - limit} more` : views.join(", ");
+
+async function failedViews(dir: string): Promise<string[]> {
+  return (await lines(join(dir, "views.jsonl"))).map((line) => JSON.parse(line) as { id: string; view: string })
+    .filter((view) => view.view === "failed").map((view) => view.id.replace(/--failed$/, ""));
+}
+
+async function report(shardsDir: string, out: string, comment: string | null, expectedShards: number | null): Promise<void> {
+  const sides = await merge(shardsDir, out, expectedShards);
   const all = await changes(join(out, "before"), join(out, "after"));
   const unsteady = new Set(sides.unsteady);
-  const moving = all.filter((change) => moved(change) && !unsteady.has(change.view)).sort((a, b) => worst(b) - worst(a));
-  const sheets = await changedSheets(out, moving);
+  const counted = all.filter((change) => !unsteady.has(change.view));
+  const sided = counted.filter(oneSided);
+  const moving = counted.filter((change) => moved(change) && !oneSided(change)).sort((a, b) => worst(b) - worst(a));
+  const sheets = await changedSheets(out, [...sided, ...moving]);
   // The per-family sheets and the audit numbers, for the views a family's change reached.
   Bun.spawnSync(["bun", join(import.meta.dir, "ui-audit-compare.ts"), "--before", join(out, "before"), "--after", join(out, "after"), "--out", join(out, "compare"), "--sheets", "--body-inset", `${BODY_INSET.top},${BODY_INSET.bottom}`], { stdout: "inherit", stderr: "inherit" });
-  const failed = (await lines(join(out, "after", "views.jsonl"))).map((line) => JSON.parse(line) as { id: string; view: string }).filter((view) => view.view === "failed").map((view) => view.id.replace(/--failed$/, ""));
+  const failed = { before: await failedViews(join(out, "before")), after: await failedViews(join(out, "after")) };
   const widths = [...new Set(all.flatMap((change) => Object.keys(change.widths)))].sort((a, b) => Number(a) - Number(b));
   const run = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : null;
+  const { expected, finished, unfinished } = sides.shards;
+  const incomplete = unfinished.length > 0;
+  const gone = sided.filter((change) => Object.values(change.widths).includes("gone")).map((change) => change.view);
+  const added = sided.filter((change) => Object.values(change.widths).includes("new")).map((change) => change.view);
+  // Above the count: whatever makes it short of the whole app.
+  const warnings = [
+    ...(incomplete ? [`**The count is incomplete.** ${finished.length ? `Shard${unfinished.length > 1 ? "s" : ""} ${unfinished.map((index) => `${index + 1}`).join(", ")} of ${expected} did not finish, so ${unfinished.length > 1 ? "their" : "its"} views are not in it.` : `None of the ${expected} shards finished.`} Rerun the failed jobs${run ? ` of [this run](${run})` : ""}.`] : []),
+    ...(gone.length ? [`**${viewCount(gone.length)} pictured on the base but not on the head:** ${list(gone)}. A view the change removed is meant; one the head failed to draw (a build without a plugin, a pane that did not open) is not, and the count leaves it out.`] : []),
+    ...(added.length ? [`**${viewCount(added.length)} pictured on the head only:** ${list(added)}.`] : []),
+    ...(failed.after.length ? [`**Did not open on the head:** ${list(failed.after)}.`] : []),
+    ...(failed.before.length ? [`Did not open on the base: ${list(failed.before)}.`] : []),
+  ];
+  const cell = (value: ViewChange["widths"][string] | undefined) => value === undefined ? "" : value === "gone" ? "base only" : value === "new" ? "head only" : percent(value);
+  const headline = incomplete
+    ? `### UI blast radius, incomplete: ${moving.length} of ${all.length} views changed in ${finished.length} of ${expected} shards`
+    : `### UI blast radius: ${moving.length} of ${all.length} views changed${sided.length ? `, ${sided.length} pictured on one side only` : ""}`;
   const md = [
     MARKER,
-    `### UI blast radius: ${moving.length} of ${all.length} views changed`,
+    headline,
     "",
+    ...(warnings.length ? [...warnings.flatMap((warning, index) => [index === 0 ? "> [!WARNING]" : ">", `> ${warning}`]), ""] : []),
     `Base \`${sides.base.slice(0, 9)}\`, head \`${sides.head.slice(0, 9)}\`${sides.dirty ? " with uncommitted changes" : ""}: every function, bundled and registry plugin pane and shell view, Chromium, white theme, ${widths.join(" and ")}px, pane bodies compared (the window's top and bottom ${BODY_INSET.top}px left out). ${sides.offline ? "Data: the week's kept snapshot, offline on both sides." : "Data: fetched once by the base, then read offline by both sides."}`,
     "",
-    ...(moving.length
+    ...(moving.length || sided.length
       ? ["| View | " + widths.map((width) => `${width}px`).join(" | ") + " |", "|---|" + widths.map(() => "---:").join("|") + "|",
-        ...moving.slice(0, 30).map((change) => `| ${change.view} | ${widths.map((width) => change.widths[width] === undefined ? "" : percent(change.widths[width]!)).join(" | ")} |`),
-        ...(moving.length > 30 ? [`| and ${moving.length - 30} more | |`] : [])]
-      : ["No pane body moved."]),
+        ...[...sided, ...moving].slice(0, 30).map((change) => `| ${change.view} | ${widths.map((width) => cell(change.widths[width])).join(" | ")} |`),
+        ...(sided.length + moving.length > 30 ? [`| and ${sided.length + moving.length - 30} more | |`] : [])]
+      : [incomplete ? "No pane body moved in the shards that finished." : "No pane body moved."]),
     ...(unsteady.size ? ["", `Left out of the count, unsteady (two pictures of the same code differ): ${[...unsteady].sort().join(", ")}.`] : []),
-    ...(failed.length ? ["", `Did not open on the head: ${failed.join(", ")}.`] : []),
     "",
     run ? `Sheets (before, after and the difference of every view that moved, and per family): the \`ui-benchmark\` artifact of [this run](${run}).` : `Sheets: ${join(out, "sheets")} (${sheets.length}), ${join(out, "compare", "diff-sheets")}.`,
   ].join("\n");
   await Bun.write(join(out, "summary.md"), `${md}\n`);
-  await Bun.write(join(out, "changes.json"), JSON.stringify({ ...sides, views: all.length, changed: moving.length, changedViews: moving.map((change) => change.view), changes: all }, null, 1));
+  await Bun.write(join(out, "changes.json"), JSON.stringify({
+    ...sides, complete: !incomplete, views: all.length, changed: moving.length, changedViews: moving.map((change) => change.view),
+    oneSided: { gone, new: added }, failed, changes: all,
+  }, null, 1));
   console.log(`\n${md}`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${md}\n`);
   if (comment) postComment(comment, join(out, "summary.md"));
@@ -252,7 +307,8 @@ async function report(shardsDir: string, out: string, comment: string | null): P
 function postComment(pr: string, bodyFile: string): void {
   const repo = process.env.GITHUB_REPOSITORY;
   if (!repo) throw new Error("--comment needs GITHUB_REPOSITORY");
-  const listed = Bun.spawnSync(["gh", "api", "--paginate", `repos/${repo}/issues/${pr}/comments`, "--jq", `.[] | select(.body | startswith("${MARKER}")) | .id`]);
+  const mine = `.[] | select(.user.login == "${COMMENT_AUTHOR}" and (.body | startswith("${MARKER}"))) | .id`;
+  const listed = Bun.spawnSync(["gh", "api", "--paginate", `repos/${repo}/issues/${pr}/comments`, "--jq", mine]);
   const id = listed.stdout.toString().trim().split("\n").filter(Boolean)[0];
   const args = id
     ? ["gh", "api", "--method", "PATCH", `repos/${repo}/issues/comments/${id}`, "-F", `body=@${bodyFile}`]
@@ -266,7 +322,8 @@ async function main(): Promise<void> {
   const command = ["shoot", "report"].includes(args[0] ?? "") ? args.shift()! : "all";
   const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-benchmark", "run"));
   if (command === "report") {
-    await report(resolve(takeOption(args, "--shards") ?? join(out, "shards")), out, takeOption(args, "--comment") ?? null);
+    const expected = takeOption(args, "--expect-shards");
+    await report(resolve(takeOption(args, "--shards") ?? join(out, "shards")), out, takeOption(args, "--comment") ?? null, expected ? Number(expected) : null);
     return;
   }
   const base = takeOption(args, "--base") ?? git(["merge-base", "HEAD", "origin/main"]);
@@ -280,7 +337,7 @@ async function main(): Promise<void> {
     offline: args.includes("--offline"),
   };
   await shoot(options);
-  if (command === "all") await report(join(out, "shards"), out, null);
+  if (command === "all") await report(join(out, "shards"), out, null, null);
 }
 
 if (import.meta.main) await main();

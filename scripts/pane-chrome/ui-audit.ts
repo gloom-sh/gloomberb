@@ -2,7 +2,7 @@ import { appendFile, mkdir, readdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { cacheDir, click, evaluate, launchBrowser, sleep, waitFor, type Browser, type Cdp } from "./browser";
 import { checkoutPlugin, pluginLock } from "./plugin-lock";
 import { pathName, visitAlternatives } from "./tab-visits";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
@@ -33,13 +33,14 @@ import {
  *   bun run audit:ui [--only TOP,CHG] [--widths 640,1280] [--themes white,paper]
  *                    [--registry] [--build] [--no-shots] [--resume] [--list]
  *                    [--out <dir>] [--web <dir>] [--replay <dir>] [--root <checkout>]
- *                    [--offline] [--shard 0/4] [--no-report]
+ *                    [--offline] [--shard 0/4] [--no-report] [--no-variants]
  *
  * `--offline` reads only what the replay kept (web-app.ts); `--shard i/n`
  * takes the functions whose token hashes to `i` of `n` (the shell views go
  * with shard 0), so shards stay put as functions come and go; `--no-report`
  * skips the report, for the checks that read `results.jsonl` themselves
- * (ui-tokens.ts, ui-benchmark.ts).
+ * (ui-tokens.ts, ui-benchmark.ts); `--no-variants` skips the pictures of
+ * each variant, which only the report shows.
  *
  * It builds its own copy of the web app (`build-web.ts --keep-names`, so the
  * components keep their names) under the cache folder, and reads Gloom Cloud
@@ -67,6 +68,7 @@ const replay = createReplay(replayDir, { offline: args.includes("--offline") });
 const shard = parseShard(takeOption(args, "--shard"));
 const report = !args.includes("--no-report");
 const shots = !args.includes("--no-shots");
+const variants = shots && !args.includes("--no-variants");
 const resume = args.includes("--resume");
 const withRegistry = args.includes("--registry");
 /** Families whose look under the pointer is pictured too. */
@@ -208,9 +210,9 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
     layout: dock(SAMPLE_PANE),
     focused: SAMPLE_PANE.instanceId,
     surface: ".gloom-menu, [role=menu]",
-    // The pane's actions button (its "more" icon) opens the pane menu.
+    // The pane's actions button (its "more" icon) opens the pane menu, once the pane has drawn it.
     async open(cdp) {
-      const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-action] > *")?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
+      const at = await waitFor<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-action] > *")?.getBoundingClientRect(); return r && r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`, 6_000);
       if (!at) return;
       await click(cdp, at);
     },
@@ -300,7 +302,7 @@ async function main(): Promise<void> {
       if (value.missing) return false;
       const result: AuditResult = { ...view, width, height, theme, measure: value };
       await writeLine(resultsFile, result);
-      if (shots) await pictureVariants(view, width, value);
+      if (variants) await pictureVariants(view, width, value);
     }
     if (shots) {
       const dir = join(out, "shots", theme, String(width));
@@ -323,11 +325,18 @@ async function main(): Promise<void> {
         if (unopened) break;
         await viewport(width);
         for (const [index, theme] of themes.entries()) {
-          await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
-          await settle(browser.cdp, "body", 700, 6_000);
-          await shell.open(browser.cdp);
-          await settle(browser.cdp, "body", 600, 4_000);
-          if (shell.surface && !await evaluate<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`)) {
+          // Opened from a fresh page up to three times: on a busy machine a key typed before the
+          // command bar has focus goes to the pane, and the surface never opens.
+          let opened = false;
+          for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
+            await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
+            await settle(browser.cdp, "body", 700, 6_000);
+            await shell.open(browser.cdp);
+            await settle(browser.cdp, "body", 600, 4_000);
+            opened = !shell.surface || !!await waitFor<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`, 2_000);
+            if (!opened) console.warn(`${shell.id}: not open at ${width}px in ${theme} (try ${attempt + 1} of 3)`);
+          }
+          if (!opened) {
             unopened = `${shell.surface} is not on the page at ${width}px in ${theme}`;
             break;
           }

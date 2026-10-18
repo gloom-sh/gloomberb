@@ -12,8 +12,18 @@ name: UI tokens
 # Stable: the page reads Gloom Cloud only from a snapshot kept in the Actions
 # cache, offline, so a pull request is measured on the same data every time;
 # with no snapshot every pane draws its offline state, measured the same way.
-# Main records the week's snapshot when it has none and keeps it for pull
-# requests. Shards split the functions by a hash of their token.
+# The registry's plugins build at the commits pinned with the snapshot
+# (scripts/pane-chrome/plugin-lock.ts), so a plugin author's push reaches the
+# check only with the next snapshot, and a value off the tokens in a registry
+# plugin's view fails only when the snapshot's recording did not have it (the
+# change under check made it); the plugin's own values are warnings. Main
+# records the week's snapshot when it has none: every view once live, then
+# checked from what it kept, as pull requests read it.
+#
+# Four shards, split by a hash of each function's token, then one job, "UI
+# tokens", that passes only when every shard did: branch protection requires
+# that one name, not the shards'. Four leave room under the organisation's
+# concurrent jobs for Verify, Pane chrome and Performance beside them.
 on:
   pull_request:
     branches:
@@ -31,16 +41,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tokens:
-    name: UI tokens (${{ matrix.shard }} of 8)
+  shard:
+    name: UI tokens, shard ${{ matrix.shard }} of 4
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Recording on main opens every view live, then again offline.
+    timeout-minutes: ${{ github.ref == 'refs/heads/main' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
-    env:
-      SNAPSHOT: ~/.cache/gloomberb-pane-chrome/ui-replay
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +66,7 @@ jobs:
           path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.keys.outputs.chrome }}
           key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
 
-      # The registry's plugins, checked out at their registry refs: kept a week.
+      # Checkouts of the registry's plugins; which commit each builds is the snapshot's lock.
       - uses: actions/cache@v4
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
@@ -71,20 +80,21 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
-          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v1-{0}of8-', matrix.shard) || '' }}
+          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v2-{0}of4-', matrix.shard) || '' }}
 
       - name: Hold every view to the tokens
-        run: >-
-          bun run check:ui-tokens --shard ${{ matrix.shard }}/8 --replay ${{ env.SNAPSHOT }}
-          ${{ github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true' && '--record' || '' }}
+        env:
+          SHARD: ${{ matrix.shard }}
+          RECORD: ${{ github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true' && '--record' || '' }}
+        run: bun run check:ui-tokens --shard "$((SHARD - 1))/4" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
 
       - name: Keep this week's snapshot
         if: github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
+          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
 
       - name: Keep the measures
         if: failure()
@@ -95,3 +105,19 @@ jobs:
             ~/.cache/gloomberb-pane-chrome/ui-tokens/results.jsonl
             ~/.cache/gloomberb-pane-chrome/ui-tokens/views.jsonl
           if-no-files-found: ignore
+
+  verdict:
+    name: UI tokens
+    needs: shard
+    # always(), not the default: a required check that is skipped counts as
+    # passed, so this runs, and fails, when a shard failed or was cancelled.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every shard passed
+        env:
+          SHARDS: ${{ needs.shard.result }}
+        run: |
+          echo "The shards: $SHARDS"
+          test "$SHARDS" = success

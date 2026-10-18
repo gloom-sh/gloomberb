@@ -11,8 +11,13 @@ name: UI benchmark
 #
 # Chromium only: WebKit on Linux crashes on several panes and takes three
 # times as long, so it stays in the local audit (scripts/pane-chrome). Both
-# sides read the week's data snapshot (the UI tokens workflow keeps it) or,
-# without one, one replay the base fills and the head reads.
+# sides read the week's data snapshot and build the registry plugins it pins
+# (the UI tokens workflow keeps both) or, without one, one replay the base
+# fills and the head reads.
+#
+# Four shards, two at a time: it only reports, so it takes longer rather than
+# hold runners Verify, Pane chrome, Performance and UI tokens need. The
+# shards match the UI tokens shards, whose snapshots they read.
 on:
   pull_request:
     branches:
@@ -48,14 +53,15 @@ concurrency:
 
 jobs:
   shoot:
-    name: Picture base and head (${{ matrix.shard }} of 8)
+    name: Picture base and head, shard ${{ matrix.shard }} of 4
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     continue-on-error: true
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,15 +94,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v1-${{ matrix.shard }}of8-${{ steps.keys.outputs.week }}
-          restore-keys: ui-replay-v1-${{ matrix.shard }}of8-
+          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
+          restore-keys: ui-replay-v2-${{ matrix.shard }}of4-
 
+      # The base ref comes in through the environment, never into the script's text.
       - name: Picture this shard's views on the base and on the head
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || inputs.base || 'origin/main' }}
+          SHARD: ${{ matrix.shard }}
+          OFFLINE: ${{ steps.snapshot.outputs.cache-matched-key != '' && '--offline' || '' }}
         run: >-
-          bun run ui:benchmark shoot --shard ${{ matrix.shard }}/8 --out ~/ui-benchmark-shard
-          --base ${{ github.event.pull_request.base.sha || inputs.base || 'origin/main' }}
-          --replay ~/.cache/gloomberb-pane-chrome/ui-replay
-          ${{ steps.snapshot.outputs.cache-matched-key != '' && '--offline' || '' }}
+          bun run ui:benchmark shoot --shard "$((SHARD - 1))/4" --out ~/ui-benchmark-shard
+          --base "$BASE" --replay ~/.cache/gloomberb-pane-chrome/ui-replay $OFFLINE
 
       - uses: actions/upload-artifact@v4
         with:
@@ -108,7 +117,8 @@ jobs:
   report:
     name: Report the blast radius
     needs: shoot
-    if: always()
+    # After failed shards too (the report says the count is incomplete), not after a cancel.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
@@ -132,9 +142,10 @@ jobs:
       - name: Compare, lay out the sheets and update the comment
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: >-
-          bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark
-          ${{ github.event.pull_request.number && format('--comment {0}', github.event.pull_request.number) || '' }}
+          bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark --expect-shards 4
+          ${PR:+--comment "$PR"}
 
       - uses: actions/upload-artifact@v4
         with:
