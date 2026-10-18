@@ -57,12 +57,12 @@ interface ShootOptions { base: string; out: string; replay: string; widths: stri
 /**
  * One pass of the audit, white theme only, no report: `fetch` opens every view
  * once to fill the replay (no pictures, the widest width); `before` and
- * `after` picture each side from the replay, offline; `again` pictures the
- * head's moved views a second time, to tell a change from a view that is
- * never drawn the same twice.
+ * `after` picture each side from the replay, offline; the `-again` passes
+ * picture the moved views on each side a second time, to tell a change from a
+ * view that is never drawn the same twice.
  */
-function audit(pass: "fetch" | "before" | "after" | "again", root: string, options: ShootOptions): void {
-  const side = pass === "after" || pass === "again" ? "after" : "before";
+function audit(pass: "fetch" | "before" | "after" | "before-again" | "after-again", root: string, options: ShootOptions): void {
+  const side = pass === "after" || pass === "after-again" ? "after" : "before";
   const build = pass === "fetch" || pass === "after" || (pass === "before" && options.offline);
   sh([
     "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-report", "--themes", "white", "--root", root,
@@ -88,25 +88,28 @@ async function shoot(options: ShootOptions): Promise<void> {
   audit("before", base, options);
   const head = resolve(join(import.meta.dir, "../.."));
   audit("after", head, options);
-  // A view that moved is pictured on the head once more: if the two pictures of the same code
+  // A view that moved is pictured once more on each side: if two pictures of the same code
   // differ, the view is unsteady (a 3D surface's labels, a value read from the clock), not changed.
   const moving = (await changes(join(options.out, "before"), join(options.out, "after"))).filter(moved);
-  const unsteady: string[] = [];
+  const unsteady = new Set<string>();
   if (moving.length) {
-    audit("again", head, { ...options, only: [...new Set(moving.map((change) => change.view.split("--")[0]!))].join(",") });
-    const again = await changes(join(options.out, "after"), join(options.out, "again"));
-    const twice = new Map(again.map((change) => [change.view, change]));
-    for (const change of moving) {
-      const second = twice.get(change.view);
-      // Drawn differently, or opened only once of the two times (a detail Enter opened while the root was still moving).
-      if (second && moved(second)) unsteady.push(change.view);
+    const only = [...new Set(moving.map((change) => change.view.split("--")[0]!))].join(",");
+    for (const [side, root] of [["before", base], ["after", head]] as const) {
+      audit(`${side}-again`, root, { ...options, only });
+      const twice = new Map((await changes(join(options.out, side), join(options.out, `${side}-again`))).map((change) => [change.view, change]));
+      for (const change of moving) {
+        const second = twice.get(change.view);
+        // Drawn differently, or opened only once of the two times (a detail Enter opened while the root was still moving).
+        if (second && moved(second)) unsteady.add(change.view);
+      }
     }
   }
-  await Bun.write(join(options.out, "unsteady.json"), JSON.stringify(unsteady));
+  await Bun.write(join(options.out, "unsteady.json"), JSON.stringify([...unsteady]));
   // The builds are large and each side's results and pictures are what the report reads.
   await rm(join(options.out, "web-before"), { recursive: true, force: true });
   await rm(join(options.out, "web-after"), { recursive: true, force: true });
-  await rm(join(options.out, "again"), { recursive: true, force: true });
+  await rm(join(options.out, "before-again"), { recursive: true, force: true });
+  await rm(join(options.out, "after-again"), { recursive: true, force: true });
 }
 
 async function lines(file: string): Promise<string[]> {
