@@ -1,5 +1,7 @@
 /** @jsxImportSource react */
 import { afterEach, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { act, useState, type ReactNode } from "react";
 import { PageStackView } from "../../../components/ui/page-stack-view";
 import { QueryBar } from "../../../components/ui/query-bar";
@@ -76,4 +78,29 @@ test("a query bar below another element of its detail leaves the stack its Back 
   const band = container.querySelector("[data-gloom-role='page-stack-header']");
   expect(band?.textContent).toContain("BackBORR");
   expect(container.querySelector(".gloom-qb")?.textContent).not.toContain("Back");
+});
+
+// A detail may open with its bar as a direct child (OSA's contract choice is a
+// bar, then the chain). The stack fills the pane with its detail's children;
+// the bar, now holding Back, keeps its one row and the chain takes the rest.
+test("a query bar opening its detail stays one row high while the content under it fills", async () => {
+  geometry = layOut();
+  const style = dom.window.document.createElement("style");
+  style.textContent = readFileSync(join(import.meta.dir, "../styles.css"), "utf8");
+  dom.window.document.head.appendChild(style);
+  try {
+    const { container, open } = await mountStack(<>
+      {bar}
+      <div data-testid="chain">Chain</div>
+    </>);
+    await open(true);
+    const queryBar = container.querySelector<HTMLElement>(".gloom-qb")!;
+    expect(queryBar.textContent).toContain("BackBORR");
+    expect(queryBar.parentElement?.getAttribute("data-gloom-role")).toBe("page-stack-detail");
+    const barStyle = dom.window.getComputedStyle(queryBar);
+    expect([barStyle.flexGrow, barStyle.height]).toEqual(["0", "20px"]);
+    expect(dom.window.getComputedStyle(container.querySelector("[data-testid='chain']")!).flexGrow).toBe("1");
+  } finally {
+    style.remove();
+  }
 });

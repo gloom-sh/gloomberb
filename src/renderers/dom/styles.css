@@ -1168,6 +1168,13 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   min-height: 0 !important;
   max-height: none !important;
 }
+/* Except a query bar the detail opens with (OSA's contract choice): it is the
+   detail's chrome, one row high, and filling would split the pane with the
+   content under it, Back and all. */
+.gloom-stack-detail > .gloom-qb {
+  flex: none !important;
+  height: var(--chrome-h) !important;
+}
 
 /* Popovers take focus so their keys work; the focus ring is noise on a
    surface that is plainly the active one. */
