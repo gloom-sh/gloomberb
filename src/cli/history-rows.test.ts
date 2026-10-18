@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyFlagNote, historyGapNote, historyJumpNote, historyNotes, historyPriceDecimals, historyRows, historyUnbrokenFrom,
-  historyUnit,
+  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyFlagNote, historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
+  historyRows, historyUnbrokenFrom, historyUnit,
 } from "./history-rows";
+import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
 import { pricePointValues } from "../utils/price-history-integrity";
 import type { ManualChartResolution } from "../time-series/resolution";
 import { rowsFreshness } from "./freshness";
@@ -73,6 +74,23 @@ describe("history rows", () => {
     expect(rows[2]).toMatchObject({ close: 254.02, currency: "ZAR", interval: "1d" });
     expect(historyFlagNote(rows)).toBe("2 of 3 bars have high below open or close, or low above open or close in the source data; their prices are left blank");
     expect(historyFlagNote([rows[2]!])).toBeNull();
+  });
+
+  test("a coin's 0 volume is missing, never 0, and counted once; a stock's 0 is a real 0", () => {
+    // BTC-USD hourly as Gloom Cloud serves it: about half the hours carry 0, which is no volume reported.
+    const served = [{ date: "2026-10-11T00:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 0 },
+      { date: "2026-10-11T01:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 10_060_800 },
+      { date: "2026-10-11T02:00:00Z", open: 1, high: 1, low: 1, close: 1, volume: 0 }];
+    const coin = historyRows(served.map((point) => mapPricePoint(point, 1, "CCC", true)), "1h");
+    expect(coin.map((row) => row.volume)).toEqual([null, 10_060_800, null]);
+    expect(historyMissingVolumeNote(coin)).toBe("2 of 3 bars have no reported volume (\u2014)");
+    // A thin stock can trade nothing in an hour: its 0 stays 0 and is not missing.
+    const stock = historyRows(served.map((point) => mapPricePoint(point, 1, "NASDAQ")), "1h");
+    expect(stock.map((row) => row.volume)).toEqual([0, 10_060_800, 0]);
+    expect(historyMissingVolumeNote(stock)).toBeNull();
+    // A history with no volume at all (an index, a currency pair) has nothing to mark, and a day still forming says so itself.
+    expect(historyMissingVolumeNote(historyRows(served.map(({ volume: _, ...point }) => mapPricePoint(point, 1, "CCC", true)), "1h"))).toBeNull();
+    expect(historyMissingVolumeNote([coin[1]!, { ...coin[0]!, partial: true }])).toBeNull();
   });
 
   test("notes bars coarser than the range is served in, or a first bar well after the start asked for", () => {

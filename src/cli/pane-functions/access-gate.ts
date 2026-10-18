@@ -18,6 +18,28 @@ function errorMessages(errors: unknown): string[] {
   return Array.isArray(errors) ? errors.filter((error): error is string => typeof error === "string") : [];
 }
 
+/** Where a free account gets Gloom Pro, as every report's Pro line ends. */
+const PRO_UPGRADE_POINTER = "gloom.sh/cloud";
+
+/** `a`, `a and b`, `a, b and c`. */
+function listText(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/**
+ * What a report's free view holds back, said once: the Pro lines its pane
+ * phrases (several run on as one), else the tables it left out (`Paid funding
+ * and Hourly candles need Gloom Pro`), then where to get Gloom Pro. The text
+ * report prints it after `Pro:`, an export's footer after `pro:`. Null when
+ * nothing is locked.
+ */
+export function reportGateText(locks: readonly string[], lockedTables: readonly string[] = []): string | null {
+  const sentences = locks.map((lock) => lock.trim().replace(/\.+$/, "")).filter(Boolean);
+  const tables = lockedTables.map((title) => title.trim()).filter(Boolean);
+  if (!sentences.length && tables.length) sentences.push(`${listText(tables)} ${tables.length === 1 ? "needs" : "need"} Gloom Pro`);
+  return sentences.length ? `${sentences.join(". ")} · ${PRO_UPGRADE_POINTER}` : null;
+}
+
 /** Why the output cannot be used as it is, as a clause: "some values need Gloom Cloud Pro (locked)". */
 function accessGateReason(gate: PaneAccessGate): string {
   return gate === "pro" ? "some values need Gloom Cloud Pro (locked)" : "it needs a Gloom Cloud sign-in";

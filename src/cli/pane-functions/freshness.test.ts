@@ -36,10 +36,11 @@ describe("report freshness", () => {
     expect([15, 20, 60, 90, 720, 3 * 24 * 60].map(delayLength)).toEqual(["15 min", "20 min", "1 h", "90 min", "12 h", "3 days"]);
     const delayed = (delayMinutes: number) => ({ dataSource: "delayed", delayMinutes, lastUpdated: NOW - 20 * 60_000 });
     expect(line(rows(), { rows: [delayed(15), delayed(20)] })).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:40 UTC · 15-20 min delayed");
-    // News held back for an account without real-time access says how far; with it, the wire is live.
+    // News held back for an account without real-time access says how far; with it, the wire is live. The time is the
+    // newest story's and says so, so it is not read as the time now.
     const stories = { rows: [{ publishedAt: "2026-10-08T16:30:00Z" }, { publishedAt: "2026-10-08T15:00:00Z" }] };
-    expect(line(rows(cloudNewsFreshness(false)), stories)).toBe("Source: Gloom Cloud · Thu 8 Oct 2026 16:30 UTC · 12 h delayed");
-    expect(line(rows(cloudNewsFreshness(true)), stories)).toBe("Source: Gloom Cloud · Thu 8 Oct 2026 16:30 UTC · live");
+    expect(line(rows(cloudNewsFreshness(false)), stories)).toBe("Source: Gloom Cloud · newest story Thu 8 Oct 2026 16:30 UTC · 12 h delayed");
+    expect(line(rows(cloudNewsFreshness(true)), stories)).toBe("Source: Gloom Cloud · newest story Thu 8 Oct 2026 16:30 UTC · live");
     expect(line(rows(), { rows: [{ dataSource: "delayed", lastUpdated: NOW - 60_000 }] }))
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · delayed");
   });

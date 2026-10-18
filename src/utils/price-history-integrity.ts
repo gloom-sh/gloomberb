@@ -69,3 +69,25 @@ export function priceHistoryIntegrityNotice(count: number): string | undefined {
     ? `${count} inconsistent OHLC ${count === 1 ? "bar is" : "bars are"} unavailable. Affected calculations contain gaps; original values and reasons are retained in JSON exports.`
     : undefined;
 }
+
+/** What a bar without volume shows in a history that reports volume: missing, never 0. */
+export const MISSING_VOLUME_TEXT = "\u2014";
+
+/**
+ * "90 of 178 bars have no reported volume (\u2014)": the bars of a history that reports volume whose own is missing,
+ * such as the hours a coin's feed leaves without volume, which are never read as 0. `missing` counts only bars without
+ * a reason of their own (still forming, rebuilt, prices left blank as contradictory). Undefined when there are none.
+ */
+export function missingVolumeNotice(missing: number, total: number): string | undefined {
+  if (missing <= 0) return undefined;
+  return `${missing} of ${total} ${missing === 1 && total === 1 ? "bar" : "bars"} ${missing === 1 ? "has" : "have"} no reported volume (${MISSING_VOLUME_TEXT})`;
+}
+
+/**
+ * The bars of a history that reports volume left without it for no reason of their own: not still forming and not
+ * blank for contradictory prices. 0 for a history that reports no volume at all, such as an index or a currency pair.
+ */
+export function missingVolumeCount(bars: readonly { volume: number | null; integrity?: unknown; partial?: boolean }[]): number {
+  if (!bars.some((bar) => bar.volume != null)) return 0;
+  return bars.filter((bar) => bar.volume == null && !bar.integrity && !bar.partial).length;
+}

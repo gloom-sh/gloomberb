@@ -41,6 +41,7 @@ import {
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, ProviderBusyError, providerMissReason } from "../provider-errors";
@@ -208,11 +209,12 @@ function mapCloudPriceHistory(
   const { divisor } = resolveCurrencyUnit(
     response.currency ?? response.providerMeta?.currency,
   );
+  const coin = isRoundTheClockCoin(ticker, exchange);
   const points = normalizePriceHistory(
     unwrapRequiredCloudResponse(
       response,
       `Cloud chart data is unavailable for ${ticker}`,
-    ).map((point) => mapPricePoint(point, divisor, exchange)),
+    ).map((point) => mapPricePoint(point, divisor, exchange, coin)),
   );
   if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);

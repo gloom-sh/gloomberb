@@ -397,7 +397,11 @@ test("a report with nothing in it says once whether the free view left it empty 
 
   expect(text({ sections }, "KPIS")).toContain("Company KPIs | DUOL\n\nNo data for DUOL: not covered by KPIS.\n");
   expect(text({ sections }, "KPIS")).not.toContain("Latest");
-  expect(text({ sections, errors: ["Free shows 3 of 6 rows. Gloom Pro adds the other 3."] })).toContain("\nLocked: Gloom Pro\n");
+  // The free view left it empty: its one Pro line is the report.
+  const locked = text({ sections, errors: ["Free shows 3 of 6 rows. Gloom Pro adds the other 3."] });
+  expect(locked).toContain("Company KPIs | DUOL\n\nPro: Free shows 3 of 6 rows. Gloom Pro adds the other 3 · gloom.sh/cloud\n");
+  expect(locked.match(/Pro:/g)).toHaveLength(1);
+  expect(locked).not.toContain("Locked");
   // The pane's own reason, and a failure that explains the gap, stay as they were.
   expect(text({ sections: [{ title: "Latest", rows: [], empty: "No KPI named arr." }] })).toContain("Latest\nNo KPI named arr.");
   expect(text({ sections, errors: ["The source did not answer."] })).toContain("Latest\nNo data.");
@@ -406,6 +410,30 @@ test("a report with nothing in it says once whether the free view left it empty 
     .toContain("No data for DUOL with these options.");
   // A board that was asked for no symbol claims nothing about coverage.
   expect(renderHeadlessPaneText(bundle, { sections }, { ...asked, symbols: [] }, "Board")).toContain("Latest\nNo data.");
+  // One reason the bundle gives for all its tables is said once in their place.
+  expect(text({ sections, empty: "DUOL has no mapped apps." })).toContain("Company KPIs | DUOL\n\nDUOL has no mapped apps.\n");
+});
+
+test("a report's locks fold into one Pro line, and tables the free view held back are named there, not under their headings", () => {
+  const bundle: HeadlessPaneDefinition<"bundle"> = { shape: "bundle", argument: { kind: "free-text", optional: true }, options: [], load: () => ({ sections: [] }) };
+  const asked = { symbols: [], options: {}, argument: "BTC", rawArgument: "BTC" };
+  const latest = { title: "Latest market", rows: [{ value: 1 }] };
+  const held = [{ title: "Paid funding", rows: [], locked: true }, { title: "Hourly candles", rows: [], locked: true }];
+  const render = (result: HeadlessBundleResult) => renderHeadlessPaneText(bundle, result, asked, "Perpetuals | BTC");
+
+  // Several Pro lines read as one, ending where to get Pro; locked tables leave no heading or "No data." behind.
+  const folded = render({ sections: [latest, ...held], errors: ["Free shows the latest funding. Gloom Pro adds its history.", "Rankings require Gloom Pro."] });
+  expect(folded.match(/Pro:/g)).toHaveLength(1);
+  expect(folded).toContain("Pro: Free shows the latest funding. Gloom Pro adds its history. Rankings require Gloom Pro · gloom.sh/cloud");
+  expect(folded).not.toContain("Paid funding");
+  expect(folded).not.toContain("No data.");
+  expect(folded).not.toContain("Locked");
+  // Without a Pro line of its own, the line names the tables it held back.
+  expect(render({ sections: [latest, ...held] })).toContain("Pro: Paid funding and Hourly candles need Gloom Pro · gloom.sh/cloud");
+  // A locked table that has rows (Pro sees them) prints as any other, and nothing is gated.
+  const open = render({ sections: [latest, { ...held[0]!, rows: [{ value: 2 }] }] });
+  expect(open).toContain("Paid funding");
+  expect(open).not.toContain("Pro:");
 });
 
 test("a report's caveats print as Notes, what Pro unlocks under Pro, the failures under Errors, and JSON carries all three", async () => {
@@ -425,8 +453,8 @@ test("a report's caveats print as Notes, what Pro unlocks under Pro, the failure
   expect(lines).toContain("  ETH-USD is excluded from the risk estimate.");
   expect(lines).toContain("  1 holding had no current quote; weighted at the latest completed close.");
   expect(lines).toContain("Errors: Treasury yield: Internal server error");
-  expect(lines).toContain("Pro: Full history requires Gloom Pro");
-  expect(report.tables.footer).toEqual(expect.arrayContaining(["pro: Full history requires Gloom Pro", "error: Treasury yield: Internal server error"]));
+  expect(lines).toContain("Pro: Full history requires Gloom Pro · gloom.sh/cloud");
+  expect(report.tables.footer).toEqual(expect.arrayContaining(["pro: Full history requires Gloom Pro · gloom.sh/cloud", "error: Treasury yield: Internal server error"]));
   expect(report.data).toMatchObject({
     complete: false, errors: ["Treasury yield: Internal server error", "Full history requires Gloom Pro"],
     notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],

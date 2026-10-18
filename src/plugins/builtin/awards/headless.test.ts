@@ -36,7 +36,7 @@ test("a ticker the preview cannot filter by is named as such, never as the ticke
   expect(result.errors).toEqual([lock]);
   expect(result.metadata).toMatchObject({ filters: { ticker: "LMT" }, filtersApplied: false });
   // Whether LMT has awards is not in a preview, so the report does not say it has none.
-  expect(text).toContain(`Pro: ${lock}`);
+  expect(text).toContain(`Pro: ${lock.replace(/\.$/, "")} · gloom.sh/cloud`);
   expect(text).not.toMatch(/No LMT awards|Not a ticker/);
 });
 

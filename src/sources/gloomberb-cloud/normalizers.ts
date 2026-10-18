@@ -20,6 +20,7 @@ import {
 } from "../../api-client";
 import { normalizePriceValueByDivisor, resolveCurrencyUnit } from "../../utils/currency-units";
 import { resolveExchangeTimeZone } from "../../utils/exchanges";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { latestSettledSessionDate } from "../../utils/price-history";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
@@ -217,10 +218,17 @@ function parseCloudPricePointDate(
     : new Date(value);
 }
 
+/**
+ * One served bar. `coin`: the bars are a coin's, which trades every hour of every day, so a volume the feed sends
+ * as 0 is volume it did not report, not a bar nothing traded in (BTC-USD's hourly bars carry 0 for about half the
+ * hours). It is read as missing, so no table prints 0 and no sum or average counts it. Any other listing keeps a 0,
+ * which a thin stock can truly trade.
+ */
 export function mapPricePoint(
   point: CloudPricePointPayload,
   divisor = 1,
   exchange = "",
+  coin = false,
 ): PricePoint {
   return {
     date: parseCloudPricePointDate(point.date, exchange),
@@ -228,7 +236,7 @@ export function mapPricePoint(
     high: normalizePriceValueByDivisor(point.high, divisor),
     low: normalizePriceValueByDivisor(point.low, divisor),
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
-    volume: point.volume,
+    volume: coin && point.volume === 0 ? undefined : point.volume,
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),
@@ -287,6 +295,7 @@ export function mapCloudFinancials(
   const quote = rawQuote ? mapQuote(rawQuote, providerMeta) : undefined;
   const divisor = rawQuote ? resolveCurrencyUnit(rawQuote.currency).divisor : 1;
   const exchange = rawQuote?.listingExchangeName ?? rawQuote?.exchangeName ?? "";
+  const coin = isRoundTheClockCoin(rawQuote?.symbol, exchange);
   return {
     quote,
     quoteMetadata: financials.quoteMetadata,
@@ -301,7 +310,7 @@ export function mapCloudFinancials(
     priceHistory: (financials.priceHistory ?? []).map((point) =>
       point.date instanceof Date
         ? point
-        : mapPricePoint(point as unknown as CloudPricePointPayload, divisor, exchange),
+        : mapPricePoint(point as unknown as CloudPricePointPayload, divisor, exchange, coin),
     ),
     ...(financials.epsEstimates ? { epsEstimates: financials.epsEstimates } : {}),
   };

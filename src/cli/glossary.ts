@@ -324,7 +324,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Funding %/int", "Funding 8h", "Paid %/int", "APR %"],
     definition: "A regular payment between the two sides of a perpetual contract, set to pull its price toward the asset's. "
       + "Positive means longs pay shorts, negative means shorts pay longs, so a basis trade (long spot, short the perpetual) collects it when positive. "
-      + "APR % is the current 8h rate × 3 × 365: a simple annualisation of the rate now, not funding actually paid.",
+      + "APR % is the current rate times the payments a year at the market's own interval (1h rate × 24 × 365, 8h rate × 3 × 365): "
+      + "a simple annualisation of the rate now, not funding actually paid.",
   },
   {
     term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP"],

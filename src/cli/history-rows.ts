@@ -14,7 +14,7 @@ import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
-import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
+import { missingVolumeNotice, pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
@@ -316,6 +316,25 @@ export function historyBarStatusNote(
       : null,
   ].filter((note): note is string => note != null);
   return notes.length > 0 ? notes.join("; ") : null;
+}
+
+/**
+ * Whether a history reports volume at all. An index or a currency pair has none, so its blank column says nothing;
+ * a history that does marks each bar without one (`MISSING_VOLUME_TEXT`).
+ */
+export function historyReportsVolume(rows: readonly Pick<HistoryRow, "volume">[]): boolean {
+  return rows.some((row) => row.volume != null);
+}
+
+/**
+ * "98 of 177 bars have no reported volume (\u2014)" for a history that reports volume, or null. A bar still forming,
+ * rebuilt from hourly bars or left blank for contradictory prices is said by its own note and not counted.
+ */
+export function historyMissingVolumeNote(rows: readonly Pick<HistoryRow, "volume" | "partial" | "filled" | "flag">[]): string | null {
+  if (!historyReportsVolume(rows)) return null;
+  const missing = rows.filter((row) => row.volume == null && !row.partial && !row.filled
+    && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code))).length;
+  return missingVolumeNotice(missing, rows.length) ?? null;
 }
 
 function neededDecimals(value: number, cap: number): number {

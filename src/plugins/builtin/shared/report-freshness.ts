@@ -62,6 +62,9 @@ export const REFERENCE_DATA: HeadlessPaneFreshness = { status: "not-a-feed", bas
 /** Company fundamentals, estimates and calendars: reported figures, not a feed. */
 export const REPORTED_DATA: HeadlessPaneFreshness = { status: "not-a-feed", basis: "reported data" };
 
+/** What a news list's as-of is: its newest story, not the time it was read. */
+export const NEWEST_STORY = "newest story";
+
 /** Gloom Cloud's delayed quotes run behind each venue by a lag the app knows (`delayedFeedLagMs`). */
 const CLOUD_QUOTE_PROVIDER_ID = "gloomberb-cloud";
 
@@ -129,12 +132,13 @@ export async function cloudRealtimeAccess(): Promise<boolean | null> {
 }
 
 /**
- * Gloom Cloud news stories, dated by the newest: held back
- * `CLOUD_NEWS_DELAY_HOURS` without real-time access, the live wire with it.
- * The list is a history, so its last story is not stale data.
+ * Gloom Cloud news stories, dated by the newest, which the line names
+ * (`newest story Tue 29 Sep 2026 20:17 UTC`) so it is not read as the time
+ * now: held back `CLOUD_NEWS_DELAY_HOURS` without real-time access, the live
+ * wire with it. The list is a history, so its last story is not stale data.
  */
 export function cloudNewsFreshness(realtime: boolean | null): HeadlessPaneFreshness {
-  const stories: HeadlessPaneFreshness = { observedKey: "publishedAt", oldest: null };
+  const stories: HeadlessPaneFreshness = { observedKey: "publishedAt", oldest: null, asOfLabel: NEWEST_STORY };
   if (realtime === true) return { ...stories, status: "live" };
   if (realtime === false) return { ...stories, status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 };
   return { ...stories, status: "not-a-feed", basis: "published stories" };

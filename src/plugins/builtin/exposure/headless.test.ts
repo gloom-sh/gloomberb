@@ -120,5 +120,5 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +2025-09-27$/m);
   // An anonymous counterparty leads with its filing's name; the Kind column already says supplier.
   expect(text).toMatch(/^Supplier +Vendor two \(undisclosed\) +-- +Unknown +2026-06-30$/m);
-  expect(text).toContain("Pro: Free preview: one holding, depth one. Full analysis requires Pro.");
+  expect(text).toContain("Pro: Free preview: one holding, depth one. Full analysis requires Pro · gloom.sh/cloud");
 });

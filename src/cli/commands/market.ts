@@ -98,13 +98,16 @@ import {
   historyUnbrokenFrom,
   historyAllRangeYears,
   historyIntervalsByRange,
+  historyMissingVolumeNote,
   historyNotes,
+  historyReportsVolume,
   historyPriceDecimals,
   historyRows,
   historyUnit,
   historyVolume,
   historyVolumeText,
 } from "../history-rows";
+import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode } from "../../market-data/futures-board";
 import { newsEmptyMessage } from "./news-hints";
@@ -997,7 +1000,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...await listingChoiceNotes(listing, market, quote, venues),
       ...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? [],
       // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-      gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(forming ? served : data) ?? [],
+      gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
+      historyBarStatusNote(forming ? served : data) ?? [],
     ].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
@@ -1009,6 +1013,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       { key: "close", header: "Close", align: "right", format: price },
       { key: "volume", header: "Volume", align: "right", format: formatCountCell },
     ];
+    // A bar without volume in a history that reports it prints as missing, never as 0 or blank beside the others.
+    const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
+    const textPriceColumns = priceColumns.map((column) => column.key !== "volume" ? column
+      : { ...column, format: (value: unknown) => formatCountCell(value) || missingVolume });
     // Text shows a flag only on a bar that has one; the column is dropped when none does.
     const flagColumn: CliResultColumn = {
       key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
@@ -1048,7 +1056,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
-      textColumns: [...priceColumns, flagTextColumn],
+      textColumns: [...textPriceColumns, flagTextColumn],
       columns: [
         ...priceColumns,
         flagColumn,

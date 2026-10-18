@@ -114,14 +114,15 @@ function aggregateOhlcProjectedBucket(
   const last = bucket[bucket.length - 1]!;
   let high = sourceValue(first, "high");
   let low = sourceValue(first, "low");
-  let volume = isFiniteNumber(first.point.volume) ? first.point.volume : 0;
+  // A bucket whose bars all lack volume has none, not 0.
+  let volume = isFiniteNumber(first.point.volume) ? first.point.volume : undefined;
   let breakBefore = first.breakBefore;
 
   for (let index = 1; index < bucket.length; index += 1) {
     const point = bucket[index]!;
     high = Math.max(high, sourceValue(point, "high"));
     low = Math.min(low, sourceValue(point, "low"));
-    if (isFiniteNumber(point.point.volume)) volume += point.point.volume;
+    if (isFiniteNumber(point.point.volume)) volume = (volume ?? 0) + point.point.volume;
     if (point.breakBefore) breakBefore = true;
   }
 

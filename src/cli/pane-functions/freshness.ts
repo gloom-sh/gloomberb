@@ -86,6 +86,8 @@ export interface ReportFreshness {
    * oldest observation) to when this report was built: `oldest 9 min`.
    */
   oldestAgeMinutes?: number;
+  /** What the newest observation is, said before its time: `newest story Tue 29 Sep 2026 20:17 UTC`. */
+  asOfLabel?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /** When the figures reach readers and when the next are due, said right after the as-of date. */
@@ -448,6 +450,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
+  const asOfLabel = asOf ? declared.asOfLabel?.trim() : undefined;
   const schedule = declared.schedule?.trim();
   const publisher = declared.publisher?.trim();
   const publishedAt = parseReportTime(declared.publishedAt);
@@ -472,6 +475,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(observation ? { observation } : {}),
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
+    ...(asOfLabel ? { asOfLabel } : {}),
     ...(note ? { note } : {}),
     ...(schedule ? { schedule } : {}),
     ...(publisher ? { publisher } : {}),
@@ -738,7 +742,9 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
         : undated && time && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt)
           ? `${new Date(time.time).toISOString().slice(11, 16)} UTC` : timeText(freshness.asOf, local);
   const oldest = freshness.oldest && (period ? periodText(freshness.oldest, period) : dayText(freshness.oldest));
-  return oldest && !short && freshness.oldestAgeMinutes == null ? `${asOf} (oldest ${oldest})` : asOf;
+  // A list dated by its newest entry names it, so the time is not read as when the list was read.
+  const dated = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
+  return oldest && !short && freshness.oldestAgeMinutes == null ? `${dated} (oldest ${oldest})` : dated;
 }
 
 /**

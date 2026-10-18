@@ -5,7 +5,9 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
-import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
+import {
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
+} from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
   formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
@@ -267,10 +269,13 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   },
 };
 
-/** The price columns of HP, which `fn HP` prints and exports with the date column of the bars' size. */
-const HISTORY_PRICE_COLUMNS: HeadlessPaneColumn[] = ["open", "high", "low", "close", "volume"].map((key) => ({
+/**
+ * The price columns of HP, which `fn HP` prints and exports with the date column of the bars' size. A bar without
+ * volume in a history that reports it (`volumeMissing`) prints it as missing, never as 0.
+ */
+const historyPriceColumns = (volumeMissing: boolean): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
-  format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? "-"
+  format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : "-"
     : key === "volume" ? formatNumber(Number(value), 0)
     : formatPriceObservation(Number(value), { minimumFractionDigits: 2 }),
 }));
@@ -281,7 +286,7 @@ const HISTORY_PRICE_COLUMNS: HeadlessPaneColumn[] = ["open", "high", "low", "clo
  * whose period runs on (`2026-10 MTD`); the export keeps each bar's own date
  * and adds a `Partial` column when one is.
  */
-function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean): HeadlessPaneColumn[] {
+function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, volumeMissing = false): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
     key: "date",
@@ -293,7 +298,7 @@ function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean): 
   const marked: HeadlessPaneColumn[] = partial && !text
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
-  return [date, ...HISTORY_PRICE_COLUMNS, ...marked];
+  return [date, ...historyPriceColumns(volumeMissing), ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -331,6 +336,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const closedDay = closedHistoryBarDay(size, rows.at(-1)?.date, venue, now);
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     const marked = shown.some((row) => row.partial === true);
+    const volumeMissing = missingVolumeCount(shown);
+    const volumeNote = missingVolumeNotice(volumeMissing, shown.length);
     // The day's bar built from the quote is not a close; a coin's day in progress, as its source flags it, keeps its line.
     const dayToDate = points !== loaded && size === "1d" && shown.at(-1)?.partial === true;
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
@@ -343,8 +350,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows: shown,
       columns: historyColumns(size, marked, false),
-      textColumns: historyColumns(size, marked, true),
+      textColumns: historyColumns(size, marked, true, volumeMissing > 0),
       freshness,
+      ...(volumeNote ? { notes: [volumeNote] } : {}),
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
       metadata: { symbol, range, ...(size === "intraday" ? {} : { interval: size }), ...(notice ? { notices: [notice] } : {}) },

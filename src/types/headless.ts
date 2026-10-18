@@ -309,6 +309,11 @@ export interface HeadlessPaneFreshness {
    * listing's Friday close and another's later print.
    */
   citeOldest?: boolean;
+  /**
+   * What the newest observation is, said before its time so the time is not read as when the report was read:
+   * `newest story` dates a news list `newest story Tue 29 Sep 2026 20:17 UTC`.
+   */
+  asOfLabel?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
   /**
@@ -387,6 +392,12 @@ export type HeadlessBundleSection =
     rowUnitKey?: string;
     /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
     interval?: string;
+    /**
+     * The free view holds this table back for Gloom Pro. Left empty, the text
+     * report leaves it out and says once, on its Pro line, what Pro adds, in
+     * place of a lock under each table; JSON keeps the section with `locked`.
+     */
+    locked?: boolean;
     entries?: never;
     textEntries?: never;
   }
@@ -407,10 +418,16 @@ export type HeadlessBundleSection =
     unit?: never;
     rowUnitKey?: never;
     interval?: never;
+    locked?: never;
   };
 
 export interface HeadlessBundleResult extends HeadlessPaneResultBase {
   sections: HeadlessBundleSection[];
+  /**
+   * What the report says once when no section has a row, in place of each
+   * section's own `empty`: one reason covers them all (a ticker no source maps).
+   */
+  empty?: string;
 }
 
 export interface HeadlessSeriesPoint extends HeadlessPaneRow {

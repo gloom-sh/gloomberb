@@ -4,6 +4,7 @@ import { scalarPoint, staticSeries } from "../../../components/chart/static/seri
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
+import { isRecord } from "../../../utils/guards";
 import type { ThemeColors } from "../../../theme/colors";
 export const PERP_TABS = ["board", "rankings", "compare", "history", "evidence"] as const;
 export type PerpTab = typeof PERP_TABS[number];
@@ -34,7 +35,7 @@ export function underlyingTicker(row: Pick<PerpBoardRow, "underlyingSymbol" | "u
     : row.underlying?.symbol.toUpperCase() === symbol ? row.underlying.listingExchange : undefined;
   return !listing || isUsListingExchange(listing) ? symbol : publicTickerKey(symbol, listing);
 }
-export const marketLabel = (row: PerpBoardRow) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
+export const marketLabel = (row: Pick<PerpBoardRow, "dex" | "baseAsset">) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
 
 /**
  * Plain names for markets, as the Market column writes the contracts to try, nearest first. A name the board does
@@ -75,8 +76,43 @@ export function readingTime(observedAt: string | null | undefined, now = Date.no
   const iso = new Date(read).toISOString();
   return `${iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? "" : `${iso.slice(0, 10)} `}${iso.slice(11, 16)} UTC`;
 }
-/** What the APR % column is: the current rate carried forward a year, never funding that was paid. */
-export const APR_FOOTNOTE = "APR = current 8h rate × 3 × 365: a simple annualisation of the current funding rate, not funding actually paid.";
+/** Payments a day at a funding interval: 24 at 1h, 3 at 8h. */
+const paymentsPerDay = (hours: number) => {
+  const count = 24 / hours;
+  return Number.isInteger(count) ? String(count) : String(Number(count.toFixed(2)));
+};
+/** How a market's APR % annualises its rate at its own funding interval: `1h rate × 24 × 365`, `8h rate × 3 × 365`. */
+export const aprFormula = (hours: number) => `${hours}h rate × ${paymentsPerDay(hours)} × 365`;
+/**
+ * What the APR % column is for the markets shown: each one's current rate carried forward a year at its own
+ * funding interval, never funding that was paid. One interval names its formula; several name each, so an hourly
+ * market's APR is never read as 8h × 3 × 365. Null when no market states an interval (its APR is blank).
+ */
+export function aprFootnote(rows: readonly Pick<PerpBoardRow, "fundingIntervalHours">[]): string | null {
+  const hours = [...new Set(rows.flatMap((row) => row.fundingIntervalHours ? [row.fundingIntervalHours] : []))].sort((a, b) => a - b);
+  if (!hours.length) return null;
+  return hours.length === 1
+    ? `APR = current ${aprFormula(hours[0]!)}: a simple annualisation of the current funding rate, not funding actually paid.`
+    : `APR annualises each market's current rate at its own interval (${hours.map(aprFormula).join(", ")}), not funding actually paid.`;
+}
+/**
+ * What Gloom Pro adds to a market's history for a free account: `Binance BTC history and every market on 4 venues`,
+ * the venues counted from what Gloom Cloud reports collecting and left out when it reports none. How far the history
+ * reaches back differs by market and venue, and the server does not say it to a free account, so no span is given.
+ */
+export function perpHistoryProText(row: Pick<PerpBoardRow, "venue" | "baseAsset" | "dex">, venues: number | null): string {
+  return `${venueName(row.venue)} ${marketLabel(row)} history`
+    + (venues ? ` and every market on ${venues} ${venues === 1 ? "venue" : "venues"}` : "");
+}
+/** The venues Gloom Cloud collects, counted from the sources a board or market payload reports (`binance`, `hyperliquid:xyz`); null when it reports none. */
+export function collectedVenueCount(sources: unknown): number | null {
+  if (!Array.isArray(sources)) return null;
+  const venues = new Set(sources.flatMap((entry: unknown) => {
+    const venue = isRecord(entry) && typeof entry.source === "string" ? entry.source.split(":")[0]! : "";
+    return (VENUES as readonly string[]).includes(venue) ? [venue] : [];
+  }));
+  return venues.size || null;
+}
 export const fundingInterval = (row: Pick<PerpBoardRow, "fundingIntervalHours" | "fundingKind">) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h${row.fundingKind === "last-paid" ? " paid" : row.fundingKind === "continuous" ? " continuous" : ""}` : "--";
 export const HISTORY_METRICS = ["funding", "oi", "premium", "price", "long-short"] as const;
 export type HistoryMetric = typeof HISTORY_METRICS[number];

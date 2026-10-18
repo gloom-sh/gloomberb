@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { baseOfLabel, BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
+import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
   separatedPairBase, underlyingTicker } from "./model";
 import { fundingNote } from "./freshness";
 import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
@@ -136,4 +136,17 @@ test("a pair or plain name reads as the base asset it stands for, and anything e
   expect(baseOfLabel("BZ")).toBe("BZ");
   // Only a pair written with a separator is a board search for its base: BTCUSDT is a symbol the board spells.
   expect(["BTC-USD", "btc/usd", "BTCUSD", "BTCUSDT", "BTC"].map(separatedPairBase)).toEqual(["BTC", "BTC", null, null, null]);
+});
+
+test("the APR note names each funding interval's own annualisation, and venues are counted from what is collected", () => {
+  const at = (fundingIntervalHours: number | null) => ({ fundingIntervalHours });
+  expect(aprFootnote([at(8), at(8)])).toBe("APR = current 8h rate × 3 × 365: a simple annualisation of the current funding rate, not funding actually paid.");
+  expect(aprFootnote([at(1), at(null)])).toStartWith("APR = current 1h rate × 24 × 365:");
+  // Mixed intervals name every formula, so an hourly market's APR is never read as 8h × 3 × 365.
+  expect(aprFootnote([at(8), at(1), at(4), at(1)]))
+    .toBe("APR annualises each market's current rate at its own interval (1h rate × 24 × 365, 4h rate × 6 × 365, 8h rate × 3 × 365), not funding actually paid.");
+  expect(aprFootnote([at(null)])).toBeNull();
+  expect(collectedVenueCount([{ source: "hyperliquid" }, { source: "hyperliquid:xyz" }, { source: "okx" }, { source: "compaction" }])).toBe(2);
+  expect(collectedVenueCount([{ source: "underlying" }])).toBeNull();
+  expect(collectedVenueCount(undefined)).toBeNull();
 });

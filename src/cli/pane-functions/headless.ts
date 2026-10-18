@@ -43,7 +43,7 @@ import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
-import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
+import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { lockedHeadlessReport } from "./lock-note";
 
 interface SerializableHeadlessColumn {
@@ -300,9 +300,15 @@ function serializeBundleSection(
       ...(section.unit ? { unit: section.unit } : {}),
       ...(section.interval ? { interval: section.interval } : {}),
       ...(section.empty && section.rows.length === 0 ? { empty: section.empty } : {}),
+      ...(section.locked ? { locked: true } : {}),
     };
   }
   return { title: section.title, entries: section.entries };
+}
+
+/** A table the free view held back and left empty: the text report says so on its Pro line, not under the table. */
+function isLockedSection(section: HeadlessBundleSection): boolean {
+  return !!section.locked && "rows" in section && !!section.rows && section.rows.length === 0;
 }
 
 export function serializeHeadlessPaneResult(
@@ -331,6 +337,7 @@ export function serializeHeadlessPaneResult(
       return {
         ...common,
         sections: bundle.sections.map((section) => serializeBundleSection(section, definition.columns)),
+        ...(bundle.empty && resultRowCount(definition, result) === 0 ? { empty: bundle.empty } : {}),
       };
     }
     case "series": {
@@ -520,7 +527,8 @@ function renderBundle(
   definition: HeadlessPaneDefinition,
   result: HeadlessBundleResult,
 ): string[] {
-  return result.sections.flatMap((section, index) => [
+  // A locked table is named once, on the Pro line, not under each heading.
+  return result.sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
     ...(section.title ? [renderSection(section.title)] : []),
@@ -626,25 +634,47 @@ function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: st
 }
 
 /**
- * Why a report with nothing in it is empty, when its pane gave no reason of
- * its own: the free view left it empty (the report carries a Pro line), or the
- * symbols asked for are not covered by the function (or hold nothing for the
- * options chosen). Null when something has
- * rows, a table states its own reason, an error explains it, or no symbol was
- * asked for (a board that is empty says nothing about coverage).
+ * The report's one gate line, without its label: what Gloom Pro would unlock,
+ * from the Pro lines in its errors or else the tables the free view left
+ * empty, and where to get it (reportGateText). Null when nothing is locked.
+ */
+function reportGate(definition: HeadlessPaneDefinition, result: HeadlessPaneResult): string | null {
+  const tables = definition.shape === "bundle"
+    ? (result as HeadlessBundleResult).sections.filter(isLockedSection).map((section) => section.title)
+    : [];
+  return reportGateText(splitErrors(result).locked, tables);
+}
+
+/** The gate line as the text report prints it: once, after `Pro:`. */
+function gateLine(gate: string): string {
+  return cliStyles.warning(wrapToTerminal(`Pro: ${gate}`));
+}
+
+/**
+ * Why a report with nothing in it is empty: the one reason a bundle gives
+ * for all its tables, else, when its pane gave no reason of its own, the free
+ * view left it empty (its Pro line, said here once), or the symbols asked for
+ * are not covered by the function (or hold nothing for the options chosen).
+ * Null when something has rows, a table states its own reason, an error
+ * explains it, or no symbol was asked for (a board that is empty says nothing
+ * about coverage).
  */
 function emptyReportReason(
   definition: HeadlessPaneDefinition,
   result: HeadlessPaneResult,
   args: HeadlessPaneLoadArgs,
   token: string | undefined,
+  gate: string | null,
 ): string | null {
   if (resultRowCount(definition, result) > 0) return null;
+  const bundleReason = definition.shape === "bundle" ? (result as HeadlessBundleResult).empty : undefined;
+  if (bundleReason) return bundleReason;
   const ownReason = definition.shape === "rows" ? !!(result as HeadlessRowsResult).empty
-    : definition.shape === "bundle" && (result as HeadlessBundleResult).sections.some((section) => "empty" in section && !!section.empty);
-  const { locked, failed } = splitErrors(result);
+    : definition.shape === "bundle" && (result as HeadlessBundleResult).sections.some((section) => "empty" in section && !!section.empty && !isLockedSection(section));
+  const { failed } = splitErrors(result);
   if (ownReason || failed.length) return null;
-  if (locked.length) return "Locked: Gloom Pro";
+  // The free view left everything empty: the Pro line is the whole report, said once.
+  if (gate) return gateLine(gate);
   const symbols = result.symbols ?? args.symbols;
   if (!symbols.length) return null;
   // An option the reader chose (a range, a tab) can leave a covered symbol empty, so coverage is not claimed then.
@@ -719,14 +749,15 @@ export function headlessReportTables(
       return _exhaustive;
     }
   }
-  const { locked, failed } = splitErrors(result);
+  const { failed } = splitErrors(result);
+  const gate = reportGate(definition, result);
   return {
     tables,
     identity: reportIdentity(definition, result, args),
     footer: reportFooterLines({
       freshness,
       incomplete: incompleteDetail(result, status),
-      locked,
+      locked: gate ? [gate] : [],
       errors: failed,
       notes: [...textNotices(result), ...(definition.exportWarnings ? result.warnings ?? [] : []), ...(result.notes ?? [])],
     }),
@@ -780,7 +811,8 @@ export function renderHeadlessPaneText(
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   const notices = textNotices(result);
   if (notices.length) lines.push(...notices, "");
-  const reason = emptyReportReason(definition, result, args, token);
+  const gate = reportGate(definition, result);
+  const reason = emptyReportReason(definition, result, args, token, gate);
   // Said once, not under the heading of each empty table.
   if (reason) lines.push(reason);
   else switch (definition.shape) {
@@ -807,8 +839,10 @@ export function renderHeadlessPaneText(
     }
   }
   if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
-  const { locked, failed } = splitErrors(result);
-  if (locked.length) lines.push("", ...renderMessages("Pro", locked));
+  const { failed } = splitErrors(result);
+  // One Pro line per report, whatever its tables lock; a report the free view left empty said it above.
+  const pro = gate ? gateLine(gate) : null;
+  if (pro && reason !== pro) lines.push("", pro);
   if (failed.length) lines.push("", ...renderMessages("Errors", failed));
   return [lines.join("\n").trimEnd(), "", cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)))].join("\n");
 }

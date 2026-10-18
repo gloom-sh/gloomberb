@@ -22,6 +22,8 @@ interface AttentionSection {
   columns: DataTableColumn[];
   rows: AttentionRow[];
   empty: string;
+  /** The free preview holds this view's rows back: a report says so once, on its Pro line, not under the view. */
+  locked?: boolean;
 }
 export interface AttentionModel {
   asOf: string | null;
@@ -33,6 +35,11 @@ export interface AttentionModel {
   partial: boolean;
   figures: StatItem[];
   sections: Record<AttentionTab, AttentionSection>;
+  /**
+   * Why every view is empty, when one reason covers them all: a ticker no observed app is mapped to. A report says
+   * it once in place of each view's own empty line.
+   */
+  unmapped?: string;
   /** `since`: the first capture, so a chart still collecting says when it began. */
   chart: { label: string; unit: string; points: Array<{ date: string; value: number | null }>; since?: string | null };
 }
@@ -153,7 +160,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     ] : [],
     sections: {
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
-      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : "History is accumulating from the first capture." },
+      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : "History is accumulating from the first capture.", ...(hiringHistoryLocked(data) ? { locked: true } : {}) },
       mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
       peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
       evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: row.title, location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "Posting title", value: row.title }, { label: "Location", value: row.location ?? "--" }, { label: "Country", value: row.country ?? "Unknown" }, { label: "Function", value: row.jobFunction ?? "Unclassified" }, { label: "Seniority", value: row.seniority ?? "Unclassified" }, { label: "Remote", value: row.remote === null ? "Unknown" : row.remote ? "Yes" : "No" }, { label: "Observed", value: row.observedAt }, { label: "Revision", value: String(row.revision) }, { label: "Confidence", value: percent(row.confidence) }, { label: "Reporting ticker", value: row.sourceTicker }] })), empty: "No primary posting evidence is available yet." },
@@ -191,7 +198,21 @@ export function sortAttentionRows(rows: AttentionRow[], columnId: string, direct
 const APP_COLUMNS = [column("name", "App", 27, false, true), column("symbol", "Ticker", 12), column("country", "Country", 9), column("chart", "Chart", 10), column("rank", "Rank", 7, true), column("change", "7D places", 12, true), column("rating", "Rating / 5", 12, true), column("ratings", "Ratings", 12, true), column("drift", "7D rating", 12, true), column("growth", "7D ratings", 12, true)];
 const APP_COMPANIES = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("score", "Score / 100", 13, true), column("velocity", "Places / day", 14, true), column("apps", "Apps", 8, true), column("countries", "Countries", 11, true), column("drift", "7D rating", 12, true), column("growth", "7D ratings", 12, true)];
 const appCompanyRow = (row: AppCompany): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, score: row.attentionScore, velocity: row.rankVelocity7d, apps: row.appCount, countries: row.countryCount, drift: row.ratingChange7d, growth: row.ratingCountGrowth7d } });
-export function appsModel(data: AppAttentionPayload, mix = "countries"): AttentionModel {
+/**
+ * Why a company's app report is empty when no observed app is mapped to its ticker at all: the charts are captured,
+ * none of their apps belongs to it, and no filter narrowed them. The free preview shows the first rows of what Pro
+ * sees, so an empty preview is never the free cap. Null when the report has rows, a filter is set, or nothing has
+ * been captured yet.
+ */
+function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
+  if (!data.symbol || filtered || data.apps.length || (data.page?.total ?? 0) > 0 || data.summary.appCount > 0) return null;
+  if (!data.coverage.sources.some((source) => source.captures > 0)) return null;
+  return `${data.symbol} has no mapped apps in the observed App Store and Google Play charts.`;
+}
+
+/** `filtered`: a country or chart narrows the rows, so an empty table is about the filter, not the company. */
+export function appsModel(data: AppAttentionPayload, mix = "countries", filtered = false): AttentionModel {
+  const unmapped = appsUnmappedReason(data, filtered);
   const evidence = data.evidence.map((row): AttentionRow => ({ id: `${row.revisionId}:${row.appId}`, url: row.sourceUrl, values: { name: row.name, country: row.country, chart: row.chart, rank: row.rank, observed: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "App", value: row.name }, { label: "App ID", value: row.appId }, { label: "Country / chart", value: `${row.country} / ${row.chart}` }, { label: "Rank", value: count(row.rank) }, { label: "Rating", value: row.rating?.toFixed(2) ?? "--" }, { label: "Ratings", value: count(row.ratingCount) }, { label: "Written reviews", value: count(row.reviewCount) }, { label: "Observed", value: row.observedAt }, { label: "Published", value: row.sourceUpdatedAt ?? "Unavailable" }, { label: "Revision", value: row.revisionId }, { label: "Supersedes", value: row.supersedesRevisionId ?? "Initial capture" }, { label: "Mapping confidence", value: percent(row.confidence) }, ...(row.mappingSourceUrl ? [{ label: "Ownership evidence", value: row.mappingSourceUrl }] : []), ...(row.ratingSourceUrl ? [{ label: "Rating evidence", value: row.ratingSourceUrl }] : [])] }));
   return {
     asOf: data.summary.lastObservedAt,
@@ -199,6 +220,7 @@ export function appsModel(data: AppAttentionPayload, mix = "countries"): Attenti
     locked: Object.values(data.locked).reduce((a, b) => a + b, 0),
     notices: [...data.coverage.limitations, ...(data.apps.some((row) => row.stale) ? ["Some app observations are stale."] : [])],
     partial: data.apps.some((row) => row.stale),
+    ...(unmapped ? { unmapped } : {}),
     // Seven-day figures appear once a week of captures can give them.
     figures: [
       { label: "Attention score", value: data.summary.attentionScore?.toFixed(1) ?? "--", detail: "/ 100" },
@@ -208,8 +230,8 @@ export function appsModel(data: AppAttentionPayload, mix = "countries"): Attenti
       ...(data.summary.ratingCountGrowth7d != null ? [{ label: "Ratings added", value: signed(data.summary.ratingCountGrowth7d), detail: "7D" }] : []),
     ],
     sections: {
-      table: { columns: APP_COLUMNS, rows: data.apps.map((row): AttentionRow => ({ id: `${row.sourceId}:${row.appId}`, app: { store: row.store, appId: row.appId, name: row.name, country: row.country, chart: row.chart }, symbol: row.symbol ?? undefined, url: row.appUrl, values: { name: row.name, symbol: row.symbol, country: row.country, chart: row.chart, rank: row.rank, change: row.rankChange7d, rating: row.rating, ratings: row.ratingCount, drift: row.ratingChange7d, growth: row.ratingCountGrowth7d }, details: [{ label: "App", value: row.name }, { label: "Developer", value: row.developer }, { label: "Parent ticker", value: row.symbol ?? "Unmapped" }, { label: "Genres", value: row.genres.join(", ") || "--" }, { label: "Observed", value: row.observedAt }, { label: "Ratings observed", value: row.ratingObservedAt ?? "Unavailable" }, { label: "Mapping confidence", value: percent(row.confidence) }, { label: "Mapping revision", value: row.mappingRevisionId ?? "Unmapped" }, { label: "Capture revision", value: row.revisionId }] })), empty: "No app observations match these filters yet." },
-      chart: { columns: [column("date", "Date", 12), column("score", "Score / 100", 14, true), column("change", "Change", 10, true), column("apps", "Apps", 9, true), column("countries", "Countries", 12, true), column("rating", "Rating / 5", 12, true), column("ratings", "Ratings", 13, true)], rows: data.history.map((point, i, all): AttentionRow => ({ id: point.date, date: point.date, values: { date: point.date, score: point.attentionScore, change: point.attentionScore != null && all[i - 1]?.attentionScore != null ? point.attentionScore - all[i - 1]!.attentionScore! : null, apps: point.appCount, countries: point.countryCount, rating: point.rating, ratings: point.ratingCount } })).reverse(), empty: data.access === "preview" && data.locked.history > 0 ? "Daily history is part of Gloom Pro." : "History is accumulating from the first capture." },
+      table: { columns: APP_COLUMNS, rows: data.apps.map((row): AttentionRow => ({ id: `${row.sourceId}:${row.appId}`, app: { store: row.store, appId: row.appId, name: row.name, country: row.country, chart: row.chart }, symbol: row.symbol ?? undefined, url: row.appUrl, values: { name: row.name, symbol: row.symbol, country: row.country, chart: row.chart, rank: row.rank, change: row.rankChange7d, rating: row.rating, ratings: row.ratingCount, drift: row.ratingChange7d, growth: row.ratingCountGrowth7d }, details: [{ label: "App", value: row.name }, { label: "Developer", value: row.developer }, { label: "Parent ticker", value: row.symbol ?? "Unmapped" }, { label: "Genres", value: row.genres.join(", ") || "--" }, { label: "Observed", value: row.observedAt }, { label: "Ratings observed", value: row.ratingObservedAt ?? "Unavailable" }, { label: "Mapping confidence", value: percent(row.confidence) }, { label: "Mapping revision", value: row.mappingRevisionId ?? "Unmapped" }, { label: "Capture revision", value: row.revisionId }] })), empty: unmapped ?? "No app observations match these filters yet." },
+      chart: { columns: [column("date", "Date", 12), column("score", "Score / 100", 14, true), column("change", "Change", 10, true), column("apps", "Apps", 9, true), column("countries", "Countries", 12, true), column("rating", "Rating / 5", 12, true), column("ratings", "Ratings", 13, true)], rows: data.history.map((point, i, all): AttentionRow => ({ id: point.date, date: point.date, values: { date: point.date, score: point.attentionScore, change: point.attentionScore != null && all[i - 1]?.attentionScore != null ? point.attentionScore - all[i - 1]!.attentionScore! : null, apps: point.appCount, countries: point.countryCount, rating: point.rating, ratings: point.ratingCount } })).reverse(), empty: data.access === "preview" && data.locked.history > 0 ? "Daily history is part of Gloom Pro." : "History is accumulating from the first capture.", ...(data.access === "preview" && data.locked.history > 0 ? { locked: true } : {}) },
       mix: mix === "spreads" ? { columns: [column("name", "App", 28, false, true), column("chart", "Chart", 10), column("best", "Best country", 15), column("bestRank", "Best rank", 11, true), column("worst", "Worst country", 15), column("worstRank", "Worst rank", 12, true), column("spread", "Rank spread", 13, true)], rows: data.spreads.map((row): AttentionRow => ({ id: `${row.appId}:${row.chart}:${row.category}`, values: { name: row.name, chart: row.chart, best: row.bestCountry, bestRank: row.bestRank, worst: row.worstCountry, worstRank: row.worstRank, spread: row.spread } })), empty: "Comparable country observations are accumulating." }
         : { columns: [column("country", "Country", 16, false, true), column("apps", "Apps", 9, true), column("ranked", "Ranked apps", 13, true), column("score", "Score / 100", 14, true), column("velocity", "Places / day", 15, true), column("date", "Observed", 12)], rows: data.countries.map((row): AttentionRow => ({ id: row.country, values: { country: row.country, apps: row.appCount, ranked: row.rankedApps, score: row.attentionScore, velocity: row.rankVelocity7d, date: row.observedAt.slice(0, 10) } })), empty: "Country observations are not available yet." },
       peers: { columns: APP_COMPANIES, rows: (data.symbol ? data.peers : data.companies).map(appCompanyRow), empty: "No comparable mapped companies yet." },

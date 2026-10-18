@@ -3,6 +3,7 @@ import type { PaneFooterSegment } from "../../../../../components";
 import { t, tf } from "../../../../../i18n";
 import { useAppLanguage } from "../../../../../i18n/react";
 import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
+import { NEWEST_STORY } from "../../../shared/report-freshness";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
 import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
@@ -41,13 +42,14 @@ export function useNewsArticleFooter({
     shortcutScope: `${registrationId}:news-upgrade`,
   });
 
-  // A report or capture of the pane says how far its stories are held back, as the footer does.
+  // A report or capture of the pane says how far its stories are held back, as the footer does, and dates the
+  // list by its newest story, named so it is not read as the time now.
   useRemoteUiNode({
     role: "report-freshness",
     label: "News freshness",
     getMetadata: () => (access.hasProAccess
-      ? { status: "live" }
-      : { status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60 }),
+      ? { status: "live", asOfLabel: NEWEST_STORY }
+      : { status: "delayed", delayMinutes: CLOUD_NEWS_DELAY_HOURS * 60, asOfLabel: NEWEST_STORY }),
   });
 
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {

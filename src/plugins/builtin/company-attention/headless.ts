@@ -49,7 +49,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
         return { complete: rank.access === "pro" && rank.page.nextOffset === null, sections: [{ title: "App rank history", rows: rank.rankHistory }], metadata: { nextOffset: rank.page.nextOffset, preview: rank.access === "preview", lockedRows: rank.locked, provenance: rank } };
       }
       const data = await fetchAttention(kind, args.symbols[0], { limit: Number(args.options.limit) || 100, offset: Number(args.options.offset) || 0, ...(typeof args.options.country === "string" ? { country: args.options.country } : {}), ...(typeof args.options.chart === "string" ? { chart: args.options.chart as AppChart } : {}), days: Number(args.options.days) || 90 }, ctx.apiClient);
-      const model = kind === "hiring" ? hiringModel(data as HiringPayload | HiringBoard) : appsModel(data as AppAttentionPayload);
+      const filtered = typeof args.options.country === "string" && !!args.options.country || typeof args.options.chart === "string" && !!args.options.chart;
+      const model = kind === "hiring" ? hiringModel(data as HiringPayload | HiringBoard) : appsModel(data as AppAttentionPayload, undefined, filtered);
       const offset = Number(args.options.offset) || 0;
       // The free preview ignores the offset, so it has no next page to point at.
       const nextOffset = kind === "hiring" && "total" in data ? !data.preview && offset + data.companies.length < data.total ? offset + data.companies.length : null : (data as AppAttentionPayload).page?.nextOffset ?? null;
@@ -59,11 +60,13 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
         complete: !model.preview && !model.partial && nextOffset === null,
         ...(lock ? { errors: [lock] } : {}),
         ...(notes.length ? { notes } : {}),
+        // A ticker no observed app is mapped to says so once, not under each empty view.
+        ...(model.unmapped ? { empty: model.unmapped } : {}),
         // The views the pane has tabs for, each headed by what its rows are.
         sections: attentionTabs(kind, args.symbols[0]).map((tab) => {
           const section = model.sections[tab];
           return { title: attentionSectionTitle(kind, tab, args.symbols[0]),
-            columns: section.columns.map(reportColumn), empty: section.empty,
+            columns: section.columns.map(reportColumn), empty: section.empty, ...(section.locked ? { locked: true } : {}),
             rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) };
         }),
         metadata: { nextOffset, asOf: model.asOf, preview: model.preview, lockedRows: model.locked, unit: model.chart.unit, provenance: data },

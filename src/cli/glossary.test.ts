@@ -136,7 +136,7 @@ test("the futures basis, curve shape and funding words are found by plain names 
   const basis = lookupGlossary("basis");
   expect([terms(basis.exact), terms(basis.partial)]).toEqual([["Futures basis"], ["Basis point", "Annualised basis"]]);
   expect(GLOSSARY.filter((entry) => /funding rate/i.test(entry.term))).toHaveLength(1);
-  expect(lookupGlossary("funding rate").exact[0]!.definition).toContain("APR % is the current 8h rate × 3 × 365");
+  expect(lookupGlossary("funding rate").exact[0]!.definition).toContain("1h rate × 24 × 365, 8h rate × 3 × 365");
 
   const curve = "Contract  Last  Vs Spot  Ann Basis\nBTCV26  81830.00  +0.25%  +4.3%\n\nFront spread\nLabel  State  Annualized Roll Yield\nBTCX26-BTCV26  contango  -5.71";
   expect(terms(reportGlossary("CTM", curve))).toEqual(["Futures contract", "Futures basis", "Annualised basis", "Contango", "Roll yield"]);

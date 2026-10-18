@@ -216,7 +216,8 @@ test("a pair or plain name opens the market it stands for, and a name nothing ma
 });
 
 test("a report that shows the APR % column footnotes what it annualises, and the rankings that do not show it say nothing", async () => {
-  const note = "APR = current 8h rate × 3 × 365: a simple annualisation of the current funding rate, not funding actually paid.";
+  // The market is Hyperliquid's, which funds hourly: its APR is the 1h rate × 24 × 365.
+  const note = "APR = current 1h rate × 24 × 365: a simple annualisation of the current funding rate, not funding actually paid.";
   for (const tab of ["history", "evidence"]) {
     const { result, text } = await report(tab);
     expect(result.notes, tab).toEqual([note]);
@@ -233,9 +234,11 @@ test("a report that shows the APR % column footnotes what it annualises, and the
   expect((await perpsHeadless.load(createTestHeadlessArgs({ argument: null, rawArgument: "", options: { tab: "board" } }), empty)).notes).toBeUndefined();
 });
 
-test("a free account's locked tables say Locked, and the Pro line says what Pro adds, apart from the errors", async () => {
+test("a free account's locked tables are left out, and one Pro line says what free shows and what Pro adds, apart from the errors", async () => {
   const locked = perpHistory({ locked: true, access: "preview" });
-  const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [market], access: "preview" }), evidence: [], methodologyUrl: "" }),
+  // The venues counted are those Gloom Cloud reports collecting; other sources are not venues.
+  const sources = ["hyperliquid", "hyperliquid:xyz", "binance", "bybit", "underlying"].map((source) => ({ source, lastOkAt: null, failures: 0 }));
+  const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [market], access: "preview" }), sources, evidence: [], methodologyUrl: "" }),
     getCloudPerpsHistory: async () => locked } as never;
   const run = async (tab: string) => {
     const args = createTestHeadlessArgs({ argument: "BTC", rawArgument: "BTC", options: { tab, days: "7", metric: "funding" } });
@@ -243,17 +246,19 @@ test("a free account's locked tables say Locked, and the Pro line says what Pro 
     return { result, text: renderHeadlessPaneText(perpsHeadless, result, args, "PERP") };
   };
   const history = await run("history");
-  expect(history.text.match(/^Locked: Gloom Pro$/gm)).toHaveLength(4);
-  expect(history.text).toContain("Pro: Full history requires Gloom Pro");
-  expect(history.text).not.toMatch(/No data|Errors/);
-  // JSON keeps the sections, and the lock stays in errors for readers that only look there.
-  const json = serializeHeadlessPaneResult(perpsHeadless, history.result) as { sections: Array<{ title: string; rows: unknown[]; empty?: string }>; errors: string[] };
+  const gate = "Pro: Free shows the latest funding, OI and premium (basis: fn CTM BTC). Gloom Pro adds Hyperliquid BTC history and every market on 3 venues · gloom.sh/cloud";
+  expect(history.text).toContain(gate);
+  expect(history.text.match(/Pro:/g)).toHaveLength(1);
+  expect(history.text).not.toMatch(/Locked|No data|Errors|Own observations|Paid funding/);
+  // JSON keeps the sections, marked locked, and the lock stays in errors for readers that only look there.
+  const json = serializeHeadlessPaneResult(perpsHeadless, history.result) as { sections: Array<{ title: string; rows: unknown[]; locked?: boolean }>; errors: string[] };
   expect(json.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
-  expect(json.sections[1]).toMatchObject({ rows: [], empty: "Locked: Gloom Pro" });
-  expect(json.errors).toEqual(["Full history requires Gloom Pro"]);
+  expect(json.sections[1]).toMatchObject({ rows: [], locked: true });
+  expect(json.sections[0]).not.toHaveProperty("locked");
+  expect(json.errors).toEqual([gate.slice("Pro: ".length).replace(" · gloom.sh/cloud", ".")]);
   const evidence = await run("evidence");
-  expect(evidence.text).toMatch(/Observation revisions\nLocked: Gloom Pro/);
-  expect(evidence.text).toContain("Pro: Full evidence requires Gloom Pro");
+  expect(evidence.text).not.toMatch(/Observation revisions|Locked/);
+  expect(evidence.text).toContain("Pro: Free shows BTC's latest evidence and positioning. Gloom Pro adds its observation revisions · gloom.sh/cloud");
 });
 
 test("a venue filter names no count it does not have, and a venue with no contract to show is said", async () => {
@@ -276,7 +281,8 @@ test("a venue filter names no count it does not have, and a venue with no contra
   expect(bybit.text).toContain("Pro: Bybit markets beyond the free preview need Gloom Pro");
   expect(bybit.text).not.toContain("2,501");
   const none = await load(null, { tab: "board", venue: "kraken" });
-  expect(none.text).toMatch(/Markets\nLocked: Gloom Pro\n\nPro: Kraken markets beyond the free preview need Gloom Pro/);
+  expect(none.text).toMatch(/Perpetual markets\n\nPro: Kraken markets beyond the free preview need Gloom Pro · gloom.sh\/cloud\n/);
+  expect(none.text.match(/Pro:/g)).toHaveLength(1);
   expect(none.text).not.toContain("No data");
 
   // A market opens on the venue asked for, listed on the board or not; only a venue with no contract to open is said.
