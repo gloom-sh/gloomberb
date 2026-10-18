@@ -7,6 +7,7 @@ import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
 import {
   addSymbols,
+  failedReason,
   failedRow,
   listingRow,
   NO_MATCH,
@@ -59,7 +60,7 @@ function rowLine(row: SymbolRow, verb: Verb): string {
     case "removed": return cliStyles.success(`Removed ${label}`);
     case "not_listed": return cliStyles.warning(`Not in the list: ${label}`);
     case "not_found": return cliStyles.danger(`Not found: ${typed}${row.message && !NO_MATCH.test(row.message) ? ` (${reason(row.message, typed)})` : ""}${row.suggestion ? `; did you mean ${row.suggestion}?` : ""}`);
-    case "failed": return cliStyles.danger(`Not ${verb === "add" ? "added" : "removed"}: ${typed} (${reason(row.message ?? "", typed)})`);
+    case "failed": return cliStyles.danger(`Not ${verb === "add" ? "added" : "removed"}: ${typed} (${failedReason(row, typed)})`);
   }
 }
 

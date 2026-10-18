@@ -19,17 +19,20 @@ import {
   listingChoiceNote,
   listingReadNotes,
   listingVenues,
+  movedSymbolLine,
   notTradedMessage,
   quoteBareListing,
   resolveCliListing,
   savedListingName,
   type CliListing,
+  type ListingChoice,
   type ListingDeps,
 } from "./listing-arg";
-import { noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
+import { listingChangeLine, loadListingFate, noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
 import {
   describeFormerIssuer,
   describeTickerChange,
+  movedAwayChange,
   startTickerChangeLookup,
   tickerChangeLine,
   type CurrentListing,
@@ -107,6 +110,25 @@ export class CoinListingError extends ListingArgError {
   }
 }
 
+/**
+ * A bare symbol several companies list, so it went to none of them: `choices`
+ * are the first listings to pick from, of `listingCount`, and `successor` what
+ * search says became of the symbol ("NEP became XIFR on 2025-02-03"), often the
+ * company meant. `details` has both, each with the command that adds it.
+ */
+export class ListingChoiceError extends ListingArgError {
+  constructor(
+    message: string,
+    details: string,
+    override readonly choices: readonly ListingChoice[],
+    readonly listingCount: number,
+    readonly successor: string | null,
+  ) {
+    super(message, details, choices);
+    this.name = "ListingChoiceError";
+  }
+}
+
 /** Search found no listing for the symbol: the message says so, or why (no longer trading, not on that exchange). */
 export class TickerNotFoundError extends ListingArgError {
   constructor(message: string) {
@@ -161,7 +183,14 @@ export async function resolveCliTicker(
     if (!bare) throw error;
     if (bare.kind === "missing") {
       const hint = coinElsewhereNote(listing.symbol, error.listings.map((key) => ({ key, name: error.listingNames[key] ?? "" })));
-      throw hint ? new CoinListingError(bare.message, bare.details, hint) : new ListingArgError(bare.message, bare.details);
+      if (hint) throw new CoinListingError(bare.message, bare.details, hint);
+      if (!bare.choose) throw new ListingArgError(bare.message, bare.details);
+      // What search says became of the symbol: a company that moved away (NEP became XIFR) is often the one meant.
+      const fate = await loadListingFate(listing, dataProvider, changes ? { changes } : {});
+      const successor = listingChangeLine(fate);
+      const moved = movedAwayChange(fate.change);
+      const successorLine = moved && options.retry ? movedSymbolLine(moved, options.retry(moved.tradesAs)) : successor;
+      throw new ListingChoiceError(bare.message, [bare.details, successorLine].filter(Boolean).join("\n"), bare.choices, bare.listings.length, successor);
     }
     resolved = await search(bare.listing.key);
     bareNote = bare.note;

@@ -17,9 +17,9 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
-import { loadListingFate } from "../../tickers/listing-fate";
+import { listingChangeLine, loadListingFate } from "../../tickers/listing-fate";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
-import { formerIssuerLine, startTickerChangeLookup, tickerChangeLine, type TickerChangeLookup } from "../../tickers/ticker-changes";
+import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import type { MarketContext } from "../types";
@@ -180,7 +180,7 @@ async function searchFate(
     }
     : null;
   // The row says when a listing stopped; a company that left the symbol, or merged away from it (GOGL), is a line of its own.
-  const changed = tickerChangeLine(fate.change) ?? fate.formerIssuer?.note;
+  const changed = listingChangeLine(fate);
   return { stopped, notes: changed ? [changed] : fate.note && !stopped ? [fate.note] : [] };
 }
 

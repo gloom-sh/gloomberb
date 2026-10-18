@@ -25,6 +25,7 @@ import {
   capabilityPluginState,
   getPaneFunctionCapability,
   isDataPaneForDomFallback,
+  noArgumentMessage,
   normalizeCapabilityOptions,
 } from "./capabilities";
 import {
@@ -194,6 +195,15 @@ describe("pane function capabilities", () => {
     // A function with no options says so.
     expect(() => normalizeCapabilityOptions({ ...intraday, options: [] }, { range: "1Y" }, { code: "CDX" }))
       .toThrow("CDX does not support --range. It has no options.");
+  });
+
+  test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {
+    expect(noArgumentMessage(jodiHeadless.options, "JODI", "Gas"))
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas");
+    // Anything else gets an example: a choice that is not the default, in the command that was run.
+    expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
+    expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
   });
 });
 

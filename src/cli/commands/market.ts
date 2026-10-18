@@ -173,6 +173,7 @@ import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSugges
 import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { readNameEntries, readPhraseArgument } from "../name-entries";
+import { readSymbolList, SymbolListError } from "../symbol-list";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { knownGapForTicker, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
@@ -283,6 +284,36 @@ function uniqueEntries(entries: readonly string[]): string[] {
 async function readSymbols(symbols: readonly string[], dataProvider: Parameters<typeof readNameEntries>[1]): Promise<string[]> {
   return uniqueEntries(await readNameEntries(symbols, dataProvider));
 }
+
+/**
+ * The symbols of `--file <path>` or standard input (`-`), with any typed
+ * beside them, read by the parser `watchlist add` uses. Standard input is read
+ * only when asked for, so a script that pipes in nothing never waits on it.
+ */
+async function readListedSymbols(
+  args: readonly string[],
+  file: string | undefined,
+  market: MarketContext,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+  usage: string,
+): Promise<string[]> {
+  try {
+    const list = await readSymbolList({
+      args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider),
+    });
+    if (list.symbols.length === 0) ctx.fail(`No symbols in ${file && file !== "-" ? file : "standard input"}.`, usage);
+    return uniqueEntries(list.symbols);
+  } catch (error) {
+    if (error instanceof SymbolListError) ctx.fail(error.message, usage);
+    throw error;
+  }
+}
+
+/** `--file` of quote and compare, as `watchlist add` takes it. */
+const LIST_FILE_OPTION = {
+  flags: "--file <path>",
+  description: "Read the symbols from a CSV or text file, as watchlist add does (- reads standard input)",
+};
 
 /** What JSON metadata says about the listing a command resolved. */
 function listingMetadata(identity: ListingIdentity) {
@@ -653,17 +684,22 @@ function quoteChangeLine(change: TickerChange | null | undefined, formerIssuer?:
 
 async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
   const args = [...rawArgs];
+  const usage = `Usage: gloomberb ${commandName} <symbol...> [--file <path>]`;
   const exchange = takeOption(args, "--exchange") ?? "";
+  // A list from a file or standard input (`-`), read as `watchlist add` reads one.
+  const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
+  const listed = file != null || args.includes("-");
   const entries = normalizeSymbols(args);
-  if (entries.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
+  if (entries.length === 0 && !listed) ctx.fail(usage);
   // One quoted argument with spaces is a company's name, a pasted line of tickers, or a phrase to search for.
-  const phrase = exchange ? null : quotedPhrase(args);
+  const phrase = exchange || listed ? null : quotedPhrase(args);
 
   await withMarketData(ctx, async (market) => {
     const read = phrase ? await readPhraseArgument(phrase, market.dataProvider) : null;
     if (read?.kind === "phrase") return answerPhrase(read.phrase, market, ctx);
     const symbols = read?.kind === "name" ? [read.name]
       : read?.kind === "symbols" ? uniqueEntries(read.symbols)
+      : listed ? await readListedSymbols(args, file, market, ctx, usage)
       : await readSymbols(entries, market.dataProvider);
     // With several symbols, --exchange is for the ones that name no exchange of their own.
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
@@ -1980,9 +2016,9 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Show the latest price for one or more symbols",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: ["quote <symbol...>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote binance:BZUSDT", "quote AAPL --json"],
+      usage: ["quote <symbol...>", "quote --file <path>"],
+      options: [EXCHANGE_OPTION, LIST_FILE_OPTION],
+      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote binance:BZUSDT", "quote AAPL --json", "quote --file holdings.csv"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "quote"),
   },
@@ -1991,9 +2027,9 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Compare quotes for several symbols side by side",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: ["compare <symbol...>"],
-      options: [EXCHANGE_OPTION],
-      examples: ["compare KO PEP", "compare SAN:EPA SAN:NYSE", "compare SPY QQQ IWM --csv"],
+      usage: ["compare <symbol...>", "compare --file <path>"],
+      options: [EXCHANGE_OPTION, LIST_FILE_OPTION],
+      examples: ["compare KO PEP", "compare SAN:EPA SAN:NYSE", "compare SPY QQQ IWM --csv", "compare - < peers.txt"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "compare"),
   },

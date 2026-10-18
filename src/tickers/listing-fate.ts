@@ -90,6 +90,15 @@ export interface ListingFate {
   formerIssuer: FormerIssuer | null;
 }
 
+/**
+ * The one line `search` says about what became of a symbol: a company that
+ * left it ("NEP became XIFR on 2025-02-03"), else one that merged away from
+ * it (GOGL). Null for a symbol nothing became of.
+ */
+export function listingChangeLine(fate: Pick<ListingFate, "change" | "formerIssuer">): string | null {
+  return tickerChangeLine(fate.change) ?? fate.formerIssuer?.note ?? null;
+}
+
 /** Nothing became of the symbol, or nothing could be told. */
 export const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null, formerIssuer: null };
 /** How long a fate waits for a change lookup it started late, or for a stopped line's. */

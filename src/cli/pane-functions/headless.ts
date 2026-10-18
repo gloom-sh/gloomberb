@@ -44,6 +44,7 @@ import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
+import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
 
 interface SerializableHeadlessColumn {
@@ -114,7 +115,7 @@ export function buildHeadlessPaneLoadArgs(
   const raw = rawArgument.trim();
   switch (definition.argument.kind) {
     case "none":
-      if (raw) throw new Error(`${token} does not accept an argument.`);
+      if (raw) throw new Error(noArgumentMessage(definition.options, token, raw));
       return { rawArgument: raw, argument: null, symbols: [], options };
     case "free-text":
       if (!raw && !definition.argument.optional) throw requiredArgumentError(definition, token);

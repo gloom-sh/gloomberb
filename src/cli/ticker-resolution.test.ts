@@ -7,7 +7,8 @@ import type { Quote } from "../types/financials";
 import type { TickerChanges } from "../types/ticker-changes";
 import { ListingArgError, savedListingName } from "./listing-arg";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
-import { resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
+import { ListingChoiceError, resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
+import { failedReason, failedRow } from "./symbol-rows";
 
 const persistences: AppPersistence[] = [];
 
@@ -185,4 +186,39 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   const many = ["FB", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)];
   const [listed] = await resolveTickersForCli(many, tickerStore(), online, undefined, { retryWaitsMs: [] });
   expect(listed).toMatchObject({ input: "FB", notes: [], change: null });
+});
+
+test("a symbol several companies list names their listings and, when its own company moved, where it went, on its own and in a list", async () => {
+  const row = { providerId: "test", symbol: "NEP", currency: "EUR", type: "Common Stock" };
+  const dataProvider = createTestDataProvider({
+    // Search no longer lists the US NEP, only two other companies' lines; its own quote stopped when it became XIFR.
+    search: async (query) => query.startsWith("NEP")
+      ? [{ ...row, name: "Nep Realty & Industry Public Company Ltd.", exchange: "SET" }, { ...row, name: "Sloman Neptun Schiffahrts-AG", exchange: "XHAM" }]
+      : [],
+    getQuote: async (symbol, exchange) => createTestQuote({
+      symbol, name: "NextEra Energy Partners, LP", listingExchangeName: exchange || "NYSE", price: 10.47, stale: true,
+      lastUpdated: Date.parse("2025-02-01T00:16:00Z"),
+    }),
+    getTickerChanges: async (symbol) => symbol === "NEP" ? {
+      symbol: "NEP",
+      moved: { symbol: "XIFR", name: "XPLR Infrastructure, LP", hops: [{ from: "NEP", to: "XIFR", date: "2025-02-03" }] },
+      formerly: null,
+      listedName: null,
+      changes: [{ from: "NEP", to: "XIFR", date: "2025-02-03" }],
+    } : null,
+  });
+  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+
+  const alone = await failed(resolveCliTicker("NEP", tickerStore(), dataProvider, undefined, { retry }));
+  expect(alone).toBeInstanceOf(ListingChoiceError);
+  expect(alone?.message).toBe("Choose an exchange for NEP.");
+  expect(alone?.details?.split("\n").at(-1)).toBe("NEP became XIFR on 2025-02-03: `gloomberb watchlist add Growth XIFR`");
+
+  // A list's line says the same in one line, also past the length that skips change lookups for the rest.
+  for (const symbols of [["NEP", "ZZ"], ["NEP", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)]]) {
+    const [nep] = await resolveTickersForCli(symbols, tickerStore(), dataProvider, undefined, { retry, retryWaitsMs: [] });
+    const failure = failedRow("NEP", nep!.error!);
+    expect(failure.choices?.map((choice) => choice.key)).toEqual(["NEP:SET", "NEP:XHAM"]);
+    expect(failedReason(failure, "NEP")).toBe("Choose an exchange for NEP: NEP:SET, NEP:XHAM; NEP became XIFR on 2025-02-03");
+  }
 });

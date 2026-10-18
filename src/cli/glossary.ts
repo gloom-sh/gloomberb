@@ -29,8 +29,10 @@ export interface GlossaryEntry {
 export const GLOSSARY: readonly GlossaryEntry[] = [
   // Treasury auctions (AUCT).
   {
-    term: "Bid-to-cover", short: "B/C", aliases: ["btc", "cover ratio"], functions: ["AUCT"],
-    definition: "Dollars bid for every dollar of securities the Treasury sold. A higher ratio means more demand.",
+    term: "Bid-to-cover", short: "B/C", aliases: ["btc", "cover ratio", "auction cover"], functions: ["AUCT", "EPWR"],
+    shown: ["Bid-to-cover", "B/C", "Cover"],
+    definition: "What bidders asked for over what was sold: dollars bid for every dollar of securities the Treasury sold, or, as an EUA auction's Cover, "
+      + "allowances bid for over allowances on offer (2.09x is bids for about twice the volume). A higher ratio means more demand.",
   },
   {
     term: "Indirect", aliases: ["indirect bidders", "indirect bid", "indirect share"], functions: ["AUCT"],
@@ -306,6 +308,28 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "EU Allowance: the right to emit one tonne of CO2 under the EU Emissions Trading System, priced in euros per tonne.",
   },
   {
+    term: "1Y range", aliases: ["52-week range", "52w range", "52w low", "52w high", "in 1y range"], functions: ["EPWR"],
+    shown: ["In 1Y range", "52W low", "52W high"],
+    definition: "The lowest and highest daily price of the past 52 weeks. In 1Y range places the latest price between them: 0% at the low, 100% at the high.",
+  },
+  // European gas storage (EPWR GAS).
+  {
+    term: "Gas day", aliases: ["gas days", "eu gas day"], functions: ["EPWR"], shown: ["Gas day", "gas day"],
+    definition: "The day gas storage is counted by, 06:00 to 06:00 Central European time, named by the date it starts; a row's level is the gas in storage at its end. "
+      + "Each area is dated by its own latest gas day, so an area whose operators report early can be a day ahead of the EU total.",
+  },
+  {
+    term: "Estimated", short: "est", aliases: ["estimate", "confirmed", "gas storage status"], functions: ["EPWR"], shown: ["estimated", "est"],
+    definition: "A gas day the storage operators have not confirmed yet, so its figures may change. The current gas day is always an estimate, "
+      + "and the EU total stays estimated while any operator's day is. Confirmed days can still be revised later.",
+  },
+  {
+    term: "5Y range", aliases: ["five-year range", "5-year range", "5y low", "5y avg", "5y high", "5y years", "in 5y range"], functions: ["EPWR"],
+    shown: ["5Y low", "5Y avg", "5Y high", "5Y years", "In 5Y range"],
+    definition: "The lowest, average and highest % full on the same calendar day in the five years before the gas day's own; 5Y years counts those with a reading, "
+      + "fewer where history is short. In 5Y range places the day between that low (0%) and high (100%), and says below or above outside it.",
+  },
+  {
     term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract", "most active", "most active contract"],
     functions: ["FUT", "CTM"], shown: ["most active"],
     definition: "The nearest contract still trading, which is the one about to expire. Rolls follow volume: a continuous symbol (CL=F), "
@@ -357,9 +381,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     // Drift prints it after each figure (+2.3pp), never as a word of its own.
-    term: "Percentage point", short: "pp", aliases: ["percentage points", "percent points", "ppt"], functions: ["PF"],
-    shown: ["Drift"],
-    definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%.",
+    term: "Percentage point", short: "pp", aliases: ["percentage points", "percent points", "ppt"], functions: ["PF", "EPWR"],
+    // EPWR heads its columns with it (1D pp, Vs 1Y pp).
+    shown: ["Drift", "pp"],
+    definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%, "
+      + "and gas storage going from 74.31% to 74.46% full is up 0.15pp.",
   },
   // Financial statements and ratios (FA).
   {

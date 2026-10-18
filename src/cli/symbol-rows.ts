@@ -1,10 +1,10 @@
 import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { listingFields, savedListingName } from "./listing-arg";
+import { listingFields, savedListingName, type ListingChoice } from "./listing-arg";
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
 import { describeSuggestion, isPlainNoMatch, suggestListings } from "./listing-suggestion";
-import { CoinListingError, resolveTickersForCli, TickerNotFoundError } from "./ticker-resolution";
+import { CoinListingError, ListingChoiceError, resolveTickersForCli, TickerNotFoundError } from "./ticker-resolution";
 
 /** What became of one symbol of an add or remove. */
 export type SymbolStatus = "added" | "already_listed" | "removed" | "not_listed" | "not_found" | "failed";
@@ -32,6 +32,11 @@ export interface SymbolRow extends Record<string, unknown> {
    * Solvay), and the pair to use instead. Also in `notes` when the symbol was added.
    */
   hint: string | null;
+  /** A bare symbol several companies list: the first listings to choose from, and how many there are in all. */
+  choices?: readonly ListingChoice[];
+  listingCount?: number;
+  /** What became of a symbol that asks for a choice, as `search` says it: "NEP became XIFR on 2025-02-03". */
+  successor?: string;
 }
 
 export type Verb = "add" | "remove";
@@ -60,7 +65,23 @@ export function listingRow(
 
 export function failedRow(input: string, error: Error, status: SymbolStatus = error instanceof TickerNotFoundError ? "not_found" : "failed"): SymbolRow {
   const hint = error instanceof CoinListingError ? error.hint : null;
-  return { input, status, listing: null, symbol: null, exchange: null, name: null, message: error.message, notes: null, hint };
+  const choice = error instanceof ListingChoiceError
+    ? { choices: error.choices, listingCount: error.listingCount, ...error.successor ? { successor: error.successor } : {} }
+    : {};
+  return { input, status, listing: null, symbol: null, exchange: null, name: null, message: error.message, notes: null, hint, ...choice };
+}
+
+/**
+ * Why a row was not added or removed, as its line's parentheses say it: the
+ * listings to choose from after a choice it asks for ("Choose an exchange for
+ * NEP: NEP:SET, NEP:XHAM"), and after them what became of the symbol.
+ */
+export function failedReason(row: SymbolRow, subject: string): string {
+  const text = reason(row.message ?? "", subject);
+  if (!row.choices?.length) return text;
+  const more = (row.listingCount ?? row.choices.length) - row.choices.length;
+  const listings = `${row.choices.map((choice) => choice.key).join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  return `${text}: ${listings}${row.successor ? `; ${row.successor}` : ""}`;
 }
 
 /** The plain no-match answer, which a "Not found" line already says. */

@@ -188,7 +188,8 @@ export async function loadPowerPricesReport(argument: string | undefined, client
 
 export const powerPricesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  argument: { kind: "free-text", optional: true, placeholder: "market", description: "A market such as DE, FR, GB or Spain, EUA for the carbon auctions, or GAS [EU|DE|...] for gas storage; omit for every market and the EUA." },
+  argument: { kind: "free-text", optional: true, placeholder: "market", description: "A market such as DE, FR, GB or Spain, EUA for the carbon auctions, or GAS [EU|DE|...] for gas storage; omit for every market and the EUA.",
+    examples: ["DE", "EUA", "GAS", "GAS DE"] },
   options: [],
   freshness: { source: "Ember", status: "not-a-feed", basis: "day-ahead auction", dataset: true },
   discovery: { aliases: ["EPWR"], dataRequirements: ["Gloom Cloud European power, carbon and gas storage figures"],

@@ -160,3 +160,15 @@ test("VIX explains its curve in the volatility sense, and contango and backwarda
   // A futures curve's report keeps the futures meaning alone.
   expect(terms(reportGlossary("CTM", "Label  State\nBTCX26-BTCV26  contango"))).toEqual(["Contango"]);
 });
+
+test("EPWR explains the gas storage and EUA words its report heads columns with", () => {
+  const gas = [
+    "Area  Gas day     Status     % full  1D pp  TWh  Vs 1Y pp  5Y low  5Y avg  5Y high  5Y years  In 5Y range",
+    "EU    2026-10-17  estimated   74.46  +0.15  843.6  -8.29   77.12   89.11    97.95         5        below",
+    "",
+    "Source: GIE AGSI+ · EU gas day 2026-10-17 · lag 1 day",
+  ].join("\n");
+  expect(terms(reportGlossary("EPWR", gas))).toEqual(["Gas day", "Estimated", "5Y range", "Percentage point"]);
+  const eua = "Allowance  As of  EUR/tCO2  1D  52W low  52W high  In 1Y range\n\nLatest EUA auctions\nDate  Zone  Status  EUR/tCO2  Volume tCO2  Cover  Bidders";
+  expect(terms(reportGlossary("EPWR", eua))).toEqual(["Bid-to-cover", "EUA", "1Y range"]);
+});

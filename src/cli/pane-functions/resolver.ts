@@ -39,6 +39,7 @@ import {
   capabilityPaneSettings,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
+  noArgumentMessage,
   normalizeCapabilityOptions,
   type NormalizedPaneFunctionOptions,
   type PaneFunctionCapability,
@@ -279,6 +280,10 @@ export async function resolvePaneFunction(
   }
   // What the user types for the function, which every error about it names.
   const token = template?.shortcut?.prefix ?? template?.id ?? pane.id;
+  // A word after a function that takes none is most often one of its option values (`fn JODI gas`).
+  if (headless?.argument.kind === "none" && args.arg?.trim()) {
+    throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
+  }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,

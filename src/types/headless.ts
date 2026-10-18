@@ -26,6 +26,12 @@ export interface HeadlessPaneArgumentDef {
   minimum?: number;
   /** Maximum item count for ticker and symbol list arguments. */
   maximum?: number;
+  /**
+   * Arguments as typed after the function (`GAS`, `EUA`), which the catalog
+   * shows as examples: for an argument that takes forms its placeholder does
+   * not name.
+   */
+  examples?: readonly string[];
 }
 
 export interface HeadlessPaneOptionValue {

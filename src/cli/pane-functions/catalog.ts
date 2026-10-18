@@ -10,6 +10,9 @@ import {
 import {
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
+  MAX_INLINE_CHOICES,
+  optionChoices,
+  optionFlags,
   type PaneFunctionCapability,
   type PaneFunctionOptionDef,
   type PaneFunctionReadiness,
@@ -47,6 +50,8 @@ export interface PaneCatalogEntry {
   aliases: string[];
   argKind?: string;
   argPlaceholder?: string;
+  /** Arguments the examples show it with, past the placeholder (`GAS`, `EUA` for EPWR). */
+  argExamples?: readonly string[];
   /** What `shot` takes when the pane shows one ticker but the report ranks several (DVD). */
   shotArgument?: string;
   keywords: string[];
@@ -250,6 +255,7 @@ async function buildTemplateCatalogEntry(
     aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: headless?.argument.kind ?? template.shortcut?.argKind,
     argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
+    ...(headless?.argument.examples?.length ? { argExamples: headless.argument.examples } : {}),
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
     keywords: template.keywords ?? [],
@@ -285,6 +291,7 @@ export async function buildPaneCatalogEntries(
       aliases,
       argKind: pane.headless?.argument.kind,
       argPlaceholder: pane.headless?.argument.placeholder,
+      ...(pane.headless?.argument.examples?.length ? { argExamples: pane.headless.argument.examples } : {}),
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),
@@ -550,19 +557,6 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
   return cliStyles.muted(label);
 }
 
-// Choices longer than this move from the flag into its description, where they can wrap.
-const MAX_INLINE_CHOICES = 24;
-
-function optionChoices(option: PaneFunctionOptionDef): string[] {
-  return option.values?.map(({ value }) => String(value)) ?? [];
-}
-
-function optionFlags(option: PaneFunctionOptionDef): string {
-  const choices = optionChoices(option).join("|");
-  const value = choices && choices.length <= MAX_INLINE_CHOICES ? choices : option.values?.length ? "value" : option.placeholder ?? option.type;
-  return `--${option.key} <${value}>`;
-}
-
 function optionDescription(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option);
   const parts = [option.description.replace(/\.$/, "")];
@@ -613,6 +607,7 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   lines.push("", renderSection("Examples"));
   if (capability.reportReadiness !== "unsupported") {
     lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
+    for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloomberb fn ${entry.token} ${example}`, width));
     for (const option of capability.options) {
       if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
     }
