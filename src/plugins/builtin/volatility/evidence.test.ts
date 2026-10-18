@@ -28,10 +28,10 @@ test("history evidence proves plotted legs, dated ratios and gaps independently 
   expect(readVolatilityEvidence({ ...evidence, plottedValueCount: 100 })).toBeNull();
 });
 
-test("loading, stale FRED and missing curve tenors cannot claim complete evidence", () => {
+test("loading, stale closes and missing curve tenors cannot claim complete evidence", () => {
   expect(volatilitySemanticEvidence(result(), "history", null, true).complete).toBe(false);
   const stale = result();
-  stale.data.fred.metrics[0]!.stale = true;
+  stale.data.term.stale = true;
   const history = volatilitySemanticEvidence(stale, "history", null, false);
   expect(history.complete).toBe(false);
   expect(readVolatilityEvidence({ ...history, complete: true })).toBeNull();

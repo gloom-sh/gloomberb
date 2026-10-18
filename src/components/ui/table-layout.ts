@@ -103,6 +103,26 @@ export function getTableWidth(
 }
 
 /**
+ * The columns that fit in `width` cells: whole columns in `dropOrder` (least
+ * needed first) give way until the rest fit, rather than the table's right
+ * edge cutting a value, so a narrow pane drops a name that repeats its ticker
+ * before it cuts a date. Columns not listed stay at every width. A table that
+ * scrolls vertically passes its width less the scrollbar's cell.
+ */
+export function dropColumnsToFit<C extends TableWidthColumn & { id: string }>(
+  columns: readonly C[],
+  width: number,
+  dropOrder: readonly string[],
+): C[] {
+  let shown = [...columns];
+  for (const id of dropOrder) {
+    if (getTableWidth(shown) <= width) break;
+    shown = shown.filter((column) => column.id !== id);
+  }
+  return shown;
+}
+
+/**
  * Where each column's content starts, in cells from the first column, counting
  * the gap after every column and any lead gap before it. Takes columns already
  * at their drawn width (after normalizeTableColumns or expandTableColumns).

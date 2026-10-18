@@ -1,8 +1,7 @@
 import { apiClient } from "../../../api-client";
-import type { SeriesDefinition } from "../../../series/types";
-import { loadFredPoints } from "../shared/fred-points";
-import { cachedSeriesWarning } from "../shared/series-warning";
-import { IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES } from "./model";
+import type { SeriesAttribution, SeriesDefinition } from "../../../series/types";
+import { loadVolatilityTermHistory } from "./client";
+import { IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, type VolatilityTermHistory } from "./model";
 
 /** VIX and VIX 3M come from FRED's daily closes, listed with the other FRED series. */
 const FRED_LISTED = new Set(["vix", "vix3m"]);
@@ -32,6 +31,18 @@ async function loadImpliedCorrelation(code: string) {
   if (!match) throw new Error(`${code} history is unavailable.`);
   return match.observations.filter((row) => Number.isFinite(row.value) && row.value > 0)
     .map((row) => ({ date: row.date, value: row.value }));
+}
+
+/**
+ * Who a chart of the ratio cites: the publisher of its latest closes and the
+ * formula, with FRED named when it fills dates Cboe's closes do not reach.
+ */
+function termAttribution(term: VolatilityTermHistory): SeriesAttribution | undefined {
+  if (!term.publisher) return undefined;
+  if (term.publisher === "FRED") return { source: "FRED, VIX 3M / VIX (VXVCLS / VIXCLS)", publisher: "FRED" };
+  const filled = term.ratioHistory.some((point) => point.publisher === "FRED");
+  return filled ? { source: "Cboe, VIX 3M / VIX (FRED for earlier dates)", publisher: "Cboe, FRED" }
+    : { source: "Cboe, VIX 3M / VIX", publisher: "Cboe" };
 }
 
 /** Every index on the curve and the board, by its own close; implied correlation from its daily history. */
@@ -67,17 +78,14 @@ export const VOLATILITY_SERIES: readonly SeriesDefinition[] = [
     frequency: "daily",
     group: "Volatility",
     tags: ["term structure", "contango", "backwardation", "VIX"],
-    description: "VIX 3M over VIX on each date both closed; above 1 is contango.",
-    load: async ({ start }) => {
-      const [spot, threeMonth] = await Promise.all([loadFredPoints("VIXCLS", start), loadFredPoints("VXVCLS", start)]);
-      const spotByDate = new Map(spot.points.map((point) => [point.date, point.value]));
-      const warning = cachedSeriesWarning(spot) ?? cachedSeriesWarning(threeMonth);
+    description: "VIX 3M over VIX on each date both closed, from Cboe's daily closes and FRED's before them; above 1 is contango.",
+    load: async ({ start, signal }) => {
+      const { term, warning } = await loadVolatilityTermHistory({ ...(start ? { start } : {}), ...(signal ? { signal } : {}) });
+      const attribution = termAttribution(term);
       return {
-        points: threeMonth.points.flatMap((point) => {
-          const base = spotByDate.get(point.date);
-          return base != null && base > 0 && point.value != null ? [{ date: point.date, value: point.value / base }] : [];
-        }),
+        points: term.ratioHistory.map((point) => ({ date: point.date, value: point.value })),
         ...(warning ? { warning } : {}),
+        ...(attribution ? { attribution } : {}),
       };
     },
   },

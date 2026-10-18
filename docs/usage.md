@@ -316,7 +316,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`, which adds each contract's premium to spot and annualised basis, `(Last / spot - 1) × 365 / days to expiry`) |
 | `COT [code or root]` / `CFTC [code or root]` | CFTC positioning extremes, weekly changes and historical percentiles, including CME crypto (`COT BTC`) |
 | `AUCT [search]` | Treasury auction results: auction rate (a TIPS rate is a real yield and an FRN's a spread in bp, marked in the CLI text), stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size. Search by type, benchmark (`AUCT 10Y` finds the 10-year note and its reopenings), term, CUSIP or date; windows reach back 10 years (`--historyDays 3650`) or to Fiscal Data's first auction on 1979-10-31 (`--historyDays all`) |
-| `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |
+| `VIX` | VIX 9D through 1Y cash-tenor curve, VIX and VIX 3M history and the 3M/30D ratio |
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
 | `CRD` | Credit spreads |
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |

@@ -1,6 +1,6 @@
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createVolatilityDependencies, loadVolatilityData, type VolatilityLoadResult } from "./client";
-import type { VolatilityData } from "./model";
+import { termStateLabel, type VolatilityData } from "./model";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 
 function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--"; }
@@ -8,10 +8,14 @@ function formattedPercentile(value: unknown): string { return typeof value === "
 /** The full ratio history stays in the JSON metadata. */
 const RECENT_RATIO_SESSIONS = 20;
 function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
+  const state = termStateLabel(data.curve.termState);
+  const recent = data.term.ratioHistory.slice(-RECENT_RATIO_SESSIONS);
+  // Who published each close is said once, unless FRED filled a date among the recent ones.
+  const mixed = new Set(recent.map((point) => point.publisher)).size > 1;
   return { sections: [
     { title: "Cash VIX tenor curve", entries: [
       { label: "As of", value: data.curve.date },
-      { label: "State", value: data.curve.termState }, { label: "3M / 30D", value: data.curve.ratio, formatted: formattedValue(data.curve.ratio) },
+      { label: "State", value: state, formatted: state ?? "--" }, { label: "3M / 30D", value: data.curve.ratio, formatted: formattedValue(data.curve.ratio) },
       { label: "3M / 30D 1Y percentile", value: data.curve.ratioPercentile1y, formatted: formattedPercentile(data.curve.ratioPercentile1y) }, { label: "3M / 30D 1Y sample", value: data.curve.ratioSampleSize },
       { label: "3M spread (points)", value: data.curve.slope, formatted: formattedValue(data.curve.slope) },
     ] },
@@ -20,12 +24,14 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
       { key: "value", header: "Level", align: "right", format: formattedValue },
       { key: "sourceId", header: "Series" },
     ], rows: data.curve.points.map((point) => ({ ...point, date: data.curve.date })) },
-    { title: "FRED 30D/3M history", entries: [
-      { label: "As of", value: data.fred.termDate }, { label: "3M / 30D", value: data.fred.ratio, formatted: formattedValue(data.fred.ratio) },
-      { label: "3M spread (points)", value: data.fred.slope, formatted: formattedValue(data.fred.slope) },
+    { title: "3M / 30D history", entries: [
+      { label: "As of", value: data.term.termDate }, { label: "Source", value: data.term.publisher, formatted: data.term.publisher ?? "--" },
+      { label: "3M / 30D", value: data.term.ratio, formatted: formattedValue(data.term.ratio) },
+      { label: "3M spread (points)", value: data.term.slope, formatted: formattedValue(data.term.slope) },
     ] },
-    { title: "FRED 3M / 30D ratio, recent sessions", columns: [{ key: "date", header: "Date" }, { key: "value", header: "3M / 30D", format: formattedValue }],
-      rows: data.fred.ratioHistory.slice(-RECENT_RATIO_SESSIONS).map((point) => ({ ...point })) },
+    { title: "3M / 30D ratio, recent sessions", columns: [{ key: "date", header: "Date" }, { key: "value", header: "3M / 30D", format: formattedValue },
+      ...(mixed ? [{ key: "publisher", header: "Source" }] : [])],
+    rows: recent.map((point) => ({ ...point })) },
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
       { key: "value", header: "Level", align: "right", format: formattedValue },

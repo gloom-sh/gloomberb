@@ -6,7 +6,17 @@ export const VOLATILITY_SERIES = [
   { seriesId: "VXVCLS", label: "VIX 3M", tenor: "3M", days: 93 },
 ] as const;
 export type VolatilitySeriesId = typeof VOLATILITY_SERIES[number]["seriesId"];
-type TermState = "normal" | "inverted" | "flat" | "partial";
+/** The curve's shape from VIX to VIX 3M; partial when either close is missing. */
+export type TermState = "contango" | "backwardation" | "flat" | "partial";
+const TERM_STATE_LABELS: Readonly<Record<Exclude<TermState, "partial">, string>> = {
+  contango: "Contango", backwardation: "Backwardation", flat: "Flat",
+};
+/** The one word the pane, the report and the glossary use for a curve's shape; null when it has none. */
+export function termStateLabel(state: TermState): string | null {
+  return state === "partial" ? null : TERM_STATE_LABELS[state];
+}
+/** Who published the closes a ratio was read from: Cboe's own, or FRED's republished copy. */
+type VolatilityPublisher = "Cboe" | "FRED";
 export const VOLATILITY_CURVE_INDICES = [
   { id: "vix9d", symbol: "^VIX9D", label: "VIX 9D", tenor: "9D", days: 9 },
   { id: "vix", symbol: "^VIX", label: "VIX", tenor: "30D", days: 30 },
@@ -72,7 +82,7 @@ interface VolatilityMetric {
   stale: boolean;
   error: string | null;
 }
-export interface FredVolatilityHistory {
+interface FredVolatilityHistory {
   metrics: VolatilityMetric[];
   termDate: string | null;
   ratio: number | null;
@@ -80,6 +90,31 @@ export interface FredVolatilityHistory {
   ratioHistory: Array<{ date: string; value: number }>;
   termState: TermState;
   warnings: string[];
+}
+interface VolatilityTermLeg {
+  id: "vix" | "vix3m";
+  label: string;
+  history: Array<{ date: string; value: number }>;
+  /** Dates a publisher withdrew or rejected, kept as chart gaps. */
+  missingDates: string[];
+}
+/**
+ * VIX and VIX 3M with their 3M/30D ratio, each date read from one publisher:
+ * Cboe's daily closes (the board's, with any streamed level for today) where
+ * it has both, FRED's republished closes on the dates Cboe lacks, such as
+ * before the board's year. The curve and this history end on the same date.
+ */
+export interface VolatilityTermHistory {
+  legs: [VolatilityTermLeg, VolatilityTermLeg];
+  ratioHistory: Array<{ date: string; value: number; publisher: VolatilityPublisher }>;
+  termDate: string | null;
+  ratio: number | null;
+  slope: number | null;
+  termState: TermState;
+  /** Who published the closes of the latest ratio. */
+  publisher: VolatilityPublisher | null;
+  /** The latest ratio rests on cached closes a refresh could not replace. */
+  stale: boolean;
 }
 export interface VolatilityCurvePoint {
   id: string;
@@ -95,7 +130,7 @@ export interface VolatilityCurve {
   date: string | null;
   points: VolatilityCurvePoint[];
   ratio: number | null;
-  /** Midpoint rank of the current 3M/30D ratio within the trailing year of FRED daily ratios. */
+  /** Midpoint rank of the current 3M/30D ratio within the trailing year of the ratio history. */
   ratioPercentile1y: number | null;
   ratioSampleSize: number;
   slope: number | null;
@@ -126,6 +161,7 @@ export interface VolatilityBoardRow {
 export interface VolatilityData {
   curve: VolatilityCurve;
   fred: FredVolatilityHistory;
+  term: VolatilityTermHistory;
   board: VolatilityBoardRow[];
   warnings: string[];
 }
@@ -167,7 +203,54 @@ function normalizeHistory(observations: readonly { date: Date | string; value: n
 }
 function classifyTermState(spot: number | null, threeMonth: number | null): TermState {
   if (spot == null || threeMonth == null || !(spot > 0)) return "partial";
-  return threeMonth > spot ? "normal" : threeMonth < spot ? "inverted" : "flat";
+  return threeMonth > spot ? "contango" : threeMonth < spot ? "backwardation" : "flat";
+}
+interface TermSource {
+  publisher: VolatilityPublisher;
+  legs: [ReadonlyMap<string, number>, ReadonlyMap<string, number>];
+  missing: [readonly string[], readonly string[]];
+  stale: boolean;
+}
+/** One publisher per date, so a ratio never divides one publisher's close by another's. */
+function termHistory(sources: readonly TermSource[]): VolatilityTermHistory {
+  const dates = [...new Set(sources.flatMap((source) => source.legs.flatMap((leg) => [...leg.keys()])))].sort();
+  const legs: VolatilityTermHistory["legs"] = [
+    { id: "vix", label: "VIX", history: [], missingDates: [] },
+    { id: "vix3m", label: "VIX 3M", history: [], missingDates: [] },
+  ];
+  const ratioHistory: VolatilityTermHistory["ratioHistory"] = [];
+  const chosen = new Map<string, TermSource>();
+  for (const date of dates) {
+    const source = sources.find((candidate) => candidate.legs.every((leg) => leg.has(date)))
+      ?? sources.find((candidate) => candidate.legs.some((leg) => leg.has(date)))!;
+    chosen.set(date, source);
+    const [spot, threeMonth] = source.legs.map((leg) => leg.get(date));
+    if (spot != null) legs[0].history.push({ date, value: spot });
+    if (threeMonth != null) legs[1].history.push({ date, value: threeMonth });
+    if (spot != null && threeMonth != null) ratioHistory.push({ date, value: threeMonth / spot, publisher: source.publisher });
+  }
+  legs.forEach((leg, index) => {
+    const shown = new Set(leg.history.map((point) => point.date));
+    leg.missingDates = [...new Set(sources.flatMap((source) => source.missing[index]!))].filter((date) => !shown.has(date)).sort();
+  });
+  const latest = ratioHistory.at(-1);
+  const source = latest ? chosen.get(latest.date)! : null;
+  const front = latest ? source!.legs[0].get(latest.date)! : null;
+  const back = latest ? source!.legs[1].get(latest.date)! : null;
+  return { legs, ratioHistory, termDate: latest?.date ?? null, ratio: latest?.value ?? null,
+    slope: front != null && back != null ? back - front : null, termState: classifyTermState(front, back),
+    publisher: latest?.publisher ?? null, stale: source?.stale ?? false };
+}
+function boardTermSource(spot: VolatilityBoardRow | undefined, threeMonth: VolatilityBoardRow | undefined): TermSource {
+  const days = (row: VolatilityBoardRow | undefined) => new Map((row?.history ?? []).map((point) => [point.date, point.value]));
+  return { publisher: "Cboe", legs: [days(spot), days(threeMonth)], missing: [spot?.missingDates ?? [], threeMonth?.missingDates ?? []],
+    stale: !!spot?.stale || !!threeMonth?.stale };
+}
+function fredTermSource(fred: FredVolatilityHistory): TermSource {
+  const [spot, threeMonth] = fred.metrics;
+  return { publisher: "FRED", legs: [new Map(spot!.history.map((point) => [point.date, point.value])),
+    new Map(threeMonth!.history.map((point) => [point.date, point.value]))],
+  missing: [spot!.missingDates, threeMonth!.missingDates], stale: fred.metrics.some((metric) => metric.stale) };
 }
 function fredHistory(inputs: VolatilityInputs["fred"]): FredVolatilityHistory {
   const warnings: string[] = [];
@@ -209,10 +292,10 @@ function midpointPercentile(values: readonly number[], current: number): number 
   return 100 * (values.filter((value) => value < current).length + 0.5 * values.filter((value) => value === current).length) / values.length;
 }
 
-function ratioPercentile(fred: FredVolatilityHistory, ratio: number | null, date: string | null): { percentile: number | null; sampleSize: number } {
+function ratioPercentile(term: VolatilityTermHistory, ratio: number | null, date: string | null): { percentile: number | null; sampleSize: number } {
   if (ratio == null || date == null) return { percentile: null, sampleSize: 0 };
   const cutoff = calendarYearCutoff(date);
-  const window = fred.ratioHistory.filter((point) => Date.parse(point.date) > cutoff && point.date <= date);
+  const window = term.ratioHistory.filter((point) => Date.parse(point.date) > cutoff && point.date <= date);
   const coverageDays = window.length > 1 ? (Date.parse(window.at(-1)!.date) - Date.parse(window[0]!.date)) / DAY_MS : 0;
   return { percentile: window.length >= 200 && coverageDays >= 300 ? midpointPercentile(window.map((point) => point.value), ratio) : null,
     sampleSize: window.length };
@@ -252,11 +335,11 @@ function boardRow(definition: typeof VOLATILITY_INDICES[number], input: Volatili
     status: !latest ? "unavailable" : warnings.length > 0 ? "limited" : "available",
     stale: input?.stale ?? false, error: input?.error ?? null, warnings };
 }
-function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatilityHistory): VolatilityCurve {
+function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatilityHistory, term: VolatilityTermHistory): VolatilityCurve {
   const rows = VOLATILITY_CURVE_INDICES.map((definition) => board.find((row) => row.id === definition.id)!);
   const front = rows[1]!, back = rows[2]!;
   if (front.history.length === 0 && back.history.length === 0 && fred.termDate != null) {
-    const context = ratioPercentile(fred, fred.ratio, fred.termDate);
+    const context = ratioPercentile(term, fred.ratio, fred.termDate);
     return { source: "fred", date: fred.termDate, points: VOLATILITY_SERIES.map((definition, index) => ({
       id: index === 0 ? "vix" : "vix3m", label: definition.label, tenor: definition.tenor, days: definition.days,
       value: fred.metrics[index]!.history.find((point) => point.date === fred.termDate)?.value ?? null,
@@ -282,7 +365,7 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
     ...(point.value != null && rows[index]!.stale ? [`${point.label}: aligned close is from stale cached history`] : []),
   ]);
   const ratio = spot != null && threeMonth != null ? threeMonth / spot : null;
-  const context = ratioPercentile(fred, ratio, date);
+  const context = ratioPercentile(term, ratio, date);
   return { source: "market-history", date, points, ratio, ratioPercentile1y: context.percentile, ratioSampleSize: context.sampleSize,
     slope: spot != null && threeMonth != null ? threeMonth - spot : null,
     termState: classifyTermState(spot, threeMonth), warnings };
@@ -343,8 +426,12 @@ export function volatilityCurveLookbacks(data: Pick<VolatilityData, "curve" | "b
   });
 }
 
-/** An index level observed by the quote stream, in index points at a millisecond instant. */
-export interface VolatilityLiveLevel { value: number; observedAt: number }
+/**
+ * An index level observed by the quote stream, in index points at a
+ * millisecond instant. `closed` once its market has closed: the level is then
+ * that session's close, not an intraday reading.
+ */
+export interface VolatilityLiveLevel { value: number; observedAt: number; closed?: boolean }
 
 /**
  * Today's streamed level becomes the latest observation of its index history,
@@ -372,11 +459,20 @@ export function withLiveVolatilityLevels(
   return { ...inputs, history };
 }
 
+/** The 3M/30D ratio's history alone, read as `buildVolatilityData` reads it, for a chart of the ratio. */
+export function buildVolatilityTermHistory(inputs: VolatilityInputs): VolatilityTermHistory {
+  const [spot, threeMonth] = (["vix", "vix3m"] as const).map((id) =>
+    boardRow(VOLATILITY_INDICES.find((definition) => definition.id === id)!, inputs.history?.[id]));
+  return termHistory([boardTermSource(spot, threeMonth), fredTermSource(fredHistory(inputs.fred))]);
+}
+
 /** Curve values share one date and source family; board rows keep their own dates. */
 export function buildVolatilityData(inputs: VolatilityInputs): VolatilityData {
   const fred = fredHistory(inputs.fred);
   const board = VOLATILITY_INDICES.map((definition) => boardRow(definition, inputs.history?.[definition.id]));
-  const curve = alignedCurve(board, fred);
-  return { curve, fred, board, warnings: [...new Set([...curve.warnings, ...fred.warnings,
+  const term = termHistory([boardTermSource(board.find((row) => row.id === "vix"), board.find((row) => row.id === "vix3m")),
+    fredTermSource(fred)]);
+  const curve = alignedCurve(board, fred, term);
+  return { curve, fred, term, board, warnings: [...new Set([...curve.warnings, ...fred.warnings,
     ...board.flatMap((row) => row.warnings.map((warning) => `${row.label}: ${warning}`))])] };
 }

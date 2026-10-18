@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
- * fund, short interest, quote-board, futures (basis, contango, roll yield) and economic-calendar terms the functions
+ * fund, short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -521,6 +521,31 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Ann. roll yield", "Annualized Roll Yield"],
     definition: "What a long future earns or loses as it is rolled into the next contract. CTM's annualised roll yield is the front price over the next contract's "
       + "less 1, scaled to a year: (front / next - 1) × 365 / days between the two. It is positive in backwardation and negative in contango.",
+  },
+  // The VIX curve and the volatility board (VIX, VOLS): spot indices, not futures.
+  {
+    term: "Term structure", aliases: ["volatility term structure", "VIX term structure", "VIX curve", "tenor curve", "tenors"],
+    functions: ["VIX", "VOLS"], shown: ["Tenor", "tenor curve"],
+    definition: "Implied volatility by time horizon. VIX 9D, VIX (30 days), VIX 3M, 6M and 1Y each measure the S&P 500 volatility its options price over that "
+      + "horizon; read from short to long they form a curve. Its shape says whether the market fears the coming weeks more than the months after them.",
+  },
+  {
+    term: "3M/30D ratio", aliases: ["3M/30D", "VIX 3M / VIX", "VIX 3M / VIX ratio", "VIX ratio", "VIX term ratio", "term ratio"],
+    functions: ["VIX", "VOLS", "G"], shown: ["3M / 30D", "3M/30D", "VIX 3M / VIX"],
+    definition: "VIX 3M divided by VIX: the volatility the market expects over three months against the next 30 days. Above 1 the curve is in contango, "
+      + "the usual calm state; below 1 it is in backwardation, a sign of near-term stress. The 3M spread is the same pair as a difference, in index points.",
+  },
+  {
+    term: "Contango/backwardation (VIX)", aliases: ["VIX contango", "VIX backwardation", "volatility contango", "volatility backwardation", "inverted VIX curve", "curve state"],
+    functions: ["VIX", "VOLS"], shown: ["Contango", "Backwardation", "Flat"],
+    definition: "The shape of the VIX curve. Contango: longer horizons sit above shorter ones (VIX 3M above VIX), the usual state in calm markets. "
+      + "Backwardation: VIX sits above VIX 3M, as fear of the coming weeks outruns the longer view, typically in a sell-off. Flat: the two are equal. "
+      + "These are spot indices, so unlike a futures curve nothing is rolled or paid.",
+  },
+  {
+    term: "VVIX", aliases: ["vol of vol", "volatility of volatility", "VIX of VIX", "VVIX index"], functions: ["VIX", "VOLS"],
+    definition: "Cboe's index of the 30-day volatility that VIX options price: the VIX of the VIX. A high reading means traders are paying up "
+      + "to protect against sudden jumps in VIX itself.",
   },
   // The economic calendar (ECO).
   {

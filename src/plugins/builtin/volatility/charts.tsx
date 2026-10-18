@@ -4,20 +4,20 @@ import { formatCompositeSeriesValue } from "../../../components/chart/composite/
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import { volatilityHistorySeries, volatilityIndexHistoryPoints } from "./chart-model";
-import type { FredVolatilityHistory, VolatilityBoardRow } from "./model";
+import type { VolatilityBoardRow, VolatilityTermHistory } from "./model";
 
 interface ChartSize { width: number; height: number }
 
 const HISTORY_PANELS = [{ id: "vol", height: 2 }, { id: "ratio", height: 1 }];
 
 /** VIX 30D and 3M over the 3M/30D ratio on one date axis, with the flat line at 1.00. */
-export function VolatilityHistoryChart({ fred, width, height, focused = false }: ChartSize & { fred: FredVolatilityHistory; focused?: boolean }) {
+export function VolatilityHistoryChart({ term, width, height, focused = false }: ChartSize & { term: VolatilityTermHistory; focused?: boolean }) {
   const colors = useThemeColors();
   const palette = resolveChartPalette(colors);
-  const ratioColor = fred.termState === "inverted" ? colors.warning : palette.lineColor;
-  const series = useMemo(() => volatilityHistorySeries(fred,
+  const ratioColor = term.termState === "backwardation" ? colors.warning : palette.lineColor;
+  const series = useMemo(() => volatilityHistorySeries(term,
     { spot: colors.warning, threeMonth: colors.borderFocused, ratio: ratioColor, flat: colors.textDim }),
-  [fred, colors.warning, colors.borderFocused, colors.textDim, ratioColor]);
+  [term, colors.warning, colors.borderFocused, colors.textDim, ratioColor]);
   // The flat reference is drawn, not named: its level is the whole point of it.
   const legendSeries = useMemo(() => series.filter((entry) => entry.id !== "flat"), [series]);
   if (!series.some((entry) => entry.id !== "flat" && entry.points.some((point) => point.value != null))) {

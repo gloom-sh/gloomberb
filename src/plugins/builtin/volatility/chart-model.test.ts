@@ -20,10 +20,10 @@ test("VIX curve uses elapsed tenor days and leaves absent interior and endpoint 
   expect(model.formatCursor(1)).toBe("365 days");
 });
 
-test("FRED history aligns observations by date and breaks each curve where the peer has a missing close", () => {
-  const fred = { metrics: [
-    { seriesId: "VIXCLS", history: [{ date: "2026-09-01", value: 20 }, { date: "2026-09-03", value: 22 }, { date: "2026-09-04", value: 23 }] },
-    { seriesId: "VXVCLS", history: [{ date: "2026-09-01", value: 24 }, { date: "2026-09-02", value: 25 }, { date: "2026-09-04", value: 26 }] },
+test("the ratio history aligns observations by date and breaks each curve where the peer has a missing close", () => {
+  const fred = { legs: [
+    { id: "vix", history: [{ date: "2026-09-01", value: 20 }, { date: "2026-09-03", value: 22 }, { date: "2026-09-04", value: 23 }] },
+    { id: "vix3m", history: [{ date: "2026-09-01", value: 24 }, { date: "2026-09-02", value: 25 }, { date: "2026-09-04", value: 26 }] },
   ], ratioHistory: [{ date: "2026-09-01", value: 1.2 }, { date: "2026-09-04", value: 26 / 23 }] };
   const model = volatilityHistoryChartModel(fred, "orange");
   const scene = buildCompositeChartScene(buildStaticChartSeries(model.points, "line", "green", model.overlays, true),
@@ -50,7 +50,7 @@ test("FRED history aligns observations by date and breaks each curve where the p
 test("withdrawn dates missing from both histories still break the curves and board history", () => {
   const history = [{ date: "2026-09-01", value: 20 }, { date: "2026-09-03", value: 22 }];
   const missingDates = ["2026-09-02"];
-  const fred = { metrics: ["VIXCLS", "VXVCLS"].map((seriesId) => ({ seriesId, history, missingDates })),
+  const fred = { legs: ["vix", "vix3m"].map((id) => ({ id, history, missingDates })),
     ratioHistory: history.map(({ date }) => ({ date, value: 1 })),
   };
   const model = volatilityHistoryChartModel(fred, "orange");

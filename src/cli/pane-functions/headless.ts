@@ -397,35 +397,54 @@ function calendarSeries(series: HeadlessSeries): (HeadlessSeries & Partial<Pick<
   return resolved.historyResolution && CALENDAR_RESOLUTIONS.has(resolved.historyResolution) ? resolved : null;
 }
 
+const DAY_MS = 86_400_000;
+const INTRADAY_INTERVAL = /^\d+(?:m|min|h)$|intraday/i;
+
+/**
+ * Whether a series observes days rather than instants: every observation at
+ * 00:00 UTC, as FRED's closes and a plugin's daily series are dated. It is
+ * then dated without a time (`2026-10-16`, not `2026-10-16 00:00 UTC`), as a
+ * daily price bar is; a series with a real time of day (23:59) keeps it.
+ */
+function observesDays(series: HeadlessSeries): boolean {
+  if (INTRADAY_INTERVAL.test(series.interval ?? "")) return false;
+  const times = series.points.flatMap((point) => point.value != null || point.close != null ? [seriesPointTime(point.date)] : []);
+  return times.length > 0 && times.every((time) => Number.isFinite(time) && time % DAY_MS === 0);
+}
+
 function seriesPointDate(series: HeadlessSeries, date: SeriesPointDate): string {
   const time = seriesPointTime(date);
   if (!Number.isFinite(time)) return typeof date === "string" ? date : "-";
   const calendar = calendarSeries(series);
-  return calendar ? observationDate(time, calendar) : formatUtcTime({ time, dateOnly: isDateOnly(date) });
+  return calendar ? observationDate(time, calendar) : formatUtcTime({ time, dateOnly: isDateOnly(date) || observesDays(series) });
 }
 
 /** The same date for a spreadsheet: the trading date, the calendar date, or the ISO instant. */
-function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate): string {
+function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, days: boolean): string {
   const time = seriesPointTime(date);
   if (!Number.isFinite(time)) return typeof date === "string" ? date : "";
   const calendar = calendarSeries(series);
   if (calendar) return observationDate(time, calendar);
-  return isDateOnly(date) ? date as string : new Date(time).toISOString().replace(".000Z", "Z");
+  if (isDateOnly(date)) return date as string;
+  const iso = new Date(time).toISOString();
+  return days ? iso.slice(0, 10) : iso.replace(".000Z", "Z");
 }
 
 /**
- * A latest value as the series report prints it: percentages and multiples
- * (P/E, EV/EBITDA, one series over another) to two decimals, which a multiple
- * under 0.1 trades for three significant digits so a small ratio is not
- * flattened to 0.03. The exports keep every digit. Any other unit prints as
- * loaded, without float noise.
+ * A latest value as the series report prints it: percentages, multiples and
+ * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
+ * decimals, which a ratio under 0.1 trades for three significant digits so it
+ * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
+ * exports keep every digit. Any other unit prints as loaded, without float
+ * noise.
  */
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
-  const unit = series.unit?.trim();
+  const unit = series.unit?.trim().toLowerCase();
   if (unit === "%") return value.toFixed(2);
-  if (unit?.toLowerCase() === "x") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
+  if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
+  if (unit === "score") return value.toFixed(1);
   return displayNumber(value);
 }
 
@@ -537,7 +556,8 @@ const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as con
  */
 function seriesTable(series: HeadlessSeries): CliReportTable {
   const fields = SERIES_FIELDS.filter((field) => series.points.some((point) => point[field] != null));
-  const dates = series.points.map((point) => seriesPointExportDate(series, point.date));
+  const days = observesDays(series);
+  const dates = series.points.map((point) => seriesPointExportDate(series, point.date, days));
   const header = (field: (typeof SERIES_FIELDS)[number]) => `${field[0]!.toUpperCase()}${field.slice(1)}`;
   return {
     title: series.label,

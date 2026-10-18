@@ -32,6 +32,13 @@ describe("volatility headless model", () => {
     const metadata = result.metadata as { data: ReturnType<typeof buildVolatilityData>; phase: string; observations: string; vixFuturesAvailable: boolean };
     expect(metadata.data.curve).toMatchObject({ date: "2026-09-21", ratio: 23 / 20 });
     expect(metadata.data.fred).toMatchObject({ termDate: "2026-09-18", ratio: 21 / 18 });
+    // The ratio history ends on the curve's Cboe closes, with FRED's lagging pair before them.
+    expect(metadata.data.term).toMatchObject({ termDate: "2026-09-21", ratio: 23 / 20, publisher: "Cboe" });
+    const state = result.sections.find((section) => section.title === "Cash VIX tenor curve")?.entries?.find((entry) => entry.label === "State");
+    expect(state).toMatchObject({ value: "Contango", formatted: "Contango" });
+    const recent = result.sections.find((section) => section.title === "3M / 30D ratio, recent sessions");
+    expect(recent?.columns?.map((column) => column.header)).toEqual(["Date", "3M / 30D", "Source"]);
+    expect(recent?.rows?.map((row) => [row.date, row.publisher])).toEqual([["2026-09-18", "FRED"], ["2026-09-21", "Cboe"]]);
     expect(metadata.data.board.find((row) => row.id === "vix")).toMatchObject({ source: "injected", sampleSize: 1, change1d: null, percentile1y: null });
     expect(metadata.phase).toBe("partial");
     const curve = result.sections.find((section) => section.title === "Aligned curve observations");

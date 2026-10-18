@@ -1374,7 +1374,7 @@
           {
             "code": "VIX",
             "name": "VIX Curve",
-            "description": "Dated VIX tenor closes, FRED history and the cross-asset volatility board."
+            "description": "Dated VIX tenor closes, the 3M/30D ratio history and the cross-asset volatility board."
           },
           {
             "code": "VOLS",

@@ -18,8 +18,9 @@ export interface VolatilityHistoryDatum {
   value: number | null;
 }
 
-interface FredChartInput {
-  metrics: readonly { seriesId: string; history: readonly VolatilityHistoryDatum[]; missingDates?: readonly string[] }[];
+/** VIX and VIX 3M with their ratio, as `VolatilityTermHistory` holds them. */
+interface TermChartInput {
+  legs: readonly { id: string; history: readonly VolatilityHistoryDatum[]; missingDates?: readonly string[] }[];
   ratioHistory: readonly VolatilityHistoryDatum[];
 }
 
@@ -98,26 +99,26 @@ function lineRuns(id: string, color: string, values: readonly (number | null | u
   return runs;
 }
 
-function fredTimeline(fred: FredChartInput) {
-  const spotMetric = fred.metrics.find((metric) => metric.seriesId === "VIXCLS");
-  const threeMonthMetric = fred.metrics.find((metric) => metric.seriesId === "VXVCLS");
-  const spot = observationMap(spotMetric?.history ?? [], spotMetric?.missingDates);
-  const threeMonth = observationMap(threeMonthMetric?.history ?? [], threeMonthMetric?.missingDates);
+function termTimeline(term: TermChartInput) {
+  const spotLeg = term.legs.find((leg) => leg.id === "vix");
+  const threeMonthLeg = term.legs.find((leg) => leg.id === "vix3m");
+  const spot = observationMap(spotLeg?.history ?? [], spotLeg?.missingDates);
+  const threeMonth = observationMap(threeMonthLeg?.history ?? [], threeMonthLeg?.missingDates);
   const dates = [...new Set([...spot.keys(), ...threeMonth.keys()])].sort();
   return { spot, threeMonth, dates };
 }
 
-export function volatilityHistoryChartModel(fred: FredChartInput, threeMonthColor: string) {
-  const { spot, threeMonth, dates } = fredTimeline(fred);
+export function volatilityHistoryChartModel(term: TermChartInput, threeMonthColor: string) {
+  const { spot, threeMonth, dates } = termTimeline(term);
   return {
     points: dates.map((date) => chartPoint(new Date(date), spot.get(date))),
     overlays: lineRuns("VIX 3M", threeMonthColor, dates.map((date) => threeMonth.get(date))),
   };
 }
 
-export function volatilityRatioChartModel(fred: FredChartInput, referenceColor: string) {
-  const { dates } = fredTimeline(fred);
-  const ratios = observationMap(fred.ratioHistory);
+export function volatilityRatioChartModel(term: TermChartInput, referenceColor: string) {
+  const { dates } = termTimeline(term);
+  const ratios = observationMap(term.ratioHistory);
   return {
     points: dates.map((date) => chartPoint(new Date(date), ratios.get(date))),
     overlays: dates.length ? [{ id: "1.00", color: referenceColor,
@@ -133,9 +134,9 @@ export interface VolatilityHistoryColors { spot: string; threeMonth: string; rat
  * axis. Every series spans the same dates, so a close either index lacks is a
  * gap in all of them, as in the separate level and ratio models.
  */
-export function volatilityHistorySeries(fred: FredChartInput, colors: VolatilityHistoryColors): ResolvedSeries[] {
-  const { spot, threeMonth, dates } = fredTimeline(fred);
-  const ratios = observationMap(fred.ratioHistory);
+export function volatilityHistorySeries(term: TermChartInput, colors: VolatilityHistoryColors): ResolvedSeries[] {
+  const { spot, threeMonth, dates } = termTimeline(term);
+  const ratios = observationMap(term.ratioHistory);
   const line = (id: string, label: string, color: string, panelId: string, unitGroup: string, values: Map<string, number | null>): ResolvedSeries => ({
     ...staticSeries(dates.map((date) => {
       const value = values.get(date);

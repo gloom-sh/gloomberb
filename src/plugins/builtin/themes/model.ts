@@ -1,6 +1,6 @@
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMember, type ThemePeriod, type ThemeSummary } from "../../../api-client/themes";
 import type { DataTableColumn } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
@@ -136,11 +136,8 @@ export function memberColumns(width: number, extendedSessions: readonly Extended
   ["return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "preMarket", "afterHours", "name", "price"]);
 }
 function fitColumns(columns: DataTableColumn[], width: number, drop: string[]): DataTableColumn[] {
+  columns = dropColumnsToFit(columns, width, drop);
   const used = () => getTableWidth(columns);
-  for (const id of drop) {
-    if (used() <= width) break;
-    columns = columns.filter((col) => col.id !== id);
-  }
   const name = columns.find((col) => col.id === "name") ?? columns[0]!;
   const spare = width - used();
   name.width = Math.max(8, name.width + Math.min(spare, Math.max(0, 36 - name.width)));

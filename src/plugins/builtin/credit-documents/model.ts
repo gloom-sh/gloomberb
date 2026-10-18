@@ -1,7 +1,7 @@
 import type { CreditDocumentsPayload, CreditFact, CreditHeadroom, CreditInstrument, CreditMaturityBucket, CreditScreenRow, CreditValue } from "../../../api-client/credit-documents";
 import type { DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { displayWidth } from "../../../utils/format";
 
@@ -199,16 +199,9 @@ export function capitalFigures(data: CreditDocumentsPayload): StatItem[] {
 }
 
 type Column<Id extends string> = DataTableColumn & { id: Id };
-/** The table's width with its gaps and padding, plus the vertical scrollbar's cell. */
-const fits = (columns: readonly DataTableColumn[], width: number) => getTableWidth(columns) + 1 <= width;
-/** Narrow panes drop whole columns, least important first, instead of scrolling sideways. */
+/** Narrow panes drop whole columns, least important first, instead of scrolling sideways; the scrollbar keeps its cell. */
 function fitColumns<Id extends string>(columns: readonly Column<Id>[], width: number, dropOrder: readonly Id[]): Column<Id>[] {
-  let shown = [...columns];
-  for (const id of dropOrder) {
-    if (fits(shown, width)) break;
-    shown = shown.filter((column) => column.id !== id);
-  }
-  return shown;
+  return dropColumnsToFit(columns, width - 1, dropOrder);
 }
 
 type CapitalColumnId = "name" | "facility" | "coupon" | "maturity" | "principal" | "currency" | "ranking" | "control";

@@ -1,5 +1,6 @@
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { rowsFreshness } from "../../../cli/freshness";
+import { humanizeCliKey } from "../../../cli/result";
 import type { GloomPlugin } from "../../../types/plugin";
 import {
   attachFearGreedPersistence,
@@ -9,6 +10,10 @@ import {
 import { FearGreedPane } from "./pane";
 import { fearGreedHeadless } from "./headless";
 import { FEAR_GREED_SERIES } from "./series";
+
+const SCORE_KEYS = new Set(["score", "previousClose", "previousWeek", "previousMonth", "previousYear"]);
+/** A score to a tenth of a point (17.9); a missing one leaves its cell empty, as before. */
+const scoreTenths = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(1) : "";
 
 export const fearGreedPlugin: GloomPlugin = {
   id: "fear-greed",
@@ -88,6 +93,10 @@ export const fearGreedPlugin: GloomPlugin = {
               rating: indicator.rating,
             })),
           },
+        }, {
+          // Scores read to a tenth of a point on the text table; exports keep every digit.
+          textColumns: Object.keys(rows[0]!).map((key) => ({ key, header: humanizeCliKey(key),
+            ...(SCORE_KEYS.has(key) ? { align: "right" as const, format: scoreTenths } : {}) })),
         });
       },
     },

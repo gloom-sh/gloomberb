@@ -26,7 +26,7 @@ describe("dated volatility sources", () => {
     expect(data.curve.points.map((point) => point.value)).toEqual([15, 20, 22, null, 26]);
     expect(data.curve.ratio).toBe(1.1);
     expect(data.curve.slope).toBe(2);
-    expect(data.curve.termState).toBe("normal");
+    expect(data.curve.termState).toBe("contango");
     expect(data.curve.source).toBe("market-history");
     expect(data.curve.points.map((point) => point.source)).toEqual(Array(5).fill("gloom"));
     expect(data.fred.termDate).toBe("2026-09-18");
@@ -49,6 +49,8 @@ describe("dated volatility sources", () => {
     // The provisional bar for the same date is replaced, not added.
     expect(live.board.find((item) => item.id === "vix")).toMatchObject({ value: 24, date: "2026-09-22", change1d: 4 });
     expect(live.curve).toMatchObject({ date: "2026-09-22", ratio: 24.6 / 24 });
+    // The ratio history ends on the same streamed levels as the curve.
+    expect(live.term).toMatchObject({ termDate: "2026-09-22", ratio: 24.6 / 24, publisher: "Cboe" });
     expect(live.board.find((item) => item.id === "cor1m")!.value).toBe(30);
     expect(withLiveVolatilityLevels(inputs, new Map([["vix", { value: 19, observedAt: Date.parse("2026-09-18T20:00:00Z") }]])).history!.vix)
       .toBe(inputs.history.vix);
@@ -72,6 +74,28 @@ describe("dated volatility sources", () => {
     expect(thin.curve).toMatchObject({ ratio: 1.5, ratioPercentile1y: null, ratioSampleSize: 30 });
   });
 
+  test("the ratio history reads Cboe's closes where it has the pair and FRED's on the dates it lacks, one publisher per date", () => {
+    const lagging = { VIXCLS: fred([["2026-10-13", 15], ["2026-10-14", 16], ["2026-10-15", 16.4]]),
+      VXVCLS: fred([["2026-10-13", 17], ["2026-10-14", 18], ["2026-10-15", 18.4]]) };
+    const data = buildVolatilityData({ history: {
+      // Cboe has no 3M close on the 15th; FRED, a day behind, has nothing for the 16th.
+      vix: history([["2026-10-14", 16], ["2026-10-15", 16.5], ["2026-10-16", 20]]),
+      vix3m: history([["2026-10-14", 18], ["2026-10-16", 20.5]]),
+    }, fred: lagging });
+    expect(data.term.ratioHistory).toEqual([
+      { date: "2026-10-13", value: 17 / 15, publisher: "FRED" },
+      { date: "2026-10-14", value: 18 / 16, publisher: "Cboe" },
+      { date: "2026-10-15", value: 18.4 / 16.4, publisher: "FRED" },
+      { date: "2026-10-16", value: 20.5 / 20, publisher: "Cboe" },
+    ]);
+    // The 15th's VIX is FRED's too, never Cboe's close over FRED's 3M.
+    expect(data.term.legs[0].history.find((point) => point.date === "2026-10-15")?.value).toBe(16.4);
+    expect(data.term).toMatchObject({ termDate: "2026-10-16", ratio: data.curve.ratio, slope: 0.5, publisher: "Cboe", termState: "contango" });
+    expect(data.curve.date).toBe(data.term.termDate);
+    // Without Cboe's closes, FRED's stand in and are named.
+    expect(buildVolatilityData({ fred: lagging }).term).toMatchObject({ termDate: "2026-10-15", ratio: 18.4 / 16.4, publisher: "FRED" });
+  });
+
   test("orders the board by declared index with unavailable rows last", () => {
     const data = buildVolatilityData({ history: { vxapl: history([["2026-09-22", 24]]), vix: history([["2026-09-21", 15]]), vvix: history([["2026-09-21", 85]]) } });
     const ordered = boardOrder(data.board).map((item) => item.id);
@@ -83,7 +107,7 @@ describe("dated volatility sources", () => {
     const inputs = { fred: { VIXCLS: fred([["2026-09-17", 24], ["2026-09-18", 25]]),
       VXVCLS: fred([["2026-09-17", 20]]) } };
     const fallback = buildVolatilityData({ ...inputs, history: { vix9d: history([["2026-09-21", 19]]) } });
-    expect(fallback.curve).toMatchObject({ source: "fred", date: "2026-09-17", ratio: 20 / 24, slope: -4, termState: "inverted" });
+    expect(fallback.curve).toMatchObject({ source: "fred", date: "2026-09-17", ratio: 20 / 24, slope: -4, termState: "backwardation" });
     expect(fallback.curve.points.map((point) => [point.sourceId, point.value])).toEqual([["VIXCLS", 24], ["VXVCLS", 20]]);
     const partial = buildVolatilityData({ ...inputs, history: { vix: history([["2026-09-21", 30]]) } });
     expect(partial.curve).toMatchObject({ source: "market-history", date: "2026-09-21", ratio: null, termState: "partial" });

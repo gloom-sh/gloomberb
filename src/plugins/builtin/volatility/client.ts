@@ -6,9 +6,11 @@ import type { ChartRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
-import { buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLATILITY_SERIES,
+import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
+import { loadFredPoints } from "../shared/fred-points";
+import { buildVolatilityData, buildVolatilityTermHistory, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLATILITY_SERIES,
   type VolatilityData, type VolatilityHistoryInput, type VolatilityInputs,
-  type VolatilitySeriesId, type VolatilitySeriesInput } from "./model";
+  type VolatilitySeriesId, type VolatilitySeriesInput, type VolatilityTermHistory } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 
@@ -56,6 +58,52 @@ export function createVolatilityDependencies(
       (await cloudApi.impliedVolatility!<{ series: ImpliedCorrelationSeries[] }>("implied-correlation")).series } : {}),
   };
 }
+let standaloneDependencies: VolatilityLoaderDependencies | null = null;
+/**
+ * The app's shared coordinator where one runs; a report outside the app
+ * (`fn G`) reads the same Cloud histories through a coordinator of its own.
+ */
+function termDependencies(): VolatilityLoaderDependencies {
+  return getSharedMarketDataCoordinator() ? createVolatilityDependencies()
+    : standaloneDependencies ??= createVolatilityDependencies(createGloomberbCloudProvider());
+}
+
+/**
+ * The 3M/30D ratio's history as the board builds it: the board's own VIX and
+ * VIX 3M daily closes (one year, the same request and cache), FRED's
+ * republished closes from `start` on the dates those lack. A leg that fails
+ * leaves FRED to stand in; the warning says which closes were stale.
+ */
+export async function loadVolatilityTermHistory(
+  { start, signal }: { start?: Date; signal?: AbortSignal } = {},
+  dependencies: VolatilityLoaderDependencies = termDependencies(),
+): Promise<{ term: VolatilityTermHistory; warning?: string }> {
+  const now = dependencies.now?.() ?? Date.now();
+  const history: NonNullable<VolatilityInputs["history"]> = {};
+  const fred: NonNullable<VolatilityInputs["fred"]> = {};
+  await abortable(Promise.all([
+    ...(["vix", "vix3m"] as const).map(async (id) => {
+      const { symbol } = VOLATILITY_INDICES.find((definition) => definition.id === id)!;
+      try {
+        history[id] = historyInput(await dependencies.loadChart(volatilityHistoryRequest(symbol)), now);
+      } catch (error) {
+        history[id] = { history: [], source: null, error: errorMessage(error) };
+      }
+    }),
+    ...VOLATILITY_SERIES.map(async ({ seriesId }) => {
+      try {
+        const loaded = await loadFredPoints(seriesId, start);
+        fred[seriesId] = { observations: loaded.points, info: null, stale: loaded.points.length > 0 && loaded.stale,
+          error: loaded.refreshError ?? null };
+      } catch (error) {
+        fred[seriesId] = { observations: [], info: null, error: errorMessage(error) };
+      }
+    }),
+  ]), signal, CANCELLED);
+  const term = buildVolatilityTermHistory({ history, fred });
+  return term.stale ? { term, warning: "Showing cached closes; the source has not updated since." } : { term };
+}
+
 /** A CBOE daily close as a daily bar dated at the 16:15 New York settlement. */
 function correlationHistory(series: ImpliedCorrelationSeries): PricePoint[] {
   return series.observations.filter((row) => Number.isFinite(row.value) && row.value > 0)

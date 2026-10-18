@@ -67,10 +67,10 @@ async function settle() {
   }
 }
 
-async function renderPane(width: number, height: number) {
+async function renderPane(width: number, height: number, initialTab = "curve") {
   const paneId = "volatility:curve";
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-vix-pane-test", {
-    instanceId: paneId, paneId: "volatility-term-structure", binding: { kind: "none" }, settings: { initialTab: "curve" },
+    instanceId: paneId, paneId: "volatility-term-structure", binding: { kind: "none" }, settings: { initialTab },
   }));
   const runtime = createTestPluginRuntime();
   function Harness() {
@@ -93,6 +93,8 @@ test("the curve names IV and its look-backs, and the tenors show how far each mo
   await renderPane(108, 32);
   const frame = tui.frame();
   expect(frame).toMatch(/IV % by tenor {3}● IV {3}● 1W ago {3}● 1M ago/);
+  // One word for the shape, as the report and the glossary say it.
+  expect(frame).toContain("Contango");
   expect(frame).toMatch(/\n9D +30D +3M +6M +1Y +\n/);
   expect(frame).toMatch(/TENOR +IV +1W CHG +1M CHG/);
   expect(frame).toMatch(/30D +14\.87 +\+0\.06 +-0\.58/);
@@ -128,4 +130,14 @@ test("a short pane keeps every tenor and turns the curve into a strip, then drop
   rows = lines();
   expect(rows.some((line) => line.includes("●"))).toBe(false);
   expect(tenorRows().length).toBeGreaterThanOrEqual(4);
+});
+
+test("a narrow board drops the name column before it cuts a date", async () => {
+  await renderPane(78, 24, "board");
+  const header = lines().find((line) => line.includes("LEVEL"))!;
+  expect(header).toContain("AS OF");
+  expect(header).not.toContain("NAME");
+  expect(lines().some((line) => /^ VIX +14\.87 .* 2026-09-25 *$/.test(line))).toBe(true);
+  await renderPane(110, 24, "board");
+  expect(lines().find((line) => line.includes("LEVEL"))).toContain("NAME");
 });

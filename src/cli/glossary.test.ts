@@ -144,3 +144,19 @@ test("the futures basis, curve shape and funding words are found by plain names 
   // Another function's report shows none of them.
   expect(reportGlossary("HP", curve)).toEqual([]);
 });
+
+test("VIX explains its curve in the volatility sense, and contango and backwardation keep the futures sense too", () => {
+  const report = [
+    "Cash VIX tenor curve", "As of     2026-10-16", "State     Contango", "3M / 30D  1.03", "",
+    "Aligned curve observations", "Index   Tenor  Level  Series", "VIX     30D    19.99  ^VIX", "",
+    "Cross-asset volatility", "Index  Symbol  Level", "VVIX   ^VVIX   109.91",
+  ].join("\n");
+  expect(terms(reportGlossary("VIX", report))).toEqual(["Term structure", "3M/30D ratio", "Contango/backwardation (VIX)", "VVIX"]);
+  expect(terms(reportGlossary("VIX", report.replace("Contango", "Backwardation")))).toContain("Contango/backwardation (VIX)");
+  expect(["vvix", "vol of vol", "VIX 3M / VIX", "3M/30D", "term structure"].map((query) => terms(lookupGlossary(query).exact)))
+    .toEqual([["VVIX"], ["VVIX"], ["3M/30D ratio"], ["3M/30D ratio"], ["Term structure"]]);
+  const contango = lookupGlossary("contango");
+  expect([terms(contango.exact), terms(contango.partial)]).toEqual([["Contango"], ["Contango/backwardation (VIX)"]]);
+  // A futures curve's report keeps the futures meaning alone.
+  expect(terms(reportGlossary("CTM", "Label  State\nBTCX26-BTCV26  contango"))).toEqual(["Contango"]);
+});

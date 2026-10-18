@@ -240,14 +240,15 @@ function seriesPeriodicity(dates: readonly Date[]): Periodicity | null {
 }
 
 /**
- * An economic chart's dates: each series observes a period or a day, never an
- * instant, so the chart is dated by the day of its newest observation, with
- * the oldest series' newest when they end apart, and by the period when every
- * series publishes in the same one: `Aug 2026 (monthly)`, not `Sat 1 Aug 2026
- * 00:00 UTC`. Nothing for a chart with any other series.
+ * The dates of a chart of economic and catalog series whose observations are
+ * days or periods, never instants (FRED's series, a plugin's daily closes): it
+ * is dated by the day of its newest observation, with the oldest series'
+ * newest when they end apart, and by the period when every series publishes
+ * in the same one: `Aug 2026 (monthly)`, not `Sat 1 Aug 2026 00:00 UTC`.
+ * Nothing for a chart with a price series or a series observed at a time of day.
  */
-export function economicChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "periodicity"> {
-  if (!spec.series.length || spec.series.some(({ source }) => source.kind !== "economic")) return {};
+export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "periodicity"> {
+  if (!spec.series.length || spec.series.some(({ source }) => source.kind !== "economic" && source.kind !== "capability")) return {};
   const ends: string[] = [];
   const periods = new Set<Periodicity | null>();
   for (const entry of series) {
@@ -285,7 +286,7 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
 /**
  * Price series are bar histories, stale once bars of the coarsest size stop
  * arriving; fundamentals, valuations and economic series are reported data,
- * economic series dated by their periods (`economicChartDates`). A chart of
+ * economic and catalog series dated by their days or periods (`periodChartDates`). A chart of
  * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
  * newest observation and how far behind that is.
  */
@@ -294,7 +295,7 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {
-    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...economicChartDates(series, spec), ...seriesAttribution(series) };
+    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...periodChartDates(series, spec), ...seriesAttribution(series) };
   }
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst

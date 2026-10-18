@@ -50,19 +50,17 @@ export function volatilitySemanticEvidence(result: VolatilityLoadResult | null |
     stale = data.curve.source === "fred" ? data.fred.metrics.some((metric) => metric.stale)
       : data.curve.points.some((point) => data.board.find((row) => row.id === point.id)?.stale);
   } else if (data && activeView === "history") {
-    const levels = volatilityHistoryChartModel(data.fred, "");
-    series.push(seriesFrom("VIXCLS", levels.points));
+    const levels = volatilityHistoryChartModel(data.term, "");
+    series.push(seriesFrom("vix", levels.points));
     const back = levels.points.map((point) => ({ ...point, close: Number.NaN }));
     for (const overlay of levels.overlays) for (const point of overlay.points) {
       if (back[point.index]) back[point.index] = { ...back[point.index]!, close: point.value };
     }
-    series.push(seriesFrom("VXVCLS", back));
-    series.push(seriesFrom("3M/30D", volatilityRatioChartModel(data.fred, "").points, "ratio"));
-    for (const metric of data.fred.metrics) {
-      if (!metric.history.length || metric.error || metric.stale) unavailableSources.push(metric.seriesId);
-    }
-    if (!data.fred.ratioHistory.length) unavailableSources.push("3M/30D");
-    stale = data.fred.metrics.some((metric) => metric.stale);
+    series.push(seriesFrom("vix3m", back));
+    series.push(seriesFrom("3M/30D", volatilityRatioChartModel(data.term, "").points, "ratio"));
+    for (const leg of data.term.legs) if (!leg.history.length) unavailableSources.push(leg.id);
+    if (!data.term.ratioHistory.length) unavailableSources.push("3M/30D");
+    stale = data.term.stale;
   } else if (data && activeView === "board") {
     rows.push(...data.board.map(({ id, symbol, value, date, source, sampleSize, change1d, percentile1y }) => ({
       id, symbol, value, date, source, sampleSize, change1d, percentile1y,
@@ -76,7 +74,7 @@ export function volatilitySemanticEvidence(result: VolatilityLoadResult | null |
   const pending = loading || !result || result.loaded < result.total;
   return { kind: "volatility-indices", version: 1, view: activeView, loading: pending, stale,
     complete: !pending && !stale && unavailableSources.length === 0 && plottedValueCount > 0,
-    asOf: activeView === "history" ? data?.fred.termDate ?? null : activeView === "board" ? selected?.date ?? null : data?.curve.date ?? null,
+    asOf: activeView === "history" ? data?.term.termDate ?? null : activeView === "board" ? selected?.date ?? null : data?.curve.date ?? null,
     selectedIndexId: activeView === "board" ? selected?.id ?? null : null,
     plottedValueCount, unavailableSources, series, curve, rows };
 }
@@ -105,7 +103,7 @@ export function readVolatilityEvidence(value: unknown): VolatilityEvidence | nul
     && (row.value === null || isFiniteNumber(row.value)) && (row.date === null || isDateString(row.date))
     && isFiniteNumber(row.sampleSize) && row.sampleSize >= 0)) return null;
   if (evidence.view === "history") {
-    if (evidence.series.length !== 3 || ["VIXCLS", "VXVCLS", "3M/30D"].some((id, index) => evidence.series[index]?.id !== id)) return null;
+    if (evidence.series.length !== 3 || ["vix", "vix3m", "3M/30D"].some((id, index) => evidence.series[index]?.id !== id)) return null;
     const [front, back, ratios] = evidence.series;
     if (front!.points.length !== back!.points.length || front!.points.length !== ratios!.points.length) return null;
     if (!ratios!.points.every((point, index) => {
