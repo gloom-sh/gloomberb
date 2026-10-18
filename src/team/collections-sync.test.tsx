@@ -6,7 +6,7 @@ import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { createDefaultConfig, type AppConfig } from "../types/config";
 import type { TickerRecord } from "../types/ticker";
 import { useTeamCollectionsSync } from "./collections-sync";
-import { localMembership, teamCollectionLocalId } from "./collections";
+import { blankTickerRecord, localMembership, teamCollectionLocalId } from "./collections";
 import { teamStore } from "./store";
 import { createTestTeam } from "./test-fixture";
 
@@ -173,5 +173,67 @@ describe("team collections sync", () => {
     expect(members("org-b", "b2", "portfolio")).toEqual([]);
     expect(teamEntries("org-a")).toEqual(["team:org-a:a1=Alpha renamed"]);
     expect(store.getState().config.watchlists.map((entry) => entry.id)).toContain("mine");
+  });
+
+  test("a shared portfolio held in several lots is compared by its total: equal leaves the lots, a change collapses them, nothing echoes back", async () => {
+    const localId = teamCollectionLocalId("org-a", "p1");
+    const lot = (shares: number, avgCost: number, dateAcquired: string) =>
+      ({ portfolio: localId, shares, avgCost, currency: "USD", broker: "manual", dateAcquired });
+    const lots = { metadata: { ...blankTickerRecord("AAPL", "NASDAQ", "USD").metadata, portfolios: [localId], positions: [lot(10, 150, "2024-01-02"), lot(5, 170, "2024-06-03")] } };
+    const books: TeamCollection[] = [collection("org-a", "p1", "Paper book", { kind: "portfolio", currency: "USD" })];
+    const items = { p1: [item("p1", "AAPL", 15)] };
+    let refreshFromServer = () => {};
+    let emitEvent: (event: TeamCollectionEvent) => void = () => {};
+    const pushed: unknown[] = [];
+    spies.push(
+      spyOn(apiClient, "isVerified").mockImplementation(() => true),
+      spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
+        refreshFromServer = listener;
+        return () => {};
+      }),
+      spyOn(apiClient, "subscribeCloudEvent").mockImplementation((_type, listener) => {
+        emitEvent = (event) => listener(event);
+        return () => {};
+      }),
+      spyOn(apiClient, "listTeamCollections").mockImplementation(async (teamId) => (teamId === "org-a" ? books : [])),
+      spyOn(apiClient, "getTeamCollection").mockImplementation(async () => ({ ...books[0]!, items: items.p1 })),
+      spyOn(apiClient, "putTeamCollectionItem").mockImplementation(async (_teamId, collectionId, body) => {
+        pushed.push(body);
+        return item(collectionId, body.symbol, body.quantity ?? null);
+      }),
+      spyOn(apiClient, "removeTeamCollectionItem").mockResolvedValue(undefined as never),
+    );
+
+    const store = createStore(createDefaultConfig("/tmp/gloomberb-team-collections-lots"));
+    store.dispatch({ type: "UPDATE_TICKER", ticker: lots });
+    const saved: TickerRecord[] = [];
+    await tui.render(
+      <AppContext value={store}>
+        <Sync
+          persistConfig={() => {}}
+          tickerRepository={{
+            loadAllTickers: async () => [],
+            loadTicker: async () => null,
+            saveTicker: async (ticker) => void saved.push(ticker),
+            createTicker: async (metadata) => ({ metadata }),
+            deleteTicker: async () => {},
+          }}
+        />
+      </AppContext>,
+      { width: 10, height: 2 },
+    );
+
+    await settleAfter(() => refreshFromServer());
+    expect(saved).toEqual([]);
+    expect(store.getState().tickers.get("AAPL")).toBe(lots);
+
+    await settleAfter(() => emitEvent({ change: "item-updated", teamId: "org-a", actorId: "u2", collectionId: "p1", item: item("p1", "AAPL", 20) }));
+    expect(store.getState().tickers.get("AAPL")?.metadata.positions).toEqual([
+      { portfolio: localId, shares: 20, avgCost: 156.666666666667, currency: "USD", broker: "manual" },
+    ]);
+
+    // Past the outbound debounce: the total already matches the server's, so nothing is sent.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+    expect(pushed).toEqual([]);
   });
 });

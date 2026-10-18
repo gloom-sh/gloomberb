@@ -1,4 +1,5 @@
 import type { TeamCollection, TeamCollectionItem } from "../api-client";
+import { getManualPortfolioPositionPrefill } from "../portfolio/manual-lots";
 import type { AppConfig } from "../types/config";
 import type { Portfolio, TickerRecord, Watchlist } from "../types/ticker";
 
@@ -60,13 +61,21 @@ export function reconcileConfigCollections(
   return { ...config, watchlists, portfolios };
 }
 
+interface LocalMember {
+  ticker: TickerRecord;
+  /** The ticker's shares in the collection: its one lot, or the total of several. Null with no position. */
+  quantity: number | null;
+  /** Several lots that cannot be totalled (mixed currencies, short lots): there is no quantity to compare or send. */
+  lotsNotTotalled?: boolean;
+}
+
 /** Which tickers a team collection holds locally, keyed by symbol. */
 export function localMembership(
   tickers: ReadonlyMap<string, TickerRecord>,
   localCollectionId: string,
   kind: "watchlist" | "portfolio",
-): Map<string, { ticker: TickerRecord; quantity: number | null }> {
-  const members = new Map<string, { ticker: TickerRecord; quantity: number | null }>();
+): Map<string, LocalMember> {
+  const members = new Map<string, LocalMember>();
   for (const ticker of tickers.values()) {
     if (kind === "watchlist") {
       if (ticker.metadata.watchlists.includes(localCollectionId)) {
@@ -75,8 +84,12 @@ export function localMembership(
       continue;
     }
     if (!ticker.metadata.portfolios.includes(localCollectionId)) continue;
-    const position = ticker.metadata.positions.find((entry) => entry.portfolio === localCollectionId && entry.broker === "manual");
-    members.set(ticker.metadata.ticker, { ticker, quantity: position ? position.shares : null });
+    const { position, lotCount } = getManualPortfolioPositionPrefill(ticker, localCollectionId);
+    members.set(ticker.metadata.ticker, {
+      ticker,
+      quantity: position ? position.shares : null,
+      ...(lotCount > 1 && !position ? { lotsNotTotalled: true } : {}),
+    });
   }
   return members;
 }
@@ -86,16 +99,20 @@ export interface MembershipDiff {
   remove: string[];
 }
 
-/** What changed locally since the last known server set, to push upstream. */
+/**
+ * What changed locally since the last known server set, to push upstream.
+ * Lots that cannot be totalled have no quantity to push: a ticker the server
+ * already holds is left as the server has it, and a new one goes up without one.
+ */
 export function diffMembership(
-  local: ReadonlyMap<string, { quantity: number | null }>,
+  local: ReadonlyMap<string, Pick<LocalMember, "quantity" | "lotsNotTotalled">>,
   known: ReadonlyMap<string, TeamCollectionItem>,
 ): MembershipDiff {
   const add: MembershipDiff["add"] = [];
   const remove: string[] = [];
   for (const [symbol, entry] of local) {
     const item = known.get(symbol);
-    if (!item || (item.quantity ?? null) !== entry.quantity) add.push({ symbol, quantity: entry.quantity });
+    if (!item || (!entry.lotsNotTotalled && (item.quantity ?? null) !== entry.quantity)) add.push({ symbol, quantity: entry.quantity });
   }
   for (const symbol of known.keys()) {
     if (!local.has(symbol)) remove.push(symbol);
@@ -124,10 +141,11 @@ export function applyMembership(
     };
   }
   const has = metadata.portfolios.includes(localCollectionId);
-  const position = metadata.positions.find((entry) => entry.portfolio === localCollectionId && entry.broker === "manual");
+  // The lot itself, or the total of several lots (null when those cannot be totalled).
+  const { position, lotCount } = getManualPortfolioPositionPrefill(ticker, localCollectionId);
   const quantity = item?.quantity ?? null;
   if (!item) {
-    if (!has && !position) return null;
+    if (!has && lotCount === 0) return null;
     return {
       ...ticker,
       metadata: {
@@ -136,6 +154,12 @@ export function applyMembership(
         positions: metadata.positions.filter((entry) => entry.portfolio !== localCollectionId),
       },
     };
+  }
+  // Several lots are collapsed into one only when the server's quantity differs
+  // from their total, and never when they cannot be totalled: no lot is dropped
+  // for a number that was not compared with all of them.
+  if (lotCount > 1 && (!position || position.shares === quantity)) {
+    return has ? null : { ...ticker, metadata: { ...metadata, portfolios: [...metadata.portfolios, localCollectionId] } };
   }
   if (has && (position?.shares ?? null) === quantity) return null;
   const positions = metadata.positions.filter((entry) => entry.portfolio !== localCollectionId);

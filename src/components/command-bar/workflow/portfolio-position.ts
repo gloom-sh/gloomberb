@@ -2,12 +2,8 @@ import type { CommandBarFieldValue, CommandBarWorkflowField } from "./types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { tf } from "../../../i18n";
-import {
-  getManualPortfolioPositionPrefill,
-  isManualPortfolio,
-  resolveManualPositionCurrency,
-  type ManualPortfolioPositionPrefill,
-} from "../../../portfolio/mutations";
+import { getManualPortfolioPositionPrefill, type ManualPortfolioPositionPrefill } from "../../../portfolio/manual-lots";
+import { isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];

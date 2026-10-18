@@ -4,6 +4,7 @@ import { resolveCurrencyUnit } from "../utils/currency-units";
 import { slugifyName } from "../utils/slugify";
 import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
+import { manualPortfolioLots } from "./manual-lots";
 
 export interface DeleteWatchlistResult {
   config: AppConfig;
@@ -57,66 +58,8 @@ export function findPortfolio(config: AppConfig, rawName: string): Portfolio | n
   return findNamedCollection(config.portfolios, rawName);
 }
 
-function manualPortfolioLots(ticker: TickerRecord, portfolioId: string): TickerPosition[] {
-  return ticker.metadata.positions.filter((position) =>
-    position.portfolio === portfolioId && position.broker === "manual"
-  );
-}
-
 export function getManualPortfolioPosition(ticker: TickerRecord, portfolioId: string): TickerPosition | null {
   return manualPortfolioLots(ticker, portfolioId)[0] ?? null;
-}
-
-export interface ManualPortfolioPositionPrefill {
-  /** The manual lots the ticker holds in the portfolio. Setting a position replaces every one of them. */
-  lotCount: number;
-  /**
-   * The lot itself, or the total of several: shares added up, cost averaged by
-   * shares, in their common currency. Null with no lot, and with several that
-   * cannot be totalled.
-   */
-  position: TickerPosition | null;
-  /** The currencies of several lots that disagree. They are not totalled across currencies. */
-  currencies?: string[];
-}
-
-/** Drops the float noise of a sum (0.1 + 0.2) without losing a digit anyone entered. */
-function tidyNumber(value: number): number {
-  return Number(value.toPrecision(15));
-}
-
-/**
- * What setting a manual position starts from, so an unchanged save keeps the
- * holding. One lot is itself; several are consolidated into the position the
- * save would leave, instead of whichever lot came first.
- */
-export function getManualPortfolioPositionPrefill(ticker: TickerRecord, portfolioId: string): ManualPortfolioPositionPrefill {
-  const lots = manualPortfolioLots(ticker, portfolioId);
-  if (lots.length <= 1) return { lotCount: lots.length, position: lots[0] ?? null };
-
-  const lotCount = lots.length;
-  const currencies = [...new Set(lots.map((lot) => lot.currency?.trim() || ticker.metadata.currency?.trim() || ""))];
-  if (currencies.length > 1) return { lotCount, position: null, currencies };
-
-  const totalShares = lots.reduce((sum, lot) => sum + lot.shares, 0);
-  // Short or negative lots offset each other: their total is not a position to save.
-  if (lots.some((lot) => !Number.isFinite(lot.shares) || lot.shares < 0 || lot.side === "short") || !(totalShares > 0)) {
-    return { lotCount, position: null };
-  }
-  const costed = lots.every((lot) => Number.isFinite(lot.avgCost));
-  const avgCost = costed
-    ? tidyNumber(lots.reduce((sum, lot) => sum + lot.shares * lot.avgCost!, 0) / totalShares)
-    : undefined;
-  return {
-    lotCount,
-    position: {
-      portfolio: portfolioId,
-      shares: tidyNumber(totalShares),
-      ...(avgCost !== undefined ? { avgCost } : {}),
-      ...(currencies[0] ? { currency: currencies[0] } : {}),
-      broker: "manual",
-    },
-  };
 }
 
 export function resolveManualPositionCurrency(
