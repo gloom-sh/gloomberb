@@ -459,8 +459,9 @@ export function WebSurface3D(props: Surface3DHostProps) {
         existing.delete(label.key);
         if (element.textContent !== label.text) element.textContent = label.text;
         element.style.color = label.color;
-        element.style.fontSize = label.role === "title" ? "11px" : "12px";
-        element.style.fontWeight = label.role === "tick" ? "400" : "600";
+        // The type scale's label size; an axis title and a value set apart by weight, a title by its tracking too.
+        element.style.fontSize = "var(--gloom-type-ui)";
+        element.style.fontWeight = label.role === "tick" ? "var(--gloom-weight-regular)" : "var(--gloom-weight-bold)";
         element.style.letterSpacing = label.role === "title" ? "0.08em" : "normal";
         const shiftX = label.align === "left" ? "0%" : label.align === "right" ? "-100%" : "-50%";
         element.style.transform = `translate(${label.anchorX}px, ${label.anchorY}px) translate(${shiftX}, -50%)`;
