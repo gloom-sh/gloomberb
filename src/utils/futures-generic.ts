@@ -3,7 +3,8 @@
  * nth listed contract of a root, not a tradeable contract. Gloom Cloud builds
  * them; the grammar mirrors its parser. After the root and position, F5 rolls
  * five business days before first notice (last trade for cash-settled roots),
- * D15 on the 15th, and without either the generic follows open interest. R
+ * D15 on the 15th, OI on the open interest switch, and without any the root's
+ * standard roll, which the continuous alias (CL=F) follows too. R
  * ratio-adjusts, A difference-adjusts, neither leaves prices as traded.
  */
 
@@ -11,7 +12,7 @@ import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
 
 export type FuturesGenericRoll =
   | { rule: "open-interest" }
-  | { rule: "first-notice"; days: number }
+  | { rule: "first-notice"; days: number; standard?: true }
   | { rule: "fixed-day"; day: number };
 
 export type FuturesGenericAdjust = "none" | "ratio" | "difference";
@@ -49,6 +50,29 @@ const FIRST_NOTICE_ROOTS = new Set([
   "ZC", "ZS", "ZW", "ZM", "ZL", "KE", "ZO", "ZR", "GC", "SI", "HG", "PL", "PA", "ALI", "ZT", "ZF", "ZN", "ZB", "UB", "KC", "CC", "CT", "LE",
 ]);
 
+/**
+ * Business days before first notice (last trade where none comes first) a
+ * root's standard roll leaves a contract, as Gloom Cloud counts them: six for
+ * equity index, sector and currency futures (CME's quarterly roll date); two
+ * for WTI crude and Henry Hub gas, whose mini and micro contracts stop a day
+ * earlier, so the family rolls together; none for VX (it holds its contract
+ * through expiry); one for every other root.
+ */
+const STANDARD_ROLL_DAYS: Readonly<Record<string, number>> = {
+  ...Object.fromEntries(["ES", "NQ", "RTY", "EMD", "RS1", "NKD", "NIY", "MES", "MNQ", "M2K", "YM", "MYM", "RX",
+    "XAE", "XAB", "XAI", "XAY", "XAP", "XAV", "XAF", "XAK", "XAZ", "XAU", "XAR", "SXO", "SXR", "SXT", "SXB", "SXI", "SOX",
+    "6E", "6J", "6B", "6A", "6C", "6S"].map((root) => [root, 6])),
+  CL: 2,
+  NG: 2,
+  HH: 2,
+  VX: 0,
+};
+
+/** A root's standard roll: what a bare generic (NG1) and the continuous alias (NG=F) follow. */
+export function standardFuturesGenericRoll(root: string): FuturesGenericRoll {
+  return { rule: "first-notice", days: STANDARD_ROLL_DAYS[root] ?? 1, standard: true };
+}
+
 export function parseFuturesGeneric(value: unknown): FuturesGeneric | null {
   if (typeof value !== "string") return null;
   const ticker = value.trim().toUpperCase();
@@ -57,16 +81,16 @@ export function parseFuturesGeneric(value: unknown): FuturesGeneric | null {
     const prefix = ticker.slice(0, length);
     const root = ALIASES[prefix] ?? prefix;
     if (!ROOT_VENUES[root]) continue;
-    const match = /^(\d{1,2})(?:([FD])(\d{1,2}))?([RA])?$/.exec(ticker.slice(length));
+    const match = /^(\d{1,2})(?:([FD])(\d{1,2})|(OI))?([RA])?$/.exec(ticker.slice(length));
     if (!match) continue;
     const position = Number(match[1]);
     if (match[1]!.startsWith("0") || position < 1 || position > 24) return null;
     const amount = match[3] == null ? 0 : Number(match[3]);
     const roll: FuturesGenericRoll = match[2] === "F" ? { rule: "first-notice", days: amount }
-      : match[2] === "D" ? { rule: "fixed-day", day: amount } : { rule: "open-interest" };
+      : match[2] === "D" ? { rule: "fixed-day", day: amount } : match[4] ? { rule: "open-interest" } : standardFuturesGenericRoll(root);
     if (roll.rule === "first-notice" && roll.days > 30) return null;
     if (roll.rule === "fixed-day" && (roll.day < 1 || roll.day > 28)) return null;
-    return { ticker, prefix, root, position, roll, adjust: match[4] === "R" ? "ratio" : match[4] === "A" ? "difference" : "none" };
+    return { ticker, prefix, root, position, roll, adjust: match[5] === "R" ? "ratio" : match[5] === "A" ? "difference" : "none" };
   }
   return null;
 }
@@ -121,7 +145,7 @@ export function isSameFuturesGeneric(
 
 export function formatFuturesGeneric(generic: Pick<FuturesGeneric, "prefix" | "position" | "roll" | "adjust">): string {
   const { roll, adjust } = generic;
-  const rollCode = roll.rule === "first-notice" ? `F${roll.days}` : roll.rule === "fixed-day" ? `D${roll.day}` : "";
+  const rollCode = roll.rule === "first-notice" ? roll.standard ? "" : `F${roll.days}` : roll.rule === "fixed-day" ? `D${roll.day}` : "OI";
   return `${generic.prefix}${generic.position}${rollCode}${adjust === "ratio" ? "R" : adjust === "difference" ? "A" : ""}`;
 }
 
@@ -182,12 +206,14 @@ export function futuresGenericCaption(generic: FuturesGeneric): string {
   return `${generic.ticker} ${futuresGenericOrdinal(generic.position)} generic · ${futuresGenericRollLabel(generic)} · ${futuresGenericAdjustLabel(generic.adjust)}`;
 }
 
-/** Choice values for the chart's roll control: the three rules at their usual settings. */
+/** Choice values for the chart's roll control: the standard roll and the three rules at their usual settings. */
 export function futuresGenericRollValue(roll: FuturesGenericRoll): string {
+  if (roll.rule === "first-notice" && roll.standard) return "standard";
   return roll.rule === "first-notice" ? `f${roll.days}` : roll.rule === "fixed-day" ? `d${roll.day}` : "oi";
 }
 
-export function futuresGenericRollFromValue(value: string): FuturesGenericRoll | null {
+export function futuresGenericRollFromValue(value: string, root: string): FuturesGenericRoll | null {
+  if (value === "standard") return standardFuturesGenericRoll(root);
   if (value === "oi") return { rule: "open-interest" };
   const match = /^([fd])(\d{1,2})$/.exec(value);
   if (!match) return null;

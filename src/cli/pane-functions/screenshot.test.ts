@@ -13,6 +13,7 @@ import {
   shotDataEvidenceFor,
   shotExpectedText,
   shotSemanticRowCount,
+  shotTableRows,
   shotUnavailableSymbols,
   shotFreshness,
   shownReportTab,
@@ -21,6 +22,8 @@ import {
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
 import { paneEvidenceMismatches } from "./screenshot-evidence";
+import { shotRowsText } from "./index";
+import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energy";
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
@@ -1233,4 +1236,44 @@ test("an Issuer Debt or TRACE capture is dated by its own data, never by the iss
   }, NOW);
   const trace = shotFreshness({ pane, template: traceBondsModule.paneTemplates![0]! }, { ...payload, instrumentFinancials: [] }, render, [], sales, NOW);
   expect(trace.variants[0]).toBe("Source: FINRA · Mon 27 Jul 2026 · not a live feed (last sales)");
+});
+
+describe("a board that grows to show every row (FUT)", () => {
+  const row = (key: string, tableIndex = 0, section?: true) =>
+    ({ tableIndex, rowIndex: 0, key, selected: false, ...(section ? { section } : {}), cells: [{ columnLabel: "Row", text: key }] });
+  const board = (keys: string[]) => [row("header-energy", 0, true), ...keys.map((key) => row(key))];
+  const symbols = Array.from({ length: 72 }, (_, index) => `F${index}=F`);
+  const fut = { pane: { id: "commodities-energy", shotFitsRows: (pane: { params?: Record<string, string> }) => pane.params?.tab === "markets" },
+    instance: { params: { tab: "markets" } } } as unknown as Pick<ResolvedPaneFunction, "pane" | "instance">;
+
+  test("counts the rows its table reports and how many the image holds, leaving out section headers", () => {
+    // The height limit cut the board at 37 contracts: the shot says so instead of "Rows 37".
+    expect(shotTableRows(fut, { rows: board(symbols.slice(0, 37)), reportRows: board(symbols) })).toEqual({ shown: 37, total: 72 });
+    expect(shotRowsText({ shown: 37, total: 72 })).toBe("37 of 72 rows");
+    // Grown to fit, every contract is in the image.
+    expect(shotTableRows(fut, { rows: board(symbols), reportRows: board(symbols) })).toEqual({ shown: 72, total: 72 });
+    expect(shotRowsText({ shown: 72, total: 72 })).toBe("72");
+    // A row of another table with the same key is not this one.
+    expect(shotTableRows(fut, { rows: [row(symbols[0]!, 1)], reportRows: board(symbols) })).toEqual({ shown: 0, total: 72 });
+  });
+
+  test("only on the tab whose board fits its rows, and never for a pane that keeps its height", () => {
+    const curve = { ...fut, instance: { params: { tab: "curve" } } } as unknown as typeof fut;
+    expect(shotTableRows(curve, { rows: board(symbols.slice(0, 37)), reportRows: board(symbols) })).toBeNull();
+    const chain = { pane: { id: "options" }, instance: {} } as unknown as typeof fut;
+    expect(shotTableRows(chain, { rows: board(symbols.slice(0, 21)), reportRows: board(symbols) })).toBeNull();
+    // A table that reports only what it draws has no count to give.
+    expect(shotTableRows(fut, { rows: board(symbols.slice(0, 37)) })).toBeNull();
+  });
+
+  test("the Commodities & Energy workspace grows on its Markets tab (FUT) and keeps its height on the others", () => {
+    const fits = commoditiesEnergyModule.panes![0]!.shotFitsRows;
+    expect(typeof fits).toBe("function");
+    const on = (params: Record<string, string>, settings?: Record<string, unknown>) =>
+      (fits as (pane: unknown) => boolean)({ instanceId: "x", paneId: "commodities-energy", params, ...(settings ? { settings } : {}) });
+    expect(on({ tab: "markets" })).toBe(true);
+    expect(on({})).toBe(true);
+    expect(on({ tab: "curve" })).toBe(false);
+    expect(on({ tab: "markets" }, { workspaceTab: "positioning" })).toBe(false);
+  });
 });

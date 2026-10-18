@@ -192,6 +192,8 @@ export const commoditiesEnergyModule: PluginModule = {
     defaultMode: "floating",
     defaultFloatingSize: { width: 110, height: 32 },
     tableExport: true,
+    // The Markets tab is FUT's fixed board, every row of which a shot shows; the other tabs keep their height.
+    shotFitsRows: (pane) => savedTab(pane) === "markets",
     settings: activeSettings,
     instanceTitle: (pane) => workspaceTitle(savedTab(pane), pane),
   }],

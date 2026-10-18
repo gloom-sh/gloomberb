@@ -207,9 +207,10 @@ export interface PaneDef {
   /**
    * A `shot` without `--height` grows to the pane's natural height, up to the
    * height limit, so a fixed board (FUT) shows every row instead of cutting
-   * the last ones. Leave it off for long or paged lists.
+   * the last ones. Leave it off for long or paged lists; a pane with tabs
+   * answers for the instance shown, so only its fixed board's tab grows.
    */
-  shotFitsRows?: true;
+  shotFitsRows?: true | ((pane: PaneInstanceConfig) => boolean);
   /**
    * A report of the pane grows to the whole text of the page its reader has
    * open (a docs page), so it is not cut at the first screen. A list the reader

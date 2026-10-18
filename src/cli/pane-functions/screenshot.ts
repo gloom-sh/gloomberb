@@ -439,6 +439,12 @@ export interface PaneScreenshotResult {
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];
+  /**
+   * For a pane that grows to show every row (FUT): how many of the rows its
+   * table reports the image shows, section headers left out. `shown` is less
+   * than `total` when the height limit or `--height` cut the board.
+   */
+  tableRows?: { shown: number; total: number };
   /** What the pane's report leaves out when it is not complete, as `fn` words it: `2 stale`. */
   gaps?: string;
   /** How current the captured data is, as the capture's status line says it; absent with `--no-status`. */
@@ -470,6 +476,12 @@ function shotImagePixels(widthPx: number, heightPx: number, scale = 1): { width:
     width: Math.round(Math.max(1, Math.floor(widthPx / scale / DESKTOP_CELL_WIDTH_PX)) * DESKTOP_CELL_WIDTH_PX * device),
     height: Math.round(Math.max(1, Math.floor(heightPx / scale / DESKTOP_CELL_HEIGHT_PX)) * DESKTOP_CELL_HEIGHT_PX * device),
   };
+}
+
+/** Whether a capture of this pane, on the tab it opens, grows to show every row (PaneDef.shotFitsRows). */
+function paneFitsRows(resolved: Pick<ResolvedPaneFunction, "pane" | "instance">): boolean {
+  const fits = resolved.pane.shotFitsRows;
+  return typeof fits === "function" ? fits(resolved.instance) : fits === true;
 }
 
 /** The tallest layout, in cells, a capture may grow to at this scale: the `--height` limit. */
@@ -1041,7 +1053,7 @@ export async function renderDesktopShot({
     );
     if (statusLine && captureImage) payload.statusLine = true;
     const fitRoles = [
-      ...(fitRows && resolved.pane.shotFitsRows ? ["data-table-body-scroll"] : []),
+      ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),
       ...(fitReader && resolved.pane.shotFitsReader ? ["detail-scroll-body"] : []),
     ];
     if (fitRoles.length > 0) {
@@ -1075,6 +1087,23 @@ export async function renderDesktopShot({
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
   return freshness ? { ...assessed, freshness } : assessed;
+}
+
+/**
+ * For a pane that grows to fit its rows, the rows its table reports (every
+ * one, `reportEveryRow`) and how many of them the image shows, by key;
+ * section headers count in neither. Null for any other pane, or a table that
+ * reports only what is drawn.
+ */
+export function shotTableRows(
+  resolved: Pick<ResolvedPaneFunction, "pane" | "instance">,
+  render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows">,
+): { shown: number; total: number } | null {
+  if (!paneFitsRows(resolved) || !render.reportRows?.length) return null;
+  const reported = render.reportRows.filter((row) => !row.section && row.key);
+  if (reported.length === 0) return null;
+  const drawn = new Set(render.rows.flatMap((row) => row.key ? [`${row.tableIndex}:${row.key}`] : []));
+  return { shown: reported.filter((row) => drawn.has(`${row.tableIndex}:${row.key}`)).length, total: reported.length };
 }
 
 /** What a rendered capture shows, and whether it is fit to use. */
@@ -1139,6 +1168,7 @@ export function assessPaneScreenshot(
   const unusableReason = usable
     ? null
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
+  const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
     ...(render.surfaces?.some((surface) => surface.renderer === "software")
@@ -1165,6 +1195,7 @@ export function assessPaneScreenshot(
     unusableReason,
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
+    ...(tableRows ? { tableRows } : {}),
     outputPath,
     render: {
       ...stripDesktopShotCredentials(render),

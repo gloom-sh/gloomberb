@@ -53,7 +53,7 @@ import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadForwardYieldDistributions, renderFundamentalsReport,
 } from "./ticker";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
+import { futuresContractLines, futuresRollLines, futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   formatExpiryList,
@@ -235,6 +235,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
+  /** The quote of the root's front contract, for a futures row that prices another one (NGF27, NG2). */
+  futuresFront?: Quote;
   /** A perpetual row's market, funding per eight hours and open interest. */
   perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
@@ -706,6 +708,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
+    // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
+    const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
     // A perpetual adds its funding per eight hours and open interest, the figures PERP lists beside its mark.
     const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliPerpetualContract(result.quote)
@@ -723,6 +727,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...getQuoteSessionFields(result.quote),
       quote: result.quote,
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
+      ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
       ...usSuggestions[index] ? { usSuggestion: usSuggestions[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
@@ -811,9 +816,24 @@ function notUsTickerLine({ target, quote, listing, usSuggestion }: QuoteCliRecor
   return cliStyles.warning(`${target.symbol} is not a US ticker: it is ${what}. Did you mean ${describeSuggestion(usSuggestion)}?`);
 }
 
+/** Each futures row's front contract quote, when its terms name a front other than its own contract; null otherwise. */
+async function loadFuturesFrontQuotes(
+  contracts: ReadonlyArray<FuturesContractTermsPayload | null>,
+  provider: Pick<MarketContext["dataProvider"], "getQuotesBatch">,
+): Promise<Array<Quote | null>> {
+  const symbols = [...new Set(contracts.flatMap((terms) => terms?.front?.contractSymbol ?? []))];
+  if (symbols.length === 0) return contracts.map(() => null);
+  const results = await provider.getQuotesBatch(symbols.map((symbol) => ({ symbol, exchange: "" })))
+    .catch(logFailure("cli.commands-market", "Read futures front quotes failed", []));
+  const quotes = new Map(results.flatMap((result) => result.quote ? [[result.target.symbol, result.quote] as const] : []));
+  return contracts.map((terms) => terms?.front ? quotes.get(terms.front.contractSymbol) ?? null : null);
+}
+
 /**
- * Each futures row's Settle line and Contract block, worded
- * as `ticker` words them. Several symbols name theirs in the block's title.
+ * Each futures row's Settle line and Contract block, worded as `ticker`
+ * words them, with how a continuous symbol or a generic rolls, the front it
+ * is not and the day's most active contract after the contract it prices.
+ * Several symbols name theirs in the block's title.
  */
 function quoteFuturesContractText(data: QuoteCliRecord[]): string {
   return data.flatMap((row) => {
@@ -824,7 +844,10 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     const terms = row.futuresContract;
     if (!terms || !row.quote) return [];
     const settle: [string, string] = ["Settle", futuresSettleText(terms, row.quote)];
-    const contract = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
+    const metrics = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
+    const rolls = futuresRollLines(terms, row.futuresFront).map((line): [string, string] => [line.label, line.value]);
+    const at = futuresContractLines(terms, row.quote.symbol || row.target.symbol)[0]?.key === "contract" ? 1 : 0;
+    const contract = [...metrics.slice(0, at), ...rolls, ...metrics.slice(at)];
     if (data.length > 1) return [`${renderSection(`${row.target.symbol} Contract`)}\n${renderStats([settle, ...contract])}`];
     return [[renderStats([settle]), ...contract.length ? ["", renderSection("Contract"), renderStats(contract)] : []].join("\n")];
   }).join("\n\n");

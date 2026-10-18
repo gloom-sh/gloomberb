@@ -195,6 +195,11 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
 }
 
 /** Whether a list report has no row with data: it is empty, or every row is a name without any. */
+/** A board's rows in a shot: "72" when the image holds them all, "37 of 72 rows" when it was cut. */
+export function shotRowsText(rows: { shown: number; total: number }): string {
+  return rows.shown >= rows.total ? String(rows.total) : `${rows.shown} of ${rows.total} rows`;
+}
+
 function foundNothing(data: { rowCount: number; unavailableSymbols: readonly string[] }): boolean {
   return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
@@ -377,7 +382,8 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         text: (data) => {
           const issues = shotStatusIssues(data);
           const stats: CliStatEntry[] = [
-            ["Rows", String(data.rowCount)],
+            // A board that grows to show every row (FUT) says how many of them the image holds when it could not.
+            ["Rows", data.tableRows ? shotRowsText(data.tableRows) : String(data.rowCount)],
             ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],
           ];
           if (data.render.statusLine) stats.push(["Status line", data.render.statusLine]);
