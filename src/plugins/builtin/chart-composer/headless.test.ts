@@ -156,6 +156,31 @@ test("a chart of monthly bars dates the report by how far its newest month has r
   }
 });
 
+test("a chart of weekly bars dates its latest close and the report by the week's last session, not its Monday", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const weekly = ["2026-10-05", "2026-10-12"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 760, high: 780, low: 750, close: 770 - index * 7 }));
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getChartResolutionSupport: () => [{ resolution: "1wk", maxRange: "ALL" }],
+    getPriceHistoryForResolution: async () => weekly,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("SPY:NYSE"), "chart-composer", { rangePreset: "5Y", chartResolution: "1wk" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "SPY:NYSE", rawArgument: "SPY:NYSE", symbols: [], options: {} };
+  try {
+    // Sun 18 Oct 2026: the week of Mon 12 Oct closed on Friday the 16th.
+    setSystemTime(new Date("2026-10-18T05:36:00Z"));
+    const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+    expect(result.freshness).toMatchObject({ basis: "weekly bars", asOf: "2026-10-16" });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toMatch(/SPY:XNYS Price\s+2026-10-16\s+763/);
+    expect(text).toContain("Fri 16 Oct 2026 · not a live feed (weekly bars)");
+  } finally {
+    setSystemTime();
+  }
+});
+
 describe("GIP headless sessions", () => {
   test("selects the latest one/five sessions or a historical session, retaining its last bar without another history fetch", async () => {
     for (const [range, session, days] of [["1D", undefined, 1], ["1W", undefined, 5], ["1W", "2026-09-01", 1]] as const) {

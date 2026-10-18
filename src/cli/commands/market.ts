@@ -87,6 +87,7 @@ import {
   type CliReportTables,
 } from "../report-tables";
 import {
+  closedPeriodBarDay,
   formingPeriodBar,
   historyBarStatusNote,
   historyCoverageWarning,
@@ -969,6 +970,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const venue = quote?.listingExchangeName || exchange || undefined;
     // October's monthly bar on 16 Oct runs through the 15th: marked partial, and the status line says how far.
     const forming = formingPeriodBar(served, venue);
+    // A complete one is dated by the day its last session closed, the day its close is from.
+    const closedDay = forming ? null : closedPeriodBarDay(served, venue);
     const data = forming?.rows ?? served;
     const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
@@ -983,7 +986,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       observedKey: "date",
       oldest: null,
       cadenceExchange: venue,
-      ...(forming ? { periodToDate: forming.periodToDate } : {}),
+      ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
       ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
       ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
     });

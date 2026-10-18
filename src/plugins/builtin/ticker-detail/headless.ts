@@ -37,7 +37,7 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-ba
 import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import {
-  formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyDateHeader, isDailyOrLongerBar, type HistoryBarSize,
+  closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyDateHeader, isDailyOrLongerBar, type HistoryBarSize,
 } from "./data-panes/history-bars";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -327,6 +327,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const size = historyBarSize(rows.map((row) => Date.parse(row.date)));
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
     const forming = formingHistoryBar(size, rows.at(-1)?.date, venue, now);
+    // A complete one is dated by the day its last session closed, the day its close is from.
+    const closedDay = closedHistoryBarDay(size, rows.at(-1)?.date, venue, now);
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     const marked = shown.some((row) => row.partial === true);
     // The day's bar built from the quote is not a close; a coin's day in progress, as its source flags it, keeps its line.
@@ -335,7 +337,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const freshness = {
       ...barHistoryFreshness(isDailyOrLongerBar(size) ? size : null),
       observedKey: "date", oldest: null,
-      ...(forming ? { periodToDate: forming } : {}),
+      ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
       ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}`, ...(quote ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     };
     return {
@@ -389,6 +391,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     }));
     // A weekly or monthly bar whose period runs on is the period so far: marked partial, and dated by how far it runs.
     const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
+    const closedDay = closedHistoryBarDay(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
     const rows = forming ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
     const figures: HeadlessPaneColumn[] = [
@@ -430,7 +433,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         ...barHistoryFreshness(intraday ? null : series.resolution),
         observedKey: "time",
         oldest: null,
-        ...(forming ? { periodToDate: forming } : {}),
+        ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
         // The window ends at the last session while the market is shut, which the status line says.
         ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),

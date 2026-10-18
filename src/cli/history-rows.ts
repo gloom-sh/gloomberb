@@ -17,7 +17,7 @@ import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
-import { barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
+import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
@@ -246,6 +246,22 @@ export function formingPeriodBar(
   const forming = last && period ? barPeriodToDate(last.date, period, venue, now) : null;
   if (!forming) return null;
   return { rows: [...rows.slice(0, -1), { ...last!, partial: true }], periodToDate: forming };
+}
+
+/**
+ * The day the newest weekly or monthly bar closed on once its period has
+ * ended (barLastSession), which dates the history instead of the day its
+ * period starts: Fri 16 Oct 2026 for the week of Mon 12 Oct. Null while it
+ * forms (formingPeriodBar), and for daily and intraday bars.
+ */
+export function closedPeriodBarDay(
+  rows: readonly HistoryRow[],
+  venue: string | undefined,
+  now = Date.now(),
+): string | null {
+  const last = rows.at(-1);
+  const period = last?.interval === "1mo" ? "month" : last?.interval === "1wk" ? "week" : null;
+  return last && period && !barPeriodToDate(last.date, period, venue, now) ? barLastSession(last.date, period, venue, now) : null;
 }
 
 /**

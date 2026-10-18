@@ -61,7 +61,10 @@ export const thirteenFModule: PluginModule = {
       paneId: THIRTEENF_PANE_ID,
       label: "13F Funds",
       description: "Browse institutional 13F fund filings and estimated long-book performance.",
-      keywords: ["13f", "funds", "hedge funds", "holdings", "filings", "institutional"],
+      keywords: [
+        "13f", "funds", "hedge funds", "holdings", "filings", "institutional",
+        "buffett", "berkshire", "overlap", "copy basket", "active share", "portfolio import",
+      ],
       shortcut: {
         prefix: "13F",
         argPlaceholder: "fund, ticker, or CIK",

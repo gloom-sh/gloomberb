@@ -72,6 +72,12 @@ describe("chart composer expressions", () => {
       .toThrow('Invalid chart series "MSFT:revenu"');
   });
 
+  test("a stray separator in a pasted list adds no series: trailing, leading and doubled commas", () => {
+    const symbols = (value: string) => parseChartExpression(value).map((leg) => leg.kind === "security" ? leg.symbol : leg.kind);
+    for (const value of ["BRK.B,SPY,", ",BRK.B,SPY", "BRK.B,,SPY", " BRK.B , ; SPY ,\n"]) expect(symbols(value), value).toEqual(["BRK.B", "SPY"]);
+    expect(parseChartExpression(" , ;")).toEqual([]);
+  });
+
   test("an unspaced slash between two tickers is their ratio, and a real pair stays one series", () => {
     const ratio = buildCustomChartPreset("GAA/VOO");
     expect(ratio.series.map((series) => series.source)).toEqual([

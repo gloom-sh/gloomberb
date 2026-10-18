@@ -297,6 +297,22 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("Buffett, overlap, copying a basket and active share searches list 13F first, one word or several", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["buffett", "berkshire", "overlap", "copy", "active share", "portfolio import"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        expect(selectPaneCatalogMatches(ranked, query, 10).shown[0]?.token, query).toBe("13F");
+      }
+      // The Buffett indicator is still VAL's.
+      expect(filterPaneCatalogEntries(entries, "buffett").map(({ token }) => token)).toContain("VAL");
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("a function's code page names the other functions that list the same word, and AIS finds the map in any case", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());

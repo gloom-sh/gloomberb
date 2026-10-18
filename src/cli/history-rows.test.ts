@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  cleanFloat32Price, formingPeriodBar, historyFlagNote, historyGapNote, historyJumpNote, historyNotes, historyPriceDecimals, historyRows, historyUnbrokenFrom,
+  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyFlagNote, historyGapNote, historyJumpNote, historyNotes, historyPriceDecimals, historyRows, historyUnbrokenFrom,
   historyUnit,
 } from "./history-rows";
 import { pricePointValues } from "../utils/price-history-integrity";
@@ -185,12 +185,13 @@ describe("a weekly or monthly bar whose period runs on", () => {
   // The status line `history` ends with, from the bars it prints.
   const footer = (rows: ReturnType<typeof bars>, venue: string, now: number) => {
     const forming = formingPeriodBar(rows, venue, now);
+    const closedDay = forming ? null : closedPeriodBarDay(rows, venue, now);
     const shown = forming?.rows ?? rows;
     return {
       partial: shown.map((row) => row.partial === true),
       line: formatFreshnessLine(rowsFreshness(shown, {
         ...barHistoryFreshness(rows[0]!.interval), observedKey: "date", oldest: null, cadenceExchange: venue,
-        ...(forming ? { periodToDate: forming.periodToDate } : {}),
+        ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
       }, undefined, now)!),
     };
   };
@@ -213,12 +214,20 @@ describe("a weekly or monthly bar whose period runs on", () => {
     expect(footer(monthly, "", friday).line).toContain("· Oct 2026 to date ·");
   });
 
-  test("is complete once the last session of its period has closed, though the month runs on", () => {
-    // Sat 31 Oct: October's last session closed on Friday the 30th.
+  test("is complete once the last session of its period has closed, though the month runs on, and dated by that session", () => {
+    // Sat 31 Oct: October's last session closed on Friday the 30th, the day its close is from, not the 1st it is dated by.
     const saturday = Date.parse("2026-10-31T12:00:00Z");
     expect(footer(monthly, "NASDAQ", saturday)).toEqual({
-      partial: [false, false], line: "Source: Gloom Cloud · Thu 1 Oct 2026 · not a live feed (monthly bars)",
+      partial: [false, false], line: "Source: Gloom Cloud · Fri 30 Oct 2026 · not a live feed (monthly bars)",
     });
+    // Sun 18 Oct: the week of Mon 12 Oct closed on Friday the 16th.
+    expect(footer(weekly, "NASDAQ", Date.parse("2026-10-18T05:00:00Z")).line).toBe("Source: Gloom Cloud · Fri 16 Oct 2026 · not a live feed (weekly bars)");
+    // A week whose Friday is a holiday ends on Thursday (Good Friday, 3 Apr 2026); a coin's week on Sunday; a venue
+    // whose sessions are unknown on the period's last weekday.
+    expect(closedPeriodBarDay(bars(["2026-03-30"], "1wk"), "NYSE", Date.parse("2026-04-05T12:00:00Z"))).toBe("2026-04-02");
+    expect(closedPeriodBarDay(weekly, "CCC", Date.parse("2026-10-19T05:00:00Z"))).toBe("2026-10-18");
+    expect(closedPeriodBarDay(bars(["2026-05-01"], "1mo"), "", Date.parse("2026-06-03T12:00:00Z"))).toBe("2026-05-29");
+    expect(closedPeriodBarDay(bars(["2026-10-15", "2026-10-16"], "1d"), "NASDAQ", saturday)).toBeNull();
     // September's bar on 16 Oct, and last week's on Monday before the open, are complete.
     expect(formingPeriodBar(bars(["2026-08-01", "2026-09-01"], "1mo"), "NASDAQ", friday)).toBeNull();
     expect(formingPeriodBar(bars(["2026-10-05"], "1wk"), "NASDAQ", Date.parse("2026-10-12T08:00:00Z"))).toBeNull();

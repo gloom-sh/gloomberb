@@ -3,6 +3,7 @@ import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
+import { barLastSession } from "../market-data/market/bar-period";
 
 const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
 
@@ -102,6 +103,10 @@ export function resolvePriceComparison(
     seriesIds, start: null, end: null,
     notice: `${PRICE_COMPARISON_BASIS} Comparison unavailable: need two shared dates and a nonzero baseline.`,
   };
+  // A weekly or monthly bar's close is from the last session of its period, which the notice dates it by.
+  const period = resolution === "1wk" ? "week" : resolution === "1mo" ? "month" : null;
+  const venue = byId.get(seriesIds[0]!)?.timeBasis?.exchange || byId.get(seriesIds[0]!)?.listing?.exchange || undefined;
+  const sessionDay = (key: string) => (period ? barLastSession(key, period, venue, Date.now()) : null) ?? key;
   const sourceBounds = Object.fromEntries(seriesIds.map((id, index) => [id, {
     start: observations[index]!.get(start)!.date.getTime(),
     end: observations[index]!.get(end)!.date.getTime(),
@@ -113,7 +118,7 @@ export function resolvePriceComparison(
     alignment: calendarBars ? "session-date" : "timestamp",
     sourceBounds,
     notice: calendarBars
-      ? `${PRICE_COMPARISON_BASIS} Shared calendar dates: ${start} to ${end}; market session times may differ.`
+      ? `${PRICE_COMPARISON_BASIS} Shared calendar dates: ${sessionDay(start)} to ${sessionDay(end)}; market session times may differ.`
       : `${PRICE_COMPARISON_BASIS} Shared observations: ${displayDate(Number(start))} to ${displayDate(Number(end))}.`,
   };
 }

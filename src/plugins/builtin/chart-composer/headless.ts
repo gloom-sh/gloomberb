@@ -28,7 +28,7 @@ import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
-import { formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
+import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
 
@@ -316,7 +316,31 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   ), resolutions[0]);
   const forming = formingPriceBar(series);
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
-  return { ...barHistoryFreshness(coarsest), ...(forming ? { periodToDate: forming, oldest: null } : {}) };
+  if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
+  const closedDay = closedPriceBarDay(series);
+  return { ...barHistoryFreshness(coarsest), ...(closedDay ? { asOf: closedDay } : {}) };
+}
+
+/** A series' venue and the day its newest bar starts, as the forming and closed bar checks read them. */
+function newestBar(entry: HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>): { day: string; venue: string | undefined } | null {
+  const last = entry.points.at(-1);
+  const time = last ? new Date(last.date).getTime() : Number.NaN;
+  if (!entry.historyResolution || !Number.isFinite(time)) return null;
+  return { day: new Date(time).toISOString().slice(0, 10), venue: entry.timeBasis?.exchange || entry.listing?.exchange || undefined };
+}
+
+/**
+ * The day the newest complete weekly or monthly bar of the chart closed on,
+ * the latest across its series: a week of bars dated Mon 12 Oct 2026 is dated
+ * Fri 16 Oct, the day their closes are from. Null for daily and intraday bars.
+ */
+function closedPriceBarDay(series: readonly HeadlessSeries[]): string | null {
+  const days = (series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>>).flatMap((entry) => {
+    const bar = newestBar(entry);
+    const day = bar ? closedHistoryBarDay(entry.historyResolution!, bar.day, bar.venue, Date.now()) : null;
+    return day ? [day] : [];
+  });
+  return days.length ? days.sort().at(-1)! : null;
 }
 
 /**
@@ -327,11 +351,8 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
  */
 function formingPriceBar(series: readonly HeadlessSeries[]): BarPeriodToDate | null {
   for (const entry of series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>>) {
-    const last = entry.points.at(-1);
-    const time = last ? new Date(last.date).getTime() : Number.NaN;
-    if (!entry.historyResolution || !Number.isFinite(time)) continue;
-    const venue = entry.timeBasis?.exchange || entry.listing?.exchange || undefined;
-    const forming = formingHistoryBar(entry.historyResolution, new Date(time).toISOString().slice(0, 10), venue, Date.now());
+    const bar = newestBar(entry);
+    const forming = bar ? formingHistoryBar(entry.historyResolution!, bar.day, bar.venue, Date.now()) : null;
     if (forming) return forming;
   }
   return null;

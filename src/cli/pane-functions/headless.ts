@@ -36,6 +36,7 @@ import {
 import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
 import type { ResolvedSeries } from "../../time-series/types";
+import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
@@ -401,8 +402,8 @@ function isDateOnly(date: SeriesPointDate): boolean {
 }
 
 /** Session bars are dated by the trading date the chart and comparison notice use, not the bar's open instant. */
-function calendarSeries(series: HeadlessSeries): (HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis">>) | null {
-  const resolved = series as HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis">>;
+function calendarSeries(series: HeadlessSeries): (HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>) | null {
+  const resolved = series as HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>;
   return resolved.historyResolution && CALENDAR_RESOLUTIONS.has(resolved.historyResolution) ? resolved : null;
 }
 
@@ -426,6 +427,21 @@ function seriesPointDate(series: HeadlessSeries, date: SeriesPointDate): string 
   if (!Number.isFinite(time)) return typeof date === "string" ? date : "-";
   const calendar = calendarSeries(series);
   return calendar ? observationDate(time, calendar) : formatUtcTime({ time, dateOnly: isDateOnly(date) || observesDays(series) });
+}
+
+/**
+ * The day a series' latest value is from: a weekly or monthly bar's last
+ * session (barLastSession), Fri 16 Oct 2026 for the week of Mon 12 Oct, not
+ * the day its period starts, which its row in an export keeps. Any other
+ * point as seriesPointDate dates it.
+ */
+function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string {
+  const calendar = calendarSeries(series);
+  const period = calendar?.historyResolution === "1wk" ? "week" : calendar?.historyResolution === "1mo" ? "month" : null;
+  const time = seriesPointTime(date);
+  if (!calendar || !period || !Number.isFinite(time)) return seriesPointDate(series, date);
+  const venue = calendar.timeBasis?.exchange || calendar.listing?.exchange || undefined;
+  return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? seriesPointDate(series, date);
 }
 
 /** The same date for a spreadsheet: the trading date, the calendar date, or the ISO instant. */
@@ -527,7 +543,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     return {
       series: series.label,
       name: series.name?.trim() || null,
-      latest: latest ? seriesPointDate(series, latest.date) : "-",
+      latest: latest ? seriesLatestDate(series, latest.date) : "-",
       value: seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() || null,
       points: observationCount(series),
