@@ -236,7 +236,7 @@ async function report(shardsDir: string, out: string, comment: string | null): P
         ...moving.slice(0, 30).map((change) => `| ${change.view} | ${widths.map((width) => change.widths[width] === undefined ? "" : percent(change.widths[width]!)).join(" | ")} |`),
         ...(moving.length > 30 ? [`| and ${moving.length - 30} more | |`] : [])]
       : ["No pane body moved."]),
-    ...(unsteady.size ? ["", `Left out of the count, unsteady (two pictures of the same head differ): ${[...unsteady].sort().join(", ")}.`] : []),
+    ...(unsteady.size ? ["", `Left out of the count, unsteady (two pictures of the same code differ): ${[...unsteady].sort().join(", ")}.`] : []),
     ...(failed.length ? ["", `Did not open on the head: ${failed.join(", ")}.`] : []),
     "",
     run ? `Sheets (before, after and the difference of every view that moved, and per family): the \`ui-benchmark\` artifact of [this run](${run}).` : `Sheets: ${join(out, "sheets")} (${sheets.length}), ${join(out, "compare", "diff-sheets")}.`,
