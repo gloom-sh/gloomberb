@@ -10,6 +10,8 @@ export interface RealizedVolEvidenceStatus {
   view: "graph" | "cone";
   estimator: string;
   windows: readonly number[];
+  /** The cone window its chart legend reads; null on the history view. */
+  legendWindow?: number | null;
   lookbackYears: number;
   showIv: boolean;
   loading: boolean;

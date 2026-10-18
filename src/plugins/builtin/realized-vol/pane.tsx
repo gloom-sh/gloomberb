@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useLiveSessionRefresh } from "../shared/volatility/live-session";
 import type { RealizedVolatilityEstimator, VolatilityConeStatistics } from "../shared/volatility";
@@ -19,6 +20,7 @@ import { loadCurrentAtmIv, loadRealizedVolatilityHistory, refreshCurrentAtmIv } 
 import type { CurrentAtmIvSnapshot } from "./model";
 import { projectRealizedVolatility } from "./model";
 import { RealizedVolGraph, VolatilityConeChart } from "./charts";
+import { coneWindowDate } from "./chart-model";
 import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
@@ -27,6 +29,9 @@ import { priceSeriesUnit } from "../../../market-data/market/index-level";
 const ATM_IV_REFRESH_MS = 60_000;
 const TABS = [{ value: "graph", label: "History" }, { value: "cone", label: "Cone" }];
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
+const NO_CONE: VolatilityConeStatistics[] = [];
+const coneRowId = (row: VolatilityConeStatistics) => String(row.window);
+const coneRowDate = (row: VolatilityConeStatistics) => coneWindowDate(row.window);
 const CONE_COLUMNS: DataTableColumn[] = [
   { id: "window", label: "Bars", width: 10, align: "left" },
   ...["current", "min", "max", "mean", "median"].map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1), width: 11, align: "right" as const })),
@@ -141,8 +146,16 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     { id: "iv", key: "i", label: showIv ? "v off" : "v on", onPress: () => setShowIv(!showIv) },
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
   ] }), [history.loading, history.data, model?.asOf, model?.barsPerYear, iv.loading, showIv, view, symbol, iv.data]);
+  // The cone's legend reads the selected row, or the last one when that window has none.
+  const legendWindow = view === "cone" && model?.cone.length
+    ? (model.cone.find((row) => row.window === selected) ?? model.cone.at(-1)!).window : null;
+  // A report of the pane says which window its legend figures are for, as the legend does by its cursor.
+  useRemoteUiNode(legendWindow != null ? {
+    role: "report-notice", label: "Chart window",
+    getMetadata: () => ({ text: `Chart legend: ${legendWindow}-bar window`, key: "legendWindow", value: legendWindow }),
+  } : null);
   const evidence: RealizedVolEvidenceStatus = {
-    symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator,
+    symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator, legendWindow,
     windows, lookbackYears: Number(lookback) === 2 ? 2 : 1, showIv,
     loading: history.loading || (showIv && iv.loading),
     stale: history.data?.stale ?? false, source: history.data?.source ?? null,
@@ -160,6 +173,9 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const coneStats: StatItem[] = view === "cone" && model && reference
     ? [{ id: "atm-iv", label: "ATM IV", value: percent(reference.value), detail: `${Math.round(reference.daysToExpiry)}d` }] : [];
   const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));
+  // The table's selected window is the chart's cursor, so its legend reads that row's figures.
+  const coneSelection = useChartTableSelection({ rows: model?.cone ?? NO_CONE, getId: coneRowId, getDate: coneRowDate,
+    selectedId: String(selected), onSelect: (id) => setSelected(Number(id)), focused, enabled: view === "cone" });
   const sortedCone = [...(model?.cone ?? [])].sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   const coneTableHeight = Math.min(Math.max(2, sortedCone.length + 1), 10, Math.max(4, Math.floor(contentHeight * 0.42)));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
@@ -173,10 +189,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       {model && view === "cone" ? <>
         <StatGrid items={coneStats} width={width} />
         <DataTableView<VolatilityConeStatistics> focused={focused} columns={CONE_COLUMNS} items={sortedCone}
-          rootWidth={width} rootHeight={coneTableHeight} getItemKey={(row) => String(row.window)}
+          rootWidth={width} rootHeight={coneTableHeight} getItemKey={coneRowId}
           sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="Volatility cone unavailable."
           onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as keyof VolatilityConeStatistics))}
-          selection={{ kind: "id", selectedId: String(selected), getId: (row) => String(row.window), onChange: (_id, row) => setSelected(row.window) }}
+          selection={{ kind: "id", selectedId: String(selected), getId: coneRowId, onChange: (_id, row) => setSelected(row.window) }}
           onActivate={(row) => setSelected(row.window)}
           getExportMetadata={() => [["symbol", model.symbol], ["estimator", model.estimator], ["lookback years", model.lookbackYears],
             ["as of", model.asOf?.toISOString()], ["source", history.data?.source], ["units", "annualized %"], ["annualization", barsPerYearLabel(model.barsPerYear)], ["warnings", ...notices]]}
@@ -186,7 +202,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
                 : percent(row[column.id as "current" | "min" | "max" | "mean" | "median"]),
             color: column.id === "current" ? colors.warning : colors.text })} />
         {/* Desktop chrome runs a little taller than its rows; the spare row keeps the last window in view. */}
-        <VolatilityConeChart evidence={evidence} rows={model.cone} width={width}
+        <VolatilityConeChart evidence={evidence} rows={model.cone} width={width} selection={coneSelection}
           height={Math.max(3, contentHeight - coneTableHeight - (nativePaneChrome ? 1 : 0))} focused={focused} />
       </> : chartInput && windows.length ? <RealizedVolGraph evidence={evidence} input={chartInput} width={width} height={contentHeight} focused={focused} />
         : <EmptyState title="Select graph windows in pane settings." />}

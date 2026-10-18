@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coneChartSeries, realizedChartSeries } from "./chart-model";
+import { coneChartSeries, coneDomain, realizedChartSeries } from "./chart-model";
 
 describe("realized-vol chart inputs", () => {
   test("preserves rejected windows as gaps and dates current IV exactly once", () => {
@@ -20,5 +20,16 @@ describe("realized-vol chart inputs", () => {
     expect(series[3]!.points.map((point) => point.value)).toEqual([25, null, 25]);
     expect(series[0]!.timeBasis).toBeUndefined();
     expect(series[0]!.points[2]!.date.getTime() - series[0]!.points[1]!.date.getTime()).toBe(230 * 86_400_000);
+  });
+
+  test("the cone's x domain runs past its first and last window so neither is clipped", () => {
+    const domain = coneDomain([10, 20, 260].map((window) => ({ window })));
+    for (const window of [10, 20, 260]) {
+      expect(domain.ratio(window)).toBeGreaterThan(0.02);
+      expect(domain.ratio(window)).toBeLessThan(0.98);
+      expect(domain.window(domain.ratio(window))).toBe(window);
+    }
+    expect(domain.viewport.start.getTime()).toBeLessThan(10 * 86_400_000);
+    expect(domain.viewport.end.getTime()).toBeGreaterThan(260 * 86_400_000);
   });
 });

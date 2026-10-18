@@ -33,18 +33,27 @@ interface LabelPlacement {
 }
 
 /**
- * Terminal ticks sit on whole cells, so neighbours that land within a cell of
- * each other would print as one word ("930D"). Keep the first tick, then each
- * one clear of the last kept by a blank cell, holding room for the final tick.
+ * Space kept between neighbouring tick labels, in cells. The terminal prints
+ * labels on whole cells, where one is a blank cell. The desktop and the web
+ * place a label at its exact fraction of the plot, in a font a little
+ * narrower than the cell it is counted in, so half a cell is already a gap.
  */
-function dropCollidingLabels<T extends LabelPlacement>(placements: readonly T[]): T[] {
+const TERMINAL_LABEL_GAP = 1;
+const DESKTOP_LABEL_GAP = 0.5;
+
+/**
+ * Neighbouring ticks that land within `gap` cells of each other would print as
+ * one word ("930D", "1020"). Keep the first tick, then each one clear of the
+ * last kept, holding room for the final tick.
+ */
+function dropCollidingLabels<T extends LabelPlacement>(placements: readonly T[], gap: number): T[] {
   const sorted = [...placements].sort((left, right) => left.start - right.start);
   const final = sorted[sorted.length - 1];
   const kept: T[] = [];
   let lastEnd = Number.NEGATIVE_INFINITY;
   for (const placement of sorted) {
-    if (placement.start <= lastEnd + 1) continue;
-    if (placement !== final && kept.length > 0 && final && final.start <= placement.end + 1) continue;
+    if (placement.start < lastEnd + 1 + gap) continue;
+    if (placement !== final && kept.length > 0 && final && final.start < placement.end + 1 + gap) continue;
     kept.push(placement);
     lastEnd = placement.end;
   }
@@ -198,9 +207,7 @@ export function StaticXAxisLabels({
     if (!clearOfBadges(start, start + labelWidth)) return [];
     return [{ entry, index, edgeStyle, start, end: start + labelWidth - 1 }];
   });
-  const positionedPlacements = isDesktop
-    ? placedPositionedLabels
-    : dropCollidingLabels(placedPositionedLabels);
+  const positionedPlacements = dropCollidingLabels(placedPositionedLabels, isDesktop ? DESKTOP_LABEL_GAP : TERMINAL_LABEL_GAP);
   const segmentWidths = visibleLabels.map((_, index) => baseWidth + (index < remainder ? 1 : 0));
   const flowText = blankLabelsUnderBadges(
     visibleLabels.map((label, index) => alignAxisLabel(label, segmentWidths[index]!, index, visibleLabels.length)),

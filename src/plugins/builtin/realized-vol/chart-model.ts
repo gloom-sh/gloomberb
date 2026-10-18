@@ -34,14 +34,37 @@ export function realizedChartSeries(input: RealizedChartInput, colors: readonly 
   return series;
 }
 
+const SESSION_MS = 86_400_000;
+/** The cone's x coordinate for a session window: a numeric position stored as a time, not a market date. */
+export const coneWindowDate = (window: number) => new Date(window * SESSION_MS);
+/** Room kept beyond the first and last window, as a fraction of the span between them. */
+const CONE_DOMAIN_PADDING = 0.04;
+
+/**
+ * The cone's x axis in session windows. It runs a little past the first and
+ * last window, so a marker or the end of a line on either is drawn whole and
+ * not cut by the plot's edge; ticks and the cursor read through the same range.
+ */
+export function coneDomain(rows: readonly Pick<VolatilityConeStatistics, "window">[]) {
+  const windows = rows.map((row) => row.window).filter(Number.isFinite);
+  const first = windows.length ? Math.min(...windows) : 10, last = windows.length ? Math.max(...windows) : 260;
+  const padding = Math.max(1, last - first) * CONE_DOMAIN_PADDING;
+  const start = first - padding, end = last + padding;
+  return {
+    first, last, start, end,
+    viewport: { start: coneWindowDate(start), end: coneWindowDate(end) },
+    ratio: (window: number) => (window - start) / (end - start),
+    window: (ratio: number) => Math.round(start + ratio * (end - start)),
+  };
+}
+
 export function coneChartSeries(rows: readonly VolatilityConeStatistics[], colors: readonly string[]): ResolvedSeries[] {
   return (["min", "max", "mean", "current"] as const).map((field, index) => ({
     ...staticSeries(rows.map((row) => {
-      // The synthetic timestamp is a numeric session-window coordinate, not a market date.
-      const date = new Date(row.window * 86_400_000);
+      const date = coneWindowDate(row.window);
       return { date, observedAt: date, value: row[field] == null ? null : row[field]! * 100 };
     }), { id: field, label: field === "current" ? "Current" : field === "mean" ? "Mean" : field === "min" ? "Min" : "Max",
-      color: colors[index]!, style: field === "current" ? "points" : "line", calendarSpaced: true }),
+      color: colors[index]!, calendarSpaced: true }),
     unit: "%", unitGroup: "volatility",
   }));
 }

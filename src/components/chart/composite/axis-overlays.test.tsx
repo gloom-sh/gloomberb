@@ -13,11 +13,8 @@ import { StaticXAxisLabels } from "./axis-overlays";
 import { buildCompositeViewportTimeAxisLayout } from "./time-axis";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 
-function renderAxis(
-  kind: "opentui" | "desktop-web",
-  cursor: { cursorPixelX?: number; cursorLabel?: string } = {},
-): string {
-  const ui = {
+function hostFor(kind: "opentui" | "desktop-web"): UiHost {
+  return {
     kind,
     capabilities: {
       cellWidthPx: 8,
@@ -27,16 +24,23 @@ function renderAxis(
     Box: WebBox,
     Text: WebText,
   } as unknown as UiHost;
+}
+
+function renderAxis(
+  kind: "opentui" | "desktop-web",
+  cursor: { cursorPixelX?: number; cursorLabel?: string } = {},
+  ticks: ReadonlyArray<{ label: string; ratio: number }> = [
+    { label: "Nov 3 2025", ratio: 0 },
+    { label: "Mar", ratio: 0.5 },
+    { label: "Jul 29 2026", ratio: 1 },
+  ],
+): string {
   const fallback = "Nov 3 2025                    Mar                    Jul 29 2026";
   return renderToStaticMarkup(
-    <UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <UiHostProvider ui={hostFor(kind)} renderer={noopRendererHost}>
       <StaticXAxisLabels
         labels={[fallback]}
-        positionedLabels={[
-          { label: "Nov 3 2025", ratio: 0 },
-          { label: "Mar", ratio: 0.5 },
-          { label: "Jul 29 2026", ratio: 1 },
-        ]}
+        positionedLabels={ticks}
         width={80}
         {...cursor}
       />
@@ -64,6 +68,21 @@ describe("StaticXAxisLabels", () => {
     expect(html).toContain(">2026-07-29<");
     expect(html).not.toContain(">Jul 29 2026<");
     expect(html).toContain(">Mar<");
+  });
+
+  test("drops a desktop tick that lands on its neighbour instead of printing both over each other", () => {
+    // Ratios 0.03 and 0.05 of 80 cells put "10" and "20" a cell and a half apart.
+    const html = renderAxis("desktop-web", {}, [
+      { label: "10", ratio: 0.03 },
+      { label: "20", ratio: 0.05 },
+      { label: "30", ratio: 0.11 },
+      { label: "260 bars", ratio: 1 },
+    ]);
+
+    expect(html).toContain(">10<");
+    expect(html).not.toContain(">20<");
+    expect(html).toContain(">30<");
+    expect(html).toContain(">260 bars<");
   });
 
   test("keeps the fixed-width axis string for terminal cells", () => {
