@@ -155,7 +155,7 @@ function Block({ block, width, onOpenLink, first = false }: { block: DocsBlock; 
       return <MarkdownText text={tableMarkdown(block.headers, block.rows)} lineWidth={width} onOpenLink={onOpenLink} />;
     case "code":
       return (
-        <Box flexDirection="column" paddingLeft={2}>
+        <Box flexDirection="column" paddingLeft={2} style={nativePaneChrome ? { background: "var(--gloom-surface-sunken)", borderRadius: "var(--gloom-radius-md)", padding: "var(--gloom-space-xs) var(--gloom-space-md)" } : undefined}>
           {block.code.split("\n").map((line, index) => (
             <Text key={index} fg={colors.textBright} selectable>{line || " "}</Text>
           ))}
