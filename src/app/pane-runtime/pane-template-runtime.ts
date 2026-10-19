@@ -11,6 +11,7 @@ import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
   PaneTemplateCreateOptions,
+  PaneTemplateDef,
   PaneTemplateInstanceConfig,
 } from "../../types/plugin";
 
@@ -35,6 +36,22 @@ interface UseAppPaneTemplateRuntimeOptions {
   tickerRepository: AppTickerRepositoryPort;
 }
 
+/**
+ * Whether opening a template asks for its settings first, in the same form the
+ * command bar opens, which creates the pane when it is sent. Data the template
+ * takes whole (a chart a plugin built) already says what the form would ask.
+ */
+export function templateAsksForSettings(
+  template: Pick<PaneTemplateDef, "wizard">,
+  options: PaneTemplateCreateOptions | undefined,
+): boolean {
+  return !!template.wizard
+    && template.wizard.length > 0
+    && !options?.values
+    && options?.shareData === undefined
+    && (!options?.arg || template.wizard.some((step) => step.type === "textarea"));
+}
+
 export function useAppPaneTemplateRuntime({
   buildPaneInstance,
   dataProvider,
@@ -49,13 +66,7 @@ export function useAppPaneTemplateRuntime({
     const template = pluginRegistry.paneTemplates.get(templateId);
     if (!template) return;
 
-    // A template that asks for settings asks in the same form the command bar
-    // opens, which creates the pane when it is sent.
-    const asksForSettings = !!template.wizard
-      && template.wizard.length > 0
-      && !options?.values
-      && (!options?.arg || template.wizard.some((step) => step.type === "textarea"));
-    if (asksForSettings) {
+    if (templateAsksForSettings(template, options)) {
       openFormModal({ kind: "pane-template", templateId, arg: options?.arg, options });
       return;
     }
