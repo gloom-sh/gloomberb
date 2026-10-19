@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
-import { renderReportCsv } from "../../../cli/report-tables";
+import { renderReportCsv, selectReportTables } from "../../../cli/report-tables";
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { cdsHeadless, createCdsHeadless } from "./headless";
 import type { CdsActivity, CdsSpreadHistory } from "./client";
@@ -51,43 +51,58 @@ const FORD_LINE: CdsSpreadHistory = {
     level("2026-09-04", 140, "2031-06-20"),
     level("2026-10-09", 157),
   ],
+  // The server's moves, chained through the Sep 20 roll by the index board's rule.
+  change1W: 12,
+  change1M: 17.04,
+  noLevelReason: null,
 };
 
-function args(argument: string | null): HeadlessPaneLoadArgs {
-  return { rawArgument: argument ?? "", argument, symbols: argument ? [argument] : [], options: {} };
+function args(argument: string | null, options: HeadlessPaneLoadArgs["options"] = {}): HeadlessPaneLoadArgs {
+  return { rawArgument: argument ?? "", argument, symbols: argument ? [argument] : [], options };
 }
 
 const STATUS = { complete: true, unavailableSymbols: [] };
 
-async function report(argument: string | null, load: Parameters<typeof createCdsHeadless>[0], apiClient: object = {}) {
+async function report(
+  argument: string | null,
+  load: Parameters<typeof createCdsHeadless>[0],
+  apiClient: object = {},
+  options: HeadlessPaneLoadArgs["options"] = {},
+) {
   const definition = createCdsHeadless(load);
-  const result = await definition.load(args(argument), { apiClient } as unknown as HeadlessPaneContext) as HeadlessBundleResult;
+  const loadArgs = args(argument, options);
+  const result = await definition.load(loadArgs, { apiClient } as unknown as HeadlessPaneContext) as HeadlessBundleResult;
   const freshness = deriveHeadlessFreshness(definition, result, NOW);
+  const tables = headlessReportTables(definition, result, loadArgs, "CDS", freshness, STATUS);
   return {
     result,
     freshness,
-    text: renderHeadlessPaneText(definition, result, args(argument), "CDS", freshness),
-    csv: renderReportCsv(headlessReportTables(definition, result, args(argument), "CDS", freshness, STATUS)),
+    tables,
+    text: renderHeadlessPaneText(definition, result, loadArgs, "CDS", freshness),
+    csv: renderReportCsv(tables),
   };
 }
 
 describe("CDS report", () => {
-  test("a name's report carries the 5Y level, date, 1M move and range the pane shows, its trades, and its last trade", async () => {
+  test("a name's report carries the 5Y level, date, 1W and 1M moves and range the pane shows, its trades, and its last trade", async () => {
     const { result, freshness, text, csv } = await report("F", {
       load: async () => FORD,
       loadHistory: async () => FORD_LINE,
     });
 
-    // The figures over the pane's chart, under the entity the ticker became.
-    expect(result.sections.map((section) => section.title)).toEqual(["Ford Motor Company", "Trades"]);
+    // The figures over the pane's chart, under the entity the ticker became, then the chart as a table.
+    expect(result.sections.map((section) => section.title)).toEqual(["Ford Motor Company", "Trades", "Daily"]);
     expect(result.sections[0]!.entries!.map((entry) => [entry.key, entry.value])).toEqual([
       ["spreadBp", 157],
       ["date", "2026-10-09"],
-      // A month back is the Jun 2031 contract: the roll is not a move, as the pane leaves it out.
-      ["change1mBp", null],
+      // A month back is the Jun 2031 contract: the server chains the move through the roll, as the index board does.
+      ["change1wBp", 12],
+      ["change1mBp", 17.04],
       ["range", { lowBp: 129, highBp: 276, since: "2024-10-11" }],
     ]);
     expect(text).toMatch(/5Y spread\s+157bp/);
+    expect(text).toMatch(/1W change\s+\+12\.0bp/);
+    expect(text).toMatch(/1M change\s+\+17\.0bp/);
     expect(text).toMatch(/Range\s+129 to 276bp since 2024-10-11/);
     // ISO times, and the upfront without a side it does not have.
     expect(text).toContain("2026-10-09 13:21");
@@ -105,13 +120,55 @@ describe("CDS report", () => {
     expect(csv).toContain("# Source: DTCC · last trade 2026-10-09 · lag 2 days");
   });
 
-  test("the 1M move compares the same contract a month back", async () => {
+  test("a move without a comparable level reads --, not zero", async () => {
     const { result, text } = await report("F", {
       load: async () => FORD,
-      loadHistory: async () => ({ ...FORD_LINE, points: [level("2026-09-01", 144.6), level("2026-10-09", 157.3)] }),
+      loadHistory: async () => ({ ...FORD_LINE, change1W: null, change1M: null }),
     });
-    expect(result.sections[0]!.entries!.find((entry) => entry.key === "change1mBp")?.value).toBe(12.7);
-    expect(text).toMatch(/1M change\s+\+13bp/);
+    expect(result.sections[0]!.entries!.find((entry) => entry.key === "change1mBp")?.value).toBeNull();
+    expect(text).toMatch(/1W change\s+--/);
+    expect(text).toMatch(/1M change\s+--/);
+  });
+
+  test("exports the daily 5Y levels, newest first, over --days", async () => {
+    const { result, tables, text } = await report("F", {
+      load: async () => FORD,
+      loadHistory: async () => FORD_LINE,
+    }, {}, { days: 60 });
+    expect(result.sections.at(-1)!.rows!.map((row) => [row.day, row.spreadBp, row.maturity])).toEqual([
+      ["2026-10-09", 157, "2031-12-20"],
+      ["2026-09-04", 140, "2031-06-20"],
+    ]);
+    expect(text).toMatch(/2026-09-04\s+140bp\s+3\s+Jun 2031/);
+    // `fn CDS F --csv --section daily`: that table alone, a row per day, the contract as its maturity.
+    const daily = renderReportCsv(selectReportTables(tables, "daily")).split("\n");
+    expect(daily[0]).toMatch(/^Date,5Y spread \(bp\),Prints,Contract/);
+    expect(daily.slice(1, 3).map((line) => line.split(",").slice(0, 4).join(","))).toEqual([
+      "2026-10-09,157,3,2031-12-20",
+      "2026-09-04,140,3,2031-06-20",
+    ]);
+    // The default year reaches back past the roll before.
+    const year = await report("F", { load: async () => FORD, loadHistory: async () => FORD_LINE });
+    expect(year.result.sections.at(-1)!.rows).toHaveLength(3);
+  });
+
+  test("says why a name has no level when its prints carry upfront without the payer side", async () => {
+    const barclays: CdsSpreadHistory = {
+      issuer: "Barclays PLC", points: [], change1W: null, change1M: null, noLevelReason: "upfront-side-unknown",
+    };
+    const { result, text } = await report("Barclays PLC", {
+      load: async () => ({ ...FORD, query: "Barclays PLC", issuer: "Barclays PLC", trades: [] }),
+      loadHistory: async () => barclays,
+    });
+    expect(result.notes).toEqual(["5Y level not derivable: DTCC prints carry upfront without payer side."]);
+    expect(text).toContain("5Y level not derivable: DTCC prints carry upfront without payer side");
+    expect(text).not.toContain("No 5Y spread level");
+    // A stale level says the prints after it set none.
+    const stale = await report("BAT", {
+      load: async () => ({ ...FORD, query: "BAT", issuer: "British American Tobacco p.l.c.", trades: [] }),
+      loadHistory: async () => ({ ...barclays, issuer: null, points: [level("2025-10-17", 120)] }),
+    });
+    expect(stale.result.notes).toEqual(["5Y level not derivable after 2025-10-17: DTCC prints carry upfront without payer side."]);
   });
 
   test("lists issuers with their 5Y level and its date from one request, however many are listed", async () => {
@@ -140,8 +197,8 @@ describe("CDS report", () => {
           tenor: "5Y",
           asOf: null,
           levels: [
-            { issuer: "Amazon.com, Inc.", spreadBp: 73, date: "2026-10-09" },
-            { issuer: "Issuer 7 Holdings", spreadBp: 412.5, date: "2026-10-07" },
+            { issuer: "Amazon.com, Inc.", spreadBp: 73, date: "2026-10-09", change1W: 3, change1M: 5.8 },
+            { issuer: "Issuer 7 Holdings", spreadBp: 412.5, date: "2026-10-07", change1W: -2.04, change1M: null },
           ],
         };
       },
@@ -153,10 +210,11 @@ describe("CDS report", () => {
     expect(requests).toEqual({ levels: 1, history: 0 });
     const rows = result.sections[0]!.rows!;
     // DTCC's `;` is the comma it stands for, every spelling is one issuer, and a name without a level has none.
-    expect(rows.slice(0, 2).map((row) => [row.issuer, row.trades, row.spread5yBp, row.spread5yDate])).toEqual([
-      ["Amazon.com, Inc.", 3, 73, "2026-10-09"],
-      ["Ford Motor Company", 2, null, null],
-    ]);
+    expect(rows.slice(0, 2).map((row) => [row.issuer, row.trades, row.spread5yBp, row.change1wBp, row.change1mBp, row.spread5yDate]))
+      .toEqual([
+        ["Amazon.com, Inc.", 3, 73, 3, 5.8, "2026-10-09"],
+        ["Ford Motor Company", 2, null, null, null, null],
+      ]);
     expect(rows).toHaveLength(42);
     // Ranked by level, names without one last.
     expect(sortIssuers(rows as unknown as CdsIssuerSummary[], { columnId: "spread", direction: "desc" })
@@ -165,8 +223,46 @@ describe("CDS report", () => {
       ["Amazon.com, Inc.", 73],
       ["Ford Motor Company", null],
     ]);
-    expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+2026-10-09/);
+    expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+\+3\.0bp\s+\+5\.8bp\s+2026-10-09/);
     expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 · lag 2 days");
+  });
+
+  test("--sort ranks the list by the 5Y level or its 1W or 1M move, from the same one request", async () => {
+    const requests = { levels: 0 };
+    const load = async () => ({
+      ...FORD,
+      query: null,
+      issuer: null,
+      trades: normalizeCdsTrades([
+        ...FORD.trades.map((trade) => tape(trade.id, new Date(trade.eventAt).toISOString())),
+        tape("3", "2026-10-09T19:55:00Z", { issuerName: "Oracle Corporation" }),
+        tape("4", "2026-10-09T18:00:00Z", { issuerName: "Whirlpool Corporation" }),
+      ]),
+    });
+    const apiClient = {
+      getCloudCdsLevels: async () => {
+        requests.levels += 1;
+        return {
+          source: "DTCC PPD",
+          tenor: "5Y",
+          asOf: null,
+          levels: [
+            { issuer: "Oracle Corporation", spreadBp: 160, date: "2026-10-09", change1W: 41.5, change1M: 75.4 },
+            { issuer: "Whirlpool Corporation", spreadBp: 520, date: "2026-10-09", change1W: 36.7, change1M: 164.8 },
+            { issuer: "Ford Motor Company", spreadBp: 157, date: "2026-10-09", change1W: 0.9, change1M: -0.3 },
+          ],
+        };
+      },
+    };
+    const order = async (sort?: string) => {
+      const { result } = await report(null, { load }, apiClient, sort ? { sort } : {});
+      return result.sections[0]!.rows!.map((row) => row.issuer);
+    };
+    expect(await order()).toEqual(["Ford Motor Company", "Oracle Corporation", "Whirlpool Corporation"]);
+    expect(await order("spread")).toEqual(["Whirlpool Corporation", "Oracle Corporation", "Ford Motor Company"]);
+    expect(await order("1w")).toEqual(["Oracle Corporation", "Whirlpool Corporation", "Ford Motor Company"]);
+    expect(await order("1m")).toEqual(["Whirlpool Corporation", "Oracle Corporation", "Ford Motor Company"]);
+    expect(requests.levels).toBe(4);
   });
 
   test("still lists the issuers, without levels, when the levels request fails", async () => {

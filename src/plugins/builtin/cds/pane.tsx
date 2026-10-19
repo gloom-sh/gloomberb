@@ -13,7 +13,9 @@ import {
   type StatItem
 } from "../../../components";
 import type { CloudCdsHistoryPointPayload } from "../../../api-client";
+import { signedMoveColor } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
+import { usePaneSettingValue } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
@@ -30,6 +32,7 @@ import {
   loadCdsSpreadHistory,
   loadCdsSpreadLevels,
   type CdsActivityLoader,
+  type CdsSpreadHistory,
   type CdsSpreadHistoryLoader,
   type CdsSpreadLevelsLoader,
 } from "./client";
@@ -45,8 +48,11 @@ import {
   formatEventTime,
   formatMaturity,
   formatNotional,
+  formatSpreadMove,
   formatUpfront,
+  issuerListSort,
   lastTradeOf,
+  noLevelMessage,
   noTradesMessage,
   resolveIssuerQuery,
   sortIssuers,
@@ -87,7 +93,17 @@ function renderIssuerCell(
         text: formatBp(row.spread5yBp),
         color: row.spread5yBp == null ? colors.textDim : colors.text,
       };
+    case "1w":
+      return moveCell(row.change1wBp);
+    case "1m":
+      return moveCell(row.change1mBp);
   }
+}
+
+/** A 1W or 1M move as the index board draws one: wider is adverse, and a move that prints as 0.0 is not coloured. */
+function moveCell(value: number | null): DataTableCell {
+  const shown = value == null ? null : Number(value.toFixed(1));
+  return { text: formatSpreadMove(value), color: signedMoveColor(shown, "up", colors) };
 }
 
 // Table-shaped adapters live at module level so memoized rows keep their
@@ -186,6 +202,7 @@ function CdsTradeTable({
 const NO_TRADES: CdsTrade[] = [];
 const NO_ISSUERS: CdsIssuerSummary[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
+const NO_LINE: CdsSpreadHistory = { issuer: null, points: NO_POINTS, change1W: null, change1M: null, noLevelReason: null };
 /**
  * The 5Y line has one point per New York trade date, dated at UTC midnight, so
  * a trade's cursor is its New York day, not its time: an afternoon print would
@@ -196,12 +213,13 @@ const tradeDate = (trade: CdsTrade) =>
 
 /**
  * The issuer's figures, then its 5Y line over the trades, sized by the chart
- * table layout. The selected trade is the chart's cursor.
+ * table layout. The selected trade is the chart's cursor. A name without a
+ * level says why in the chart's band, when the server can say.
  */
-function IssuerHeader({ issuer, points, trades, width, height, focused, loading, selectedId, onSelect }: {
+function IssuerHeader({ issuer, line, trades, width, height, focused, loading, selectedId, onSelect }: {
   /** Left out in the stack detail, whose title already names the issuer. */
   issuer?: string;
-  points: readonly CloudCdsHistoryPointPayload[];
+  line: CdsSpreadHistory;
   trades: readonly CdsTrade[];
   width: number;
   height: number;
@@ -210,16 +228,20 @@ function IssuerHeader({ issuer, points, trades, width, height, focused, loading,
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  // The level, then whose spread it is: in a short pane the figures at the end
-  // give way. While the history loads the level holds its place, so the trades
-  // do not move when it lands.
-  const [level, ...rest] = loading && !points.length
+  // The level and its moves, as the index board heads its detail, then whose
+  // spread it is and the range: in a short pane the figures at the end give
+  // way. While the history loads the level holds its place, so the trades do
+  // not move when it lands.
+  const { points } = line;
+  const shown = loading && !points.length
     ? [{ id: "spread", label: "5Y spread", value: "--" }]
-    : spreadFigures(points);
+    : spreadFigures(line);
+  const why = !points.length ? noLevelMessage(line.noLevelReason, null) : null;
+  const moves = shown.filter((item) => item.id === "spread" || item.id === "1w" || item.id === "1m");
   const figures: StatItem[] = [
-    ...(level ? [level] : []),
+    ...moves,
     ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
-    ...rest,
+    ...shown.filter((item) => !moves.includes(item)),
   ];
   const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
     id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
@@ -232,8 +254,9 @@ function IssuerHeader({ issuer, points, trades, width, height, focused, loading,
   return (
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
       tableColumns={buildTradeColumns(width)}
-      chart={points.length >= 2 || loading ? {
+      chart={points.length >= 2 || loading || why ? {
         series, formatValue: formatBp, formatAxisValue: formatBpAxis, remoteKind: "cds-spread-history", loading, ...link,
+        ...(why ? { empty: why } : {}),
       } : null} />
   );
 }
@@ -268,7 +291,10 @@ export function CdsPane({
   const { symbol, ticker } = usePaneTickerIdentity();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
 
-  const [issuerSort, setIssuerSort] = useState<IssuerSortPreference>(DEFAULT_ISSUER_SORT);
+  // `CDS --sort 1m` (and its shot) opens the list on that order; the headers re-sort it from there, and a reload keeps theirs.
+  const [openingSort] = usePaneSettingValue<string>("sort", "trades");
+  const openingIssuerSort = useMemo(() => issuerListSort(openingSort), [openingSort]);
+  const [issuerSort, setIssuerSort] = usePluginPaneState<IssuerSortPreference>("issuerSort", openingIssuerSort);
   const [tradeSort, setTradeSort] = useState<TradeSortPreference>(DEFAULT_TRADE_SORT);
   // Selection and the open issuer live in pane state so a reload or a shared
   // layout comes back to the same row.
@@ -311,16 +337,20 @@ export function CdsPane({
   const historyRequest = useCallback(() => loadHistoryRef.current(historyIssuer!), [historyIssuer]);
   const history = useAsyncResource(historyIssuer ? historyRequest : null);
   useAutoRefresh(history.updatedAt, history.load);
-  const spreadPoints = history.data?.points ?? NO_POINTS;
+  const spreadLine = history.data ?? NO_LINE;
+  const spreadPoints = spreadLine.points;
   // The band holds its rows while the first history loads, so the trades do not jump.
   const historyLoading = !!historyIssuer && history.loading && !history.data;
   const lineMaturity = spreadPoints.at(-1)?.maturity ?? null;
+  // A level older than the prints after it says why those prints set none; with no level at all the chart band says it.
+  const staleLevel = spreadPoints.length ? noLevelMessage(spreadLine.noLevelReason, spreadPoints.at(-1)!.date) : null;
   // Without it a failed request reads as a name with no 5Y line.
   usePaneNoticeFooter({
     registrationId: `${paneId}:cds-history`,
     focused,
     notices: [
       ...(historyIssuer && history.error && !history.data ? ["5Y spread history unavailable."] : []),
+      ...(historyIssuer && staleLevel ? [`${staleLevel}.`] : []),
       ...(summaries.length && levels.error && !levels.data ? ["5Y spreads unavailable."] : []),
     ],
   });
@@ -412,7 +442,7 @@ export function CdsPane({
     // issuer name the backend was actually queried for, which is the expanded
     // company name once instrument search has resolved a bare symbol.
     const header = (
-      <IssuerHeader issuer={activity.issuer ?? issuerQuery} points={spreadPoints} trades={visibleTrades}
+      <IssuerHeader issuer={activity.issuer ?? issuerQuery} line={spreadLine} trades={visibleTrades}
         width={width} height={height} focused={focused} loading={historyLoading}
         selectedId={selectedTradeId} onSelect={setSelectedTradeId} />
     );
@@ -446,8 +476,8 @@ export function CdsPane({
           trades={visibleTrades}
           focused={focused && detailOpen}
           width={width}
-          before={spreadPoints.length || historyLoading ? (
-            <IssuerHeader points={spreadPoints} trades={visibleTrades} width={width}
+          before={spreadPoints.length || historyLoading || spreadLine.noLevelReason ? (
+            <IssuerHeader line={spreadLine} trades={visibleTrades} width={width}
               height={Math.max(0, height - 1)} focused={focused && detailOpen} loading={historyLoading}
               selectedId={selectedTradeId} onSelect={setSelectedTradeId} />
           ) : undefined}

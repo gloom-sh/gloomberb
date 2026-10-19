@@ -12,6 +12,7 @@ import {
   issuerNameOf,
   normalizeCdsTrades,
   spreadLevelsOf,
+  type CdsNoLevelReason,
   type CdsSpreadLevels,
   type CdsTrade,
 } from "./model";
@@ -110,7 +111,14 @@ const CDS_SPREAD_HISTORY_DAYS = 730;
 export interface CdsSpreadHistory {
   issuer: string | null;
   points: CloudCdsHistoryPointPayload[];
+  /** The latest level's 1W and 1M moves in bp, through the roll; null without a comparable level. */
+  change1W: number | null;
+  change1M: number | null;
+  /** Why the line has no level in the month to its newest print, when the server can say. */
+  noLevelReason: CdsNoLevelReason | null;
 }
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
 export type CdsSpreadHistoryLoader = (issuer: string) => Promise<CdsSpreadHistory>;
 export type CdsHistoryFetch = (params: CloudCdsHistoryParams) => Promise<CloudCdsHistoryResponse>;
@@ -127,16 +135,23 @@ export async function loadCdsSpreadHistory(
   const points = (response.points ?? [])
     .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.spreadBp))
     .toSorted((left, right) => left.date.localeCompare(right.date));
-  return { issuer: response.issuer, points };
+  return {
+    issuer: response.issuer,
+    points,
+    change1W: finiteOrNull(response.change1W),
+    change1M: finiteOrNull(response.change1M),
+    noLevelReason: response.noLevelReason === "upfront-side-unknown" ? response.noLevelReason : null,
+  };
 }
 
 export type CdsLevelsFetch = () => Promise<CloudCdsLevelsResponse>;
 export type CdsSpreadLevelsLoader = () => Promise<CdsSpreadLevels>;
 
 /**
- * Every listed issuer's latest 5Y level, in one request: the last point of
- * each name's line over the last month, the line the pane charts, so the list
- * can be ranked by it. A name without one is not in the response.
+ * Every listed issuer's latest 5Y level and its 1W and 1M moves, in one
+ * request: the last point of each name's line in the last month, the line
+ * the pane charts, so the list can be ranked by them. A name without one is
+ * not in the response.
  */
 export async function loadCdsSpreadLevels(
   fetchLevels: CdsLevelsFetch = () => apiClient.getCloudCdsLevels(),

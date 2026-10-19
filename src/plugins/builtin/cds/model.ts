@@ -5,6 +5,7 @@ import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
+import { formatMove } from "../credit-boards/model";
 
 export const CDS_PANE_ID = "cds";
 
@@ -51,6 +52,9 @@ export interface CdsIssuerSummary {
   /** The latest level of the issuer's 5Y line and its date, where it has one: what the list ranks by. */
   spread5yBp: number | null;
   spread5yDate: string | null;
+  /** That level's 1W and 1M moves in bp, through the roll. */
+  change1wBp: number | null;
+  change1mBp: number | null;
 }
 
 /**
@@ -260,6 +264,8 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
         latestSpreadBp: trade.spreadBp,
         spread5yBp: null,
         spread5yDate: null,
+        change1wBp: null,
+        change1mBp: null,
       });
       if (trade.spreadBp != null) spreadAt.set(trade.issuerKey, trade.eventAt);
       continue;
@@ -275,8 +281,17 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
   return [...byIssuer.values()];
 }
 
-/** The latest 5Y level and its date, by issuer key. */
-export type CdsSpreadLevels = ReadonlyMap<string, { spreadBp: number; date: string }>;
+interface CdsSpreadLevel {
+  spreadBp: number;
+  date: string;
+  change1wBp: number | null;
+  change1mBp: number | null;
+}
+
+/** The latest 5Y level, its date and its 1W and 1M moves, by issuer key. */
+export type CdsSpreadLevels = ReadonlyMap<string, CdsSpreadLevel>;
+
+const finiteOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
 /**
  * The backend's levels under the key the list groups issuers by, so every
@@ -285,7 +300,7 @@ export type CdsSpreadLevels = ReadonlyMap<string, { spreadBp: number; date: stri
  * list would show keeps it. Malformed entries are left out.
  */
 export function spreadLevelsOf(levels: readonly CloudCdsLevelPayload[]): CdsSpreadLevels {
-  const byKey = new Map<string, { issuer: string; spreadBp: number; date: string }>();
+  const byKey = new Map<string, { issuer: string; level: CdsSpreadLevel }>();
   for (const level of levels) {
     if (typeof level.issuer !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(level.date) || !Number.isFinite(level.spreadBp)) continue;
     const issuer = displayIssuerName(level.issuer);
@@ -293,17 +308,31 @@ export function spreadLevelsOf(levels: readonly CloudCdsLevelPayload[]): CdsSpre
     const key = issuerGroupKey(issuer);
     const current = byKey.get(key);
     if (current && preferredIssuerName(current.issuer, issuer) === current.issuer) continue;
-    byKey.set(key, { issuer, spreadBp: level.spreadBp, date: level.date });
+    byKey.set(key, {
+      issuer,
+      level: {
+        spreadBp: level.spreadBp,
+        date: level.date,
+        change1wBp: finiteOrNull(level.change1W),
+        change1mBp: finiteOrNull(level.change1M),
+      },
+    });
   }
-  return new Map([...byKey].map(([key, { spreadBp, date }]) => [key, { spreadBp, date }]));
+  return new Map([...byKey].map(([key, { level }]) => [key, level]));
 }
 
-/** Each issuer with the latest level of its 5Y line, where it has one, so the list ranks by it. */
+/** Each issuer with the latest level of its 5Y line and its moves, where it has one, so the list ranks by them. */
 export function withSpreadLevels(rows: readonly CdsIssuerSummary[], levels: CdsSpreadLevels | null): CdsIssuerSummary[] {
   if (!levels?.size) return [...rows];
   return rows.map((row) => {
     const level = levels.get(row.key);
-    return level ? { ...row, spread5yBp: level.spreadBp, spread5yDate: level.date } : row;
+    return level ? {
+      ...row,
+      spread5yBp: level.spreadBp,
+      spread5yDate: level.date,
+      change1wBp: level.change1wBp,
+      change1mBp: level.change1mBp,
+    } : row;
   });
 }
 
@@ -440,21 +469,33 @@ export function formatMaturity(maturity: string | null): string {
   return maturity ?? "--";
 }
 
-export type IssuerColumnId = "issuer" | "trades" | "last" | "spread";
+export type IssuerColumnId = "issuer" | "trades" | "last" | "spread" | "1w" | "1m";
 export type IssuerColumn = DataTableColumn & { id: IssuerColumnId };
 export type IssuerSortPreference = SortPreference<IssuerColumnId>;
 
-export const ISSUER_SORT_COLUMN_IDS: readonly IssuerColumnId[] = ["issuer", "trades", "last", "spread"];
+export const ISSUER_SORT_COLUMN_IDS: readonly IssuerColumnId[] = ["issuer", "trades", "last", "spread", "1w", "1m"];
 /** "Most active" is the reason the market-wide view exists. */
 export const DEFAULT_ISSUER_SORT: IssuerSortPreference = { columnId: "trades", direction: "desc" };
 
-/** The issuer takes the room the figures leave; the table lays it out. */
+/** What `fn CDS --sort` ranks the list by, each largest first: the most active, the widest, the widest move. */
+export const ISSUER_LIST_SORTS = ["trades", "spread", "1w", "1m"] as const;
+
+/** The list's order for a `--sort` value; an unknown one keeps the default. */
+export function issuerListSort(value: unknown): IssuerSortPreference {
+  return (ISSUER_LIST_SORTS as readonly unknown[]).includes(value)
+    ? { columnId: value as (typeof ISSUER_LIST_SORTS)[number], direction: "desc" }
+    : DEFAULT_ISSUER_SORT;
+}
+
+/** The issuer takes the room the figures leave; the moves sit as the index board's do. */
 export function buildIssuerColumns(): IssuerColumn[] {
   return [
     { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
     { id: "last", label: "LAST UTC", width: 16, align: "left" },
     { id: "spread", label: "5Y SPREAD", width: 10, align: "right" },
+    { id: "1w", label: "1W", width: 10, align: "right" },
+    { id: "1m", label: "1M", width: 10, align: "right" },
   ];
 }
 
@@ -468,6 +509,10 @@ function issuerSortValue(columnId: IssuerColumnId, row: CdsIssuerSummary): strin
       return row.lastTradeAt;
     case "spread":
       return row.spread5yBp;
+    case "1w":
+      return row.change1wBp;
+    case "1m":
+      return row.change1mBp;
   }
 }
 
@@ -569,14 +614,17 @@ export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]
   return out;
 }
 
-/** The 1M move as the pane shows it: whole basis points, signed. */
-export function formatSpreadChange(value: number): string {
-  const rounded = Math.round(value);
-  return `${rounded > 0 ? "+" : ""}${rounded}bp`;
+/** A 1W or 1M move as the index board shows one: `+36.7bp`, `--` without one. */
+export function formatSpreadMove(value: number | null): string {
+  return formatMove("spread", value);
 }
 
-function dayTime(date: string): number {
-  return Date.parse(`${date}T00:00:00Z`);
+/** An issuer's 5Y line as the server sends it: the daily levels and the latest one's moves. */
+export interface CdsSpreadLine {
+  points: readonly CloudCdsHistoryPointPayload[];
+  /** bp, on one contract and chained through the contract before across a roll. */
+  change1W: number | null;
+  change1M: number | null;
 }
 
 /** The figures of an issuer's 5Y line, the ones the pane heads its chart with and a report carries. */
@@ -584,37 +632,45 @@ export interface CdsSpreadSummary {
   /** The latest level, bp, and the New York trade date it is from. */
   spreadBp: number;
   date: string;
-  /** The move over a month on the same contract; null across a roll or a gap. */
+  /** Its moves over a week and a month, through the roll; null without a comparable level. */
+  change1wBp: number | null;
   change1mBp: number | null;
   /** Lowest and highest level since the first date charted; null with a single level. */
   range: { lowBp: number; highBp: number; since: string } | null;
 }
 
 /**
- * The latest level, its move over a month, and the range of what the chart
- * shows. The month compares against the last level 30 to 45 days older on the
- * same contract, so neither a gap nor a roll to the next contract, which
- * trades wider, passes for a move.
+ * The latest level, its 1W and 1M moves, and the range of what the chart
+ * shows. The moves are the server's, by the index board's rule: on one
+ * contract, and across the March and September rolls chained through the
+ * contract before, which keeps trading off the run, so the roll to a contract
+ * that trades wider is not a move.
  */
-export function spreadSummary(points: readonly CloudCdsHistoryPointPayload[]): CdsSpreadSummary | null {
+export function spreadSummary(line: CdsSpreadLine): CdsSpreadSummary | null {
+  const { points } = line;
   const latest = points.at(-1);
   if (!latest) return null;
-  const latestTime = dayTime(latest.date);
-  const monthAgo = points.findLast((point) => {
-    if (point.maturity !== latest.maturity) return false;
-    const age = latestTime - dayTime(point.date);
-    return age >= 30 * DAY_MS && age <= 45 * DAY_MS;
-  });
   const levels = points.map((point) => point.spreadBp);
   return {
     spreadBp: latest.spreadBp,
     date: latest.date,
-    // A tenth of a basis point is the line's own precision; the rest is float noise.
-    change1mBp: monthAgo ? Math.round((latest.spreadBp - monthAgo.spreadBp) * 10) / 10 : null,
+    change1wBp: line.change1W,
+    change1mBp: line.change1M,
     range: points.length >= 2
       ? { lowBp: Math.min(...levels), highBp: Math.max(...levels), since: points[0]!.date }
       : null,
   };
+}
+
+export type CdsNoLevelReason = "upfront-side-unknown";
+
+/**
+ * Why the view has no current 5Y level, in one line, when the server knows:
+ * after the last level there is, or at all.
+ */
+export function noLevelMessage(reason: CdsNoLevelReason | null, lastLevel: string | null): string | null {
+  if (reason !== "upfront-side-unknown") return null;
+  return `5Y level not derivable${lastLevel ? ` after ${lastLevel}` : ""}: DTCC prints carry upfront without payer side`;
 }
 
 /** `129 to 276bp`: the low keeps the level's precision, so the level never falls outside it. */
@@ -623,12 +679,13 @@ export function formatSpreadRange(range: NonNullable<CdsSpreadSummary["range"]>)
 }
 
 /** The pane's figures over its 5Y chart, from `spreadSummary`. */
-export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
-  const summary = spreadSummary(points);
+export function spreadFigures(line: CdsSpreadLine): StatItem[] {
+  const summary = spreadSummary(line);
   if (!summary) return [];
   return [
     { id: "spread", label: "5Y spread", value: formatBp(summary.spreadBp), detail: summary.date },
-    ...(summary.change1mBp != null ? [{ id: "change", label: "1M", value: formatSpreadChange(summary.change1mBp) }] : []),
+    ...(summary.change1wBp != null ? [{ id: "1w", label: "1W", value: formatSpreadMove(summary.change1wBp) }] : []),
+    ...(summary.change1mBp != null ? [{ id: "1m", label: "1M", value: formatSpreadMove(summary.change1mBp) }] : []),
     ...(summary.range ? [{
       id: "range",
       label: "Range",

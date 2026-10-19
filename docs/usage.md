@@ -324,7 +324,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
 | `CRD` | Credit spreads |
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
-| `CDS [ticker]` | Single-name corporate CDS. With no argument, the issuers traded in the last 5 days, most active first, with each one's 5Y spread to rank them by; with a ticker or issuer, its 5Y spread (level, date, 1M change, range), history and trades. `fn CDS F --csv` carries the same figures |
+| `CDS [ticker]` | Single-name corporate CDS. With no argument, the issuers traded in the last 5 days, most active first, with each one's 5Y spread and its 1W and 1M moves to rank them by (`fn CDS --sort 1m`); with a ticker or issuer, its 5Y spread (level, date, 1W and 1M change, range), history and trades. `fn CDS F --csv` carries the same figures, and `fn CDS F --csv --section daily` the daily 5Y levels |
 | `EVTS` | The market's earnings days, implied against past moves |
 | `IPO` | Upcoming and recent IPOs worldwide |
 | `HALT` | US trading halts with reason and resumption times |

@@ -3,7 +3,11 @@ import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../..
 import {
   formatNotional,
   issuerGroupKey,
+  issuerListSort,
+  noLevelMessage,
   normalizeCdsTrades,
+  sortIssuers,
+  spreadLevelsOf,
   resolveIssuerQuery,
   spreadChartPoints,
   spreadFigures,
@@ -11,6 +15,7 @@ import {
   spreadToBasisPoints,
   summarizeIssuers,
   tradesForIssuer,
+  withSpreadLevels,
 } from "./model";
 
 function payload(overrides: Partial<CloudCdsTradePayload> = {}): CloudCdsTradePayload {
@@ -125,6 +130,25 @@ describe("summarizeIssuers", () => {
     // The newest print carried no spread, so the last quoted level survives.
     expect(oracle.latestSpreadBp).toBeCloseTo(110, 6);
     expect(summaries.find((row) => row.issuer === "Ford Motor Company")!.latestSpreadBp).toBeNull();
+  });
+
+  test("ranks by the 5Y level or its 1W or 1M move, widest first, names without one last", () => {
+    const levels = spreadLevelsOf([
+      { issuer: "Oracle Corporation", spreadBp: 160, date: "2026-08-25", change1W: 28.1, change1M: 75.4 },
+      { issuer: "Ford Motor Company", spreadBp: 157, date: "2026-08-25", change1W: 0.9, change1M: null },
+    ]);
+    const rows = withSpreadLevels(summarizeIssuers([
+      ...trades,
+      ...normalizeCdsTrades([payload({ disseminationId: "e", executionTimestamp: "2026-08-25T08:00:00Z", issuerName: "Acme Corp" })]),
+    ]), levels);
+    const order = (sort: string) => sortIssuers(rows, issuerListSort(sort)).map((row) => row.issuer);
+    expect(order("1w")).toEqual(["Oracle Corporation", "Ford Motor Company", "Acme Corp"]);
+    expect(order("1m")[0]).toBe("Oracle Corporation");
+    expect(order("1m").slice(1).toSorted()).toEqual(["Acme Corp", "Ford Motor Company"]);
+    expect(order("spread")).toEqual(["Oracle Corporation", "Ford Motor Company", "Acme Corp"]);
+    // Most active stays the list's own order, and an unknown sort keeps it.
+    expect(issuerListSort("trades")).toEqual({ columnId: "trades", direction: "desc" });
+    expect(issuerListSort("bogus")).toEqual({ columnId: "trades", direction: "desc" });
   });
 });
 
@@ -274,32 +298,45 @@ describe("5Y spread chart", () => {
     ]);
   });
 
-  test("sums up the latest level, its month, and the charted range", () => {
-    expect(spreadFigures([])).toEqual([]);
-    // What a report carries: the move to a tenth of a basis point, the figures in whole ones.
-    expect(spreadSummary([level("2026-08-24", 222.2), level("2026-09-25", 234.9)])).toEqual({
-      spreadBp: 234.9, date: "2026-09-25", change1mBp: 12.7, range: { lowBp: 222.2, highBp: 234.9, since: "2026-08-24" },
-    });
-    expect(spreadFigures([
+  test("sums up the latest level, its 1W and 1M moves, and the charted range", () => {
+    const line = (points: CloudCdsHistoryPointPayload[], change1W: number | null = null, change1M: number | null = null) => (
+      { points, change1W, change1M }
+    );
+    expect(spreadFigures(line([]))).toEqual([]);
+    // The moves are the server's, chained through the Sep 20 roll: the level a month back is the Jun contract's.
+    expect(spreadSummary(line([{ ...level("2026-08-24", 222.2), maturity: "2031-06-20" }, level("2026-09-25", 234.9)], 4.04, 12.7)))
+      .toEqual({
+        spreadBp: 234.9,
+        date: "2026-09-25",
+        change1wBp: 4.04,
+        change1mBp: 12.7,
+        range: { lowBp: 222.2, highBp: 234.9, since: "2026-08-24" },
+      });
+    // Moves as the index board prints them, to a tenth of a basis point; the level and range in whole ones.
+    expect(spreadFigures(line([
       level("2026-07-24", 214.6),
       level("2026-08-24", 222),
       level("2026-09-11", 181),
       level("2026-09-25", 235),
-    ])).toEqual([
+    ], -0.04, 13))).toEqual([
       { id: "spread", label: "5Y spread", value: "235bp", detail: "2026-09-25" },
-      { id: "change", label: "1M", value: "+13bp" },
+      { id: "1w", label: "1W", value: "0.0bp" },
+      { id: "1m", label: "1M", value: "+13.0bp" },
       { id: "range", label: "Range", value: "181 to 235bp", detail: "since 2026-07-24" },
     ]);
-    // No level 30 to 45 days back: a gap is not a month's move.
-    expect(spreadFigures([level("2026-06-01", 72.5), level("2026-09-25", 60)]).map((item) => item.id))
+    // Without a comparable level the move is left out, not shown as zero.
+    expect(spreadFigures(line([level("2026-06-01", 72.5), level("2026-09-25", 60)])).map((item) => item.id))
       .toEqual(["spread", "range"]);
-    // Nor is the Sep 20 roll to a contract that trades wider.
-    expect(spreadFigures([
-      { ...level("2026-08-24", 222), maturity: "2031-06-20" },
-      level("2026-09-25", 235),
-    ]).map((item) => item.id)).toEqual(["spread", "range"]);
     // Below 100bp the range keeps the level's precision, so the level never falls outside it.
-    expect(spreadFigures([level("2026-09-01", 52.1), level("2026-09-10", 44), level("2026-09-25", 38.6)])
+    expect(spreadFigures(line([level("2026-09-01", 52.1), level("2026-09-10", 44), level("2026-09-25", 38.6)]))
       .find((item) => item.id === "range")?.value).toBe("38.6 to 52.1bp");
+  });
+
+  test("says why there is no level only for the cause the server names", () => {
+    expect(noLevelMessage("upfront-side-unknown", null))
+      .toBe("5Y level not derivable: DTCC prints carry upfront without payer side");
+    expect(noLevelMessage("upfront-side-unknown", "2025-10-17"))
+      .toBe("5Y level not derivable after 2025-10-17: DTCC prints carry upfront without payer side");
+    expect(noLevelMessage(null, "2025-10-17")).toBeNull();
   });
 });

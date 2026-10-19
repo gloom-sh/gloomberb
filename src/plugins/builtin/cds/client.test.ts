@@ -133,11 +133,24 @@ describe("loadCdsSpreadHistory", () => {
           { date: "bad", spreadBp: 1, prints: 1, reported: 0, maturity: "2031-12-20" },
           { date: "2026-09-23", spreadBp: Number.NaN, prints: 1, reported: 0, maturity: "2031-12-20" },
         ],
+        change1W: 7.5,
+        change1M: 75.4,
       };
     });
     expect(requested).toEqual([{ issuer: "Oracle Corporation", days: 730 }]);
     expect(history.issuer).toBe("Oracle Corporation");
     expect(history.points.map((point) => point.date)).toEqual(["2026-09-24", "2026-09-25"]);
+    expect([history.change1W, history.change1M, history.noLevelReason]).toEqual([7.5, 75.4, null]);
+  });
+
+  test("reads moves a server before them leaves out as none, and only a reason the view can word", async () => {
+    const response = { source: "DTCC PPD", issuer: "Barclays PLC", tenor: "5Y", currency: "EUR", asOf: null, points: [] };
+    const older = await loadCdsSpreadHistory("Barclays PLC", async () => response);
+    expect([older.change1W, older.change1M, older.noLevelReason]).toEqual([null, null, null]);
+    const unknown = await loadCdsSpreadHistory("Barclays PLC", async () => ({ ...response, noLevelReason: "something-new" }));
+    expect(unknown.noLevelReason).toBeNull();
+    const sideless = await loadCdsSpreadHistory("Barclays PLC", async () => ({ ...response, noLevelReason: "upfront-side-unknown" }));
+    expect(sideless.noLevelReason).toBe("upfront-side-unknown");
   });
 });
 
@@ -151,20 +164,21 @@ describe("loadCdsSpreadLevels", () => {
         tenor: "5Y",
         asOf: null,
         levels: [
-          { issuer: "Amazon.com;Inc.", spreadBp: 73, date: "2026-10-09" },
+          { issuer: "Amazon.com;Inc.", spreadBp: 73, date: "2026-10-09", change1W: 3, change1M: 5.8 },
+          // A server before the moves sends none.
           { issuer: "Ford Motor Company", spreadBp: 157, date: "2026-10-09" },
           // Two names the backend keeps apart fold into one row; the list's spelling keeps it.
           { issuer: "ORACLE COP", spreadBp: 240, date: "2026-10-02" },
-          { issuer: "Oracle Corporation", spreadBp: 205, date: "2026-10-08" },
+          { issuer: "Oracle Corporation", spreadBp: 205, date: "2026-10-08", change1W: null, change1M: 75.4 },
           { issuer: "Broken Ltd", spreadBp: Number.NaN, date: "2026-10-09" },
         ],
       };
     });
     expect(requests).toBe(1);
     expect(Object.fromEntries(levels)).toEqual({
-      "amazon com": { spreadBp: 73, date: "2026-10-09" },
-      "ford motor": { spreadBp: 157, date: "2026-10-09" },
-      oracle: { spreadBp: 205, date: "2026-10-08" },
+      "amazon com": { spreadBp: 73, date: "2026-10-09", change1wBp: 3, change1mBp: 5.8 },
+      "ford motor": { spreadBp: 157, date: "2026-10-09", change1wBp: null, change1mBp: null },
+      oracle: { spreadBp: 205, date: "2026-10-08", change1wBp: null, change1mBp: 75.4 },
     });
   });
 });

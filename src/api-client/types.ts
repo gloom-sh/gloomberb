@@ -621,6 +621,19 @@ export interface CloudCdsHistoryResponse {
   currency: string | null;
   asOf: string | null;
   points: CloudCdsHistoryPointPayload[];
+  /**
+   * The last point's move over a week and a month in bp, on one contract and
+   * chained through the contract before across a roll, as the index board's.
+   * Null without a comparable level; absent from servers before them.
+   */
+  change1W?: number | null;
+  change1M?: number | null;
+  /**
+   * Why the line has no level in the month to its newest print, when one
+   * cause explains it: `upfront-side-unknown` when the prints carry an
+   * upfront without the side that paid it and nothing else places the level.
+   */
+  noLevelReason?: string | null;
 }
 
 /** An issuer's latest 5Y level: the last point of its history over the last month. */
@@ -629,6 +642,9 @@ export interface CloudCdsLevelPayload {
   issuer: string;
   spreadBp: number;
   date: string;
+  /** As the history response's moves for the same name. */
+  change1W?: number | null;
+  change1M?: number | null;
 }
 
 export interface CloudCdsLevelsResponse {
