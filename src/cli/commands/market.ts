@@ -50,7 +50,8 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
-  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, renderFundamentalsReport,
+  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
+  renderFundamentalsReport,
 } from "./ticker";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
@@ -166,6 +167,9 @@ import {
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
 import { treasuryYieldLine, treasuryYieldTenor } from "../treasury-yields";
+import {
+  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
+} from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
@@ -1204,6 +1208,21 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   const sectionFlag = args.some((arg) => arg === "--section" || arg.startsWith("--section="));
   const section = takeOption(args, "--section");
   const commandName = view === "statements" ? "financials" : view;
+  // `fundamentals --tax-rate 40.8 [--state-rate 9.3 --state CA]`: a muni fund's tax-equivalent yield and muni/Treasury ratio.
+  let rates: TaxRates | null = null;
+  if (view === "fundamentals") {
+    const taken = (flag: string) => {
+      const given = args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+      const value = takeOption(args, flag);
+      if (given && !value?.trim()) ctx.fail(`${flag} needs a value, such as --tax-rate 40.8 --state-rate 9.3 --state CA.`);
+      return value;
+    };
+    try {
+      rates = parseTaxRates({ taxRate: taken("--tax-rate"), stateRate: taken("--state-rate"), state: taken("--state") });
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : String(error));
+    }
+  }
   const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
   if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
   if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
@@ -1225,6 +1244,11 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // declared distribution it annualizes (not in JSON), and one whose dividend stopped says so; read beside the listing notes.
     const distributions = view === "statements" ? null : loadDividendDistributions(
       market.dataProvider, listing.request, financials, { declared: ctx.cliOptions.format !== "json" });
+    // A bond fund's SEC yield, yield to worst and duration, beside its distribution yield.
+    const bondFund = view === "statements" ? null : loadReportBondFacts(listing.request.symbol,
+      financials.quote?.tradingExchangeName || listing.request.exchange || financials.quote?.listingExchangeName || financials.quote?.exchangeName,
+      financials, listing.saved);
+    const treasury = rates ? loadTreasuryTenors() : null;
     const identity = listingIdentity(listing, financials.quote);
     const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
     const data: FinancialsCliData = {
@@ -1249,7 +1273,13 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
           loadBankFigures(market.statementSources, listing.request, financials),
         ])
         : [null, { bank: null, note: null }];
-      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note };
+      const bond = await bondFund;
+      // On the SEC yield when the sponsor publishes one, else the distribution yield the line above shows.
+      const taxEquivalent = rates ? analyzeTaxEquivalent({
+        symbol: identity.symbol || listing.key, bond, rates, treasury: await treasury,
+        distribution: distributionBasis(priced.fundamentals?.dividendYield, priced.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
+      }) : null;
+      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1260,7 +1290,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
             marketCapCurrency: capitalization?.currency ?? null,
           } : {},
           fundamentals: priced.fundamentals && exportedDividendFundamentals(exportedFundamentals(priced.fundamentals)!, report.distributions),
+          // A bond fund's sponsor figures; fundamentals.dividendYield is then its distribution yield, not its SEC yield.
+          ...bond ? { bondFund: bond } : {},
           ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},
+          ...taxEquivalent ? { taxEquivalent: taxEquivalentJson(taxEquivalent) } : {},
         },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -2262,8 +2295,9 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["fundamentals <symbol>"],
-      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
-      examples: ["fundamentals NVDA", "fundamentals ASML:AMS", "fundamentals NVDA --csv --section fundamentals"],
+      options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION, ...TAX_RATE_HELP_OPTIONS],
+      examples: ["fundamentals NVDA", "fundamentals ASML:AMS", "fundamentals NVDA --csv --section fundamentals", "fundamentals MUB --tax-rate 40.8",
+        "fundamentals CMF --tax-rate 40.8 --state-rate 13.3 --state CA"],
     },
     execute: (args, ctx) => runFinancials(args, ctx, "fundamentals"),
   },

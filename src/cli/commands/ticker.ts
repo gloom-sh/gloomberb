@@ -82,6 +82,9 @@ import { notTheCoinNote } from "./crypto-hints";
 import { loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
+import type { FundBondFacts } from "../../api-client/fund-facts";
+import { bondFigures, fetchFundBondFacts, NOT_SEC_YIELD } from "../../market-data/bond-funds";
+import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -497,6 +500,58 @@ export function exportedDividendFundamentals<T extends object & Pick<NonNullable
   return dividendYield === fundamentals.dividendYield ? fundamentals : { ...fundamentals, dividendYield };
 }
 
+/**
+ * `Dividend Yield (forward)`, or for a bond fund `Distribution Yield (forward,
+ * not SEC yield)`: the cash it paid, annualized, which its SEC yield (the line
+ * after it) is not.
+ */
+function dividendYieldLabel(basis: string | undefined, bond: FundBondFacts | null): string {
+  if (bond) return `Distribution Yield (${basis ? `${basis}, ` : ""}${NOT_SEC_YIELD})`;
+  return `Dividend Yield${basis ? ` (${basis})` : ""}`;
+}
+
+/** The labels a bond fund's sponsor figures print under, after its distribution yield. */
+const BOND_METRIC_LABELS = { secYield: "30-Day SEC Yield", yieldToWorst: "Yield to Worst" } as const;
+
+/**
+ * A bond fund's 30-day SEC yield, yield to worst and duration as its sponsor
+ * publishes them, each dated: `4.04% (as of 2026-10-15)`.
+ */
+function bondFundMetrics(bond: FundBondFacts | null): FundamentalsMetric[] {
+  if (!bond) return [];
+  return bondFigures(bond).map((figure) => ({
+    label: figure.key === "duration" ? (bond.duration?.measure === "average" ? "Average Duration" : "Effective Duration") : BOND_METRIC_LABELS[figure.key],
+    text: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
+    value: figure.value,
+    unit: figure.key === "duration" ? "years" : "%",
+  }));
+}
+
+/** Whether a metric is a yield line, which `valuation` keeps beside the multiples. */
+function isYieldMetric(label: string): boolean {
+  return label.startsWith("Dividend Yield") || label.startsWith("Distribution Yield") || label === BOND_METRIC_LABELS.secYield;
+}
+
+/**
+ * A US-listed fund's bond facts for the yield lines; null for any other
+ * listing, and when they cannot be read, which leaves the yield as it was.
+ */
+export async function loadReportBondFacts(
+  symbol: string,
+  exchange: string | undefined,
+  financials: Pick<TickerFinancials, "quote" | "quoteMetadata">,
+  tickerFile: TickerRecord | null = null,
+  load: (symbol: string) => Promise<FundBondFacts | null> = fetchFundBondFacts,
+): Promise<FundBondFacts | null> {
+  if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund" || (exchange && !isUsListingExchange(exchange))) return null;
+  try {
+    return await load(symbol);
+  } catch (error) {
+    logFailure("cli.commands-ticker", "Read bond fund facts failed")(error);
+    return null;
+  }
+}
+
 function multipleFigure(value: ReturnType<typeof priceEarningsOnEarnings> | number | undefined): MetricFigure {
   const text = formatPriceEarnings(value, 2);
   return { text, value: typeof value === "number" && Number.isFinite(value) && value > 0 ? value : text === "N/M" ? text : null };
@@ -511,6 +566,7 @@ function fundamentalsMetrics(
   reportingCurrency: string | undefined,
   enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
   distributions: DividendDistributions | null = null,
+  bond: FundBondFacts | null = null,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -524,9 +580,10 @@ function fundamentalsMetrics(
     // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
     {
-      label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
+      label: dividendYieldLabel(fundamentals?.dividendYieldBasis, bond),
       ...forwardYieldFigure(fundamentals, distributions),
     },
+    ...bondFundMetrics(bond),
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
     { label: "Operating Cash Flow (TTM)", ...reportedMoney(fundamentals?.operatingCashFlow, reportingCurrency) },
@@ -614,6 +671,10 @@ type FundamentalsReportData = TickerFinancials & {
   symbol: string;
   exchange?: string;
   distributions?: DividendDistributions | null;
+  /** A bond fund's SEC yield, yield to worst and duration (loadReportBondFacts). */
+  bondFund?: FundBondFacts | null;
+  /** `fundamentals --tax-rate`: the tax-equivalent yield and muni/Treasury ratio. */
+  taxEquivalent?: TaxEquivalentAnalysis | null;
   /** The filings behind the latest statements, and a newer quarter's results release. */
   statementFilings?: StatementFilingsReport | null;
   /** A bank holding company's deposits, uninsured share and CRE (`fundamentals` only). */
@@ -703,12 +764,12 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
   const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
-    undefined, snapshot.distributions ?? null);
+    undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null);
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
       .filter((metric) => metric.text !== "—");
   }
-  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || isYieldMetric(label)) && text !== "—");
   // The share count follows the market cap it is the basis of.
   const shares = valued.filter((metric) => metric.label === "Shares Outstanding");
   const valuation = valued.flatMap((metric) => metric.label === "Shares Outstanding" ? [] : metric.label === "Market Cap" ? [metric, ...shares] : [metric]);
@@ -741,6 +802,9 @@ export function renderFundamentalsReport(
   else if (fund) lines.push(cliStyles.muted(fund));
   for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") {
+    if (financials.taxEquivalent) {
+      appendMetricSection(lines, "Tax-Equivalent Yield", taxEquivalentLines(financials.taxEquivalent).map((line) => [line.label, line.text]));
+    }
     for (const note of statementFilingsNotes(financials.statementFilings)) lines.push(cliStyles.muted(note));
     const bank = financials.bank ? bankSection(financials.bank, symbol, bankSectionContext(financials)) : null;
     if (bank) {
@@ -781,6 +845,10 @@ export function fundamentalsReportTables(
   const bank = view === "fundamentals" && financials.bank
     ? bankSection(financials.bank, financials.quote?.symbol ?? financials.symbol, bankSectionContext(financials))
     : null;
+  if (view === "fundamentals" && financials.taxEquivalent) {
+    tables.push(exportEntriesTable("Tax-Equivalent Yield", taxEquivalentLines(financials.taxEquivalent)
+      .map((line) => ({ label: line.label, value: line.value, formatted: line.text, unit: line.unit }))));
+  }
   if (bank) tables.push(exportEntriesTable("Bank", bank.entries));
   if (view === "fundamentals") {
     const quote = financials.quote;
@@ -840,10 +908,13 @@ export async function buildTickerReport({
   futuresContract = null,
   distributions = null,
   statementFilings = null,
+  bondFund = null,
 }: {
   symbol: string;
   /** The filings behind the latest statements, and a newer quarter's results release. */
   statementFilings?: StatementFilingsReport | null;
+  /** A bond fund's SEC yield, yield to worst and duration (loadReportBondFacts). */
+  bondFund?: FundBondFacts | null;
   /** The distributions a dividend yield is read with (loadDividendDistributions). */
   distributions?: DividendDistributions | null;
   /** The exchange the command named, as a canonical code. */
@@ -976,7 +1047,7 @@ export async function buildTickerReport({
   }
 
   const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
-    { text: enterpriseValueText }, distributions);
+    { text: enterpriseValueText }, distributions, bondFund);
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
@@ -1057,10 +1128,12 @@ function buildTickerStructuredData({
   futuresContract,
   distributions,
   statementFilings,
+  bondFund = null,
 }: {
   symbol: string;
   listing: CliListing;
   statementFilings: StatementFilingsReport | null;
+  bondFund?: FundBondFacts | null;
   futuresContract: FuturesContractTermsPayload | null;
   distributions: DividendDistributions | null;
   tickerFile: TickerRecord | null;
@@ -1114,6 +1187,9 @@ function buildTickerStructuredData({
       ...priced.fundamentals,
       ...priceReturns,
     })!, distributions) : undefined,
+    // A bond fund's SEC yield, yield to worst and duration as its sponsor publishes them, each dated;
+    // fundamentals.dividendYield is then its distribution yield, not its SEC yield.
+    ...bondFund ? { bondFund } : {},
     profile: financials.profile,
     financialCurrency: financials.financialCurrency ?? null,
     latestAnnual: latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null,
@@ -1231,6 +1307,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The yield's distributions, read beside the rest when a trailing yield, a forward basis or its lapse needs them; they never fail the report.
     const distributions = loadDividendDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials,
       { declared: !dependencies.printResult });
+    // A bond fund's SEC yield, yield to worst and duration, beside its distribution yield.
+    const bondFund = loadReportBondFacts(requestSymbol,
+      quote?.tradingExchangeName || exchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange,
+      resolvedFinancials, tickerFile);
     const statementFilings = loadStatementFilings(statementSources, { symbol: requestSymbol, exchange }, {
       quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),
       annual: latestFinancialPeriod(resolvedFinancials.annualStatements, (row) => row.date),
@@ -1286,6 +1366,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           futuresContract,
           distributions: await distributions,
           statementFilings: await statementFilings,
+          bondFund: await bondFund,
         }),
       });
       return;
@@ -1307,6 +1388,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         futuresContract,
         distributions: await distributions,
         statementFilings: await statementFilings,
+        bondFund: await bondFund,
     }));
     if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });

@@ -29,6 +29,8 @@ import { formatReportedMoney } from "../../../../utils/reported-money";
 import { enterpriseValueCheck, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
+import type { FundBondFacts } from "../../../../api-client/fund-facts";
+import { bondFigures } from "../../../../market-data/bond-funds";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -37,6 +39,10 @@ const HOLDERS: OverviewFunctionLink = { name: "Holders", tabId: "holders", templ
 const SHORT_INTEREST: OverviewFunctionLink = { name: "Short Interest", tabId: "short-interest", templateId: "short-interest-pane" };
 const EARNINGS: OverviewFunctionLink = { name: "Earnings", templateId: "earnings-calendar-pane" };
 const DIVIDENDS: OverviewFunctionLink = { name: "Dividends", tabId: "dividend-yield", templateId: "dividend-yield-pane" };
+const FUND_FACTS: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
+
+/** A bond fund's sponsor figures in a narrow grid: `SEC Yield 4.04% 2026-10-15`. */
+const BOND_STAT_LABELS = { secYield: "SEC Yield", yieldToWorst: "Yld to Worst" } as const;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -81,6 +87,7 @@ export function buildOverviewStats({
   depositaryReceipt = false,
   today,
   dividend,
+  bond = null,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -97,6 +104,11 @@ export function buildOverviewStats({
   today?: string;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
   dividend?: OverviewDividendState;
+  /**
+   * A bond fund's SEC yield, yield to worst and duration: its yield is then a
+   * distribution yield, not its SEC yield, which follows it with its date.
+   */
+  bond?: FundBondFacts | null;
 }): StatField[] {
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
@@ -158,11 +170,23 @@ export function buildOverviewStats({
   const dividendYield = listingDividendYield(quote, fundamentals, dividend?.actions);
   // A dividend that stopped has no forward yield, and its last ex-date is when it was last paid.
   const lapse = dividend?.lapse ?? null;
+  // A bond fund pays distributions, and its yield on them is not the SEC yield after it.
+  const kind = bond ? "Dist" : "Div";
+  const notSec = bond ? { detail: ["not SEC yield", "not SEC"] } : {};
   if (fundamentals && lapse) {
-    stats.push({ label: "Fwd Div Yld", value: NO_CURRENT_DIVIDEND });
+    stats.push({ label: `Fwd ${kind} Yld`, value: NO_CURRENT_DIVIDEND });
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
-    const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
-    stats.push({ label, value: formatLevelPercent(dividendYield) });
+    const basis = fundamentals.dividendYieldBasis;
+    const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;
+    stats.push({ label, value: formatLevelPercent(dividendYield), ...notSec });
+  }
+  if (bond) {
+    // Each dated, as the sponsor publishes it; the narrowest column drops the year.
+    for (const figure of bondFigures(bond)) {
+      const label = figure.key === "duration" ? (bond.duration?.measure === "average" ? "Avg Duration" : "Eff Duration") : BOND_STAT_LABELS[figure.key];
+      const forms = figure.date ? [...new Set([figure.date, figure.date.replace(/\b\d{4}-(\d{2}-\d{2})\b/, "$1")])] : undefined;
+      stats.push({ label, value: figure.text, ...(forms ? { detail: forms } : {}), link: FUND_FACTS });
+    }
   }
   const exDividendDate = lapse?.lastPaid ?? fundamentals?.exDividendDate;
   if (exDividendDate && ISO_DATE.test(exDividendDate)) {

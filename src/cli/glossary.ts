@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
- * fund, short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX) and economic-calendar terms the functions
+ * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -22,6 +22,12 @@ export interface GlossaryEntry {
    * A row type can stand for it: an AUCT Note row's rate is a high yield.
    */
   shown?: readonly string[];
+  /**
+   * The labels one function prints it under, in place of `shown` for that
+   * function: TRACE heads its yield to worst column `Yield`, a word DVD and ETF
+   * print in other yields.
+   */
+  shownBy?: Readonly<Record<string, readonly string[]>>;
   /** One or two plain sentences. */
   definition: string;
 }
@@ -424,7 +430,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
   },
-  // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE) and a fund's SEC yield, which DVD's cash yield is not.
+  // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE), a fund's SEC yield, which DVD's cash yield is not,
+  // and the bond fund figures and tax-equivalent maths DVD and fundamentals give with --tax-rate.
   {
     term: "Option-adjusted spread", short: "OAS", aliases: ["spread over treasuries", "corporate spread"], functions: ["CRD"],
     definition: "How much more a corporate bond index yields than Treasuries of the same maturities, once the value of the issuers' right to call their bonds early is taken out. "
@@ -438,14 +445,43 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "so a corporate bond can be read against the Treasury of its tenor.",
   },
   {
-    term: "SEC yield", aliases: ["30-day yield", "30-day sec yield", "sec 30-day yield", "standardized yield"], functions: ["DVD"],
+    term: "SEC yield", aliases: ["30-day yield", "30-day sec yield", "30 day sec yield", "sec 30-day yield", "standardized yield", "sec yld"],
+    functions: ["DVD", "ETF"], shown: ["SEC yield", "30-day SEC yield", "30-Day SEC Yield", "SEC yld"],
     definition: "A fund's yield in the formula the SEC sets so funds compare alike: the income its holdings earned over the latest 30 days, after expenses, annualized over the share price. "
-      + "Fund issuers publish it; DVD's trailing yield is the past 12 months' distributions over the price instead, so the two differ, most for bond funds.",
+      + "Fund issuers publish it, dated; DVD's trailing yield is the past 12 months' distributions over the price instead, so the two differ, most for bond funds, "
+      + "and DVD, fundamentals and DES show a bond fund's SEC yield beside its distribution yield.",
   },
   {
-    term: "Yield to worst", short: "YTW", aliases: ["worst yield"], functions: ["TRACE"], shown: ["Yield"],
+    term: "Yield to worst", short: "YTW", aliases: ["worst yield", "yield-to-worst"], functions: ["TRACE", "DVD", "ETF"],
+    shown: ["Yield to worst", "Yield to Worst", "Yld to Worst"], shownBy: { TRACE: ["Yield"] },
     definition: "The lowest yield a bond can pay without its issuer defaulting: the lower of its yield to maturity and its yield to each date it can be called. "
-      + "The yield TRACE shows for a sale is this one, worked out from the sale price.",
+      + "The yield TRACE shows for a sale is this one, worked out from the sale price; a bond fund's is the average over its holdings, as its sponsor publishes it.",
+  },
+  {
+    term: "Distribution yield", aliases: ["dist yield", "dist yld", "fund distribution yield"], functions: ["DVD"],
+    shown: ["distribution yield", "Distribution Yield", "Fwd dist yld", "TTM dist yld"],
+    definition: "The cash a fund paid, annualized over its price: the latest distribution times its frequency (forward), or the last 12 months' (trailing). "
+      + "For a bond fund it is not the SEC yield, and DVD and fundamentals say so beside it: MUB's forward distribution yield read 3.27% on a 4.04% SEC yield in October 2026.",
+  },
+  {
+    term: "Duration", aliases: ["effective duration", "average duration", "option-adjusted duration", "eff duration", "avg duration"],
+    functions: ["DVD", "ETF"], shown: ["Effective duration", "Average duration", "Effective Duration", "Average Duration", "Eff Duration", "Avg Duration"],
+    definition: "How far a bond fund's price moves when rates move: 7 years of duration is about 7% for a 1 percentage point change. "
+      + "Effective (option-adjusted) duration allows for calls; Vanguard publishes an average duration as of the month end.",
+  },
+  {
+    term: "Tax-equivalent yield", short: "TEY", aliases: ["tax equivalent yield", "taxable equivalent yield", "taxable-equivalent yield", "tax equivalent"],
+    functions: ["DVD"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield"],
+    definition: "The yield a taxable bond needs to match a tax-exempt muni fund after tax: yield / (1 - (federal rate + state rate)), on the SEC yield, "
+      + "else the distribution yield. At 40.8% (37% plus the 3.8% net investment income tax), MUB's 4.04% is 6.83%. A state rate counts only for a "
+      + "single-state fund of that state (CMF, VTEC for California). gloomberb fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
+  },
+  {
+    term: "Muni/Treasury ratio", aliases: ["muni treasury ratio", "muni-to-treasury ratio", "muni/ust ratio", "muni ratio", "municipal treasury ratio"],
+    functions: ["DVD"], shown: ["Muni/Treasury ratio"],
+    definition: "A muni yield over the Treasury yield of the same maturity, both before tax: under 100% munis yield less than Treasuries, as their tax "
+      + "exemption usually makes them. DVD and fundamentals divide a muni fund's SEC yield by the GC Treasury par yield at the tenor nearest its duration "
+      + "(MUB's 7.13 years: the 7Y). Market ratios read the AAA muni curve, MMD or BVAL, which are licensed and not in the terminal.",
   },
   // Short interest (SI, SIW) and daily short volume (SIV).
   {
@@ -679,7 +715,7 @@ export function reportGlossary(token: string, reportText: string): GlossaryEntry
   const text = reportText.replace(ANSI, "");
   const upper = token.toUpperCase();
   return GLOSSARY.filter((entry) => entry.functions.includes(upper)
-    && (entry.shown ?? [entry.term, ...(entry.short ? [entry.short] : [])]).some((label) => showsLabel(text, label)));
+    && (entry.shownBy?.[upper] ?? entry.shown ?? [entry.term, ...(entry.short ? [entry.short] : [])]).some((label) => showsLabel(text, label)));
 }
 
 function textWidth(): number {

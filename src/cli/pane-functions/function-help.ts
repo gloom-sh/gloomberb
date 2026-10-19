@@ -395,8 +395,11 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ERN"],
   },
   DVD: {
-    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (the latest distribution annualized, or the declared one once announced), and payout growth. Future payments are not forecast.",
-    usage: ["DVD KO"],
+    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (the latest distribution annualized, or the declared one once announced), and payout growth. Future payments are not forecast. "
+      + "For a bond fund these are distribution yields, not its SEC yield, which follows them with its date, yield to worst and duration. "
+      + "--tax-rate 40.8 adds a muni fund's tax-equivalent yield, yield / (1 - (federal + state rate)) on the SEC yield (else the distribution yield), "
+      + "and its muni/Treasury ratio against the GC tenor nearest its duration; --state-rate 13.3 --state CA counts only for a CA fund.",
+    usage: ["DVD KO", "DVD MUB --tax-rate 40.8", "DVD CMF --tax-rate 40.8 --state-rate 13.3 --state CA"],
     keys: [STEP],
     data: same("Daily"),
     bloomberg: ["DVD"],

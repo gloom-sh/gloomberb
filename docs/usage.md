@@ -164,7 +164,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
-| `DVD <ticker>` | Dividend yield and history; `gloomberb fn DVD KO PEP JNJ` ranks several tickers in one table by yield, with payout, growth, last ex-date and pay date |
+| `DVD <ticker>` | Dividend yield and history; `gloomberb fn DVD KO PEP JNJ` ranks several tickers in one table by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield; `gloomberb fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)) |
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `SIW [tickers]` | Short squeeze watch: short interest as a share of float, days to cover, change since the prior settlement and the 1M price move across your portfolios and watchlists, crowded names that are rising first |
@@ -775,6 +775,7 @@ A broker portfolio's header leads with `Net Liq`, the account's equity, then `Gr
 gloomberb portfolio show Income                                  # Income and Yield columns
 gloomberb portfolio show Income --drip --years 3 --withholding 20 # reinvested shares and income per year
 gloomberb fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
+gloomberb fundamentals MUB --tax-rate 40.8                      # a muni fund's tax-equivalent yield
 ```
 
 `--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year, in the portfolio's currency. Today's dividends, prices and exchange rates are held flat and reinvested once a year; a short owes its dividend in full each year and reinvests nothing. `catalog drip`, `catalog reinvest` and `catalog dividend income` point here. How the figures are measured: [research data](research-data.md#portfolio-income-and-drip).

@@ -148,3 +148,42 @@ test("a pool's total expense ratio reads as an expense ratio, gross, though the 
   expect(byId(ibit).fee).toMatchObject({ label: "Sponsor fee", detail: "2026-10-16" });
   expect(fundFactOverviewFields(ibit).find((field) => field.value === "0.25%")!.label).toBe("Sponsor Fee");
 });
+
+const MUB: FundFactsPayload = {
+  ...IVV, ticker: "MUB", name: "iShares National Muni Bond ETF",
+  bond: {
+    kind: "municipal", state: null,
+    secYield: { value: 4.0418, asOf: "2026-10-15", source: "iShares" },
+    yieldToWorst: { value: 4.16, asOf: "2026-10-15", source: "iShares" },
+    duration: { value: 7.12591, asOf: "2026-10-15", source: "iShares", measure: "effective" },
+  },
+};
+
+test("a bond fund's SEC yield, yield to worst and duration follow its net assets, each dated, and its class is a report line", () => {
+  expect(fundFactItems(MUB).map((item) => [item.label, item.value, item.detail])).toEqual([
+    ["NAV", "$766.76", "2026-10-16"],
+    ["Premium/discount", "+0.01%", "2026-10-16 close"],
+    ["Expense ratio", "0.03%", "net 2026-10-16"],
+    ["Net assets", "$879B", "2026-10-16"],
+    ["SEC yield", "4.04%", "2026-10-15"],
+    ["Yield to worst", "4.16%", "2026-10-15"],
+    ["Effective duration", "7.13 yrs", "2026-10-15"],
+    ["Sponsor", "BlackRock (iShares)", undefined],
+    ["Inception", "2000-05-15", undefined],
+  ]);
+  const entries = Object.fromEntries(fundFactEntries(MUB).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
+  expect(entries).toMatchObject({
+    bondClass: ["municipal", "Municipal, national", undefined],
+    secYieldPercent: [4.0418, "4.04% · 2026-10-15 · iShares", "%"],
+    yieldToWorstPercent: [4.16, "4.16% · 2026-10-15 · iShares", "%"],
+    durationYears: [7.12591, "7.13 yrs · 2026-10-15 · iShares", "years"],
+  });
+  // Vanguard's average duration is a month end's; a single-state fund names its state.
+  const vtec: FundFactsPayload = { ...MUB, bond: { kind: "municipal", state: "CA", secYield: null, yieldToWorst: null,
+    duration: { value: 7, asOf: "2026-09-30", source: "Vanguard", measure: "average" } } };
+  expect(byId(vtec).duration).toMatchObject({ label: "Average duration", value: "7.00 yrs", detail: "2026-09-30 month-end" });
+  expect(fundFactEntries(vtec).find((entry) => entry.key === "bondClass")?.formatted).toBe("Municipal, CA (single-state)");
+  // A fund the server sends no bond facts for, or an older server, shows none; the IVV cells are unchanged.
+  expect(fundFactItems(IVV).map((item) => item.id)).toEqual(["nav", "premium", "fee", "assets", "sponsor", "inception"]);
+  expect(fundFactPublishers(MUB)).toEqual(["iShares"]);
+});

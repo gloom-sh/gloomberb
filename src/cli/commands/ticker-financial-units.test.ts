@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { buildTickerReport, renderFundamentalsReport } from "./ticker";
+import { buildTickerReport, fundamentalsReportTables, loadReportBondFacts, renderFundamentalsReport } from "./ticker";
+import type { FundBondFacts } from "../../api-client/fund-facts";
+import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
 const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
@@ -262,4 +264,62 @@ test("a US fund's report points to its fund facts; a fund listed elsewhere says 
   expect(plain(renderFundamentalsReport({ ...london, symbol: "VUSA", exchange: "LSE" }, "fundamentals")))
     .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) cover US-listed funds only.");
   expect(await report({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).not.toContain("Fund facts");
+});
+
+test("a bond fund's yield is its distribution yield, not its SEC yield, which follows it dated; --tax-rate adds the tax-equivalent section", async () => {
+  const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
+  const source = { source: "iShares" };
+  const bondFund: FundBondFacts = {
+    kind: "municipal", state: null,
+    secYield: { value: 4.0418, asOf: "2026-10-15", ...source },
+    yieldToWorst: { value: 4.16, asOf: "2026-10-15", ...source },
+    duration: { value: 7.12591, asOf: "2026-10-15", measure: "effective", ...source },
+  };
+  const mub: TickerFinancials = { quote: { ...quote, symbol: "MUB", instrumentType: "ETF", exchangeName: "NYSEArca" },
+    annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals: { dividendYield: 0.0327, dividendYieldBasis: "forward" } };
+  const lines = [
+    "Distribution Yield (forward, not SEC yield)  3.27%",
+    "30-Day SEC Yield                             4.04% (as of 2026-10-15)",
+    "Yield to Worst                               4.16% (as of 2026-10-15)",
+    "Effective Duration                           7.13 yrs (as of 2026-10-15)",
+  ];
+  const fundamentals = plain(renderFundamentalsReport({ ...mub, symbol: "MUB", exchange: "NYSEArca", bondFund }, "fundamentals"));
+  for (const line of lines) expect(fundamentals).toContain(line);
+  expect(fundamentals).not.toContain("Tax-Equivalent Yield");
+  const ticker = plain(await buildTickerReport({ symbol: "MUB", tickerFile: null, financials: mub, config, toBase: async value => value, bondFund }));
+  for (const line of lines) expect(ticker).toContain(line);
+  // valuation keeps the yield lines beside the multiples.
+  expect(plain(renderFundamentalsReport({ ...mub, symbol: "MUB", bondFund }, "valuation"))).toContain("30-Day SEC Yield");
+
+  const taxEquivalent = analyzeTaxEquivalent({ symbol: "MUB", bond: bondFund, rates: { federal: 40.8, state: null },
+    treasury: [{ tenor: "7Y", years: 7, yield: 4.98, asOf: "2026-10-16" }] });
+  const withTax = plain(renderFundamentalsReport({ ...mub, symbol: "MUB", bondFund, taxEquivalent }, "fundamentals"));
+  expect(withTax).toContain([
+    "Tax-Equivalent Yield",
+    "Tax rate              40.8% (federal; no state rate given)",
+    "Tax-equivalent yield  6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))",
+    "Muni/Treasury ratio   81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
+  ].join("\n"));
+  const tables = fundamentalsReportTables({ ...mub, symbol: "MUB", bondFund, taxEquivalent }, "fundamentals",
+    { source: "Gloom Cloud", asOf: null, status: "unreported" });
+  expect(tables.tables.map((table) => table.title)).toContain("Tax-Equivalent Yield");
+
+  // A stock, and a fund with no bond facts, keep the dividend yield line as it was.
+  for (const financials of [{ ...mub, quote: { ...mub.quote!, instrumentType: "EQUITY" } }, mub]) {
+    const text = plain(renderFundamentalsReport({ ...financials, symbol: "MUB" }, "fundamentals"));
+    expect(text).toContain("Dividend Yield (forward)  3.27%");
+    expect(text).not.toMatch(/SEC|Distribution Yield/);
+  }
+});
+
+test("bond facts are read for a US-listed fund only, and a failed read leaves the yield as it was", async () => {
+  const facts = { bond: { kind: "taxable" as const, state: null, secYield: null, yieldToWorst: null, duration: null } };
+  const reads: string[] = [];
+  const load = async (symbol: string) => { reads.push(symbol); return facts.bond; };
+  const fund = { quote: { ...quote, instrumentType: "ETF" } };
+  expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, load)).toEqual(facts.bond);
+  expect(await loadReportBondFacts("NVDA", "NASDAQ", { quote: { ...quote, instrumentType: "EQUITY" } }, null, load)).toBeNull();
+  expect(await loadReportBondFacts("VUSA", "LSE", fund, null, load)).toBeNull();
+  expect(reads).toEqual(["AGG"]);
+  expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
 });

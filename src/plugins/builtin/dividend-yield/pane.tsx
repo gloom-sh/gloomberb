@@ -41,6 +41,11 @@ import {
 } from "./model";
 import type { DividendMetrics } from "./types";
 import { dividendPriceStatus, dividendPriceTime, dividendQuotePriceMetadata } from "./reference-price";
+import type { FundBondFacts } from "../../../api-client/fund-facts";
+import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
+import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
+import { useFundFacts } from "../sec/fund-facts-view";
+import { bondFigures } from "../../../market-data/bond-funds";
 
 function formatRate(value: number | null, currency: string): string {
   if (value == null) return "—";
@@ -72,23 +77,34 @@ function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
  * The dividend figures over the history chart, most important first so a
  * short pane keeps the yields. Labels stay short so a narrow terminal does not
  * clip them. The latest ex-date is the table's first row, so it shows only
- * when there is no table.
+ * when there is no table. A bond fund's yields are distribution yields, which
+ * say they are not its SEC yield, and the SEC yield follows them with its date.
  */
 function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory: boolean, short: boolean,
-  declared: DividendData["declared"]): StatItem[] {
+  declared: DividendData["declared"], bond: FundBondFacts | null = null): StatItem[] {
   const exDate: StatItem[] = metrics.nextExDividendDate
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
-  const forwardNote = metrics.lapse ? lastPaidNote(metrics.lapse)
+  const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield != null ? forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }) : null;
+  // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
+  const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
+  const forwardNote = notSec(dated);
+  const trailingNote = notSec(null);
+  const ttmLabel = bond ? (short ? "TTM dist" : "TTM dist yld") : short ? "TTM yld" : "TTM yield";
+  const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
+  const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
   return [
-    { id: "ttm-yield", label: short ? "TTM yld" : "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
+    { id: "ttm-yield", label: ttmLabel, value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0),
+      ...(trailingNote ? { detail: trailingNote } : {}) },
     // Dated by the distribution it annualizes, or marked declared (with its stated amount) beside the next ex-date;
     // a dividend that stopped has none, dated by its last ex-date. docs/research-data.md says how it is built.
     metrics.lapse
-      ? { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: NO_CURRENT_DIVIDEND, ...(forwardNote ? { detail: forwardNote } : {}) }
-      : { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
+      ? { id: "forward-yield", label: fwdLabel, value: NO_CURRENT_DIVIDEND, ...(forwardNote ? { detail: forwardNote } : {}) }
+      : { id: "forward-yield", label: fwdLabel, value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
+    // The 30-day SEC yield as the fund's sponsor publishes it, dated.
+    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
     { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
     { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
@@ -142,6 +158,9 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   // about one update a second, not the fast lane of a price on screen.
   useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 40 });
   const cloudSession = useResearchCloudSession();
+  // A US-listed bond fund's SEC yield, from the same fund facts ETF and DES read.
+  const fundSymbol = ticker && resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
+  const bond = useFundFacts(fundSymbol).data?.payload?.bond ?? null;
   const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";
   // The regular session's price: after the close, the close rather than an after-hours print.
@@ -231,13 +250,13 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared) : [];
+  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
   }).figures;
   // The desktop grid never clips a label; the terminal shortens them rather than clip.
   const figures = metrics && !nativePaneChrome && labelsClip(keptFigures, width)
-    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared) : fullFigures;
+    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared, bond) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {

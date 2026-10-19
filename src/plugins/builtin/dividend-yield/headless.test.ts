@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { DividendData } from "./client";
+import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { createDividendYieldHeadless } from "./headless";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
@@ -175,4 +176,67 @@ test("several symbols are one table ranked by trailing yield; a read without its
   // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
   await expect(definition.load({ ...request, options: { type: "special", limit: 40 } }, context)).rejects.toThrow("--type filters one ticker's payment history");
   await expect(definition.load({ ...request, options: { type: "all", limit: 5 } }, context)).rejects.toThrow("--limit filters");
+});
+
+describe("a bond fund's yields", () => {
+  const ISHARES = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
+  const MUB: FundBondFacts = {
+    kind: "municipal", state: null,
+    secYield: { value: 4.0418, asOf: "2026-10-15", ...ISHARES },
+    yieldToWorst: { value: 4.16, asOf: "2026-10-15", ...ISHARES },
+    duration: { value: 7.12591, asOf: "2026-10-15", measure: "effective", ...ISHARES },
+  };
+  const mubData: DividendData = { ...fixture, price: 102.35,
+    metrics: { ...fixture.metrics, trailingYield: 0.0334, forwardYield: 0.0327, forwardRateAsOf: "2026-10-01" } };
+  const treasury = [{ tenor: "5Y", years: 5, yield: 4.76, asOf: "2026-10-16" }, { tenor: "7Y", years: 7, yield: 4.98, asOf: "2026-10-16" }];
+  const mubArgs: HeadlessPaneLoadArgs = { rawArgument: "MUB", argument: "MUB", symbols: ["MUB"], options: {} };
+  const withOptions = (options: Record<string, string>): HeadlessPaneLoadArgs => ({ ...mubArgs, options });
+  const report = async (definition: ReturnType<typeof createDividendYieldHeadless>, request: HeadlessPaneLoadArgs = mubArgs) =>
+    renderHeadlessPaneText(definition, await definition.load(request, context), request, "DVD");
+
+  test("are distribution yields, not its SEC yield, which follows them dated with its yield to worst and duration", async () => {
+    const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => MUB });
+    const text = await report(definition);
+    expect(text).toContain("Trailing distribution yield (not SEC yield)  3.34% (last 12 months of distributions)");
+    expect(text).toContain("Forward distribution yield (not SEC yield)   3.27% (latest distribution annualized, as of 2026-10-01)");
+    expect(text).toContain("30-day SEC yield                             4.04% (as of 2026-10-15)");
+    expect(text).toContain("Yield to worst                               4.16% (as of 2026-10-15)");
+    expect(text).toContain("Effective duration                           7.13 yrs (as of 2026-10-15)");
+    expect(text).not.toContain("Tax-equivalent yield");
+
+    // A stock, or a fund with no bond facts, reads as before.
+    const stock = await report(createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => null }));
+    expect(stock).toMatch(/\nTrailing yield +3\.34% \(last 12 months of distributions\)\nForward yield +3\.27% /);
+    expect(stock).not.toMatch(/SEC yield|distribution yield/);
+  });
+
+  test("--tax-rate adds the tax-equivalent yield and muni/Treasury ratio, which JSON keeps with the formula", async () => {
+    const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => MUB, loadTreasury: async () => treasury });
+    const request = withOptions({ "tax-rate": "40.8" });
+    const result = await definition.load(request, context);
+    const text = renderHeadlessPaneText(definition, result, request, "DVD");
+    expect(text).toContain([
+      "Tax-equivalent yield",
+      "Tax rate              40.8% (federal; no state rate given)",
+      "Tax-equivalent yield  6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))",
+      "Muni/Treasury ratio   81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
+    ].join("\n"));
+    expect(result.metadata).toMatchObject({
+      bondFund: { kind: "municipal", class: "Municipal, national" },
+      taxEquivalent: { federalRate: 40.8, combinedRate: 40.8, muniTreasuryRatio: { tenor: "7Y", treasuryYield: 4.98 } },
+    });
+    expect((result.metadata as { taxEquivalent: { taxEquivalentYield: number } }).taxEquivalent.taxEquivalentYield).toBeCloseTo(6.8274, 4);
+  });
+
+  test("--tax-rate refuses a ranking of several tickers and a state rate without its state", async () => {
+    const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => MUB, loadTreasury: async () => treasury });
+    await expect(definition.load({ rawArgument: "MUB, TFI", argument: "MUB, TFI", symbols: ["MUB", "TFI"], options: { "tax-rate": "40.8" } }, context))
+      .rejects.toThrow("--tax-rate reads one fund's yield");
+    await expect(definition.load(withOptions({ "tax-rate": "40.8", "state-rate": "13.3" }), context)).rejects.toThrow("--state-rate and --state go together");
+  });
+
+  test("a bond facts read that fails leaves the report as it was", async () => {
+    const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => { throw new Error("offline"); } });
+    expect(await report(definition)).toMatch(/\nForward yield +3\.27% \(latest distribution annualized, as of 2026-10-01\)\n/);
+  });
 });

@@ -257,6 +257,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
     dividend,
+    bond: fundFacts?.bond ?? null,
   });
   const profileFields = buildProfileFields({
     instrumentType: instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),

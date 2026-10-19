@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
-import { commandPointer, knownGapForTicker, knownGapMessage, topicPointer } from "./known-gaps";
+import { commandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
@@ -155,4 +155,38 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["usdt"]), lookupGlossary("usdt"), null, series, commandPointer("usdt"));
   expect(catalog.indexOf(line)).toBe(0);
   expect(catalog).toContain("Taiwan dollar");
+});
+
+test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say plainly there is no AAA muni curve", async () => {
+  const line = knownGapMessage("muni")!;
+  expect(line).toBe(MUNI_LINE);
+  expect(line).toStartWith("Municipal bonds: no AAA muni curve (MMD and BVAL are licensed).");
+  for (const pointer of ["MUB", "VTEB", "TFI", "SUB", "CMF", "NYF", "gloomberb fn DVD <fund>", "gloomberb fundamentals <fund>", "--tax-rate 40.8", "--state-rate"]) {
+    expect(line, pointer).toContain(pointer);
+  }
+  for (const query of ["muni", "Munis", "municipal", "municipal bonds", "tax-exempt", "Tax Exempt", "tax equivalent", "tax-equivalent yield", "TEY",
+    "AAA muni curve", "MMD", "BVAL", "muni/Treasury ratio"]) expect(knownGapMessage(query), query).toBe(line);
+  // Only the whole query: a muni utility or a tax story is not the gap.
+  for (const query of ["municipal water", "tax", "exempt", "tax cuts", "MUBS"]) expect(knownGapMessage(query), query).toBeNull();
+  expect(buildSearchReport({ query: "muni bonds", candidates: [] })).toContain(line);
+
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["muni", "municipal", "tax-exempt", "tax equivalent"]) {
+      const report = renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]), lookupGlossary(query), knownGapMessage(query))
+        .replace(/\x1b\[[0-9;]*m/g, "");
+      expect(report, query).toStartWith("Municipal bonds: no AAA muni curve");
+      // DVD is the function, with --tax-rate among its options and examples.
+      expect(report, query).toMatch(/^DVD\s+Dividend Yield/m);
+      expect(report, query).toContain("gloomberb fn DVD MUB --tax-rate 40.8");
+      expect(report, query).not.toContain("No functions match");
+    }
+    const tey = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "tax equivalent"), parsePaneCatalogArgs(["tax equivalent"]),
+      lookupGlossary("tax equivalent"), knownGapMessage("tax equivalent")).replace(/\x1b\[[0-9;]*m/g, "");
+    expect(tey).toContain("Tax-equivalent yield (TEY)");
+  } finally {
+    registry.destroy();
+  }
 });

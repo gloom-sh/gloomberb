@@ -9,6 +9,30 @@ interface FundFact<T> {
 type FundStructure = "registered" | "trust";
 type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
 /**
+ * A bond fund as its sponsor classes it: `municipal` when its interest is
+ * exempt from federal income tax, `taxable` otherwise.
+ */
+export type BondFundClass = "municipal" | "taxable";
+
+/**
+ * What a bond fund's sponsor publishes about its yield and rate risk, each
+ * figure dated. The 30-day SEC yield is the standardized yield (net
+ * investment income of the last 30 days, annualized, over the offering
+ * price); a distribution yield annualizes cash paid and is not it.
+ */
+export interface FundBondFacts {
+  kind: BondFundClass;
+  /** A single-state municipal fund's state (`CA`, `NY`); null for a national fund. */
+  state: string | null;
+  /** Percent. */
+  secYield: FundFact<number> | null;
+  /** Percent. */
+  yieldToWorst: FundFact<number> | null;
+  /** Years: `effective` (option-adjusted) duration, or Vanguard's month-end `average` duration. */
+  duration: (FundFact<number> & { measure: "effective" | "average" }) | null;
+}
+
+/**
  * `not-collected-yet`: a source Gloom reads covers the fund, but it has no
  * figures yet. `not-published`: no source Gloom reads covers it. Servers
  * before statuses leave it out.
@@ -40,6 +64,8 @@ export interface FundFactsPayload {
   sponsor: FundFact<string> | null;
   inception: FundFact<string> | null;
   index: FundFact<string> | null;
+  /** A bond fund's SEC yield, yield to worst and duration; null for any other fund. Servers before it leave it out. */
+  bond?: FundBondFacts | null;
   /** The newest NAV is older than a few US trading days: every figure is older than it looks. */
   stale: boolean;
   fetchedAt: string | null;

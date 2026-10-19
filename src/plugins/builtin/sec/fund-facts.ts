@@ -6,6 +6,7 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
 import { formatCompact } from "../../../utils/format";
+import { bondClassText, bondFigures, isBondFactsShape } from "../../../market-data/bond-funds";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 /** Sponsors publish once a day, in the US evening; a copy younger than this is not asked for again. */
@@ -19,7 +20,8 @@ const fact = (value: unknown) => value === null || (typeof value === "object" &&
 
 function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
-    || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)) {
+    || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
+    || !isBondFactsShape(data.bond)) {
     throw new Error("Unreadable fund facts response");
   }
   return data;
@@ -163,6 +165,10 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   if (facts.premiumDiscount) items.push(cell("premium", "Premium/discount", formatPremiumPercent(facts.premiumDiscount.value), dated.premium));
   if (facts.expenseRatio) items.push(cell("fee", expenseRatioLabel(facts), formatFeePercent(facts.expenseRatio.value), dated.fee));
   if (facts.netAssets) items.push(cell("assets", wholeFund(facts) ? "Fund net assets" : "Net assets", formatNetAssets(facts.netAssets.value), dated.netAssets));
+  // A bond fund's yields and duration, each dated by its sponsor.
+  for (const figure of facts.bond ? bondFigures(facts.bond) : []) {
+    items.push(cell(figure.key, figure.label, figure.text, { detail: figure.date, marked: facts.stale }));
+  }
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
   if (facts.index) items.push({ id: "index", label: BENCHMARK_LABEL, value: facts.index.value, wide: true });
@@ -245,6 +251,14 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
       ? `${facts.netAssets.asOf} month-end${facts.netAssets.document ? ` ${facts.netAssets.document}` : ""}` : facts.netAssets.asOf;
     add("netAssets", "Net assets", facts.netAssets.value, provenance(formatNetAssets(facts.netAssets.value), date, scope, facts.netAssets.source), "USD");
   }
+  if (facts.bond) {
+    add("bondClass", "Bond fund", facts.bond.kind, bondClassText(facts.bond));
+    const keys = { secYield: "secYieldPercent", yieldToWorst: "yieldToWorstPercent", duration: "durationYears" } as const;
+    for (const figure of bondFigures(facts.bond)) {
+      add(keys[figure.key], figure.key === "secYield" ? "30-day SEC yield" : figure.label, figure.value,
+        provenance(figure.text, figure.date, figure.source), figure.key === "duration" ? "years" : "%");
+    }
+  }
   if (facts.sponsor) add("sponsor", "Sponsor", facts.sponsor.value, facts.sponsor.value);
   if (facts.inception) add("inception", "Inception", facts.inception.value, facts.inception.value);
   if (facts.index) add("index", BENCHMARK_LABEL, facts.index.value, provenance(facts.index.value, facts.index.source));
@@ -264,7 +278,7 @@ export function listNames(names: readonly string[]): string {
  * the consolidated close cites Gloom Cloud on its own line, not here.
  */
 export function fundFactPublishers(facts: FundFactsPayload): string[] {
-  return [...new Set([facts.nav, facts.expenseRatio, facts.netAssets, facts.index]
+  return [...new Set([facts.nav, facts.expenseRatio, facts.netAssets, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
     .flatMap((value) => value ? [value.source] : []))];
 }
 

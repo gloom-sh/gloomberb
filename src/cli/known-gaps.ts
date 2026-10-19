@@ -17,6 +17,16 @@ export function isSubMinuteInterval(value: string): boolean {
 }
 
 /**
+ * Munis: the funds, where their SEC yield and tax-equivalent yield are, and
+ * the curve the terminal lacks. Each fund is a listing `quote` answers
+ * (checked 2026-10-19).
+ */
+export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are licensed). Muni bond funds: MUB, VTEB, TFI (national), SUB (short-term), "
+  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloomberb fn DVD <fund> or "
+  + "gloomberb fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
+  + "single-state fund).";
+
+/**
  * Data people look for under a name search cannot find: where the app has it,
  * or, while no source carries it, the nearest thing the app does have, with
  * the traded proxies either way. `search` and `catalog` answer a query that
@@ -54,6 +64,14 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly s
     tickers: ["BDI"],
     message: "Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered. Traded proxies: BDRY (freight futures ETF), "
       + "SBLK, GNK, DSX (dry-bulk shipowners); chokepoint transits: fn CHOKE; news \"dry bulk\".",
+  },
+  {
+    // What the terminal has for munis, and what it does not: the AAA curve every muni ratio quotes is licensed.
+    terms: ["muni", "munis", "municipal", "municipals", "municipal bond", "municipal bonds", "muni bond", "muni bonds", "muni fund", "muni funds",
+      "muni ETF", "muni ETFs", "municipal bond fund", "municipal bond funds", "muni yield", "muni yields", "tax-exempt", "tax exempt",
+      "tax-exempt bond", "tax-exempt bonds", "tax-exempt yield", "tax-free bonds", "tax equivalent", "tax-equivalent yield", "taxable equivalent yield",
+      "TEY", "muni curve", "AAA muni curve", "muni AAA curve", "MMD", "MMD curve", "BVAL", "muni/Treasury ratio", "muni Treasury ratio", "muni ratio"],
+    message: MUNI_LINE,
   },
 ];
 

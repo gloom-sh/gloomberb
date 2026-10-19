@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
+import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
 
 function overview(fundamentals: Fundamentals, financialCurrency?: string) {
@@ -143,4 +144,34 @@ describe("research position valuation", () => {
     expect(row({ side: "short" }, { quotePrice: null }))
       .toMatchObject({ cost: "$1,000.00", mark: "—", value: "—", pnlValue: null });
   });
+});
+
+test("a bond fund's yield is its distribution yield, not its SEC yield, which follows it dated with its yield to worst and duration", () => {
+  const source = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
+  const stats = (bond: FundBondFacts | null) => buildOverviewStats({
+    quote: undefined, fundamentals: { dividendYield: 0.0327, dividendYieldBasis: "forward" }, quoteCurrency: "USD", baseCurrency: "USD",
+    toBase: (value) => value, bond,
+  }).map(({ label, value, detail, link }) => ({ label, value, detail, link: link?.templateId }));
+  expect(stats({
+    kind: "municipal", state: null,
+    secYield: { value: 4.0418, asOf: "2026-10-15", ...source },
+    yieldToWorst: { value: 4.16, asOf: "2026-10-15", ...source },
+    duration: { value: 7.12591, asOf: "2026-10-15", measure: "effective", ...source },
+  })).toEqual([
+    { label: "Fwd Dist Yld", value: "3.27%", detail: ["not SEC yield", "not SEC"], link: undefined },
+    { label: "SEC Yield", value: "4.04%", detail: ["2026-10-15", "10-15"], link: "sec-etf-pane" },
+    { label: "Yld to Worst", value: "4.16%", detail: ["2026-10-15", "10-15"], link: "sec-etf-pane" },
+    { label: "Eff Duration", value: "7.13 yrs", detail: ["2026-10-15", "10-15"], link: "sec-etf-pane" },
+  ]);
+  // Vanguard's month-end average duration, and no yield to worst.
+  expect(stats({
+    kind: "municipal", state: null, yieldToWorst: null,
+    secYield: { value: 4.36, asOf: "2026-10-15", source: "Vanguard" },
+    duration: { value: 7.3, asOf: "2026-09-30", measure: "average", source: "Vanguard" },
+  }).slice(1)).toEqual([
+    { label: "SEC Yield", value: "4.36%", detail: ["2026-10-15", "10-15"], link: "sec-etf-pane" },
+    { label: "Avg Duration", value: "7.30 yrs", detail: ["2026-09-30 month-end", "09-30 month-end"], link: "sec-etf-pane" },
+  ]);
+  // Anything else reads as before.
+  expect(stats(null)).toEqual([{ label: "Fwd Div Yld", value: "3.27%", detail: undefined, link: undefined }]);
 });

@@ -455,7 +455,7 @@ Account summaries and Cash & Margin convert monetary totals only from the broker
 
 ## Dividends and sectors
 
-Dividend cash yield excludes taxes and reinvestment. SEC yield, tax components, and future payments are not modeled. Forward yield is an estimate rather than a guaranteed distribution. Dividend amounts and reference prices must use compatible listing currencies and units.
+Dividend cash yield excludes taxes and reinvestment. For a bond fund it is a distribution yield, not the SEC yield (see [Bond funds](#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)); tax components and future payments are not modeled. Forward yield is an estimate rather than a guaranteed distribution. Dividend amounts and reference prices must use compatible listing currencies and units.
 
 `DVD` is a cash-history view, not a next-quarter cash-flow calendar. History rows use ex-dates, not the dates cash reaches an account. Recent cadence is inferred from those ex-dates; it does not establish an announced schedule. The ex-date row shows the next announced ex-date when the source reports one, and otherwise the last ex-date that has passed. A declared distribution is never added to history, the yields or the growth figures, even when Gloom Cloud states its amount. A source-reported upcoming payment date can appear as Next Pay, but is not linked to a projected amount. The provider-backed history supplies ex-dates only. Missing payment dates remain unavailable. Forward/share is the indicated annual rate `fundamentals` uses for its forward yield: the latest regular distribution annualized (HYG's $0.342 monthly distribution is $4.104 a year), dated by that distribution's ex-date. Once the next distribution is declared the rate annualizes that one, and its ex-date is still ahead, so the yield is never shown as of a future day: `fundamentals`, `ticker` and `DVD` name it as the declared distribution with its ex-date, and with its amount and pay date where Gloom Cloud states a declared row for that ex-date (`annualized from the declared $0.98 payable 2026-12-10, ex 2026-11-19`). Not every listing has declared rows; without one the basis gives the dates alone (`annualized from the declared distribution, ex 2026-11-19`, with the pay date in `DVD` when the source states one beside that ex-date). The amount is only ever the stated one, never the rate divided by the cadence. The pane marks the yield `declared` (with the amount when stated) beside Next Ex, and `events` and `EVT` list a declared row at its ex-date, marked declared, apart from the paid distributions. It is not a forecast beyond that distribution. No FX conversion, withholding, or net account income is calculated.
 
@@ -481,6 +481,35 @@ TTM cash/share sums reported cash with ex-dates within the trailing calendar yea
 - **Last ex** is the latest ex-date that has passed. **Pay date** is the pay date of the next declared distribution, or the next pay date the source reports; past distributions carry ex-dates only, so it is blank when nothing is declared.
 
 A figure the source does not have reads `—`, never 0. A ticker with no trailing yield ranks below every ticker with one, and a ticker that could not be read ranks last. A read that came back without its cash history (no yields or growth) or without its summary (no forward yield, payout or pay date) is incomplete as the single-ticker report says it is, so its blanks never read as a non-payer's: a Note column appears and names what each such row is missing (`not read`, `no cash history`, `no summary`), the reasons are in the errors, and the report is incomplete (`complete: false`, with those tickers in `unavailableSymbols`, in `--json`). `--json` and `--csv` keep the numbers, ratios to the sixth decimal (a 3.5396% yield is `0.035396` in JSON and `3.5396` in CSV), each JSON row with its currency, `note` and `priceAsOf` (the time of the price its yields are over: after the close, the close), and the metadata says how each column is measured. Every CSV and NDJSON row names its ticker in `symbol_or_series`, `pct` in `currency_or_unit` and that price time in `as_of`, and the closing lines date the report by the newest of those prices. One ticker prints the single-ticker report, as before. `--type` and `--limit` pick rows of one ticker's payment history, which a ranking does not list, so with several tickers they are refused rather than dropped.
+
+### Bond funds: SEC yield, tax-equivalent yield and the muni/Treasury ratio
+
+A bond fund's dividend yield is the cash it paid, annualized: a distribution yield. It is not the 30-day SEC yield, the standardized figure a US bond fund reports (net investment income over the last 30 days, after expenses, annualized over the price), and the two differ: on 2026-10-15 MUB's forward distribution yield read 3.27% against a 4.04% SEC yield. For a US-listed bond fund whose sponsor's figures Gloom Cloud reads (iShares, Vanguard and SPDR bond ETFs), every place that shows the distribution yield says so, and the SEC yield follows it with its date:
+
+- `fundamentals` and `ticker`: `Distribution Yield (forward, not SEC yield)`, then `30-Day SEC Yield 4.04% (as of 2026-10-15)`, `Yield to Worst` and `Effective Duration` (Vanguard publishes no yield to worst, and an `Average Duration` as of the month end).
+- `fn DVD`: `Trailing distribution yield (not SEC yield)` and `Forward distribution yield (not SEC yield)`, then the same three figures. The DVD pane reads `TTM dist yld` and `Fwd dist yld`, each `not SEC`, with `SEC yield` beside them.
+- `DES`: `Fwd Dist Yld` (`not SEC yield`), then `SEC Yield`, `Yld to Worst` and `Eff Duration` or `Avg Duration`, each dated and opening ETF.
+- `ETF` and `fn ETF`: `SEC yield`, `Yield to worst` and `Effective duration` after net assets, each dated; the report adds the fund's class (`Municipal, national`, `Municipal, CA (single-state)` or `Taxable`).
+
+`--json` carries the figures under `bondFund` (`kind`, `state`, and `secYield`, `yieldToWorst` and `duration` with `value`, `asOf`, `source` and, for duration, `measure`). A fund no sponsor source covers (Schwab, Invesco, JPMorgan, First Trust, PIMCO and others) has none, and its yield reads as before.
+
+`gloomberb fn DVD <fund> --tax-rate <pct>` and `gloomberb fundamentals <fund> --tax-rate <pct>` add a muni fund's tax-equivalent yield and its muni/Treasury ratio:
+
+```
+tax-equivalent yield = yield / (1 - (federal rate + state rate))
+muni/Treasury ratio  = yield / Treasury par yield at the GC tenor nearest the fund's duration
+```
+
+- The yield is the 30-day SEC yield, else the distribution yield, and the line says which.
+- `--tax-rate` is the federal rate in percent: 40.8 is the 37% top bracket plus the 3.8% net investment income tax.
+- `--state-rate 13.3 --state CA` adds a state rate only for a single-state muni fund of that state (CMF and VTEC for California, NYF and MUNY for New York), whose income that state does not tax either. A national fund's income is taxed by your state like a taxable bond's, so the state rate cancels out; the tax rate line says why it was not added.
+- The rates add up without netting a federal deduction for state tax, which the SALT cap mostly removes. This is how iShares computes the tax-equivalent yields it publishes: MUB's 4.04% at 40.8% is 6.83%, and CMF's 3.87% at 40.8% + 13.3% is 8.43%.
+- The ratio compares pre-tax yields, as muni/Treasury ratios do. Its Treasury is GC's US par curve at its latest session, at the tenor nearest the fund's duration (MUB's 7.13 years: the 7Y); the line names the tenor and the curve's date.
+- A taxable bond fund gets `no tax-equivalent yield: AGG is a taxable bond fund, its income is taxed`, and a listing with no bond figures says so. `--tax-rate` takes one fund: a ranking of several refuses it, and `shot DVD` refuses it as a report-only option.
+
+`--json` adds `taxEquivalent`: `federalRate`, `stateRate` (`rate`, `code`, `applied`), `combinedRate`, `basis` (`kind`: `sec` or `distribution`, `value`, `asOf`), `taxEquivalentYield`, `muniTreasuryRatio` (`value`, `tenor`, `treasuryYield`, `treasuryAsOf`, `durationYears`), `notes` and both formulas.
+
+There is no AAA muni curve: MMD and BVAL, the curves muni ratios are usually quoted on, are licensed. `gloomberb catalog muni` (or `municipal`, `tax-exempt`, `tax equivalent`) says so and points to the funds, `DVD`, `fundamentals` and `--tax-rate`; `catalog glossary` explains the tax-equivalent yield, the muni/Treasury ratio, the SEC yield, yield to worst and duration.
 
 ### Portfolio income and DRIP
 

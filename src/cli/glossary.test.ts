@@ -172,3 +172,38 @@ test("EPWR explains the gas storage and EUA words its report heads columns with"
   const eua = "Allowance  As of  EUR/tCO2  1D  52W low  52W high  In 1Y range\n\nLatest EUA auctions\nDate  Zone  Status  EUR/tCO2  Volume tCO2  Cover  Bidders";
   expect(terms(reportGlossary("EPWR", eua))).toEqual(["Bid-to-cover", "EUA", "1Y range"]);
 });
+
+test("the bond fund and muni words are found by plain names, and DVD explains the ones its report prints", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["TEY", "tax equivalent yield", "taxable-equivalent yield", "muni treasury ratio", "muni/UST ratio", "SEC yield", "30-day SEC yield",
+    "YTW", "effective duration", "average duration", "distribution yield"].map(exact)).toEqual([
+    ["Tax-equivalent yield"], ["Tax-equivalent yield"], ["Tax-equivalent yield"], ["Muni/Treasury ratio"], ["Muni/Treasury ratio"],
+    ["SEC yield"], ["SEC yield"], ["Yield to worst"], ["Duration"], ["Duration"], ["Distribution yield"],
+  ]);
+  const tey = GLOSSARY.find((entry) => entry.term === "Tax-equivalent yield")!;
+  expect(tey.definition).toContain("yield / (1 - (federal rate + state rate))");
+  expect(tey.definition).toContain("MUB's 4.04% is 6.83%");
+  expect(GLOSSARY.find((entry) => entry.term === "Muni/Treasury ratio")!.definition).toContain("MMD or BVAL, which are licensed");
+  const report = [
+    "Forward distribution yield (not SEC yield)   3.27% (latest distribution annualized, as of 2026-10-01)",
+    "30-day SEC yield                             4.04% (as of 2026-10-15)",
+    "Yield to worst                               4.16% (as of 2026-10-15)",
+    "Effective duration                           7.13 yrs (as of 2026-10-15)",
+    "Tax-equivalent yield  6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))",
+    "Muni/Treasury ratio   81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
+  ].join("\n");
+  expect(terms(reportGlossary("DVD", report))).toEqual([
+    "SEC yield", "Distribution yield", "Yield to worst", "Duration", "Tax-equivalent yield", "Muni/Treasury ratio",
+  ]);
+  // A stock's DVD report prints none of them.
+  expect(reportGlossary("DVD", "Trailing yield  2.24% (last 12 months of distributions)\nForward yield  2.26%")).toEqual([]);
+  // One entry each for the SEC yield and the yield to worst the credit terms brought, under their names from both.
+  expect(GLOSSARY.filter((entry) => ["SEC yield", "Yield to worst"].includes(entry.term))).toHaveLength(2);
+  expect(["30-day yield", "worst yield", "yield-to-worst", "OAS", "effective yield"].map(exact)).toEqual([
+    ["SEC yield"], ["Yield to worst"], ["Yield to worst"], ["Option-adjusted spread"], ["Effective yield"],
+  ]);
+  // TRACE's sale yield is the yield to worst under its Yield column; DVD's and ETF's other yields are not.
+  expect(terms(reportGlossary("TRACE", "Date        Price   Yield  Size"))).toEqual(["Yield to worst"]);
+  expect(reportGlossary("DVD", "Dividend Yield | KO\nTrailing yield  2.24%")).toEqual([]);
+  expect(terms(reportGlossary("ETF", "Distribution Yield  3.27%\n30-Day SEC Yield  4.04% (as of 2026-10-15)"))).toEqual(["SEC yield"]);
+});
