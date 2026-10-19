@@ -162,7 +162,11 @@ export class BrokerTradingController {
       this.publish({ review: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: uncertainMessage });
       return;
     }
-    this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result ? "Profile, account or connection changed. Review the order again." : undefined });
+    const changed = this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result;
+    this.publish({
+      phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false,
+      error: changed ? "Profile, account or connection changed. Review the order again." : undefined,
+    });
   }
 
   /** The last order action's outcome is unknown: the broker may hold the order. */
@@ -178,7 +182,9 @@ export class BrokerTradingController {
 
   setDraft(request: BrokerOrderRequest): void {
     this.editable();
-    if (this.modifyOrder && (canonical(request.contract) !== canonical(this.modifyOrder.contract) || canonical(request.legs ?? null) !== canonical(this.modifyOrder.legs ?? null) || request.action !== this.modifyOrder.action || request.accountId !== this.modifyOrder.accountId || request.orderType !== this.modifyOrder.orderType || request.tif !== this.modifyOrder.tif)) {
+    const original = this.modifyOrder;
+    if (original && (canonical(request.contract) !== canonical(original.contract) || canonical(request.legs ?? null) !== canonical(original.legs ?? null)
+      || request.action !== original.action || request.accountId !== original.accountId || request.orderType !== original.orderType || request.tif !== original.tif)) {
       throw new Error("A modification keeps the original account, instrument, legs, side, type and time in force.");
     }
     // A spread's legs are its instrument: other legs need another quote.
@@ -230,7 +236,10 @@ export class BrokerTradingController {
     for (const [needed, value, label] of [[limit, request.limitPrice, "limit"], [stop, request.stopPrice, "stop"]] as const) {
       if (needed && !positive(value)) throw new Error(`Enter a valid ${label} price.`);
       if (!needed && value !== undefined) throw new Error(`Remove the ${label} price for this order type.`);
-      if (value !== undefined && capabilities.priceDecimals !== undefined && (!Number.isInteger(capabilities.priceDecimals) || capabilities.priceDecimals < 0 || capabilities.priceDecimals > 18 || Number(value.toFixed(capabilities.priceDecimals)) !== value)) throw new Error("Price precision exceeds the broker's limit.");
+      const decimals = capabilities.priceDecimals;
+      if (value !== undefined && decimals !== undefined && (!Number.isInteger(decimals) || decimals < 0 || decimals > 18 || Number(value.toFixed(decimals)) !== value)) {
+        throw new Error("Price precision exceeds the broker's limit.");
+      }
       if (value !== undefined && capabilities.priceStep !== undefined && !matchesNumberStep(value, capabilities.priceStep)) throw new Error("Price does not match the broker's allowed increment.");
     }
     return copy(request);
@@ -377,7 +386,10 @@ export class BrokerTradingController {
     this.editable();
     const request = this.request(), review = this.snapshot.review, gate = this.gate;
     const { context } = this.context();
-    if (this.snapshot.phase !== (fromEntry ? "previewing" : "review") || fromEntry && (this.snapshot.confirmOrders || review?.requiresTypedConfirmation) || !review || !gate || gate.version !== this.version || gate.context !== this.key() || gate.request !== canonical(request)) throw new Error("Review the current order before submitting.");
+    if (this.snapshot.phase !== (fromEntry ? "previewing" : "review") || fromEntry && (this.snapshot.confirmOrders || review?.requiresTypedConfirmation)
+      || !review || !gate || gate.version !== this.version || gate.context !== this.key() || gate.request !== canonical(request)) {
+      throw new Error("Review the current order before submitting.");
+    }
     if (review.preview.errors?.length) throw new Error("Resolve the broker preview errors before submitting.");
     if (this.now() - review.createdAt > this.reviewTtlMs || !this.snapshot.quote || gate.quoteRisk !== this.quoteRisk(this.snapshot.quote)) {
       this.gate = undefined;
@@ -391,7 +403,10 @@ export class BrokerTradingController {
     this.publish({ phase: "submitting", error: undefined });
     try {
       const result = gate.order ? await context.adapter.modifyOrder!(context.instance, gate.order.orderId, copy(request)) : await context.adapter.placeOrder!(context.instance, copy(request));
-      if (!Number.isSafeInteger(result.orderId) || result.orderId <= 0 || (result.accountId && result.accountId !== request.accountId) || (result.brokerInstanceId && result.brokerInstanceId !== context.instance.id) || result.contract.brokerId !== context.adapter.id) throw new Error("The broker's order acknowledgement could not be verified.");
+      if (!Number.isSafeInteger(result.orderId) || result.orderId <= 0 || (result.accountId && result.accountId !== request.accountId)
+        || (result.brokerInstanceId && result.brokerInstanceId !== context.instance.id) || result.contract.brokerId !== context.adapter.id) {
+        throw new Error("The broker's order acknowledgement could not be verified.");
+      }
       this.publish({ phase: "result", result: copy(result), resultQuantities: "confirmed", review: undefined, receipt: review });
     } catch {
       this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), resultQuantities: gate.order ? "last-known" : "unconfirmed", error: uncertainMessage });
@@ -437,7 +452,10 @@ export class BrokerTradingController {
     if (!confirmed) { this.reset(); return; }
     const order = this.snapshot.cancelOrder, gate = this.gate;
     const { context, capabilities } = this.context(true, order ? this.orderRequest(order) : undefined);
-    if (!capabilities.cancel || !context.adapter.cancelOrder || this.snapshot.phase !== "cancel-review" || !order || !gate || gate.context !== this.key() || gate.version !== this.version || gate.request !== canonical(order)) throw new Error("Confirm cancellation of the current order first.");
+    if (!capabilities.cancel || !context.adapter.cancelOrder || this.snapshot.phase !== "cancel-review" || !order
+      || !gate || gate.context !== this.key() || gate.version !== this.version || gate.request !== canonical(order)) {
+      throw new Error("Confirm cancellation of the current order first.");
+    }
     this.checkOrder(order, context);
     this.gate = undefined;
     this.version++;
@@ -468,7 +486,8 @@ export class BrokerTradingController {
       ? [await context.adapter.getOrderStatus(context.instance, result.orderId)].filter((order): order is BrokerOrder => order !== null)
       : await context.adapter.listOpenOrders?.(context.instance) ?? [];
     if (this.disposed || fingerprint !== this.key() || this.snapshot.result !== result) return;
-    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
+    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol
+      && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
     if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainMessage : undefined });
     // Absence from open orders does not prove a fill, rejection or cancellation.
   }

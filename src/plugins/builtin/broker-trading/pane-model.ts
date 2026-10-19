@@ -28,7 +28,10 @@ export interface ProfileAccountChoice extends BrokerAccountChoice { profileId: s
 export function ticketAccountChoiceKey(profileId: string, accountId: string): string { return JSON.stringify([profileId, accountId]); }
 
 export function buildTicketAccountChoices(profiles: { profile: BrokerInstanceConfig; accounts: BrokerAccount[] }[]): ProfileAccountChoice[] {
-  return profiles.flatMap(({ profile, accounts }) => accounts.map((account, index) => ({ value: ticketAccountChoiceKey(profile.id, account.accountId), label: account.name || `Account ${index + 1}`, profileLabel: profile.label, tradingMode: account.tradingMode, profileId: profile.id, accountId: account.accountId })));
+  return profiles.flatMap(({ profile, accounts }) => accounts.map((account, index) => ({
+    value: ticketAccountChoiceKey(profile.id, account.accountId), label: account.name || `Account ${index + 1}`, profileLabel: profile.label,
+    tradingMode: account.tradingMode, profileId: profile.id, accountId: account.accountId,
+  })));
 }
 
 export interface TicketPositionSnapshot {
@@ -38,7 +41,9 @@ export interface TicketPositionSnapshot {
 }
 
 /** A missing or expired snapshot is unknown, while a successful empty snapshot means zero. */
-export function ticketPositionContext(snapshot: TicketPositionSnapshot | undefined, profile: BrokerInstanceConfig, accountId: string | undefined, contract: BrokerContractRef, now = Date.now()): { quantity: number; avgCost?: number; pnl?: number } | undefined {
+export function ticketPositionContext(
+  snapshot: TicketPositionSnapshot | undefined, profile: BrokerInstanceConfig, accountId: string | undefined, contract: BrokerContractRef, now = Date.now(),
+): { quantity: number; avgCost?: number; pnl?: number } | undefined {
   if (!snapshot || !accountId || snapshot.profile.id !== profile.id || snapshot.profile.config !== profile.config || now - snapshot.fetchedAt > 60_000 || !contract.symbol) return undefined;
   const normalize = (symbol: string) => symbol.replace(/^O:/, "").replace(/\s+/g, "").toUpperCase();
   const stock = (type: string | undefined) => !type || type === "STK" || type === "ETF";
@@ -76,7 +81,10 @@ export function quickTicketQuantity(draft: BrokerOrderRequest, capabilities: Bro
     const brokerPrice = quote?.ask ?? quote?.price;
     const multiplier = Number(draft.contract.multiplier ?? 1);
     const price = Math.max(brokerPrice ?? NaN, draft.limitPrice ?? 0, draft.stopPrice ?? 0);
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(multiplier) || multiplier <= 0 || account?.buyingPower === undefined || !Number.isFinite(account.buyingPower) || account.buyingPower <= 0) throw new Error("Load the broker quote and buying power before choosing a buy quantity.");
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(multiplier) || multiplier <= 0
+      || account?.buyingPower === undefined || !Number.isFinite(account.buyingPower) || account.buyingPower <= 0) {
+      throw new Error("Load the broker quote and buying power before choosing a buy quantity.");
+    }
     maximum = account.buyingPower / (price * multiplier);
   }
   const step = capabilities.quantityStep ?? (capabilities.fractionalQuantity ? 0.000001 : 1);
@@ -87,7 +95,10 @@ export function quickTicketQuantity(draft: BrokerOrderRequest, capabilities: Bro
     quantity = Math.floor(quantity);
     for (let count = 0; count < 1000 && quantity > 0 && Math.abs(quantity / step - Math.round(quantity / step)) > 1e-8; count++) quantity--;
   }
-  if (!Number.isFinite(quantity) || quantity <= 0 || quantity < (capabilities.minQuantity ?? 0) || quantity > maximum + 1e-8 || Math.abs(quantity / step - Math.round(quantity / step)) > 1e-8) throw new Error("The available amount is below the broker's minimum order quantity.");
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity < (capabilities.minQuantity ?? 0) || quantity > maximum + 1e-8
+    || Math.abs(quantity / step - Math.round(quantity / step)) > 1e-8) {
+    throw new Error("The available amount is below the broker's minimum order quantity.");
+  }
   return quantity;
 }
 

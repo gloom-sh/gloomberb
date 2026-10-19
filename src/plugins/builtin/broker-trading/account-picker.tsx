@@ -25,7 +25,7 @@ export interface BrokerAccountPickerProps {
   showMode?: boolean;
 }
 
-function accountMode(mode: BrokerTradingMode | undefined): string {
+export function accountModeLabel(mode: BrokerTradingMode | undefined): string {
   return mode === "simulation" ? "SIMULATION" : mode === "live" ? "LIVE" : "MODE UNKNOWN";
 }
 
@@ -44,7 +44,7 @@ function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<s
   }, { allowEditable: true });
   return <DialogFrame title="Choose an account" subtitle="Simulation accounts first. Choose before trading." footer="↑↓ choose · Enter select · Esc back" onClose={() => resolve("")}>
     <Box width={64} flexDirection="column">
-      <ListView items={accounts.map((account) => ({ id: account.value, label: account.label, detail: accountMode(account.tradingMode) }))}
+      <ListView items={accounts.map((account) => ({ id: account.value, label: account.label, detail: accountModeLabel(account.tradingMode) }))}
         selectedIndex={index} onSelect={selectIndex} onActivate={(item) => resolve(item.id)} selectOnHover
         height={Math.min(Math.max(accounts.length, 1), 6) * 2} rowHeight={2} rowGap={0} scrollable={accounts.length > 6}
         surface="framed" emptyMessage="No accounts available." remoteLabel="Broker accounts"
@@ -56,7 +56,7 @@ function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<s
               <Text fg={colors.text} attributes={state.selected ? TextAttributes.BOLD : undefined} truncate wrapMode="none">{account.label}</Text>
               <Text fg={colors.textDim} truncate wrapMode="none">{account.profileLabel ?? "Broker account"}</Text>
             </Box>
-            <Box flexShrink={0}><Badge label={accountMode(account.tradingMode)} tone={account.tradingMode === "simulation" ? "accent" : "negative"} /></Box>
+            <Box flexShrink={0}><Badge label={accountModeLabel(account.tradingMode)} tone={account.tradingMode === "simulation" ? "accent" : "negative"} /></Box>
           </Box>;
         }} />
     </Box>
@@ -84,7 +84,7 @@ export function BrokerAccountPicker({ accounts, value, onChange, disabled = fals
   return <Button label="Choose account" variant="quiet" flush active={active} disabled={disabled || !choices.length} width={width} onPress={open} stopPropagation>
     <Box flexDirection="row" gap={1} flexGrow={1} minWidth={0} alignItems="center">
       <Text fg={disabled ? colors.textMuted : colors.text} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`${active && !native ? "> " : ""}${current?.label ?? "Choose an account"}`}</Text>
-      {showMode && current ? <Text fg={modeColor} attributes={TextAttributes.BOLD}>{current.tradingMode === "simulation" ? "SIM" : accountMode(current.tradingMode)}</Text> : null}
+      {showMode && current ? <Text fg={modeColor} attributes={TextAttributes.BOLD}>{current.tradingMode === "simulation" ? "SIM" : accountModeLabel(current.tradingMode)}</Text> : null}
       <DisclosureMarker expanded color={colors.textDim} />
     </Box>
   </Button>;
