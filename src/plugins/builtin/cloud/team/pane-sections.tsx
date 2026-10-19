@@ -5,7 +5,7 @@ import type {
   TeamSentInvitation,
   TeamSummary,
 } from "../../../../api-client";
-import { Button } from "../../../../components";
+import { Button, Notice } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../../ui";
 import { WallTeaser } from "../../shared/wall-teaser";
@@ -122,6 +122,8 @@ export function InvitesSection({
   team,
   invitations,
   links,
+  invitationsError,
+  linksError,
   username,
   width,
   busy,
@@ -135,6 +137,9 @@ export function InvitesSection({
   team: TeamSummary;
   invitations: readonly TeamSentInvitation[];
   links: readonly TeamInviteLink[];
+  /** Set when that list did not load: it shows the error, not an empty list. */
+  invitationsError: string | null;
+  linksError: string | null;
   username: string;
   width: number;
   busy: string | null;
@@ -170,7 +175,8 @@ export function InvitesSection({
 
       {manage ? (
         <Box flexDirection="column" gap={1}>
-          <SectionTitle detail={invitations.length === 0 ? "none pending" : undefined}>Pending</SectionTitle>
+          <SectionTitle detail={invitations.length === 0 && !invitationsError ? "none pending" : undefined}>Pending</SectionTitle>
+          {invitationsError ? <Notice tone="negative">{invitationsError}</Notice> : null}
           {invitations.map((invitation) => (
             <AccentRow key={invitation.id} accent={colors.textMuted} width={width}>
               <Text width={18} fg={colors.text}>
@@ -191,9 +197,10 @@ export function InvitesSection({
       ) : null}
 
       <Box flexDirection="column" gap={1}>
-        <SectionTitle detail={canLink ? `${links.length} of 10 active` : undefined}>Invite links</SectionTitle>
+        <SectionTitle detail={canLink && !linksError ? `${links.length} of 10 active` : undefined}>Invite links</SectionTitle>
         {canLink ? (
           <>
+            {linksError ? <Notice tone="negative">{linksError}</Notice> : null}
             {links.map((link) => {
               const uses = link.maxUses === null ? `${link.uses} uses` : `${link.uses}/${link.maxUses} uses`;
               return (
