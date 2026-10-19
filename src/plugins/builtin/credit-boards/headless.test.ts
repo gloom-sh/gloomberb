@@ -5,7 +5,7 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { cdxHeadless, sovrHeadless } from "./headless";
-import { findIndex, findSovereign } from "./model";
+import { cdxDay, findIndex, findSovereign } from "./model";
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
@@ -45,6 +45,71 @@ test("CDX levels and moves are numbers with their unit beside them: text draws t
   ]);
   expect(csv).toContain("# Publisher: DTCC Public Price Dissemination");
   expect(csv).toContain("# Observation date: 2026-10-09");
+  // A server that predates the spread equivalent sends none, and the report draws no column of blanks for it.
+  expect(csv[0]).not.toContain("Spread eq");
+});
+
+/** A CSV line's cells, without the quoting of one that holds a comma. */
+const cells = (line: string) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")).slice(0, -1);
+
+test("every exported board row carries its own observation date, series and unit, and a rounded 1Y rank", async () => {
+  // HY's level is from Friday and its rank a midrank fraction; Main has printed this morning.
+  const hy = { ...payload.indexes[1]!, date: "2026-10-16", level: 106.005, prints: 572, spreadBp: 357.5, recovery: 0.3, partial: false, lastPrintAt: "2026-10-16T20:58:02.000Z", changeDate: "2026-10-16",
+    points: Array.from({ length: 250 }, (_, day) => ({ date: new Date(Date.UTC(2025, 11, 1) + day * 86_400_000).toISOString().slice(0, 10), maturity: "2031-12-20", level: 100 + day / 25, prints: 300, spreadBp: 400 - day / 2 })) };
+  hy.points.push({ date: "2026-10-16", maturity: "2031-12-20", level: 106.005, prints: 572, spreadBp: 357.5 });
+  const main: CdxBoardIndex = { ...index("MAIN", "iTraxx Main", "spread", 64.7, -1.1, 0.17), currency: "EUR", date: "2026-10-19", prints: 38,
+    partial: true, lastPrintAt: "2026-10-19T08:09:41.000Z", changeDate: "2026-10-16", recovery: 0.4,
+    points: [{ date: "2026-10-15", maturity: "2031-12-20", level: 64.38, prints: 330 }, { date: "2026-10-16", maturity: "2031-12-20", level: 63.28, prints: 261 },
+      { date: "2026-10-19", maturity: "2031-12-20", level: 64.7, prints: 38 }] };
+  const board = { ...payload, asOf: "2026-10-19T08:11:00.000Z", indexes: [hy, main] };
+  const context = { apiClient: { getCloudCdxBoard: async () => board } } as unknown as HeadlessPaneContext;
+  const result = await cdxHeadless.load(args, context) as HeadlessBundleResult;
+  const freshness = deriveHeadlessFreshness(cdxHeadless, result);
+  const csv = renderReportCsv(headlessReportTables(cdxHeadless, result, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  const header = cells(csv[0]!);
+  const row = (line: string) => Object.fromEntries(cells(line).map((cell, column) => [header[column], cell]));
+  expect(row(csv[1]!)["Pctl 1Y"]).toMatch(/^\d{1,3}$/);
+  expect(row(csv[1]!)).toMatchObject({ Index: "CDX HY", "5Y": "106.005", "Spread eq (bp)": "357.5", "As of": "2026-10-16", Day: "",
+    symbol_or_series: "cdx:hy", currency_or_unit: "price", interval: "daily", as_of: "2026-10-16" });
+  // Main is so far: flagged with its prints and last print, its 1D Friday against Thursday, dated by its own day.
+  expect(row(csv[2]!)).toMatchObject({ Index: "iTraxx Main", "1D": "-1.1", "Spread eq (bp)": "", Day: "so far, 38 prints, last 08:09 UTC",
+    symbol_or_series: "cdx:main", currency_or_unit: "bp", as_of: "2026-10-19" });
+  expect(csv).toContain("# note: Today's New York trade date is still trading: its level and prints are so far, and 1D, 1W and 1M run to the last complete day.");
+
+  const text = renderHeadlessPaneText(cdxHeadless, result, args, "CDX").split("\n");
+  expect(text.find((line) => line.startsWith("CDX HY"))).toMatch(/^CDX HY\s+106\.00\s.*357\.5bp\s+\d+\s/);
+  expect(text.find((line) => line.startsWith("iTraxx Main"))).toMatch(/64\.7bp\s+-1\.1bp.*2026-10-19\s+so far, 38 prints, last 08:09 UTC$/);
+
+  // The named index's history dates each row by its day and flags only today's.
+  const named = await cdxHeadless.load({ ...args, rawArgument: "main", argument: "main" }, context) as HeadlessBundleResult;
+  const history = renderReportCsv(headlessReportTables(cdxHeadless, named, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+    .split("# section: ")[2]!.split("\n");
+  expect(history.slice(1, 4)).toEqual([
+    "Date,Spread (bp),Prints,Contract,Day,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-19,64.7,38,2031-12-20,\"so far, 38 prints, last 08:09 UTC\",cdx:main,bp,daily,DTCC,2026-10-19",
+    "2026-10-16,63.28,261,2031-12-20,,cdx:main,bp,daily,DTCC,2026-10-16",
+  ]);
+});
+
+test("a server that does not flag the day: today's New York trade date is partial and its moves are measured between complete days", () => {
+  const main: CdxBoardIndex = { ...index("MAIN", "iTraxx Main", "spread", 64.7, 1.42, 1.59), date: "2026-10-19", prints: 38,
+    points: [
+      { date: "2026-10-08", maturity: "2031-12-20", level: 64.5, prints: 388 },
+      { date: "2026-10-09", maturity: "2031-12-20", level: 63.11, prints: 190 },
+      { date: "2026-09-15", maturity: "2031-06-20", level: 59.9, prints: 300 },
+      { date: "2026-10-15", maturity: "2031-12-20", level: 64.38, prints: 330 },
+      { date: "2026-10-16", maturity: "2031-12-20", level: 63.28, prints: 261 },
+      { date: "2026-10-19", maturity: "2031-12-20", level: 64.7, prints: 38 },
+    ].sort((a, b) => a.date.localeCompare(b.date)) };
+  // 08:11 UTC Monday is 04:11 Monday in New York.
+  const monday = cdxDay(main, Date.parse("2026-10-19T08:11:00Z"));
+  expect(monday).toMatchObject({ partial: true, lastPrintAt: null, changeDate: "2026-10-16" });
+  expect(monday.change1D).toBeCloseTo(63.28 - 64.38, 6);
+  expect(monday.change1W).toBeCloseTo(63.28 - 63.11, 6);
+  // A month back was the contract before the roll: no move from these points alone.
+  expect(monday.change1M).toBeNull();
+  // Once New York's date has turned, the day is complete and the served moves stand.
+  expect(cdxDay(main, Date.parse("2026-10-20T05:00:00Z"))).toMatchObject({ partial: false, changeDate: "2026-10-19", change1D: 1.42 });
 });
 
 test("a named index adds its daily levels newest first, which do not date the board", async () => {
@@ -80,6 +145,19 @@ test("an index or a country is named by its code or name in any case, the same w
   expect(["brazil", "BR", " ivory-coast ", "IVORY COAST", "south africa", "africa", "Narnia", ""]
     .map((query) => findSovereign(sovrPayload.sovereigns, query)?.id ?? null))
     .toEqual(["BR", "BR", "CI", "CI", "ZA", null, null, null]);
+});
+
+test("every SOVR export row names its series, unit and own date", async () => {
+  const dated = { ...sovrPayload, sovereigns: [sovereign("BR", "Brazil", "BRL", 119.7), { ...sovereign("EG", "Egypt", "EGP", 322.8), date: "2026-10-02" }] };
+  const context = {
+    apiClient: { getCloudSovrBoard: async () => dated },
+    marketData: { getPriceHistory: async () => [] },
+  } as unknown as HeadlessPaneContext;
+  const result = await sovrHeadless.load(args, context);
+  const freshness = deriveHeadlessFreshness(sovrHeadless, result);
+  const csv = renderReportCsv(headlessReportTables(sovrHeadless, result, args, "SOVR", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  expect(csv[1]!.split(",").slice(-5)).toEqual(["sovereign-cds:br", "bp", "daily", "DTCC", "2026-10-09"]);
+  expect(csv[2]!.split(",").slice(-5)).toEqual(["sovereign-cds:eg", "bp", "daily", "DTCC", "2026-10-02"]);
 });
 
 test("SOVR lists one country's row when a country is named, and says which countries it has when it is not one", async () => {

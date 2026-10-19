@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import type { TapeSnapshot } from "../../../api-client/tape";
+import type { TapeRange, TapeSnapshot } from "../../../api-client/tape";
 import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
 import { tapeTimeKey, tradeKey } from "./model";
 
@@ -25,7 +25,9 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
     || data.feed !== (data.access === "realtime" ? "sip" : "delayed_sip") || data.delaySeconds !== (data.access === "realtime" ? 0 : 900)
     || !data.capacity || !count(data.capacity.trades) || data.capacity.trades > 1000 || !count(data.capacity.quotes) || data.capacity.quotes > 500
     || !Array.isArray(data.trades) || data.trades.length > data.capacity.trades || !Array.isArray(data.quotes) || data.quotes.length > data.capacity.quotes
-    || !data.dropped || !count(data.dropped.trades) || !count(data.dropped.quotes) || !count(data.corrections) || !count(data.cancels)) {
+    || !data.dropped || !count(data.dropped.trades) || !count(data.dropped.quotes) || !count(data.corrections) || !count(data.cancels)
+    || data.window !== undefined && (!data.window || !timestamp(data.window.from) || !timestamp(data.window.to) || !data.window.truncated
+      || typeof data.window.truncated.trades !== "boolean" || typeof data.window.truncated.quotes !== "boolean")) {
     throw new Error("The server returned an invalid tape snapshot");
   }
   const cutoffDate = new Date(Date.parse(data.generatedAt) - data.delaySeconds * 1000).toISOString();
@@ -56,9 +58,10 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
   return { ...data, source: "Gloom Cloud", trades: [...data.trades].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))),
     quotes: [...data.quotes].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))) };
 }
+/** The latest tape, or with a `range` that window of the session. */
 export async function fetchTape(symbol: string, exchange: string, signal?: AbortSignal,
-  client: Pick<typeof apiClient, "getCloudTape"> = apiClient): Promise<TapeSnapshot> {
-  try { return validateTape(await client.getCloudTape(symbol, exchange, signal), symbol, exchange); }
+  client: Pick<typeof apiClient, "getCloudTape"> = apiClient, range?: TapeRange): Promise<TapeSnapshot> {
+  try { return validateTape(await (range ? client.getCloudTape(symbol, exchange, signal, range) : client.getCloudTape(symbol, exchange, signal)), symbol, exchange); }
   catch (error) {
     if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("Time and sales is not available yet.");
     // A rejected request answers with an unavailable snapshot; show its reason, not the JSON body.

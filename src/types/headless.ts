@@ -381,6 +381,17 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;
   /**
+   * The row fields naming each row's own unit, symbol and observation date
+   * (an ISO date or instant), for rows of several series dated apart: each
+   * exported row names them in `currency_or_unit`, `symbol_or_series` and
+   * `as_of`, as a bundle section's `rowUnitKey`, `rowSymbolKey` and `rowAsOfKey` do.
+   */
+  rowUnitKey?: string;
+  rowSymbolKey?: string;
+  rowAsOfKey?: string;
+  /** The interval every row is at (`daily`), which each exported row names in `interval`. */
+  interval?: string;
+  /**
    * Tables `--csv` and `--ndjson` write after the rows, each in its own
    * section, such as the dated history the rows sum up. The text report and
    * JSON leave them out.
@@ -428,6 +439,10 @@ export type HeadlessBundleSection =
     rowAsOfKey?: string;
     /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
     interval?: string;
+    /** The symbol every row is of, where the report's own is not (a section per name): each exported row names it in `symbol_or_series`. */
+    symbol?: string;
+    /** When every row was observed (an ISO date or instant), where it is not the report's newest: each exported row names it in `as_of`. */
+    asOf?: string;
     /**
      * The free view holds this table back for Gloom Pro. Left empty, the text
      * report leaves it out and says once, on its Pro line, what Pro adds, in
@@ -447,6 +462,10 @@ export type HeadlessBundleSection =
      * JSON keep `entries`.
      */
     textEntries?: HeadlessPaneEntry[];
+    /** The symbol the figures are of, where the report's own is not: each exported line names it in `symbol_or_series`. */
+    symbol?: string;
+    /** When the figures were observed (an ISO date or instant), where it is not the report's newest: each exported line names it in `as_of`. */
+    asOf?: string;
     columns?: never;
     rows?: never;
     textColumns?: never;

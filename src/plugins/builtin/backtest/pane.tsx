@@ -40,11 +40,20 @@ const TABS = [{ value: "summary", label: "Summary" }, { value: "trades", label: 
 const PANELS = [{ id: "main", height: 0.72, scale: "log" as const }, { id: "drawdown", label: "Drawdown", height: 0.28 }];
 const multiple = (value: number) => `\u00d7${value >= 10 ? value.toFixed(0) : value >= 1 ? value.toFixed(1) : value.toFixed(2)}`;
 const STRATEGY_OPTIONS = [...BACKTEST_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })), { value: "custom", label: "Custom rules" }];
-const SUMMARY_COLUMNS: DataTableColumn[] = [
-  { id: "metric", label: "Metric", width: 23, align: "left" },
+/** Wide enough for every metric whole: the price return says it leaves distributions out. */
+const METRIC_WIDTH = Math.max(...SUMMARY_ROWS.map((row) => row.label.length));
+/** The narrowest the metric column gets in a narrow stacked pane, where its longest label is cut. */
+const MIN_METRIC_WIDTH = 23;
+const VALUE_COLUMNS: DataTableColumn[] = [
   { id: "strategy", label: "Strategy", width: 10, align: "right" },
   { id: "benchmark", label: "Buy & hold", width: 10, align: "right" },
 ];
+const SUMMARY_WIDTH = VALUE_COLUMNS.reduce((sum, column) => sum + column.width + 1, 4 + METRIC_WIDTH + 1);
+/** The metrics table's columns at a width: the metric column gives way first in a pane too narrow for it. */
+function summaryColumns(tableWidth: number): DataTableColumn[] {
+  const metric = Math.max(MIN_METRIC_WIDTH, Math.min(METRIC_WIDTH, tableWidth - (SUMMARY_WIDTH - METRIC_WIDTH)));
+  return [{ id: "metric", label: "Metric", width: metric, align: "left" }, ...VALUE_COLUMNS];
+}
 const TRADE_COLUMNS: DataTableColumn[] = [
   { id: "entryDate", label: "Entry", width: 11, align: "left" },
   { id: "entryPrice", label: "Entry px", width: 10, align: "right" },
@@ -53,7 +62,6 @@ const TRADE_COLUMNS: DataTableColumn[] = [
   { id: "returnPct", label: "Return", width: 9, align: "right" },
   { id: "sessions", label: "Sessions", width: 9, align: "right" },
 ];
-const SUMMARY_WIDTH = SUMMARY_COLUMNS.reduce((sum, column) => sum + column.width + 1, 4);
 const LOOKBACK_FILTER_OPTIONS = [
   { value: "5", label: "5Y" },
   { value: "10", label: "10Y" },
@@ -62,7 +70,9 @@ const LOOKBACK_FILTER_OPTIONS = [
 /**
  * The metrics sit beside the chart once the chart keeps this many columns. The
  * rule reads the body width, which is two cells narrower in the terminal than
- * on the desktop, so both renderers pick the same layout at a pane's default size.
+ * on the desktop, so both renderers pick the same layout at a pane's default
+ * size. Beside the whole price-return label that takes 129 cells, so a pane at
+ * its default 118 stacks the metrics under a full-width chart.
  */
 const MIN_WIDE_CHART_COLS = 60;
 /** Legend, axis and two panels: below this the drawdown panel has no rows to speak of. */
@@ -179,7 +189,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
       rootWidth={tableWidth}
       rootHeight={tableHeight}
       rootBefore={before}
-      columns={SUMMARY_COLUMNS}
+      columns={summaryColumns(tableWidth)}
       items={SUMMARY_ROWS}
       getItemKey={(row) => row.id}
       selection={{ kind: "none" }}

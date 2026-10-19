@@ -42,7 +42,8 @@ test("the pane's CSV is what fn BT --csv --equity prints: the daily curve at ful
   expect(pane).toBe(cliCsv(equity, { equity: true }).csv);
 
   const lines = pane.split("\n");
-  expect(lines[0]).toBe("Date,Close (USD),\"Position (1 long, 0 flat)\",Strategy (growth of 1),Buy & hold (growth of 1),Drawdown (%),"
+  expect(lines[0]).toBe("Date,Close (USD),\"Position (1 long, 0 flat)\",\"Strategy (growth of 1, price return, distributions not included)\","
+    + "\"Buy & hold (growth of 1, price return, distributions not included)\",Drawdown (%),"
     + "symbol_or_series,currency_or_unit,interval,source,as_of");
   const last = equity.metadata!.result as { equity: Array<{ date: string; strategy: number; drawdownPct: number }> };
   const row = last.equity.at(-1)!;
@@ -66,10 +67,10 @@ test("summary exports read every metric back at full precision, each row in its 
   const { freshness, tables, csv } = cliCsv(summary, {});
   expect(freshness.asOf).toBe(day(318));
   const total = (summary.metadata!.result as { strategy: { totalReturnPct: number } }).strategy.totalReturnPct;
-  expect(tables.tables[0]!.rows[0]).toEqual(["Total return (%)", exportNumber(total), expect.any(Number)]);
+  expect(tables.tables[0]!.rows[0]).toEqual(["Price return (distributions not included) (%)", exportNumber(total), expect.any(Number)]);
   const lines = csv.split("\n");
   const unitOf = (label: string) => lines.find((line) => line.startsWith(`${label},`))!.split(",").at(-4);
-  expect(["Total return (%)", "Sharpe (0% cash)", "Profit factor", "Closed trades", "Average hold (sessions)"].map(unitOf))
+  expect(["Price return (distributions not included) (%)", "Sharpe (0% cash)", "Profit factor", "Closed trades", "Average hold (sessions)"].map(unitOf))
     .toEqual(["%", "ratio", "ratio", "trades", "sessions"]);
   expect(lines).toContain("Entry,Entry price (USD),Exit,Exit price (USD),Return %,Sessions,symbol_or_series,currency_or_unit,interval,source,as_of");
 });

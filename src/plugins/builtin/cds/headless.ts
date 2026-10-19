@@ -118,13 +118,18 @@ function projectCdsHeadless({ activity, history, levels }: CdsReportInputs): Hea
     // The name the tape was queried for heads the figures, as in the pane, so a ticker says what it became.
     const name = displayIssuerName(activity.issuer ?? line?.issuer ?? activity.query);
     if (line && entries.length === 0) notes.push(`No 5Y spread level for ${name} in the last two years.`);
+    // The 5Y figures are dated by their level's day, each trade by its own time.
+    const levelDate = line ? spreadSummary(line.points)?.date : undefined;
     const sections: HeadlessBundleSection[] = [
-      ...(entries.length ? [{ title: name, entries }] : []),
+      ...(entries.length ? [{ title: name, entries, symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
       {
         title: "Trades",
         columns: TRADE_COLUMNS,
         rows: sortTrades(activity.trades, DEFAULT_TRADE_SORT).map((trade) => ({ ...trade })),
         empty,
+        rowSymbolKey: "issuer",
+        rowUnitKey: "currency",
+        rowAsOfKey: "eventAt",
       },
     ];
     return {
@@ -141,8 +146,12 @@ function projectCdsHeadless({ activity, history, levels }: CdsReportInputs): Hea
     sections: [{
       title: "Issuers",
       columns: ISSUER_COLUMNS,
-      rows: sortIssuers(issuers, DEFAULT_ISSUER_SORT).map((issuerRow) => ({ ...issuerRow })),
+      // A row is dated by its 5Y level's day (JPM's can be weeks before its last trade), or by its last trade without one.
+      rows: sortIssuers(issuers, DEFAULT_ISSUER_SORT).map((issuerRow) => ({ ...issuerRow, asOf: issuerRow.spread5yDate ?? issuerRow.lastTradeAt })),
       empty,
+      unit: "bp",
+      rowSymbolKey: "issuer",
+      rowAsOfKey: "asOf",
     }],
     metadata,
     freshness: cdsFreshness(lastTradeOf(activity.trades)),

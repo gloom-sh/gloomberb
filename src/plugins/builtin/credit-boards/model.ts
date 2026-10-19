@@ -26,6 +26,80 @@ export function quoteUnits(quote: CreditIndexQuote): { level: "bp" | "price"; mo
   return quote === "spread" ? { level: "bp", move: "bp" } : { level: "price", move: "pts" };
 }
 
+/** Today's trade date in New York, the date DTCC's index prints are dated by. */
+const NEW_YORK_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+
+function newYorkTradeDate(now: number): string {
+  return NEW_YORK_DATE.format(new Date(now));
+}
+
+function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Where an index's latest day stands, and its moves between complete days. */
+export interface CdxDay {
+  /** The latest day is today's New York trade date, still trading: its level and prints are so far. */
+  partial: boolean;
+  /** When the latest day's last print was executed, ISO UTC, when the server says. */
+  lastPrintAt: string | null;
+  /** The last complete day, which the moves run to. */
+  changeDate: string | null;
+  change1D: number | null;
+  change1W: number | null;
+  change1M: number | null;
+}
+
+/**
+ * An index's latest day and the moves the board shows: always between
+ * complete days, so a morning's few prints never make a 1D. A server that
+ * says (`partial`) has already measured them that way, across a roll on one
+ * contract. An older one dates them from the latest day; when that day is
+ * today's New York trade date the moves are measured again here from the
+ * complete days before it, on the same contract only (none across a roll).
+ */
+export function cdxDay(index: CdxBoardIndex, now = Date.now()): CdxDay {
+  const served = { change1D: index.change1D, change1W: index.change1W, change1M: index.change1M ?? null };
+  if (typeof index.partial === "boolean") {
+    return {
+      partial: index.partial, lastPrintAt: index.lastPrintAt ?? null,
+      changeDate: index.changeDate !== undefined ? index.changeDate : index.partial ? null : index.date, ...served,
+    };
+  }
+  if (!index.date || index.date !== newYorkTradeDate(now)) return { partial: false, lastPrintAt: null, changeDate: index.date, ...served };
+  const complete = index.points.filter((point) => point.date < index.date!);
+  const anchor = complete.at(-1) ?? null;
+  const move = (base: string, maxLagDays: number): number | null => {
+    const baseline = complete.findLast((point) => point.date <= base);
+    if (!anchor || !baseline || baseline.maturity !== anchor.maturity || daysBetween(baseline.date, base) > maxLagDays) return null;
+    return Math.round((anchor.level - baseline.level) * 1e6) / 1e6;
+  };
+  return {
+    partial: true,
+    lastPrintAt: null,
+    changeDate: anchor?.date ?? null,
+    change1D: anchor ? move(addDays(anchor.date, -1), 5) : null,
+    change1W: anchor ? move(addDays(anchor.date, -7), 5) : null,
+    change1M: anchor ? move(monthBefore(anchor.date), 7) : null,
+  };
+}
+
+/** `08:09`: a print's time of day in UTC. */
+function utcClock(instant: string): string | null {
+  const time = Date.parse(instant);
+  return Number.isFinite(time) ? new Date(time).toISOString().slice(11, 16) : null;
+}
+
+/**
+ * What a day still trading rests on: `so far, 38 prints, last 08:09 UTC`.
+ * The print time is left out when the server does not say it.
+ */
+export function partialDayText(prints: number | null, lastPrintAt: string | null): string {
+  const clock = lastPrintAt ? utcClock(lastPrintAt) : null;
+  return ["so far", ...(prints == null ? [] : [`${prints} ${prints === 1 ? "print" : "prints"}`]),
+    ...(clock ? [`last ${clock} UTC`] : [])].join(", ");
+}
+
 /** Spreads in bp with a decimal; prices as quoted, to the cent. */
 export function formatLevel(quote: CreditIndexQuote, value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "--";
@@ -114,30 +188,34 @@ export function findSovereign<T extends { id: string; name: string }>(sovereigns
 export interface CdxRow extends MarketBoardRow {
   index: CdxBoardIndex;
   year: YearStatistics;
+  /** The latest day's standing and the moves between complete days. */
+  day: CdxDay;
   /** The 1W and 1M moves as shown. */
   week: number | null;
   month: number | null;
 }
 
-export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null): CdxRow[] {
+export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null, now = Date.now()): CdxRow[] {
   return indexes.map((index) => {
     const year = yearStatistics(index.points, index.level, index.date);
+    const day = cdxDay(index, now);
     return {
       id: index.id,
       label: index.name,
       value: index.level,
       valueText: formatLevel(index.quote, index.level),
-      change: shown(index.quote, index.change1D),
-      changeText: formatMove(index.quote, index.change1D),
+      change: shown(index.quote, day.change1D),
+      changeText: formatMove(index.quote, day.change1D),
       percentile: year.percentile,
       asOf: index.date,
       history: pointHistory(index.points),
-      status: index.level == null ? "unavailable" : stale(index.date, asOf) ? "stale" : "available",
+      status: index.level == null ? "unavailable" : stale(index.date, asOf) ? "stale" : day.partial ? "partial" : "available",
       adverseMove: adverseMove(index.quote),
       index,
       year,
-      week: shown(index.quote, index.change1W),
-      month: shown(index.quote, index.change1M ?? null),
+      day,
+      week: shown(index.quote, day.change1W),
+      month: shown(index.quote, day.change1M),
     };
   });
 }

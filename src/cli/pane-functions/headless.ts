@@ -693,6 +693,26 @@ function textNotices(result: HeadlessPaneResult): string[] {
 }
 
 /**
+ * What each row of a table is of, from the fields its report names
+ * (`rowUnitKey`, `rowSymbolKey`, `rowAsOfKey`); undefined when it names none.
+ * An as-of may be an ISO date or instant, or epoch milliseconds.
+ */
+function rowIdentitiesOf(
+  rows: readonly HeadlessPaneRow[],
+  keys: { rowUnitKey?: string; rowSymbolKey?: string; rowAsOfKey?: string },
+): ExportIdentity[] | undefined {
+  const { rowUnitKey: unitKey, rowSymbolKey: symbolKey, rowAsOfKey: asOfKey } = keys;
+  if (!unitKey && !symbolKey && !asOfKey) return undefined;
+  const text = (value: unknown) => (typeof value === "string" ? value : null);
+  const instant = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? new Date(value).toISOString() : text(value);
+  return rows.map((row) => ({
+    ...(unitKey ? { currencyOrUnit: text(row[unitKey]) } : {}),
+    ...(symbolKey ? { symbolOrSeries: text(row[symbolKey]) } : {}),
+    ...(asOfKey ? { asOf: instant(row[asOfKey]) } : {}),
+  }));
+}
+
+/**
  * The tables of a headless report for `--csv` and `--ndjson`, with the text
  * view's columns: a rows or snapshot report is one table, a bundle one per
  * section (key/value sections as `Metric,Value`), a series report one per
@@ -713,7 +733,10 @@ export function headlessReportTables(
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
-      tables = [exportRowsTable(title, columns, rowsResult.rows), ...(rowsResult.exportTables ?? []).map((extra) => {
+      const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
+      const own = exportRowsTable(title, columns, rowsResult.rows);
+      const interval = rowsResult.interval?.trim();
+      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(interval ? { identity: { interval } } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {
           ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
           ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),
@@ -725,21 +748,22 @@ export function headlessReportTables(
     }
     case "bundle":
       tables = (result as HeadlessBundleResult).sections.map((section) => {
-        if (!("rows" in section && section.rows)) return exportEntriesTable(section.title, section.entries);
+        // A section of one name or one date says so for every line it exports.
+        const named = {
+          ...(section.symbol?.trim() ? { symbolOrSeries: section.symbol.trim() } : {}),
+          ...(section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
+        };
+        if (!("rows" in section && section.rows)) {
+          const entries = exportEntriesTable(section.title, section.entries);
+          return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
+        }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows);
         const identity = {
+          ...named,
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
           ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
         };
-        const { rowUnitKey: unitKey, rowSymbolKey: symbolKey, rowAsOfKey: asOfKey } = section;
-        const text = (value: unknown) => (typeof value === "string" ? value : null);
-        const rowIdentities = unitKey || symbolKey || asOfKey
-          ? section.rows.map((row) => ({
-            ...(unitKey ? { currencyOrUnit: text(row[unitKey]) } : {}),
-            ...(symbolKey ? { symbolOrSeries: text(row[symbolKey]) } : {}),
-            ...(asOfKey ? { asOf: text(row[asOfKey]) } : {}),
-          }))
-          : undefined;
+        const rowIdentities = rowIdentitiesOf(section.rows, section);
         return { ...table, ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
       });
       break;

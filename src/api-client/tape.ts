@@ -39,6 +39,18 @@ export interface TapeSnapshot {
   corrections: number;
   cancels: number;
   connected: boolean;
+  /**
+   * Present when a window was asked for (`from`/`to`): the span served, its
+   * end clipped to the feed cutoff, and whether a channel held more than its
+   * capacity there, so only the first of its prints are listed. Absent from a
+   * server that predates windows, which answers with the latest tape.
+   */
+  window?: TapeRange & { truncated: { trades: boolean; quotes: boolean } };
+}
+/** A span of the tape as ISO instants; `to` is exclusive. */
+export interface TapeRange {
+  from: string;
+  to: string;
 }
 export type TapeFeedEvent = { type: "data"; payload: TapeSnapshot }
   | { type: "reset" | "disconnected"; reason: string };

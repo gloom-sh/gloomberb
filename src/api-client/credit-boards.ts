@@ -9,6 +9,12 @@ export interface CreditBoardPoint {
   prints: number;
   /** The contract that was on the run that day, e.g. "2031-12-20". */
   maturity: string;
+  /**
+   * HY and EM: the day's price as a conventional spread in bp (ISDA standard
+   * model at the index's coupon and standard recovery). Absent from a server
+   * that predates it and on spread-quoted indexes; null where no spread fits.
+   */
+  spreadBp?: number | null;
 }
 
 /** IG and iTraxx trade on spread (bp); HY and EM on price. */
@@ -20,11 +26,25 @@ export interface CdxBoardIndex {
   quote: CreditIndexQuote;
   currency: string;
   couponBp: number;
+  /** The recovery the spread equivalent assumes (HY 30%, EM 25%). Absent from a server that predates it. */
+  recovery?: number;
   date: string | null;
   maturity: string | null;
   level: number | null;
   prints: number | null;
-  /** In the quote's unit, on one contract across a roll. */
+  /** HY and EM: the latest level as a conventional spread in bp, as on each point. */
+  spreadBp?: number | null;
+  /**
+   * The latest day is today's New York trade date, still trading: its level
+   * and prints are so far and the moves run to `changeDate`. Absent from a
+   * server that predates it, which the board then works out from the date.
+   */
+  partial?: boolean;
+  /** When the latest day's last print on its contract was executed, ISO UTC. */
+  lastPrintAt?: string | null;
+  /** The last complete day, which the moves run to. */
+  changeDate?: string | null;
+  /** In the quote's unit, on one contract across a roll, between complete days. */
   change1D: number | null;
   change1W: number | null;
   /** Absent from a server that predates it. */

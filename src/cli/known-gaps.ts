@@ -1,13 +1,33 @@
+import { listingSuffixExchange } from "../sources/listing-symbols";
+import { parsePublicTickerKey } from "../utils/exchanges";
+import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 
 /**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
- * bars, and QR lists each trade of a US listing. `history --interval`, GIP's
- * `--chartResolution 1s` and QR on a listing abroad all say this.
+ * bars; for a US listing TAS lists each trade (a window of the session with
+ * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
+ * `--chartResolution 1s` and QR on a listing abroad all say this; a listing
+ * known to trade abroad, which has no trades on the tape, is told only the bars.
  */
-export function subMinuteDataMessage(symbol = "<ticker>"): string {
-  return `No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+export function subMinuteDataMessage(symbol = "<ticker>", listing: "abroad" | "unknown" = listedAbroad(symbol) ? "abroad" : "unknown"): string {
+  const bars = `No second or tick bars; 1-minute bars: fn GIP ${symbol}`;
+  return listing === "abroad"
+    ? `${bars}; trades exist for US listings only.`
+    : `${bars}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+}
+
+/**
+ * Whether a listing trades abroad, by its key, its saved exchange or its
+ * listing suffix (RMS.AX is the ASX): the SIP tape carries US listings only,
+ * so it has nothing for one, and its bare symbol can be another company there.
+ */
+export function listedAbroad(key: string, exchange?: string): boolean {
+  if (key === "<ticker>") return false;
+  const parsed = parsePublicTickerKey(key);
+  const venue = parsed.exchange || exchange || listingSuffixExchange(parsed.symbol);
+  return !!venue && listingAbroadVenue(`${parsed.symbol}:${venue}`) != null;
 }
 
 /** A bar size finer than a minute, as people type one: 1s, 30s, 5sec, 500ms, tick, ticks, tick-by-tick, seconds. */

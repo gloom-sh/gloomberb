@@ -402,6 +402,11 @@ back button or clicking Back pops it. Rules:
 - A row that is shown but does not apply right now (an exited holder, a story
   or print after the tab's pinned moment) reads in `textMuted` and plain
   weight across the row, its value colours included, and stays selectable.
+- A board row whose figures are not the market now says so in a word beside
+  its date, in `MarketBoardStack`'s as-of column, never by colour alone:
+  `stale` (warning colour) for an observation too old to be current, `so far`
+  for a day still trading. The column widens for the word and the name column
+  gives way first, so the date and the word are never cut.
 - A row's DES (`d`, a menu entry, a linked ticker) opens through
   `useOpenDescription` (`shared/open-description.ts`), which brings forward
   the DES already open for that listing instead of opening a second one.

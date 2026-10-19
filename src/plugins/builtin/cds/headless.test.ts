@@ -119,7 +119,7 @@ describe("CDS report", () => {
     const listed = Array.from({ length: 40 }, (_, index) => (
       tape(String(100 + index), "2026-10-06T12:00:00Z", { issuerName: `Issuer ${index} Holdings` })
     ));
-    const { result, text } = await report(null, {
+    const { result, text, freshness } = await report(null, {
       load: async () => ({
         ...FORD,
         query: null,
@@ -167,6 +167,15 @@ describe("CDS report", () => {
     ]);
     expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+2026-10-09/);
     expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 · lag 2 days");
+ 
+    // Each export row is its issuer's, in bp, dated by its own 5Y level (Issuer 7's from two days before its
+    // last trade), or by its last trade without one: never the day of the newest row.
+    const lines = renderReportCsv(headlessReportTables(cdsHeadless, result, args(null), "CDS", freshness, STATUS), freshness).split("\n");
+    const cells = (line: string) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")).slice(0, -1);
+    const identity = (issuer: string) => cells(lines.find((row) => cells(row)[0] === issuer)!).slice(-5);
+    expect(identity("Issuer 7 Holdings")).toEqual(["Issuer 7 Holdings", "bp", "", "DTCC", "2026-10-07"]);
+    expect(identity("Amazon.com, Inc.")).toEqual(["Amazon.com, Inc.", "bp", "", "DTCC", "2026-10-09"]);
+    expect(identity("Ford Motor Company")).toEqual(["Ford Motor Company", "bp", "", "DTCC", "2026-10-09T13:21:00.000Z"]);
   });
 
   test("still lists the issuers, without levels, when the levels request fails", async () => {

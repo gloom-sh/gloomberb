@@ -1,7 +1,7 @@
 import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/headless";
-import { formatStat, SUMMARY_ROWS, type StatValue } from "./format";
+import { formatStat, PRICE_RETURN_LABEL, SUMMARY_ROWS, type StatValue } from "./format";
 import { continuationNote, type BacktestWindowOptions, type HistoryBacktestResult } from "./window";
 
 /** A backtest of daily bars is not a feed; each run dates itself by the last session it tested. */
@@ -40,7 +40,7 @@ const price = (value: unknown) => typeof value !== "number" || !Number.isFinite(
 /**
  * The daily curve: every session tested, the close in the listing's currency
  * (header unit from each row's `currency`), the position held over it, both
- * lines as the growth of 1 and the strategy's drawdown in percent. Exports
+ * lines as the growth of 1 on the price alone and the strategy's drawdown in percent. Exports
  * keep every digit; the text view rounds. The close is the price as `history`
  * exports it, without a float32 feed's noise (671.29999 is 671.3); the run
  * itself used the price as served.
@@ -54,10 +54,19 @@ const EQUITY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "drawdownPct", header: "Drawdown (%)", literalHeader: true, align: "right", format: fixed(2) },
 ];
 
+/**
+ * Both lines grow by the price alone, so a saved curve's headers say so; the
+ * text table, which a terminal must fit, says it once in its title instead.
+ */
+const EXPORTED_EQUITY_COLUMNS: HeadlessPaneColumn[] = EQUITY_COLUMNS.map((column) => column.key === "strategy" || column.key === "benchmark"
+  ? { ...column, header: column.header.replace(")", ", price return, distributions not included)") }
+  : column);
+
 function equitySection(result: HistoryBacktestResult, unit: string | null): HeadlessBundleSection {
   return {
-    title: `Daily curve · ${result.start} to ${result.end}`,
-    columns: EQUITY_COLUMNS,
+    title: `Daily curve, ${PRICE_RETURN_LABEL.toLowerCase()} · ${result.start} to ${result.end}`,
+    columns: EXPORTED_EQUITY_COLUMNS,
+    textColumns: EQUITY_COLUMNS,
     rows: result.equity.map((row): HeadlessPaneRow => ({ ...row, close: cleanFloat32Price(row.close), ...(unit ? { currency: unit } : {}) })),
     ...(unit ? { unit } : {}),
     interval: INTERVAL,

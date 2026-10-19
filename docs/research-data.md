@@ -928,7 +928,7 @@ The backend ingests current files and annual archives, with idempotent correctio
 
 ## Time and sales (TAS, QR)
 
-`TAS AAPL` opens recent trade prints and `QR AAPL` uses the same pane for its NBBO tab. The tape covers US listings only; for a listing abroad, `QR` and `TAS` say where the finest bars are: `No second or tick bars; 1-minute bars: fn GIP RMS:ASX; trades exist for US listings only.` Trades retain source nanosecond timestamps, exact trade IDs, exchange codes, tape and condition codes. Quotes retain separate bid/ask venues and source sizes in round lots, not shares. NBBO is best-quote history, not Level 2 depth. Locked, crossed and one-sided observations stay visible without forcing a positive spread or inferring an aggressor side. Conditions are raw consolidated-tape codes and can differ by tape.
+`TAS AAPL` opens recent trade prints and `QR AAPL` uses the same pane for its NBBO tab. The tape covers US listings only; for a listing abroad, `QR` and `TAS` say where the finest bars are: `No second or tick bars; 1-minute bars: fn GIP RMS:ASX; trades exist for US listings only.` `fn TAS AAPL --from 10:30 --to 10:35` reads a window of the served session instead of the latest prints, to evidence a move mid-session: the times are New York's clock (`14:30Z` for UTC), the session is the latest regular session the tape serves, and its window runs from 04:00 to 20:00 New York time, or to the feed cutoff (now, or 15 minutes back without real-time access) while it trades. The report lists the window's trades and quotes oldest first, up to `--limit` (at most 1,000 trades and 500 quotes from the window's start; a note says when it held more, and through when the list runs), and its Window section sums up the prints in it. A bound outside the served window is refused with the window that is served, such as `--from 03:00:00 ET (07:00:00 UTC) is outside the window TAS serves: Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to 20:00:00 ET (00:00:00 UTC).` Trades retain source nanosecond timestamps, exact trade IDs, exchange codes, tape and condition codes. Quotes retain separate bid/ask venues and source sizes in round lots, not shares. NBBO is best-quote history, not Level 2 depth. Locked, crossed and one-sided observations stay visible without forcing a positive spread or inferring an aggressor side. Conditions are raw consolidated-tape codes and can differ by tape.
 
 The pane loads its initial observations from Gloom Cloud and receives updates through the shared Cloud socket. Pro entitlement provides consolidated trades and quotes in real time; Gloom Cloud enforces a fifteen-minute cutoff for delayed access. An absent endpoint has a clean unavailable state. Failed refreshes and disconnects preserve dated observations with a warning; changing account/feed clears both live and paused copies.
 
@@ -1249,8 +1249,12 @@ price. Cash earns nothing. Buy-and-hold buys at the same first fill with the
 same entry cost and is never sold. An open position is marked at the last
 close, net of an exit cost, in the trade list and at the last close in equity.
 
-Returns are price returns: dividends, splits beyond the provider's adjusted
-history, borrow, taxes and slippage beyond the stated cost are not modelled.
+Returns are price returns, labelled `Price return (distributions not
+included)`: the daily closes are the prices that traded, not adjusted for
+dividends or fund distributions (HYG's trades fill at its traded prices, about
+87 in late 2021), so an income fund's total return is higher than BT's. Splits
+beyond the provider's adjusted history, borrow, taxes and slippage beyond the
+stated cost are not modelled either.
 CAGR needs at least half a year. Volatility and Sharpe use daily returns
 annualised at the series' bars per year and a zero cash rate: 365 for a 24/7
 series such as crypto (daily bars that include both Saturday and Sunday

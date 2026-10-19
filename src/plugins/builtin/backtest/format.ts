@@ -11,9 +11,16 @@ export interface SummaryRow {
 }
 const stat = (value: number | null, kind: StatValue["kind"]): StatValue => ({ value, kind });
 
+/**
+ * What every return of a run is: the close's change alone. The closes are not
+ * adjusted for dividends or fund distributions (HYG's trades fill at the
+ * prices it traded at), so for a fund that pays out the total return is higher.
+ */
+export const PRICE_RETURN_LABEL = "Price return (distributions not included)";
+
 /** Strategy beside buy-and-hold wherever the comparison is defined. */
 export const SUMMARY_ROWS: SummaryRow[] = [
-  { id: "total", label: "Total return", strategy: (r) => stat(r.strategy.totalReturnPct, "signed"), benchmark: (r) => stat(r.benchmark.totalReturnPct, "signed") },
+  { id: "total", label: PRICE_RETURN_LABEL, strategy: (r) => stat(r.strategy.totalReturnPct, "signed"), benchmark: (r) => stat(r.benchmark.totalReturnPct, "signed") },
   { id: "cagr", label: "CAGR", strategy: (r) => stat(r.strategy.cagrPct, "signed"), benchmark: (r) => stat(r.benchmark.cagrPct, "signed") },
   { id: "vol", label: "Volatility (ann.)", strategy: (r) => stat(r.strategy.volatilityPct, "percent"), benchmark: (r) => stat(r.benchmark.volatilityPct, "percent") },
   { id: "sharpe", label: "Sharpe (0% cash)", strategy: (r) => stat(r.strategy.sharpe, "ratio"), benchmark: (r) => stat(r.benchmark.sharpe, "ratio") },

@@ -33,7 +33,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     screenshotReadiness: "live-dom",
     limitations: [
       "Long-only, one instrument, daily bars; signals fill at the next session's open.",
-      "Price returns: dividends, borrow and cash interest are not modelled.",
+      "Price return (distributions not included): the closes are not adjusted for dividends or fund distributions, and borrow and cash interest are not modelled.",
     ],
   },
   options: [
@@ -50,7 +50,7 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
       description: "Keep a session still forming (partial), which is left out by default because its close moves until the day ends" },
     { key: "equity", shot: { reportOnly: "prints the daily equity curve in place of the summary" }, type: "boolean", defaultValue: false, example: "--csv --equity > curve.csv",
       description: "Report the daily curve instead: date, close in the listing's currency, position (1 long, 0 flat), strategy and"
-        + " buy-and-hold growth of 1 and drawdown in percent, every digit in --csv and --json" },
+        + " buy-and-hold growth of 1 on the price alone (distributions not included) and drawdown in percent, every digit in --csv and --json" },
     { key: "tab", type: "enum", defaultValue: "summary", values: [{ value: "summary" }, { value: "trades" }], description: "Initial view",
       pluginState: { pluginId: "ticker-research", key: "backtest:view" } },
   ],

@@ -69,22 +69,24 @@ function metricsHeaderRow(frame: string) {
   return { row, line: lines[row] ?? "" };
 }
 
-test("a default-size pane body (118 cells in the terminal) puts the metrics beside the chart", async () => {
-  const frame = await renderPane(118, 32);
+test("a wide pane body puts the metrics beside a chart that keeps its legend", async () => {
+  const frame = await renderPane(130, 32);
   const { row, line } = metricsHeaderRow(frame);
   expect(row).toBeGreaterThanOrEqual(0);
   // Side by side: the chart legend and the table header share a row, the table right of the chart.
   expect(line.indexOf("• Buy & hold")).toBeGreaterThanOrEqual(0);
-  expect(line.indexOf("METRIC")).toBeGreaterThan(118 - 50 - 1);
-  // Every metric row fits beside the chart.
+  expect(line.indexOf("METRIC")).toBeGreaterThan(130 - 68 - 1);
+  // Every metric row fits beside the chart, the price return with what it leaves out.
   expect(frame).toContain("Average hold (sessions)");
+  expect(frame).toContain("Price return (distributions not included)");
 });
 
-test("a narrower pane stacks the metrics under the chart", async () => {
-  const frame = await renderPane(100, 32);
+test("a default-size pane (118 cells in the terminal) stacks the metrics under the chart, the price return whole", async () => {
+  const frame = await renderPane(118, 32);
   const { row, line } = metricsHeaderRow(frame);
   expect(row).toBeGreaterThan(8);
   expect(line.indexOf("METRIC")).toBeLessThan(4);
+  expect(frame).toContain("Price return (distributions not included)");
 });
 
 test("a short stacked pane sizes the chart with the kit: the legend names the lines over the metrics' first rows", async () => {
@@ -94,7 +96,7 @@ test("a short stacked pane sizes the chart with the kit: the legend names the li
   expect(lines.slice(0, row).join("\n")).toContain("• Buy & hold");
   expect(lines.slice(0, row).join("\n")).toContain("+ Strategy");
   // The table keeps its header and four metrics under the chart.
-  for (const label of ["Total return", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
+  for (const label of ["Price return (distributions", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
     expect(lines.slice(row).join("\n")).toContain(label);
   }
 });
