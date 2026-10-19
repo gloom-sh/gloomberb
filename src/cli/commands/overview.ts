@@ -320,7 +320,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   await withCliServices(ctx, async () => {
     const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
     // An earlier day reads the stored calendar, which keeps past events after the week's listing drops them.
-    const past = fromOption != null && fromOption < isoDate(new Date(todayStart)) ? await fetchEconCalendarFrom(fromOption) : null;
+    // A server without it, a server error or no network lists the current calendar (cached when offline) instead.
+    const stored = fromOption != null && fromOption < isoDate(new Date(todayStart)) ? await fetchEconCalendarFrom(fromOption) : null;
+    const past = stored?.events ? stored : null;
+    const unread = stored && !stored.events && stored.failure ? `The stored calendar could not be read (${stored.failure}); listing the current calendar` : null;
     const { data: events, fetchedAt, stale } = past ? { data: past.events, fetchedAt: Date.now(), stale: false } : await loadCalendar(ctx.cliOptions.refresh);
     // The calendar lists from today (UTC). --from moves the first day; --tail
     // alone keeps the newest events of the whole calendar, the past week's too.
@@ -353,6 +356,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }));
     ctx.printResult({
       data: rows,
+      ...(unread ? { warnings: [unread] } : {}),
       metadata: { country, impact, from, listedThrough, storedFrom: past?.storedFrom ?? null },
       // The calendar as read, not its rows: those are scheduled, mostly ahead.
       freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),

@@ -28,25 +28,30 @@ const twoWeeks = [
 /**
  * The text `econ` prints for `args` against a calendar of `events`, read fresh
  * each time. The stored calendar answers an earlier --from with the same
- * events and `storedFrom`; "none" is a server that keeps no past events.
+ * events and `storedFrom`; "none" is a server that keeps no past events (404),
+ * a number another status and "offline" no network for it.
  */
-async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" = "none"): Promise<string> {
+async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none"): Promise<string> {
   resetEconCalendarPersistence();
   attachEconCalendarPersistence(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async (url) => {
     const history = new URL(url).pathname.endsWith("/calendar/history");
-    const missing = history && storedFrom === "none";
+    if (history && storedFrom === "offline") throw new TypeError("fetch failed");
+    const status = !history ? 200 : storedFrom === "none" ? 404 : typeof storedFrom === "number" ? storedFrom : 200;
     return {
-      ok: !missing,
-      status: missing ? 404 : 200,
+      ok: status === 200,
+      status,
       headers: new Headers(),
-      text: async () => missing ? JSON.stringify({ message: "Not found" }) : JSON.stringify(history ? { events, storedFrom } : events),
+      text: async () => status === 422 ? JSON.stringify({ message: "The calendar reaches back 400 days" })
+        : status !== 200 ? JSON.stringify({ message: "Unavailable" }) : JSON.stringify(history ? { events, storedFrom } : events),
     } as Response;
   });
   const cli = createTestCliContext({}, cliOptions);
   await econ.execute(args, cli.context);
   const { result, options } = cli.printed[0]!;
-  return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options);
+  // Warnings print apart from the table, as `warning: ...` lines.
+  return [serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options),
+    ...(result.warnings ?? []).map((warning) => `warning: ${warning}`)].join("\n");
 }
 
 beforeEach(() => setSystemTime(new Date("2026-10-10T13:00:00.000Z")));
@@ -84,6 +89,14 @@ test("an earlier --from lists the stored calendar's past events and says where i
   const old = await econText(twoWeeks.slice(4), ["--from", "2026-10-12", "--country", "US"]);
   expect(old).toContain("Housing Starts");
   expect(old).toContain("No events are stored before 2026-10-23");
+  // So does a server error or no network, saying the stored calendar was not read; a refused date keeps the server's message.
+  for (const [answer, why] of [[503, "server error 503"], ["offline", "the server could not be reached"]] as const) {
+    const text = await econText(twoWeeks.slice(4), ["--from", "2026-10-12", "--country", "US"], {}, answer);
+    expect(text).toContain("Housing Starts");
+    expect(text).toContain("No events are stored before 2026-10-23");
+    expect(text).toContain(`The stored calendar could not be read (${why}); listing the current calendar`);
+  }
+  await expect(econText(twoWeeks, ["--from", "2025-01-01", "--country", "US"], {}, 422)).rejects.toThrow("The calendar reaches back 400 days");
 });
 
 test("a calendar two weeks ahead lists from today on a Saturday, with nothing to flag", async () => {
