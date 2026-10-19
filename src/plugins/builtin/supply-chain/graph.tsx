@@ -13,7 +13,7 @@ import { ClippedText } from "../../../components/ui/display";
 import { cardSurfaceStyle } from "../../../components/ui/card";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
-import { entityLabel, graphNodes } from "./graph-model";
+import { entityLabel, entityTicker, graphNodes } from "./graph-model";
 import { ROLE_COLORS } from "./model";
 import { blendHex } from "../../../theme/colors";
 
@@ -136,7 +136,8 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const active = node.entity.id === selectedId, company = !node.entity.aggregate && !node.entity.anonymous;
         const kind = node.entity.aggregate ? "group" : node.entity.anonymous ? "undisclosed" : null;
         const inner = cellWidth - 5;
-        const tickerWidth = node.entity.ticker ? displayWidth(node.entity.ticker) + 3 : 0;
+        const ticker = entityTicker(node.entity);
+        const tickerWidth = ticker ? displayWidth(ticker) + 3 : 0;
         const showTicker = company && tickerWidth > 0 && inner >= tickerWidth + 5;
         const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
         const name = prefix + (showTicker ? node.entity.name : entityLabel(node.entity));
@@ -154,7 +155,7 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
               <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
                 {!desktop ? <Text fg={accent}>▍</Text> : null}
                 <ClippedText fg={active && !desktop ? colors.selectedText : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
-                {showTicker ? desktop ? <Badge label={node.entity.ticker!} tone="accent" /> : <Text fg={active ? colors.selectedText : colors.textDim}>{` ${node.entity.ticker}`}</Text> : null}
+                {showTicker ? desktop ? <Badge label={ticker!} tone="accent" /> : <Text fg={active ? colors.selectedText : colors.textDim}>{` ${ticker}`}</Text> : null}
               </Box>
               <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={detail} width={inner} /></Box>
             </Box>

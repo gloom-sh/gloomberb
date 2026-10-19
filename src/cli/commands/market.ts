@@ -114,7 +114,7 @@ import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode } from "../../market-data/futures-board";
 import { newsEmptyMessage } from "./news-hints";
-import { newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, searchNewsStories } from "./news-search";
+import { commonWordCandidate, newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, quotedSearchCommand, searchNewsStories, wordMeansMore } from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
@@ -1388,16 +1388,24 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }
     const empty = emptyMessage(false);
     const read = listing ? listingReadNotes(listing) : [];
+    // A word that is also the company's name ("gold" for Gold.com Inc.) says once which ticker it found and how
+    // to search the stories that mention it instead, when those stories are mostly about something else.
+    const typed = args[0]?.trim() ?? "";
+    const wordHint = listing && resolved && !listing.exchange && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
+      && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol)
+      ? `${typed} → ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
+      : null;
     ctx.printResult({
       data: articles,
       ...(read.length > 0 ? { warnings: read } : {}),
-      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
+      metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null, ...(wordHint ? { textSearch: quotedSearchCommand(typed.toLowerCase()) } : {}) },
       freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
       columns: NEWS_COLUMNS,
       ...(empty ? { empty } : {}),
+      ...(wordHint ? { footnote: wordHint } : {}),
     });
   });
 }
@@ -2379,9 +2387,10 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Text",
         lines: [
           "Several words, in quotes or not, search the stories that mention them. So does a single word of three letters or more that no listing answers to, and a futures board code such as TTF, a gas benchmark rather than a ticker. A real ticker always gives its own news. The best matches print newest first, 20 unless --limit says otherwise; a search takes neither --feed nor --exchange.",
+          "A shell drops the quotes around one word, so news \"gold\" is the ticker GOLD. Keep them to search the text: news '\"gold\"'. When a word you type is also the name of the company it found, and the stories that mention it are mostly about something else, the listing says so under its stories with that command.",
         ],
       }],
-      examples: ["news", "news TSLA", "news SAN:EPA", "news TTF", "news \"european gas\"", "news --feed top --limit 10"],
+      examples: ["news", "news TSLA", "news SAN:EPA", "news TTF", "news \"european gas\"", "news '\"gold\"'", "news --feed top --limit 10"],
     },
     execute: runNews,
   },

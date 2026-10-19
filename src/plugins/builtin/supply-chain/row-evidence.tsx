@@ -6,7 +6,7 @@ import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { counterpartyKind, counterpartyKindLabel, disclosedValue, dollars, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts, sourceLabel } from "./model";
+import { counterpartyKind, counterpartyKindLabel, disclosedValue, disclosureText, dollars, isTaggedFact, nativeValue, periodText, ROLE_COLORS, roleLabel, shareParts, sourceLabel } from "./model";
 import { canShowQuote, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, tierLabel } from "./trust";
 import { DisclosureQuote } from "./disclosure-quote";
 
@@ -49,7 +49,7 @@ export function SupplySources({ row, width, onOpenSource }: { row: SupplyRow; wi
       </Section>) : <>
       <KeyValueRow label="Disclosure" value={`${sourceLabel(row)} · filed ${row.filedDate ?? "--"}`} labelWidth={20} />
       {row.quoteMatchMode ? <KeyValueRow label="Evidence match" value={row.quoteMatchMode === "exact" ? "Exact text" : row.quoteMatchMode === "whitespace" ? "Whitespace normalized" : "Unicode and whitespace normalized"} labelWidth={20} /> : null}
-      <DisclosureQuote role={row.role} quote={row.quote} quoteLanguage={row.quoteLanguage} width={width} />
+      <DisclosureQuote role={row.role} quote={disclosureText(row)} quoteLanguage={row.quoteLanguage} width={width} label={isTaggedFact(row) ? "Tagged in the filing" : undefined} />
       {row.quoteGloss ? <SourceGloss text={row.quoteGloss} width={width} /> : null}
       {sourceLink(row.filingUrl, `Open ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`, `Open ${row.form ?? "source"} filing`)}
     </>}

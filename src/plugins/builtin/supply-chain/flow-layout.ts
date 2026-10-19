@@ -1,5 +1,6 @@
 import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { displayWidth } from "../../../utils/format";
+import { entityTicker } from "./graph-model";
 import { flowBands, flowGroups, type FlowBand, type FlowNode } from "./model";
 
 /** A node card or a related chip, in pane cells. */
@@ -46,7 +47,7 @@ export function ribbonY(ribbon: Pick<FlowRibbon, "x0" | "y0" | "x1" | "y1">, x: 
 /** Width in rows, proportional to the figure on its column's scale, so two ribbons compare exactly. */
 const ribbonRows = (weight: number | null) => weight === null ? null : weight * MAX_RIBBON_ROWS;
 
-const chipLabel = (node: FlowNode) => node.more ? `+${node.more} more` : node.row?.counterparty.ticker ?? node.label;
+const chipLabel = (node: FlowNode) => node.more ? `+${node.more} more` : (node.row ? entityTicker(node.row.counterparty) : null) ?? node.label;
 const chipWidth = (node: FlowNode) => Math.min(24, displayWidth(chipLabel(node)) + 2);
 export { chipLabel as flowChipLabel };
 

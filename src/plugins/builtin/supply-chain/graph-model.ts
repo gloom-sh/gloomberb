@@ -1,9 +1,17 @@
 import type { SupplyEntity } from "../../../api-client/supply-chain";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
-import { publicTickerKey } from "../../../utils/exchanges";
+import { getListingSymbol } from "../../../sources/listing-symbols";
+import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 
 export const entityKey = (entity: SupplyEntity) => entity.ticker ? publicTickerKey(entity.ticker, entity.exchange ?? undefined) : `id:${entity.id}`;
-export const entityLabel = (entity: SupplyEntity) => entity.ticker ?? entity.name;
+/**
+ * The ticker as shown and typed to open it: a US listing bare, any other with
+ * its venue's suffix, so Standard Chartered reads STAN.L and never a bare STAN
+ * that a US company could hold.
+ */
+export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">) =>
+  entity.ticker && entity.exchange && !isUsListingExchange(entity.exchange) ? getListingSymbol(entity.ticker, entity.exchange) : entity.ticker;
+export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
 export function pathLabel(path: GraphPath, data: GraphPayload) {
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
   return path.nodeIds.map(id => nodes.get(id) ? entityLabel(nodes.get(id)!) : id).join(" → ");

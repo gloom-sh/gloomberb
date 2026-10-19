@@ -13,6 +13,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
 import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, periodText, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
+import { entityTicker } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
@@ -38,7 +39,7 @@ function nodeMetric(node: PositionedNode, focusId?: string): string {
   if (share) return `${share.value} ${share.basis}`;
   if (nativeValue(row) !== null || row.usd !== null) return disclosedValue(row);
   // With no figure, the card says where the relationship is disclosed.
-  const reporter = focusId && row.reportingEntity.id !== focusId ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
+  const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
   return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
 }
 
@@ -277,7 +278,7 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
   const company = node.row ? counterpartyKind(node.row) === "company" : false;
   const name = node.more ? `+${node.more} more` : node.row ? counterpartyLabel(node.row) : node.label;
   const metric = node.row ? nodeMetric(node, focusId) : "";
-  const ticker = node.row?.counterparty.ticker ?? null;
+  const ticker = node.row ? entityTicker(node.row.counterparty) : null;
   const inner = Math.max(4, node.width - (desktop ? 2 : 2));
   const nameWidth = Math.max(4, inner - (ticker ? displayWidth(ticker) + 1 : 0));
   const titleColor = node.more ? colors.textDim : company ? colors.textBright : colors.text;
@@ -327,7 +328,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
     share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
     `${roleLabel(row.role)} · ${periodText(row)}`,
     trustTier(row) === 1
-      ? `${evidenceLabel(row)} · ${row.reportingEntity.ticker ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
+      ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
       : `${evidenceLabel(row)} · ${evidenceDate(row)}`,
   ];
   const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));

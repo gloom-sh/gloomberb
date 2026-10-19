@@ -4,7 +4,8 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
-import { newsSearchText } from "./news-search";
+import type { NewsArticle } from "../../news/types";
+import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
 
@@ -134,9 +135,22 @@ test("text search refuses a symbol's options and text the service would reject",
   expect(requests).toHaveLength(0);
 });
 
-test("only several words are text up front; one word stays a symbol", () => {
+test("only several words, or one that kept its quotes, are text up front; a bare word stays a symbol", () => {
   expect(newsSearchText([])).toBeNull();
   expect(newsSearchText(["TTF"])).toBeNull();
   expect(newsSearchText(["european gas"])).toBe("european gas");
   expect(newsSearchText(["european", "  gas "])).toBe("european gas");
+  // A shell drops one pair of quotes: news '"gold"' arrives as "gold" and searches the text.
+  expect(newsSearchText(['"gold"'])).toBe("gold");
+});
+
+test("a word that is also its company's name hints at the text search only when its stories are mostly elsewhere", () => {
+  const filed = (tickers: string[]) => ({ tickers }) as unknown as NewsArticle;
+  expect(commonWordCandidate("gold", "Gold.com Inc.")).toBe(true);
+  // Typed as a ticker, or not a word of the name: no lookup of the stories at all.
+  expect(commonWordCandidate("GOLD", "Gold.com Inc.")).toBe(false);
+  expect(commonWordCandidate("tsla", "Tesla, Inc.")).toBe(false);
+  expect(wordMeansMore([filed([]), filed(["NEM"]), filed(["GOLD"])], "GOLD")).toBe(true);
+  expect(wordMeansMore([filed(["META"]), filed(["META", "GOOGL"]), filed([])], "META")).toBe(false);
+  expect(wordMeansMore([filed([]), filed([])], "GOLD")).toBe(false);
 });

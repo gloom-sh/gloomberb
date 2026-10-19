@@ -10,12 +10,45 @@ const MIN_FALLBACK_LENGTH = 3;
 
 /**
  * The text `news` was asked to search for rather than a symbol: several words,
- * quoted or not (`news "european gas"`, `news european gas`). A single word
- * is a symbol until nothing answers to it (`newsFallbackText`).
+ * quoted or not (`news "european gas"`, `news european gas`), or one word that
+ * still carries its quotes (`news '"gold"'`: a shell drops one pair, so the
+ * word keeps the inner pair). A bare word is a symbol until nothing answers
+ * to it (`newsFallbackText`).
  */
 export function newsSearchText(args: readonly string[]): string | null {
   const text = args.join(" ").trim().replace(/\s+/g, " ");
+  const quoted = args.length === 1 ? /^(["'“‘])(.+)(["'”’])$/u.exec(text) : null;
+  if (quoted) return quoted[2]!.trim();
   return args.length > 1 || /\s/.test(text) ? text : null;
+}
+
+/** How to type a word as text to search from a shell: `'"gold"'` keeps the quotes a shell would drop. */
+export const quotedSearchCommand = (word: string) => `gloomberb news '"${word}"'`;
+
+/**
+ * Whether a word typed for `news` may mean more than the listing it found:
+ * a plain word (letters only, three or more, typed with a lower-case letter,
+ * as a word is and a ticker rarely is) that is one of the words of the
+ * company's name ("gold" for Gold.com Inc., "gap" for The Gap). The stories
+ * then decide (`wordMeansMore`).
+ */
+export function commonWordCandidate(typed: string, companyName: string | null | undefined): boolean {
+  const word = typed.trim();
+  if (!/^[A-Za-z]{3,}$/.test(word) || !/[a-z]/.test(word) || !companyName) return false;
+  return companyName.toLowerCase().split(/[^a-z]+/).includes(word.toLowerCase());
+}
+
+/**
+ * Whether the stories that mention a word are mostly about something else
+ * than the ticker it resolved to: three or more stories, fewer than half of
+ * them filed under the ticker. "gold" is mostly the metal's market; "meta"
+ * is mostly Meta Platforms.
+ */
+export function wordMeansMore(stories: readonly NewsArticle[], symbol: string): boolean {
+  if (stories.length < 3) return false;
+  const ticker = symbol.toUpperCase();
+  const filed = stories.filter((story) => (story.tickers ?? []).some((entry) => entry.toUpperCase() === ticker)).length;
+  return filed * 2 < stories.length;
 }
 
 /** Why the service would refuse the text, or null when it can search it. */

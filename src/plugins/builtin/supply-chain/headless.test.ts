@@ -47,6 +47,16 @@ describe("supply chain graph headless integration", () => {
     expect(evidence[0]).toMatchObject({ pct: 20, pctBasis: "revenue", pctScope: "Non Us", denominator: null });
     expect(evidence[1]).toMatchObject({ denominator: "B revenue" });
   });
+  test("a tagged XBRL fact prints in words, never its dimension names, and its export keeps the stored text", async () => {
+    const payload = graphPayload();
+    const tags = "ConcentrationRiskByBenchmark=RevenueFromContractWithCustomerProductAndServiceBenchmark;ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=StandardChartered;ProductOrService=Gold;";
+    Object.assign(payload.links[0]!.evidence[0]!, { sourceKind: "xbrl", tier: "structured", pctScope: "Gold", quote: tags });
+    const report = await supplyChainHeadless.load(args({ tab: "graph" }), context(payload, []));
+    expect(report.sections.find(section => section.title === "Disclosure evidence")!.rows![0]).toMatchObject({ quote: tags, statement: "Customer, Gold, revenue" });
+    const text = renderHeadlessPaneText(supplyChainHeadless, report, args({ tab: "graph" }), "SPLC", deriveHeadlessFreshness(supplyChainHeadless, report));
+    expect(text).toContain("Customer, Gold, revenue");
+    expect(text).not.toContain("ConcentrationRiskByType");
+  });
   test("CLI filters preserve validated values through settings and the graph request", async () => {
     const capability = getPaneFunctionCapability(undefined, { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef);
     const options = normalizeCapabilityOptions(capability, { tab: "graph", depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
@@ -213,4 +223,27 @@ test("graph boundaries preserve global filing scale and provenance and reject un
     const malformed = structuredClone(payload); Object.assign(malformed.links[0]!.evidence[0]!, invalid);
     expect(() => validateGraph(malformed)).toThrow("unreadable");
   }
+});
+
+test("--view prints that view alone and says when it is empty; an earlier period's share prints apart, never as current", async () => {
+  const zero = { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 };
+  // A listing outside the US prints with its venue's suffix, never as a bare ticker a US company could hold.
+  const current = supplyRow("current", { sourceKind: "xbrl", period: "2025-12-31", periodMonths: 12, pctOfRevenue: 27, counterparty: { ...entity("current"), ticker: "STAN", exchange: "LSE" } });
+  const earlier = supplyRow("earlier", { sourceKind: "xbrl", period: "2023-12-31", periodMonths: 12, pctOfRevenue: 14 });
+  const context = createTestHeadlessContext();
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [current], totalRows: 3, truncated: true, lockedRows: 1, access: "preview", previewRowsPerRole: 3,
+    counts: { says: { ...zero, customer: 2 }, names: zero }, earlier: { says: [earlier], names: [] }, earlierCounts: { says: { ...zero, customer: 1 }, names: zero } }) };
+  const load = (options: Record<string, string>) => supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["FOCUS"], options }), context);
+  const both = await load({});
+  expect(both.sections.map((section) => [section.title, section.rows?.map((row) => [row.counterparty, row.ticker, row.pct, row.period])])).toEqual([
+    ["FOCUS says", [["current", "STAN.L", 27, "2025-12-31"]]],
+    ["FOCUS says | Earlier periods", [["earlier", "earlier", 14, "2023-12-31"]]],
+  ]);
+  const names = await load({ view: "names" });
+  expect(names.sections.map((section) => [section.title, section.rows?.length, "empty" in section ? section.empty : null])).toEqual([["Names FOCUS", 0, "No other company's disclosures name FOCUS."]]);
+  // Rows the preview leaves out of the other view are not this view's.
+  expect([names.complete, names.errors]).toEqual([true, []]);
+  const says = await load({ view: "says" });
+  expect(says.sections.map((section) => section.title)).toEqual(["FOCUS says", "FOCUS says | Earlier periods"]);
+  expect(says.complete).toBe(false);
 });
