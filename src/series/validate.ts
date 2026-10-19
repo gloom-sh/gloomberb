@@ -13,6 +13,7 @@ const SERIES_INPUTS: readonly SeriesInput[] = ["ticker", "option", "crypto"];
 const DRAW_STYLES: readonly SeriesDrawStyle[] = ["line", "area", "step", "columns", "points"];
 const PLACEMENTS: readonly SeriesPlacement[] = ["price", "panel"];
 const LINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 /** A chart holds ten series: the ticker's price and the lines, with one to spare. */
 const MAX_SERIES_LINES = 8;
 
@@ -173,6 +174,9 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   if (loaded.style !== undefined && !DRAW_STYLES.includes(loaded.style)) {
     fail(id, `style must be one of ${DRAW_STYLES.join(", ")}.`);
   }
+  if (loaded.color !== undefined && (typeof loaded.color !== "string" || !COLOR_PATTERN.test(loaded.color))) {
+    fail(id, "color must be #rrggbb.");
+  }
   if (loaded.lines !== undefined) {
     if (!Array.isArray(loaded.lines) || loaded.lines.length === 0 || loaded.lines.length > MAX_SERIES_LINES) {
       fail(id, `lines must be a list of 1 to ${MAX_SERIES_LINES} lines.`);
@@ -186,6 +190,14 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
       checkLabel(id, "line name", line.name, 60, context, false);
       if (line.style !== undefined && !DRAW_STYLES.includes(line.style)) {
         fail(id, `line style must be one of ${DRAW_STYLES.join(", ")}.`);
+      }
+      if (line.color !== undefined && (typeof line.color !== "string" || !COLOR_PATTERN.test(line.color))) {
+        fail(id, "line color must be #rrggbb.");
+      }
+    }
+    for (const line of loaded.lines) {
+      if (line.fill !== undefined && (line.fill === line.id || !ids.has(line.fill))) {
+        fail(id, `line ${line.id} fills to ${String(line.fill)}, which is not another of its lines.`);
       }
     }
   }

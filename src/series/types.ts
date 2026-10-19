@@ -43,6 +43,13 @@ export interface SeriesLine {
   name: string;
   /** How the line is drawn; the series' own style when omitted. */
   style?: SeriesDrawStyle;
+  /** The line's colour as `#rrggbb`; one of the chart's own when omitted. */
+  color?: string;
+  /**
+   * Another line of the series, by id: the area between the two is shaded in
+   * this line's colour, under the lines (a band's edges, a channel).
+   */
+  fill?: string;
 }
 
 export interface SeriesPoint {
@@ -143,6 +150,8 @@ export interface LoadedSeriesDefinition extends SeriesDefinitionBase {
   refreshMs?: number;
   /** How the series is drawn when first added; a line when omitted. */
   style?: SeriesDrawStyle;
+  /** The series' colour as `#rrggbb`; one of the chart's own when omitted. A line's own `color` wins. */
+  color?: string;
   /**
    * Several lines drawn together, such as a band's middle and its edges, all
    * added to a chart at once; `load` returns them as `lines`.
@@ -190,7 +199,8 @@ export interface SeriesCatalogEntry {
   input?: SeriesInput;
   placement?: SeriesPlacement;
   /** The lines of a series that draws several, each with the expression that charts it alone. */
-  lines?: Array<{ id: string; name: string; style?: SeriesDrawStyle; expression: string }>;
+  /** A line that shades the area to another line is drawn as a `band`. */
+  lines?: Array<{ id: string; name: string; style?: SeriesDrawStyle | "band"; expression: string }>;
   /** The chart expression; `{ticker}` stands for the input. */
   expression: string;
   pluginId: string;

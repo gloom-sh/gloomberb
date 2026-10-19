@@ -69,7 +69,8 @@ export function seriesCatalogEntry(series: RegisteredSeries): SeriesCatalogEntry
       lines: definition.lines.map((line) => ({
         id: line.id,
         name: line.name,
-        ...(line.style ? { style: line.style } : {}),
+        // A line shading the area to another is drawn as a band: its line inside the shade.
+        ...(line.fill ? { style: "band" as const } : line.style ? { style: line.style } : {}),
         expression: loadedSeriesExpression(definition, line.id),
       })),
     } : {}),

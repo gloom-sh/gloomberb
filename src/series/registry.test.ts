@@ -52,6 +52,10 @@ describe("series validation", () => {
     expect(() => validateSeriesDefinition(loaded({ lines: [{ id: "a~b", name: "Tilde" }] } as never))).toThrow(/own id/);
     expect(() => validateSeriesDefinition(loaded({ lines: [] } as never))).toThrow(/1 to 8 lines/);
     expect(() => validateSeriesDefinition(loaded({ input: "ticker", placement: "price", lines: [line, { id: "up", name: "Upper", style: "step" }] } as never))).not.toThrow();
+    expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, color: "blue" }] } as never))).toThrow(/#rrggbb/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, fill: "mid" }] } as never))).toThrow(/not another of its lines/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, fill: "gone" }] } as never))).toThrow(/not another of its lines/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, color: "#2962ff", fill: "low" }, { id: "low", name: "Lower" }] } as never))).not.toThrow();
   });
 
   test("public labels say what the data is, never the host or the service it is fetched from", () => {
@@ -219,5 +223,54 @@ describe("a series with lines", () => {
     expect(up.points.map((point) => point.value)).toEqual([12]);
     expect(mid.color).not.toBe(up.color);
     expect(chartSeriesResolveOutputSchema.parse(mid).priceOf).toBe("AAPL");
+  });
+
+  test("a line keeps its own colour, and a line filled to another spans to it as a band", async () => {
+    const definition = {
+      id: "lab:channel",
+      name: "Channel",
+      unit: "currency",
+      frequency: "daily",
+      input: "ticker",
+      lines: [{ id: "up", name: "Upper", color: "#2962ff", fill: "low" }, { id: "low", name: "Lower" }],
+      load: () => ({ lines: {
+        up: [{ date: "2026-06-01", value: 12 }, { date: "2026-06-02", value: 13 }],
+        low: [{ date: "2026-06-01", value: 8 }, { date: "2026-06-02", value: null }],
+      } }),
+    } as const;
+    const viewport = { range: "1Y", resolution: "auto" } as const;
+    const up = await resolveLoadedSeries(definition as never, { viewport, ticker: "AAPL", line: definition.lines[0] });
+    expect(up.color).toBe("#2962ff");
+    expect(up.points.map(({ value, low, high }) => [value, low ?? null, high ?? null])).toEqual([[12, 8, 12], [13, null, null]]);
+    const registry = new SeriesRegistry();
+    registry.register("lab", definition as never);
+    expect(registry.catalog()[0]!.lines!.map((line) => line.style ?? "line")).toEqual(["band", "line"]);
+  });
+
+  test("the shared load is called off once every line that asked for it is", async () => {
+    let aborted: unknown = null;
+    const definition = {
+      id: "lab:slow",
+      name: "Slow",
+      unit: "points",
+      frequency: "daily",
+      input: "ticker",
+      lines: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
+      load: (request: SeriesLoadRequest) => new Promise((_, reject) => {
+        request.signal?.addEventListener("abort", () => { aborted = request.signal!.reason; reject(request.signal!.reason); });
+      }),
+    } as const;
+    const viewport = { range: "1Y", resolution: "auto" } as const;
+    const first = new AbortController();
+    const second = new AbortController();
+    const a = resolveLoadedSeries(definition as never, { viewport, ticker: "AAPL", line: definition.lines[0], signal: first.signal }).catch((error) => error);
+    const b = resolveLoadedSeries(definition as never, { viewport, ticker: "AAPL", line: definition.lines[1], signal: second.signal }).catch((error) => error);
+    first.abort("closed");
+    expect(await a).toBe("closed");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(aborted).toBeNull();
+    second.abort("closed");
+    expect(await b).toBe("closed");
+    expect(aborted).toBe("closed");
   });
 });
