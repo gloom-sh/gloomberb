@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import type { GloomPlugin } from "../../../types/plugin";
 import { teamStore } from "../../../team/store";
 import { notesCliCommand } from "./cli";
-import { exportNotesToDirectory, exportSourceLabel } from "./export";
+import { exportNotesToDirectory, exportNotice, exportSourceLabel } from "./export";
 import { NotesFiles } from "./files";
 import { migrateLocalNotes, notesMigratedAt } from "./migration";
 import { createQuickNotesPane } from "./quick-notes-pane";
@@ -114,8 +114,8 @@ export const notesPlugin: GloomPlugin = {
           ...teams.map((team) => ({ label: exportSourceLabel(registry.forOwner({ kind: "team", teamId: team.id }), team.name), store: registry.forOwner({ kind: "team", teamId: team.id }) })),
         ];
         try {
-          const result = await exportNotesToDirectory(dir, sources);
-          ctx.notify({ body: `Exported ${result.files} ${result.files === 1 ? "note" : "notes"} to ${result.dir}`, type: "success" });
+          // What was skipped is said with the count, as `notes export` warns.
+          ctx.notify(exportNotice(await exportNotesToDirectory(dir, sources)));
         } catch (error) {
           ctx.notify({ body: error instanceof Error ? error.message : "Could not export notes.", type: "error" });
         }

@@ -10,7 +10,7 @@ import { cliStyles } from "../../../utils/cli-output";
 import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import { readChatSessionState } from "../chat/controller/persistence";
-import { exportNotesToDirectory, type NotesExportSource } from "./export";
+import { describeExportSkip, exportNotesToDirectory, type NotesExportSource } from "./export";
 import { NotesFiles } from "./files";
 import { CloudNotesStore } from "./store";
 
@@ -74,7 +74,7 @@ export const notesCliCommand: CliCommandDef = {
           return;
         }
         const result = await exportNotesToDirectory(dir, sources);
-        for (const { label, reason } of result.skipped) warnings.push(`Skipped ${label}: its notes could not be read (${reason}).`);
+        warnings.push(...result.skipped.map(describeExportSkip));
         ctx.printResult({
           data: {
             dir: result.dir,

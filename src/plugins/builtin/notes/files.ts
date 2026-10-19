@@ -35,6 +35,13 @@ export interface NotesFilesIO {
 }
 
 const QUICK_NOTES_INDEX_FILE = "__quick-notes-index__.json";
+
+export interface NotesListOptions {
+  /** A notes folder that cannot be listed rejects instead of listing nothing. */
+  strict?: boolean;
+  /** Hears each note left out because it could not be read, for a caller that says so. */
+  skipped?: (key: string, error: unknown) => void;
+}
 const LOCAL_KEY_PREFIX = "gloomberb:notes:";
 const LOCAL_TIMESTAMP_KEY = "gloomberb:notes:__updated-at__";
 
@@ -237,8 +244,8 @@ export class NotesFiles implements NotesStore {
   }
 
   /** Every stored note, ticker notes and quick notes alike, newest first. */
-  async list(): Promise<NoteFileEntry[]> {
-    const { entries } = await this.readEach(await this.io.listKeys());
+  async list(options: NotesListOptions = {}): Promise<NoteFileEntry[]> {
+    const { entries } = await this.readEach(await this.io.listKeys({ strict: options.strict }), options.skipped);
     return entries.sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
@@ -277,7 +284,10 @@ export class NotesFiles implements NotesStore {
   }
 
   /** An unreadable note is left out and counted rather than synced as empty. */
-  private async readEach(keys: Array<[string, number]>): Promise<{ entries: NoteFileEntry[]; unreadable: number }> {
+  private async readEach(
+    keys: Array<[string, number]>,
+    skipped?: NotesListOptions["skipped"],
+  ): Promise<{ entries: NoteFileEntry[]; unreadable: number }> {
     const entries: NoteFileEntry[] = [];
     let unreadable = 0;
     for (const [key, updatedAt] of keys) {
@@ -286,6 +296,7 @@ export class NotesFiles implements NotesStore {
       } catch (error) {
         unreadable += 1;
         logFailure("notes.files", "Read a note while listing notes failed")(error);
+        skipped?.(key, error);
       }
     }
     return { entries, unreadable };

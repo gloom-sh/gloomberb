@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -23,15 +23,19 @@ test("an unreadable quick notes index reads as empty and logs one fixed line", a
   const notes = new NotesFiles(dataDir);
   writeFileSync(join(dataDir, "__quick-notes-index__.json"), "{ private-title");
   const before = debugLog.getEntries({ source: "notes.files" }).length;
+  // Past any repeat window an earlier test in this process opened for the same line.
+  setSystemTime(new Date("2099-01-01T00:00:00.000Z"));
 
   try {
     expect(await notes.loadQuickNotesIndex()).toEqual([]);
     expect(await notes.loadQuickNotesIndex()).toEqual([]);
     const logged = debugLog.getEntries({ source: "notes.files" }).slice(before);
     expect(logged.map(({ level, message, data }) => ({ level, message, data }))).toEqual([
-      { level: "warn", message: "Read the quick notes index failed", data: undefined },
+      // An earlier test's repeats are counted on this line; the text stays fixed.
+      { level: "warn", message: expect.stringMatching(/^Read the quick notes index failed( \(suppressed repeats: \d+\))?$/), data: undefined },
     ]);
   } finally {
+    setSystemTime();
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
