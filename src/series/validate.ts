@@ -3,6 +3,7 @@ import type {
   SeriesDrawStyle,
   SeriesFrequency,
   SeriesInput,
+  SeriesPlacement,
 } from "./types";
 
 export const SERIES_FREQUENCIES: readonly SeriesFrequency[] = [
@@ -10,6 +11,10 @@ export const SERIES_FREQUENCIES: readonly SeriesFrequency[] = [
 ];
 const SERIES_INPUTS: readonly SeriesInput[] = ["ticker", "option", "crypto"];
 const DRAW_STYLES: readonly SeriesDrawStyle[] = ["line", "area", "step", "columns", "points"];
+const PLACEMENTS: readonly SeriesPlacement[] = ["price", "panel"];
+const LINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** A chart holds ten series: the ticker's price and the lines, with one to spare. */
+export const MAX_SERIES_LINES = 8;
 
 /** Units with no scale: a percentage of something, not a quantity of it. */
 const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as const;
@@ -140,6 +145,12 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   if (definition.input !== undefined && !SERIES_INPUTS.includes(definition.input)) {
     fail(id, `input must be one of ${SERIES_INPUTS.join(", ")}.`);
   }
+  if (definition.placement !== undefined) {
+    if (!PLACEMENTS.includes(definition.placement)) fail(id, `placement must be one of ${PLACEMENTS.join(", ")}.`);
+    if (definition.placement === "price" && definition.input !== "ticker") {
+      fail(id, "placement price needs a ticker input: the series is drawn over that ticker's price.");
+    }
+  }
   const hasLoad = typeof definition.load === "function";
   const hasExpression = definition.expression !== undefined;
   if (hasLoad === hasExpression) fail(id, "give exactly one of load or expression.");
@@ -161,6 +172,22 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   }
   if (loaded.style !== undefined && !DRAW_STYLES.includes(loaded.style)) {
     fail(id, `style must be one of ${DRAW_STYLES.join(", ")}.`);
+  }
+  if (loaded.lines !== undefined) {
+    if (!Array.isArray(loaded.lines) || loaded.lines.length === 0 || loaded.lines.length > MAX_SERIES_LINES) {
+      fail(id, `lines must be a list of 1 to ${MAX_SERIES_LINES} lines.`);
+    }
+    const ids = new Set<string>();
+    for (const line of loaded.lines) {
+      if (!line || typeof line.id !== "string" || !LINE_ID_PATTERN.test(line.id) || ids.has(line.id)) {
+        fail(id, "each line needs its own id of letters, digits, \".\", \"_\" or \"-\".");
+      }
+      ids.add(line.id);
+      checkLabel(id, "line name", line.name, 60, context, false);
+      if (line.style !== undefined && !DRAW_STYLES.includes(line.style)) {
+        fail(id, `line style must be one of ${DRAW_STYLES.join(", ")}.`);
+      }
+    }
   }
 }
 

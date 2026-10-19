@@ -21,6 +21,7 @@ export async function resolveRegisteredSeries(
   const resolved = await resolveLoadedSeries(found.series.definition as LoadedSeriesDefinition, {
     viewport,
     ...(found.ticker ? { ticker: found.ticker } : {}),
+    ...(found.line ? { line: found.line } : {}),
     ...(signal ? { signal } : {}),
   });
   // The same checks a series from another process passes.

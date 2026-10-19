@@ -21,6 +21,8 @@ import {
   isOhlcSeriesStyle,
 } from "../../../time-series/spec";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import type { SeriesPlacement } from "../../../series/types";
+import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
 import { CHART_FIELD_IDS, normalizeInstrument, type ParsedSeriesExpression } from "./series-expression";
 
 /** The chart's first generic future (CL1), whose roll and adjustment the pane's controls show. */
@@ -344,6 +346,65 @@ export function appendChartSeries(
   };
 }
 
+/** The panel a ticker's price is drawn in, when the chart has it. */
+function pricePanelOf(spec: ChartSpec, symbol: string | undefined): string | null {
+  const wanted = symbol ? normalizeInstrument(symbol, true) : null;
+  const key = wanted ? publicTickerKey(wanted.symbol, wanted.exchange) : null;
+  const prices = spec.series.filter(isMarketPriceSeries);
+  const named = key
+    ? prices.find((entry) => entry.source.kind === "security" && (
+      publicTickerKey(entry.source.instrument.symbol, entry.source.instrument.exchange) === key
+      || entry.source.instrument.symbol === wanted!.symbol
+    ))
+    : undefined;
+  return (named ?? prices[0])?.panelId ?? null;
+}
+
+/**
+ * The chart with a registered series added where the series asks to be
+ * drawn: its lines over its ticker's price (`price`), together in a panel of
+ * their own under it (`panel`), or each where it fits.
+ */
+export function appendPlacedSeries(
+  spec: ChartSpec,
+  lines: readonly ParsedSeriesExpression[],
+  options: { placement?: SeriesPlacement; symbol?: string; name: string },
+): { spec: ChartSpec; series: ChartSeriesSpec } {
+  if (lines.length === 0) throw new Error(`${options.name} has nothing to draw.`);
+  if (spec.series.length + lines.length > MAX_CHART_COMPOSER_SERIES) {
+    throw new Error(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series; ${options.name} draws ${lines.length}.`);
+  }
+  if (!options.placement) {
+    let next = spec;
+    let last: ChartSeriesSpec | null = null;
+    for (const line of lines) {
+      const appended = appendChartSeries(next, line);
+      next = appended.spec;
+      last = appended.series;
+    }
+    return { spec: next, series: last! };
+  }
+  let panels = spec.panels;
+  let panelId: string;
+  if (options.placement === "price") {
+    panelId = pricePanelOf(spec, options.symbol) ?? "main";
+  } else if (spec.series.length === 0) {
+    panelId = "main";
+  } else {
+    panelId = nextGeneratedPanelId(spec);
+    panels = [...panels, { id: panelId, label: options.name, height: 0.3 }];
+  }
+  const series = [...spec.series];
+  for (const line of lines) {
+    const built = buildSeriesSpec(line, series.length, { panelId });
+    series.push({ ...built, id: uniqueSeriesId(series, built.id) });
+  }
+  return {
+    series: series.at(-1)!,
+    spec: { ...spec, series, panels: ensureRequiredPanels(panels, series, spec.studies) },
+  };
+}
+
 export function panelsForSeries(series: readonly ChartSeriesSpec[], studies: readonly ChartStudySpec[] = []): ChartPanelSpec[] {
   const panelIds = new Set(["main", ...series.map((entry) => entry.panelId), ...studies.map((entry) => entry.panelId)]);
   return [...panelIds].map((id) => ({
@@ -454,7 +515,23 @@ export function rebindChartSecuritySymbol(spec: ChartSpec, previous: string, nex
   const nextKey = publicTickerKey(nextInstrument.symbol, nextInstrument.exchange);
   if (previousKey === nextKey) return spec;
   let changed = false;
+  // A registered series of a ticker (`zscore/AAPL`) names it after a slash.
+  const previousSuffix = `/${encodeURIComponent(previousKey)}`;
   const series = spec.series.map((entry) => {
+    if (entry.source.kind === "capability" && entry.source.seriesId.endsWith(previousSuffix)) {
+      changed = true;
+      const label = entry.label?.startsWith(`${previousKey} · `)
+        ? `${nextKey} · ${entry.label.slice(previousKey.length + 3)}`
+        : entry.label;
+      return {
+        ...entry,
+        ...(label ? { label } : {}),
+        source: {
+          ...entry.source,
+          seriesId: `${entry.source.seriesId.slice(0, -previousSuffix.length)}/${encodeURIComponent(nextKey)}`,
+        },
+      };
+    }
     if (entry.source.kind !== "security"
       || publicTickerKey(entry.source.instrument.symbol, entry.source.instrument.exchange) !== previousKey) {
       return entry;

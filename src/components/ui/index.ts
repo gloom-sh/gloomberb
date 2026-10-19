@@ -28,7 +28,7 @@ export { NumberPromptDialog } from "./number-prompt-dialog";
 export { SelectButton } from "./select-button";
 export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./select-button";
 
-export { FieldLabel, TextField, NumberField } from "./fields";
+export { FieldLabel, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldFrameStyle, TextField, NumberField } from "./fields";
 export { useFieldRing } from "./field-ring";
 export type { FieldRing, FieldRingOptions } from "./field-ring";
 export { QueryBar, useQueryBarSearch } from "./query-bar";

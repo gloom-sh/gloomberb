@@ -3,7 +3,7 @@ import {
   getTimeSeriesField,
   listTimeSeriesFields,
 } from "../../../time-series/field-catalog";
-import type { SeriesCatalogEntry, SeriesFrequency, SeriesInput } from "../../../series/types";
+import type { SeriesCatalogEntry, SeriesFrequency, SeriesInput, SeriesPlacement } from "../../../series/types";
 import { parseOptionSymbol } from "../../../utils/options";
 import type { SeriesCatalogInstrument } from "./series-catalog";
 
@@ -32,6 +32,13 @@ export interface CatalogSeriesRow {
   url?: string;
   /** Asks for a symbol before charting. */
   input?: SeriesInput;
+  /** The symbol a row filled in for a typed ticker charts. */
+  symbol?: string;
+  /** The registered series' own name, and where it asks to be drawn. */
+  seriesName?: string;
+  placement?: SeriesPlacement;
+  /** The lines of a series that draws several, `{ticker}` where a symbol goes. */
+  lines?: SeriesCatalogEntry["lines"];
   /** The plugin that registered the series. */
   pluginId: string;
   searchText: string;
@@ -112,6 +119,11 @@ function rowFromEntry(entry: SeriesCatalogEntry): Omit<CatalogSeriesRow, "order"
     template: entry.expression,
     ...(entry.url ? { url: entry.url } : {}),
     ...(entry.input ? { input: entry.input } : {}),
+    ...(entry.placement || entry.lines?.length ? {
+      seriesName: entry.name,
+      ...(entry.placement ? { placement: entry.placement } : {}),
+      ...(entry.lines?.length ? { lines: entry.lines } : {}),
+    } : {}),
     pluginId: entry.pluginId,
     searchText: [
       entry.name, publisher, group, entry.unit, entry.frequency, expression, entry.id,
@@ -254,6 +266,7 @@ export function catalogRowsForResolvedInstruments(
         expression,
         template: expression,
         input: undefined,
+        symbol,
         // Right after the series it fills in, instruments in the order given.
         order: row.order + (index + 1) / (instruments.length + 1),
         searchText: `${symbol.toLowerCase()} ${(instrument.name ?? "").toLowerCase()} ${row.searchText} ${expression.toLowerCase()}`,
@@ -274,6 +287,31 @@ export function catalogExpressionForRow(entry: CatalogSeriesRow, ticker?: string
   if (!entry.input) return entry.template;
   const symbol = ticker ? catalogTickerFromInput(ticker) : null;
   return symbol ? fillTemplate(entry.template, symbol) : null;
+}
+
+/**
+ * For a row whose series asks where it is drawn or draws several lines: the
+ * series as the chart builds it, with the symbol typed or filled in. Null for
+ * a row a plain expression charts, or one still missing its symbol.
+ */
+export function catalogPlacedSeriesForRow(entry: CatalogSeriesRow, ticker?: string): {
+  name: string;
+  template: string;
+  placement?: SeriesPlacement;
+  lines?: SeriesCatalogEntry["lines"];
+  symbol?: string;
+} | null {
+  if (!entry.seriesName) return null;
+  const symbol = entry.input ? (ticker ? catalogTickerFromInput(ticker) : null) : entry.symbol ?? null;
+  if (entry.input && !symbol) return null;
+  // A filled-in row's template already holds its symbol; its lines still read `{ticker}`.
+  return {
+    name: entry.seriesName,
+    template: entry.template,
+    ...(entry.placement ? { placement: entry.placement } : {}),
+    ...(entry.lines ? { lines: entry.lines } : {}),
+    ...(symbol ? { symbol } : {}),
+  };
 }
 
 function matchesCatalogQuery(entry: CatalogSeriesRow, tokens: readonly string[]): boolean {

@@ -6,12 +6,16 @@ import type {
   SeriesPeriod,
   TimeSeriesPoint,
 } from "../time-series/types";
+import { getPresetResolution, type ManualChartResolution } from "../time-series/resolution";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
   LoadedSeriesDefinition,
   SeriesFrequency,
+  SeriesLine,
+  SeriesLinesLoadResult,
   SeriesLoadOutput,
   SeriesLoadRequest,
+  SeriesLoadResult,
   SeriesPoint,
 } from "./types";
 
@@ -50,11 +54,16 @@ function seriesUnitGroup(unit: string): string {
   return unit === "%" ? "percent" : `series:${unit.toLowerCase()}`;
 }
 
-/** One colour per id, so two loaded series on a chart are told apart. */
-function seriesColor(id: string): string {
+/** One colour per id, so two loaded series on a chart are told apart; a series' lines take the colours after it. */
+function seriesColor(id: string, lineIndex = 0): string {
   let hash = 0;
   for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return SERIES_COLORS[hash % SERIES_COLORS.length]!;
+  return SERIES_COLORS[(hash + lineIndex) % SERIES_COLORS.length]!;
+}
+
+/** The bar size a chart draws prices in: the one it was set to, else its range's default. */
+function viewportResolution(viewport: ChartViewportSpec): ManualChartResolution {
+  return viewport.resolution === "auto" ? getPresetResolution(viewport.range) : viewport.resolution;
 }
 
 /** The dates a chart viewport covers, as a series load request takes them. */
@@ -68,32 +77,88 @@ export function seriesLoadWindow(viewport: ChartViewportSpec, now = new Date()):
   return { start: subtractTimeRange(now, viewport.range) };
 }
 
-function loadResult(output: SeriesLoadOutput): Exclude<SeriesLoadOutput, readonly SeriesPoint[]> {
-  if (Array.isArray(output)) return { points: output };
-  const result = output as Exclude<SeriesLoadOutput, readonly SeriesPoint[]>;
+function loadResult(output: SeriesLoadOutput, line: SeriesLine | undefined): SeriesLoadResult {
+  if (Array.isArray(output)) {
+    if (line) throw new Error("Series loader returned points where its lines were expected.");
+    return { points: output };
+  }
+  const result = output as Partial<SeriesLoadResult & SeriesLinesLoadResult> | null;
+  if (line) {
+    if (!result || !result.lines || typeof result.lines !== "object") throw new Error("Series loader returned no lines.");
+    const { lines, ...rest } = result;
+    const points = lines[line.id];
+    // A line the loaded data no longer has (the series changed under a saved chart) draws nothing.
+    return { ...rest, points: Array.isArray(points) ? points : [] };
+  }
   if (!result || !Array.isArray(result.points)) throw new Error("Series loader returned no points.");
-  return result;
+  return result as SeriesLoadResult;
+}
+
+/** How long one load is shared by the lines of a series that ask for it together. */
+const SHARED_LOAD_MS = 2_000;
+const sharedLoads = new WeakMap<LoadedSeriesDefinition, Map<string, Promise<SeriesLoadOutput>>>();
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/**
+ * Loads a series once for all of its lines: a chart asks for each line on its
+ * own, at the same time and for the same dates, and the loader runs once.
+ */
+function loadSeries(definition: LoadedSeriesDefinition, request: SeriesLoadRequest): Promise<SeriesLoadOutput> {
+  if (!definition.lines?.length) return Promise.resolve(definition.load(request));
+  const { signal, ...shared } = request;
+  // A window measured back from now moves by milliseconds between the lines' requests.
+  const minute = (date: Date | undefined) => date ? Math.floor(date.getTime() / 60_000) : null;
+  const key = JSON.stringify([shared.ticker ?? null, minute(shared.start), minute(shared.end), shared.resolution ?? null]);
+  let byKey = sharedLoads.get(definition);
+  if (!byKey) sharedLoads.set(definition, byKey = new Map());
+  let pending = byKey.get(key);
+  if (!pending) {
+    const loading = Promise.resolve().then(() => definition.load(shared));
+    pending = loading;
+    byKey.set(key, loading);
+    const forget = () => {
+      const timer = setTimeout(() => { if (byKey.get(key) === loading) byKey.delete(key); }, SHARED_LOAD_MS);
+      (timer as { unref?: () => void }).unref?.();
+    };
+    loading.then(forget, forget);
+  }
+  return abortable(pending, signal);
 }
 
 export async function resolveLoadedSeries(
   definition: LoadedSeriesDefinition,
-  request: { viewport: ChartViewportSpec; ticker?: string; signal?: AbortSignal },
+  request: { viewport: ChartViewportSpec; ticker?: string; line?: SeriesLine; signal?: AbortSignal },
   now = new Date(),
 ): Promise<ResolvedSeries> {
   const ticker = request.ticker?.trim().toUpperCase() || undefined;
-  const { points, warning, attribution } = loadResult(await definition.load({
+  const line = definition.lines?.length ? request.line ?? definition.lines[0] : undefined;
+  const { points, warning, attribution } = loadResult(await loadSeries(definition, {
     ...seriesLoadWindow(request.viewport, now),
     ...(ticker ? { ticker } : {}),
+    resolution: viewportResolution(request.viewport),
     ...(request.signal ? { signal: request.signal } : {}),
-  }));
-  const id = ticker ? `${definition.id}/${ticker}` : definition.id;
-  const style = definition.style ?? "line";
+  }), line);
+  const seriesId = ticker ? `${definition.id}/${ticker}` : definition.id;
+  const id = line ? `${definition.id}~${line.id}${ticker ? `/${ticker}` : ""}` : seriesId;
+  const name = line ? `${definition.name} · ${line.name}` : definition.name;
+  const style = line?.style ?? definition.style ?? "line";
   return {
     id,
-    label: ticker ? `${ticker} · ${definition.name}` : definition.name,
-    color: seriesColor(id),
+    label: ticker ? `${ticker} · ${name}` : name,
+    color: seriesColor(seriesId, line ? definition.lines!.indexOf(line) : 0),
     unit: definition.unit,
     unitGroup: seriesUnitGroup(definition.unit),
+    // Drawn in the ticker's price: the chart puts it on that price's axis.
+    ...(definition.placement === "price" && ticker ? { priceOf: ticker } : {}),
     nativeFrequency: nativeFrequency(definition.frequency),
     dataShape: "scalar",
     style,

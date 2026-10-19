@@ -6,6 +6,7 @@
  * either loads its own history (`load`) or points at something the composer
  * already draws (`expression`), such as a FRED series or a ticker field.
  */
+import type { ManualChartResolution } from "../time-series/resolution";
 
 /** How often a series gets a new observation. */
 export type SeriesFrequency =
@@ -27,6 +28,23 @@ export type SeriesInput = "ticker" | "option" | "crypto";
 /** How a loaded series is drawn when it is first added to a chart. */
 export type SeriesDrawStyle = "line" | "area" | "step" | "columns" | "points";
 
+/**
+ * Where a chart puts a series when it is added: `price` over its ticker's
+ * price, on the price's axis (a moving average, a band around the price);
+ * `panel` in a panel of its own under the price (an oscillator, a z-score).
+ */
+export type SeriesPlacement = "price" | "panel";
+
+/** One of the lines a series draws, such as a band's middle or an edge. */
+export interface SeriesLine {
+  /** Letters, digits, ".", "_" or "-", unique in the series. */
+  id: string;
+  /** What the legend calls the line, after the series name. */
+  name: string;
+  /** How the line is drawn; the series' own style when omitted. */
+  style?: SeriesDrawStyle;
+}
+
 export interface SeriesPoint {
   /** The observation date: a Date, an ISO date or date-time string, or epoch milliseconds. */
   date: Date | string | number;
@@ -41,6 +59,12 @@ export interface SeriesLoadRequest {
   end?: Date;
   /** The symbol typed for a series with an `input`, upper case (AAPL, BTC-USD). */
   ticker?: string;
+  /**
+   * The bar size the chart draws prices in (`1d`, `1wk`, `5m`): the one it
+   * was set to, or its range's default. A series computed from a ticker's
+   * bars uses it to compute on the same bars.
+   */
+  resolution?: ManualChartResolution;
   signal?: AbortSignal;
 }
 
@@ -58,7 +82,12 @@ export interface SeriesLoadResult {
   attribution?: SeriesAttribution;
 }
 
-export type SeriesLoadOutput = readonly SeriesPoint[] | SeriesLoadResult;
+/** What a series with `lines` loads: each line's observations, by line id. */
+export interface SeriesLinesLoadResult extends Omit<SeriesLoadResult, "points"> {
+  lines: Readonly<Record<string, readonly SeriesPoint[]>>;
+}
+
+export type SeriesLoadOutput = readonly SeriesPoint[] | SeriesLoadResult | SeriesLinesLoadResult;
 
 interface SeriesDefinitionBase {
   /**
@@ -92,6 +121,12 @@ interface SeriesDefinitionBase {
   url?: string;
   /** Ask for a ticker, an option or a crypto pair before charting. */
   input?: SeriesInput;
+  /**
+   * Where a chart draws the series when it is added. `price` needs a ticker
+   * `input` and a value in the ticker's price (unit `currency`). Without it,
+   * the series joins the main panel when it fits there.
+   */
+  placement?: SeriesPlacement;
 }
 
 /** A series that loads its own history. */
@@ -108,6 +143,11 @@ export interface LoadedSeriesDefinition extends SeriesDefinitionBase {
   refreshMs?: number;
   /** How the series is drawn when first added; a line when omitted. */
   style?: SeriesDrawStyle;
+  /**
+   * Several lines drawn together, such as a band's middle and its edges, all
+   * added to a chart at once; `load` returns them as `lines`.
+   */
+  lines?: readonly SeriesLine[];
   expression?: never;
 }
 
@@ -121,6 +161,7 @@ export interface ExpressionSeriesDefinition extends SeriesDefinitionBase {
   load?: never;
   refreshMs?: never;
   style?: never;
+  lines?: never;
 }
 
 export type SeriesDefinition = LoadedSeriesDefinition | ExpressionSeriesDefinition;
@@ -147,6 +188,9 @@ export interface SeriesCatalogEntry {
   publisher?: string;
   url?: string;
   input?: SeriesInput;
+  placement?: SeriesPlacement;
+  /** The lines of a series that draws several, each with the expression that charts it alone. */
+  lines?: Array<{ id: string; name: string; style?: SeriesDrawStyle; expression: string }>;
   /** The chart expression; `{ticker}` stands for the input. */
   expression: string;
   pluginId: string;

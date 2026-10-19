@@ -44,6 +44,16 @@ describe("series validation", () => {
     expect(() => validateSeriesDefinition(loaded({ input: "ticker" }))).not.toThrow();
   });
 
+  test("a series drawn over a price needs a ticker, and its lines need ids of their own", () => {
+    expect(() => validateSeriesDefinition(loaded({ placement: "price" }))).toThrow(/needs a ticker input/);
+    expect(() => validateSeriesDefinition(loaded({ placement: "above" as never, input: "ticker" }))).toThrow(/placement/);
+    const line = { id: "mid", name: "Middle" };
+    expect(() => validateSeriesDefinition(loaded({ lines: [line, { ...line, name: "Again" }] } as never))).toThrow(/own id/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [{ id: "a~b", name: "Tilde" }] } as never))).toThrow(/own id/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [] } as never))).toThrow(/1 to 8 lines/);
+    expect(() => validateSeriesDefinition(loaded({ input: "ticker", placement: "price", lines: [line, { id: "up", name: "Upper", style: "step" }] } as never))).not.toThrow();
+  });
+
   test("public labels say what the data is, never the host or the service it is fetched from", () => {
     const words = hostLabelWords(["api.rainco.example", "rainco.example", "x.io"]);
     expect(words).toEqual(["rainco"]);
@@ -88,6 +98,29 @@ describe("series registry", () => {
     expect(registry.findLoaded("lab", "index/AAPL")).toBeNull();
     expect(registry.findLoaded("lab", "index")?.series.definition.id).toBe("lab:index");
     expect(registry.findLoaded("elsewhere", "index")).toBeNull();
+  });
+
+  test("a series with lines lists each line's expression and charts one line at a time, the first when none is named", () => {
+    const registry = new SeriesRegistry();
+    registry.register("lab", loaded({
+      id: "lab:bands",
+      input: "ticker",
+      placement: "panel",
+      lines: [{ id: "mid", name: "Middle" }, { id: "up", name: "Upper", style: "step" }],
+    } as never));
+    const [entry] = registry.catalog();
+    expect(entry).toMatchObject({
+      expression: "CAP:lab:bands/{ticker}",
+      placement: "panel",
+      lines: [
+        { id: "mid", name: "Middle", expression: "CAP:lab:bands~mid/{ticker}" },
+        { id: "up", name: "Upper", style: "step", expression: "CAP:lab:bands~up/{ticker}" },
+      ],
+    });
+    expect(capabilitySeriesId(registry.get("lab:bands")!.definition, "aapl", "up")).toBe("bands~up/AAPL");
+    expect(registry.findLoaded("lab", "bands~up/AAPL")).toMatchObject({ ticker: "AAPL", line: { id: "up" } });
+    expect(registry.findLoaded("lab", "bands/AAPL")?.line?.id).toBe("mid");
+    expect(registry.findLoaded("lab", "bands~gone/AAPL")).toBeNull();
   });
 
   test("the catalog snapshot is shared until something changes, and listeners hear each change", () => {
@@ -151,5 +184,40 @@ describe("loading a series", () => {
     expect(seriesLoadWindow({ range: "ALL", resolution: "auto" })).toEqual({});
     expect(seriesLoadWindow({ range: "1Y", resolution: "auto", dateWindow: { start: "2024-01-01", end: "2024-02-01" } }))
       .toEqual({ start: new Date("2024-01-01"), end: new Date("2024-02-01") });
+  });
+});
+
+describe("a series with lines", () => {
+  test("loads once for the lines a chart asks for together, and each line gets its points, name, colour and style", async () => {
+    const requests: SeriesLoadRequest[] = [];
+    const definition = {
+      id: "lab:bands",
+      name: "Bands",
+      unit: "currency",
+      frequency: "daily",
+      input: "ticker",
+      placement: "price",
+      lines: [{ id: "mid", name: "Middle" }, { id: "up", name: "Upper", style: "step" }],
+      load: async (request: SeriesLoadRequest) => {
+        requests.push(request);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { lines: { mid: [{ date: "2026-06-01", value: 10 }], up: [{ date: "2026-06-01", value: 12 }] } };
+      },
+    } as const;
+    const viewport = { range: "5Y", resolution: "auto" } as const;
+    const now = new Date("2026-06-15T00:00:00Z");
+    const [mid, up] = await Promise.all([
+      resolveLoadedSeries(definition as never, { viewport, ticker: "aapl", line: definition.lines[0] }, now),
+      resolveLoadedSeries(definition as never, { viewport, ticker: "aapl", line: definition.lines[1] }, now),
+    ]);
+    expect(requests).toHaveLength(1);
+    // A 5Y chart draws weekly bars unless it was set otherwise; the loader computes on the same bars.
+    expect(requests[0]).toMatchObject({ ticker: "AAPL", resolution: "1wk" });
+    expect(mid).toMatchObject({ id: "lab:bands~mid/AAPL", label: "AAPL · Bands · Middle", style: "line", priceOf: "AAPL" });
+    expect(up).toMatchObject({ id: "lab:bands~up/AAPL", label: "AAPL · Bands · Upper", style: "step", interpolation: "step-after" });
+    expect(mid.points.map((point) => point.value)).toEqual([10]);
+    expect(up.points.map((point) => point.value)).toEqual([12]);
+    expect(mid.color).not.toBe(up.color);
+    expect(chartSeriesResolveOutputSchema.parse(mid).priceOf).toBe("AAPL");
   });
 });
