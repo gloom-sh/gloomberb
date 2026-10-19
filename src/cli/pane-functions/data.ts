@@ -27,7 +27,7 @@ const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
 const FINANCIAL_ANALYSIS_TEMPLATE_ID = "financial-analysis-pane";
 
-async function loadStoredShotTicker(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
+export async function loadStoredShotTicker(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
   const normalized = cleanTickerInput(symbol);
   const { symbol: bare } = parsePublicTickerKey(normalized);
   return await context.store.loadTicker(normalized)

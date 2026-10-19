@@ -47,6 +47,8 @@ import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
 import { deriveCaptureReport } from "./freshness";
 import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
+import { noProviderError } from "../../sources/provider-errors";
+import { ApiRequestError } from "../../api-client/errors";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
 import { loadPeriodEndHistory } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
 import {
@@ -1199,15 +1201,27 @@ describe("portfolio screenshot members", () => {
     expect(shot.tickers.at(-1)!.metadata.positions[0]).toMatchObject({ markPrice: 100, multiplier: 100 });
   });
 
-  test("still fails for a holding the broker never marked", async () => {
+  test("a holding no source quotes and the broker never marked is a row without a price, not a failed capture", async () => {
     const [stock] = MARGIN_TICKERS;
     const unmarked = { metadata: { ...stock!.metadata, positions: [{ ...stock!.metadata.positions[0]!, markPrice: undefined, marketValue: undefined }] } };
+    const shot = await capture({
+      getTickerFinancials: async (symbol) => {
+        const financials = symbol === "AAA" ? undefined : quotes.get(symbol);
+        if (!financials) throw new Error(`No provider available for ${symbol}`);
+        return financials;
+      },
+    }, [unmarked, ...MARGIN_TICKERS.slice(1)]);
+    expect(shot.tickers.map(({ metadata }) => metadata.ticker)).toEqual(["AAA", "BBB", option.metadata.ticker]);
+    // Captured with nothing, so the page shows the row unpriced rather than fetching it.
+    expect(shot.financials.find(([symbol]) => symbol === "AAA")?.[1]).toMatchObject({ priceHistory: [], annualStatements: [] });
+    expect(shot.financials.find(([symbol]) => symbol === "AAA")?.[1].quote).toBeUndefined();
+    // A read the service rate limited may answer when taken again: the capture fails rather than show the row unpriced.
     await expect(capture({
       getTickerFinancials: async (symbol) => {
-        if (symbol === "AAA") throw new Error("Cloud financials are unavailable for AAA");
+        if (symbol === "AAA") throw noProviderError("No provider available for AAA", { failure: new ApiRequestError("Too many requests", 429) }, "AAA");
         return quotes.get(symbol)!;
       },
-    }, [unmarked, ...MARGIN_TICKERS.slice(1)])).rejects.toThrow("unavailable for AAA");
+    }, [unmarked, ...MARGIN_TICKERS.slice(1)])).rejects.toThrow("No provider available for AAA");
   });
 });
 

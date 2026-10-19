@@ -88,6 +88,25 @@ export class ProviderRouterSearchRoutes {
 
   constructor(private readonly deps: ProviderRouterSearchDeps) {}
 
+  /**
+   * Several searches answered by the preferred provider in a few requests,
+   * each merged as `search` merges that source's rows. Null while a broker can
+   * search: its rows join every search's answer, so those go one at a time.
+   */
+  async searchBatch(queries: string[], options?: { limit?: number; signal?: AbortSignal }): Promise<Map<string, InstrumentSearchResult[]> | null> {
+    if (this.deps.getBrokerCandidates().some((candidate) => candidate.broker.searchInstruments)) return null;
+    const [preferred] = this.deps.providersInPriorityOrder();
+    if (!preferred?.searchBatch) return null;
+    const answers = await preferred.searchBatch(queries, options)
+      .catch(logFailure("sources.provider-router.search", "Batched search failed", null));
+    if (!answers) return null;
+    return new Map([...answers].map(([query, items]) => {
+      const results: InstrumentSearchResult[] = [];
+      mergeSearchResults(results, new Map(), items);
+      return [query, results] as const;
+    }));
+  }
+
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
     const cacheKey = buildSearchCacheKey(query, context);
     const cached = this.searchCache.get(cacheKey);

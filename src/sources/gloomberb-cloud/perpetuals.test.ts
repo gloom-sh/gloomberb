@@ -107,6 +107,26 @@ afterEach(() => {
   for (const [target, key, value] of patched.splice(0).reverse()) (target as Record<string, unknown>)[key] = value;
 });
 
+test("a batched search's perpetual markets are the ones each query's own search finds, read from the board once", async () => {
+  const client = fakeClient();
+  patch(apiClient, "getCloudPerpsBoard", client.getCloudPerpsBoard as typeof apiClient.getCloudPerpsBoard);
+  patch(apiClient, "getCloudPerpsMarket", client.getCloudPerpsMarket as typeof apiClient.getCloudPerpsMarket);
+  // Every query has a listing of its own; NONE has none, and is searched again alone.
+  const listing = (query: string) => ({ providerId: "gloomberb-cloud", symbol: query, name: `${query} Fund`, exchange: "NYSE", type: "ETF" });
+  const listings = (query: string) => query === "NONE" ? [] : [listing(query)];
+  patch(apiClient, "searchInstruments", (async (query: string) => listings(query)) as typeof apiClient.searchInstruments);
+  patch(apiClient, "searchInstrumentsBatch", (async (queries: readonly string[]) =>
+    new Map(queries.map((query) => [query, listings(query)]))) as unknown as typeof apiClient.searchInstrumentsBatch);
+  const provider = new GloomberbCloudProvider();
+  const queries = ["BRENT", "BZ", "XOM", "NONE"];
+  const batched = await provider.searchBatch(queries);
+  const searchesOfTheBoard = client.boards.length;
+  for (const query of queries.slice(0, 3)) expect(batched?.get(query)).toEqual(await provider.search(query));
+  expect(batched?.get("BRENT")?.map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
+  expect(batched?.get("NONE")).toEqual([]);
+  expect(searchesOfTheBoard).toBe(1);
+});
+
 describe("the quote path", () => {
   test("perpetuals go to the PERP dataset and every other listing to the quote service, in one batch and in the stream", async () => {
     // Read a minute ago: a current price for a market that never closes.

@@ -1,5 +1,5 @@
 import { apiClient } from "../../api-client";
-import type { PerpBoardRow, PerpMarketPayload } from "../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpMarketPayload } from "../../api-client/perps";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote } from "../../types/financials";
 import type { PriceHistoryResult } from "../../types/price-history";
@@ -137,6 +137,25 @@ function searchResult(row: PerpBoardRow): InstrumentSearchResult | null {
     exchange: listing.exchange,
     type: PERPETUAL_TYPE,
     currency: row.quoteCurrency,
+  };
+}
+
+/**
+ * A client whose board searches are answered from one copy of the board, as
+ * the board answers them: its rows whose symbol, base asset or name holds the
+ * words, in its order. The board read without a search is the one a search
+ * reads (all of it with Pro, its preview without), so a list's searches cost
+ * one board request and find what each would find alone.
+ */
+export function boardSearchesFrom(board: PerpBoardPayload, client: PerpsClient = apiClient): PerpsClient {
+  const rows = Array.isArray(board?.rows) ? board.rows : [];
+  return {
+    getCloudPerpsMarket: client.getCloudPerpsMarket,
+    getCloudPerpsHistory: client.getCloudPerpsHistory,
+    getCloudPerpsBoard: async ({ search } = {}) => {
+      const wanted = search?.trim().toUpperCase();
+      return { ...board, rows: wanted ? rows.filter((row) => `${row.symbol} ${row.baseAsset} ${row.displayName}`.toUpperCase().includes(wanted)) : rows };
+    },
   };
 }
 

@@ -36,6 +36,11 @@ export class StagedTickerRepository {
     return ticker;
   }
 
+  /** Drops what the command staged for a ticker, so the commit leaves it as it was. */
+  discard(symbol: string): void {
+    this.staged.delete(symbol);
+  }
+
   async deleteTicker(): Promise<void> {
     throw new Error("A staged ticker store does not delete tickers.");
   }

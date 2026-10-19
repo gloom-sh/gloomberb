@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { isNoSourceAnswer } from "../../sources/provider-errors";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
@@ -91,6 +92,7 @@ import {
   createFallbackTicker,
   fetchTickerFinancials,
   loadBrokerMarkedHolding,
+  loadStoredShotTicker,
   isFinancialAnalysisFunction,
   readsDailyReturns,
   withShotDailyReturns,
@@ -634,11 +636,23 @@ export async function buildDesktopShotPayload(
     } catch (error) {
       // A report that reads its own argument (CDS's issuer name) renders it with no ticker data, as `fn` does.
       if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) continue;
+      if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) throw error;
       // The pane values a holding no quote covers, such as an option contract,
       // at the broker's mark. It has no financials to capture.
-      const holding = COLLECTION_PANE_IDS.has(resolved.pane.id) ? await loadBrokerMarkedHolding(context, symbol) : null;
-      if (!holding) throw error;
-      tickers.push(holding);
+      const holding = await loadBrokerMarkedHolding(context, symbol);
+      if (holding) {
+        tickers.push(holding);
+        continue;
+      }
+      // Any other holding no source quotes (an over-the-counter name none
+      // carries) is still a row of the list: it shows without a price, and the
+      // capture names it under "No data for" rather than failing. A read that
+      // was refused, rate limited or timed out fails the capture, to be taken again.
+      if (!isNoSourceAnswer(error)) throw error;
+      const stored = await loadStoredShotTicker(context, symbol);
+      if (!stored) throw error;
+      tickers.push(stored);
+      financials.push([symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]);
       continue;
     }
     const requestedRange = shotPriceHistoryRange(resolved);
@@ -1141,6 +1155,7 @@ export function assessPaneScreenshot(
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
+    ...unquotedHoldingsNotice(resolved, payload),
     ...(render.surfaces?.some((surface) => surface.renderer === "software")
       ? ["The 3D surface was drawn by the software renderer: this browser has no WebGL."] : []),
   ];
@@ -1176,6 +1191,20 @@ export function assessPaneScreenshot(
       chartEvidenceMismatches,
     },
   };
+}
+
+/**
+ * The holdings of a portfolio or watchlist capture no source quoted (an
+ * over-the-counter name none carries), whose rows show no price: "No quote
+ * for KISB; its row shows no price."
+ */
+function unquotedHoldingsNotice(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload): string[] {
+  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return [];
+  const unquoted = payload.financials.flatMap(([symbol, financials]) => (
+    !financials.quote && financials.priceHistory.length === 0 && financials.annualStatements.length === 0 ? [symbol] : []
+  ));
+  if (unquoted.length === 0) return [];
+  return [`No quote for ${unquoted.join(", ")}; ${unquoted.length === 1 ? "its row shows" : "their rows show"} no price.`];
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {

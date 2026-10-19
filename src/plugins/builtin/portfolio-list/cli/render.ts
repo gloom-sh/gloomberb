@@ -72,6 +72,7 @@ import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
+import { lastTradeDate } from "../../../../tickers/listing-fate";
 import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
@@ -604,6 +605,8 @@ async function showCollectionWithMarketData(
   const source = !isPortfolio ? "Local watchlist and Gloom Cloud"
     : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud";
   let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source });
+  // A watchlist's stale rows, named under the closing line that counts them.
+  let staleNote: string | null = null;
 
   if (!structured) {
     console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
@@ -970,7 +973,9 @@ async function showCollectionWithMarketData(
     const extendedSessions = extendedSessionsOf(watched.map(({ extended }) => extended?.session));
     // Funding is the one column a list earns by holding perpetual markets; any other list's table is unchanged.
     const showFunding = watched.some(({ funding }) => funding !== undefined);
-    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding }) => {
+    // So is Last Trade, by holding a stale quote: the rows the closing line counts stale, dated as `quote` dates them.
+    const stale = watched.filter((entry) => entry.stale);
+    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }) => {
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -980,6 +985,7 @@ async function showCollectionWithMarketData(
         venue ?? "—",
         priceText,
         changeText,
+        ...stale.length > 0 ? [rowStale ? cliStyles.warning(lastTrade ? `STALE ${lastTrade}` : "STALE") : ""] : [],
         ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
         ...showFunding ? [funding == null ? "—" : colorBySign(formatPerpetualRate(funding, 4), funding)] : [],
         marketCap == null ? "—" : `${formatCompact(marketCap)} ${currency}`,
@@ -992,6 +998,7 @@ async function showCollectionWithMarketData(
         { header: "Exchange" },
         { header: "Last", align: "right" },
         { header: "Chg", align: "right" },
+        ...stale.length > 0 ? [{ header: "Last Trade", shrink: false }] : [],
         ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 1 })),
         // As the TUI's FUND 8H: per eight hours whatever interval the venue pays on.
         ...showFunding ? [{ header: "Fund 8H", align: "right" as const, optional: true, dropPriority: 1 }] : [],
@@ -1002,8 +1009,12 @@ async function showCollectionWithMarketData(
     ));
     const notes = marketCapNotes(watched);
     if (notes.length > 0) console.log(["", ...notes.map((note) => cliStyles.muted(note))].join("\n"));
+    // The closing line counts the stale rows; the line under it names them.
+    if (stale.length > 0) {
+      staleNote = `Stale: ${namedList(stale.map(({ ticker, lastTrade }) => `${listingLabel(ticker)}${lastTrade ? ` (last trade ${lastTrade})` : ""}`))}.`;
+    }
   }
-  if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+  if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}${staleNote ? `\n${cliStyles.muted(staleNote)}` : ""}`);
   if (explain) console.log(`\n${renderReportGlossary(EXPLAINED_REPORT, explained)}`);
 }
 
@@ -1019,6 +1030,10 @@ interface WatchlistRowValue {
   marketCap: number | null;
   /** A perpetual market's funding per eight hours, as a fraction; null when its market cannot be read, undefined for any other row. */
   funding: number | null | undefined;
+  /** Whether the quote is stale, as the closing line counts it. */
+  stale: boolean;
+  /** The exchange-local date of the quote's last trade. */
+  lastTrade: string | null;
   row: Record<string, unknown>;
 }
 
@@ -1109,8 +1124,10 @@ async function valueWatchlistRows({
     const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
     const venue = exchangeShortName(quote?.tradingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
     const funding = perpetualFunding.get(symbol);
+    const stale = quoteFreshnessFields(quote).stale === true;
+    const lastTrade = quote ? lastTradeDate(quote) : null;
     values.push({
-      ticker, quote, headline, extended, kind, venue, marketCap, funding,
+      ticker, quote, headline, extended, kind, venue, marketCap, funding, stale, lastTrade,
       row: {
         symbol,
         ...listingColumns(ticker, quote),
@@ -1127,6 +1144,9 @@ async function valueWatchlistRows({
         marketCapCurrency: currency,
         // When the price shown was observed, as `quote` dates it.
         quoteAsOf: quote ? known(quoteHeadlineTime(quote)) : null,
+        // A stale quote (as the source line counts it) and the exchange-local date it last traded.
+        stale,
+        lastTradeDate: lastTrade,
       },
     });
   }

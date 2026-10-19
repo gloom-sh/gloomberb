@@ -235,6 +235,19 @@ export interface AssetDataProvider {
    * META), or what its holder was called before. Null when none is on record.
    */
   getTickerChanges?(symbol: string, options?: { signal?: AbortSignal }): Promise<TickerChanges | null>;
+  /**
+   * `getTickerChanges` for several symbols in a few requests, by symbol as
+   * asked: null for one with no change on record. A symbol the source could not
+   * answer for is left out; null when the source cannot answer a batch at all.
+   */
+  getTickerChangesBatch?(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, TickerChanges | null> | null>;
+  /**
+   * Several searches in a few requests, each answered with the rows `search`
+   * gives it from this source (up to `limit`), by query as asked. A query the
+   * source could not search is left out; null when it cannot search a batch at
+   * all, or when another source (a connected broker) adds rows of its own.
+   */
+  searchBatch?(queries: string[], options?: { limit?: number; signal?: AbortSignal }): Promise<Map<string, InstrumentSearchResult[]> | null>;
   getEarningsCalendar?(symbols: string[], context?: MarketDataRequestContext): Promise<EarningsEvent[]>;
   getSecFilingDocuments?(filing: SecFilingItem): Promise<SecFilingDocument[]>;
   getSecFilingContent?(filing: SecFilingItem): Promise<string | null>;

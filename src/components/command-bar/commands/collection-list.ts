@@ -7,6 +7,7 @@ import {
   NO_MATCH,
   reason,
   summarizeSymbolRows,
+  typedSymbolChoice,
   type SymbolRow,
 } from "../../../cli/symbol-rows";
 import type { DataProvider } from "../../../types/data-provider";
@@ -83,7 +84,11 @@ function ambiguityFailure(error: Error): Error {
 function reasonLine(row: SymbolRow): string | null {
   const typed = symbolInputKey(row.input);
   if (row.hint && row.status === "added") return row.hint;
+  // Another company had the symbol: say which, beside the listing added.
+  if (row.changeNote && row.status === "added") return row.changeNote;
   if (row.readAs && (row.status === "added" || row.status === "already_listed")) return row.readAs;
+  // Why the match was left out, and the symbol it trades as now when there is one.
+  if (row.status === "needs_choice") return row.message ?? typed;
   if (row.status !== "failed" && !(row.status === "not_found" && row.message && !NO_MATCH.test(row.message))) return null;
   const text = reason(row.message ?? "", typed);
   return text.includes(typed) ? text : `${typed}: ${text}`;
@@ -102,12 +107,31 @@ function describeListAdd(
   const summary = `Watchlist "${watchlistName}": ${summarizeSymbolRows(rows, "add", repeated)}`;
   const reasons = rows.map(reasonLine).filter((line): line is string => !!line);
   const added = rows.some((row) => row.status === "added");
-  const unresolved = rows.some((row) => row.status === "not_found" || row.status === "failed");
+  const unresolved = rows.some((row) => row.status === "not_found" || row.status === "needs_choice" || row.status === "failed");
   return {
     body: [summary, ...reasons].join("\n"),
     type: added && !unresolved ? "success" : unresolved && !added ? "error" : "info",
     duration: unresolved ? SKIPPED_REPORT_MS : undefined,
   };
+}
+
+/**
+ * A symbol typed to add on its own that a pasted list would leave for a
+ * choice (`typedSymbolChoice`: its company moved or merged away, the match is
+ * abroad or stopped trading) is not added either. The notice says why, and
+ * what to add instead or to keep the match. Resolves true when it said so.
+ */
+export async function refuseTypedChoice(rawInput: string, deps: SharedWorkflowDeps, notify: Notify): Promise<boolean> {
+  const row = await typedSymbolChoice(rawInput, deps.tickerRepository, deps.dataProvider);
+  if (!row) return false;
+  const message = row.message ?? symbolInputKey(row.input);
+  const offers = [
+    ...row.tradesAs ? [`${row.tradesAs} for what it trades as now`] : [],
+    ...row.listing ? [`${row.listing} to keep the match`] : [],
+  ];
+  notify([/[.!?]$/.test(message) ? message : `${message}.`, ...offers.length > 0 ? [`Add ${offers.join(", or ")}.`] : []].join("\n"),
+    { type: "error", duration: SKIPPED_REPORT_MS });
+  return true;
 }
 
 /**

@@ -17,6 +17,8 @@ const LISTINGS: Record<string, Array<{ name: string; exchange: string }>> = {
   PLTR: [{ name: "Palantir Technologies Inc.", exchange: "NASDAQ" }],
   PALO: [{ name: "Palo Alto Networks, Inc.", exchange: "NASDAQ" }],
   ALTO: [{ name: "Alto Ingredients, Inc.", exchange: "NASDAQ" }],
+  // Only DFS Furniture, in London, lists as DFS now.
+  DFS: [{ name: "DFS Furniture plc", exchange: "LSE" }],
   // Two companies, and no quote of the bare code settles which.
   "2222": [{ name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }, { name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }],
 };
@@ -129,4 +131,15 @@ test("one symbol is not a list, and the text says whether its separators are pla
   expect(pastedSymbolList("NVDA,")).toBeNull();
   expect(pastedSymbolList("nvda amd")).toEqual({ symbols: ["nvda", "amd"], repeated: 0, separated: false });
   expect(pastedSymbolList("NVDA\nAMD\r\nNVDA")).toEqual({ symbols: ["NVDA", "AMD"], repeated: 1, separated: true });
+});
+
+test("one typed symbol is decided as a symbol of a pasted list is: a match abroad is not added, alone or in a list", async () => {
+  const h = await harness();
+  const stored = () => [...h.state.tickers.values()].filter((ticker) => ticker.metadata.ticker.startsWith("DFS"));
+  await h.add("DFS");
+  expect(h.notices.at(-1)).toMatchObject({ type: "error", body: "DFS matched DFS:LSE (DFS Furniture plc), a listing abroad.\nAdd DFS:LSE to keep the match." });
+  expect(h.routes).toEqual([]);
+  await h.add("DFS, AMD");
+  expect(h.notices.at(-1)?.body).toContain("DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
+  expect(stored()).toEqual([]);
 });

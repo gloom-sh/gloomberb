@@ -143,6 +143,45 @@ test("a symbol whose search the service refused is looked up again, never report
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
 });
 
+test("batched answers that leave a symbol out, answer it with nothing, or come back out of order still give each symbol of a list its own listing", async () => {
+  const row = (symbol: string) => ({ providerId: "test", symbol, name: `${symbol} Corp`, exchange: "NYSE", currency: "USD", type: "Common Stock" });
+  const quote = (symbol: string) => createTestQuote({ symbol, name: `${symbol} Corp`, listingExchangeName: "NYSE", exchangeName: "NYSE", lastUpdated: Date.now() });
+  const alone = { search: [] as string[], changes: [] as string[], quote: [] as string[] };
+  const dataProvider = createTestDataProvider({
+    // BBB is left out, CCC answered with no rows, and a query no symbol asked for is answered too.
+    searchBatch: async () => new Map([["AAA", [row("AAA")]], ["CCC", []], ["DDD", [row("DDD")]], ["EEE", [row("EEE")]]]),
+    search: async (query) => {
+      alone.search.push(query);
+      return [row(query)];
+    },
+    // AAA and BBB have nothing on record, CCC moved long ago, and DDD is left out.
+    getTickerChangesBatch: async () => new Map<string, TickerChanges | null>([["AAA", null], ["BBB", null], ["CCC", {
+      symbol: "CCC", moved: { symbol: "CCCX", name: "Old CCC Inc.", hops: [{ from: "CCC", to: "CCCX", date: "2015-01-02" }] },
+      formerly: null, listedName: "CCC Corp", changes: [{ from: "CCC", to: "CCCX", date: "2015-01-02" }],
+    }]]),
+    getTickerChanges: async (symbol) => {
+      alone.changes.push(symbol);
+      return null;
+    },
+    // Answered in reverse, as copies of the targets; CCC left out and BBB answered with no quote.
+    getQuotesBatch: async (targets) => targets.map(({ symbol, exchange }) => ({ target: { symbol, exchange }, quote: symbol === "BBB" ? null : quote(symbol) }))
+      .filter(({ target }) => target.symbol !== "CCC").reverse(),
+    getQuote: async (symbol) => {
+      alone.quote.push(symbol);
+      return quote(symbol);
+    },
+  });
+  const results = await resolveTickersForCli(["AAA", "BBB", "CCC", "DDD"], tickerStore(), dataProvider, undefined, { retryWaitsMs: [] });
+  expect(results.map((result) => [result.input, result.ticker?.metadata.ticker, result.ticker?.metadata.name])).toEqual([
+    ["AAA", "AAA", "AAA Corp"], ["BBB", "BBB", "BBB Corp"], ["CCC", "CCC", "CCC Corp"], ["DDD", "DDD", "DDD Corp"],
+  ]);
+  expect(results.find((result) => result.input === "CCC")?.change).toMatchObject({ tradesAs: "CCCX" });
+  // What a batch did not answer is asked one at a time, and only that.
+  expect(alone.search.sort()).toEqual(["BBB", "CCC"]);
+  expect(alone.changes).toEqual(["DDD"]);
+  expect(alone.quote.sort()).toEqual(["BBB", "CCC"]);
+});
+
 test("a symbol whose company moved says where it trades now, as watchlist and portfolio adds print it; the symbol renamed into prints nothing", async () => {
   const fund = { providerId: "test", symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", exchange: "BATS", currency: "USD", type: "ETF" };
   const changes: Record<string, TickerChanges> = {
@@ -175,7 +214,7 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   expect((await failed(resolveCliTicker("TRCH", tickerStore(), online)))?.message)
     .toBe('No ticker match found for "TRCH". TRCH became MMAT on 2021-07-06, then MMATQ on 2024-08-21.');
 
-  // A symbol with no change, an offline service, or a long list adds nothing and fails nothing.
+  // A symbol with no change, or an offline service, adds nothing and fails nothing.
   const offline = provider(async () => { throw new Error("fetch failed"); });
   for (const dataProvider of [offline, provider(async () => null)]) {
     expect(await resolveCliTicker("FB", tickerStore(), dataProvider)).toMatchObject({ notes: [], change: null });
@@ -183,9 +222,6 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   // The symbol a company renamed into is what was typed: the change is data, not a line.
   const renamedInto = provider(async () => ({ ...changes.FB!, moved: null, formerly: [{ from: "OLDFB", to: "FB", date: "2022-06-09" }] }));
   expect(await resolveCliTicker("FB", tickerStore(), renamedInto)).toMatchObject({ notes: [], change: { kind: "formerly" } });
-  const many = ["FB", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)];
-  const [listed] = await resolveTickersForCli(many, tickerStore(), online, undefined, { retryWaitsMs: [] });
-  expect(listed).toMatchObject({ input: "FB", notes: [], change: null });
 });
 
 test("a symbol several companies list names their listings and, when its own company moved, where it went, on its own and in a list", async () => {
