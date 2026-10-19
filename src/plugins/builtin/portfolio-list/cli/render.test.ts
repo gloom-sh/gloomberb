@@ -1,8 +1,10 @@
-import { expect, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { serializeCliResult, type CliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { createDefaultConfig } from "../../../../types/config";
 import type { TickerRecord } from "../../../../types/ticker";
+import type { PricePoint, Quote } from "../../../../types/financials";
+import type { FuturesContractTermsPayload } from "../../../../api-client/futures-curve";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../../cli/commands/ticker";
 import { buildPositionRows } from "../../ticker-detail/overview/model";
@@ -325,4 +327,106 @@ test("portfolio show weighs each lot of a ticker by its own value and gives its 
   expect(data[0]).toMatchObject({ weight: 100, targetWeight: 50, lots: 2 });
   expect(data[0].lotWeight).toBeCloseTo(100 / 3, 8);
   expect(data[1]).toMatchObject({ weight: null, targetWeight: null, lots: 2 });
+});
+
+describe("a portfolio holding a hedge", () => {
+  const config = createDefaultConfig("/unused-hedge");
+  config.portfolios = [{ id: "hedge", name: "Hedge", currency: "USD" }];
+  const spy = createTestTicker("SPY", "SPDR S&P 500", { exchange: "ARCA", assetCategory: "ETF", portfolios: ["hedge"],
+    positions: [{ portfolio: "hedge", shares: 600, avgCost: 660, currency: "USD", broker: "manual" }] });
+  // Short ten gold contracts, entered at 100 oz each as `position set` stores them.
+  const gold = (lot: Partial<TickerRecord["metadata"]["positions"][number]> = {}) => createTestTicker("GC=F", "Gold Dec 26", {
+    exchange: "CMX", assetCategory: "FUTURE", portfolios: ["hedge"],
+    positions: [{ portfolio: "hedge", shares: -10, avgCost: 4216.30, currency: "USD", broker: "manual", multiplier: 100, ...lot }],
+  });
+  const quotes: Record<string, Quote> = {
+    SPY: { symbol: "SPY", price: 700, currency: "USD", change: 7, changePercent: 1, previousClose: 693, lastUpdated: Date.now() },
+    // The Sunday Globex print, after Friday's settlement.
+    "GC=F": { symbol: "GC=F", price: 4198, currency: "USD", change: 16.9, changePercent: 0.4, previousClose: 4181.10, lastUpdated: Date.now() },
+  };
+  const terms = (symbol: string): Promise<FuturesContractTermsPayload | null> => Promise.resolve(symbol !== "GC=F" ? null : {
+    symbol, root: "GC", name: "Gold", contract: "GCZ26", contractSymbol: "GCZ26", deliveryMonth: "2026-12",
+    spec: { unit: "USD / troy oz", size: "100 troy oz", pointValue: 100, tick: 0.1, tickValue: 10, settlement: "physical" },
+    lastTrade: null, firstNotice: null, inDelivery: false, settlement: { price: 4181.10, date: "2026-10-16" },
+  });
+  const history = async (): Promise<PricePoint[]> => [
+    { date: new Date("2026-10-15T00:00:00Z"), close: 4170.10 },
+    { date: new Date("2026-10-16T00:00:00Z"), close: 4181.10 },
+    // Monday's session has closed but is not settled: no settlement to measure from.
+    { date: new Date("2026-10-19T00:00:00Z"), close: 4199, unsettled: true },
+  ];
+  const dependencies = (records: TickerRecord[]) => ({ config, store: { loadAllTickers: async () => records },
+    dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }) });
+  const exported = async (records: TickerRecord[], options: Parameters<typeof showCollection>[2] = {}) => {
+    const cli = createTestCliContext(dependencies(records), { format: "json" });
+    await showCollection("Hedge", cli.context, { futuresSources: { terms, history }, ...options });
+    return cli.printed[0]!.result as CliResult & { data: Record<string, unknown>[]; metadata: Record<string, unknown> };
+  };
+  const printed = async (records: TickerRecord[], options: Parameters<typeof showCollection>[2] = {}) => {
+    const output: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+    try { await showCollection("Hedge", createTestCliContext(dependencies(records)).context, { futuresSources: { terms, history }, ...options }); }
+    finally { logger.mockRestore(); }
+    return output.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  };
+
+  test("a short future counts its contracts at their size: value, cost, P&L and weight are signed, and exposure nets and grosses them", async () => {
+    const { data, metadata } = await exported([spy, gold()]);
+    const [future, equity] = [data.find((row) => row.symbol === "GC=F")!, data.find((row) => row.symbol === "SPY")!];
+    // -10 contracts x 100 oz x $4,198: worth -$4,198,000, sold for $4,216,300.
+    expect(future).toMatchObject({ shares: -10, marketValue: -4_198_000, costBasis: -4_216_300, contractMultiplier: 100, contractSize: "100 oz" });
+    expect(future.unrealizedPnl as number).toBeCloseTo(18_300, 6);
+    expect(equity).toMatchObject({ shares: 600, marketValue: 420_000, costBasis: 396_000, unrealizedPnl: 24_000 });
+    expect(equity).not.toHaveProperty("contractMultiplier");
+    expect(metadata.exposure).toEqual({ long: 420_000, short: -4_198_000, net: -3_778_000, gross: 4_618_000 });
+    // The shorts outweigh the longs, so there is no positive total to weigh by.
+    expect([future.weight, equity.weight]).toEqual([null, null]);
+
+    const text = await printed([spy, gold()]);
+    expect(text).toMatch(/GC=F:CMX .* -10 × 100 oz .* -\$4,198,000/);
+    expect(text).toContain("Exposure: long $420,000, short -$4,198,000, net -$3,778,000, gross $4,618,000");
+    expect(text).toContain("No weights: the shorts outweigh the longs and cash");
+
+    // A book the longs outweigh weighs the short against its total.
+    const hedged = { ...gold(), metadata: { ...gold().metadata, positions: [{ ...gold().metadata.positions[0]!, shares: -0.05 }] } };
+    const weighed = (await exported([spy, hedged])).data;
+    const total = 420_000 - 0.05 * 419_800;
+    expect(weighed.find((row) => row.symbol === "GC=F")!.weight as number).toBeCloseTo((-0.05 * 419_800 / total) * 100, 8);
+  });
+
+  test("--close values a future at its settlement and dates it by the session, never at the Globex print", async () => {
+    const { data, metadata } = await exported([spy, gold()], { basis: "regular-close" });
+    const future = data.find((row) => row.symbol === "GC=F")!;
+    expect(future).toMatchObject({ quotePrice: 4181.10, valuationPrice: 4181.10, valuationAsOf: "2026-10-16", valuationPriceKind: "settle" });
+    expect(future.marketValue as number).toBeCloseTo(-4_181_100, 6);
+    expect(future.quoteChange as number).toBeCloseTo(11, 6);
+    expect(future.unrealizedPnl as number).toBeCloseTo(35_200, 6);
+    expect(data.find((row) => row.symbol === "SPY")).not.toHaveProperty("valuationPriceKind");
+    // The day's move is gold's settlement against the one before, -$11,000 for the short, plus SPY's.
+    expect(metadata.dayChange as number).toBeCloseTo(600 * 7 - 11_000, 6);
+
+    const text = await printed([spy, gold()], { basis: "regular-close" });
+    expect(text).toContain("Priced at the regular close, futures at the settle");
+    expect(text).toMatch(/GC=F:CMX +\$4,181\.10 .* Fri 16 Oct settle/);
+    expect(text).not.toContain("4,198");
+
+    // Without a confirmed settlement the future is not valued at the close, and the report says why.
+    const unsettled = { terms: async (symbol: string) => ({ ...(await terms(symbol))!, settlement: null }), history };
+    const missing = await exported([spy, gold()], { basis: "regular-close", futuresSources: unsettled });
+    expect(missing.data.find((row) => row.symbol === "GC=F")).toMatchObject({ marketValue: null, valuationPrice: null });
+    expect(missing.metadata).toMatchObject({ unsettledSymbols: ["GC=F"], complete: false });
+  });
+
+  test("a future without a contract size is not valued at one unit a contract, and one entered without it takes its terms' size", async () => {
+    const unsized = gold({ multiplier: undefined });
+    expect((await exported([spy, unsized])).data.find((row) => row.symbol === "GC=F")).toMatchObject({ marketValue: -4_198_000, contractMultiplier: 100 });
+
+    const noTerms = { terms: async () => null, history };
+    const { data, metadata } = await exported([spy, unsized], { futuresSources: noTerms });
+    expect(data.find((row) => row.symbol === "GC=F")).toMatchObject({ marketValue: null, costBasis: null, unrealizedPnl: null, contractMultiplier: null });
+    expect(metadata).toMatchObject({ unknownContractSizeSymbols: ["GC=F"], complete: false, exposure: { long: 420_000, short: 0 } });
+    const text = await printed([spy, unsized], { futuresSources: noTerms });
+    expect(text).toContain("No contract size for GC=F:CMX, so its value, cost and P&L are not shown.");
+    expect(text).not.toContain("Cost unavailable for GC=F");
+  });
 });

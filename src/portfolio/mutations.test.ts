@@ -169,6 +169,16 @@ describe("portfolio-list mutations", () => {
     }]);
   });
 
+  test("a manual position is signed: a short is a negative count, zero is refused, and a future keeps its contract size", () => {
+    const ticker = makeTicker({ portfolios: ["main"], positions: [] });
+    const short = setManualPortfolioPosition(ticker, "main", { shares: -1000, avgCost: 4216.30, currency: "USD", multiplier: 100 }).ticker;
+    expect(short.metadata.positions).toEqual([{ portfolio: "main", shares: -1000, avgCost: 4216.30, currency: "USD", broker: "manual", multiplier: 100 }]);
+    expect(() => setManualPortfolioPosition(ticker, "main", { shares: 0, avgCost: 1, currency: "USD" })).toThrow("Shares cannot be 0. Enter a negative number for a short.");
+    expect(() => setManualPortfolioPosition(ticker, "main", { shares: Number.NaN, avgCost: 1, currency: "USD" })).toThrow("Shares must be a number.");
+    // A new count without terms to read keeps the contract size the lot had.
+    expect(setManualPortfolioPosition(short, "main", { shares: -500, avgCost: 4200, currency: "USD" }).ticker.metadata.positions[0]).toMatchObject({ shares: -500, multiplier: 100 });
+  });
+
   test("split reconciliation preserves a single acquisition date without retaining stale valuation", () => {
     const position = { portfolio: "main", shares: 10, avgCost: 500, currency: "USD", broker: "manual", dateAcquired: "2024-01-02", marketValue: 10000, markPrice: 1000 };
     const ticker = makeTicker({ portfolios: ["main"], positions: [position] });

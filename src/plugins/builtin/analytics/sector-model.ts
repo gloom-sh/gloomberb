@@ -64,8 +64,9 @@ export function getPortfolioPositionValue(
   financials: TickerFinancials | undefined,
   columnContext: ColumnContext,
 ): number | null {
+  // Signed, as MKT VAL is: a short counts against its sector.
   const value = getSortValue(PORTFOLIO_VALUE_COLUMN, ticker, financials, columnContext);
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function getSectorSortValue(row: SectorTableRow, columnId: SectorColumnId): string | number | null {
@@ -132,7 +133,9 @@ export function buildSectorRowsFromPortfolioColumns(
     if (value == null) unvaluedSymbols.push(ticker.metadata.ticker);
 
     const pnl = getSortValue(PORTFOLIO_PNL_COLUMN, ticker, financials, columnContext);
-    const costBasis = getSortValue(PORTFOLIO_COST_COLUMN, ticker, financials, columnContext);
+    // A return is over the capital put in, long or short, as P&L % reads it.
+    const cost = getSortValue(PORTFOLIO_COST_COLUMN, ticker, financials, columnContext);
+    const costBasis = typeof cost === "number" ? Math.abs(cost) : cost;
     const isFund = [ticker.metadata.assetCategory, financials?.quote?.instrumentType]
       .some((type) => /^(ETF|ETN|FUND|MUTUALFUND|MUTUAL_FUND)$/i.test(type ?? ""));
     if (isFund) fundSymbols.push(ticker.metadata.ticker);

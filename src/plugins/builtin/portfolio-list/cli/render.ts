@@ -16,10 +16,19 @@ import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfo
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
-  VALUATION_BASIS_LABELS,
+  valuationBasisLabel,
   valuationTimeIso,
+  valuesAtSettlement,
   type PortfolioValuationBasis,
 } from "../../../../portfolio/valuation-basis";
+import {
+  futuresQuantityText,
+  futuresSettlementDisplay,
+  isFuturesTicker,
+  withFuturesContractSize,
+  type PortfolioFuturesTerms,
+} from "../../../../portfolio/futures-positions";
+import { dailyFuturesHistory, loadPortfolioFuturesTerms, type PortfolioFuturesSources } from "../../../../portfolio/futures-terms";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -188,6 +197,8 @@ export interface ShowCollectionOptions {
   drip?: { years: number; withholding: number };
   /** How long every holding's dividend read may take together; a test shortens it. */
   dividendDeadlineMs?: number;
+  /** Where futures' terms and settlements are read; Gloom Cloud's terms and the data provider's daily bars by default. */
+  futuresSources?: PortfolioFuturesSources;
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -268,6 +279,8 @@ interface PortfolioPositionValue {
   dayMove: { change: number; previousValue: number } | null;
   /** The `portfolio show --json` row. */
   row: Record<string, unknown>;
+  /** A future's contract size and settlement from its terms; null for any other holding. */
+  futures: PortfolioFuturesTerms | null;
 }
 
 /** What a row's value is priced at: exported after every other field, so existing columns keep their places. */
@@ -277,6 +290,8 @@ interface PortfolioValuationFields {
   valuationPrice: number | null;
   /** An ISO instant in UTC, or an ISO date for a close whose hour the venue's calendar does not give. */
   valuationAsOf: string | null;
+  /** Only on a future valued at its exchange settlement, which `valuationAsOf` dates by its session. */
+  valuationPriceKind?: "settle";
 }
 
 export interface PortfolioValuation {
@@ -289,13 +304,40 @@ export interface PortfolioValuation {
   unavailableCost: Set<string>;
   unavailableMarketValue: Set<string>;
   brokerPnlSymbols: Set<string>;
+  /** Futures held without a contract size: no value, cost or P&L, said once instead of as each. */
+  unknownContractSize: Set<string>;
+  /** Futures valued at the close without a confirmed settlement to value them at. */
+  unsettled: Set<string>;
+  /** Long and short market value of the priced lots, and their net and gross, in the portfolio's currency. */
+  exposure: PortfolioExposure;
+}
+
+/** A book's exposure: what its longs and its shorts are worth (short negative), net and gross. */
+export interface PortfolioExposure {
+  long: number;
+  short: number;
+  net: number;
+  gross: number;
+}
+
+/** The exposure of lots at their signed market values; an unpriced lot (null) is left out, as the total leaves it. */
+export function portfolioExposure(values: Iterable<number | null | undefined>): PortfolioExposure {
+  let long = 0;
+  let short = 0;
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value)) continue;
+    if (value >= 0) long += value;
+    else short += value;
+  }
+  return { long, short, net: long + short, gross: long - short };
 }
 
 /**
  * Values every position of a portfolio in the portfolio's currency, as
  * `portfolio show` prints it: cost basis, market value and unrealized P&L
  * from the current quote at `basis` (the latest print unless given), or the
- * broker's snapshot where that is the basis.
+ * broker's snapshot where that is the basis. A future counts contracts of the
+ * size `futures` gives for it, and at the close is valued at its settlement.
  */
 export async function valuePortfolioPositions({
   tickers,
@@ -305,6 +347,7 @@ export async function valuePortfolioPositions({
   baseCurrency,
   toBase,
   basis = "latest-print",
+  futures,
 }: {
   tickers: readonly TickerRecord[];
   quotes: ReadonlyMap<string, CollectionQuote>;
@@ -313,6 +356,8 @@ export async function valuePortfolioPositions({
   baseCurrency: string;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
   basis?: PortfolioValuationBasis;
+  /** Each future's contract size and settlement (loadPortfolioFuturesTerms), by symbol. */
+  futures?: ReadonlyMap<string, PortfolioFuturesTerms>;
 }): Promise<PortfolioValuation> {
   const id = portfolioId;
   let totalPnl = 0;
@@ -320,16 +365,23 @@ export async function valuePortfolioPositions({
   const unavailableCost = new Set<string>();
   const unavailableMarketValue = new Set<string>();
   const brokerPnlSymbols = new Set<string>();
+  const unknownContractSize = new Set<string>();
+  const unsettled = new Set<string>();
   const values: PortfolioPositionValue[] = [];
   const holdings: AllocationHolding[] = [];
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
 
   for (const ticker of tickers) {
     const quote = quotes.get(ticker.metadata.ticker);
-    const positions = ticker.metadata.positions.filter((position) => position.portfolio === id && position.shares !== 0);
+    const futuresTerms = isFuturesTicker(ticker) ? futures?.get(ticker.metadata.ticker) ?? { size: null, settlement: null } : null;
+    // A lot entered without its contract size takes the one the terms state; the entries keep the saved record.
+    const sized = withFuturesContractSize(ticker, futuresTerms?.size);
+    const positions = sized.metadata.positions.filter((position) => position.portfolio === id && position.shares !== 0);
     const displayedQuote = getActiveQuoteDisplay(quote);
     const activeQuote = displayedQuote && Number.isFinite(displayedQuote.price) ? displayedQuote : null;
-    const { headline, extended } = collectionQuoteHeadline(quote);
+    // At the close a future's Last is the settlement it is valued at, and its move the one from the settlement before.
+    const settledHeadline = basis === "regular-close" && futuresTerms?.settlement ? futuresSettlementDisplay(futuresTerms.settlement) : null;
+    const { headline, extended } = settledHeadline ? { headline: settledHeadline, extended: null } : collectionQuoteHeadline(quote);
 
     if (positions.length === 0) {
       const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
@@ -337,8 +389,10 @@ export async function valuePortfolioPositions({
       const priced = basis === "regular-close" ? headline : activeQuote;
       const unitPrice = priced ? known(await toBase(priced.price, quoteCurrency)) : null;
       holdings.push({ symbol: ticker.metadata.ticker, held: false, marketValue: 0, units: 0, unitPrice });
-      values.push({ ticker, quote, activeQuote, headline, extended, position: null, metrics: null, pnl: null, dayMove: null,
-        valuation: { valuationBasis: basis, valuationPrice: known(priced?.price), valuationAsOf: valuationTimeIso(getPortfolioValuationTime(quote, basis)) },
+      values.push({ ticker, quote, activeQuote, headline, extended, position: null, metrics: null, pnl: null, dayMove: null, futures: futuresTerms,
+        valuation: { valuationBasis: basis, valuationPrice: known(priced?.price),
+          valuationAsOf: settledHeadline ? futuresTerms!.settlement!.date : valuationTimeIso(getPortfolioValuationTime(quote, basis)),
+          ...(settledHeadline ? { valuationPriceKind: "settle" as const } : {}) },
         row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange, shares: null, avgCost: null,
           positionCurrency: null, quotePrice: known(headline?.price), ...quoteMoveColumns(headline), ...extendedQuoteFields(extended), quoteCurrency: quote?.currency ?? null,
           volume: known(quote?.volume), costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency } });
@@ -350,7 +404,9 @@ export async function valuePortfolioPositions({
     for (const position of positions) {
       const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
       const metrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency, undefined, quote);
-      const valuationQuote = getPortfolioValuationDisplay(metrics, quote, basis);
+      const settlement = futuresTerms?.settlement ?? null;
+      const valuationQuote = getPortfolioValuationDisplay(metrics, quote, basis, settlement);
+      const atSettlement = valuesAtSettlement(metrics, basis);
       const positionCurrency = metrics.positionCurrency;
       const costBasisBase = positionCurrency ? await toBase(metrics.totalCost, positionCurrency) : Number.NaN;
 
@@ -362,6 +418,8 @@ export async function valuePortfolioPositions({
       const selectedPnl = resolvePortfolioPositionPnl(baseMetrics,
         valuationQuote ? await toBase(valuationQuote.price, quoteCurrency) : null);
       const pnl = selectedPnl.value;
+      if (metrics.unknownContractSize) unknownContractSize.add(ticker.metadata.ticker);
+      else if (atSettlement && !settlement) unsettled.add(ticker.metadata.ticker);
       if (!metrics.hasCostBasis) unavailableCost.add(ticker.metadata.ticker);
       if (known(currentValueBase) === null) unavailableMarketValue.add(ticker.metadata.ticker);
       if (selectedPnl.basis === "broker-snapshot" || selectedPnl.basis === "mixed") brokerPnlSymbols.add(ticker.metadata.ticker);
@@ -377,10 +435,11 @@ export async function valuePortfolioPositions({
         ? { change: await toBase(metrics.totalPriceUnits * change, quoteCurrency),
           previousValue: await toBase(metrics.grossPriceUnits * (valuationQuote.price - change), quoteCurrency) }
         : null;
-      values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl,
+      values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl, futures: futuresTerms,
         dayMove: dayMove && Number.isFinite(dayMove.change) && Number.isFinite(dayMove.previousValue) ? dayMove : null,
         valuation: { valuationBasis: basis, valuationPrice: known(valuationQuote?.price),
-          valuationAsOf: valuationTimeIso(getPortfolioValuationTime(quote, basis, metrics)) },
+          valuationAsOf: valuationTimeIso(getPortfolioValuationTime(quote, basis, metrics, settlement)),
+          ...(atSettlement && settlement ? { valuationPriceKind: "settle" as const } : {}) },
         row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange,
           shares: metrics.totalShares, avgCost: known(position.avgCost), positionCurrency,
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
@@ -393,7 +452,9 @@ export async function valuePortfolioPositions({
     }
   }
 
-  return { basis, positions: values, holdings, totalPnl, unavailablePnl, unavailableCost, unavailableMarketValue, brokerPnlSymbols };
+  const exposure = portfolioExposure(values.map((entry) => entry.position ? entry.row.marketValue as number | null : null));
+  return { basis, positions: values, holdings, totalPnl, unavailablePnl, unavailableCost, unavailableMarketValue, brokerPnlSymbols,
+    unknownContractSize, unsettled, exposure };
 }
 
 /**
@@ -422,6 +483,15 @@ export function dayMoveLine(
   if (!move) return "Day's move: unavailable";
   const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)})` : "";
   return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}`;
+}
+
+/**
+ * `Exposure: long $600,000, short -$419,800,000, net -$419,200,000, gross $420,400,000`:
+ * what the priced holdings are worth on each side, in whole units, a short negative as every value is.
+ */
+export function exposureLine(exposure: PortfolioExposure, currency: string): string {
+  const money = (value: number) => formatAllocationMoney(value, currency, { whole: true });
+  return `Exposure: long ${money(exposure.long)}, short ${money(exposure.short)}, net ${money(exposure.net)}, gross ${money(exposure.gross)}`;
 }
 
 /** A portfolio's cash line, as `portfolio show` and `fn PF` report it. */
@@ -520,23 +590,29 @@ function portfolioValuationFreshness(
     source,
     observedKey: "valuationAsOf",
     citeOldest: true,
-    ...(note ? { note: `priced at ${VALUATION_BASIS_LABELS[valuation.basis]}` } : {}),
+    ...(note ? { note: `priced at ${valuationBasisLabel(valuation.basis, { futures: holdsFutures(valuation) })}` } : {}),
   }, undefined, now);
 }
 
+/** Whether a valued book holds a future, whose price at the close is its settlement. */
+export function holdsFutures(valuation: Pick<PortfolioValuation, "positions">): boolean {
+  return valuation.positions.some((entry) => entry.position && entry.futures);
+}
+
 /** `Priced at the latest print, extended hours included`: the line under a portfolio's title. */
-function valuationBasisLine(basis: PortfolioValuationBasis): string {
-  return `Priced at ${VALUATION_BASIS_LABELS[basis]}`;
+function valuationBasisLine(basis: PortfolioValuationBasis, futures: boolean): string {
+  return `Priced at ${valuationBasisLabel(basis, { futures })}`;
 }
 
 /**
  * An As of cell: when the price a row's value uses is from (`valuationAsOf`),
- * in UTC as its header says; a close dated only by its day says so.
+ * in UTC as its header says; a close dated only by its day says so, and a
+ * future's settlement names its session.
  */
-export function valuationTimeText(value: unknown, now = Date.now()): string {
+export function valuationTimeText(value: unknown, now = Date.now(), kind?: "settle"): string {
   const time = parseReportTime(value);
   if (!time) return "—";
-  return time.dateOnly ? `${formatUtcDayTime(time, now)} close` : formatUtcDayTime(time, now);
+  return time.dateOnly ? `${formatUtcDayTime(time, now)} ${kind ?? "close"}` : formatUtcDayTime(time, now);
 }
 
 /** A yield in percent with two decimals, as DVD shows one: 2.31%. */
@@ -556,7 +632,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -599,7 +675,15 @@ async function showCollectionWithMarketData(
   // The terms the report shows, which --explain follows it with.
   let explained: GlossaryEntry[] = [];
 
-  const quotes = await loadCollectionQuotes(filtered, collection, dataProvider);
+  const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
+    && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
+  const [quotes, futures] = await Promise.all([
+    loadCollectionQuotes(filtered, collection, dataProvider),
+    isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
+      settlement: basis === "regular-close",
+      sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
+    }) : undefined,
+  ]);
   // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
   const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
   const source = !isPortfolio ? "Local watchlist and Gloom Cloud"
@@ -613,12 +697,12 @@ async function showCollectionWithMarketData(
     console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
     const imported = matchedPortfolio ? importedFromText(matchedPortfolio) : null;
     if (imported) console.log(cliStyles.muted(imported));
-    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis)));
+    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis, futuresHeld.length > 0)));
     console.log("");
   }
 
   if (matchedPortfolio) {
-    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis });
+    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures });
     // Exports carry no header line, so their source line names the basis.
     freshness = portfolioValuationFreshness(valuation, source, { note: structured });
     const {
@@ -628,6 +712,9 @@ async function showCollectionWithMarketData(
       unavailableCost,
       unavailableMarketValue,
       brokerPnlSymbols,
+      unknownContractSize,
+      unsettled,
+      exposure,
     } = valuation;
     const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: matchedPortfolio, account, toBase });
     const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
@@ -679,6 +766,11 @@ async function showCollectionWithMarketData(
         incomeYield: lotIncome[index]?.yield ?? null,
         // Only the rows of a ticker held in several lots: `lots` says the allocation on its first row is the whole position's, `lotWeight` is this lot's own share.
         ...(lots > 1 ? { lots, lotWeight: lotWeight(typeof entry.row.marketValue === "number" ? entry.row.marketValue : null, allocation.total) } : {}),
+        // Only on a future: `shares` counts contracts, each `contractMultiplier` units of the price, as the exchange sizes it.
+        ...(entry.futures && entry.position ? {
+          contractMultiplier: entry.position.multiplier ?? null,
+          contractSize: entry.futures.size?.size ?? null,
+        } : {}),
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
@@ -775,6 +867,10 @@ async function showCollectionWithMarketData(
         complete: unavailablePnl.size === 0 && unavailableCost.size === 0 && unavailableMarketValue.size === 0 && income.gaps.size === 0,
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
+        // The priced holdings' market value: longs, shorts (negative), net and gross. Cash and unpriced holdings are not in it.
+        exposure,
+        ...(unknownContractSize.size > 0 ? { unknownContractSizeSymbols: [...unknownContractSize] } : {}),
+        ...(unsettled.size > 0 ? { unsettledSymbols: [...unsettled] } : {}),
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
         ...(explain ? { glossary: glossaryExport(explained) } : {}),
@@ -811,8 +907,8 @@ async function showCollectionWithMarketData(
     // Where each ticker's lots end, to put its position line there.
     const lastLot = new Map<string, number>();
     valued.forEach((entry, index) => { if (entry.position) lastLot.set(entry.ticker.metadata.ticker, index); });
-    const rows: string[][] = valued.flatMap(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced }, index): string[][] => {
-      const asOf = valuationTimeText(priced.valuationAsOf, now);
+    const rows: string[][] = valued.flatMap(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced, futures: contract }, index): string[][] => {
+      const asOf = valuationTimeText(priced.valuationAsOf, now, priced.valuationPriceKind);
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -837,10 +933,15 @@ async function showCollectionWithMarketData(
       const marketValue = row.marketValue as number | null;
       const unpriced = marketValue == null;
       const quantityOptions = { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency };
+      // A future counts contracts, each the size its terms give: 1,000 × 100 oz.
+      const quantity = (units: number) => contract
+        ? futuresQuantityText(formatMarketQuantity(units, quantityOptions), contract.size
+          ?? (position.multiplier ? { size: formatMarketQuantity(position.multiplier) } : null))
+        : formatMarketQuantity(units, quantityOptions);
       const lotRow = [
         listingLabel(ticker),
         ...quoteCells,
-        formatMarketQuantity(metrics.totalShares, quantityOptions),
+        quantity(metrics.totalShares),
         formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
         unpriced ? NOT_AVAILABLE : wholeMoney(marketValue),
         ...allocationCells(figures, { unpriced, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
@@ -853,7 +954,7 @@ async function showCollectionWithMarketData(
       const whole = allocationBySymbol.get(symbol);
       const wholeValue = whole?.marketValue ?? null;
       return [lotRow, [`${listingLabel(ticker)} (${lots} lots)`, "", "", ...extendedSessions.map(() => ""),
-        formatMarketQuantity(symbolUnits, quantityOptions), "", wholeValue == null ? NOT_AVAILABLE : wholeMoney(wholeValue),
+        quantity(symbolUnits), "", wholeValue == null ? NOT_AVAILABLE : wholeMoney(wholeValue),
         ...allocationCells(whole, { unpriced: wholeValue == null, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
         ...(showIncome ? ["", ""] : []), "", ""]];
     });
@@ -873,7 +974,9 @@ async function showCollectionWithMarketData(
       "",
     ]);
 
-    const quantityHeader = filtered.some(ticker => ticker.metadata.assetCategory?.toUpperCase() === "BOND") || positionsExport.some(row => row.quantityUnit === "face") ? "Qty" : "Shares";
+    // Face amounts and contracts are not shares.
+    const quantityHeader = filtered.some(ticker => ticker.metadata.assetCategory?.toUpperCase() === "BOND") || positionsExport.some(row => row.quantityUnit === "face")
+      || holdsFutures(valuation) ? "Qty" : "Shares";
     // A narrow terminal drops the cost, then the quote, then P&L, before any of the allocation.
     console.log(renderTable(
       [
@@ -899,13 +1002,20 @@ async function showCollectionWithMarketData(
     ));
     console.log("");
     if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign));
+    if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     const notes: string[] = [];
     // The notes name the rows as the table does.
     const labels = new Map(filtered.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
     const named = (symbols: Iterable<string>) => [...symbols].map((symbol) => labels.get(symbol) ?? symbol).join(", ");
+    // A future without its contract size or settlement is said once, not as a missing cost, value and P&L.
+    const unsized = (symbols: ReadonlySet<string>) => [...symbols].filter((symbol) => !unknownContractSize.has(symbol) && !unsettled.has(symbol));
     if (allocation.unpriced.length > 0) {
       const count = allocation.unpriced.length;
       notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${named(allocation.unpriced)}.`));
+    }
+    // A weight is a share of a positive total; a book its shorts outweigh has none.
+    if (total != null && total <= 0 && valued.some((entry) => entry.position && entry.row.marketValue != null)) {
+      notes.push(cliStyles.muted("No weights: the shorts outweigh the longs and cash, and a weight is a share of a positive total."));
     }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
     if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
@@ -917,8 +1027,14 @@ async function showCollectionWithMarketData(
     const targetNote = describeTargetSum(allocation.targetSum);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
-    if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unavailableCost)}.`));
-    if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unavailablePnl)}.`));
+    if (unknownContractSize.size > 0) {
+      notes.push(cliStyles.warning(`No contract size for ${named(unknownContractSize)}, so ${unknownContractSize.size === 1 ? "its" : "their"} value, cost and P&L are not shown.`));
+    }
+    if (unsettled.size > 0) {
+      notes.push(cliStyles.warning(`No confirmed settlement for ${named(unsettled)}, so ${unsettled.size === 1 ? "it is" : "they are"} not valued at the close.`));
+    }
+    if (unsized(unavailableCost).length > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unsized(unavailableCost))}.`));
+    if (unsized(unavailablePnl).length > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unsized(unavailablePnl))}.`));
     const incomeNote = incomeGapNote(income, { name: named, money: (value) => money(value), deadlineMs: dividendDeadlineMs });
     if (incomeNote) notes.push(cliStyles.muted(incomeNote));
     for (const note of notes) console.log(note);

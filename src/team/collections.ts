@@ -65,7 +65,7 @@ interface LocalMember {
   ticker: TickerRecord;
   /** The ticker's shares in the collection: its one lot, or the total of several. Null with no position. */
   quantity: number | null;
-  /** Several lots that cannot be totalled (mixed currencies, short lots): there is no quantity to compare or send. */
+  /** Several lots that cannot be totalled (mixed currencies, a long and a short lot): there is no quantity to compare or send. */
   lotsNotTotalled?: boolean;
 }
 
@@ -171,6 +171,8 @@ export function applyMembership(
       currency: position?.currency ?? currency,
       broker: "manual",
       ...(position?.dateAcquired ? { dateAcquired: position.dateAcquired } : {}),
+      // A future's contract size stays with the holding when the team changes its count.
+      ...(position?.multiplier ? { multiplier: position.multiplier } : {}),
     });
   }
   return {

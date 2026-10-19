@@ -78,8 +78,9 @@ test("a broker portfolio's positions come largest first with weights and totals 
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",
     positions: 5,
-    totals: { marketValue: 19_000, grossMarketValue: 29_000, unrealizedPnl: 9_500 },
+    totals: { marketValue: 19_000, grossMarketValue: 29_000, longMarketValue: 24_000, shortMarketValue: -5_000, unrealizedPnl: 9_500 },
     notices: [
+      "Exposure: long $24,000, short -$5,000, net $19,000, gross $29,000",
       "2 more positions not shown; totals include every position.",
       // No account was synced here, so the total weighs only the positions.
       expect.stringContaining("cash and margin are unknown"),

@@ -27,16 +27,17 @@ test("missing FX does not disappear from concentration or renormalize the remain
   expect(restored.rows.find((row) => row.sector === "Funds")?.weight).toBeCloseTo(1200 / 3840);
 });
 
-test("gross long/short concentration keeps signed P&L and missing cost cannot become zero", () => {
+test("a short nets against its sector's value, returns are over the capital put in, and missing cost cannot become zero", () => {
   const long = holding("AAPL");
   const short = holding("MSFT");
   short.metadata.positions[0]!.shares = -10;
   short.metadata.positions[0]!.avgCost = 130;
   const aggregate = () => buildSectorRowsFromPortfolioColumns([long, short], new Map(), context()).rows[0]!;
-  expect(aggregate()).toMatchObject({ value: 2400, costBasis: 2300, pnl: 300, weight: 1 });
+  // Long 1,200 and short -1,200: a flat book has no positive total to weigh by.
+  expect(aggregate()).toMatchObject({ value: 0, costBasis: 2300, pnl: 300, weight: null });
   expect(aggregate().returnPct).toBeCloseTo(300 / 2300 * 100);
   short.metadata.positions[0]!.avgCost = Number.NaN;
-  expect(aggregate()).toMatchObject({ value: 2400, costBasis: null, pnl: null, weight: 1, returnPct: null });
+  expect(aggregate()).toMatchObject({ value: 0, costBasis: null, pnl: null, returnPct: null });
   const rows = [aggregate(), { ...aggregate(), id: "known", returnPct: -5 }];
   for (const direction of ["asc", "desc"] as const) {
     expect(sortSectorRows(rows, { columnId: "return", direction }).at(-1)?.returnPct).toBeNull();

@@ -23,7 +23,9 @@ import {
   isManualPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
+  validatePositionShares,
 } from "../../../portfolio/mutations";
+import { loadFuturesEntrySize } from "../../../portfolio/futures-terms";
 import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
 import { coerceFieldString } from "../helpers";
@@ -234,9 +236,11 @@ export function createCommandBarCollectionWorkflowActions(options: {
       }
 
       // 18,50, 1.234,5 and 123.456 read as typed; 1,234 could be either reading and fails naming both.
+      // Negative for a short; zero is no position.
       const shares = readTypedNumber(coerceFieldString(values.shares), "Shares");
-      if (!Number.isFinite(shares) || shares <= 0) {
-        throw new Error("Shares must be greater than 0.");
+      const sharesError = validatePositionShares(shares);
+      if (sharesError) {
+        throw new Error(t(sharesError));
       }
 
       const avgCost = readTypedNumber(coerceFieldString(values.avgCost), "Avg Cost");
@@ -259,10 +263,13 @@ export function createCommandBarCollectionWorkflowActions(options: {
         currentState.config.baseCurrency,
       );
 
+      // A future is entered in contracts, sized by its terms.
+      const size = await loadFuturesEntrySize(ticker);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,
         currency,
+        ...(size ? { multiplier: size.multiplier } : {}),
       });
       const firstPosition = !hasOpenPortfolioPositions(portfolio.id, getState().tickers.values());
       await tickerRepository.saveTicker(result.ticker);

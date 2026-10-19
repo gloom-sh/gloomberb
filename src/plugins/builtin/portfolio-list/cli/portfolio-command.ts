@@ -7,6 +7,9 @@ import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requir
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
+import type { FuturesContractTermsPayload } from "../../../../api-client/futures-curve";
+import { futuresQuantityText, isFuturesTicker } from "../../../../portfolio/futures-positions";
+import { loadFuturesEntrySize } from "../../../../portfolio/futures-terms";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
@@ -282,6 +285,7 @@ async function setPositionCommand(
   rawCurrency: string | undefined,
   exchange: string | undefined,
   ctx: CliCommandContext,
+  futuresTerms?: (symbol: string) => Promise<FuturesContractTermsPayload | null>,
 ) {
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
@@ -292,24 +296,38 @@ async function setPositionCommand(
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
       const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
+      // A future is held in contracts of the size its terms give, as `quote` states it.
+      const future = isFuturesTicker(ticker);
+      const size = await loadFuturesEntrySize(ticker, futuresTerms);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,
         currency,
+        ...(size ? { multiplier: size.multiplier } : {}),
       });
+      const multiplier = result.ticker.metadata.positions.find((position) => position.portfolio === portfolio.id)?.multiplier;
+      if (future && !multiplier) {
+        notes.push(`No contract size is known for ${savedListingName(result.ticker).label}, so its value and P&L are not shown.`);
+      }
       const firstPosition = !hasOpenPortfolioPositions(portfolio.id, await store.loadAllTickers());
       await store.saveTicker(result.ticker);
       const adopted = firstPosition ? adoptFirstPositionCurrency(config, portfolio.id, currency) : null;
       if (adopted) await saveConfig(adopted);
       const saved = savedListingName(result.ticker);
+      const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
       ctx.printResult({
-        data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency },
+        data: {
+          changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency,
+          ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
+        },
         warnings: notes.length > 0 ? notes : undefined,
       }, {
         text: () => [
           cliStyles.success(`Set position for ${saved.label} in "${portfolio.name}".`),
           renderStats([
-            ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],
+            future
+              ? ["Contracts", futuresQuantityText(quantity, size ?? (multiplier ? { size: formatMarketQuantity(multiplier) } : null))]
+              : ["Shares", quantity],
             ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
             ["Currency", currency],
           ]),
@@ -739,7 +757,18 @@ const VALUE_HELP = {
   title: "Value",
   lines: [
     "show prices each holding at its latest print, pre-market and after hours included, as brokers do, and says so under the title. As of (UTC) is when each row's price is from.",
-    "--close prices the book at the regular close instead: Value is Last times the shares, P&L, weights and the total follow, and the day's move from the close before is printed under the table.",
+    "--close prices the book at the regular close instead: Value is Last times the shares, P&L, weights and the total follow, and the day's move from the close before is printed under the table. A future is priced at its exchange settlement, dated by its session, as quote states it.",
+    "A short is a negative position: its value, cost and P&L are negative, and the Exposure line under the table adds up the longs, the shorts, net and gross.",
+    "A future is held in contracts: Qty reads 1,000 × 100 oz, and Value is the contracts times the contract size times the price. A future whose contract size is unknown is not valued.",
+  ],
+};
+
+/** What `portfolio position set` takes, in its help. */
+const POSITION_HELP = {
+  title: "Positions",
+  lines: [
+    "position set replaces the portfolio's lots of the symbol with one: a negative size is a short, and 0 is refused (portfolio remove drops the symbol).",
+    "A future's size is in contracts, at a price per unit of its contract (GC=F: per troy ounce); the contract size is read from its terms, as quote shows them.",
   ],
 };
 
@@ -787,7 +816,7 @@ export const portfolioCliCommand: CliCommandDef = {
     options: [
       EXCHANGE_OPTION,
       FILE_OPTION,
-      { flags: "--close", description: "show: value the book at the regular close, not the latest print" },
+      { flags: "--close", description: "show: value the book at the regular close (futures at the settlement), not the latest print" },
       { flags: "--drip", description: "show: project the shares and income reinvested dividends add, year by year" },
       { flags: "--years <1-5>", description: `show --drip: how many years to project (default ${DRIP_DEFAULT_YEARS})` },
       { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
@@ -805,6 +834,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio add Research --file holdings.csv",
       "portfolio add Research --file holdings.csv --dry-run",
       "portfolio position set Research ASML 10 800 EUR",
+      "portfolio position set Hedge GC=F -10 4216.30",
       "portfolio cash set Research 25000 USD",
       "portfolio target set Research ASML 12.5%",
       "portfolio target set Research CASH 10",
@@ -814,7 +844,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio show Research --drip --years 3 --withholding 15",
       "portfolio import --13f 0001067983 --top 10",
     ],
-    sections: [VALUE_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
+    sections: [VALUE_HELP, POSITION_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];

@@ -4,6 +4,7 @@ import type { PriceBasis } from "../types/instrument";
 import { resolvePriceBasis } from "../market-data/market/price-basis";
 import { getActiveQuoteDisplay, type ActiveQuoteDisplay } from "../market-data/market/status";
 import { resolveCurrencyUnit } from "../utils/currency-units";
+import { isFuturesTicker } from "./futures-positions";
 
 export interface PortfolioPositionMetrics {
   positionCurrency: string;
@@ -23,6 +24,13 @@ export interface PortfolioPositionMetrics {
   multiplierHint: number;
   /** Listed option contracts are valued at the two-sided midpoint when one is quoted. */
   valuesAtMark: boolean;
+  /** A futures contract: valued per contract, at its settlement on the regular-close basis. */
+  isFuture: boolean;
+  /**
+   * A futures lot states no contract size, so it has no current value, cost
+   * or P&L of its own (a broker's snapshot still values it): never valued at 1x.
+   */
+  unknownContractSize: boolean;
   brokerMktValue: number;
   brokerNetMktValue: number;
   hasBrokerMktValue: boolean;
@@ -61,9 +69,8 @@ export function signedPositionDirection(position: { shares: number; side?: "long
   return position.shares < 0 ? -1 : 1;
 }
 
-function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["positions"][number]): number {
-  const priceMultiplier = normalizePositionMultiplier(position.multiplier);
-  if (priceMultiplier === 1) return 1;
+function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["positions"][number], priceMultiplier: number): number {
+  if (priceMultiplier === 1 || !Number.isFinite(priceMultiplier)) return priceMultiplier;
   if (position.marketValue == null || position.unrealizedPnl == null
     || typeof position.avgCost !== "number" || !Number.isFinite(position.avgCost)) return priceMultiplier;
 
@@ -96,6 +103,7 @@ export function getPortfolioPositionMetrics(
   const bases = new Set(positions.map(position => resolvePriceBasis(position.priceBasis, ticker.metadata.assetCategory)));
   const priceBasis = bases.size === 0 ? resolvePriceBasis(undefined, ticker.metadata.assetCategory) : bases.size === 1 ? [...bases][0]! : null;
   const positionCurrency = valuation?.currency ?? (currencies.size > 1 ? "Mixed" : [...currencies][0] ?? fallbackCurrency);
+  const isFuture = isFuturesTicker(ticker);
   const convert = (value: number, position: typeof positions[number]) => {
     const currency = currencyFor(position);
     if (!currency) return Number.NaN;
@@ -106,6 +114,8 @@ export function getPortfolioPositionMetrics(
     totalShares: 0, totalCost: 0, hasCostBasis: positions.length > 0, priceBasis, signedCost: 0, totalCostUnits: 0,
     totalPriceUnits: 0, grossPriceUnits: 0, multiplierHint: 1,
     valuesAtMark: isListedOption(ticker),
+    isFuture,
+    unknownContractSize: false,
     brokerMktValue: 0, brokerNetMktValue: 0, hasBrokerMktValue: positions.length > 0,
     brokerPnl: 0, hasBrokerPnl: positions.length > 0,
     brokerMarkPrice: positions.length === 1 && priceBasis ? positions[0]?.markPrice : undefined,
@@ -115,11 +125,13 @@ export function getPortfolioPositionMetrics(
     const direction = signedPositionDirection(position);
     const magnitude = Math.abs(position.shares);
     const basis = resolvePriceBasis(position.priceBasis, ticker.metadata.assetCategory);
-    const contractMultiplier = normalizePositionMultiplier(position.multiplier);
+    // A futures lot counts contracts: without a contract size it has no unit to value.
+    const unknownSize = isFuture && !hasContractMultiplier(position.multiplier);
+    const contractMultiplier = unknownSize ? Number.NaN : normalizePositionMultiplier(position.multiplier);
     // Nominal face already includes the amount held. Keep the supplied contract
     // multiplier as metadata; it must not scale percent-of-par money again.
     const priceMultiplier = basis === "percent-of-par" ? .01 : basis === "per-unit" ? contractMultiplier : Number.NaN;
-    const costMultiplier = basis === "percent-of-par" ? .01 : basis === "per-unit" ? resolvePositionCostMultiplier(position) : Number.NaN;
+    const costMultiplier = basis === "percent-of-par" ? .01 : basis === "per-unit" ? resolvePositionCostMultiplier(position, contractMultiplier) : Number.NaN;
     const quoteBasis = quote ? resolvePriceBasis(quote.priceBasis,
       basis === "percent-of-par" || ticker.metadata.assetCategory?.toUpperCase() === "BOND" ? "BOND" : quote.instrumentType) : basis;
     const nominalCurrency = resolveCurrencyUnit(currencyFor(position));
@@ -129,11 +141,13 @@ export function getPortfolioPositionMetrics(
         && nominalCurrency.currency === quoteCurrency.currency && nominalCurrency.divisor === quoteCurrency.divisor;
     const quoteMultiplier = basis === null || quoteBasis === null || !compatiblePar ? Number.NaN
       : quoteBasis === "percent-of-par" ? .01 : basis === "percent-of-par" ? 1 : contractMultiplier;
-    const hasCost = basis !== null && !!currencyFor(position) && typeof position.avgCost === "number" && Number.isFinite(position.avgCost);
+    const hasCost = basis !== null && !!currencyFor(position) && typeof position.avgCost === "number" && Number.isFinite(position.avgCost)
+      && Number.isFinite(costMultiplier);
     const cost = hasCost ? magnitude * position.avgCost! * costMultiplier : Number.NaN;
     metrics.hasCostBasis &&= hasCost;
     metrics.hasShorts ||= direction < 0;
-    metrics.multiplierHint = Math.max(metrics.multiplierHint, contractMultiplier);
+    metrics.unknownContractSize ||= unknownSize && !Number.isFinite(position.marketValue);
+    if (Number.isFinite(contractMultiplier)) metrics.multiplierHint = Math.max(metrics.multiplierHint, contractMultiplier);
     metrics.totalShares += magnitude * direction;
     metrics.totalCost += convert(cost, position);
     metrics.signedCost += direction * convert(cost, position);

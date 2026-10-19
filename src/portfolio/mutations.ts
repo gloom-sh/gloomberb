@@ -28,9 +28,25 @@ export interface RemoveTickerFromPortfolioResult {
 }
 
 export interface SetManualPortfolioPositionInput {
+  /** Signed: a negative number is a short. A future counts contracts. */
   shares: number;
   avgCost: number;
   currency: string;
+  /**
+   * A future's contract multiplier from its terms (futuresContractSize). Left
+   * out, the lot keeps the one it had, so an edit while the terms cannot be
+   * read does not unsize it.
+   */
+  multiplier?: number;
+}
+
+/** A position of zero is no position; the sign says long or short. */
+export const ZERO_POSITION_MESSAGE = "Shares cannot be 0. Enter a negative number for a short.";
+
+/** Signed shares as every manual entry takes them: a finite number, negative for a short, never zero. */
+export function validatePositionShares(shares: number): string | null {
+  if (!Number.isFinite(shares)) return "Shares must be a number.";
+  return shares === 0 ? ZERO_POSITION_MESSAGE : null;
 }
 
 export interface SetManualPortfolioPositionResult {
@@ -356,9 +372,8 @@ export function setManualPortfolioPosition(
   input: SetManualPortfolioPositionInput,
 ): SetManualPortfolioPositionResult {
   const nextCurrency = input.currency.trim().toUpperCase();
-  if (!Number.isFinite(input.shares) || input.shares <= 0) {
-    throw new Error("Shares must be greater than 0.");
-  }
+  const sharesError = validatePositionShares(input.shares);
+  if (sharesError) throw new Error(sharesError);
   if (!Number.isFinite(input.avgCost)) {
     throw new Error("Average cost must be a valid number.");
   }
@@ -372,6 +387,10 @@ export function setManualPortfolioPosition(
   // acquisition date. A consolidated replacement of several lots has no one date.
   const dateAcquired = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual"
     ? replacedPositions[0].dateAcquired : undefined;
+  // A contract's size does not change with the count held; one the lots agree on carries over.
+  const keptMultipliers = new Set(replacedPositions.map((position) => position.multiplier));
+  const keptMultiplier = keptMultipliers.size === 1 ? [...keptMultipliers][0] : undefined;
+  const multiplier = validMultiplier(input.multiplier) ?? validMultiplier(keptMultiplier);
   const nextPositions = ticker.metadata.positions.filter((position) => position.portfolio !== portfolioId);
   const addedMembership = !ticker.metadata.portfolios.includes(portfolioId);
 
@@ -382,6 +401,7 @@ export function setManualPortfolioPosition(
     currency: nextCurrency,
     broker: "manual",
     ...(dateAcquired ? { dateAcquired } : {}),
+    ...(multiplier !== undefined ? { multiplier } : {}),
   });
 
   return {
@@ -393,6 +413,10 @@ export function setManualPortfolioPosition(
       positions: nextPositions,
     }),
   };
+}
+
+function validMultiplier(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 export function deleteManualPortfolio(

@@ -54,13 +54,16 @@ import {
   resolvePortfolioPositionPnl,
   portfolioPnlPercent,
   signedPositionDirection,
+  type PortfolioPositionMetrics,
   type PortfolioPositionPnl,
 } from "./position-metrics";
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
+  valuesAtSettlement,
   type PortfolioValuationBasis,
 } from "./valuation-basis";
+import { futuresQuantityText, futuresSettlementDisplay, type PortfolioFuturesTerms } from "./futures-positions";
 import { isFiniteNumber } from "../utils/guards";
 import {
   allocationFigures,
@@ -96,6 +99,13 @@ export interface ColumnContext {
   perpetuals?: ReadonlyMap<string, ListedPerpetual | null>;
   /** Moves whenever `perpetuals` does. */
   perpetualsVersion?: number;
+  /**
+   * Each future's contract size and settlement by symbol (loadPortfolioFuturesTerms):
+   * at the close a future is valued, and its Last shown, at its settlement.
+   */
+  futuresTerms?: ReadonlyMap<string, PortfolioFuturesTerms>;
+  /** Moves whenever `futuresTerms` does. */
+  futuresTermsVersion?: number;
 }
 
 /** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
@@ -344,6 +354,30 @@ export function resolvePortfolioPriceValue(
   return { text: "—" };
 }
 
+/**
+ * What Last and Chg show for a future valued at the close: the settlement it
+ * is valued at and the move from the one before, so its value is still Last
+ * times its quantity. Null on the latest print, or without a settlement.
+ */
+function settledHeadline(
+  metrics: PortfolioPositionMetrics,
+  ctx: Pick<ColumnContext, "valuationBasis">,
+  futures: PortfolioFuturesTerms | undefined,
+): ActiveQuoteDisplay | null {
+  return futures?.settlement && valuesAtSettlement(metrics, ctx.valuationBasis ?? "latest-print")
+    ? futuresSettlementDisplay(futures.settlement) : null;
+}
+
+/** One contract as the terms word it ("100 oz"), else its multiplier ("100"); none while the size is unknown. */
+function futuresContractSizeLabel(
+  futures: PortfolioFuturesTerms | undefined,
+  multiplier: number,
+  metrics: Pick<PortfolioPositionMetrics, "unknownContractSize">,
+): { size: string } | null {
+  if (futures?.size) return futures.size;
+  return !metrics.unknownContractSize && multiplier > 1 ? { size: formatMarketQuantity(multiplier) } : null;
+}
+
 export function getColumnValue(
   col: ColumnConfig,
   ticker: TickerRecord,
@@ -356,11 +390,12 @@ export function getColumnValue(
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
+  const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
   // The latest print, which the quote columns read, and the price the position is valued at.
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
-  const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
+  const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -484,17 +519,22 @@ export function getColumnValue(
     case "side":
       return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
     case "shares":
-      return { text: positionMetrics.positionCount > 0 ? formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) : "—" };
+      if (positionMetrics.positionCount === 0) return { text: "—" };
+      // A future counts contracts and says what one is: -1,000 × 100 oz. The table widens the column to fit.
+      return positionMetrics.isFuture
+        ? { text: futuresQuantityText(formatMarketQuantity(totalShares, formatOptions), futuresContractSizeLabel(futures, multiplierHint, positionMetrics)) }
+        : { text: formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) };
     case "avg_cost":
       if (totalCostUnits === 0 || !Number.isFinite(totalCost)) return { text: "—" };
       // A money cost keeps its currency's minor unit, as `portfolio show` prints it: 45.50, not 45.5.
       return { text: formatMarketCost(totalCost / Math.abs(totalCostUnits), { ...withCurrencyMinorDigits(formatOptions, positionCurrency), maxWidth: col.width }) };
     case "cost_basis":
-      if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.totalCost)) return { text: "—" };
-      return { text: formatCompact(baseMetrics.totalCost) };
+      // Signed, as the value is: a short's cost is what it was sold for, negative.
+      if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.signedCost)) return { text: "—" };
+      return { text: formatCompact(baseMetrics.signedCost) };
     case "mkt_value": {
       if (baseMetrics.positionCount === 0) return { text: "—" };
-      const marketValue = resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross;
+      const marketValue = resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.net;
       return { text: marketValue == null ? UNPRICED : formatCompactAmount(marketValue) };
     }
     case "weight": {
@@ -598,7 +638,7 @@ export function getColumnValue(
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
     case "as_of": {
-      const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics);
+      const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement);
       if (!time) return { text: "—" };
       // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
       return { text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }) };
@@ -622,10 +662,11 @@ export function getSortValue(
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
+  const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
-  const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
+  const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -709,9 +750,9 @@ export function getSortValue(
     case "avg_cost":
       return positionMetrics.priceBasis !== null && totalCostUnits !== 0 && Number.isFinite(totalCost) ? totalCost / Math.abs(totalCostUnits) : null;
     case "cost_basis":
-      return baseMetrics.positionCount > 0 && Number.isFinite(baseMetrics.totalCost) ? baseMetrics.totalCost : null;
+      return baseMetrics.positionCount > 0 && Number.isFinite(baseMetrics.signedCost) ? baseMetrics.signedCost : null;
     case "mkt_value":
-      return resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? null;
+      return resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.net ?? null;
     case "weight":
       return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).weight;
     case "target_weight":
@@ -767,7 +808,7 @@ export function getSortValue(
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
     case "as_of":
-      return getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics)?.time ?? null;
+      return getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement)?.time ?? null;
     case PRICE_SPARKLINE_COLUMN_ID: {
       // The trend the sparkline draws: its window, closed by the live price.
       const history = followLiveSparklinePrice(financials?.priceHistory ?? [], quote, {

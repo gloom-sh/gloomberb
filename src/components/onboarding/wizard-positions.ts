@@ -7,7 +7,9 @@ import {
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
+  validatePositionShares,
 } from "../../portfolio/mutations";
+import { loadFuturesEntrySize } from "../../portfolio/futures-terms";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerSearch } from "../../tickers/search";
@@ -227,9 +229,10 @@ export function useOnboardingPositions({
       return false;
     }
     const shares = parseAmount(current.shares);
-    if (shares !== null && (Number.isNaN(shares) || shares <= 0)) {
+    const sharesError = shares === null ? null : validatePositionShares(shares);
+    if (sharesError) {
       setFieldIdx(1);
-      setError(ambiguousAmount(current.shares, "Shares") ?? t("Shares must be greater than 0."));
+      setError(ambiguousAmount(current.shares, "Shares") ?? t(sharesError));
       return false;
     }
     const avgCost = parseAmount(current.avgCost);
@@ -282,10 +285,13 @@ export function useOnboardingPositions({
           portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
           stateRef.current.config.baseCurrency,
         );
+        // A future is entered in contracts, sized by its terms.
+        const size = await loadFuturesEntrySize(ticker);
         nextTicker = setManualPortfolioPosition(ticker, portfolioId, {
           shares,
           avgCost: costBasis,
           currency: positionCurrency,
+          ...(size ? { multiplier: size.multiplier } : {}),
         }).ticker;
       }
 
@@ -340,8 +346,9 @@ export function useOnboardingPositions({
     }
     if (fieldIdx === 1) {
       const shares = parseAmount(current.shares);
-      if (shares !== null && (Number.isNaN(shares) || shares <= 0)) {
-        setError(ambiguousAmount(current.shares, "Shares") ?? t("Shares must be greater than 0."));
+      const sharesError = shares === null ? null : validatePositionShares(shares);
+      if (sharesError) {
+        setError(ambiguousAmount(current.shares, "Shares") ?? t(sharesError));
         return;
       }
       setError(null);

@@ -273,7 +273,9 @@ export function buildPortfolioHeatmapAssets({
       ? getRegularSessionMoveDisplay(quote)
       : getTradedSessionMoveDisplay(quote);
     const price = display != null && Number.isFinite(display.price) ? display.price : null;
-    const size = positiveNumber(getSortValue(sizeColumn, ticker, snapshot, context));
+    // A short's tile is as large as its exposure: MKT VAL is signed, the area is not.
+    const sizeValue = getSortValue(sizeColumn, ticker, snapshot, context);
+    const size = positiveNumber(typeof sizeValue === "number" ? Math.abs(sizeValue) : sizeValue);
     const hasChange = display?.changePercent != null && Number.isFinite(display.changePercent);
     const move = hasChange ? display!.changePercent : null;
     return {
