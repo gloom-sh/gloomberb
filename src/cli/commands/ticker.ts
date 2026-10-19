@@ -1099,6 +1099,8 @@ function buildTickerStructuredData({
       primaryDocumentUrl: filing.primaryDocumentUrl ?? "",
       description: getFilingDescription(filing) ?? "",
       items: secFilingItemCodes(filing.items) ?? "",
+      // The items by number and name, as the text report shows them.
+      itemsLabel: currentReportItemsLabel(filing.items) ?? "",
     })),
     // The pricing supplements a bank files for its notes, left out of recentSecFilings unless --all.
     recentSecFilingsHidden: { pricingSupplements: hiddenPricingSupplements },

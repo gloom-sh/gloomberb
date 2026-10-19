@@ -55,12 +55,15 @@ test("an undeclared option fails with the command's options, a close match and i
 
 test("financials --quarterly points at the functions that list quarters, with the symbol typed", () => {
   const financials = marketDataCliCommands.find((command) => command.name === "financials")!;
+  const hint = "financials lists fiscal years. For quarters: gloomberb fn GF WFC --period quarterly --periods 40 (one metric at a time), "
+    + "or gloomberb fn FA WFC --period quarterly (the statements).";
   for (const flag of ["--quarterly", "--period", "--freq"]) {
-    expect(failure(() => check(financials, ["WFC", flag, ...flag === "--quarterly" ? [] : ["quarterly"]])).details).toStartWith(
-      "financials lists fiscal years. For quarters: gloomberb fn GF WFC --period quarterly --periods 40 (one metric at a time), "
-        + "or gloomberb fn FA WFC --period quarterly (the statements).",
-    );
+    const value = flag === "--quarterly" ? [] : ["quarterly"];
+    expect(failure(() => check(financials, ["WFC", flag, ...value])).details).toStartWith(hint);
+    // Before the symbol: a switch is not followed by its value, an option that takes one is.
+    expect(failure(() => check(financials, [flag, ...value, "WFC"])).details).toStartWith(hint);
   }
+  expect(failure(() => check(financials, ["--exchange", "NYSE", "--quarterly", "WFC"])).details).toStartWith(hint);
 });
 
 const tempDirs: string[] = [];

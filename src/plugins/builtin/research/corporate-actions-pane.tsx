@@ -285,6 +285,8 @@ export function buildEventDetail({
 
   const comparison: EventDetailBlock[] = [
     ...(row.dateStatus && row.dateStatus !== "reported" ? [detailRow("Report date", row.date, row.dateStatus)] : []),
+    // When in the day the report came or comes out, as the source gives it; never the row's period.
+    ...(row.reportTime ? [detailRow("Report time", row.reportTime)] : []),
     detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency),
       row.epsActual == null ? undefined : [row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis,
         row.epsProvisional ? "provisional, from the company's press release" : null].filter(Boolean).join(", ") || undefined),

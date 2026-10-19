@@ -6,6 +6,7 @@ import { companyNameExtraWords, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { classifyInstrumentKind } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
+import { readTerminalListingCode, type TerminalListingCode } from "./terminal-codes";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -65,4 +66,32 @@ export async function findListingOfCompanyName(
   const best = ranked[0];
   if (!best && busy) throw busy;
   return best ? { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name } : null;
+}
+
+/** `BRK.B`, `BRK-B` and `BRK/B` alike. */
+const shareClassSymbol = (symbol: string) => symbol.trim().toUpperCase().replace(/[-/]/g, ".");
+
+/**
+ * A terminal's code for a US listing typed where a symbol goes, when it is
+ * one. A Reuters code (WFC.N) always is. A Bloomberg code is words, which a
+ * fund's name can be too ("Putnam US Equity", "Global US Equity"), so it is
+ * one only when search lists its root as a US ticker (JPM, in any case);
+ * otherwise it is the name it reads as, and is searched as one. A search that
+ * fails says nothing either way, and the code stands. Null for anything else.
+ */
+export async function readTerminalCodeArg(
+  dataProvider: Pick<DataProvider, "search">,
+  typed: string,
+): Promise<TerminalListingCode | null> {
+  const code = readTerminalListingCode(typed);
+  if (!code || code.terminal !== "bloomberg") return code;
+  try {
+    const results = await dataProvider.search(code.symbol, { limit: LISTING_SEARCH_LIMIT });
+    return results.some((result) => shareClassSymbol(result.symbol) === code.symbol
+      && isUsListingExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange))
+      ? code : null;
+  } catch (error) {
+    if (!isProviderBusy(error)) logFailure("tickers-company-name-listing", "Could not search a terminal code's root")(error);
+    return code;
+  }
 }

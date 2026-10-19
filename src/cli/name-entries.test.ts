@@ -50,6 +50,24 @@ test("one quoted argument with spaces is a company, a line of tickers, or a phra
   expect(await readPhraseArgument("AAPL MSFT", down)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });
 });
 
+test("a Bloomberg code is one entry when search lists its root as a US ticker; words that only look like one are a name or their words", async () => {
+  const listed: Record<string, InstrumentSearchResult[]> = {
+    JPM: [{ providerId: "test", symbol: "JPM", name: "JPMorgan Chase & Co.", exchange: "NYSE", currency: "USD", type: "Common Stock" }],
+    // GLOBAL trades only abroad.
+    GLOBAL: [{ providerId: "test", symbol: "GLOBAL", name: "Global Holdings", exchange: "JSE", currency: "ZAR", type: "Common Stock" }],
+  };
+  const fund: InstrumentSearchResult = { providerId: "test", symbol: "PUEQX", name: "Putnam US Equity Fund", exchange: "NASDAQ", currency: "USD", type: "Mutual Fund" };
+  const provider = {
+    search: async (query: string) => listed[query] ?? (/putnam/i.test(query) ? [fund] : []),
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => ({ target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) })),
+  };
+  expect(await readNameEntries(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global US Equity"], provider))
+    .toEqual(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global", "US", "Equity"]);
+  expect(await readPhraseArgument("jpm us equity", provider)).toEqual({ kind: "symbols", symbols: ["jpm us equity"] });
+  expect(await readPhraseArgument("Putnam US Equity", provider)).toEqual({ kind: "name", name: "Putnam US Equity" });
+  expect(await readPhraseArgument("Global US Equity", provider)).toEqual({ kind: "phrase", phrase: "Global US Equity" });
+});
+
 test("a name search too busy to answer is no answer: its words are not other companies' symbols, unless each has a quote", async () => {
   // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK (GLO-994).
   const quoted = new Set(["EAGLE", "AAPL", "MSFT"]);

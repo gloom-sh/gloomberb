@@ -187,7 +187,7 @@ import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
-import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
+import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { crossRate, describeFxConversion, describeFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
@@ -544,11 +544,20 @@ function filingRows(filings: SecFilingItem[]) {
     form: filing.form,
     filingDate: isoDate(filing.filingDate).slice(0, 10),
     companyName: filing.companyName ?? "",
-    // A current report's items by number and name: the results 8-K reads apart from another filed that day.
-    items: currentReportItemsLabel(filing.items) ?? "",
     accessionNumber: filing.accessionNumber,
     url: filing.primaryDocumentUrl ?? filing.filingUrl,
+    items: secFilingItemCodes(filing.items) ?? "",
+    // A current report's items by number and name: the results 8-K reads apart from another filed that day.
+    itemsLabel: currentReportItemsLabel(filing.items) ?? "",
   }));
+}
+
+/** The filings as JSON gives them, with a current report's items named beside their codes. */
+function filingsWithItemLabels(filings: SecFilingItem[]) {
+  return filings.map((filing) => {
+    const itemsLabel = currentReportItemsLabel(filing.items);
+    return itemsLabel ? { ...filing, itemsLabel } : filing;
+  });
 }
 
 function analystSummary(data: AnalystResearchData): string {
@@ -1013,10 +1022,23 @@ function historySymbolArg(args: readonly string[]): string | undefined {
 /** What people type for quarterly figures, which `financials` (fiscal years) does not take. */
 const QUARTERLY_OPTIONS = new Set(["--quarterly", "--quarter", "--quarters", "--qtr", "--period", "--periods", "--frequency", "--freq", "--interval"]);
 
+/** Options before the symbol whose next word is their value: `financials`'s own, and the quarterly ones that take one. */
+const FINANCIALS_VALUE_OPTIONS = new Set(["--exchange", "--section", "--period", "--periods", "--frequency", "--freq", "--interval"]);
+
+/** The symbol `financials` was given, wherever it sits: `--quarterly WFC` is WFC, `--period quarterly WFC` too. */
+function financialsSymbolArg(args: readonly string[]): string | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (!arg.startsWith("-")) return arg;
+    if (!arg.includes("=") && FINANCIALS_VALUE_OPTIONS.has(arg)) index += 1;
+  }
+  return undefined;
+}
+
 /** `financials --quarterly` points at the functions that show quarters: GF a metric over time, FA the statements. */
 function financialsOptionHint(flag: string, args: readonly string[]): string | null {
   if (!QUARTERLY_OPTIONS.has(flag)) return null;
-  const symbol = historySymbolArg(args) ?? "<symbol>";
+  const symbol = financialsSymbolArg(args) ?? "<symbol>";
   return `financials lists fiscal years. For quarters: gloomberb fn GF ${symbol} --period quarterly --periods 40 (one metric at a time), `
     + `or gloomberb fn FA ${symbol} --period quarterly (the statements).`;
 }
@@ -1380,11 +1402,22 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   });
 }
 
+// Exports keep the columns they had and add the items after them: codes, then their names.
 const FILING_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
+  { key: "url", header: "URL", optional: true },
   { key: "items", header: "Items" },
+  { key: "itemsLabel", header: "Item names" },
+];
+
+// The text table names the items before the URL, which a narrow terminal drops first.
+const FILING_TEXT_COLUMNS = [
+  { key: "filingDate", header: "Date" },
+  { key: "form", header: "Form" },
+  { key: "companyName", header: "Company", maxWidth: 24 },
+  { key: "itemsLabel", header: "Items" },
   { key: "url", header: "URL", optional: true },
 ];
 
@@ -1423,7 +1456,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const resolved = identity ?? listingIdentity(listing, quote);
       const choice = await listingChoiceNotes(listing, market, quote, venues);
       ctx.printResult({
-        data: filings,
+        data: filingsWithItemLabels(filings),
         metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) },
         freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
         ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -1431,6 +1464,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         heading: listingHeading(resolved),
         rows: filingRows,
         columns: FILING_COLUMNS,
+        textColumns: FILING_TEXT_COLUMNS,
         // A listing abroad is looked up by its company: none found means the company files nothing with the SEC.
         empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.`
           : identity ? noSecReportsNotice(resolved)
@@ -1447,7 +1481,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         data: [] as SecFilingItem[],
         metadata: { ...listingMetadata(resolved), secRegistrant: error.registrantName },
         warnings: ctx.cliOptions.format === "text" ? undefined : [message],
-      }, { rows: filingRows, columns: FILING_COLUMNS, empty: message });
+      }, { rows: filingRows, columns: FILING_COLUMNS, textColumns: FILING_TEXT_COLUMNS, empty: message });
     }
   });
 }

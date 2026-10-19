@@ -14,7 +14,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { findListingOfCompanyName, isCompanyNameInput } from "../tickers/company-name-listing";
+import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -100,13 +100,17 @@ export interface ListingArg {
 export function parseListingArg(
   rawArg: string,
   exchangeOption?: string | null,
-  { ownExchangeWins = false }: { ownExchangeWins?: boolean } = {},
+  { ownExchangeWins = false, terminalCodes = true }: {
+    ownExchangeWins?: boolean;
+    /** False for words that read as a Bloomberg code but are a name (`readTerminalCodeArg`). */
+    terminalCodes?: boolean;
+  } = {},
 ): ListingArg {
   // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
   const stripped = stripStrayEdges(rawArg);
   const raw = stripped.text || rawArg;
   // A terminal's code for a US listing (WFC.N, "JPM US Equity") is that listing (WFC:NYSE, JPM).
-  const terminal = readTerminalListingCode(raw);
+  const terminal = terminalCodes ? readTerminalListingCode(raw) : null;
   const listing = parseCleanListingArg(terminal?.key ?? raw, exchangeOption, { ownExchangeWins });
   const notes = [...stripped.text ? stripped.notes : [], ...terminal ? [terminalCodeReadAs(terminal)] : []];
   return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
@@ -862,9 +866,12 @@ export async function resolveCliListing(
   deps: ListingDeps,
   options: { ownExchangeWins?: boolean } = {},
 ): Promise<CliListing> {
+  // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
+  const typed = stripStrayEdges(raw).text || raw;
+  const terminal = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
-  const named = await companyNameListingArg(raw, deps);
-  let parsed = named ?? parseListingArg(raw, exchangeOption, options);
+  const named = terminal ? null : await companyNameListingArg(raw, deps);
+  let parsed = named ?? parseListingArg(raw, exchangeOption, { ...options, terminalCodes: terminal != null });
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
@@ -932,8 +939,7 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
  */
 async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
   const typed = stripStrayEdges(raw).text || raw;
-  // "JPM US Equity" is Bloomberg's code for JPM, not the name of a fund that starts with it.
-  if (!isCompanyNameInput(typed) || readTerminalListingCode(typed)) return null;
+  if (!isCompanyNameInput(typed)) return null;
   const found = await findListingOfCompanyName(deps.dataProvider, typed);
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;

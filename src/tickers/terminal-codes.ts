@@ -17,6 +17,8 @@ export interface TerminalListingCode {
   exchange: string;
   /** `WFC:NYSE`, or `JPM` for the US composite. */
   key: string;
+  /** Which terminal writes it so: a Bloomberg code is words, which a fund's name can also be. */
+  terminal: "reuters" | "bloomberg";
 }
 
 const REUTERS_VENUES: Record<string, string> = { N: "NYSE", O: "NASDAQ", OQ: "NASDAQ" };
@@ -40,9 +42,15 @@ const REUTERS_CLASS = /^([A-Z]{1,5})([a-z])$/;
 /** `JPM US Equity`, `BRK/B UN Equity`, `brk/b us equity`. */
 const BLOOMBERG_CODE = /^([A-Za-z]{1,6})(?:\/([A-Za-z]))?\s+([A-Za-z]{2})\s+equity$/i;
 
-function listing(typed: string, root: string, shareClass: string | undefined, exchange: string): TerminalListingCode {
+function listing(
+  typed: string,
+  root: string,
+  shareClass: string | undefined,
+  exchange: string,
+  terminal: TerminalListingCode["terminal"],
+): TerminalListingCode {
   const symbol = `${root.toUpperCase()}${shareClass ? `.${shareClass.toUpperCase()}` : ""}`;
-  return { typed, symbol, exchange, key: exchange ? `${symbol}:${exchange}` : symbol };
+  return { typed, symbol, exchange, key: exchange ? `${symbol}:${exchange}` : symbol, terminal };
 }
 
 export function readTerminalListingCode(raw: string): TerminalListingCode | null {
@@ -52,13 +60,15 @@ export function readTerminalListingCode(raw: string): TerminalListingCode | null
     // Typed all in lower case (wfc.n), the last letter is part of the symbol, not a class.
     const shareClass = REUTERS_CLASS.exec(reuters[1]!);
     const exchange = REUTERS_VENUES[reuters[2]!.toUpperCase()]!;
-    return shareClass ? listing(typed, shareClass[1]!, shareClass[2], exchange) : listing(typed, reuters[1]!, undefined, exchange);
+    return shareClass
+      ? listing(typed, shareClass[1]!, shareClass[2], exchange, "reuters")
+      : listing(typed, reuters[1]!, undefined, exchange, "reuters");
   }
   const bloomberg = BLOOMBERG_CODE.exec(typed);
   if (bloomberg) {
     const exchange = BLOOMBERG_VENUES[bloomberg[3]!.toUpperCase()];
     if (exchange === undefined) return null;
-    return listing(typed, bloomberg[1]!, bloomberg[2], exchange);
+    return listing(typed, bloomberg[1]!, bloomberg[2], exchange, "bloomberg");
   }
   return null;
 }

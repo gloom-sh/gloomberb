@@ -19,6 +19,7 @@ import { fundamentalsEpsCurrency } from "../../../utils/fundamentals";
 import {
   earningsDateStatus,
   earningsDetail,
+  earningsDetailParts,
   earningsEpsBasis,
   epsBasisName,
   epsSurprise,
@@ -298,6 +299,20 @@ function eventSortRank(status: EventStatus): number {
   }
 }
 
+/**
+ * An earnings row's detail; a report not out yet also says when in the day it
+ * comes, after whether its date is confirmed: `confirmed, After Hours, 17
+ * analysts`. The time is never the row's period.
+ */
+function upcomingEarningsDetail(earning: CorporateActionsData["earnings"][number]): string {
+  const time = earning.time?.trim();
+  if (earning.epsActual != null || !time) return earningsDetail(earning);
+  const parts = earningsDetailParts(earning);
+  if (parts.length === 0) return `Pending, ${time}`;
+  const at = earningsDateStatus(parts[0]) ? 1 : 0;
+  return [...parts.slice(0, at), time, ...parts.slice(at)].join(", ");
+}
+
 export function buildEventRows(
   data: CorporateActionsData | null,
   estimates: AnalystResearchData | null,
@@ -330,7 +345,7 @@ export function buildEventRows(
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
       period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : "-",
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
-      detail: earningsDetail(earning),
+      detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : undefined),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,

@@ -19,6 +19,12 @@ test("an 8-K's items read by number and name, exhibits only when alone", () => {
   expect(currentReportItemsLabel("2.02,7.01,9.01")).toBe("2.02 Results of operations; 7.01 Regulation FD disclosure");
   expect(currentReportItemsLabel("9.01")).toBe("9.01 Exhibits");
   expect(currentReportItemsLabel(" 5.02 , 9.01 ")).toBe("5.02 Officer or director change");
+  expect(currentReportItemsLabel("6.02")).toBe("6.02 Servicer or trustee change");
+  // Every item Form 8-K has, the asset-backed 6.0x ones included, has a name of its own.
+  const items = ["1.01", "1.02", "1.03", "1.04", "1.05", "2.01", "2.02", "2.03", "2.04", "2.05", "2.06", "3.01", "3.02", "3.03",
+    "4.01", "4.02", "5.01", "5.02", "5.03", "5.04", "5.05", "5.06", "5.07", "5.08", "6.01", "6.02", "6.03", "6.04", "6.05", "6.06",
+    "6.10", "7.01", "8.01", "9.01"];
+  expect(items.filter((code) => currentReportItemsLabel(code)?.includes("Item"))).toEqual([]);
   expect(currentReportItemsLabel("")).toBeNull();
   expect(currentReportItemsLabel(undefined)).toBeNull();
 });
