@@ -16,7 +16,7 @@ import { getPortfolioQuoteDisplay, type PortfolioPositionMetrics } from "./posit
 export type PortfolioValuationBasis = "latest-print" | "regular-close";
 
 /** The basis as reports and panes state it, after "Priced at". */
-export const VALUATION_BASIS_LABELS: Record<PortfolioValuationBasis, string> = {
+const VALUATION_BASIS_LABELS: Record<PortfolioValuationBasis, string> = {
   "latest-print": "the latest print, extended hours included",
   "regular-close": "the regular close",
 };

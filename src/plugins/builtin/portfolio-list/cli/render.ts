@@ -321,7 +321,7 @@ export interface PortfolioExposure {
 }
 
 /** The exposure of lots at their signed market values; an unpriced lot (null) is left out, as the total leaves it. */
-export function portfolioExposure(values: Iterable<number | null | undefined>): PortfolioExposure {
+function portfolioExposure(values: Iterable<number | null | undefined>): PortfolioExposure {
   let long = 0;
   let short = 0;
   for (const value of values) {

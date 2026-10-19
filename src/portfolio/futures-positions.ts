@@ -80,13 +80,6 @@ export function withFuturesContractSize(ticker: TickerRecord, size: FuturesContr
   };
 }
 
-/** Whether a futures holding has a lot whose contract size is unknown, so its value, cost and P&L are not shown. */
-export function hasUnknownFuturesContractSize(ticker: TickerRecord, portfolioId: string | undefined): boolean {
-  return isFuturesTicker(ticker) && ticker.metadata.positions.some((position) =>
-    (!portfolioId || position.portfolio === portfolioId) && position.shares !== 0 && !hasMultiplier(position)
-    && !(typeof position.marketValue === "number" && Number.isFinite(position.marketValue)));
-}
-
 const DAY_MS = 86_400_000;
 
 /**

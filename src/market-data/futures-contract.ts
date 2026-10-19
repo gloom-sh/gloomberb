@@ -309,14 +309,3 @@ export function loadFuturesContractTermsCached(
   termsInFlight.set(key, request);
   return request;
 }
-
-/** The terms loadFuturesContractTermsCached holds for a symbol: undefined until they have been asked for. */
-export function cachedFuturesContractTerms(symbol: string): FuturesContractTermsPayload | null | undefined {
-  return termsCache.get(termsKey(symbol))?.terms;
-}
-
-/** Forgets every remembered contract's terms (tests). */
-export function resetFuturesContractTerms(): void {
-  termsCache.clear();
-  termsInFlight.clear();
-}

@@ -41,7 +41,7 @@ export interface SetManualPortfolioPositionInput {
 }
 
 /** A position of zero is no position; the sign says long or short. */
-export const ZERO_POSITION_MESSAGE = "Shares cannot be 0. Enter a negative number for a short.";
+const ZERO_POSITION_MESSAGE = "Shares cannot be 0. Enter a negative number for a short.";
 
 /** Signed shares as every manual entry takes them: a finite number, negative for a short, never zero. */
 export function validatePositionShares(shares: number): string | null {
