@@ -45,6 +45,13 @@ export interface SecFilingItem {
   companyName?: string;
   filingUrl: string;
   primaryDocumentUrl?: string;
+  /**
+   * The SEC file number EDGAR lists the filing under for this company, empty
+   * when it lists none: a 13D/13G about the company carries its 005- number,
+   * one it filed as a holder of another company none. Absent when the source
+   * does not say (an older server).
+   */
+  fileNumber?: string;
 }
 
 export interface SecFilingDocument {

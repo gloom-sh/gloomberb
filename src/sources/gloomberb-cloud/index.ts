@@ -120,6 +120,7 @@ function mapCloudSecFiling(item: {
   companyName?: string;
   filingUrl: string;
   primaryDocumentUrl?: string;
+  fileNumber?: string;
 }): SecFilingItem {
   return {
     accessionNumber: item.accessionNumber,
@@ -134,6 +135,8 @@ function mapCloudSecFiling(item: {
     companyName: item.companyName,
     filingUrl: item.filingUrl,
     primaryDocumentUrl: item.primaryDocumentUrl,
+    // Absent from an older server: no file number is not the same as an empty one.
+    ...(typeof item.fileNumber === "string" ? { fileNumber: item.fileNumber } : {}),
   };
 }
 

@@ -9,7 +9,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
-import { loadWithoutPricingSupplements, pricingSupplementsNote } from "../../../utils/sec-filings";
+import { hiddenFilingsNote, loadLatestFilings } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
@@ -102,11 +102,11 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // A form filter searches every filing listed for the issuer, as `filings --form` does, and keeps
       // the supplements it names; without one, a bank's pricing supplements stay out unless --all.
       const { filings, hidden } = form
-        ? { filings: (await load(SEC_FILING_FETCH_LIMIT)).filter((filing) => filingFormMatches(filing.form, form)).slice(0, limit), hidden: 0 }
+        ? { filings: (await load(SEC_FILING_FETCH_LIMIT)).filter((filing) => filingFormMatches(filing.form, form)).slice(0, limit), hidden: null }
         : args.options.all === true
-          ? { filings: (await load(limit)).slice(0, limit), hidden: 0 }
-          : await loadWithoutPricingSupplements(load, limit);
-      const note = pricingSupplementsNote(hidden);
+          ? { filings: (await load(limit)).slice(0, limit), hidden: null }
+          : await loadLatestFilings(load, limit);
+      const note = hidden && hiddenFilingsNote(hidden);
       return {
         rows: buildSecFilingRows(filings),
         ...(note ? { notes: [note] } : {}),
@@ -117,7 +117,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           returned: filings.length,
           issuers: secFilingIssuers(filings),
           ...(form ? { form } : {}),
-          pricingSupplementsHidden: hidden,
+          pricingSupplementsHidden: hidden?.pricingSupplements ?? 0,
         },
       };
     },

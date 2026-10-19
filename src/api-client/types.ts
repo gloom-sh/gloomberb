@@ -1285,6 +1285,8 @@ interface CloudSecFilingPayload {
   companyName?: string;
   filingUrl: string;
   primaryDocumentUrl?: string;
+  /** The filing's SEC file number for this company, empty when it has none. Absent from older servers. */
+  fileNumber?: string;
 }
 
 interface CloudSecDocumentPayload {
