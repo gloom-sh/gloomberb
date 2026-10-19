@@ -22,6 +22,7 @@ import {
   hasOpenPortfolioPositions,
   isManualPortfolio,
   resolveManualPositionCurrency,
+  positionQuantityLabel,
   setManualPortfolioPosition,
   validatePositionShares,
 } from "../../../portfolio/mutations";
@@ -235,10 +236,19 @@ export function createCommandBarCollectionWorkflowActions(options: {
         throw new Error("Choose a manual portfolio.");
       }
 
+      const resolvedTicker = await resolveTickerInputOrThrow(
+        coerceFieldString(values.ticker),
+        activeTickerSymbol,
+        portfolio.id,
+        buildWorkflowDeps(),
+      );
+      const ticker = resolveCollectionTicker(resolvedTicker.ticker, getState().tickers, "portfolio", portfolio.id);
+
       // 18,50, 1.234,5 and 123.456 read as typed; 1,234 could be either reading and fails naming both.
-      // Negative for a short; zero is no position.
-      const shares = readTypedNumber(coerceFieldString(values.shares), "Shares");
-      const sharesError = validatePositionShares(shares);
+      // Negative for a short; zero is no position. A future counts contracts, and the messages say so.
+      const quantityLabel = positionQuantityLabel(ticker);
+      const shares = readTypedNumber(coerceFieldString(values.shares), quantityLabel);
+      const sharesError = validatePositionShares(shares, quantityLabel);
       if (sharesError) {
         throw new Error(t(sharesError));
       }
@@ -247,14 +257,6 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (!Number.isFinite(avgCost)) {
         throw new Error("Avg Cost must be a valid number.");
       }
-
-      const resolvedTicker = await resolveTickerInputOrThrow(
-        coerceFieldString(values.ticker),
-        activeTickerSymbol,
-        portfolio.id,
-        buildWorkflowDeps(),
-      );
-      const ticker = resolveCollectionTicker(resolvedTicker.ticker, getState().tickers, "portfolio", portfolio.id);
 
       const currency = resolveManualPositionCurrency(
         coerceFieldString(values.currency),

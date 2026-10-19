@@ -62,7 +62,7 @@ function targetsVersion(targets: Readonly<Record<string, number>> | undefined): 
 export function columnContextVersion(columnId: string, ctx: ColumnContext): string {
   let version = `${ctx.activeTab ?? ""}|${ctx.baseCurrency}`;
   if (FX_COLUMN_IDS.has(columnId)) version += `|${exchangeRatesVersion(ctx.exchangeRates)}`;
-  if (ALLOCATION_COLUMN_IDS.has(columnId)) version += `|${ctx.portfolioTotalMarketValue ?? 0}`;
+  if (ALLOCATION_COLUMN_IDS.has(columnId)) version += `|${ctx.portfolioWeightBase ?? 0}`;
   if (VALUATION_COLUMN_IDS.has(columnId)) version += `|${ctx.valuationBasis ?? "latest-print"}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId) || columnId === "target_weight") version += `|${targetsVersion(ctx.portfolioTargets)}`;
   if (SUPPLEMENTAL_COLUMN_IDS.has(columnId)) version += `|${ctx.supplementalVersion ?? 0}`;

@@ -70,17 +70,21 @@ test("a broker portfolio's positions come largest first with weights and totals 
 
   expect(result.rows.map((row) => row.symbol)).toEqual(["MSFT", "NVDA", "TSLA"]);
   expect(result.rows[0]).toMatchObject({ shares: 30, price: 400, marketValue: 12_000, unrealizedPnl: 3_000, priceCurrency: "USD" });
-  // A short is negative exposure and weighs against the net total, as `portfolio show` weighs it.
+  // A short is negative exposure, and a book that holds one weighs against its gross exposure, as `portfolio show` weighs it.
   expect(result.rows[2]).toMatchObject({ shares: -20, marketValue: -5_000, unrealizedPnl: 1_000 });
-  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 19_000) * 100, 8);
-  expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 19_000) * 100, 8);
+  expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 29_000) * 100, 8);
+  expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 29_000) * 100, 8);
+  expect(result.columns?.find((column) => column.key === "weight")?.description).toContain("Percent of gross exposure");
   expect(result.metadata).toMatchObject({
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",
     positions: 5,
     totals: { marketValue: 19_000, grossMarketValue: 29_000, longMarketValue: 24_000, shortMarketValue: -5_000, unrealizedPnl: 9_500 },
+    weightBasis: "gross",
+    weightBase: 29_000,
     notices: [
       "Exposure: long $24,000, short -$5,000, net $19,000, gross $29,000",
+      "Weights are shares of gross exposure ($29,000), longs plus shorts at their absolute value, as the book holds a short; cash has no weight.",
       "2 more positions not shown; totals include every position.",
       // No account was synced here, so the total weighs only the positions.
       expect.stringContaining("cash and margin are unknown"),

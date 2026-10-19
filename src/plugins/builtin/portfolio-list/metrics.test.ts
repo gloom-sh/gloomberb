@@ -470,7 +470,7 @@ describe("portfolio-metrics", () => {
     });
     const context: ColumnContext = {
       ...defaultColumnContext,
-      portfolioTotalMarketValue: 2_400,
+      portfolioWeightBase: 2_400,
       now: Date.UTC(2026, 0, 1),
     };
 

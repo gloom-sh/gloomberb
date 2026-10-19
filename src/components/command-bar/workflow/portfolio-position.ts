@@ -3,7 +3,7 @@ import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { tf } from "../../../i18n";
 import { getManualPortfolioPositionPrefill, type ManualPortfolioPositionPrefill } from "../../../portfolio/manual-lots";
-import { isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";
+import { isManualPortfolio, positionQuantityLabel, resolveManualPositionCurrency } from "../../../portfolio/mutations";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];
@@ -71,7 +71,8 @@ function buildManualPortfolioPositionWorkflow(
     },
     {
       id: "shares",
-      label: "Shares",
+      // A future is held in contracts.
+      label: positionQuantityLabel(options.ticker),
       type: "number",
       placeholder: "10",
       ...(lotsHint ? { description: lotsHint } : {}),

@@ -33,6 +33,9 @@ const TICKER_DOT_WIDTH = 2;
  * option as its terms (`NVDA C $1250 Dec'26`) fit, so only a list holding options is given the width.
  */
 const MAX_TICKER_COLUMN_WIDTH = 22;
+/** WEIGHT's header on a book that holds a short: its weights are shares of gross exposure. As wide as WEIGHT. */
+const GROSS_WEIGHT_LABEL = "GROSS WT";
+
 /** The widest a futures quantity grows the QTY column: `-12,000 × 5,000 bushels` fits. */
 const MAX_QUANTITY_COLUMN_WIDTH = 24;
 
@@ -190,13 +193,16 @@ export function PortfolioTickerTable({
     (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(tickerDisplayName(ticker))),
     0,
   )), [sortedTickers]);
+  // A book that holds a short weighs its positions against gross exposure, and the header says so.
+  const grossWeights = columnContext.portfolioWeightBasis === "gross";
   const displayColumns = useMemo(() => columns.map((column) => column.id === "shares" && hasNonShareQuantity
     ? { ...column, label: "QTY", ...(sharesWidth > column.width ? { width: sharesWidth } : {}) }
+    : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
-  } : column), [columns, hasNonShareQuantity, pnlLabel, sharesWidth, tickerWidth]);
+  } : column), [columns, grossWeights, hasNonShareQuantity, pnlLabel, sharesWidth, tickerWidth]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

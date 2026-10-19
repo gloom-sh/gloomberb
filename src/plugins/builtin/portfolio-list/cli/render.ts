@@ -74,6 +74,7 @@ import {
   hasTargetWeights,
   lotWeight,
   resolvePortfolioCash,
+  weightBasisNote,
   type AllocationHolding,
   type PortfolioAllocation,
 } from "../../../../portfolio/allocation";
@@ -494,6 +495,16 @@ export function exposureLine(exposure: PortfolioExposure, currency: string): str
   return `Exposure: long ${money(exposure.long)}, short ${money(exposure.short)}, net ${money(exposure.net)}, gross ${money(exposure.gross)}`;
 }
 
+/** What a hedged book's weights divide, in whole units as the exposure line states it; null for a book weighed on its total. */
+export function weightBasisLine(allocation: Pick<PortfolioAllocation, "weightBasis" | "weightBase">, currency: string): string | null {
+  return weightBasisNote(allocation, (value) => formatAllocationMoney(value, currency, { whole: true }));
+}
+
+/** What the TOTAL row weighs: all of a total; nothing on a gross base, where the weights net to the book's net over its gross. */
+function totalWeight(allocation: Pick<PortfolioAllocation, "weightBasis" | "total">): number | null {
+  return allocation.weightBasis === "total" && allocation.total != null && allocation.total > 0 ? 100 : null;
+}
+
 /** A portfolio's cash line, as `portfolio show` and `fn PF` report it. */
 export interface PortfolioCashReport {
   /** In the cash's own currency. */
@@ -765,7 +776,7 @@ async function showCollectionWithMarketData(
         annualIncome: lotIncome[index]?.income ?? null,
         incomeYield: lotIncome[index]?.yield ?? null,
         // Only the rows of a ticker held in several lots: `lots` says the allocation on its first row is the whole position's, `lotWeight` is this lot's own share.
-        ...(lots > 1 ? { lots, lotWeight: lotWeight(typeof entry.row.marketValue === "number" ? entry.row.marketValue : null, allocation.total) } : {}),
+        ...(lots > 1 ? { lots, lotWeight: lotWeight(typeof entry.row.marketValue === "number" ? entry.row.marketValue : null, allocation.weightBase) } : {}),
         // Only on a future: `shares` counts contracts, each `contractMultiplier` units of the price, as the exchange sizes it.
         ...(entry.futures && entry.position ? {
           contractMultiplier: entry.position.multiplier ?? null,
@@ -851,13 +862,15 @@ async function showCollectionWithMarketData(
         ...(cashExport ? [{ symbol: CASH_SYMBOL, marketValue: cashExport.value, baseCurrency: currency, weight: cashExport.weight,
           targetWeight: cashExport.targetWeight, drift: cashExport.drift, tradeShares: null, tradeValue: cashExport.tradeValue }] : []),
         { symbol: "TOTAL", marketValue: allocation.total, unrealizedPnl: totalPnlValue, baseCurrency: currency,
-          weight: allocation.total != null && allocation.total > 0 ? 100 : null, targetWeight: allocation.targetSum, valuationBasis: basis,
+          weight: totalWeight(allocation), targetWeight: allocation.targetSum, valuationBasis: basis,
           annualIncome: totalIncome, incomeYield: portfolioYield },
       ];
       ctx.printResult({ data: positionsExport, metadata: {
         portfolioId: id, portfolioName: displayName, baseCurrency: currency, currency,
         valuationBasis: basis,
         total: allocation.total, cash: cashExport, targetSum: allocation.targetSum,
+        // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
+        ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
         ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
@@ -967,7 +980,7 @@ async function showCollectionWithMarketData(
     rows.push([
       cliStyles.bold("TOTAL"), "", "", ...extendedSessions.map(() => ""), "", "",
       cliStyles.bold(wholeMoney(total)),
-      total != null && total > 0 ? formatAllocationWeight(100) : "—",
+      formatAllocationWeight(totalWeight(allocation)),
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
       ...(showIncome ? [cliStyles.bold(money(totalIncome)), formatIncomeYield(portfolioYield)] : []),
       totalPnlValue == null ? "—" : colorBySign(money(totalPnlValue, { signed: true }), totalPnlValue),
@@ -1004,6 +1017,8 @@ async function showCollectionWithMarketData(
     if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     const notes: string[] = [];
+    const weightNote = weightBasisLine(allocation, currency);
+    if (weightNote) notes.push(cliStyles.muted(weightNote));
     // The notes name the rows as the table does.
     const labels = new Map(filtered.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
     const named = (symbols: Iterable<string>) => [...symbols].map((symbol) => labels.get(symbol) ?? symbol).join(", ");
@@ -1013,10 +1028,6 @@ async function showCollectionWithMarketData(
       const count = allocation.unpriced.length;
       notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${named(allocation.unpriced)}.`));
     }
-    // A weight is a share of a positive total; a book its shorts outweigh has none.
-    if (total != null && total <= 0 && valued.some((entry) => entry.position && entry.row.marketValue != null)) {
-      notes.push(cliStyles.muted("No weights: the shorts outweigh the longs and cash, and a weight is a share of a positive total."));
-    }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
     if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
     if (cashExport && cashExport.value == null) {
@@ -1024,7 +1035,7 @@ async function showCollectionWithMarketData(
         ? `No ${cashExport.currency}/${currency} rate for the cash, so the total and weights are unavailable.`
         : "The cash's currency is unknown, so the total and weights are unavailable."));
     }
-    const targetNote = describeTargetSum(allocation.targetSum);
+    const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
     if (unknownContractSize.size > 0) {

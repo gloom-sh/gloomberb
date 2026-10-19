@@ -109,7 +109,8 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     const shown = await text(() => showCollection("main", market(read).context, { dividendDeadlineMs: 50, drip: { years: 1, withholding: 20 } }));
     expect(shown).toMatch(/SBK[^\n]*\$180\.00 +6\.00%/);
     expect(shown).toMatch(/PEP[^\n]*— +— /);
-    expect(shown).toMatch(/TOTAL[^\n]*100\.0% +— +— /);
+    // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%.
+    expect(shown).toMatch(/TOTAL +\$14,500 +— +— +— /);
     expect(shown).toContain("Income unavailable: no GBP exchange rate for BP:NYSE; no dividend history for PEP:NASDAQ; "
       + "dividends not read within 0.05s for SLOW:NYSE. The other 3 holdings pay $360.00 a year.");
     // The short's cost repeats in the projection, nothing reinvested; unknown holdings are not projected.

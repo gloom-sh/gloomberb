@@ -4,6 +4,7 @@ import { resolveCurrencyUnit } from "../utils/currency-units";
 import { slugifyName } from "../utils/slugify";
 import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
+import { isFuturesTicker } from "./futures-positions";
 import { manualPortfolioLots } from "./manual-lots";
 
 export interface DeleteWatchlistResult {
@@ -40,13 +41,27 @@ export interface SetManualPortfolioPositionInput {
   multiplier?: number;
 }
 
-/** A position of zero is no position; the sign says long or short. */
-const ZERO_POSITION_MESSAGE = "Shares cannot be 0. Enter a negative number for a short.";
+/** What a position's size counts, as its field and messages name it. */
+export type PositionQuantityLabel = "Contracts" | "Shares";
 
-/** Signed shares as every manual entry takes them: a finite number, negative for a short, never zero. */
-export function validatePositionShares(shares: number): string | null {
-  if (!Number.isFinite(shares)) return "Shares must be a number.";
-  return shares === 0 ? ZERO_POSITION_MESSAGE : null;
+/** A future is held in contracts, everything else in shares. */
+export function positionQuantityLabel(
+  ticker: { metadata: Pick<TickerRecord["metadata"], "ticker" | "assetCategory"> } | null | undefined,
+): PositionQuantityLabel {
+  return ticker && isFuturesTicker(ticker) ? "Contracts" : "Shares";
+}
+
+/**
+ * A signed size as every manual entry takes it: a finite number, negative for
+ * a short, never zero, which is no position. The message names what it
+ * counts.
+ */
+export function validatePositionShares(shares: number, label: PositionQuantityLabel = "Shares"): string | null {
+  if (!Number.isFinite(shares)) return label === "Contracts" ? "Contracts must be a number." : "Shares must be a number.";
+  if (shares !== 0) return null;
+  return label === "Contracts"
+    ? "Contracts cannot be 0. Enter a negative number for a short."
+    : "Shares cannot be 0. Enter a negative number for a short.";
 }
 
 export interface SetManualPortfolioPositionResult {
@@ -372,7 +387,7 @@ export function setManualPortfolioPosition(
   input: SetManualPortfolioPositionInput,
 ): SetManualPortfolioPositionResult {
   const nextCurrency = input.currency.trim().toUpperCase();
-  const sharesError = validatePositionShares(input.shares);
+  const sharesError = validatePositionShares(input.shares, positionQuantityLabel(ticker));
   if (sharesError) throw new Error(sharesError);
   if (!Number.isFinite(input.avgCost)) {
     throw new Error("Average cost must be a valid number.");

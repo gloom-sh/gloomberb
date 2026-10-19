@@ -177,6 +177,9 @@ describe("portfolio-list mutations", () => {
     expect(() => setManualPortfolioPosition(ticker, "main", { shares: Number.NaN, avgCost: 1, currency: "USD" })).toThrow("Shares must be a number.");
     // A new count without terms to read keeps the contract size the lot had.
     expect(setManualPortfolioPosition(short, "main", { shares: -500, avgCost: 4200, currency: "USD" }).ticker.metadata.positions[0]).toMatchObject({ shares: -500, multiplier: 100 });
+    // A future counts contracts, and its refusal says so.
+    const gold = { ...ticker, metadata: { ...ticker.metadata, ticker: "GC=F", assetCategory: "FUTURE" } };
+    expect(() => setManualPortfolioPosition(gold, "main", { shares: 0, avgCost: 1, currency: "USD" })).toThrow("Contracts cannot be 0. Enter a negative number for a short.");
   });
 
   test("split reconciliation preserves a single acquisition date without retaining stale valuation", () => {

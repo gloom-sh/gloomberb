@@ -34,6 +34,11 @@ const FIELD_PLACEHOLDERS: Record<Exclude<PositionFieldId, "currency">, string> =
   avgCost: "current price",
 };
 
+/** A field's label; the size counts contracts once the symbol is a future. */
+function fieldLabel(field: PositionFieldId, state: Pick<OnboardingPositionsState, "quantityLabel">): string {
+  return t(field === "shares" ? state.quantityLabel : FIELD_LABELS[field]);
+}
+
 /** A blank Currency shows the code it will save, as the AP form does. */
 function fieldPlaceholder(field: PositionFieldId, state: OnboardingPositionsState): string {
   return field === "currency" ? state.blankCurrency : t(FIELD_PLACEHOLDERS[field]);
@@ -169,7 +174,7 @@ function DesktopPositionsPanel({
 }: PositionsPanelProps) {
   const colors = useThemeColors();
   const fieldProps = (field: PositionFieldId, index: number) => ({
-    label: t(FIELD_LABELS[field]),
+    label: fieldLabel(field, state),
     inputRef: index === state.fieldIdx ? inputRef : undefined,
     value: state.draft[field],
     placeholder: fieldPlaceholder(field, state),
@@ -246,7 +251,7 @@ function TuiFieldRow({
     <Box height={1} flexDirection="row">
       <Box width={10} flexShrink={0}>
         <Text fg={active ? colors.text : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {t(FIELD_LABELS[field])}
+          {fieldLabel(field, state)}
         </Text>
       </Box>
       <Box width={14} flexShrink={0} onMouseDown={() => state.focusField(index)}>

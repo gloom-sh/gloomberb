@@ -25,6 +25,7 @@ import {
   deleteManualPortfolio,
   hasOpenPortfolioPositions,
   isManualPortfolio,
+  positionQuantityLabel,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -291,7 +292,9 @@ async function setPositionCommand(
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
       rejectCashSymbol(symbol, exchange, portfolio.name);
-      const shares = parseAmountArg(sharesValue, "Shares");
+      // Read before the symbol is looked up, so a bad number never reaches the network: a size typed
+      // for a continuous future (GC=F) counts contracts. Zero is refused once the listing is known.
+      const shares = parseAmountArg(sharesValue, positionQuantityLabel({ metadata: { ticker: symbol, assetCategory: undefined } }));
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
@@ -409,7 +412,9 @@ function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly
   for (const [symbol, weight] of Object.entries(portfolio?.targetWeights ?? {})) {
     if (listed.has(symbol)) sum = (sum ?? 0) + weight;
   }
-  const note = describeTargetSum(sum);
+  // A book that holds a short is weighed, and targeted, against its gross exposure.
+  const short = tickers.some((ticker) => ticker.metadata.positions.some((position) => position.portfolio === portfolioId && position.shares < 0));
+  const note = describeTargetSum(sum, short ? "gross" : "total");
   return note ? cliStyles.muted(note) : null;
 }
 
@@ -786,7 +791,7 @@ const AMOUNTS_HELP = {
   lines: [
     "Numbers take either decimal mark: 1.234,5, 1234,5 and 1,234.5 are 1234.5, and 18,50 is 18.5.",
     "Cash and --notional are amounts of a currency (cash in the portfolio's unless named, --notional in USD), so 500,000 and 1.234 are thousands, a third decimal being below a cent. In a currency with three decimals (KWD, BHD, OMR) they could be either, and the command asks which.",
-    "Shares and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234).",
+    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234).",
   ],
 };
 
@@ -805,7 +810,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
       "portfolio remove <portfolio> <symbols...> [--file <path>]",
-      "portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]",
+      "portfolio position set <portfolio> <symbol> <shares|contracts> <avg-cost> [currency]",
       "portfolio cash set <portfolio> <amount> [currency]",
       "portfolio cash clear <portfolio>",
       "portfolio target set <portfolio> <symbol|CASH> <weight%>",
@@ -931,12 +936,12 @@ export const portfolioCliCommand: CliCommandDef = {
     if (action === "position") {
       const subaction = args[1];
       if (subaction !== "set") {
-        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares> <avg-cost> [currency]");
+        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency]");
       }
       const [, , ...rest] = args;
       const currency = rest[4];
       if (rest.length < 4) {
-        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares> <avg-cost> [currency]");
+        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency]");
       }
       await setPositionCommand(rest[0]!, rest[1]!, rest[2]!, rest[3]!, currency, exchange, ctx);
       return;

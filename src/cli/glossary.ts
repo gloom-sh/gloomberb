@@ -366,7 +366,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // Portfolio weights and rebalancing (PF, portfolio show).
   {
     term: "Weight", aliases: ["weights", "portfolio weight", "allocation weight"], functions: ["PF"],
-    definition: "A holding's share of the portfolio's total value, cash included, in percent. A holding without a price is left out of the total.",
+    definition: "A holding's share of the portfolio's total value, cash included, in percent. A holding without a price is left out of the total. "
+      + "In a book that holds a short, its signed value's share of gross exposure instead, longs plus shorts at their absolute value, so a short weighs negative and cash has no weight.",
   },
   {
     term: "Target", aliases: ["target weight", "target weights", "targets", "target allocation"], functions: ["PF"],

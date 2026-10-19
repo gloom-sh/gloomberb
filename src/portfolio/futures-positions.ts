@@ -39,7 +39,7 @@ export interface PortfolioFuturesTerms {
 const US_CENTS_UNIT = /^\s*US\s+cents?\b/i;
 
 /** Whether a ticker is a futures contract (GC=F, GCZ26, CL1 typed as a future). */
-export function isFuturesTicker(ticker: Pick<TickerRecord, "metadata">): boolean {
+export function isFuturesTicker(ticker: { metadata: Pick<TickerRecord["metadata"], "ticker" | "assetCategory"> }): boolean {
   return classifyInstrumentType(ticker.metadata.assetCategory) === "future"
     || /=F$/i.test(parsePublicTickerKey(ticker.metadata.ticker).symbol.trim());
 }

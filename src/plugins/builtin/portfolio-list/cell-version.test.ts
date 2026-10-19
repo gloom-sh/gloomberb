@@ -41,7 +41,7 @@ const base: ColumnContext = {
   baseCurrency: "USD",
   exchangeRates: new Map([["USD", 1], ["EUR", 1.1]]),
   now: NOW,
-  portfolioTotalMarketValue: 10_000,
+  portfolioWeightBase: 10_000,
   supplementalVersion: 1,
   analystResearch: research(150),
   corporateActions: new Map([["SAP", {
@@ -54,7 +54,7 @@ const base: ColumnContext = {
 
 const variants: Array<[string, ColumnContext]> = [
   ["fx", { ...base, exchangeRates: new Map([["USD", 1], ["EUR", 1.2]]) }],
-  ["total", { ...base, portfolioTotalMarketValue: 20_000 }],
+  ["total", { ...base, portfolioWeightBase: 20_000 }],
   ["supplemental", { ...base, supplementalVersion: 2, analystResearch: research(180) }],
   ["second", { ...base, now: NOW + 7_000 }],
   ["day", { ...base, now: NOW + 2 * DAY_MS }],

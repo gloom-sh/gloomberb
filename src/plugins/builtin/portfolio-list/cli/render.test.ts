@@ -379,19 +379,22 @@ describe("a portfolio holding a hedge", () => {
     expect(equity).toMatchObject({ shares: 600, marketValue: 420_000, costBasis: 396_000, unrealizedPnl: 24_000 });
     expect(equity).not.toHaveProperty("contractMultiplier");
     expect(metadata.exposure).toEqual({ long: 420_000, short: -4_198_000, net: -3_778_000, gross: 4_618_000 });
-    // The shorts outweigh the longs, so there is no positive total to weigh by.
-    expect([future.weight, equity.weight]).toEqual([null, null]);
+    // Net short, yet weighed: each position's signed value over the gross exposure, named in the metadata.
+    expect(metadata).toMatchObject({ weightBasis: "gross", weightBase: 4_618_000 });
+    expect(future.weight as number).toBeCloseTo((-4_198_000 / 4_618_000) * 100, 8);
+    expect(equity.weight as number).toBeCloseTo((420_000 / 4_618_000) * 100, 8);
 
     const text = await printed([spy, gold()]);
-    expect(text).toMatch(/GC=F:CMX .* -10 × 100 oz .* -\$4,198,000/);
+    expect(text).toMatch(/GC=F:CMX .* -10 × 100 oz .* -\$4,198,000 +-90\.9% /);
     expect(text).toContain("Exposure: long $420,000, short -$4,198,000, net -$3,778,000, gross $4,618,000");
-    expect(text).toContain("No weights: the shorts outweigh the longs and cash");
+    expect(text).toContain("Weights are shares of gross exposure ($4,618,000), longs plus shorts at their absolute value, as the book holds a short; cash has no weight.");
+    // The weights net to the book's net over its gross, so TOTAL claims no 100%.
+    expect(text).toMatch(/TOTAL +-\$3,778,000 +— /);
 
-    // A book the longs outweigh weighs the short against its total.
-    const hedged = { ...gold(), metadata: { ...gold().metadata, positions: [{ ...gold().metadata.positions[0]!, shares: -0.05 }] } };
-    const weighed = (await exported([spy, hedged])).data;
-    const total = 420_000 - 0.05 * 419_800;
-    expect(weighed.find((row) => row.symbol === "GC=F")!.weight as number).toBeCloseTo((-0.05 * 419_800 / total) * 100, 8);
+    // A hedge netting near zero weighs each side near half, not thousands of percent.
+    const hedged = { ...gold(), metadata: { ...gold().metadata, positions: [{ ...gold().metadata.positions[0]!, shares: -1 }] } };
+    const weighed = (await exported([spy, hedged])).data.map((row) => row.weight as number);
+    expect(weighed.reduce((sum, weight) => sum + Math.abs(weight), 0)).toBeCloseTo(100, 8);
   });
 
   test("--close values a future at its settlement and dates it by the session, never at the Globex print", async () => {

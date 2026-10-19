@@ -62,8 +62,9 @@ export interface Portfolio {
    */
   cash?: PortfolioCash;
   /**
-   * Target weights in percent of the total value, cash included, keyed by
-   * ticker symbol; `CASH` is the cash line.
+   * Target weights in percent of the total value, cash included, or of the
+   * gross exposure in a book that holds a short (allocation.ts WeightBasis),
+   * keyed by ticker symbol; `CASH` is the cash line.
    */
   targetWeights?: Record<string, number>;
   /** Where the positions were imported from, such as a manager's 13F; they are not the user's own holdings. */

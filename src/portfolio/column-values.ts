@@ -72,6 +72,7 @@ import {
   formatTradeUnits,
   holdingTarget,
   type AllocationFigures,
+  type WeightBasis,
 } from "./allocation";
 
 export interface ColumnContext {
@@ -84,11 +85,13 @@ export interface ColumnContext {
   /** What market values, P&L, weights and the day's move are priced at; the latest print when absent. */
   valuationBasis?: PortfolioValuationBasis;
   /**
-   * The total a portfolio's weights divide by: its priced holdings at net
-   * market value plus its cash (see allocation.ts). It may trail the rows by
-   * about a second.
+   * What a portfolio's weights divide by (allocationWeightBase): its priced
+   * holdings at net market value plus its cash, or, for a book that holds a
+   * short, its gross exposure. It may trail the rows by about a second.
    */
-  portfolioTotalMarketValue?: number;
+  portfolioWeightBase?: number;
+  /** Which of the two `portfolioWeightBase` is. */
+  portfolioWeightBasis?: WeightBasis;
   /** The portfolio's target weights in percent, by symbol. */
   portfolioTargets?: Readonly<Record<string, number>>;
   supplementalVersion?: number;
@@ -314,7 +317,7 @@ function rowAllocation(
   return {
     ...allocationFigures(
       { held, marketValue, units: baseMetrics.totalShares, unitPrice },
-      ctx.portfolioTotalMarketValue,
+      ctx.portfolioWeightBase,
       holdingTarget(ctx.portfolioTargets, ticker.metadata.ticker),
     ),
     unpriced: held && marketValue == null,

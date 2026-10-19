@@ -99,7 +99,7 @@ import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metri
 import { withFuturesContractSizes } from "../../../../portfolio/futures-positions";
 import { usePortfolioFuturesTerms } from "./futures-terms";
 import {
-  allocationTotal,
+  allocationWeightBase,
   buildPortfolioAllocation,
   CASH_SYMBOL,
   hasTargetWeights,
@@ -252,8 +252,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [activeCollectionId, exchangeRates, futuresTerms.terms, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency, valuationBasis],
     WEIGHT_TOTAL_THROTTLE_MS,
   );
-  // Priced holdings plus cash, as `portfolio show` totals them.
-  const portfolioTotalMarketValue = weightHoldings ? allocationTotal(weightHoldings, cashValue) ?? undefined : undefined;
+  // Priced holdings plus cash, or a hedged book's gross exposure, as `portfolio show` weighs them.
+  const weightBase = weightHoldings ? allocationWeightBase(weightHoldings, cashValue) : null;
+  const portfolioWeightBase = weightBase?.value ?? undefined;
+  const portfolioWeightBasis = weightBase?.basis;
 
   // The header, footer and notices move with live quotes a few times a second,
   // not on every tick.
@@ -279,7 +281,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     baseCurrency: totalsCurrency,
     exchangeRates,
     valuationBasis,
-    portfolioTotalMarketValue,
+    portfolioWeightBase,
+    portfolioWeightBasis,
     portfolioTargets,
     supplementalVersion: supplementalData.version,
     analystResearch: supplementalData.analystResearch,
@@ -296,7 +299,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     isPortfolioTab,
     perpetuals,
     portfolioTargets,
-    portfolioTotalMarketValue,
+    portfolioWeightBase,
+    portfolioWeightBasis,
     supplementalData,
     totalsCurrency,
     valuationBasis,
