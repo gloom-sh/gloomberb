@@ -528,6 +528,7 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
   if (status.latestTs > 0) {
     info.push({
       id: "fresh",
+      quoteStatus: true,
       parts: [{
         text: new Date(status.latestTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         tone: "muted",
