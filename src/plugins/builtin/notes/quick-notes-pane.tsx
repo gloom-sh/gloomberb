@@ -59,6 +59,9 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
     const lastSavedTextRef = useRef<Map<string, string>>(new Map());
     const loadedTabIdRef = useRef<string | null>(null);
     const loadedRef = useRef(false);
+    // Owners whose index exists but could not be read: nothing is saved over it.
+    const unreadableIndexRef = useRef(new Set<string>());
+    const [indexError, setIndexError] = useState<{ message: string; owners: NoteOwner[] } | null>(null);
     const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
     const saveQuickNotesIndex = useCallback((entries: OwnedQuickNote[]) => {
@@ -73,7 +76,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       for (const owner of owners) {
         const bucket = byOwner.get(noteOwnerKey(owner));
         const store = storeFor(owner);
-        if (store.readOnly) continue;
+        if (store.readOnly || unreadableIndexRef.current.has(noteOwnerKey(owner))) continue;
         store.saveQuickNotesIndex(bucket?.entries ?? []).catch((error) => {
           notesLog.error("Failed to save notes index", { error: error instanceof Error ? error.message : String(error) });
           notify({ body: error instanceof Error ? error.message : "Failed to save notes index.", type: "error" });
@@ -143,17 +146,24 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
     useEffect(() => {
       // Mine first, then each team's notes; reloads when the team list changes.
       let cancelled = false;
+      const unreadable = new Map<string, { owner: NoteOwner; message: string }>();
       void Promise.all(owners.map(async (owner) => {
         try {
-          return (await storeFor(owner).loadQuickNotesIndex()).map((entry) => ({ ...entry, owner }));
+          return (await storeFor(owner).loadQuickNotesIndex({ strict: true })).map((entry) => ({ ...entry, owner }));
         } catch (error) {
+          unreadable.set(noteOwnerKey(owner), { owner, message: error instanceof Error ? error.message : String(error) });
           return logFailure("notes.quick-notes", "Load a quick notes index failed", [] as OwnedQuickNote[])(error);
         }
       })).then((lists) => {
         if (cancelled) return;
+        unreadableIndexRef.current = new Set(unreadable.keys());
+        const failed = [...unreadable.values()];
+        setIndexError(failed.length > 0 ? { message: failed[0]!.message, owners: failed.map((entry) => entry.owner) } : null);
         const entries = lists.flat();
         if (entries.length === 0) {
-          if (loadedRef.current) return;
+          // Only a first run, with no index yet, gets a first tab; an index
+          // that failed to load must not have a fresh one saved over it.
+          if (loadedRef.current || unreadable.size > 0) return;
           const id = generateNoteId();
           const initial: OwnedQuickNote[] = [{ id, title: "New", owner: { kind: "user" } }];
           lastSavedTextRef.current.set(id, "");
@@ -224,6 +234,10 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
         notify({ body: `${ownerLabel(owner, teams)} notes are read-only right now.`, type: "info" });
         return;
       }
+      if (unreadableIndexRef.current.has(noteOwnerKey(owner))) {
+        notify({ body: `${ownerLabel(owner, teams)} quick notes could not be read, so a new one is not added yet.`, type: "info" });
+        return;
+      }
       const id = generateNoteId();
       const entry: OwnedQuickNote = { id, title: "New", owner };
       lastSavedTextRef.current.set(id, "");
@@ -243,6 +257,14 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       const owner = tabOwner(id, tabsRef.current);
       setTabs((prev) => {
         const next = prev.filter((t) => t.id !== id);
+        // With my index unreadable, a fresh tab of mine could not be saved in it.
+        if (next.length === 0 && unreadableIndexRef.current.has(noteOwnerKey({ kind: "user" }))) {
+          saveQuickNotesIndex(next);
+          setActiveTabId(null);
+          setNoteText("");
+          prevTabRef.current = null;
+          return next;
+        }
         if (next.length === 0) {
           const newId = generateNoteId();
           const fresh: OwnedQuickNote[] = [{ id: newId, title: "New", owner: { kind: "user" } }];
@@ -332,6 +354,13 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       if (activeTabId) void requestRemoveTab(activeTabId);
     }, [activeTabId, requestRemoveTab]);
 
+    // With no tab to show, an index that failed to load is the pane's state;
+    // beside other owners' tabs it is a footer warning.
+    const indexUnreadable = tabs.length === 0 && !!indexError;
+    const readError = loadError ?? (indexUnreadable ? indexError!.message : null);
+    const footerWarning = readError
+      ?? (indexError ? `${indexError.owners.map((owner) => ownerLabel(owner, teams)).join(", ")} quick notes could not be read` : null);
+
     // n, t and d are footer hints, which bind them without modifiers, so the
     // shell's Ctrl+W or Cmd+N never adds or deletes a note.
     useShortcut((event) => {
@@ -351,7 +380,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       }
 
       // A note that failed to load stays read-only, as it does for a click.
-      if (isPlainKey(event, "enter", "return") && !editing && !loadError) {
+      if (isPlainKey(event, "enter", "return") && !editing && !readError) {
         event.preventDefault();
         setEditing(true);
         return;
@@ -375,11 +404,11 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
 
     // Deleting the only note when it is empty just swaps in another empty one,
     // and a note that failed to load reads as empty, so it would go unconfirmed.
-    const canDelete = !!activeTabId && !loadError && (tabs.length > 1 || noteText.trim().length > 0);
+    const canDelete = !!activeTabId && !readError && (tabs.length > 1 || noteText.trim().length > 0);
 
     usePaneFooter("quick-notes", () => ({
-      info: loadError
-        ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }]
+      info: footerWarning
+        ? [{ id: "load-error", parts: [{ text: footerWarning, tone: "warning" as const }] }]
         : [
             { id: "edited", parts: [{ text: editing || renaming ? "editing" : formatLastEdited(activeTab?.updatedAt), tone: "muted" as const }] },
           ],
@@ -391,7 +420,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
             { id: "title", key: "t", label: "itle", title: "Rename Note", onPress: startRename, disabled: !activeTabId },
             { id: "delete", key: "d", label: "elete", title: "Delete Note", onPress: deleteActiveNote, disabled: !canDelete },
           ],
-    }), [activeTab, activeTabId, addTab, canDelete, deleteActiveNote, editing, loadError, renaming, startRename]);
+    }), [activeTab, activeTabId, addTab, canDelete, deleteActiveNote, editing, footerWarning, renaming, startRename]);
 
     const noteTabs = tabs.map((tab) => ({
       label: tab.owner.kind === "team" ? `${ownerLabel(tab.owner, teams)} ${tab.title}` : tab.title,
@@ -437,12 +466,18 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
             />
           </Box>
         )}
-        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!editing && !renaming && !loadError) setEditing(true); }}>
+        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!editing && !renaming && !readError) setEditing(true); }}>
           {loadError ? (
             <EmptyState
               title="This note could not be read."
               message={loadError}
               hint="Editing is disabled so the saved note is not overwritten. Fix the file, then reopen the pane."
+            />
+          ) : indexUnreadable ? (
+            <EmptyState
+              title="Quick notes could not be read."
+              message={indexError!.message}
+              hint="Nothing is saved over them until they load. Reopen the pane to try again."
             />
           ) : editing && !renaming ? (
             <MarkdownEditor
@@ -458,7 +493,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
               text={noteText}
               width={width}
               placeholder="Write notes..."
-              onActivate={() => { if (!renaming && !loadError) setEditing(true); }}
+              onActivate={() => { if (!renaming && !readError) setEditing(true); }}
             />
           )}
         </Box>

@@ -28,7 +28,12 @@ export interface NotesStore {
   save(key: string, text: string, options?: { title?: string | null }): Promise<void>;
   delete(key: string): Promise<void>;
   list(): Promise<NoteFileEntry[]>;
-  loadQuickNotesIndex(): Promise<QuickNoteEntry[]>;
+  /**
+   * The quick notes' ids and titles. With `strict`, an index that exists but
+   * cannot be read rejects instead of reading as empty, for a caller that
+   * would otherwise save a replacement over it.
+   */
+  loadQuickNotesIndex(options?: { strict?: boolean }): Promise<QuickNoteEntry[]>;
   saveQuickNotesIndex(entries: QuickNoteEntry[]): Promise<void>;
   quickNoteKey(id: string): string;
   /** Called after a server-side change so the next load sees it. */

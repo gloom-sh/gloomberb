@@ -239,11 +239,17 @@ export class NotesFiles implements NotesStore {
     return entries.sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
-  async loadQuickNotesIndex(): Promise<QuickNoteEntry[]> {
+  /**
+   * The quick notes' ids and titles. An index never written is empty; one that
+   * cannot be read or parsed is logged and read as empty, or, with `strict`,
+   * rejects, so the caller cannot mistake it for none.
+   */
+  async loadQuickNotesIndex(options: { strict?: boolean } = {}): Promise<QuickNoteEntry[]> {
     try {
       const raw = await this.io.read(QUICK_NOTES_INDEX_FILE);
       return raw ? JSON.parse(raw) : [];
     } catch (error) {
+      if (options.strict) throw error;
       return logFailure("notes.files", "Read the quick notes index failed", [])(error);
     }
   }

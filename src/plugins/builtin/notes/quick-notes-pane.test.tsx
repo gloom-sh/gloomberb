@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, TestDialogProvider } from "../../../renderers/opentui/test-utils";
@@ -6,6 +9,7 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, Text } from "../../../ui";
+import { NotesFiles } from "./files";
 import { createQuickNotesPane } from "./quick-notes-pane";
 import { createTestNotesFiles, registryFor, type TestNotesFiles } from "./test-fixture";
 
@@ -161,5 +165,45 @@ describe("createQuickNotesPane", () => {
     });
 
     expect(notesFiles.saves).toEqual([]);
+  });
+  test("an index it cannot read is never saved over, and a first run still gets its first tab", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gloomberb-quick-notes-"));
+    const index = join(dir, "__quick-notes-index__.json");
+    const settle = async (text: string) => {
+      for (let attempt = 0; attempt < 10 && !tui.frame().includes(text); attempt++) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          await tui.setup().renderOnce();
+        });
+      }
+    };
+    try {
+      writeFileSync(index, "[{\"id\":\"q1\",\"title\":\"Ideas\"");
+      const QuickNotesPane = createQuickNotesPane(registryFor(new NotesFiles(dir)));
+      await tui.render(<QuickNotesHarness QuickNotesPane={QuickNotesPane} />, { width: 80, height: 24 });
+      await settle("could not be read");
+      expect(tui.frame()).toContain("Quick notes could not be read.");
+      // Adding a note does not write a fresh index over the old one either.
+      await act(async () => {
+        await tui.setup().mockMouse.click(tui.frame().split("\n")[0]!.indexOf("+"), 0);
+        await tui.setup().renderOnce();
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await tui.setup().renderOnce();
+      });
+      expect(tui.frame()).toContain("Quick notes could not be read.");
+      expect(readFileSync(index, "utf-8")).toBe("[{\"id\":\"q1\",\"title\":\"Ideas\"");
+
+      // No index at all is a first run: the first tab is made and saved.
+      rmSync(index);
+      const FirstRunPane = createQuickNotesPane(registryFor(new NotesFiles(dir)));
+      await tui.render(<QuickNotesHarness QuickNotesPane={FirstRunPane} />, { width: 80, height: 24 });
+      await settle("New");
+      for (let attempt = 0; attempt < 10 && !existsSync(index); attempt++) await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(JSON.parse(readFileSync(index, "utf-8"))).toEqual([{ id: expect.any(String), title: "New" }]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
