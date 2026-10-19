@@ -650,7 +650,7 @@ The expiry window starts a year out. `--min-days` and `--max-days` bound it in c
 
 `portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloomberb plugin disable` also removes its commands.
 
-`gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
+`gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay. `gloomberb shot FLOW` and `gloomberb shot HILO` do the same with each scanner's first usable answer, read once in the Bun process with the same session: signed out, `FLOW` draws its sign-in wall and `HILO` its 15 minute delayed lists, and a plan without access draws the upgrade wall.
 
 `gloomberb fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first, to show what traded through a move: times are New York's clock (`14:30Z` for UTC), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is, `Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to 20:00:00 ET (00:00:00 UTC)`, or to the feed cutoff while the session trades. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
 

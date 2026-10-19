@@ -36,21 +36,22 @@ const SCANNER_LABELS: Record<ScannerName, string> = {
 };
 
 /**
- * Resolves on the first live or closed payload. A degraded payload is kept
- * and returned only if nothing better arrives before the deadline, since a
- * scanner warming up can pass through a stale row on its way to live.
+ * Resolves on the first live or closed payload, or on the server's refusal. A
+ * degraded payload is kept and returned only if nothing better arrives before
+ * the deadline, since a scanner warming up can pass through a stale row on its
+ * way to live.
  */
-function loadScannerSnapshot<T extends ScannerPayload>(
+export function captureScannerEvent(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
   scanner: ScannerName,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
-): Promise<T> {
+): Promise<ScannerFeedEvent> {
   const label = SCANNER_LABELS[scanner];
   return new Promise((resolve, reject) => {
     let settled = false;
     let unsubscribe: (() => void) | null = null;
-    let degraded: T | null = null;
+    let degraded: ScannerFeedEvent | null = null;
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
@@ -69,21 +70,32 @@ function loadScannerSnapshot<T extends ScannerPayload>(
     signal.addEventListener("abort", onAbort, { once: true });
     unsubscribe = client.subscribeScanner(scanner, (event: ScannerFeedEvent) => {
       if (event.type === "denied") {
-        // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
-        finish(() => reject(event.reason === "pro_required"
-          ? new ApiRequestError("Pro access required", 402)
-          : new ApiRequestError("Sign in required", 401)));
+        finish(() => resolve(event));
         return;
       }
-      const payload = event.payload as T;
-      if (payload.status === "starting") return;
-      if (payload.status === "degraded") {
-        degraded = payload;
+      if (event.payload.status === "starting") return;
+      if (event.payload.status === "degraded") {
+        degraded = event;
         return;
       }
-      finish(() => resolve(payload));
+      finish(() => resolve(event));
     });
     if (settled) unsubscribe();
+  });
+}
+
+function loadScannerSnapshot<T extends ScannerPayload>(
+  client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
+  scanner: ScannerName,
+  signal: AbortSignal,
+  timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
+): Promise<T> {
+  return captureScannerEvent(client, scanner, signal, timeoutMs).then((event) => {
+    if (event.type !== "denied") return event.payload as T;
+    // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
+    throw event.reason === "pro_required"
+      ? new ApiRequestError("Pro access required", 402)
+      : new ApiRequestError("Sign in required", 401);
   });
 }
 

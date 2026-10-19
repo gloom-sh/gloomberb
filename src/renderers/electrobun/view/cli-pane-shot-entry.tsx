@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useState, type ReactNode } from "react";
 import { TapeClientContext } from "../../../plugins/builtin/time-sales/use-tape";
 import { createSnapshotTapeClient } from "../../../plugins/builtin/time-sales/snapshot-client";
+import { createSnapshotScannerClient, ScannerClientContext } from "../../../plugins/builtin/scanner/snapshot-client";
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
@@ -513,25 +514,28 @@ async function render() {
 
   const tapeClient = createSnapshotTapeClient(payload.tapeSnapshots ?? [],
     (symbol, exchange) => requestShotMarketData<TapeSnapshot>("getCloudTape", [symbol, exchange]));
+  const scannerClient = createSnapshotScannerClient(payload.scannerSnapshots ?? []);
   createRoot(rootElement).render(
     <TapeClientContext.Provider value={tapeClient}>
-      <RemoteUiRegistryProvider>
-        <CaptureShotSemanticUi />
-        <DomHostProviders ui={webUiHost} renderer={rendererHost}>
-          <AppProvider config={payload.config} desktopSnapshot={{
-            config: payload.config,
-            paneState: payload.paneState,
-            focusedPaneId: payload.paneId,
-            statusBarVisible: false,
-          }}>
-            <HydratePayload payload={payload}>
-              <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
-                <ShotPane payload={payload} registry={services.pluginRegistry} />
-              </ChartSnapshotContext.Provider>
-            </HydratePayload>
-          </AppProvider>
-        </DomHostProviders>
-      </RemoteUiRegistryProvider>
+      <ScannerClientContext.Provider value={scannerClient}>
+        <RemoteUiRegistryProvider>
+          <CaptureShotSemanticUi />
+          <DomHostProviders ui={webUiHost} renderer={rendererHost}>
+            <AppProvider config={payload.config} desktopSnapshot={{
+              config: payload.config,
+              paneState: payload.paneState,
+              focusedPaneId: payload.paneId,
+              statusBarVisible: false,
+            }}>
+              <HydratePayload payload={payload}>
+                <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
+                  <ShotPane payload={payload} registry={services.pluginRegistry} />
+                </ChartSnapshotContext.Provider>
+              </HydratePayload>
+            </AppProvider>
+          </DomHostProviders>
+        </RemoteUiRegistryProvider>
+      </ScannerClientContext.Provider>
     </TapeClientContext.Provider>,
   );
 }

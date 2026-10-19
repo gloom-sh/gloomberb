@@ -77,6 +77,20 @@ test("calculator screenshots freeze percent inputs without market requests, incl
   expect(shot.optionsChains).toEqual([]);
 });
 
+test("a scanner pane's screenshot carries what its feed answered the capture, a refusal included", async () => {
+  const request = { pane: { id: "scanner-flow" }, capability: { id: "scanner-flow-pane", options: [] },
+    instance: { instanceId: "flow:test", paneId: "scanner-flow", binding: { kind: "none" }, settings: {} }, options: {},
+  } as unknown as ResolvedPaneFunction;
+  const context = { config: createDefaultConfig("/tmp/scanner-shot-test"), store: { loadTicker: async () => null },
+    dataProvider: { id: "offline" } } as unknown as MarketContext;
+  const asked: string[] = [];
+  const shot = await buildDesktopShotPayload(request, context, "", {}, 800, 600, null, 1, null, undefined, {
+    subscribeScanner(scanner, listener) { asked.push(scanner); listener({ type: "denied", reason: "auth_required" }); return () => {}; },
+  });
+  expect(asked).toEqual(["flow"]);
+  expect(shot.scannerSnapshots).toEqual([["flow", { type: "denied", reason: "auth_required" }]]);
+});
+
 test("calculator screenshot evidence must match the requested inputs, not just a self-consistent default price", () => {
   const options = { model: "european", symbol: "AAPL", spot: "120", volatility: "30", days: "365", marketPrice: "28" };
   const draft = draftFromCalculatorInputs(options);
