@@ -415,6 +415,17 @@ export type HeadlessBundleSection =
      * `currency_or_unit` in place of `unit`, blank when the field is empty.
      */
     rowUnitKey?: string;
+    /**
+     * The row field naming the symbol each row is of, for a table of several
+     * (a ranking): each exported row names it in `symbol_or_series`.
+     */
+    rowSymbolKey?: string;
+    /**
+     * The row field holding when each row's figures were observed (an ISO
+     * date or instant), for rows dated apart: each exported row names it in
+     * `as_of`, blank when the field is empty.
+     */
+    rowAsOfKey?: string;
     /** The bar interval the rows are of (`1d`), which every exported row names in `interval`. */
     interval?: string;
     /**

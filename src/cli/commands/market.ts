@@ -50,7 +50,7 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
-  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadForwardYieldDistributions, renderFundamentalsReport,
+  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, renderFundamentalsReport,
 } from "./ticker";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
@@ -1221,10 +1221,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
-    // A forward yield dated ahead names the declared distribution it annualizes (not in JSON), and one whose
-    // dividend stopped says so; read beside the listing notes.
-    const distributions = view === "statements" ? null : loadForwardYieldDistributions(
-      market.dataProvider, listing.request, financials.fundamentals, { declared: ctx.cliOptions.format !== "json" });
+    // A trailing yield is measured from the cash history as DVD measures it, a forward yield dated ahead names the
+    // declared distribution it annualizes (not in JSON), and one whose dividend stopped says so; read beside the listing notes.
+    const distributions = view === "statements" ? null : loadDividendDistributions(
+      market.dataProvider, listing.request, financials, { declared: ctx.cliOptions.format !== "json" });
     const identity = listingIdentity(listing, financials.quote);
     const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
     const data: FinancialsCliData = {

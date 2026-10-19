@@ -27,7 +27,8 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
+import { fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
+import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 import { buildTrailingCashChartPoints, formatDividendYield, toDividendRows, type DividendRow } from "./view";
 import {

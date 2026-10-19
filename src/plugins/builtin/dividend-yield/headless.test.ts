@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { DividendData } from "./client";
 import { createDividendYieldHeadless } from "./headless";
-import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { serializeCliResult } from "../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
 
@@ -93,9 +95,9 @@ describe("dividend yield headless", () => {
 });
 
 
-test("cash growth and payout text use percentages while JSON and CSV keep fractional values", async () => {
-  for (const [growth, formatted] of [[-0.152317880794702, "-15.23%"], [0.11248149975332988, "+11.25%"], [0, "0.00%"], [null, "—"]] as const) {
-    const data = { ...fixture, metrics: { ...fixture.metrics, payoutRatio: growth, growth1Y: growth, growth3Y: growth } };
+test("cash growth and payout text use percentages while JSON and CSV keep fractional values, to the sixth decimal", async () => {
+  for (const [source, growth, formatted] of [[-0.152317880794702, -0.152318, "-15.23%"], [0.11248149975332988, 0.112481, "+11.25%"], [0, 0, "0.00%"], [null, null, "—"]] as const) {
+    const data = { ...fixture, metrics: { ...fixture.metrics, payoutRatio: source, growth1Y: source, growth3Y: source } };
     const definition = createDividendYieldHeadless({ loadData: async () => data });
     const request = args({ type: "all", limit: 40 });
     const result = await definition.load(request, context);
@@ -119,7 +121,7 @@ test("cash growth and payout text use percentages while JSON and CSV keep fracti
     const csv = serializeCliResult({ data: serialized }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
     expect(csv).toContain(`""label"":""1Y Cash Growth"",""value"":${JSON.stringify(growth)},""formatted"":""${formatted}""`);
     expect(csv).toContain(`""label"":""Earnings Payout"",""value"":${JSON.stringify(growth)}`);
-    expect(data.metrics.growth1Y).toBe(growth);
+    expect(data.metrics.growth1Y).toBe(source);
   }
 });
 
@@ -129,8 +131,8 @@ test("several symbols are one table ranked by trailing yield; a read without its
       ...trailingYield == null ? { forwardYield: null, growth1Y: null, growth3Y: null } : {} } });
   const data: Record<string, DividendData> = {
     // A rand payer beside dollar payers: yields are ratios, so they rank together.
-    "SBK.JO": withYield(0.0578, { currency: "ZAR", declared: [{ exDate: "2030-03-10", amount: 9.5, payDate: "2030-04-01" }] }),
-    KO: withYield(0.0224, { currency: "USD" }),
+    "SBK.JO": withYield(0.0578, { currency: "ZAR", priceAsOf: "2026-01-16T15:00:00.000Z", declared: [{ exDate: "2030-03-10", amount: 9.5, payDate: "2030-04-01" }] }),
+    KO: withYield(0.0223539, { currency: "USD", priceAsOf: "2026-01-16T21:00:00.000Z" }),
     NEW: withYield(null, { currency: "USD" }),
     HALF: withYield(null, { currency: "USD", historyError: "Incomplete cash history; totals unavailable." }),
     NOSUM: withYield(0.031, { currency: "USD", summaryError: "Dividend summary unavailable." }),
@@ -157,6 +159,16 @@ test("several symbols are one table ranked by trailing yield; a read without its
   expect(line("HALF")).toContain("no cash history");
   expect(line("NOSUM")).toMatch(/3\.10%.*no summary/);
   expect(line("GONE")).toContain("not read");
+
+  // Every exported row names its ticker, the percent its figures are in and the time of the price its yields are over,
+  // and the closing lines date the report by the newest of those prices.
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, request, "DVD", freshness, { complete: false, unavailableSymbols: [] }), freshness)
+    .split("\n");
+  expect(csv.find((entry) => entry.startsWith("KO,"))).toMatch(/^KO,2\.2354,0\.52,.*,KO,pct,,Gloom Cloud,2026-01-16T21:00:00\.000Z$/);
+  expect(csv.find((entry) => entry.startsWith("SBK.JO,"))).toMatch(/,SBK\.JO,pct,,Gloom Cloud,2026-01-16T15:00:00\.000Z$/);
+  expect(csv.find((entry) => entry.startsWith("GONE,"))).toMatch(/,GONE,pct,,Gloom Cloud,$/);
+  expect(csv).toContain("# Observation date: 2026-01-16T21:00:00.000Z");
 
   // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
   await expect(definition.load({ ...request, options: { type: "special", limit: 40 } }, context)).rejects.toThrow("--type filters one ticker's payment history");

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { buildDividendMetrics, dividendReferencePrice, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
+import { buildDividendMetrics, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
+import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";

@@ -2,7 +2,8 @@ import type { DataProvider } from "../../../types/data-provider";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { cashInMajorUnits } from "../../../utils/dividend-cash";
-import { buildDividendMetrics, dividendReferencePrice, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, toDividendPayment, type DividendData } from "./client";
+import { dividendReferencePrice } from "../../../utils/trailing-dividend";
+import { buildDividendMetrics, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, toDividendPayment, type DividendData } from "./client";
 import { dividendQuotePriceMetadata } from "./reference-price";
 
 /** Custom data providers can supply their own cash history and reference quote. */

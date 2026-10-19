@@ -34,7 +34,7 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
 import type { AppConfig } from "../../types/config";
-import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { CorporateActionsData, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -76,6 +76,9 @@ import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
+import { cashInMajorUnits } from "../../utils/dividend-cash";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
 import { notTheCoinNote } from "./crypto-hints";
 import { loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
@@ -380,40 +383,70 @@ function percentFigure(fraction: number | null | undefined, format: (value: numb
 }
 
 /**
- * The listing's distributions a forward yield is read with: the declared,
- * unpaid ones a yield dated ahead is named from, in their own currency, and
- * the history that says whether the dividend is still paid.
+ * The listing's distributions a dividend yield is read with: the declared,
+ * unpaid ones a forward yield dated ahead is named from, in their own
+ * currency, the history that says whether the dividend is still paid, and the
+ * trailing yield DVD reads from that history.
  */
-export interface ForwardYieldDistributions {
+export interface DividendDistributions {
   rows: DeclaredDividendAction[];
   currency?: string;
   history: DistributionHistory | null;
+  /**
+   * A trailing yield as DVD measures it (trailingDividendYield): the history's
+   * trailing twelve-month cash over the quote's regular session price. Null
+   * when the history is not whole or the price is in another currency, which
+   * leaves the yield Gloom Cloud serves; absent for a forward yield.
+   */
+  trailingYield?: number | null;
 }
 
 /**
- * The listing's distributions, read only for a forward yield whose ex-date is
- * still ahead (the one case its basis names a declared one, which JSON does
- * not print, so `declared: false` skips it) or long enough past for its
- * dividend to have stopped; null otherwise, and when they cannot be read,
- * which leaves the basis to its dates and the lapse to Gloom Cloud's fifteen
- * months.
+ * The trailing yield DVD reads from a whole cash history at the quote's
+ * regular session price; null when the history is not whole (a row that is no
+ * paid distribution, no currency, coverage unavailable) or the price is in
+ * another currency, as DVD leaves its own blank.
  */
-export async function loadForwardYieldDistributions(
+function historyTrailingYield(sourceActions: CorporateActionsData, quote: Quote | null | undefined, now = new Date()): number | null {
+  const actions = cashInMajorUnits(sourceActions);
+  const currency = resolveCurrencyUnit(actions.currency).currency;
+  if (!currency || !Array.isArray(actions.dividends) || actions.coverage?.dividends === "unavailable") return null;
+  if (actions.coverage?.dividends !== "available" && actions.dividends.length === 0) return null;
+  const payments = actions.dividends.map((row) => cashDistribution(row.exDate, row.amount));
+  if (payments.some((payment) => payment == null)) return null;
+  const price = dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
+  return trailingDividendYield(payments as CashDistribution[], price, now);
+}
+
+/**
+ * The listing's distributions, read for a trailing yield, which is measured
+ * from them as DVD measures it, and for a forward yield whose ex-date is still
+ * ahead (the one case its basis names a declared one, which JSON does not
+ * print, so `declared: false` skips it) or long enough past for its dividend
+ * to have stopped; null otherwise, and when they cannot be read, which leaves
+ * the trailing yield Gloom Cloud serves, the forward basis to its dates and
+ * the lapse to Gloom Cloud's fifteen months.
+ */
+export async function loadDividendDistributions(
   dataProvider: Pick<MarketContext["dataProvider"], "getCorporateActions">,
   listing: { symbol: string; exchange: string },
-  fundamentals: TickerFinancials["fundamentals"],
+  { quote, fundamentals }: Pick<TickerFinancials, "quote" | "fundamentals">,
   { declared = true, now = new Date() }: { declared?: boolean; now?: Date } = {},
-): Promise<ForwardYieldDistributions | null> {
-  if (fundamentals?.dividendYieldBasis !== "forward" || fundamentals.dividendYield == null || !dataProvider.getCorporateActions) return null;
-  const exDate = fundamentals.exDividendDate ?? "";
-  const declaredAhead = declared && /^\d{4}-\d{2}-\d{2}$/.test(exDate) && exDate > now.toISOString().slice(0, 10);
-  if (!declaredAhead && !forwardDividendMayHaveLapsed(exDate, now)) return null;
+): Promise<DividendDistributions | null> {
+  if (fundamentals?.dividendYield == null || !dataProvider.getCorporateActions) return null;
+  const trailing = fundamentals.dividendYieldBasis === "trailing";
+  if (!trailing) {
+    if (fundamentals.dividendYieldBasis !== "forward") return null;
+    const exDate = fundamentals.exDividendDate ?? "";
+    const declaredAhead = declared && /^\d{4}-\d{2}-\d{2}$/.test(exDate) && exDate > now.toISOString().slice(0, 10);
+    if (!declaredAhead && !forwardDividendMayHaveLapsed(exDate, now)) return null;
+  }
   try {
     const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
     return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}),
-      history: distributionHistory(actions, now) };
+      history: distributionHistory(actions, now), ...(trailing ? { trailingYield: historyTrailingYield(actions, quote, now) } : {}) };
   } catch (error) {
-    logFailure("cli.commands-ticker", "Read forward dividend distributions failed")(error);
+    logFailure("cli.commands-ticker", "Read dividend distributions failed")(error);
     return null;
   }
 }
@@ -421,11 +454,25 @@ export async function loadForwardYieldDistributions(
 /** The stopped dividend behind a forward yield, if it has stopped (lapsedDividend); null for any other yield. */
 function forwardYieldLapse(
   fundamentals: TickerFinancials["fundamentals"],
-  distributions: ForwardYieldDistributions | null,
+  distributions: DividendDistributions | null,
   now = new Date(),
 ): DividendLapse | null {
   return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
     ? lapsedDividend(fundamentals.exDividendDate, distributions?.history, now) : null;
+}
+
+/**
+ * The dividend yield a report shows: a trailing one as DVD measures it from
+ * the cash history (DividendDistributions.trailingYield), so `fundamentals`,
+ * `ticker` and DVD print one figure; Gloom Cloud's when that cannot be read,
+ * and a forward one as served.
+ */
+function reportedDividendYield(
+  fundamentals: Pick<NonNullable<TickerFinancials["fundamentals"]>, "dividendYield" | "dividendYieldBasis"> | undefined,
+  distributions: DividendDistributions | null,
+): number | undefined {
+  const measured = fundamentals?.dividendYieldBasis === "trailing" ? distributions?.trailingYield : null;
+  return measured ?? fundamentals?.dividendYield;
 }
 
 /**
@@ -435,10 +482,10 @@ function forwardYieldLapse(
  * was last paid; a trailing one the twelve months it covers. A yield of no
  * stated basis is the figure alone.
  */
-function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: ForwardYieldDistributions | null): MetricFigure {
+function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], distributions: DividendDistributions | null): MetricFigure {
   const lapse = forwardYieldLapse(fundamentals, distributions);
   if (lapse) return { text: noCurrentDividend(lapse), value: null };
-  const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
+  const figure = percentFigure(reportedDividendYield(fundamentals, distributions), formatFractionPercentCell);
   if (fundamentals?.dividendYield == null) return figure;
   const basis = fundamentals.dividendYieldBasis === "forward"
     ? forwardDividendBasis(fundamentals.exDividendDate, { declared: distributions?.rows, currency: distributions?.currency })
@@ -447,15 +494,18 @@ function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], dist
 }
 
 /**
- * Fundamentals as JSON exports them: a forward yield whose dividend has
- * stopped is null, as is its rate, with the last ex-date under `dividendLapse`.
+ * Fundamentals as JSON exports them: a trailing yield as the text reads it
+ * (reportedDividendYield), and a forward yield whose dividend has stopped
+ * null, as is its rate, with the last ex-date under `dividendLapse`.
  */
 export function exportedDividendFundamentals<T extends object & Pick<NonNullable<TickerFinancials["fundamentals"]>, "dividendYield" | "dividendYieldBasis" | "exDividendDate">>(
   fundamentals: T,
-  distributions: ForwardYieldDistributions | null,
+  distributions: DividendDistributions | null,
 ): T | (Omit<T, "dividendYield" | "dividendRate"> & { dividendYield: null; dividendRate: null; dividendLapse: DividendLapse }) {
   const lapse = forwardYieldLapse(fundamentals, distributions);
-  return lapse ? { ...fundamentals, dividendYield: null, dividendRate: null, dividendLapse: lapse } : fundamentals;
+  if (lapse) return { ...fundamentals, dividendYield: null, dividendRate: null, dividendLapse: lapse };
+  const dividendYield = reportedDividendYield(fundamentals, distributions);
+  return dividendYield === fundamentals.dividendYield ? fundamentals : { ...fundamentals, dividendYield };
 }
 
 function multipleFigure(value: ReturnType<typeof priceEarningsOnEarnings> | number | undefined): MetricFigure {
@@ -471,7 +521,7 @@ function fundamentalsMetrics(
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
   reportingCurrency: string | undefined,
   enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
-  distributions: ForwardYieldDistributions | null = null,
+  distributions: DividendDistributions | null = null,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -574,7 +624,7 @@ const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterpri
 type FundamentalsReportData = TickerFinancials & {
   symbol: string;
   exchange?: string;
-  distributions?: ForwardYieldDistributions | null;
+  distributions?: DividendDistributions | null;
   /** The filings behind the latest statements, and a newer quarter's results release. */
   statementFilings?: StatementFilingsReport | null;
   /** A bank holding company's deposits, uninsured share and CRE (`fundamentals` only). */
@@ -805,8 +855,8 @@ export async function buildTickerReport({
   symbol: string;
   /** The filings behind the latest statements, and a newer quarter's results release. */
   statementFilings?: StatementFilingsReport | null;
-  /** The distributions a forward yield is read with (loadForwardYieldDistributions). */
-  distributions?: ForwardYieldDistributions | null;
+  /** The distributions a dividend yield is read with (loadDividendDistributions). */
+  distributions?: DividendDistributions | null;
   /** The exchange the command named, as a canonical code. */
   listingExchange?: string;
   /** A futures symbol's contract terms and latest confirmed settlement. */
@@ -1023,7 +1073,7 @@ function buildTickerStructuredData({
   listing: CliListing;
   statementFilings: StatementFilingsReport | null;
   futuresContract: FuturesContractTermsPayload | null;
-  distributions: ForwardYieldDistributions | null;
+  distributions: DividendDistributions | null;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
@@ -1188,8 +1238,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
-    // The forward yield's distributions, read beside the rest when its basis or its lapse needs them; they never fail the report.
-    const distributions = loadForwardYieldDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals,
+    // The yield's distributions, read beside the rest when a trailing yield, a forward basis or its lapse needs them; they never fail the report.
+    const distributions = loadDividendDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials,
       { declared: !dependencies.printResult });
     const statementFilings = loadStatementFilings(statementSources, { symbol: requestSymbol, exchange }, {
       quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),

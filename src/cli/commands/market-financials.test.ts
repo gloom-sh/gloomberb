@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestCliContext } from "../../test-support/cli-context";
+import { createTestDataProvider } from "../../test-support/data-provider";
+import { fetchProviderDividendData } from "../../plugins/builtin/dividend-yield/provider-client";
 import type { TickerFinancials } from "../../types/financials";
 import { DEFAULT_CLI_OPTIONS, type CliOutputFormat } from "../options";
 import { serializeCliResult } from "../result";
@@ -131,3 +133,29 @@ test("fundamentals prints the float and the short interest of one dated settleme
     expect.stringMatching(/^Days to Cover,3.98,GME,/),
   ]));
 })
+
+test("a fund's trailing yield in fundamentals is the one DVD measures from the same cash history and price", async () => {
+  // GLO-1029: fundamentals printed the trailing yield Gloom Cloud serves (HYD 4.62%) beside DVD's 4.55%. Both now read the
+  // history through trailingDividendYield. A quarterly payer whose latest ex-date came a week earlier in the year than
+  // last year's: DVD counts four quarters, where a plain twelve-month window would count five.
+  const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const actions = {
+    symbol: "FUND", currency: "USD", coverage: { dividends: "available" as const },
+    dividends: [2, 93, 184, 275, 360, 451, 542, 633, 724].map((daysAgo) => ({ exDate: day(daysAgo), amount: 0.25 })),
+    splits: [], earnings: [],
+  };
+  const quote = { symbol: "FUND", name: "Fund", price: 50, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() - 60_000 };
+  const fund: TickerFinancials = {
+    quote, fundamentals: { dividendYield: 0.0462, dividendYieldBasis: "trailing" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+  };
+  const dvd = await fetchProviderDividendData(createTestDataProvider({ getCorporateActions: async () => actions, getQuote: async () => quote }), "FUND", null);
+  expect(dvd.metrics.trailingYield).toBe(0.02);
+
+  const fundamentals = async (format: CliOutputFormat) => {
+    const cli = createTestCliContext({ dataProvider: { getTickerFinancials: async () => fund, getCorporateActions: async () => actions } }, { format });
+    await marketDataCliCommands.find((entry) => entry.name === "fundamentals")!.execute(["FUND"], cli.context);
+    return serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format }, cli.printed[0]!.options);
+  };
+  expect(JSON.parse(await fundamentals("json")).data.fundamentals.dividendYield).toBe(dvd.metrics.trailingYield!);
+  expect((await fundamentals("text")).replace(/\u001b\[[0-9;]*m/g, "")).toMatch(/Dividend Yield \(trailing\)\s+2\.00% \(last 12 months of distributions\)/);
+});

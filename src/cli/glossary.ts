@@ -1,7 +1,7 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
+ * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
  * fund, short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
@@ -422,6 +422,29 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Tracking error", aliases: ["index tracking error"], functions: ["ETF"], shown: ["Tracking error", "tracking error"],
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
+  },
+  // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE) and a fund's SEC yield, which DVD's cash yield is not.
+  {
+    term: "Option-adjusted spread", short: "OAS", aliases: ["spread over treasuries", "corporate spread"], functions: ["CRD"],
+    definition: "How much more a corporate bond index yields than Treasuries of the same maturities, once the value of the issuers' right to call their bonds early is taken out. "
+      + "CRD shows the ICE BofA indexes' spreads in basis points; a wider spread means investors want more for the credit risk.",
+  },
+  {
+    term: "Effective yield", aliases: ["effective yields", "index effective yield", "ice effective yield"], functions: ["CAT"],
+    shown: ["effective yield", "Effective Yield"],
+    definition: "The yield of an ICE BofA bond index: its bonds' yields averaged by market value, allowing for the calls in callable bonds. "
+      + "fred serves the US corporate (investment grade) index's for all maturities, by maturity from 1-3 to 15+ years and by rating (fred --list credit), "
+      + "so a corporate bond can be read against the Treasury of its tenor.",
+  },
+  {
+    term: "SEC yield", aliases: ["30-day yield", "30-day sec yield", "sec 30-day yield", "standardized yield"], functions: ["DVD"],
+    definition: "A fund's yield in the formula the SEC sets so funds compare alike: the income its holdings earned over the latest 30 days, after expenses, annualized over the share price. "
+      + "Fund issuers publish it; DVD's trailing yield is the past 12 months' distributions over the price instead, so the two differ, most for bond funds.",
+  },
+  {
+    term: "Yield to worst", short: "YTW", aliases: ["worst yield"], functions: ["TRACE"], shown: ["Yield"],
+    definition: "The lowest yield a bond can pay without its issuer defaulting: the lower of its yield to maturity and its yield to each date it can be called. "
+      + "The yield TRACE shows for a sale is this one, worked out from the sale price.",
   },
   // Short interest (SI, SIW) and daily short volume (SIV).
   {

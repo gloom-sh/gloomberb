@@ -4,7 +4,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { dividendReferencePrice, fetchDividendData, type DividendData } from "./client";
+import { fetchDividendData, type DividendData } from "./client";
+import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
@@ -14,7 +15,7 @@ import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { mapWithConcurrency } from "../../../utils/concurrency";
-import { projectDividendRanking, type DividendRankingEntry } from "./ranking";
+import { projectDividendRanking, roundedRatio, type DividendRankingEntry } from "./ranking";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 
 /** Symbols one `fn DVD` ranks at most, and how many it reads at once. */
@@ -109,17 +110,17 @@ export function projectDividendYieldHeadless(
           ...(priceStatus ? [{ label: "Price status", value: priceStatus === "stale"
             ? "Stale reference price; cash yield may be out of date."
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
-          { label: "Trailing yield", value: metrics.trailingYield, formatted: metrics.trailingYield == null ? formatDividendYield(null)
+          { label: "Trailing yield", value: roundedRatio(metrics.trailingYield), formatted: metrics.trailingYield == null ? formatDividendYield(null)
             : `${formatDividendYield(metrics.trailingYield)} (${TRAILING_DIVIDEND_BASIS})` },
-          { label: "Forward yield", value: metrics.forwardYield, formatted: metrics.lapse ? noCurrentDividend(metrics.lapse)
+          { label: "Forward yield", value: roundedRatio(metrics.forwardYield), formatted: metrics.lapse ? noCurrentDividend(metrics.lapse)
             : metrics.forwardYield == null ? formatDividendYield(null)
             : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf,
               { payDate: forwardPayDate(metrics), declared: data.declared, currency })})` },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
           { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
-          { label: "Earnings Payout", value: metrics.payoutRatio, formatted: formatDividendYield(metrics.payoutRatio) },
-          { label: "1Y Cash Growth", value: metrics.growth1Y, formatted: formatPercent(metrics.growth1Y ?? undefined) },
-          { label: "3Y Cash CAGR", value: metrics.growth3Y, formatted: formatPercent(metrics.growth3Y ?? undefined) },
+          { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: formatDividendYield(metrics.payoutRatio) },
+          { label: "1Y Cash Growth", value: roundedRatio(metrics.growth1Y), formatted: formatPercent(metrics.growth1Y ?? undefined) },
+          { label: "3Y Cash CAGR", value: roundedRatio(metrics.growth3Y), formatted: formatPercent(metrics.growth3Y ?? undefined) },
           { label: "Frequency", value: metrics.paymentFrequency },
           dateEntry("Last ex-dividend", metrics.lastExDividendDate),
           dateEntry("Next ex-dividend", metrics.nextExDividendDate),
@@ -132,6 +133,8 @@ export function projectDividendYieldHeadless(
         title: "Dividend history",
         columns: PAYMENT_COLUMNS,
         rows,
+        // Each amount is in its own row's currency.
+        rowUnitKey: "currency",
       },
     ],
     metadata: {

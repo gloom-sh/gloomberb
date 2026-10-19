@@ -416,7 +416,8 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const sort = takeOption(args, "--sort");
   const changeGiven = args.some((arg) => arg === "--change" || arg.startsWith("--change="));
   const change = changeGiven ? takeOption(args, "--change") : undefined;
-  if (list) {
+  // Bare `fred` lists the series it can fetch, grouped by topic, as `fred --list` does.
+  if (list || rawArgs.length === 0) {
     if (start != null || sort != null || changeGiven) {
       ctx.fail("--list takes a filter, not --start, --sort or --change.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
     }
@@ -669,11 +670,11 @@ export const overviewCliCommands: CliCommandDef[] = [
     description: "Fetch a FRED economic series, or list the ones served",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: [FRED_USAGE, FRED_LIST_USAGE],
+      usage: [FRED_USAGE, "fred", FRED_LIST_USAGE],
       options: [
         START_OPTION,
         { flags: "--sort <order>", description: "desc for newest first (default) or asc" },
-        { flags: "--list", description: "List the series Gloom Cloud serves (ID, title, group); words after it filter the list" },
+        { flags: "--list", description: "List the series Gloom Cloud serves (ID, title, group), as fred alone does; words after it filter the list" },
         {
           flags: "--change <1D|1W>",
           description: "Add each observation's change in the series' unit (bp for a spread, pp for a percent): 1D from the previous observation, 1W from the last one a week before; holidays stay blank",
@@ -682,10 +683,10 @@ export const overviewCliCommands: CliCommandDef[] = [
       sections: [{
         title: "Series",
         lines: [
-          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred --list prints them; any other ID fails with that pointer.",
+          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred (or fred --list) prints them by topic; any other ID fails with that pointer.",
         ],
       }],
-      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred --list", "fred --list fx"],
+      examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred", "fred --list credit", "fred --list fx"],
     },
     execute: runFred,
   },

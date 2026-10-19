@@ -1,4 +1,5 @@
 import type { DividendLapse } from "../../../utils/forward-dividend";
+import type { DistributionCadence } from "../../../utils/trailing-dividend";
 
 export interface DividendPayment {
   exDate: Date;
@@ -22,7 +23,7 @@ export interface DividendMetrics {
   payoutRatio: number | null;
   growth1Y: number | null;
   growth3Y: number | null;
-  paymentFrequency: "monthly" | "quarterly" | "semi-annual" | "annual" | "irregular" | null;
+  paymentFrequency: DistributionCadence | null;
   lastExDividendDate: Date | null;
   /** Announced ex-date after now, from the summary or a future-dated history record. */
   nextExDividendDate: Date | null;

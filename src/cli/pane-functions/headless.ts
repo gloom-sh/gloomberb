@@ -731,12 +731,14 @@ export function headlessReportTables(
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
           ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
         };
-        const unitKey = section.rowUnitKey;
-        const rowIdentities = unitKey
-          ? section.rows.map((row) => {
-            const unit = row[unitKey];
-            return { currencyOrUnit: typeof unit === "string" ? unit : null };
-          })
+        const { rowUnitKey: unitKey, rowSymbolKey: symbolKey, rowAsOfKey: asOfKey } = section;
+        const text = (value: unknown) => (typeof value === "string" ? value : null);
+        const rowIdentities = unitKey || symbolKey || asOfKey
+          ? section.rows.map((row) => ({
+            ...(unitKey ? { currencyOrUnit: text(row[unitKey]) } : {}),
+            ...(symbolKey ? { symbolOrSeries: text(row[symbolKey]) } : {}),
+            ...(asOfKey ? { asOf: text(row[asOfKey]) } : {}),
+          }))
           : undefined;
         return { ...table, ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
       });

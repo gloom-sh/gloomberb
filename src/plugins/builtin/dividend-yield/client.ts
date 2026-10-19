@@ -4,12 +4,12 @@ import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { inferCadence, trailingCashAt } from "./trailing-cash";
+import { cashDistribution, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate } from "../../../utils/trailing-dividend";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
-import { atSourcePrecision, cashInMajorUnits } from "../../../utils/dividend-cash";
+import { cashInMajorUnits } from "../../../utils/dividend-cash";
 import { lapsedDividend } from "../../../utils/forward-dividend";
 import type { DeclaredDividendAction } from "../../../types/financials";
 
@@ -43,15 +43,13 @@ export function toDividendPayment(
   amount: number,
   currency: string,
 ): DividendPayment | null {
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const parsed = new Date(`${exDate}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== exDate) return null;
+  const paid = cashDistribution(exDate, amount);
+  if (!paid) return null;
   return {
-    exDate: parsed,
+    ...paid,
     recordDate: null,
     paymentDate: null,
     declarationDate: null,
-    amount,
     currency,
     type: "cash",
   };
@@ -132,14 +130,6 @@ export async function fetchDividendData(
   };
 }
 
-/** A quote from another listing/currency cannot price this cash distribution series. */
-export function dividendReferencePrice(price: number | null, priceCurrency: string | undefined, cashCurrency: string): number | null {
-  if (price == null || !Number.isFinite(price) || price <= 0) return null;
-  const unit = resolveCurrencyUnit(priceCurrency);
-  if (!unit.currency || unit.currency !== resolveCurrencyUnit(cashCurrency).currency) return null;
-  return price / unit.divisor;
-}
-
 function reportedDividendDate(timestamp: number | null): Date | null {
   if (timestamp == null || !Number.isFinite(timestamp)) return null;
   const date = new Date(timestamp * 1000);
@@ -158,9 +148,9 @@ export function buildDividendMetrics(
 ): DividendMetrics {
   const now = options.now ?? new Date();
   const eligible = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0);
-  // A sum of figures at their source's precision, without the float noise of adding them (17.799999999999997).
+  // The trailing rate every trailing yield reads (trailingDividendRate), fundamentals' for a fund included.
   const trailingRate = options.historyAvailable !== false
-    ? atSourcePrecision(trailingCashAt(eligible, now))
+    ? trailingDividendRate(payments, now)
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const statedRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
   const statedAsOf = statedRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
@@ -210,11 +200,10 @@ export function buildDividendMetrics(
 }
 
 export function repriceDividendMetrics(metrics: DividendMetrics, price: number | null): DividendMetrics {
-  const validPrice = price != null && Number.isFinite(price) && price > 0;
   return {
     ...metrics,
-    trailingYield: validPrice && metrics.trailingRate != null ? metrics.trailingRate / price : null,
-    forwardYield: validPrice && metrics.forwardRate != null ? metrics.forwardRate / price : null,
+    trailingYield: dividendYieldAt(metrics.trailingRate, price),
+    forwardYield: dividendYieldAt(metrics.forwardRate, price),
   };
 }
 

@@ -6,6 +6,7 @@
  * is (`EXPORT_IDENTITY_COLUMNS`).
  */
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { parseReportTime } from "../utils/utc-time";
 
 /** What CSV writes for a field the data does not state. JSON writes null. */
 const NOT_PUBLISHED = "not published";
@@ -57,12 +58,26 @@ export interface ExportIdentity {
   currencyOrUnit?: string | null;
   /** The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`. */
   interval?: string | null;
+  /**
+   * When this row was observed, where a table's rows are dated apart (each
+   * ticker's price in a ranking): an ISO date or instant. Null leaves `as_of`
+   * blank; absent, it is the closing lines' observation date.
+   */
+  asOf?: string | null;
+}
+
+/** A row's own as-of in the closing lines' form: a date stays a date, an instant is ISO in UTC. */
+function rowAsOf(value: string | null): string {
+  const time = parseReportTime(value);
+  if (!time) return "";
+  return time.dateOnly ? new Date(time.time).toISOString().slice(0, 10) : new Date(time.time).toISOString();
 }
 
 /**
  * The five cells of `EXPORT_IDENTITY_COLUMNS` for a row: blank where the
- * command cannot say, and `as_of` the observation date of the closing lines,
- * blank when they read `not published`.
+ * command cannot say, and `as_of` the row's own observation time when it has
+ * one, else the observation date of the closing lines, blank when they read
+ * `not published`.
  */
 export function exportIdentityCells(freshness: ReportFreshness, identity: ExportIdentity = {}): string[] {
   const source = exportSource(freshness);
@@ -71,7 +86,7 @@ export function exportIdentityCells(freshness: ReportFreshness, identity: Export
     identity.currencyOrUnit?.trim() ?? "",
     identity.interval?.trim() ?? "",
     source.name,
-    source.observationDate ?? "",
+    identity.asOf !== undefined ? rowAsOf(identity.asOf) : source.observationDate ?? "",
   ];
 }
 

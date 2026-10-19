@@ -1,13 +1,14 @@
 /**
  * The ICE BofA credit indexes FRED publishes and Gloom Cloud serves: option
- * adjusted spreads by rating and region, and two effective yields, all in
+ * adjusted spreads by rating and region, and effective yields (US investment
+ * grade and high yield, investment grade by maturity and by rating), all in
  * percent. One list for the CRD board, the data catalog, `fred`'s basis point
  * text and FRED's coverage notice. FRED publishes no euro investment grade
  * (ICE BofA Euro Corporate) spread, so the euro row is high yield only.
  */
 export interface IceCreditSeries {
   seriesId: string;
-  /** The CRD board's row. */
+  /** The CRD board's row (spreads only; the board shows no yields). */
   label: string;
   /** The data catalog's name. */
   name: string;
@@ -31,6 +32,20 @@ export const ICE_CREDIT_SERIES: readonly IceCreditSeries[] = [
   { seriesId: "BAMLHE00EHYIOAS", label: "Euro HY", name: "Euro high yield OAS", measure: "spread", region: "euro", tags: ["euro", "EUR", "Europe", "HY", ...HIGH_YIELD] },
   { seriesId: "BAMLC0A0CMEY", label: "US IG yld", name: "US investment grade corporate effective yield", measure: "yield", region: "us", tags: ["IG", "investment grade"] },
   { seriesId: "BAMLH0A0HYM2EY", label: "US HY yld", name: "US high yield effective yield", measure: "yield", region: "us", tags: ["HY", ...HIGH_YIELD] },
+  // Investment grade by maturity, to read a corporate against the Treasury of its tenor, then by rating.
+  ...([
+    ["BAMLC1A0C13YEY", "1-3Y"], ["BAMLC2A0C35YEY", "3-5Y"], ["BAMLC3A0C57YEY", "5-7Y"],
+    ["BAMLC4A0C710YEY", "7-10Y"], ["BAMLC7A0C1015YEY", "10-15Y"], ["BAMLC8A0C15PYEY", "15Y+"],
+  ] as const).map(([seriesId, tenor]): IceCreditSeries => ({
+    seriesId, label: `IG ${tenor} yld`, name: `${tenor} corporate effective yield`, measure: "yield", region: "us",
+    tags: ["IG", "investment grade", "maturity", tenor],
+  })),
+  ...([
+    ["BAMLC0A1CAAAEY", "AAA"], ["BAMLC0A2CAAEY", "AA"], ["BAMLC0A3CAEY", "A"], ["BAMLC0A4CBBBEY", "BBB"],
+  ] as const).map(([seriesId, rating]): IceCreditSeries => ({
+    seriesId, label: `${rating} yld`, name: `${rating} corporate effective yield`, measure: "yield", region: "us",
+    tags: [rating === "A" ? "single A" : rating, "investment grade", "rating"],
+  })),
 ];
 
 export const ICE_CREDIT_SERIES_IDS: ReadonlySet<string> = new Set(ICE_CREDIT_SERIES.map((series) => series.seriesId));

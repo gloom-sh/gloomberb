@@ -10,6 +10,11 @@ export type DividendRankingEntry =
 
 const isoDay = (date: Date | null | undefined): string | null => date ? date.toISOString().slice(0, 10) : null;
 
+/** A ratio to the sixth decimal, a percent to the fourth (0.035396 is 3.5396%), so an export carries no float noise. */
+export function roundedRatio(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) ? Number(value.toFixed(6)) : null;
+}
+
 /**
  * The pay date of the next distribution, when one is declared: the earliest
  * declared row still to pay, else the upcoming pay date the source states.
@@ -49,8 +54,8 @@ function incompleteReason(entry: DividendRankingEntry): string | null {
 function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new Date()): Record<string, unknown>[] {
   const rows = entries.map((entry, index) => {
     if ("error" in entry) {
-      return { index, failed: true, row: { symbol: entry.symbol, currency: null, price: null, trailingYield: null, forwardYield: null, payoutRatio: null,
-        growth1Y: null, growth3Y: null, lastExDate: null, payDate: null, frequency: null, note: incompleteNote(entry), error: entry.error } };
+      return { index, failed: true, row: { symbol: entry.symbol, currency: null, price: null, priceAsOf: null, trailingYield: null, forwardYield: null,
+        payoutRatio: null, growth1Y: null, growth3Y: null, lastExDate: null, payDate: null, frequency: null, note: incompleteNote(entry), error: entry.error } };
     }
     const { data } = entry;
     const metrics = data.metrics;
@@ -61,11 +66,13 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         symbol: entry.symbol,
         currency: data.currency ?? null,
         price: data.price,
-        trailingYield: metrics.trailingYield,
-        forwardYield: metrics.forwardYield,
-        payoutRatio: metrics.payoutRatio,
-        growth1Y: metrics.growth1Y,
-        growth3Y: metrics.growth3Y,
+        // When the price the yields are over is from: each row's export is dated by it.
+        priceAsOf: data.price != null ? data.priceAsOf ?? null : null,
+        trailingYield: roundedRatio(metrics.trailingYield),
+        forwardYield: roundedRatio(metrics.forwardYield),
+        payoutRatio: roundedRatio(metrics.payoutRatio),
+        growth1Y: roundedRatio(metrics.growth1Y),
+        growth3Y: roundedRatio(metrics.growth3Y),
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
@@ -127,6 +134,10 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
       title: "Ranked by trailing yield; payout is over TTM diluted EPS",
       columns: incomplete.length > 0 ? [...RANKING_COLUMNS, NOTE_COLUMN] : RANKING_COLUMNS,
       rows,
+      // Every figure is a percent; each exported row names its ticker and the time of the price its yields are over.
+      unit: "pct",
+      rowSymbolKey: "symbol",
+      rowAsOfKey: "priceAsOf",
     }],
     metadata: {
       rankedBy: "trailingYield",

@@ -1,7 +1,7 @@
 import type { DividendPayment } from "./types";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { LATE_GRACE_DAYS, trailingCashAt } from "./trailing-cash";
+import { LATE_GRACE_DAYS, trailingCashAt } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
