@@ -985,7 +985,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["BTMM"],
   },
   CDS: {
-    summary: "Single-name corporate CDS from DTCC public dissemination. CDS alone lists the issuers traded in the last 5 days with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll, to rank them by (`fn CDS --sort 1m`); with a ticker or issuer, its 5Y spread (level, date, 1W and 1M change, range), its trades and, in `fn`, its daily levels (`fn CDS F --csv --section daily`).",
+    summary: "Single-name corporate CDS from DTCC public dissemination. CDS alone lists the issuers traded in the last 5 days with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll while the level is current, to rank them by (`fn CDS --sort 1m`); past 2,000bp a name is quoted in points upfront (`57.6 pts`), moves too, and ranks after the bp names; with a ticker or issuer, its 5Y spread (level, date, 1W and 1M change, range), its trades and, in `fn`, its daily levels (`fn CDS F --csv --section daily`).",
     usage: ["CDS", "CDS F", "gloomberb fn CDS --sort 1m", "gloomberb fn CDS F --csv --section daily"],
     keys: [OPEN, STEP],
     data: same("Delayed, as trades are disseminated"),

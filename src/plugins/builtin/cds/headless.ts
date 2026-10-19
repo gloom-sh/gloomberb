@@ -1,9 +1,11 @@
 import type {
   HeadlessBundleResult,
   HeadlessBundleSection,
+  HeadlessPaneColumn,
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
   HeadlessPaneLoadArgs,
+  HeadlessPaneRow,
 } from "../../../types/plugin";
 import {
   CDS_TRADE_DAYS,
@@ -26,10 +28,15 @@ import {
   formatBp,
   formatEventTime,
   formatNotional,
+  formatPoints,
+  formatPointsMove,
+  formatQuoted,
+  formatQuotedMove,
   formatSpreadMove,
   formatSpreadRange,
   formatUpfront,
   issuerListSort,
+  quotedLevel,
   lastTradeOf,
   noLevelMessage,
   noTradesMessage,
@@ -38,21 +45,61 @@ import {
   spreadSummary,
   summarizeIssuers,
   withSpreadLevels,
+  type CdsIssuerSummary,
+  type CdsQuoteUnit,
   type CdsSpreadLevels,
   type CdsTrade,
 } from "./model";
 
-const moveOf = (value: unknown) => formatSpreadMove(typeof value === "number" ? value : null);
+const numberOrNull = (value: unknown) => (typeof value === "number" ? value : null);
+const unitOf = (row: HeadlessPaneRow): CdsQuoteUnit => (row.unit === "pts" ? "pts" : "bp");
 
-const ISSUER_COLUMNS = [
+/**
+ * A level and its moves are numbers with their unit beside them, as the
+ * index board's are: bp, or `pts` for a name quoted in points upfront. Text
+ * draws them as the pane does (`409bp`, `57.7 pts`, `+10.9 pts`); exports
+ * write the number and name the unit.
+ */
+const quotedColumn = (key: string, header: string, move: boolean): HeadlessPaneColumn => ({
+  key,
+  header,
+  align: "right",
+  unitKey: "unit",
+  textFormat: (value, row) => (move ? formatQuotedMove : formatQuoted)(unitOf(row), numberOrNull(value)),
+});
+
+const ISSUER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "issuer", header: "Issuer" },
   { key: "trades", header: "Trades", align: "right" as const },
   { key: "lastTradeAt", header: "Last UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
-  { key: "spread5yBp", header: "5Y spread", align: "right" as const, format: (value: unknown) => formatBp(value as number | null) },
-  { key: "change1wBp", header: "1W", align: "right" as const, format: moveOf },
-  { key: "change1mBp", header: "1M", align: "right" as const, format: moveOf },
+  quotedColumn("level", "5Y", false),
+  quotedColumn("change1W", "1W", true),
+  quotedColumn("change1M", "1M", true),
   { key: "spread5yDate", header: "5Y date", shrink: false, format: (value: unknown) => (typeof value === "string" ? value : "--") },
 ];
+
+/**
+ * A listed issuer as the report keeps it: its level and moves as quoted, with
+ * their unit, beside the level in bp it always has.
+ */
+function issuerRow(row: CdsIssuerSummary): HeadlessPaneRow {
+  const quoted = quotedLevel(row);
+  return {
+    key: row.key,
+    issuer: row.issuer,
+    trades: row.trades,
+    lastTradeAt: row.lastTradeAt,
+    latestSpreadBp: row.latestSpreadBp,
+    spread5yBp: row.spread5yBp,
+    spread5yDate: row.spread5yDate,
+    quote: row.quote,
+    level: quoted.level,
+    change1W: quoted.change1w,
+    change1M: quoted.change1m,
+    unit: quoted.unit,
+    ...(row.quote === "upfront" ? { couponBp: row.couponBp } : {}),
+  };
+}
 
 /** Days of a named issuer's daily 5Y levels the report lists; the line holds two years. */
 const DAILY_DAYS = { defaultValue: 365, minimum: 30, maximum: 730 };
@@ -66,16 +113,31 @@ const DAILY_DAYS = { defaultValue: 365, minimum: 30, maximum: 730 };
 function dailySection(history: CdsSpreadHistory, days: number): HeadlessBundleSection {
   const latest = history.points.at(-1)?.date;
   const from = latest ? new Date(Date.parse(`${latest}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10) : "";
+  // A name quoted upfront lists each day's points beside its spread.
+  const upfront = history.quote === "upfront";
   return {
     title: "Daily",
     columns: [
       { key: "day", header: "Date" },
       { key: "spreadBp", header: "5Y spread", align: "right" as const, format: (value: unknown) => formatBp(value as number | null) },
+      ...(upfront ? [{
+        key: "upfrontPts",
+        header: "5Y upfront",
+        align: "right" as const,
+        unitKey: "unit",
+        textFormat: (value: unknown) => formatPoints(numberOrNull(value)),
+      }] : []),
       { key: "prints", header: "Prints", align: "right" as const },
       { key: "maturity", header: "Contract", format: (value: unknown) => formatContract(typeof value === "string" ? value : null) },
     ],
     rows: history.points.filter((point) => point.date > from).reverse()
-      .map((point) => ({ day: point.date, spreadBp: point.spreadBp, prints: point.prints, maturity: point.maturity })),
+      .map((point) => ({
+        day: point.date,
+        spreadBp: point.spreadBp,
+        ...(upfront ? { upfrontPts: point.upfrontPts ?? null, unit: "pts" } : {}),
+        prints: point.prints,
+        maturity: point.maturity,
+      })),
     empty: "No daily 5Y levels.",
   };
 }
@@ -107,23 +169,38 @@ const TRADE_COLUMNS = [
 
 /**
  * The pane's figures over its 5Y chart, as label and value lines: the level,
- * its date, the 1W and 1M moves through the roll and the range charted.
- * JSON keeps the numbers; text and CSV read as the pane does.
+ * its date, the 1W and 1M moves through the roll and the range charted, in
+ * bp, or for a name quoted upfront in points with its coupon. JSON keeps the
+ * numbers; text and CSV read as the pane does.
  */
 function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
   const summary = spreadSummary(history);
   if (!summary) return [];
+  const { unit } = summary;
+  const range = summary.range ? {
+    key: "range",
+    label: "Range",
+    value: unit === "pts"
+      ? { lowPts: summary.range.low, highPts: summary.range.high, since: summary.range.since }
+      : { lowBp: summary.range.low, highBp: summary.range.high, since: summary.range.since },
+    formatted: `${formatSpreadRange(unit, summary.range)} since ${summary.range.since}`,
+  } : null;
+  if (unit === "pts") {
+    return [
+      { key: "upfrontPts", label: "5Y upfront", value: summary.level, formatted: formatPoints(summary.level), unit: "pts" },
+      { key: "couponBp", label: "Coupon", value: summary.couponBp, formatted: formatBp(summary.couponBp) },
+      { key: "date", label: "Date", value: summary.date },
+      { key: "change1wPts", label: "1W change", value: summary.change1w, formatted: formatPointsMove(summary.change1w), unit: "pts" },
+      { key: "change1mPts", label: "1M change", value: summary.change1m, formatted: formatPointsMove(summary.change1m), unit: "pts" },
+      ...(range ? [range] : []),
+    ];
+  }
   return [
-    { key: "spreadBp", label: "5Y spread", value: summary.spreadBp, formatted: formatBp(summary.spreadBp) },
+    { key: "spreadBp", label: "5Y spread", value: summary.level, formatted: formatBp(summary.level) },
     { key: "date", label: "Date", value: summary.date },
-    { key: "change1wBp", label: "1W change", value: summary.change1wBp, formatted: formatSpreadMove(summary.change1wBp) },
-    { key: "change1mBp", label: "1M change", value: summary.change1mBp, formatted: formatSpreadMove(summary.change1mBp) },
-    ...(summary.range ? [{
-      key: "range",
-      label: "Range",
-      value: summary.range,
-      formatted: `${formatSpreadRange(summary.range)} since ${summary.range.since}`,
-    }] : []),
+    { key: "change1wBp", label: "1W change", value: summary.change1w, formatted: formatSpreadMove(summary.change1w) },
+    { key: "change1mBp", label: "1M change", value: summary.change1m, formatted: formatSpreadMove(summary.change1m) },
+    ...(range ? [range] : []),
   ];
 }
 
@@ -165,7 +242,11 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     ];
     return {
       sections,
-      metadata: { ...metadata, ...(line?.noLevelReason ? { noLevelReason: line.noLevelReason } : {}) },
+      metadata: {
+        ...metadata,
+        ...(line?.noLevelReason ? { noLevelReason: line.noLevelReason } : {}),
+        ...(line?.points.length ? { quote: spreadSummary(line)!.unit === "pts" ? "upfront" : "spread" } : {}),
+      },
       freshness: cdsFreshness(lastTradeOf(activity.trades, line?.points)),
       ...(errors.length ? { errors } : {}),
       ...(notes.length ? { notes } : {}),
@@ -177,7 +258,7 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     sections: [{
       title: "Issuers",
       columns: ISSUER_COLUMNS,
-      rows: sortIssuers(issuers, issuerListSort(sort)).map((issuerRow) => ({ ...issuerRow })),
+      rows: sortIssuers(issuers, issuerListSort(sort)).map(issuerRow),
       empty,
     }],
     metadata: { ...metadata, sort: issuerListSort(sort).columnId },
@@ -216,7 +297,7 @@ export function createCdsHeadless(
   const loadLevels = dependencies.loadLevels ?? defaultDependencies.loadLevels!;
   return {
     shape: "bundle",
-    description: `Single-name CDS from DTCC public dissemination. With no argument: the issuers traded in the last ${CDS_TRADE_DAYS} days, most active first (or by --sort), with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll. With a ticker or issuer: its 5Y spread (level, date, 1W and 1M change, range), its trades and its daily 5Y levels; --csv --section daily exports those levels.`,
+    description: `Single-name CDS from DTCC public dissemination. With no argument: the issuers traded in the last ${CDS_TRADE_DAYS} days, most active first (or by --sort), with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll, shown while the level is within 5 trading days of the tape. Past 2,000bp a name is quoted in points upfront (58.2 pts), moves too, and ranks after the bp names. With a ticker or issuer: its 5Y spread (level, date, 1W and 1M change, range), its trades and its daily 5Y levels; --csv --section daily exports those levels.`,
     freshness: cdsFreshness(null),
     argument: {
       kind: "free-text",
@@ -231,7 +312,7 @@ export function createCdsHeadless(
         settingKey: "sort",
         values: ISSUER_LIST_SORTS.map((value) => ({ value })),
         defaultValue: "trades",
-        description: "Issuer list order, largest first: trades, 5Y spread, or its 1W or 1M move.",
+        description: "Issuer list order, largest first: trades, 5Y spread, or its 1W or 1M move. Names quoted in points rank after the bp names, names without one last.",
         example: "--sort 1m",
         exampleWithoutArgument: true,
       },

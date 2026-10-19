@@ -19,7 +19,7 @@ export const cdsModule: PluginModule = {
       id: "cds-pane",
       paneId: CDS_PANE_ID,
       label: "Single-Name CDS",
-      description: "Single-name corporate CDS from DTCC public dissemination: with no argument, the issuers traded in the last 5 days with their 5Y spread and its 1W and 1M moves, ranked by any column (fn CDS --sort 1m); with a ticker or issuer, its 5Y spread history, trades and daily levels (fn CDS F --csv --section daily exports them).",
+      description: "Single-name corporate CDS from DTCC public dissemination: with no argument, the issuers traded in the last 5 days with their 5Y spread and its 1W and 1M moves (in points upfront past 2,000bp), ranked by any column (fn CDS --sort 1m); with a ticker or issuer, its 5Y spread history, trades and daily levels (fn CDS F --csv --section daily exports them).",
       keywords: ["cds", "credit", "default", "swap", "spread", "single name", "issuer", "dtcc", "protection"],
       shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
       headless: cdsHeadless,

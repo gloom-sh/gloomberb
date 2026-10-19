@@ -151,6 +151,30 @@ describe("loadCdsSpreadHistory", () => {
     expect(unknown.noLevelReason).toBeNull();
     const sideless = await loadCdsSpreadHistory("Barclays PLC", async () => ({ ...response, noLevelReason: "upfront-side-unknown" }));
     expect(sideless.noLevelReason).toBe("upfront-side-unknown");
+    // A server before points upfront quotes every line in bp.
+    expect([older.quote, older.upfrontPts, older.couponBp]).toEqual(["spread", null, null]);
+  });
+
+  test("reads a line quoted in points upfront, and keeps one it could not convert in bp", async () => {
+    const response = {
+      source: "DTCC PPD",
+      issuer: "VIRGIN MEDIA FINANCE PLC",
+      tenor: "5Y",
+      currency: "EUR",
+      asOf: null,
+      points: [{ date: "2026-10-15", spreadBp: 18654.4, prints: 3, reported: 0, maturity: "2031-12-20", upfrontPts: 57.65 }],
+      change1W: 15266.3,
+      change1M: 17418.4,
+      quote: "upfront" as const,
+      couponBp: 500,
+      upfrontPts: 57.65,
+      change1WPts: 10.9,
+      change1MPts: 36.1,
+    };
+    const line = await loadCdsSpreadHistory("Virgin Media Finance", async () => response);
+    expect(line).toMatchObject({ quote: "upfront", couponBp: 500, upfrontPts: 57.65, change1WPts: 10.9, change1MPts: 36.1 });
+    const unconverted = await loadCdsSpreadHistory("Virgin Media Finance", async () => ({ ...response, upfrontPts: null }));
+    expect(unconverted).toMatchObject({ quote: "spread", upfrontPts: null, change1WPts: null });
   });
 });
 
@@ -171,14 +195,23 @@ describe("loadCdsSpreadLevels", () => {
           { issuer: "ORACLE COP", spreadBp: 240, date: "2026-10-02" },
           { issuer: "Oracle Corporation", spreadBp: 205, date: "2026-10-08", change1W: null, change1M: 75.4 },
           { issuer: "Broken Ltd", spreadBp: Number.NaN, date: "2026-10-09" },
+          {
+            issuer: "VIRGIN MEDIA FINANCE PLC", spreadBp: 18654.4, date: "2026-10-15", change1W: 15266.3, change1M: 17418.4,
+            quote: "upfront", couponBp: 500, upfrontPts: 57.65, change1WPts: 10.9, change1MPts: 36.1,
+          },
         ],
       };
     });
     expect(requests).toBe(1);
+    const inBp = { quote: "spread", upfrontPts: null, change1wPts: null, change1mPts: null, couponBp: null } as const;
     expect(Object.fromEntries(levels)).toEqual({
-      "amazon com": { spreadBp: 73, date: "2026-10-09", change1wBp: 3, change1mBp: 5.8 },
-      "ford motor": { spreadBp: 157, date: "2026-10-09", change1wBp: null, change1mBp: null },
-      oracle: { spreadBp: 205, date: "2026-10-08", change1wBp: null, change1mBp: 75.4 },
+      "amazon com": { spreadBp: 73, date: "2026-10-09", change1wBp: 3, change1mBp: 5.8, ...inBp },
+      "ford motor": { spreadBp: 157, date: "2026-10-09", change1wBp: null, change1mBp: null, ...inBp },
+      oracle: { spreadBp: 205, date: "2026-10-08", change1wBp: null, change1mBp: 75.4, ...inBp },
+      "virgin media finance": {
+        spreadBp: 18654.4, date: "2026-10-15", change1wBp: 15266.3, change1mBp: 17418.4,
+        quote: "upfront", upfrontPts: 57.65, change1wPts: 10.9, change1mPts: 36.1, couponBp: 500,
+      },
     });
   });
 });

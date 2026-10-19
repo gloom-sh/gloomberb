@@ -61,6 +61,9 @@ function trade(
   };
 }
 
+const IN_BP_LINE = { quote: "spread", couponBp: null, upfrontPts: null, change1WPts: null, change1MPts: null } as const;
+const IN_BP = { quote: "spread", upfrontPts: null, change1wPts: null, change1mPts: null, couponBp: null } as const;
+
 // Oracle's on-the-run 5Y from the DTCC tape, rolling to the Dec 2031 contract on Sep 21.
 const HISTORY: CdsSpreadHistory = {
   issuer: "Oracle Corporation",
@@ -77,10 +80,11 @@ const HISTORY: CdsSpreadHistory = {
   // The server's moves: the month back is the Jun 2031 contract, chained through the roll.
   change1W: 27,
   change1M: 75.4,
+  ...IN_BP_LINE,
   noLevelReason: null,
 };
 
-const NO_LINE: CdsSpreadHistory = { issuer: null, points: [], change1W: null, change1M: null, noLevelReason: null };
+const NO_LINE: CdsSpreadHistory = { issuer: null, points: [], change1W: null, change1M: null, ...IN_BP_LINE, noLevelReason: null };
 
 async function settle() {
   for (let index = 0; index < 6; index += 1) {
@@ -93,8 +97,8 @@ async function settle() {
 
 // Each issuer's latest 5Y level, as the list reads them in one request.
 const LEVELS: CdsSpreadLevelsLoader = async () => new Map([
-  ["oracle", { spreadBp: 235, date: "2026-08-25", change1wBp: 28.1, change1mBp: 75.4 }],
-  ["ford motor", { spreadBp: 157, date: "2026-08-24", change1wBp: -0.04, change1mBp: null }],
+  ["oracle", { spreadBp: 235, date: "2026-08-25", change1wBp: 28.1, change1mBp: 75.4, ...IN_BP }],
+  ["ford motor", { spreadBp: 157, date: "2026-08-24", change1wBp: -0.04, change1mBp: null, ...IN_BP }],
 ]);
 
 async function renderPane(options: {
@@ -172,7 +176,7 @@ describe("CdsPane", () => {
     expect(ford).toBeGreaterThan(oracle);
     // One request for the whole list.
     expect(requests).toBe(1);
-    expect(frame).toMatch(/5Y SPREAD\s+1W\s+1M/);
+    expect(frame).toMatch(/ 5Y\s+1W\s+1M/);
     // The moves as the index board prints them; one that rounds to 0.0 reads 0.0bp, none reads --.
     expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp\s+\+28\.1bp\s+\+75\.4bp/);
     expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp\s+0\.0bp\s+--/);
@@ -207,8 +211,8 @@ describe("CdsPane", () => {
 
   test("opens on the order `CDS --sort` set", async () => {
     const levels: CdsSpreadLevelsLoader = async () => new Map([
-      ["oracle", { spreadBp: 235, date: "2026-08-25", change1wBp: -12, change1mBp: 75.4 }],
-      ["ford motor", { spreadBp: 157, date: "2026-08-24", change1wBp: 3, change1mBp: null }],
+      ["oracle", { spreadBp: 235, date: "2026-08-25", change1wBp: -12, change1mBp: 75.4, ...IN_BP }],
+      ["ford motor", { spreadBp: 157, date: "2026-08-24", change1wBp: 3, change1mBp: null, ...IN_BP }],
     ]);
     // Ford trades less than Oracle but moved wider on the week, so 1W puts it first.
     await renderPane({ sort: "1w", loadLevels: levels });
@@ -218,6 +222,35 @@ describe("CdsPane", () => {
     await renderPane({ sort: "1m", loadLevels: levels });
     frame = tui.frame();
     expect(frame.indexOf("Oracle Corporation")).toBeLessThan(frame.indexOf("Ford Motor Company"));
+  });
+
+  test("quotes a name past 2,000bp in points upfront, and ranks it after the bp names", async () => {
+    const activity: CdsActivity = {
+      ...ACTIVITY,
+      trades: [
+        ...ACTIVITY.trades,
+        ...normalizeCdsTrades([
+          trade("4", "VIRGIN MEDIA FINANCE PLC", "2026-08-25T09:00:00Z", { reportedSpread: null, upfrontAmount: 2_900_000 }),
+          trade("5", "VIRGIN MEDIA FINANCE PLC", "2026-08-25T09:30:00Z", { reportedSpread: null, upfrontAmount: 2_880_000 }),
+          trade("6", "VIRGIN MEDIA FINANCE PLC", "2026-08-25T09:40:00Z", { reportedSpread: null, upfrontAmount: 2_880_000 }),
+        ]),
+      ],
+    };
+    const levels: CdsSpreadLevelsLoader = async () => new Map([
+      ["oracle", { spreadBp: 235, date: "2026-08-25", change1wBp: 28.1, change1mBp: 75.4, ...IN_BP }],
+      ["ford motor", { spreadBp: 157, date: "2026-08-24", change1wBp: -0.04, change1mBp: null, ...IN_BP }],
+      ["virgin media finance", {
+        spreadBp: 18654.4, date: "2026-08-25", change1wBp: 15266.3, change1mBp: 17418.4,
+        quote: "upfront", upfrontPts: 57.65, change1wPts: 10.9, change1mPts: 36.1, couponBp: 500,
+      }],
+    ]);
+    await renderPane({ sort: "spread", activity, loadLevels: levels });
+    const frame = tui.frame();
+    expect(frame).toMatch(/VIRGIN MEDIA FINANCE PLC\s+3\s+2026-08-25 09:40\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts/);
+    expect(frame).not.toContain("18654");
+    // Widest first among the bp names, then the names quoted in points.
+    expect(frame.indexOf("Oracle Corporation")).toBeLessThan(frame.indexOf("Ford Motor Company"));
+    expect(frame.indexOf("Ford Motor Company")).toBeLessThan(frame.indexOf("VIRGIN MEDIA FINANCE PLC"));
   });
 
   test("says in the chart's place why a name has no level", async () => {
@@ -280,6 +313,41 @@ describe("CdsPane", () => {
     // Axis labels in basis points, and the chart sits between figures and table.
     expect(lines.slice(0, tableHeader).some((line) => /\d+bp\s*$/.test(line.trimEnd()))).toBe(true);
     expect(tableHeader).toBeGreaterThanOrEqual(8);
+  });
+
+  test("heads and charts a name quoted upfront in points, on its coupon", async () => {
+    await renderPane({
+      symbol: "VMED",
+      height: 26,
+      activity: { ...ACTIVITY, query: "VMED", issuer: "VIRGIN MEDIA FINANCE PLC" },
+      loadHistory: async () => ({
+        issuer: "VIRGIN MEDIA FINANCE PLC",
+        points: [
+          { date: "2026-07-24", spreadBp: 1236, prints: 4, reported: 0, maturity: "2031-06-20", upfrontPts: 21.55 },
+          { date: "2026-08-12", spreadBp: 3120, prints: 3, reported: 0, maturity: "2031-06-20", upfrontPts: 41.2 },
+          { date: "2026-08-25", spreadBp: 18654.4, prints: 3, reported: 0, maturity: "2031-06-20", upfrontPts: 57.65 },
+        ],
+        change1W: 15266.3,
+        change1M: 17418.4,
+        quote: "upfront",
+        couponBp: 500,
+        upfrontPts: 57.65,
+        change1WPts: 10.9,
+        change1MPts: 36.1,
+        noLevelReason: null,
+      }),
+    });
+    const frame = tui.frame();
+    const lines = frame.split("\n");
+    const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
+    expect(frame).toContain("5Y upfront");
+    expect(frame).toContain("57.6 pts");
+    expect(frame).toContain("500bp coupon");
+    expect(frame).toMatch(/1M\s+\+36\.1 pts/);
+    expect(frame).toContain("21.6 to 57.6 pts");
+    expect(frame).not.toContain("18654");
+    // The axis is in points too.
+    expect(lines.slice(0, tableHeader).some((line) => /\d+pts\s*$/.test(line.trimEnd()))).toBe(true);
   });
 
   test("fits the chart into a short pane's spare rows, then gives way to a strip", async () => {

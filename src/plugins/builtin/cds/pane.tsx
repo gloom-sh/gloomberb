@@ -3,7 +3,7 @@ import {
   ChartTableHeader,
   DataTableStackView,
   DataTableView,
-  EmptyState, formatBpAxis, PaneStatusBody, staticSeries,
+  EmptyState, formatBpAxis, PaneStatusBody, spanAxisFormatter, staticSeries,
   useChartTableSelection,
   usePaneMenuItems,
   usePaneNoticeFooter,
@@ -48,7 +48,8 @@ import {
   formatEventTime,
   formatMaturity,
   formatNotional,
-  formatSpreadMove,
+  formatQuoted,
+  formatQuotedMove,
   formatUpfront,
   issuerListSort,
   lastTradeOf,
@@ -57,12 +58,15 @@ import {
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
+  quotedLevel,
+  quotedPoints,
   spreadChartPoints,
   spreadFigures,
   summarizeIssuers,
   tradesForIssuer,
   withSpreadLevels,
   type CdsIssuerSummary,
+  type CdsQuoteUnit,
   type CdsTrade,
   type IssuerColumn,
   type IssuerColumnId,
@@ -88,22 +92,24 @@ function renderIssuerCell(
       return { text: String(row.trades), color: colors.text };
     case "last":
       return { text: formatEventTime(row.lastTradeAt), color: colors.textMuted };
-    case "spread":
-      return {
-        text: formatBp(row.spread5yBp),
-        color: row.spread5yBp == null ? colors.textDim : colors.text,
-      };
+    case "spread": {
+      const { unit, level } = quotedLevel(row);
+      return { text: formatQuoted(unit, level), color: level == null ? colors.textDim : colors.text };
+    }
     case "1w":
-      return moveCell(row.change1wBp);
+      return moveCell(quotedLevel(row).unit, quotedLevel(row).change1w);
     case "1m":
-      return moveCell(row.change1mBp);
+      return moveCell(quotedLevel(row).unit, quotedLevel(row).change1m);
   }
 }
 
-/** A 1W or 1M move as the index board draws one: wider is adverse, and a move that prints as 0.0 is not coloured. */
-function moveCell(value: number | null): DataTableCell {
+/**
+ * A 1W or 1M move as the index board draws one: wider (more points upfront)
+ * is adverse, and a move that prints as 0.0 is not coloured.
+ */
+function moveCell(unit: CdsQuoteUnit, value: number | null): DataTableCell {
   const shown = value == null ? null : Number(value.toFixed(1));
-  return { text: formatSpreadMove(value), color: signedMoveColor(shown, "up", colors) };
+  return { text: formatQuotedMove(unit, value), color: signedMoveColor(shown, "up", colors) };
 }
 
 // Table-shaped adapters live at module level so memoized rows keep their
@@ -199,10 +205,24 @@ function CdsTradeTable({
   );
 }
 
+/** Points upfront on the chart's axis: `58pts`, `57.6pts`. */
+const formatPointsAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}pts`);
+
 const NO_TRADES: CdsTrade[] = [];
 const NO_ISSUERS: CdsIssuerSummary[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
-const NO_LINE: CdsSpreadHistory = { issuer: null, points: NO_POINTS, change1W: null, change1M: null, noLevelReason: null };
+const NO_LINE: CdsSpreadHistory = {
+  issuer: null,
+  points: NO_POINTS,
+  change1W: null,
+  change1M: null,
+  quote: "spread",
+  couponBp: null,
+  upfrontPts: null,
+  change1WPts: null,
+  change1MPts: null,
+  noLevelReason: null,
+};
 /**
  * The 5Y line has one point per New York trade date, dated at UTC midnight, so
  * a trade's cursor is its New York day, not its time: an afternoon print would
@@ -233,6 +253,9 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   // way. While the history loads the level holds its place, so the trades do
   // not move when it lands.
   const { points } = line;
+  // A name quoted upfront charts in points, as its figures read.
+  const unit: CdsQuoteUnit = line.quote === "upfront" && line.upfrontPts != null ? "pts" : "bp";
+  const charted = useMemo(() => unit === "pts" ? quotedPoints(line) : points.map((point) => ({ date: point.date, value: point.spreadBp })), [line, points, unit]);
   const shown = loading && !points.length
     ? [{ id: "spread", label: "5Y spread", value: "--" }]
     : spreadFigures(line);
@@ -243,9 +266,9 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
     ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
     ...shown.filter((item) => !moves.includes(item)),
   ];
-  const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
-    id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
-  })], [points]);
+  const series = useMemo(() => [staticSeries(spreadChartPoints(charted), {
+    id: "cds-5y", label: unit === "pts" ? "5Y upfront" : "5Y spread", color: colors.positive, calendarSpaced: true,
+  })], [charted, unit]);
   const link = useChartTableSelection({
     rows: trades, getId: tradeKey, getDate: tradeDate,
     selectedId: selectedId && trades.some((trade) => trade.id === selectedId) ? selectedId : trades[0]?.id ?? null,
@@ -255,7 +278,10 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
       tableColumns={buildTradeColumns(width)}
       chart={points.length >= 2 || loading || why ? {
-        series, formatValue: formatBp, formatAxisValue: formatBpAxis, remoteKind: "cds-spread-history", loading, ...link,
+        series,
+        formatValue: (value: number) => formatQuoted(unit, value),
+        formatAxisValue: unit === "pts" ? formatPointsAxis : formatBpAxis,
+        remoteKind: "cds-spread-history", loading, ...link,
         ...(why ? { empty: why } : {}),
       } : null} />
   );

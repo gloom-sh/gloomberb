@@ -52,10 +52,25 @@ export interface CdsIssuerSummary {
   /** The latest level of the issuer's 5Y line and its date, where it has one: what the list ranks by. */
   spread5yBp: number | null;
   spread5yDate: string | null;
-  /** That level's 1W and 1M moves in bp, through the roll. */
+  /** That level's 1W and 1M moves in bp, through the roll, while the level is current. */
   change1wBp: number | null;
   change1mBp: number | null;
+  /** How the level is quoted: in bp, or past 2,000bp in points upfront. */
+  quote: CdsQuote;
+  /** Quoted upfront: the level in points on its running coupon, and its 1W and 1M moves in points. */
+  upfrontPts: number | null;
+  change1wPts: number | null;
+  change1mPts: number | null;
+  /** The running coupon of a name quoted upfront, bp. */
+  couponBp: number | null;
 }
+
+/**
+ * Past 2,000bp a name trades on points upfront over its running coupon, so the
+ * server quotes it that way (`58.2 pts`), as the index board quotes HY in price.
+ */
+type CdsQuote = "spread" | "upfront";
+export type CdsQuoteUnit = "bp" | "pts";
 
 /**
  * Legal-name noise the tape spells inconsistently: "Oracle Corporation",
@@ -266,6 +281,7 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
         spread5yDate: null,
         change1wBp: null,
         change1mBp: null,
+        ...NO_UPFRONT,
       });
       if (trade.spreadBp != null) spreadAt.set(trade.issuerKey, trade.eventAt);
       continue;
@@ -286,9 +302,16 @@ interface CdsSpreadLevel {
   date: string;
   change1wBp: number | null;
   change1mBp: number | null;
+  quote: CdsQuote;
+  upfrontPts: number | null;
+  change1wPts: number | null;
+  change1mPts: number | null;
+  couponBp: number | null;
 }
 
-/** The latest 5Y level, its date and its 1W and 1M moves, by issuer key. */
+const NO_UPFRONT = { quote: "spread", upfrontPts: null, change1wPts: null, change1mPts: null, couponBp: null } as const;
+
+/** The latest 5Y level, its date, its 1W and 1M moves and how it is quoted, by issuer key. */
 export type CdsSpreadLevels = ReadonlyMap<string, CdsSpreadLevel>;
 
 const finiteOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -308,6 +331,7 @@ export function spreadLevelsOf(levels: readonly CloudCdsLevelPayload[]): CdsSpre
     const key = issuerGroupKey(issuer);
     const current = byKey.get(key);
     if (current && preferredIssuerName(current.issuer, issuer) === current.issuer) continue;
+    const upfrontPts = finiteOrNull(level.upfrontPts);
     byKey.set(key, {
       issuer,
       level: {
@@ -315,6 +339,14 @@ export function spreadLevelsOf(levels: readonly CloudCdsLevelPayload[]): CdsSpre
         date: level.date,
         change1wBp: finiteOrNull(level.change1W),
         change1mBp: finiteOrNull(level.change1M),
+        // A server before points upfront, or a level it could not convert, stays in bp.
+        ...(level.quote === "upfront" && upfrontPts != null ? {
+          quote: "upfront",
+          upfrontPts,
+          change1wPts: finiteOrNull(level.change1WPts),
+          change1mPts: finiteOrNull(level.change1MPts),
+          couponBp: finiteOrNull(level.couponBp),
+        } : NO_UPFRONT),
       },
     });
   }
@@ -326,13 +358,9 @@ export function withSpreadLevels(rows: readonly CdsIssuerSummary[], levels: CdsS
   if (!levels?.size) return [...rows];
   return rows.map((row) => {
     const level = levels.get(row.key);
-    return level ? {
-      ...row,
-      spread5yBp: level.spreadBp,
-      spread5yDate: level.date,
-      change1wBp: level.change1wBp,
-      change1mBp: level.change1mBp,
-    } : row;
+    if (!level) return row;
+    const { spreadBp, date, ...moves } = level;
+    return { ...row, spread5yBp: spreadBp, spread5yDate: date, ...moves };
   });
 }
 
@@ -435,6 +463,41 @@ export function formatBp(value: number | null): string {
   return `${Math.abs(value) >= 100 ? Math.round(value) : Math.round(value * 10) / 10}bp`;
 }
 
+/** Points upfront to a tenth: `58.2 pts`. */
+export function formatPoints(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  return `${value.toFixed(1)} pts`;
+}
+
+/** A move in points upfront, signed as the bp moves are: `+10.9 pts`. */
+export function formatPointsMove(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  const rounded = Number(value.toFixed(1));
+  return `${rounded > 0 ? "+" : ""}${(rounded === 0 ? 0 : rounded).toFixed(1)} pts`;
+}
+
+/** A level in the unit it is quoted in. */
+export function formatQuoted(unit: CdsQuoteUnit, value: number | null): string {
+  return unit === "pts" ? formatPoints(value) : formatBp(value);
+}
+
+/** A 1W or 1M move in the unit its level is quoted in. */
+export function formatQuotedMove(unit: CdsQuoteUnit, value: number | null): string {
+  return unit === "pts" ? formatPointsMove(value) : formatSpreadMove(value);
+}
+
+/** A listed issuer's level and moves as quoted: bp, or points upfront for a name quoted upfront. */
+export function quotedLevel(row: CdsIssuerSummary): {
+  unit: CdsQuoteUnit;
+  level: number | null;
+  change1w: number | null;
+  change1m: number | null;
+} {
+  return row.quote === "upfront"
+    ? { unit: "pts", level: row.upfrontPts, change1w: row.change1wPts, change1m: row.change1mPts }
+    : { unit: "bp", level: row.spread5yBp, change1w: row.change1wBp, change1m: row.change1mBp };
+}
+
 export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCapped">): string {
   if (trade.notional == null) return "--";
   return `${formatCompact(trade.notional)}${trade.notionalCapped ? "+" : ""}`;
@@ -477,7 +540,11 @@ export const ISSUER_SORT_COLUMN_IDS: readonly IssuerColumnId[] = ["issuer", "tra
 /** "Most active" is the reason the market-wide view exists. */
 export const DEFAULT_ISSUER_SORT: IssuerSortPreference = { columnId: "trades", direction: "desc" };
 
-/** What `fn CDS --sort` ranks the list by, each largest first: the most active, the widest, the widest move. */
+/**
+ * What `fn CDS --sort` ranks the list by, each largest first: the most
+ * active, the widest, the widest move. By level or move, the names quoted in
+ * bp come first, then those quoted in points, then those without one.
+ */
 export const ISSUER_LIST_SORTS = ["trades", "spread", "1w", "1m"] as const;
 
 /** The list's order for a `--sort` value; an unknown one keeps the default. */
@@ -487,13 +554,16 @@ export function issuerListSort(value: unknown): IssuerSortPreference {
     : DEFAULT_ISSUER_SORT;
 }
 
-/** The issuer takes the room the figures leave; the moves sit as the index board's do. */
+/**
+ * The issuer takes the room the figures leave; the level and its moves sit as
+ * the index board's do, under `5Y` since a name can be quoted in points.
+ */
 export function buildIssuerColumns(): IssuerColumn[] {
   return [
     { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
     { id: "last", label: "LAST UTC", width: 16, align: "left" },
-    { id: "spread", label: "5Y SPREAD", width: 10, align: "right" },
+    { id: "spread", label: "5Y", width: 10, align: "right" },
     { id: "1w", label: "1W", width: 10, align: "right" },
     { id: "1m", label: "1M", width: 10, align: "right" },
   ];
@@ -508,12 +578,19 @@ function issuerSortValue(columnId: IssuerColumnId, row: CdsIssuerSummary): strin
     case "last":
       return row.lastTradeAt;
     case "spread":
-      return row.spread5yBp;
+      return quotedLevel(row).level;
     case "1w":
-      return row.change1wBp;
+      return quotedLevel(row).change1w;
     case "1m":
-      return row.change1mBp;
+      return quotedLevel(row).change1m;
   }
+}
+
+/** By level or move: bp first, then points (another unit), then none, whichever way the column sorts. */
+function quoteGroup(columnId: IssuerColumnId, row: CdsIssuerSummary): number {
+  if (columnId !== "spread" && columnId !== "1w" && columnId !== "1m") return 0;
+  if (issuerSortValue(columnId, row) == null) return 2;
+  return row.quote === "upfront" ? 1 : 0;
 }
 
 export function sortIssuers(
@@ -523,7 +600,7 @@ export function sortIssuers(
   const columnId = sort.columnId;
   if (!columnId) return [...rows];
   return [...rows].sort((left, right) => {
-    const compared = compareSortValues(
+    const compared = quoteGroup(columnId, left) - quoteGroup(columnId, right) || compareSortValues(
       issuerSortValue(columnId, left),
       issuerSortValue(columnId, right),
       sort.direction,
@@ -597,7 +674,8 @@ const DAY_MS = 86_400_000;
 /** Three weeks without a level breaks the line instead of drawing one nobody traded. */
 const CHART_GAP_MS = 21 * DAY_MS;
 
-export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]): TimeSeriesPoint[] {
+/** The line's daily levels in the unit it is quoted in, dated at UTC midnight, with a break across a long gap. */
+export function spreadChartPoints(points: readonly CdsQuotedPoint[]): TimeSeriesPoint[] {
   const out: TimeSeriesPoint[] = [];
   let previous: number | null = null;
   for (const point of points) {
@@ -608,7 +686,7 @@ export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]
       out.push({ date: gap, observedAt: gap, value: null });
     }
     const date = new Date(time);
-    out.push({ date, observedAt: date, value: point.spreadBp });
+    out.push({ date, observedAt: date, value: point.value });
     previous = time;
   }
   return out;
@@ -619,24 +697,49 @@ export function formatSpreadMove(value: number | null): string {
   return formatMove("spread", value);
 }
 
-/** An issuer's 5Y line as the server sends it: the daily levels and the latest one's moves. */
+/** An issuer's 5Y line as the server sends it: the daily levels, the latest one's moves and how it is quoted. */
 export interface CdsSpreadLine {
   points: readonly CloudCdsHistoryPointPayload[];
-  /** bp, on one contract and chained through the contract before across a roll. */
+  /** bp, on one contract and chained through the contract before across a roll; null unless the level is current. */
   change1W: number | null;
   change1M: number | null;
+  quote: CdsQuote;
+  /** Quoted upfront: the running coupon, the latest level in points and its moves in points. */
+  couponBp: number | null;
+  upfrontPts: number | null;
+  change1WPts: number | null;
+  change1MPts: number | null;
+}
+
+export interface CdsQuotedPoint {
+  date: string;
+  value: number;
+}
+
+/** Each day's level as the line is quoted: bp, or points upfront, leaving out a day the server could not convert. */
+export function quotedPoints(line: CdsSpreadLine): CdsQuotedPoint[] {
+  return line.quote === "upfront"
+    ? line.points.flatMap((point) => (
+      typeof point.upfrontPts === "number" && Number.isFinite(point.upfrontPts) ? [{ date: point.date, value: point.upfrontPts }] : []
+    ))
+    : line.points.map((point) => ({ date: point.date, value: point.spreadBp }));
 }
 
 /** The figures of an issuer's 5Y line, the ones the pane heads its chart with and a report carries. */
 export interface CdsSpreadSummary {
-  /** The latest level, bp, and the New York trade date it is from. */
-  spreadBp: number;
+  unit: CdsQuoteUnit;
+  /** The latest level in that unit, and the New York trade date it is from. */
+  level: number;
   date: string;
-  /** Its moves over a week and a month, through the roll; null without a comparable level. */
-  change1wBp: number | null;
-  change1mBp: number | null;
-  /** Lowest and highest level since the first date charted; null with a single level. */
-  range: { lowBp: number; highBp: number; since: string } | null;
+  /** The same level in bp. */
+  spreadBp: number;
+  /** The running coupon of a name quoted upfront, bp. */
+  couponBp: number | null;
+  /** Its moves over a week and a month in that unit, through the roll; null unless the level is current. */
+  change1w: number | null;
+  change1m: number | null;
+  /** Lowest and highest level in that unit since the first date charted; null with a single level. */
+  range: { low: number; high: number; since: string } | null;
 }
 
 /**
@@ -644,20 +747,26 @@ export interface CdsSpreadSummary {
  * shows. The moves are the server's, by the index board's rule: on one
  * contract, and across the March and September rolls chained through the
  * contract before, which keeps trading off the run, so the roll to a contract
- * that trades wider is not a move.
+ * that trades wider is not a move. They are left out once the level is more
+ * than 5 trading days behind the tape. Past 2,000bp all of it is in points
+ * upfront.
  */
 export function spreadSummary(line: CdsSpreadLine): CdsSpreadSummary | null {
-  const { points } = line;
-  const latest = points.at(-1);
+  const latest = line.points.at(-1);
   if (!latest) return null;
-  const levels = points.map((point) => point.spreadBp);
+  const upfront = line.quote === "upfront" && line.upfrontPts != null;
+  const quoted = upfront ? quotedPoints(line) : line.points.map((point) => ({ date: point.date, value: point.spreadBp }));
+  const values = quoted.map((point) => point.value);
   return {
-    spreadBp: latest.spreadBp,
+    unit: upfront ? "pts" : "bp",
+    level: upfront ? line.upfrontPts! : latest.spreadBp,
     date: latest.date,
-    change1wBp: line.change1W,
-    change1mBp: line.change1M,
-    range: points.length >= 2
-      ? { lowBp: Math.min(...levels), highBp: Math.max(...levels), since: points[0]!.date }
+    spreadBp: latest.spreadBp,
+    couponBp: upfront ? line.couponBp : null,
+    change1w: upfront ? line.change1WPts : line.change1W,
+    change1m: upfront ? line.change1MPts : line.change1M,
+    range: quoted.length >= 2
+      ? { low: Math.min(...values), high: Math.max(...values), since: quoted[0]!.date }
       : null,
   };
 }
@@ -673,23 +782,33 @@ export function noLevelMessage(reason: CdsNoLevelReason | null, lastLevel: strin
   return `5Y level not derivable${lastLevel ? ` after ${lastLevel}` : ""}: DTCC prints carry upfront without payer side`;
 }
 
-/** `129 to 276bp`: the low keeps the level's precision, so the level never falls outside it. */
-export function formatSpreadRange(range: NonNullable<CdsSpreadSummary["range"]>): string {
-  return `${formatBp(range.lowBp).slice(0, -2)} to ${formatBp(range.highBp)}`;
+/** `129 to 276bp`, or `20.1 to 60.3 pts`: the low keeps the level's precision, so the level never falls outside it. */
+export function formatSpreadRange(unit: CdsQuoteUnit, range: NonNullable<CdsSpreadSummary["range"]>): string {
+  return unit === "pts"
+    ? `${range.low.toFixed(1)} to ${formatPoints(range.high)}`
+    : `${formatBp(range.low).slice(0, -2)} to ${formatBp(range.high)}`;
 }
 
 /** The pane's figures over its 5Y chart, from `spreadSummary`. */
 export function spreadFigures(line: CdsSpreadLine): StatItem[] {
   const summary = spreadSummary(line);
   if (!summary) return [];
+  const { unit } = summary;
   return [
-    { id: "spread", label: "5Y spread", value: formatBp(summary.spreadBp), detail: summary.date },
-    ...(summary.change1wBp != null ? [{ id: "1w", label: "1W", value: formatSpreadMove(summary.change1wBp) }] : []),
-    ...(summary.change1mBp != null ? [{ id: "1m", label: "1M", value: formatSpreadMove(summary.change1mBp) }] : []),
+    unit === "pts"
+      ? {
+        id: "spread",
+        label: "5Y upfront",
+        value: formatPoints(summary.level),
+        detail: summary.couponBp == null ? summary.date : `${summary.date} · ${formatBp(summary.couponBp)} coupon`,
+      }
+      : { id: "spread", label: "5Y spread", value: formatBp(summary.level), detail: summary.date },
+    ...(summary.change1w != null ? [{ id: "1w", label: "1W", value: formatQuotedMove(unit, summary.change1w) }] : []),
+    ...(summary.change1m != null ? [{ id: "1m", label: "1M", value: formatQuotedMove(unit, summary.change1m) }] : []),
     ...(summary.range ? [{
       id: "range",
       label: "Range",
-      value: formatSpreadRange(summary.range),
+      value: formatSpreadRange(unit, summary.range),
       detail: `since ${summary.range.since}`,
     }] : []),
   ];

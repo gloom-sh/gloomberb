@@ -41,6 +41,8 @@ function level(date: string, spreadBp: number, maturity = "2031-12-20"): CloudCd
   return { date, spreadBp, prints: 3, reported: 0, maturity };
 }
 
+const IN_BP = { quote: "spread", couponBp: null, upfrontPts: null, change1WPts: null, change1MPts: null } as const;
+
 // Ford's 5Y line: its range over two years, and a month back on the Jun 2031 contract, before the roll.
 const FORD_LINE: CdsSpreadHistory = {
   issuer: "Ford Motor Company",
@@ -54,6 +56,7 @@ const FORD_LINE: CdsSpreadHistory = {
   // The server's moves, chained through the Sep 20 roll by the index board's rule.
   change1W: 12,
   change1M: 17.04,
+  ...IN_BP,
   noLevelReason: null,
 };
 
@@ -154,7 +157,7 @@ describe("CDS report", () => {
 
   test("says why a name has no level when its prints carry upfront without the payer side", async () => {
     const barclays: CdsSpreadHistory = {
-      issuer: "Barclays PLC", points: [], change1W: null, change1M: null, noLevelReason: "upfront-side-unknown",
+      issuer: "Barclays PLC", points: [], change1W: null, change1M: null, ...IN_BP, noLevelReason: "upfront-side-unknown",
     };
     const { result, text } = await report("Barclays PLC", {
       load: async () => ({ ...FORD, query: "Barclays PLC", issuer: "Barclays PLC", trades: [] }),
@@ -210,10 +213,10 @@ describe("CDS report", () => {
     expect(requests).toEqual({ levels: 1, history: 0 });
     const rows = result.sections[0]!.rows!;
     // DTCC's `;` is the comma it stands for, every spelling is one issuer, and a name without a level has none.
-    expect(rows.slice(0, 2).map((row) => [row.issuer, row.trades, row.spread5yBp, row.change1wBp, row.change1mBp, row.spread5yDate]))
+    expect(rows.slice(0, 2).map((row) => [row.issuer, row.trades, row.level, row.change1W, row.change1M, row.unit, row.spread5yDate]))
       .toEqual([
-        ["Amazon.com, Inc.", 3, 73, 3, 5.8, "2026-10-09"],
-        ["Ford Motor Company", 2, null, null, null, null],
+        ["Amazon.com, Inc.", 3, 73, 3, 5.8, "bp", "2026-10-09"],
+        ["Ford Motor Company", 2, null, null, null, "bp", null],
       ]);
     expect(rows).toHaveLength(42);
     // Ranked by level, names without one last.
@@ -263,6 +266,94 @@ describe("CDS report", () => {
     expect(await order("1w")).toEqual(["Oracle Corporation", "Whirlpool Corporation", "Ford Motor Company"]);
     expect(await order("1m")).toEqual(["Whirlpool Corporation", "Oracle Corporation", "Ford Motor Company"]);
     expect(requests.levels).toBe(4);
+  });
+
+  test("quotes a name past 2,000bp in points upfront, moves too, and ranks it after the bp names", async () => {
+    const load = async () => ({
+      ...FORD,
+      query: null,
+      issuer: null,
+      trades: normalizeCdsTrades([
+        ...FORD.trades.map((trade) => tape(trade.id, new Date(trade.eventAt).toISOString())),
+        tape("3", "2026-10-09T19:55:00Z", { issuerName: "Oracle Corporation" }),
+        tape("4", "2026-10-09T18:00:00Z", { issuerName: "VIRGIN MEDIA FINANCE PLC", notionalCurrency: "EUR" }),
+        tape("5", "2026-10-09T17:00:00Z", { issuerName: "American Airlines Group Inc." }),
+      ]),
+    });
+    const apiClient = {
+      getCloudCdsLevels: async () => ({
+        source: "DTCC PPD",
+        tenor: "5Y",
+        asOf: null,
+        levels: [
+          { issuer: "Oracle Corporation", spreadBp: 285.4, date: "2026-10-09", change1W: 28.1, change1M: 75.4 },
+          { issuer: "Ford Motor Company", spreadBp: 157.8, date: "2026-10-09", change1W: 0.9, change1M: -0.3 },
+          {
+            issuer: "VIRGIN MEDIA FINANCE PLC", spreadBp: 18654.4, date: "2026-10-08", change1W: 15266.3, change1M: 17418.4,
+            quote: "upfront" as const, couponBp: 500, upfrontPts: 57.65, change1WPts: 10.9, change1MPts: 36.1,
+          },
+          // More than 5 trading days behind the tape: a level, no moves.
+          { issuer: "American Airlines Group Inc.", spreadBp: 512, date: "2026-10-01", change1W: null, change1M: null },
+        ],
+      }),
+    };
+    const { result, text, tables } = await report(null, { load }, apiClient, { sort: "1m" });
+    const rows = result.sections[0]!.rows!;
+    expect(rows.map((row) => [row.issuer, row.level, row.change1M, row.unit])).toEqual([
+      ["Oracle Corporation", 285.4, 75.4, "bp"],
+      ["Ford Motor Company", 157.8, -0.3, "bp"],
+      ["VIRGIN MEDIA FINANCE PLC", 57.65, 36.1, "pts"],
+      ["American Airlines Group Inc.", 512, null, "bp"],
+    ]);
+    // The bp level stays beside the quote, with the coupon the points are on.
+    expect(rows[2]).toMatchObject({ quote: "upfront", spread5yBp: 18654.4, couponBp: 500 });
+    expect(text).toMatch(/VIRGIN MEDIA FINANCE PLC\s+1\s+2026-10-09 18:00\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts\s+2026-10-08/);
+    expect(text).toMatch(/American Airlines Group Inc\.\s+1\s+2026-10-09 17:00\s+512bp\s+--\s+--\s+2026-10-01/);
+    expect(text).not.toContain("18654");
+    // Exports write the number and its unit, as the index board's do.
+    const csv = renderReportCsv(tables).split("\n");
+    const header = csv.find((line) => line.startsWith("Issuer,"))!.split(",");
+    const virgin = csv.find((line) => line.startsWith("VIRGIN MEDIA"))!.split(",");
+    expect([virgin[header.indexOf("5Y")], virgin[header.indexOf("5Y unit")], virgin[header.indexOf("1M")]]).toEqual(["57.65", "pts", "36.1"]);
+  });
+
+  test("a name quoted upfront reports its points, coupon and moves in points, and lists its daily points beside the spread", async () => {
+    const virgin: CdsSpreadHistory = {
+      issuer: "VIRGIN MEDIA FINANCE PLC",
+      points: [
+        { ...level("2026-09-15", 1236), upfrontPts: 21.55 },
+        { ...level("2026-10-08", 18654.4), upfrontPts: 57.65 },
+      ],
+      change1W: 15266.3,
+      change1M: 17418.4,
+      quote: "upfront",
+      couponBp: 500,
+      upfrontPts: 57.65,
+      change1WPts: 10.9,
+      change1MPts: 36.1,
+      noLevelReason: null,
+    };
+    const { result, text, tables } = await report("Virgin Media Finance", {
+      load: async () => ({ ...FORD, query: "Virgin Media Finance", issuer: "VIRGIN MEDIA FINANCE PLC", trades: [] }),
+      loadHistory: async () => virgin,
+    });
+    expect(result.sections[0]!.entries!.map((entry) => [entry.key, entry.value])).toEqual([
+      ["upfrontPts", 57.65],
+      ["couponBp", 500],
+      ["date", "2026-10-08"],
+      ["change1wPts", 10.9],
+      ["change1mPts", 36.1],
+      ["range", { lowPts: 21.55, highPts: 57.65, since: "2026-09-15" }],
+    ]);
+    expect(result.metadata).toMatchObject({ quote: "upfront" });
+    expect(text).toMatch(/5Y upfront\s+57\.6 pts/);
+    expect(text).toMatch(/Coupon\s+500bp/);
+    expect(text).toMatch(/1M change\s+\+36\.1 pts/);
+    expect(text).toMatch(/Range\s+21\.6 to 57\.6 pts since 2026-09-15/);
+    expect(text).toMatch(/2026-10-08\s+18654bp\s+57\.6 pts\s+3\s+Dec 2031/);
+    const daily = renderReportCsv(selectReportTables(tables, "daily")).split("\n");
+    expect(daily[0]).toMatch(/^Date,5Y spread \(bp\),5Y upfront \(pts\),Prints,Contract/);
+    expect(daily[1]!.split(",").slice(0, 4)).toEqual(["2026-10-08", "18654.4", "57.65", "3"]);
   });
 
   test("still lists the issuers, without levels, when the levels request fails", async () => {
