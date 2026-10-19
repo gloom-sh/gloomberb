@@ -133,6 +133,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const sideTone = sell ? "negative" : "positive";
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
   const strategy = !!draft?.legs?.length;
+  // A credit spread's preview reports what it receives as a negative cost.
+  const previewCredit = (m.preview?.estimatedCost ?? 0) < 0;
+  const previewCost = m.preview?.estimatedCost === undefined ? undefined : Math.abs(m.preview.estimatedCost);
   const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";
   const busy = blocked || ["previewing", "submitting", "cancelling"].includes(m.phase);
   const fast = mode === "simulation" && m.confirmOrders === false && !m.modifying;
@@ -383,7 +386,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
             <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formInner} />
             {!wide ? <TicketOrderSummary model={m} width={formInner} compact receipt /> : null}
           </Box>
-          <Box flexDirection="row" justifyContent="space-between" alignItems={native ? "baseline" : "center"} paddingTop={native && wide ? 0.7 : 0}><Text fg={c.textDim}>Estimated cost</Text><FigureText>{money(m.preview?.estimatedCost, currency)}</FigureText></Box>
+          <Box flexDirection="row" justifyContent="space-between" alignItems={native ? "baseline" : "center"} paddingTop={native && wide ? 0.7 : 0}><Text fg={c.textDim}>{previewCredit ? "Estimated credit" : "Estimated cost"}</Text><FigureText>{money(previewCost, currency)}</FigureText></Box>
           {/* Beside the chart, warnings are lines, so the place button fits without scrolling. */}
           {warnings.map((warning, index) => <Notice key={index} variant={docked ? undefined : "callout"} tone="warning">{warning}</Notice>)}
           {m.preview?.errors?.map((error, index) => <Notice key={index} variant={docked ? undefined : "callout"} tone="negative">{error}</Notice>)}
@@ -401,7 +404,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={m.resultQuantities === "unconfirmed" || !Number.isFinite(m.result?.filled) ? "Not confirmed" : number(m.result?.filled)} width={formInner} /> : null}
           <TicketReceiptRow label="Remaining" value={m.resultQuantities === "unconfirmed" || !Number.isFinite(m.result?.remaining) ? "Not confirmed" : number(m.result?.remaining)} width={formInner} />
           <Text fg={c.textDim}>Estimates from order preview</Text>
-          <TicketReceiptRow label="Preview cost" value={money(m.preview?.estimatedCost, currency)} width={formInner} />
+          <TicketReceiptRow label={previewCredit ? "Preview credit" : "Preview cost"} value={money(previewCost, currency)} width={formInner} />
           <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formInner} />
           <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formInner} />
           <TicketReceiptRow label="Buying power after" value={money(m.preview?.buyingPowerAfter, currency)} width={formInner} />

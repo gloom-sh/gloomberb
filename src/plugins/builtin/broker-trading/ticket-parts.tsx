@@ -52,7 +52,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const c = useThemeColors(); const draft = m.draft; const account = m.accounts.find((a) => a.accountId === m.accountId);
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
   const px = draft?.limitPrice ?? draft?.stopPrice ?? m.quote?.price;
-  const total = m.phase === "result" ? m.preview?.estimatedCost : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
+  const total = m.phase === "result" ? m.preview?.estimatedCost === undefined ? undefined : Math.abs(m.preview.estimatedCost) : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
   const strategy = !!draft?.legs?.length;
   const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";
   // A spread changes each leg's position, which its legs list.
