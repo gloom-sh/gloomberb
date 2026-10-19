@@ -42,6 +42,12 @@ test("desktop notes reach the terminal's files through the Bun process", async (
     } as unknown as CloudNotesStore;
     await migrateLocalNotes(files, cloud, null);
     expect(uploads).toEqual([["AAPL", "thesis", null], ["__note-q1__", "", "Ideas"]]);
+    // The move lists strictly through the Bun process too: a folder it cannot
+    // read rejects there, where everyday listing still reads it as no notes.
+    const notAFolder = join(dataDir, "AAPL.md");
+    const unlistable = new NotesFiles(notAFolder, remoteNotesFilesIO(notAFolder, invoke));
+    await expect(unlistable.listForMove()).rejects.toBeDefined();
+    expect(await unlistable.list()).toEqual([]);
 
     // An unreadable note is an error, not an empty note the next save overwrites.
     await expect(files.load("BLOCKED")).rejects.toBeDefined();
