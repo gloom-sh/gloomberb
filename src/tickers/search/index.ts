@@ -580,11 +580,8 @@ async function searchProviderResults(
   /** Also look for the funds of a sector word, for a list of matches rather than one resolved symbol. */
   withThemeFunds = false,
 ): Promise<ProviderSearch> {
-  // "ES FUT" looks up ES, and ES=F as well: the catalogue answers a bare root
-  // with stocks only. The ranking keeps the futures.
   const assetClass = parseAssetClassQuery(rawQuery);
   const query = assetClass?.symbolQuery ?? rawQuery;
-  const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
   // A Map rather than a list plus a seen set, because a later source can send
   // back a richer version of a symbol already recorded. Overwriting a key keeps
   // its original position, so an upgrade does not reorder the list.
@@ -600,14 +597,8 @@ async function searchProviderResults(
   // The variants are independent lookups of the same words, so they run
   // together. Awaited in turn they multiplied every per-source timeout by the
   // number of spellings tried.
-  const searchQueries = buildProviderSearchQueries(query);
-  if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
-  // A futures board code also finds its future, which the catalogue files under
-  // the continuous symbol only: NG finds NovaGold and NG=F.
-  const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
-  if (boardFuture && !searchQueries.includes(boardFuture)) searchQueries.push(boardFuture);
   let busy = false;
-  await Promise.all(searchQueries.map(async (searchQuery) => {
+  await Promise.all(providerSearchQueries(rawQuery).map(async (searchQuery) => {
     try {
       const results = await dataProvider.search(searchQuery, {
         ...searchContext,
@@ -684,6 +675,26 @@ async function searchProviderResults(
   }
 
   return { results: [...byKey.values()], busy };
+}
+
+/**
+ * The searches a lookup of `rawQuery` asks the sources for: its spellings (BRK.B,
+ * BRK-B), and the future a board code or an asset class names. A list of symbols
+ * asks for all of them at once beforehand (`batchedListLookups`).
+ */
+export function providerSearchQueries(rawQuery: string): string[] {
+  // "ES FUT" looks up ES, and ES=F as well: the catalogue answers a bare root
+  // with stocks only. The ranking keeps the futures.
+  const assetClass = parseAssetClassQuery(rawQuery);
+  const query = assetClass?.symbolQuery ?? rawQuery;
+  const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
+  const searchQueries = buildProviderSearchQueries(query);
+  if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
+  // A futures board code also finds its future, which the catalogue files under
+  // the continuous symbol only: NG finds NovaGold and NG=F.
+  const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
+  if (boardFuture && !searchQueries.includes(boardFuture)) searchQueries.push(boardFuture);
+  return searchQueries;
 }
 
 function buildProviderSearchQueries(query: string): string[] {

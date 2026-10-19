@@ -80,42 +80,55 @@ function dayMonth(date: string): string {
 
 /**
  * The row's headline: the contract its quote prices, as futuresContractName
- * words it. While the continuous symbol has rolled to the most active month
- * and a nearer one still trades, the headline says so, with the nearer one's
- * last trade: "WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)". The
- * terms only add that note when they name the month the quote prices, so a
- * roll between the two loads never mixes months, and place the month when the
- * quote's name carries none. A name column too narrow for the note keeps the
- * plain name.
+ * words it: the root's front month until its roll date. Two notes follow,
+ * each from the day's facts. Once the continuous symbol has rolled while the
+ * nearer month still trades, that month's last trade: "WTI Crude Oil Dec 26,
+ * rolled (Nov expires 20 Oct)". When the day's volume put another month first,
+ * that month: "WTI Crude Oil Nov 26, Dec most active". The terms only add a
+ * note when they name the month the quote prices, so a roll between the two
+ * loads never mixes months, and place the month when the quote's name carries
+ * none. A name column too narrow for a note drops it, the last one first.
  */
 export function futuresContractHeadline(
   contract: FuturesContract,
   quote?: Quote | null,
-  terms?: Pick<FuturesContractTermsPayload, "deliveryMonth" | "nearest"> | null,
+  terms?: Pick<FuturesContractTermsPayload, "deliveryMonth" | "nearest" | "mostActive"> | null,
   width = Number.POSITIVE_INFINITY,
 ): string {
   const quoted = quotedContractMonth(contract, quote);
   const termsMonth = terms?.deliveryMonth && /^\d{4}-\d{2}$/.test(terms.deliveryMonth)
     ? { year: Number(terms.deliveryMonth.slice(0, 4)), month: Number(terms.deliveryMonth.slice(5, 7)) - 1 }
     : null;
-  const nearest = terms?.nearest;
   const agree = quoted == null || termsMonth == null || (quoted.year === termsMonth.year && quoted.month === termsMonth.month);
   // A quote whose name carries no month (or a cut one) is placed by its terms.
   const month = agree ? quoted ?? termsMonth : quoted;
   if (!month) return contract.name;
-  const active = `${MONTH_NAMES[month.month]} ${String(month.year).slice(-2)}`;
-  const plain = `${contract.name} ${active}`;
-  if (!nearest || !agree || nearest.deliveryMonth >= `${month.year}-${String(month.month + 1).padStart(2, "0")}`) return plain;
-  const nearer = MONTH_NAMES[Number(nearest.deliveryMonth.slice(5, 7)) - 1];
-  const expiry = nearest.lastTrade ? `expires ${dayMonth(nearest.lastTrade)}` : "still trading";
-  // The month the quote prices leads, so a column that clips the tail still shows it; one too narrow for
-  // "most active" shows the plain name.
-  const note = `, most active (${nearer} ${expiry})`;
-  return width >= plain.length + MOST_ACTIVE_MIN.length ? `${plain}${note}` : plain;
+  const priced = `${month.year}-${String(month.month + 1).padStart(2, "0")}`;
+  const plain = `${contract.name} ${MONTH_NAMES[month.month]} ${String(month.year).slice(-2)}`;
+  if (!agree) return plain;
+  const notes: Array<{ text: string; min: string }> = [];
+  const nearest = terms?.nearest;
+  if (nearest && nearest.deliveryMonth < priced) {
+    const nearer = MONTH_NAMES[Number(nearest.deliveryMonth.slice(5, 7)) - 1];
+    const expiry = nearest.lastTrade ? `expires ${dayMonth(nearest.lastTrade)}` : "still trading";
+    notes.push({ text: `, rolled (${nearer} ${expiry})`, min: ", rolled" });
+  }
+  const active = terms?.mostActive;
+  if (active && /^\d{4}-\d{2}$/.test(active.deliveryMonth) && active.deliveryMonth !== priced) {
+    // Another year's month says which year it is.
+    const name = MONTH_NAMES[Number(active.deliveryMonth.slice(5, 7)) - 1];
+    const label = active.deliveryMonth.slice(0, 4) === String(month.year) ? name : `${name} ${active.deliveryMonth.slice(2, 4)}`;
+    notes.push({ text: `, ${label} most active`, min: `, ${label} most active` });
+  }
+  // The month the quote prices leads, so a column that clips the tail still shows it; a note keeps its place
+  // while the column fits at least its start.
+  let headline = plain;
+  for (const note of notes) {
+    if (width < headline.length + note.min.length) break;
+    headline += note.text;
+  }
+  return headline;
 }
-
-/** The least of the note a name column must fit to carry it. */
-const MOST_ACTIVE_MIN = ", most active";
 
 /**
  * What a row's price counts, as `quote` and the chart composer say it: the

@@ -78,11 +78,17 @@ import {
   namesPerpetualMarket,
   perpetualTarget,
   searchPerpetualMarkets,
+  boardSearchesFrom,
 } from "./perpetuals";
 import { predictionMarketListing } from "../../tickers/prediction-listing";
 import { settleWithin } from "../../utils/async-deadline";
+import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
 
 const providerId = GLOOMBERB_CLOUD_PROVIDER_ID;
+/** How long a search that is not typed waits for perpetual markets. */
+const PERPETUAL_SEARCH_WAIT_MS = 2_000;
+/** How long a batched search waits for the board it answers every query's perpetual markets from. */
+const PERPETUAL_BOARD_WAIT_MS = 5_000;
 const CLOUD_RESOLUTION_SUPPORT = normalizeChartResolutionSupport([
   { resolution: "1m", maxRange: "1W" },
   { resolution: "5m", maxRange: "1M" },
@@ -585,7 +591,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
       throw isRetryableApiError(error) ? new ProviderBusyError("Cloud search is busy", { cause: error }) : error;
     });
-    const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) ? 2_000 : context?.interactive ? 250 : 2_000) ?? [];
+    const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) || !context?.interactive ? PERPETUAL_SEARCH_WAIT_MS : 250) ?? [];
     // Ahead of the listings, so a contract found by its plain name ("brent" for BZUSDT:BINANCE) is not cut
     // behind every warrant that names it; an exact symbol still leads.
     return perpetuals.length ? [...perpetuals, ...listings] : listings;
@@ -678,6 +684,30 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const response = await apiClient.getCloudTickerChanges(symbol, options);
     // "empty" is an answer: no change on record.
     return response.status === "success" || response.status === "partial" ? response.data : null;
+  }
+
+  getTickerChangesBatch(symbols: string[], options: { signal?: AbortSignal } = {}): Promise<Map<string, TickerChanges | null> | null> {
+    return cloudTickerChangesBatch(symbols, options);
+  }
+
+  async searchBatch(queries: string[], options: { limit?: number; signal?: AbortSignal } = {}): Promise<Map<string, InstrumentSearchResult[]> | null> {
+    const answers = await cloudSearchBatch(queries, options);
+    if (!answers) return null;
+    // Perpetual markets lead each answer, as `search` gives them, so a symbol in a list resolves as it does alone:
+    // one read of the board answers every query's search of it. A query that found no listing is searched again
+    // on its own, which finds them then; a board that does not answer leaves them out, as a search does.
+    const found = queries.filter((query) => answers.get(query)?.length);
+    const board = found.length
+      ? await settleWithin(apiClient.getCloudPerpsBoard().catch(logFailure("sources.gloomberb-cloud.index", "Reading the perpetual board failed", null)), PERPETUAL_BOARD_WAIT_MS)
+      : null;
+    if (!board) return answers;
+    const client = boardSearchesFrom(board);
+    for (const query of found) {
+      const perpetuals = await searchPerpetualMarkets(query, client)
+        .catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
+      if (perpetuals.length) answers.set(query, [...perpetuals, ...answers.get(query)!]);
+    }
+    return answers;
   }
 
   async getArticleSummary(url: string): Promise<string | null> {

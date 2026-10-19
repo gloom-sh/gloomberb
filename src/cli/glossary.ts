@@ -332,9 +332,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract", "most active", "most active contract"],
     functions: ["FUT", "CTM"], shown: ["most active"],
-    definition: "The nearest contract still trading, which is the one about to expire. Rolls follow volume: a continuous symbol (CL=F), "
-      + "and FUT with it, moves to the next contract when that one becomes the most active (it holds more open interest, or trades more "
-      + "where none is reported), usually days before expiry, and until then FUT names the nearer contract and its expiry.",
+    definition: "The nearest contract still trading, which is the one about to expire. A continuous symbol (CL=F) and the first generic (CL1), "
+      + "and FUT with them, stay on it until a stated roll date: one business day before its last trade for most roots (before first "
+      + "notice where delivery notices come first), two for WTI crude and Henry Hub gas so their mini and micro contracts roll with them, "
+      + "six for equity index and currency futures, none for VX. `quote` prints the date. "
+      + "The most active contract is a separate reading: the one with the most volume on the latest session, which FUT names beside the front.",
   },
   // Perpetual futures (PERP).
   {

@@ -49,7 +49,7 @@ export type MovedTickerChange = TickerChange & { tradesAs: string };
 /** How long a command waits for a note once its own answer is ready. */
 const TICKER_CHANGE_GRACE_MS = 200;
 /** The longest a lookup runs, for a caller that keeps waiting. */
-const LOOKUP_TIMEOUT_MS = 5_000;
+export const LOOKUP_TIMEOUT_MS = 5_000;
 /** A failed lookup is tried again after this, so a note comes back with the service. */
 const RETRY_FAILED_AFTER_MS = 60_000;
 /** A symbol the change history can hold: letters and digits, and a share class (BRK.B). */
@@ -77,7 +77,7 @@ export function isUsSymbolVenue(exchange?: string | null): boolean {
  * The symbol a change lookup is for: a plain one, bare or on a US venue. The
  * history is of US listings; SAN:EPA, a future or a pair has none.
  */
-function tickerChangeSymbol(symbol: string, exchange?: string | null): string | null {
+export function tickerChangeSymbol(symbol: string, exchange?: string | null): string | null {
   const plain = symbol.trim().toUpperCase();
   return PLAIN_SYMBOL.test(plain) && !isCryptoPairSymbol(plain) && isUsSymbolVenue(exchange) ? plain : null;
 }

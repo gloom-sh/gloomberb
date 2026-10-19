@@ -292,6 +292,18 @@ export class AssetDataRouter implements DataProvider {
     return (await this.getCachedQuery("getCorporateActions", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
+  searchBatch(queries: string[], options?: { limit?: number; signal?: AbortSignal }): Promise<Map<string, InstrumentSearchResult[]> | null> {
+    return this.searchRoutes.searchBatch(queries, options);
+  }
+
+  /** The first source that answers a batch of symbol changes; null when none can or it fails. */
+  async getTickerChangesBatch(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, TickerChanges | null> | null> {
+    const provider = this.providersInPriorityOrder().find((candidate) => candidate.getTickerChangesBatch);
+    if (!provider) return null;
+    return await provider.getTickerChangesBatch!(symbols, options)
+      .catch(logFailure("sources.provider-router.index", "Batched ticker changes failed", null));
+  }
+
   /** The first source that keeps symbol changes answers; one that fails is passed over. */
   async getTickerChanges(symbol: string, options?: { signal?: AbortSignal }): Promise<TickerChanges | null> {
     for (const provider of this.providersInPriorityOrder()) {

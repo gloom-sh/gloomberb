@@ -218,7 +218,9 @@ describe("CommandBar portfolio commands", () => {
       tui.setup().mockInput.pressEnter();
       await tui.setup().renderOnce();
     });
-    await waitForFrameToContain("Add AAPL to Portfolio");
+    // The typed symbol is looked up before the targets are listed.
+    await waitForFrameToContain("Research");
+    expect(tui.frame()).toContain("Add AAPL to Portfolio");
     expect(tui.frame()).toContain("bar:open");
 
     await clickFrameText("Growth");

@@ -173,7 +173,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.marketState, quote?.symbol, quote?.name,
       values?.loading, values?.values["1W"], values?.values["1M"], values?.values.YTD,
       contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
-      contract?.terms?.nearest?.lastTrade,
+      contract?.terms?.nearest?.lastTrade, contract?.terms?.mostActive?.contract,
     ].join(":");
   }, [quotes, returns, terms]);
 
@@ -388,7 +388,7 @@ export const futuresModule: PluginModule = {
       paneId: FUTURES_PANE_ID,
       label: "Futures Board",
       description:
-        "Each root's most active futures contract across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
+        "Each root's front futures contract (until its stated roll date) and the day's most active month across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
       keywords: [
         "futures",
         "commodities",

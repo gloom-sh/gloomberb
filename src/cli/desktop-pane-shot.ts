@@ -121,6 +121,8 @@ export interface DesktopPaneShotRenderedRow {
   rowIndex: number;
   key?: string;
   selected: boolean;
+  /** A section header the table reports among its rows (FUT's sector); only in `reportRows`. */
+  section?: true;
   cells: DesktopPaneShotRenderedCell[];
 }
 
@@ -747,6 +749,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
               rowIndex,
               ...(typeof row.key === "string" ? { key: row.key } : {}),
               selected: row.selected === true,
+              ...(row.section === true ? { section: true } : {}),
               cells,
             });
           });

@@ -37,8 +37,22 @@ const ENDED_AFTER_MS = 183 * 24 * 60 * 60_000;
 function endedTradingDate(quote: Quote, now = Date.now()): string | null {
   const last = Math.max(...[quote.lastTradeTime, quote.lastUpdated].filter((time): time is number => Number.isFinite(time)));
   if (!(last > 0) || now - last < ENDED_AFTER_MS || !isQuoteStaleForCurrentSession(quote, now)) return null;
-  const zone = resolveExchangeTimeZone(quote.listingExchangeName || quote.exchangeName) ?? "UTC";
-  return zonedDateKey(last, zone);
+  return quoteDateKey(quote, last);
+}
+
+/** A time as a date on the quote's exchange (2024-10-25). */
+function quoteDateKey(quote: Quote, time: number): string {
+  return zonedDateKey(time, resolveExchangeTimeZone(quote.listingExchangeName || quote.exchangeName) ?? "UTC");
+}
+
+/**
+ * The exchange-local date of a quote's last trade (2024-10-25), as a stale
+ * row is dated: its trade time when it has one, else when it was last
+ * updated; null when it has neither.
+ */
+export function lastTradeDate(quote: Quote): string | null {
+  const last = [quote.lastTradeTime, quote.lastUpdated].find((time): time is number => typeof time === "number" && Number.isFinite(time) && time > 0);
+  return last == null ? null : quoteDateKey(quote, last);
 }
 
 /** What trades under a symbol now, from its quote: nothing when it has none or stopped long ago. */
@@ -107,6 +121,12 @@ export const LATE_CHANGE_WAIT_MS = 2_000;
 // The zones of the US exchanges; a venue in another is abroad.
 const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
 
+/** A venue the app places outside the US: not a US exchange, OTC or a futures exchange, nor one it cannot place. */
+export function isVenueAbroad(venue: string): boolean {
+  const zone = resolveExchangeTimeZone(venue);
+  return !!zone && !US_TIME_ZONES.has(zone) && !isUsListingExchange(venue);
+}
+
 /**
  * "SXR8 -> XETRA" for a bare symbol the data service read on its home listing
  * abroad, as it reads a symbol with no US listing whose listings belong to one
@@ -120,8 +140,7 @@ export function bareListingNote(
 ): string | null {
   if (listing.request.exchange || !quote || !/^[A-Z0-9]{1,10}$/.test(listing.symbol)) return null;
   const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  const zone = resolveExchangeTimeZone(venue);
-  return zone && !US_TIME_ZONES.has(zone) && !isUsListingExchange(venue) ? `${listing.symbol} -> ${venue}` : null;
+  return isVenueAbroad(venue) ? `${listing.symbol} -> ${venue}` : null;
 }
 
 /** `ListingFate` from a listing's quote (null when it has none) and its ticker changes. */

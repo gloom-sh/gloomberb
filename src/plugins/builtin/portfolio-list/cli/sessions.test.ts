@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { serializeCliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
@@ -15,7 +15,10 @@ import { collectionHoldingsHeadless } from "../headless";
 import { showCollection } from "./render";
 import { portfolioCliCommand } from "./portfolio-command";
 
-afterEach(() => setCliColorEnabledOverride(null));
+afterEach(() => {
+  setCliColorEnabledOverride(null);
+  setSystemTime();
+});
 
 const config = {
   ...createDefaultConfig("/unused-collection-sessions"),
@@ -47,6 +50,8 @@ async function show(quote: Quote) {
 test("portfolio and watchlist show headline the regular close beside the extended print, and value at the live price", async () => {
   for (const state of ["weekend", "afterHours", "preMarket", "overnight"] as const) {
     const quote = sessionQuotes()[state];
+    // Read in the session it is from, so the print is current rather than a stale row.
+    setSystemTime(quote.lastUpdated + 3_600_000);
     const headline = getRegularSessionDisplay(quote)!;
     const extended = getExtendedSessionDisplay(quote)!;
     const { text, rows, json } = await show(quote);

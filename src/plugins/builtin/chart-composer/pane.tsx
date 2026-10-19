@@ -72,6 +72,7 @@ import {
   futuresGenericRollFromValue,
   futuresGenericRollLabel,
   futuresGenericRollValue,
+  standardFuturesGenericRoll,
   type FuturesGenericAdjust,
 } from "../../../utils/futures-generic";
 import { chartSeriesLabel } from "./series-expression";
@@ -202,6 +203,7 @@ interface ChartComposerSurfaceProps {
 const QUICK_ADD_CAPTURE = "quick-add";
 
 const GENERIC_ROLL_OPTIONS = [
+  { value: "standard", label: "Standard" },
   { value: "oi", label: "OI switch" },
   { value: "f5", label: "5d before notice" },
   { value: "d15", label: "Day 15" },
@@ -1032,9 +1034,12 @@ function ChartComposerSurface({
   const genericFilters = useMemo(() => {
     if (!generic) return [];
     const roll = futuresGenericRollValue(generic.roll);
-    const rollOptions = GENERIC_ROLL_OPTIONS.map((option) => option.value === "f5"
-      ? { ...option, label: futuresGenericNotice(generic.root) === "first notice" ? "5d before notice" : "5d before last trade" }
-      : option);
+    const notice = futuresGenericNotice(generic.root) === "first notice" ? "notice" : "last trade";
+    const standard = standardFuturesGenericRoll(generic.root);
+    const rollOptions = GENERIC_ROLL_OPTIONS.map((option) => option.value === "f5" ? { ...option, label: `5d before ${notice}` }
+      : option.value === "standard" && standard.rule === "first-notice"
+        ? { ...option, label: standard.days === 0 ? `Standard, after ${notice}` : `Standard, ${standard.days}d before ${notice}` }
+        : option);
     if (!rollOptions.some((option) => option.value === roll)) rollOptions.push({ value: roll, label: futuresGenericRollLabel(generic) });
     const update = (change: Parameters<typeof setChartFuturesGeneric>[1]) => {
       const next = setChartFuturesGeneric(specRef.current, change);
@@ -1044,7 +1049,7 @@ function ChartComposerSurface({
     return [
       { id: "roll", label: "Roll", value: roll, options: rollOptions, title: "Roll rule",
         onChange: (value: string) => {
-          const next = futuresGenericRollFromValue(value);
+          const next = futuresGenericRollFromValue(value, generic.root);
           if (next) update({ roll: next });
         } },
       { id: "adjust", label: "Adjust", value: generic.adjust, options: GENERIC_ADJUST_OPTIONS, title: "Adjustment",

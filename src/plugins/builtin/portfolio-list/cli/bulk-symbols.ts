@@ -1,11 +1,15 @@
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
-import { loadSavedListing, parseListingArg } from "../../../../cli/listing-arg";
+import type { MarketContext } from "../../../../cli/types";
+import { listingFields, loadSavedListing, parseListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { StagedTickerRepository } from "../../../../cli/staged-tickers";
 import { splitSymbolWords, symbolInputKey } from "../../../../cli/symbol-args";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
+import { dryRunNote } from "../../../../cli/helpers";
 import {
+  addSymbol,
   addSymbols,
   failedReason,
   failedRow,
@@ -19,6 +23,7 @@ import {
   type SymbolStatus,
   type Verb,
 } from "../../../../cli/symbol-rows";
+import { failPortfolioCommand } from "./shared";
 
 export { addSymbols };
 
@@ -34,17 +39,21 @@ export const SYMBOL_LIST_HELP = {
   lines: [
     "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas or newlines that has spaces in it is a company's name when search finds one, read as its US listing first with a line under it saying which, and otherwise the symbols it holds. A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
+    "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
+    "add --dry-run looks every symbol up and prints the same lines without saving.",
   ],
 };
 
 /**
- * A row's line, and under it the listing a company's name was read as, and
- * the coin hint when a bare coin ticker was read as something else.
+ * A row's line, and under it the listing a company's name was read as, the
+ * company that had the symbol before the listing added, and the coin hint
+ * when a bare coin ticker was read as something else.
  */
 function rowLines(row: SymbolRow, verb: Verb): string {
   return [
     rowLine(row, verb),
     ...row.readAs ? [`  ${cliStyles.muted(row.readAs)}`] : [],
+    ...row.changeNote ? [`  ${cliStyles.warning(row.changeNote)}`] : [],
     ...row.hint ? [`  ${cliStyles.warning(row.hint)}`] : [],
   ].join("\n");
 }
@@ -60,8 +69,42 @@ function rowLine(row: SymbolRow, verb: Verb): string {
     case "removed": return cliStyles.success(`Removed ${label}`);
     case "not_listed": return cliStyles.warning(`Not in the list: ${label}`);
     case "not_found": return cliStyles.danger(`Not found: ${typed}${row.message && !NO_MATCH.test(row.message) ? ` (${reason(row.message, typed)})` : ""}${row.suggestion ? `; did you mean ${row.suggestion}?` : ""}`);
+    case "needs_choice": return cliStyles.warning(`  ${row.message ?? typed}`);
     case "failed": return cliStyles.danger(`Not ${verb === "add" ? "added" : "removed"}: ${typed} (${failedReason(row, typed)})`);
   }
+}
+
+/**
+ * What symbols that need a choice offer: the add that takes the companies
+ * they trade as now, and the add that keeps each match as it is by naming its
+ * listing. Null for an offer the symbols do not have.
+ */
+function choiceOffers(choices: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): { successors: string | null; matches: string | null } {
+  const successors = [...new Set(choices.flatMap((row) => row.tradesAs ? [row.tradesAs] : []))];
+  const matches = [...new Set(choices.flatMap((row) => row.listing ? [row.listing] : []))];
+  const command = (keys: string[]) => retry ? retry(keys.join(" ")) : keys.join(" ");
+  const one = choices.length === 1;
+  return {
+    successors: successors.length > 0 ? `Add what ${one ? "it trades" : "they trade"} as now: ${command(successors)}` : null,
+    matches: matches.length > 0 ? `To keep ${one ? "the" : "a"} match instead, name its listing: ${command(matches)}` : null,
+  };
+}
+
+/**
+ * The symbols of an add that need a choice, under their own heading after the
+ * other lines: why each was not added, then what they offer (`choiceOffers`).
+ */
+function choiceLines(rows: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): string[] {
+  const choices = rows.filter((row) => row.status === "needs_choice");
+  if (choices.length === 0) return [];
+  const { successors, matches } = choiceOffers(choices, retry);
+  return [
+    ...rows.length > choices.length ? [""] : [],
+    cliStyles.warning(`Needs a choice, not added (${choices.length}):`),
+    ...choices.map((row) => rowLines(row, "add")),
+    ...successors ? [successors] : [],
+    ...matches ? [cliStyles.muted(matches)] : [],
+  ];
 }
 
 interface CollectionRef {
@@ -78,23 +121,79 @@ interface CollectionRef {
 export function printSymbolRows(
   ctx: CliCommandContext,
   rows: SymbolRow[],
-  { verb, collection, repeated, strays }: { verb: Verb; collection: CollectionRef; repeated: number; strays: readonly string[] },
+  { verb, collection, repeated, strays, retry, dryRun = false }: {
+    verb: Verb; collection: CollectionRef; repeated: number; strays: readonly string[];
+    /** The add of some listings, for the line that adds what the symbols needing a choice trade as now. */
+    retry?: (keys: string) => string;
+    dryRun?: boolean;
+  },
 ): void {
   const summary = `${collection.kind === "watchlist" ? "Watchlist" : "Portfolio"} "${collection.name}": ${summarizeSymbolRows(rows, verb, repeated)}`;
   const count = (status: SymbolStatus) => rows.filter((row) => row.status === status).length;
   const counts = verb === "add"
-    ? { added: count("added"), alreadyListed: count("already_listed"), notFound: count("not_found"), notAdded: count("failed") }
+    ? { added: count("added"), alreadyListed: count("already_listed"), notFound: count("not_found"), notAdded: count("failed"),
+      ...count("needs_choice") > 0 ? { needsChoice: count("needs_choice") } : {} }
     : { removed: count("removed"), notListed: count("not_listed"), notFound: count("not_found"), notRemoved: count("failed") };
   ctx.printResult({
     data: rows,
-    metadata: { [collection.kind]: collection.name, ...counts, repeated, summary },
+    metadata: { [collection.kind]: collection.name, ...counts, repeated, summary, ...dryRun ? { dryRun } : {} },
     ...strays.length > 0 ? { warnings: [...strays] } : {},
   }, {
-    text: () => [...rows.map((row) => rowLines(row, verb)), "", summary].join("\n"),
+    text: () => [
+      ...rows.filter((row) => row.status !== "needs_choice").map((row) => rowLines(row, verb)),
+      ...choiceLines(rows, retry),
+      "",
+      `${summary}${dryRunNote(dryRun)}`,
+    ].join("\n"),
   });
   const { format, quiet } = ctx.cliOptions;
   if ((format === "csv" || format === "ndjson") && !quiet) console.error(summary);
   if (!rows.some((row) => settled(row, verb))) process.exitCode = 1;
+}
+
+/**
+ * `watchlist add` and `portfolio add` given one symbol: added as a symbol of a
+ * list is (`addSymbol`), and said as one listing, added or already there with
+ * its notes as warnings. A symbol a list would leave for a choice fails the
+ * command, saying why, with what a list offers under the error; any other
+ * failure fails it as the lookup's error, a busy service's to retry.
+ */
+export async function addOneSymbol(
+  ctx: CliCommandContext,
+  market: MarketContext,
+  { symbol, exchange, collection, retry, reject, add }: {
+    symbol: string;
+    exchange: string | undefined;
+    collection: CollectionRef;
+    /** The add of one listing, for the choices a failure names. */
+    retry: (key: string) => string;
+    reject?: (input: string) => Error | null;
+    add: (ticker: TickerRecord) => { changed: boolean; ticker: TickerRecord };
+  },
+): Promise<void> {
+  const { dataProvider, store } = market;
+  const dryRun = ctx.cliOptions.dryRun;
+  const { row, error, lookup } = await addSymbol(symbol, { exchange, store, dataProvider, reject, retry, dryRun, add });
+  if (row.status === "needs_choice") {
+    const message = row.message ?? symbol;
+    const { successors, matches } = choiceOffers([row], retry);
+    ctx.fail(/[.!?]$/.test(message) ? message : `${message}.`, [successors, matches].filter(Boolean).join("\n"));
+  }
+  if (error || !lookup) {
+    return failPortfolioCommand(ctx, await withSuggestion(error, symbol, { store, dataProvider }), `Failed to add ${symbol} to "${collection.name}".`);
+  }
+  // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
+  const saved = savedListingName(lookup.ticker);
+  const changed = row.status === "added";
+  const { change, formerIssuer, notes } = lookup;
+  const data = { changed, ...listingFields(saved), [collection.kind]: collection.name,
+    ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {}, ...dryRun ? { dryRun } : {} };
+  const warnings = notes.length > 0 ? notes : undefined;
+  ctx.printResult({ data, warnings }, {
+    text: () => changed
+      ? `${cliStyles.success(`Added ${saved.label} to "${collection.name}".`)}${dryRunNote(dryRun)}`
+      : cliStyles.warning(`${saved.label} is already in "${collection.name}".`),
+  });
 }
 
 /** A line on standard error while a long add waits to look symbols up again, so it never looks stuck. */

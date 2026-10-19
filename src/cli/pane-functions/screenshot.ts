@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { isNoSourceAnswer } from "../../sources/provider-errors";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
@@ -91,6 +92,7 @@ import {
   createFallbackTicker,
   fetchTickerFinancials,
   loadBrokerMarkedHolding,
+  loadStoredShotTicker,
   isFinancialAnalysisFunction,
   readsDailyReturns,
   withShotDailyReturns,
@@ -439,6 +441,12 @@ export interface PaneScreenshotResult {
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];
+  /**
+   * For a pane that grows to show every row (FUT): how many of the rows its
+   * table reports the image shows, section headers left out. `shown` is less
+   * than `total` when the height limit or `--height` cut the board.
+   */
+  tableRows?: { shown: number; total: number };
   /** What the pane's report leaves out when it is not complete, as `fn` words it: `2 stale`. */
   gaps?: string;
   /** How current the captured data is, as the capture's status line says it; absent with `--no-status`. */
@@ -470,6 +478,12 @@ function shotImagePixels(widthPx: number, heightPx: number, scale = 1): { width:
     width: Math.round(Math.max(1, Math.floor(widthPx / scale / DESKTOP_CELL_WIDTH_PX)) * DESKTOP_CELL_WIDTH_PX * device),
     height: Math.round(Math.max(1, Math.floor(heightPx / scale / DESKTOP_CELL_HEIGHT_PX)) * DESKTOP_CELL_HEIGHT_PX * device),
   };
+}
+
+/** Whether a capture of this pane, on the tab it opens, grows to show every row (PaneDef.shotFitsRows). */
+function paneFitsRows(resolved: Pick<ResolvedPaneFunction, "pane" | "instance">): boolean {
+  const fits = resolved.pane.shotFitsRows;
+  return typeof fits === "function" ? fits(resolved.instance) : fits === true;
 }
 
 /** The tallest layout, in cells, a capture may grow to at this scale: the `--height` limit. */
@@ -634,11 +648,23 @@ export async function buildDesktopShotPayload(
     } catch (error) {
       // A report that reads its own argument (CDS's issuer name) renders it with no ticker data, as `fn` does.
       if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) continue;
+      if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) throw error;
       // The pane values a holding no quote covers, such as an option contract,
       // at the broker's mark. It has no financials to capture.
-      const holding = COLLECTION_PANE_IDS.has(resolved.pane.id) ? await loadBrokerMarkedHolding(context, symbol) : null;
-      if (!holding) throw error;
-      tickers.push(holding);
+      const holding = await loadBrokerMarkedHolding(context, symbol);
+      if (holding) {
+        tickers.push(holding);
+        continue;
+      }
+      // Any other holding no source quotes (an over-the-counter name none
+      // carries) is still a row of the list: it shows without a price, and the
+      // capture names it under "No data for" rather than failing. A read that
+      // was refused, rate limited or timed out fails the capture, to be taken again.
+      if (!isNoSourceAnswer(error)) throw error;
+      const stored = await loadStoredShotTicker(context, symbol);
+      if (!stored) throw error;
+      tickers.push(stored);
+      financials.push([symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]);
       continue;
     }
     const requestedRange = shotPriceHistoryRange(resolved);
@@ -1041,7 +1067,7 @@ export async function renderDesktopShot({
     );
     if (statusLine && captureImage) payload.statusLine = true;
     const fitRoles = [
-      ...(fitRows && resolved.pane.shotFitsRows ? ["data-table-body-scroll"] : []),
+      ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),
       ...(fitReader && resolved.pane.shotFitsReader ? ["detail-scroll-body"] : []),
     ];
     if (fitRoles.length > 0) {
@@ -1075,6 +1101,23 @@ export async function renderDesktopShot({
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
   return freshness ? { ...assessed, freshness } : assessed;
+}
+
+/**
+ * For a pane that grows to fit its rows, the rows its table reports (every
+ * one, `reportEveryRow`) and how many of them the image shows, by key;
+ * section headers count in neither. Null for any other pane, or a table that
+ * reports only what is drawn.
+ */
+export function shotTableRows(
+  resolved: Pick<ResolvedPaneFunction, "pane" | "instance">,
+  render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows">,
+): { shown: number; total: number } | null {
+  if (!paneFitsRows(resolved) || !render.reportRows?.length) return null;
+  const reported = render.reportRows.filter((row) => !row.section && row.key);
+  if (reported.length === 0) return null;
+  const drawn = new Set(render.rows.flatMap((row) => row.key ? [`${row.tableIndex}:${row.key}`] : []));
+  return { shown: reported.filter((row) => drawn.has(`${row.tableIndex}:${row.key}`)).length, total: reported.length };
 }
 
 /** What a rendered capture shows, and whether it is fit to use. */
@@ -1139,8 +1182,10 @@ export function assessPaneScreenshot(
   const unusableReason = usable
     ? null
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
+  const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
+    ...unquotedHoldingsNotice(resolved, payload),
     ...(render.surfaces?.some((surface) => surface.renderer === "software")
       ? ["The 3D surface was drawn by the software renderer: this browser has no WebGL."] : []),
   ];
@@ -1165,6 +1210,7 @@ export function assessPaneScreenshot(
     unusableReason,
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
+    ...(tableRows ? { tableRows } : {}),
     outputPath,
     render: {
       ...stripDesktopShotCredentials(render),
@@ -1176,6 +1222,20 @@ export function assessPaneScreenshot(
       chartEvidenceMismatches,
     },
   };
+}
+
+/**
+ * The holdings of a portfolio or watchlist capture no source quoted (an
+ * over-the-counter name none carries), whose rows show no price: "No quote
+ * for KISB; its row shows no price."
+ */
+function unquotedHoldingsNotice(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload): string[] {
+  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return [];
+  const unquoted = payload.financials.flatMap(([symbol, financials]) => (
+    !financials.quote && financials.priceHistory.length === 0 && financials.annualStatements.length === 0 ? [symbol] : []
+  ));
+  if (unquoted.length === 0) return [];
+  return [`No quote for ${unquoted.join(", ")}; ${unquoted.length === 1 ? "its row shows" : "their rows show"} no price.`];
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {

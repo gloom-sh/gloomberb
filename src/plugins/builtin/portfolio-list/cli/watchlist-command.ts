@@ -2,10 +2,8 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { slugifyName } from "../../../../utils/slugify";
-import { resolveCliTicker } from "../../../../cli/ticker-resolution";
-import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, ListingArgError, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import {
   cliStyles,
   renderSection,
@@ -23,15 +21,17 @@ import {
 } from "../../../../portfolio/mutations";
 import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
-import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
-import { isProviderBusy } from "../../../../sources/provider-errors";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
 const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
 const REMOVE_USAGE = "Usage: gloomberb watchlist remove <watchlist> <symbols...> [--file <path>]";
-/** Actions that change a watchlist: none of them previews, so --dry-run would change it anyway. */
-const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "add", "remove"]);
+/** A collection's name as a command argument: quoted when it has spaces. */
+const quotedName = (name: string) => /\s/.test(name) ? `"${name}"` : name;
+
+/** Actions that change a watchlist without a preview, so --dry-run would change it anyway. add previews. */
+const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "remove"]);
 
 /** The watchlist the leading arguments name and the symbols after it; fails naming the watchlists there are. */
 function requireWatchlistArgs(
@@ -93,34 +93,15 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
   });
 }
 
-async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { store, dataProvider }: MarketContext) {
-  try {
-    // A bare symbol is stored on the listing `quote` reads it as, and the notes say which.
-    const { ticker, notes, change, formerIssuer } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
-      retry: (key) => `gloomberb watchlist add ${watchlist.name} ${key}`,
-    });
-    const result = addTickerToWatchlist(ticker, watchlist.id);
-    // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
-    const saved = savedListingName(ticker);
-    const data = { changed: result.changed, ...listingFields(saved), watchlist: watchlist.name,
-      ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {} };
-    const warnings = notes.length > 0 ? notes : undefined;
-    if (!result.changed) {
-      ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${watchlist.name}".`) });
-      return;
-    }
-
-    await store.saveTicker(result.ticker);
-    ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${watchlist.name}".`) });
-  } catch (caught) {
-    // Search too busy to look the symbol up is no miss: the CLI says so as a failure worth retrying.
-    if (isProviderBusy(caught)) throw caught;
-    const error = await withSuggestion(caught, symbol, { store, dataProvider });
-    ctx.fail(
-      error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`,
-      error instanceof ListingArgError ? error.details : undefined,
-    );
-  }
+async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string, exchange: string | undefined, ctx: CliCommandContext, market: MarketContext) {
+  // A bare symbol is stored on the listing `quote` reads it as, and the notes say which; a match a list would leave for a choice fails.
+  await addOneSymbol(ctx, market, {
+    symbol,
+    exchange,
+    collection: { kind: "watchlist", name: watchlist.name },
+    retry: (key) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`,
+    add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
+  });
 }
 
 async function addToWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
@@ -131,17 +112,20 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       await addTickerToWatchlistCommand(watchlist, list.single, exchange, ctx, market);
       return;
     }
+    const retry = (key: string) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`;
+    const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
       exchange,
       store: market.store,
       dataProvider: market.dataProvider,
       onRetry: retryNotice(ctx),
-      retry: (key) => `gloomberb watchlist add ${watchlist.name} ${key}`,
+      retry,
       suggest: true,
+      dryRun,
       add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
     });
-    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays });
+    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays, retry, dryRun });
   });
 }
 
@@ -242,6 +226,7 @@ export const watchlistCliCommand: CliCommandDef = {
       "watchlist add Energy hyperliquid:xyz:BRENTOIL",
       "watchlist add Growth NVDA AMD,AVGO",
       "watchlist add Growth --file holdings.csv",
+      "watchlist add Growth --file holdings.csv --dry-run",
       "watchlist show Growth --csv",
     ],
     sections: [SYMBOL_LIST_HELP],

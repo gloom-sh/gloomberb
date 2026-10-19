@@ -174,6 +174,26 @@ import type {
 } from "./types";
 import type { CloudApiRequest } from "./request";
 
+/** A batched lookup's answer: one item per key asked, with that key's own status. */
+type CloudBatchAnswer<K extends string, T> = {
+  items?: Array<{ status?: string; data?: T | null } & Record<K, string>>;
+};
+
+/**
+ * A batched lookup's items by the key each was asked as: the data of an item
+ * that has some, null for one with nothing on record, and none for one the
+ * service could not answer (rate limited, an upstream failure).
+ */
+function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBatchAnswer<K, T>>, key: K): Map<string, T | null> {
+  const answers = new Map<string, T | null>();
+  for (const item of response.data?.items ?? []) {
+    if (typeof item?.[key] !== "string") continue;
+    if (item.status === "success" || item.status === "partial") answers.set(item[key], item.data ?? null);
+    else if (item.status === "empty") answers.set(item[key], null);
+  }
+  return answers;
+}
+
 export class CloudDataApi {
   constructor(private readonly request: CloudApiRequest) {}
 
@@ -414,6 +434,40 @@ export class CloudDataApi {
       `/market/ticker-changes?${new URLSearchParams({ symbol: symbol.trim().toUpperCase() })}`,
       options.signal ? { signal: options.signal } : undefined,
     );
+  }
+
+  /**
+   * `getCloudTickerChanges` for several symbols in one request: by symbol as
+   * asked, null for one with no change on record. A symbol the service could
+   * not answer for is left out.
+   */
+  async getCloudTickerChangesBatch(
+    symbols: readonly string[],
+    options: { signal?: AbortSignal } = {},
+  ): Promise<Map<string, TickerChanges | null>> {
+    const response = await this.request<CloudMarketResponse<CloudBatchAnswer<"symbol", TickerChanges>>>(
+      "/market/ticker-changes/batch",
+      { method: "POST", body: JSON.stringify({ symbols }), ...options.signal ? { signal: options.signal } : {} },
+    );
+    return batchAnswers(response, "symbol");
+  }
+
+  /**
+   * Several searches in one request, each answered as `searchInstruments`
+   * answers it: by query as asked, a query the service could not search left out.
+   */
+  async searchInstrumentsBatch(
+    queries: readonly string[],
+    limit = 10,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<Map<string, InstrumentSearchResult[]>> {
+    const response = await this.request<CloudMarketResponse<CloudBatchAnswer<"query", InstrumentSearchResult[]>>>(
+      "/market/search/batch",
+      { method: "POST", body: JSON.stringify({ queries, limit }), ...options.signal ? { signal: options.signal } : {} },
+    );
+    const answers = new Map<string, InstrumentSearchResult[]>();
+    for (const [query, rows] of batchAnswers(response, "query")) answers.set(query, rows ?? []);
+    return answers;
   }
 
   /** The listed company each organization name resolves to, if any: a trial's lead sponsors, a page at a time. */

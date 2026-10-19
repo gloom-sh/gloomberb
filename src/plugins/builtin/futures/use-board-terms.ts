@@ -44,8 +44,8 @@ function loadTerms(symbol: string): Promise<void> {
 
 /**
  * Each listed row's contract terms, as `quote` reads them: the unit its price
- * counts, and the nearer month still trading when its continuous symbol has
- * rolled to the most active one. Only the rows the board lists are asked for,
+ * counts, the nearer month still trading once its continuous symbol has
+ * rolled, and the day's most active month. Only the rows the board lists are asked for,
  * and a row whose terms have not arrived (or that has none) renders without them.
  */
 export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enabled: boolean): FuturesTermsMap {

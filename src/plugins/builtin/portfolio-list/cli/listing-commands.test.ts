@@ -11,6 +11,7 @@ import { loadConfig, saveConfig } from "../../../../data/config/store";
 import { createDefaultConfig } from "../../../../types/config";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import type { CliCommandDef } from "../../../../types/plugin";
+import type { TickerChanges } from "../../../../types/ticker-changes";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -65,11 +66,10 @@ test("watchlist and portfolio remove take the listing --exchange or SYM:EXCH nam
     .rejects.toThrow('Ticker "SAN:LSE" was not found in your local data.');
 });
 
-test("watchlist and portfolio actions that change a list refuse --dry-run and write nothing, as no action previews", async () => {
+test("watchlist and portfolio actions that change a list without a preview refuse --dry-run and write nothing", async () => {
   const run = await savedSan();
   const { context, printed } = createTestCliContext({ config: await loadConfig(run.dataDir), store: run.store }, { dryRun: true });
   const attempts: Array<[CliCommandDef, string[], string]> = [
-    [watchlistCliCommand, ["add", "growth", "SAN"], "watchlist add has no --dry-run; it changes the watchlist when it runs."],
     [watchlistCliCommand, ["remove", "growth", "SAN"], "watchlist remove has no --dry-run; it changes the watchlist when it runs."],
     [watchlistCliCommand, ["create", "Fresh"], "watchlist create has no --dry-run; it changes the watchlist when it runs."],
     [watchlistCliCommand, ["delete", "growth"], "watchlist delete has no --dry-run; it changes the watchlist when it runs."],
@@ -313,4 +313,86 @@ test("a list file with a separator left on a symbol adds the symbol and names th
   expect((result.data as Array<Record<string, unknown>>).map((row) => [row.status, row.listing])).toEqual([["added", "UPST:NASDAQ"]]);
   expect(result.warnings).toContain('Ignored the stray ";" after UPST.');
   expect(searched.filter((query) => query.includes(";"))).toEqual([]);
+});
+
+test("a list of more than ten symbols checks each one's history, and one symbol alone is decided the same: a match abroad, a dead listing or a symbol taken over lately needs a choice and saves nothing", async () => {
+  const day = 24 * 60 * 60_000;
+  const daysAgo = (days: number) => new Date(Date.now() - days * day).toISOString().slice(0, 10);
+  const row = (symbol: string, exchange: string, name: string, currency = "USD") => ({ providerId: "test", symbol, exchange, name, currency, type: "Common Stock" });
+  const banks = Array.from({ length: 10 }, (_, index) => `ZB${index}`);
+  // Search finds DFS Furniture in London, Flagstar's old NYCB line, which stopped trading, a fund that took BRKL
+  // from Brookline Bancorp lately, Five Star Bancorp, which took FSBC years ago, and the dollar in yen.
+  const listings: Record<string, ReturnType<typeof row>> = {
+    DFS: row("DFS", "LSE", "DFS Furniture plc", "GBp"),
+    NYCB: row("NYCB", "NYSE", "Flagstar Financial Corporation"),
+    BRKL: row("BRKL", "BATS", "Corgi Brookline ETF"),
+    FSBC: row("FSBC", "NASDAQ", "Five Star Bancorp"),
+    USDJPY: { ...row("USDJPY=X", "CCY", "USD/JPY", "JPY"), type: "CURRENCY" },
+    ...Object.fromEntries(banks.map((symbol) => [symbol, row(symbol, "NYSE", `${symbol} Bancorp`)])),
+  };
+  const former = (symbol: string, name: string, until: string, successor: { symbol: string; name: string }): TickerChanges => ({
+    symbol, moved: null, formerly: null, listedName: null, changes: [], formerIssuer: { symbol, name, until, successor, source: null },
+  });
+  const brooklineLeft = daysAgo(200);
+  const changes: Record<string, TickerChanges> = {
+    DFS: former("DFS", "Discover Financial Services", "2025-05-18", { symbol: "COF", name: "Capital One Financial" }),
+    NYCB: { symbol: "NYCB", moved: { symbol: "FLG", name: "Flagstar Financial", hops: [{ from: "NYCB", to: "FLG", date: "2024-10-28" }] },
+      formerly: null, listedName: null, changes: [{ from: "NYCB", to: "FLG", date: "2024-10-28" }] },
+    BRKL: former("BRKL", "Brookline Bancorp", brooklineLeft, { symbol: "BBT", name: "Beacon Financial" }),
+    FSBC: former("FSBC", "First Savings Bancorp", daysAgo(5 * 365), { symbol: "KNDR", name: "Kinder Holdings" }),
+  };
+  const listingOf = (symbol: string) => listings[symbol.replace(/=X$/, "")];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => listingOf(query) ? [listingOf(query)!] : [],
+    getQuote: async (symbol, exchange) => {
+      const listing = listingOf(symbol);
+      if (!listing || (exchange && exchange !== listing.exchange)) throw new Error(`Not a ticker: ${symbol}.`);
+      const ended = symbol === "NYCB" ? { lastUpdated: Date.now() - 700 * day, stale: true } : {};
+      return createTestQuote({ symbol: listing.symbol, name: listing.name, currency: listing.currency, listingExchangeName: listing.exchange, exchangeName: listing.exchange, ...ended });
+    },
+    getTickerChanges: async (symbol) => changes[symbol] ?? null,
+  });
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "banks", name: "Banks" }] };
+  const choices = ["DFS", "NYCB", "BRKL"];
+  const add = async (symbols: string[], dryRun: boolean) => {
+    const persistence = new AppPersistence(":memory:");
+    persistences.push(persistence);
+    const store = new TickerRepository(persistence.tickers);
+    const cli = hintedContext({ config, store, dataProvider }, { color: false, dryRun });
+    const error = await caught(watchlistCliCommand.execute(["add", "Banks", ...symbols], cli.context));
+    const printed = cli.printed[0];
+    return { error, rows: printed?.result.data as Array<Record<string, unknown>>, text: printed?.options!.text!(printed.result.data) ?? "",
+      saved: (await store.loadAllTickers()).map((ticker) => ticker.metadata.ticker) };
+  };
+
+  for (const dryRun of [false, true]) {
+    const { rows, text, saved } = await add([...banks, "FSBC", "USDJPY", ...choices], dryRun);
+    expect(rows.slice(-5).map((entry) => [entry.status, entry.listing, entry.tradesAs ?? null])).toEqual([
+      ["added", "FSBC:NASDAQ", "KNDR"],
+      ["added", "USDJPY=X:CCY", null],
+      ["needs_choice", "DFS:LSE", "COF"],
+      ["needs_choice", "NYCB:NYSE", "FLG"],
+      ["needs_choice", "BRKL:BATS", "BBT"],
+    ]);
+    expect(text).toContain("Needs a choice, not added (3):");
+    expect(text).toContain("DFS was Discover Financial Services until 2025, now Capital One Financial: COF; DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
+    expect(text).toContain(`BRKL was Brookline Bancorp until ${brooklineLeft.slice(0, 4)}, now Beacon Financial: BBT; BRKL matched BRKL:BATS (Corgi Brookline ETF), another company's listing`);
+    expect(text).toContain("Add what they trade as now: gloomberb watchlist add Banks COF FLG BBT");
+    expect(text).toContain("To keep a match instead, name its listing: gloomberb watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
+    // Five Star took FSBC years ago: added, saying who had it.
+    expect(text).toContain("  FSBC was First Savings Bancorp until");
+    expect(text).toContain('Watchlist "Banks": 12 added; 3 need a choice: DFS, NYCB, BRKL.');
+    // No match is saved, nor, in a dry run, anything else.
+    expect(saved.filter((key) => choices.some((symbol) => key.startsWith(symbol)))).toEqual([]);
+    expect(saved.length).toBe(dryRun ? 0 : 12);
+  }
+
+  // One symbol alone fails with the same choice, and saves nothing.
+  for (const [symbol, successor, match] of [["DFS", "COF", "DFS:LSE"], ["BRKL", "BBT", "BRKL:BATS"]] as const) {
+    const { error, saved } = await add([symbol], false);
+    expect(error?.message).toStartWith(`${symbol} was `);
+    expect(error?.details).toBe(`Add what it trades as now: gloomberb watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloomberb watchlist add Banks ${match}`);
+    expect(saved).toEqual([]);
+  }
+  expect((await add(["FSBC"], false)).saved).toEqual(["FSBC"]);
 });
