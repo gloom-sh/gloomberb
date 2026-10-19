@@ -1193,9 +1193,11 @@ the lookback (5 years, 10 years or all history) and the cost per side in basis
 points.
 
 **Summary** plots the strategy and buy-and-hold as growth multiples on a log
-scale with the strategy's drawdown below, beside the price return
-(distributions not included: the closes are not adjusted for dividends or fund
-payouts, so an income fund returns more in total than BT shows), CAGR, volatility,
+scale with the strategy's drawdown below, beside the price return (the closes
+are not adjusted for dividends or fund payouts, so an income fund returns more
+in total than BT shows: the footer says `price return: distributions not
+included`, and `fn BT` labels the row `Price return (distributions not
+included)`), CAGR, volatility,
 Sharpe, drawdown, time in market, the share of rolling one-year windows in which
 the rule beat buy-and-hold, and trade statistics. **Trades** lists each trade;
 an open position is marked at the last close. `v` switches views and `r`

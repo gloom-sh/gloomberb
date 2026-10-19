@@ -1,12 +1,16 @@
 import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/headless";
-import { formatStat, PRICE_RETURN_LABEL, SUMMARY_ROWS, type StatValue } from "./format";
+import { formatStat, PRICE_RETURN_LABEL, PRICE_RETURN_NOTE, SUMMARY_ROWS, type StatValue } from "./format";
 import { continuationNote, type BacktestWindowOptions, type HistoryBacktestResult } from "./window";
 
-/** A backtest of daily bars is not a feed; each run dates itself by the last session it tested. */
+/**
+ * A backtest of daily bars is not a feed; each run dates itself by the last
+ * session it tested. Its source line says what its returns are, which is where
+ * a capture of the pane says it.
+ */
 export const BACKTEST_FRESHNESS = {
-  status: "not-a-feed", basis: "backtest on daily closes", observedKey: "date", oldest: null,
+  status: "not-a-feed", basis: `backtest on daily closes, ${PRICE_RETURN_NOTE}`, observedKey: "date", oldest: null,
 } as const satisfies HeadlessPaneFreshness;
 
 /** Every report row of a backtest is of daily bars. */

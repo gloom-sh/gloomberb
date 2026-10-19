@@ -1250,7 +1250,8 @@ same entry cost and is never sold. An open position is marked at the last
 close, net of an exit cost, in the trade list and at the last close in equity.
 
 Returns are price returns, labelled `Price return (distributions not
-included)`: the daily closes are the prices that traded, not adjusted for
+included)` in `fn BT` and its exports, and `Price return` in the pane, whose
+footer and source line say `price return: distributions not included`: the daily closes are the prices that traded, not adjusted for
 dividends or fund distributions (HYG's trades fill at its traded prices, about
 87 in late 2021), so an income fund's total return is higher than BT's. Splits
 beyond the provider's adjusted history, borrow, taxes and slippage beyond the

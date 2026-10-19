@@ -3,7 +3,10 @@ import type { BacktestResult } from "./engine";
 export type StatValue = { value: number | null; kind: "signed" | "percent" | "ratio" | "count" };
 export interface SummaryRow {
   id: string;
+  /** The label reports and exports print, whole. */
   label: string;
+  /** A shorter label for the pane's metric column, where the pane's footer says the rest once. */
+  paneLabel?: string;
   /** What a count counts (`trades`, `sessions`); a percent's and a ratio's unit follow from their kind. */
   countUnit?: string;
   strategy: (result: BacktestResult) => StatValue | null;
@@ -15,12 +18,16 @@ const stat = (value: number | null, kind: StatValue["kind"]): StatValue => ({ va
  * What every return of a run is: the close's change alone. The closes are not
  * adjusted for dividends or fund distributions (HYG's trades fill at the
  * prices it traded at), so for a fund that pays out the total return is higher.
+ * Reports and exports print the whole label; the pane, whose metric column
+ * keeps its width beside the chart, prints `Price return` and says the rest
+ * once in its footer (`PRICE_RETURN_NOTE`).
  */
 export const PRICE_RETURN_LABEL = "Price return (distributions not included)";
+export const PRICE_RETURN_NOTE = "price return: distributions not included";
 
 /** Strategy beside buy-and-hold wherever the comparison is defined. */
 export const SUMMARY_ROWS: SummaryRow[] = [
-  { id: "total", label: PRICE_RETURN_LABEL, strategy: (r) => stat(r.strategy.totalReturnPct, "signed"), benchmark: (r) => stat(r.benchmark.totalReturnPct, "signed") },
+  { id: "total", label: PRICE_RETURN_LABEL, paneLabel: "Price return", strategy: (r) => stat(r.strategy.totalReturnPct, "signed"), benchmark: (r) => stat(r.benchmark.totalReturnPct, "signed") },
   { id: "cagr", label: "CAGR", strategy: (r) => stat(r.strategy.cagrPct, "signed"), benchmark: (r) => stat(r.benchmark.cagrPct, "signed") },
   { id: "vol", label: "Volatility (ann.)", strategy: (r) => stat(r.strategy.volatilityPct, "percent"), benchmark: (r) => stat(r.benchmark.volatilityPct, "percent") },
   { id: "sharpe", label: "Sharpe (0% cash)", strategy: (r) => stat(r.strategy.sharpe, "ratio"), benchmark: (r) => stat(r.benchmark.sharpe, "ratio") },
