@@ -34,7 +34,7 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
 import type { AppConfig } from "../../types/config";
-import type { CorporateActionsData, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -76,9 +76,7 @@ import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
-import { cashInMajorUnits } from "../../utils/dividend-cash";
-import { resolveCurrencyUnit } from "../../utils/currency-units";
-import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
+import { historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
 import { notTheCoinNote } from "./crypto-hints";
 import { loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
@@ -393,29 +391,12 @@ export interface DividendDistributions {
   currency?: string;
   history: DistributionHistory | null;
   /**
-   * A trailing yield as DVD measures it (trailingDividendYield): the history's
+   * A trailing yield as DVD measures it (historyTrailingDividendYield): the history's
    * trailing twelve-month cash over the quote's regular session price. Null
    * when the history is not whole or the price is in another currency, which
    * leaves the yield Gloom Cloud serves; absent for a forward yield.
    */
   trailingYield?: number | null;
-}
-
-/**
- * The trailing yield DVD reads from a whole cash history at the quote's
- * regular session price; null when the history is not whole (a row that is no
- * paid distribution, no currency, coverage unavailable) or the price is in
- * another currency, as DVD leaves its own blank.
- */
-function historyTrailingYield(sourceActions: CorporateActionsData, quote: Quote | null | undefined, now = new Date()): number | null {
-  const actions = cashInMajorUnits(sourceActions);
-  const currency = resolveCurrencyUnit(actions.currency).currency;
-  if (!currency || !Array.isArray(actions.dividends) || actions.coverage?.dividends === "unavailable") return null;
-  if (actions.coverage?.dividends !== "available" && actions.dividends.length === 0) return null;
-  const payments = actions.dividends.map((row) => cashDistribution(row.exDate, row.amount));
-  if (payments.some((payment) => payment == null)) return null;
-  const price = dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
-  return trailingDividendYield(payments as CashDistribution[], price, now);
 }
 
 /**
@@ -434,7 +415,7 @@ export async function loadDividendDistributions(
   { declared = true, now = new Date() }: { declared?: boolean; now?: Date } = {},
 ): Promise<DividendDistributions | null> {
   if (fundamentals?.dividendYield == null || !dataProvider.getCorporateActions) return null;
-  const trailing = fundamentals.dividendYieldBasis === "trailing";
+  const trailing = measuresTrailingYield(fundamentals);
   if (!trailing) {
     if (fundamentals.dividendYieldBasis !== "forward") return null;
     const exDate = fundamentals.exDividendDate ?? "";
@@ -444,7 +425,7 @@ export async function loadDividendDistributions(
   try {
     const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
     return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}),
-      history: distributionHistory(actions, now), ...(trailing ? { trailingYield: historyTrailingYield(actions, quote, now) } : {}) };
+      history: distributionHistory(actions, now), ...(trailing ? { trailingYield: historyTrailingDividendYield(actions, quote, now) } : {}) };
   } catch (error) {
     logFailure("cli.commands-ticker", "Read dividend distributions failed")(error);
     return null;

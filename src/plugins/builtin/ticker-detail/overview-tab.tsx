@@ -46,7 +46,7 @@ import {
   textGridColumns,
 } from "./overview/components";
 import { useFuturesContractTerms } from "./overview/futures-contract";
-import type { ForwardDividendState } from "./overview/dividend-lapse";
+import type { OverviewDividendState } from "./overview/dividend";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
@@ -86,8 +86,8 @@ interface OverviewTabProps {
   onOpenChart?: () => void;
   /** A click on a figure opens its research function (beta to GR, holders to HDS). */
   onOpenFunction?: (link: OverviewFunctionLink) => void;
-  /** Whether the forward yield's dividend has stopped (useForwardDividendLapse); without it the yield stands. */
-  forwardDividend?: ForwardDividendState;
+  /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
+  dividend?: OverviewDividendState;
 }
 
 export function OverviewTab(props: OverviewTabProps) {
@@ -98,7 +98,7 @@ export function OverviewTab(props: OverviewTabProps) {
 /** Where a fund's facts open: the ETF function, its facts over its filings. */
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
-function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, forwardDividend }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
@@ -256,7 +256,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     // Report and ex-dividend dates are the listing's calendar days.
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
-    forwardDividend,
+    dividend,
   });
   const profileFields = buildProfileFields({
     instrumentType: instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),

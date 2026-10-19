@@ -40,11 +40,13 @@ import { currentListingName } from "../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../components/price-sparkline/model";
 import {
+  listingDividendYield,
   liveDividendYield,
   liveFiftyTwoWeekRange,
   liveForwardPE,
   liveMarketCapitalization,
   liveTrailingPE,
+  measuresTrailingYield,
   targetReferencePrice,
 } from "../market-data/quotes/live-valuation";
 import {
@@ -221,8 +223,10 @@ function nextEarningsDate(symbol: string, ctx: ColumnContext): { pending: boolea
 }
 
 /**
- * DIV%: the yield at the live price, none once a forward yield's dividend has
- * stopped (lapsedDividend), and pending while the history that says so loads.
+ * DIV%: the yield at the live price; a trailing one as DVD measures it from
+ * the cash history once that has loaded (listingDividendYield), and none
+ * once a forward yield's dividend has stopped (lapsedDividend), pending while
+ * the history that says so loads.
  */
 function currentDividendYield(
   symbol: string,
@@ -230,9 +234,12 @@ function currentDividendYield(
   fundamentals: TickerFinancials["fundamentals"],
   ctx: ColumnContext,
 ): { pending: boolean; value: number | null } {
-  const value = liveDividendYield(quote, fundamentals) ?? null;
   const now = new Date(ctx.now);
-  // The rows the corporate actions are loaded for (usePortfolioSupplementalData).
+  // The rows the corporate actions are loaded for (usePortfolioSupplementalData); a trailing yield is never withdrawn, so it does not wait.
+  if (measuresTrailingYield(fundamentals)) {
+    return { pending: false, value: listingDividendYield(quote, fundamentals, mapData(ctx.corporateActions, symbol).data, now) ?? null };
+  }
+  const value = liveDividendYield(quote, fundamentals) ?? null;
   if (value == null || !forwardYieldMayHaveLapsed(fundamentals, now)) return { pending: false, value };
   const actions = mapData(ctx.corporateActions, symbol);
   if (actions.pending) return { pending: true, value: null };

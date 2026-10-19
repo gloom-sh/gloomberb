@@ -6,11 +6,12 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { useAssetData } from "../../../runtime";
 import { loadEarningsCalendar } from "../../earnings/data/cache";
 import { forwardYieldMayHaveLapsed } from "../../../../utils/forward-dividend";
+import { measuresTrailingYield } from "../../../../market-data/quotes/live-valuation";
 
 const SUPPLEMENTAL_BATCH_LIMIT = 6;
 const ANALYST_COLUMN_IDS = new Set(["target", "target_pct", "rating"]);
 const CORPORATE_COLUMN_IDS = new Set(["ex_div", "next_earn"]);
-// DIV% reads the distribution history only of a forward yield old enough to have stopped.
+// DIV% reads the distribution history of a trailing yield, measured from it, and of a forward yield old enough to have stopped.
 const DIVIDEND_YIELD_COLUMN_ID = "dividend_yield";
 const EARNINGS_COLUMN_IDS = new Set(["next_earn"]);
 
@@ -269,11 +270,14 @@ export function usePortfolioSupplementalData(
   const targets = useMemo(() => targetsFromTickers(tickers), [tickers]);
   const allCorporate = needsAnyColumn(columns, CORPORATE_COLUMN_IDS);
   const dividendYield = columns.some((column) => column.id === DIVIDEND_YIELD_COLUMN_ID);
-  // Every row for the ex-date and earnings columns; for DIV% alone, the rows whose yield may have lapsed.
+  // Every row for the ex-date and earnings columns; for DIV% alone, the rows whose yield is trailing or may have lapsed.
   const corporateTargets = useMemo(() => {
     if (allCorporate || !dividendYield) return targets;
     const now = new Date();
-    return targets.filter((target) => forwardYieldMayHaveLapsed(financialsMap.get(target.symbol)?.fundamentals, now));
+    return targets.filter((target) => {
+      const fundamentals = financialsMap.get(target.symbol)?.fundamentals;
+      return measuresTrailingYield(fundamentals) || forwardYieldMayHaveLapsed(fundamentals, now);
+    });
   }, [allCorporate, dividendYield, financialsMap, targets]);
   const [state, setState] = useState<SupplementalState>(() => ({
     analystResearch: new Map(),

@@ -24,7 +24,7 @@ const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"
 const VALUATION_COLUMN_IDS = new Set([
   "mkt_value", "weight", "drift", "trade", "trade_value", "day_pnl", "pnl", "pnl_pct", "as_of",
 ]);
-// DIV% reads the corporate actions to tell a dividend that stopped, which a day can make it.
+// DIV% reads the corporate actions to measure a trailing yield and to tell a dividend that stopped, which a day can change.
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn", "dividend_yield"]);
 const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn", "as_of", "dividend_yield"]);
 export const PERPETUAL_COLUMN_IDS: ReadonlySet<string> = new Set(["perp_premium", "perp_funding"]);

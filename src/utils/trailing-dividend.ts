@@ -1,6 +1,7 @@
 /**
  * The trailing dividend yield, read one way everywhere it shows: `DVD`, its
- * ranking, portfolio income and a fund's yield in `fundamentals` and `ticker`.
+ * ranking, portfolio income, and a fund's yield in `fundamentals`, `ticker`,
+ * the `DES` overview and DIV% (historyTrailingDividendYield).
  * Trailing twelve-month cash per share (trailingCashAt) at its source's
  * precision, over the regular session price in the cash's currency.
  */

@@ -111,3 +111,26 @@ test("a future external quote time cannot make a dividend yield look fresh or bo
   expect(recovered.metadata?.priceStale).toBe(false);
   expect(recovered.sections[0]?.entries?.find((row) => row.label === "Price status")).toBeUndefined();
 });
+
+test("after the close the reference price is dated by the close it is, not by the after-hours print that last moved the quote", async () => {
+  Date.now = () => Date.parse("2026-10-09T01:00:00Z");
+  chartFixture();
+  const afterHours = { symbol: "FUND", currency: "USD", price: 165.39, change: -2.21, changePercent: -1.3186, previousClose: 167.6,
+    regularClose: 160.57, regularCloseSessionDate: "2026-10-08", marketState: "POST", postMarketPrice: 165.39,
+    postMarketChange: 4.82, postMarketChangePercent: 3.0017, lastUpdated: Date.parse("2026-10-08T23:41:59Z") };
+  const load = (quote: object) => createDividendYieldHeadless().load({ rawArgument: "FUND", argument: "FUND", symbols: ["FUND"], options: {} }, {
+    resolveInstrument: async () => ({ symbol: "FUND", exchange: "NASDAQ" }),
+    marketData: { getQuote: async () => quote },
+  } as unknown as HeadlessPaneContext);
+  const entry = (result: Awaited<ReturnType<typeof load>>, label: string) => result.sections[0]?.entries?.find((row) => row.label === label);
+
+  const nasdaq = await load({ ...afterHours, listingExchangeName: "NASDAQ" });
+  expect(entry(nasdaq, "Price")?.value).toBe(160.57);
+  expect(nasdaq.metadata?.priceAsOf).toBe("2026-10-08T20:00:00.000Z");
+  expect(nasdaq.metadata?.priceStale).toBe(false);
+  expect(entry(nasdaq, "Price status")).toBeUndefined();
+
+  // A venue whose calendar does not give the hour dates the close by its session alone.
+  const unlisted = await load({ ...afterHours, listingExchangeName: "UNLISTED" });
+  expect(unlisted.metadata?.priceAsOf).toBe("2026-10-08");
+});

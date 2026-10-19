@@ -1,6 +1,8 @@
-import type { AnalystResearchData, Fundamentals, Quote } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
-import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
+import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
+import { cashInMajorUnits } from "../../utils/dividend-cash";
+import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
 import { priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
@@ -87,6 +89,50 @@ export function liveDividendYield(quote: Quote | null | undefined, fundamentals:
   const drift = price / (rate / stored);
   if (drift > PRICE_DRIFT || drift < 1 / PRICE_DRIFT) return stored;
   return rate / price;
+}
+
+/** Whether a listing's yield is a trailing one, which is measured from its cash history (listingDividendYield). */
+export function measuresTrailingYield(fundamentals: Pick<Fundamentals, "dividendYield" | "dividendYieldBasis"> | null | undefined): boolean {
+  return fundamentals?.dividendYieldBasis === "trailing" && fundamentals.dividendYield != null;
+}
+
+/**
+ * A trailing dividend yield as DVD measures it (trailingDividendYield): the
+ * cash history's trailing twelve months over the quote's regular session
+ * price, in the cash's currency. Null when the history cannot be read in full
+ * (a row that is no paid distribution, no currency, dividends not covered) or
+ * the price is in another currency, where DVD leaves its own blank.
+ */
+export function historyTrailingDividendYield(
+  sourceActions: CorporateActionsData,
+  quote: Quote | null | undefined,
+  now = new Date(),
+): number | null {
+  const actions = cashInMajorUnits(sourceActions);
+  const currency = resolveCurrencyUnit(actions.currency).currency;
+  if (!currency || !Array.isArray(actions.dividends) || actions.coverage?.dividends === "unavailable") return null;
+  if (actions.coverage?.dividends !== "available" && actions.dividends.length === 0) return null;
+  const payments = actions.dividends.map((row) => cashDistribution(row.exDate, row.amount));
+  if (payments.some((payment) => payment == null)) return null;
+  const price = dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
+  return trailingDividendYield(payments as CashDistribution[], price, now);
+}
+
+/**
+ * The dividend yield a listing shows at its regular session price. A trailing
+ * one is DVD's, measured from `actions`, the listing's cash history
+ * (historyTrailingDividendYield), so the overview, DIV% and DVD read one
+ * figure; until that history is read, or when it cannot be read in full, it
+ * is Gloom Cloud's, as a forward one is (liveDividendYield).
+ */
+export function listingDividendYield(
+  quote: Quote | null | undefined,
+  fundamentals: Fundamentals | undefined,
+  actions: CorporateActionsData | null | undefined,
+  now = new Date(),
+): number | undefined {
+  const measured = actions && measuresTrailingYield(fundamentals) ? historyTrailingDividendYield(actions, quote, now) : null;
+  return measured ?? liveDividendYield(quote, fundamentals);
 }
 
 /**

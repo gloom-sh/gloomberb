@@ -12,7 +12,7 @@ import { getTickerResearchPaneSettings } from "../settings";
 import { OverviewTab } from "../overview-tab";
 import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
-import { useForwardDividendLapse } from "./dividend-lapse";
+import { useOverviewDividend } from "./dividend";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
@@ -24,7 +24,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const paneInstance = usePaneInstance();
   const openResearchTab = useOpenResearchTab();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const forwardDividend = useForwardDividendLapse(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
+  const dividend = useOverviewDividend(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
   // A pane locked to one tab has nowhere to go.
   const lockedToOneTab = getTickerResearchPaneSettings(paneInstance?.settings).hideTabs;
   const openChart = useCallback(() => {
@@ -45,7 +45,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       financials={financials}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
-      forwardDividend={forwardDividend}
+      dividend={dividend}
       perpetuals={ticker ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={financials?.quote?.instrumentType ?? ticker.metadata.assetCategory} /> : undefined}
     />
   );

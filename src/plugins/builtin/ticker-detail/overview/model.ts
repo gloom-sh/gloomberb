@@ -20,10 +20,10 @@ import {
 } from "../../../../market-data/market/format";
 import { reportedQuoteVolume } from "../../../../market-data/market/index-level";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
-import type { ForwardDividendState } from "./dividend-lapse";
+import type { OverviewDividendState } from "./dividend";
 import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
-import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
+import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
 import { enterpriseValueCheck, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
@@ -80,7 +80,7 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   today,
-  forwardDividend,
+  dividend,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -95,8 +95,8 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
-  /** Whether a forward yield's dividend has stopped (useForwardDividendLapse); without it the yield stands. */
-  forwardDividend?: ForwardDividendState;
+  /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
+  dividend?: OverviewDividendState;
 }): StatField[] {
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
@@ -154,12 +154,13 @@ export function buildOverviewStats({
       link: EARNINGS,
     });
   }
-  const dividendYield = liveDividendYield(quote, fundamentals);
+  // A trailing yield as DVD measures it from the cash history, once that is read.
+  const dividendYield = listingDividendYield(quote, fundamentals, dividend?.actions);
   // A dividend that stopped has no forward yield, and its last ex-date is when it was last paid.
-  const lapse = forwardDividend?.lapse ?? null;
+  const lapse = dividend?.lapse ?? null;
   if (fundamentals && lapse) {
     stats.push({ label: "Fwd Div Yld", value: NO_CURRENT_DIVIDEND });
-  } else if (fundamentals && dividendYield != null && !forwardDividend?.pending) {
+  } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
     stats.push({ label, value: formatLevelPercent(dividendYield) });
   }
