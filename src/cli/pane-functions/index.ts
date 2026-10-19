@@ -194,12 +194,12 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
   }
 }
 
-/** Whether a list report has no row with data: it is empty, or every row is a name without any. */
 /** A board's rows in a shot: "72" when the image holds them all, "37 of 72 rows" when it was cut. */
 export function shotRowsText(rows: { shown: number; total: number }): string {
   return rows.shown >= rows.total ? String(rows.total) : `${rows.shown} of ${rows.total} rows`;
 }
 
+/** Whether a list report has no row with data: it is empty, or every row is a name without any. */
 function foundNothing(data: { rowCount: number; unavailableSymbols: readonly string[] }): boolean {
   return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
