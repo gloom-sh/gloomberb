@@ -11,6 +11,7 @@ import { isPlainKey } from "../../../../utils/keyboard";
 import type { AssistantDecision } from "./grants";
 import { CONFIRM_WINDOW_MS, RELAY_PROMPT_SCOPE, type ApprovalAnswer, type ConfirmationAnswer, type RelayCaller, type RelayPrompts } from "./engine";
 import type { CallSummary } from "./summary";
+import { logFailure } from "../../../../utils/log-failure";
 
 const WIDTH = 56;
 /** Keys typed just before a prompt appeared do not answer it. */
@@ -177,7 +178,7 @@ export function dialogRelayPrompts(dialog: DialogApi): RelayPrompts {
         closeOnClickOutside: false,
         closeOnEscape: true,
         content: (context: PromptContext<AssistantDecision>) => <AssistantApprovalDialog {...context} caller={caller} signal={signal} />,
-      }).catch(() => undefined);
+      }).catch(logFailure("cloud.terminal-relay.prompts", "The agent approval prompt failed"));
       return answer ?? "deny";
     },
     async askConfirmation(caller, summary, signal): Promise<ConfirmationAnswer> {
@@ -185,7 +186,7 @@ export function dialogRelayPrompts(dialog: DialogApi): RelayPrompts {
         closeOnClickOutside: false,
         closeOnEscape: true,
         content: (context: PromptContext<ConfirmationAnswer>) => <CallConfirmationDialog {...context} caller={caller} summary={summary} signal={signal} />,
-      }).catch(() => undefined);
+      }).catch(logFailure("cloud.terminal-relay.prompts", "The call confirmation prompt failed"));
       return answer ?? "deny";
     },
   };

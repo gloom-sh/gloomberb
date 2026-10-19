@@ -203,6 +203,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   onlyKeys(input, "resolve output", [
     "id", "label", "color", "unit", "unitGroup", "nativeFrequency", "timestampMode", "dataShape", "style", "transform",
     "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden", "attribution",
+    "priceOf",
   ]);
   if (!Array.isArray(input.points)) fail("resolve output points", "expected an array.");
   if (input.points.length > MAX_CHART_SERIES_POINTS) {
@@ -252,6 +253,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
     ...(input.hidden !== undefined
       ? typeof input.hidden === "boolean" ? { hidden: input.hidden } : fail("resolve output hidden", "expected a boolean.")
       : {}),
+    ...(input.priceOf !== undefined ? { priceOf: boundedString(input.priceOf, "resolve output price ticker", 64) } : {}),
   };
 }
 

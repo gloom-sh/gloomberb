@@ -53,5 +53,6 @@ export type {
 } from "../series/csv";
 export type {
   ExpressionSeriesDefinition, LoadedSeriesDefinition, SeriesDefinition, SeriesDrawStyle, SeriesFrequency,
-  SeriesAttribution, SeriesInput, SeriesLoadOutput, SeriesLoadRequest, SeriesLoadResult, SeriesPoint,
+  SeriesAttribution, SeriesInput, SeriesLine, SeriesLinesLoadResult, SeriesLoadOutput, SeriesLoadRequest, SeriesLoadResult, SeriesPlacement,
+  SeriesPoint,
 } from "../series/types";

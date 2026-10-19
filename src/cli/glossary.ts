@@ -242,7 +242,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The first date the new rate level appears in the data, not necessarily the announcement or effective date.",
   },
   {
-    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR"],
+    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR"],
     definition: "Where today's value ranks against the past year of the same series: 100 is the highest, 0 the lowest.",
   },
   {
@@ -482,6 +482,55 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "A muni yield over the Treasury yield of the same maturity, both before tax: under 100% munis yield less than Treasuries, as their tax "
       + "exemption usually makes them. DVD and fundamentals divide a muni fund's SEC yield by the GC Treasury par yield at the tenor nearest its duration "
       + "(MUB's 7.13 years: the 7Y). Market ratios read the AAA muni curve, MMD or BVAL, which are licensed and not in the terminal.",
+  },
+  // Index and sovereign CDS (CDX, SOVR), in the order CDX's columns run, then the trade terms behind them.
+  {
+    term: "5Y level", aliases: ["5y spread", "5y price", "cds level", "index level"], functions: ["CDX", "SOVR"], shown: ["5Y"],
+    definition: "The day's level of the 5-year contract on the run, from that day's public DTCC prints. CDX IG, iTraxx Main and Crossover and the sovereigns "
+      + "quote a spread in basis points; CDX HY and EM a price in points of par (see Points).",
+  },
+  {
+    term: "Complete day", aliases: ["so far", "partial day", "day so far", "today so far"], functions: ["CDX"], shown: ["1D", "Day"],
+    definition: "A day of index prints is complete once New York's trade date has turned. Until then today's level and prints are so far: Day says how many prints "
+      + "and the last one's time (UTC), and 1D, 1W and 1M compare complete days, 1D the last complete day against the one before, on one contract across a roll.",
+  },
+  {
+    term: "Spread equivalent", short: "Spread eq", aliases: ["spread-equivalent", "conventional spread", "quoted spread", "price to spread"], functions: ["CDX"],
+    definition: "CDX HY's and EM's price as the spread a 5-year contract would quote, in basis points, to read against a spread such as HY OAS. The ISDA standard model: "
+      + "a flat hazard rate, the index's coupon (HY 500bp, EM 100bp) and standard recovery (HY 30%, EM 25%), the contract's maturity and that day's flat USD rate. "
+      + "Price 100 is the coupon; each point above par takes about 20 to 25bp off it. A model figure, not a traded spread.",
+  },
+  {
+    term: "Prints", aliases: ["print count", "dtcc prints"], functions: ["CDX"],
+    definition: "How many public DTCC trades on the day's contract its level rests on, after prints far from the median are dropped. "
+      + "A day with fewer than three stands only beside a busier day within two weeks that agrees with it.",
+  },
+  {
+    term: "As of", aliases: ["as-of", "level date", "observation date"], functions: ["CDX", "SOVR"],
+    definition: "The New York trade date the row's level is from, which every exported row carries as its as_of. A thinly traded name's can be days old; "
+      + "past five days the board marks it stale.",
+  },
+  {
+    term: "Points", aliases: ["points upfront", "price points", "pts", "points of par"], functions: ["CDX"], shown: ["CDX HY", "CDX EM", "Price", "pts"],
+    definition: "CDX HY and EM trade on price in points of par: 100 less the upfront. At 106.00 the protection buyer receives 6% of the notional up front "
+      + "and pays the running coupon. Their moves are in points: -0.13 is 13 cents per 100 of notional, and a falling price is a widening spread.",
+  },
+  {
+    term: "Upfront", aliases: ["upfront fee", "upfront payment", "upfront amount", "abs upfront"], functions: ["CDX", "CDS"], shown: ["CDX HY", "CDX EM", "Spread eq", "Abs upfront"],
+    definition: "The cash that changes hands when a CDS trades, as a share of the notional, because the contract pays a standard coupon (100bp or 500bp) instead of its own spread: "
+      + "the protection buyer pays it when the spread is above the coupon and receives it below. The trade also settles the coupon accrued since the last quarterly date (Mar, Jun, Sep, Dec 20).",
+  },
+  {
+    term: "Index roll", aliases: ["series roll", "cdx roll", "itraxx roll", "roll day", "on the run", "on-the-run", "new series"], functions: ["CDX"], shown: ["Contract"],
+    definition: "Credit indexes start a new series every Mar 20 and Sep 20, its 5-year contract maturing five years and three months later (Dec 2031 from Sep 2026). "
+      + "The board follows the series on the run, the new one from the first day it prints at least half as often as the old; across a roll moves stay on one contract.",
+  },
+  // Backtests (BT).
+  {
+    term: "Price return", aliases: ["price returns", "distributions not included"], functions: ["BT"],
+    shown: ["Price return (distributions not included)", "price return (distributions not included)"],
+    definition: "The change in the close alone. BT's closes are not adjusted for dividends or fund distributions, so its returns, CAGR and growth-of-1 curves leave them out: "
+      + "an income fund such as HYG returns more in total than BT shows. Borrow and cash interest are not modelled either.",
   },
   // Short interest (SI, SIW) and daily short volume (SIV).
   {

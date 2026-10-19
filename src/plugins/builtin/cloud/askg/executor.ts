@@ -39,6 +39,7 @@ import {
   type AppliedUndo,
   type InProcessRemoteControlHandler,
 } from "./undo";
+import { logFailure } from "../../../../utils/log-failure";
 
 interface HeadlessExecution {
   result: unknown;
@@ -460,8 +461,9 @@ export function createASKGToolExecutor(
       return data.changes === false
         ? { kind: "no-change" }
         : { kind: "change", summary: data.summary, confirmKey: data.confirmKey };
-    } catch {
+    } catch (error) {
       // The person still approves the call as the server described it.
+      if (!signal?.aborted) logFailure("cloud.askg.executor", "Dry-run preview of a tool call failed")(error);
       return null;
     }
   };

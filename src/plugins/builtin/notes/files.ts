@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { NoteOwner, NotesStore } from "./store";
 
 export interface QuickNoteEntry {
@@ -79,7 +80,9 @@ export function diskNotesFilesIO(dataDir: string): NotesFilesIO {
       let names: string[];
       try {
         names = await readdir(dataDir);
-      } catch {
+      } catch (error) {
+        // A data directory that was never created holds no notes yet.
+        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") logFailure("notes.files", "List the notes folder failed")(error);
         return [];
       }
       const keys: Array<[string, number]> = [];
@@ -88,7 +91,10 @@ export function diskNotesFilesIO(dataDir: string): NotesFilesIO {
         try {
           const info = await stat(pathOf(name));
           keys.push([name.slice(0, -3), Math.round(info.mtimeMs)]);
-        } catch {}
+        } catch (error) {
+          // A note deleted since the folder was listed is simply gone.
+          if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") logFailure("notes.files", "Read when a note was last written failed")(error);
+        }
       }
       return keys;
     },
@@ -113,8 +119,8 @@ function readLocalTimestamps(): Record<string, number> {
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? parsed as Record<string, number>
       : {};
-  } catch {
-    return {};
+  } catch (error) {
+    return logFailure("notes.files", "Read the browser note timestamp index failed", {})(error);
   }
 }
 
@@ -124,7 +130,11 @@ function writeLocalTimestamp(path: string, updatedAt: number | null): void {
   const timestamps = readLocalTimestamps();
   if (updatedAt == null) delete timestamps[path];
   else timestamps[path] = updatedAt;
-  try { storage.setItem(LOCAL_TIMESTAMP_KEY, JSON.stringify(timestamps)); } catch {}
+  try {
+    storage.setItem(LOCAL_TIMESTAMP_KEY, JSON.stringify(timestamps));
+  } catch (error) {
+    logFailure("notes.files", "Save the browser note timestamp index failed")(error);
+  }
 }
 
 function localStorageNotesFilesIO(dataDir: string): NotesFilesIO {
@@ -221,8 +231,9 @@ export class NotesFiles implements NotesStore {
     for (const [key, updatedAt] of await this.io.listKeys()) {
       try {
         entries.push({ key, text: await this.load(key), updatedAt });
-      } catch {
+      } catch (error) {
         // An unreadable note is skipped rather than synced as empty.
+        logFailure("notes.files", "Read a note while listing notes failed")(error);
       }
     }
     return entries.sort((left, right) => right.updatedAt - left.updatedAt);
@@ -232,8 +243,8 @@ export class NotesFiles implements NotesStore {
     try {
       const raw = await this.io.read(QUICK_NOTES_INDEX_FILE);
       return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
+    } catch (error) {
+      return logFailure("notes.files", "Read the quick notes index failed", [])(error);
     }
   }
 

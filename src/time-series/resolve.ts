@@ -78,6 +78,7 @@ import {
 import {
   canonicalExchange,
   isUsListingExchange,
+  parsePublicTickerKey,
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
@@ -1383,6 +1384,39 @@ function assignAxes(
   });
 }
 
+/**
+ * A series drawn in a ticker's price (a moving average of it, a band around
+ * it) takes the units of that ticker's price series when the chart has it, so
+ * the two share an axis and the line sits on the price instead of on a scale
+ * of its own.
+ */
+function adoptPriceUnits(series: ResolvedSeries[], specs: readonly ChartSeriesSpec[]): ResolvedSeries[] {
+  if (!series.some((entry) => entry.priceOf)) return series;
+  const specsById = new Map(specs.map((spec) => [spec.id, spec]));
+  const prices = series.filter((entry) => {
+    const source = specsById.get(entry.id)?.source;
+    return source?.kind === "security" && getTimeSeriesField(source.fieldId)?.unitGroup === "price"
+      && entry.transform === "raw";
+  });
+  if (prices.length === 0) return series;
+  return series.map((entry) => {
+    if (!entry.priceOf) return entry;
+    const wanted = parsePublicTickerKey(entry.priceOf.toUpperCase());
+    const key = publicTickerKey(wanted.symbol, wanted.exchange);
+    const named = (price: ResolvedSeries) => {
+      const source = specsById.get(price.id)?.source;
+      if (source?.kind !== "security") return false;
+      return publicTickerKey(source.instrument.symbol, source.instrument.exchange) === key
+        || (!wanted.exchange && source.instrument.symbol.toUpperCase() === wanted.symbol);
+    };
+    const price = prices.find((candidate) => named(candidate) && candidate.panelId === entry.panelId)
+      ?? prices.find(named);
+    return price && entry.transform === "raw"
+      ? { ...entry, unit: price.unit, unitGroup: price.unitGroup }
+      : entry;
+  });
+}
+
 function prepareBaseSeriesForStudies(
   series: ResolvedSeries,
   bounds: DateBounds,
@@ -2266,7 +2300,7 @@ async function resolveChartSpecPass(
     errors.push(...studyResult.errors);
   }
 
-  const bufferedSeries = assignAxes(resolved, [...spec.series, ...spec.studies], warnings)
+  const bufferedSeries = assignAxes(adoptPriceUnits(resolved, spec.series), [...spec.series, ...spec.studies], warnings)
     .map((entry) => clipPriceComparison(entry, priceComparison));
   resolved = bufferedSeries.map((entry) => {
     const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);

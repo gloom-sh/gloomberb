@@ -23,6 +23,7 @@ import {
 } from "./policy";
 import { REDACTED, redactConfig, redactRelayResult, redactResource } from "./redact";
 import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * Runs the tool calls Gloom Cloud relays from a remote assistant, in this
@@ -387,7 +388,9 @@ export class TerminalRelayEngine {
       }
     };
     const result = this.promptChain.then(run, run);
-    this.promptChain = result.catch(() => {});
+    this.promptChain = result.catch(() => {
+      // Intentional ignore: the returned result reports this failure; the chain only stays usable.
+    });
     return result;
   }
 
@@ -587,8 +590,9 @@ export class TerminalRelayEngine {
         const operations = manifest && Array.isArray(manifest.operations) ? manifest.operations : [];
         const described = operations.find((entry) => isRecord(entry) && entry.id === operationId) as Record<string, unknown> | undefined;
         if (described && typeof described.title === "string") operationTitle = described.title;
-      } catch {
+      } catch (error) {
         // The ids alone still say what runs.
+        logFailure("cloud.terminal-relay", "Read plugin names for a confirmation failed")(error);
       }
       return {
         title: `${shortValue(operationTitle)} with ${shortValue(plugin)}`,
@@ -605,8 +609,9 @@ export class TerminalRelayEngine {
         const layouts = await this.read("app://layouts");
         const layout = Array.isArray(layouts) && typeof input.index === "number" ? layouts[input.index] : undefined;
         if (isRecord(layout) && typeof layout.name === "string") name = `"${shortValue(layout.name)}"`;
-      } catch {
+      } catch (error) {
         // The index still identifies it.
+        logFailure("cloud.terminal-relay", "Read layout names for a confirmation failed")(error);
       }
       return { title: `Delete the layout ${name}`, lines: [{ label: "Undo", value: "Not available for a deleted layout" }] };
     }
@@ -718,7 +723,7 @@ export class TerminalRelayEngine {
       const described = await this.read(`app://pane-settings/${encodeURIComponent(instanceId)}`);
       settings = isRecord(described) ? described.settings ?? null : null;
     } catch {
-      // A pane without settings.
+      // Intentional ignore: a pane without settings rejects this read, and its content has none.
     }
     const nodes = (await this.uiNodes()).filter((node) => (
       (node.paneId === instanceId || node.metadata?.paneInstanceId === instanceId)

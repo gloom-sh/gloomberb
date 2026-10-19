@@ -35,10 +35,10 @@ afterEach(() => {
 });
 
 /** The row the board's history is drawn for, on the board as Fixed Income hosts it, opened with what the command put in its params. */
-async function openedOn(view: "index" | "sovereign", params: Record<string, string>): Promise<string> {
+async function openedOn(view: "index" | "sovereign", params: Record<string, string>, board: CdxBoardPayload = cdx, width = 100): Promise<string> {
   cdxBoardCache.attach(new MemoryPluginPersistence());
   sovrBoardCache.attach(new MemoryPluginPersistence());
-  setCloudApiFetchTransport(async (url) => Response.json(String(url).includes("/sovr") ? sovr : cdx));
+  setCloudApiFetchTransport(async (url) => Response.json(String(url).includes("/sovr") ? sovr : board));
   const initial = createInitialState(createTestPaneConfig(":memory:", {
     instanceId: FIXED_INCOME_PANE_ID, paneId: FIXED_INCOME_PANE_ID, binding: { kind: "none" }, params: { view, ...params },
   }));
@@ -48,12 +48,12 @@ async function openedOn(view: "index" | "sovereign", params: Record<string, stri
     const dispatch = (action: AppAction) => setState((current) => appReducer(current, action));
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={FIXED_INCOME_PANE_ID} pluginId="credit-boards"
-        runtime={createTestPluginRuntime({ getMarketData: () => null })} width={100} height={30}>
+        runtime={createTestPluginRuntime({ getMarketData: () => null })} width={width} height={30}>
         {(body) => <Board paneId={FIXED_INCOME_PANE_ID} paneType="cdx-board" focused {...body} />}
       </TestPaneFrame>
     );
   }
-  await act(async () => { await tui.render(<Harness />, { width: 100, height: 30 }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: 30 }); });
   await tui.waitForFrameToContain("● ");
   return tui.frame().split("\n")[0]!.trim();
 }
@@ -70,4 +70,19 @@ test("the country SOVR opens on is the one the command names, by its name or cod
   expect(await openedOn("sovereign", { country: "BR" })).toContain("Brazil 5Y");
   expect(await openedOn("sovereign", { country: "" })).toContain("Argentina 5Y");
   expect(await openedOn("sovereign", { country: "Narnia" })).toContain("Argentina 5Y");
+});
+
+test("a server with the spread equivalent adds HY's beside its price, and a day still trading reads so far beside its whole date", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const board = { ...cdx, indexes: cdx.indexes.map((index) => index.id === "HY"
+    ? { ...index, spreadBp: 357.5, recovery: 0.3, partial: false }
+    : index.id === "XOVER" ? { ...index, date: today, partial: true, lastPrintAt: `${today}T08:09:41.000Z`, changeDate: "2026-10-09",
+      points: [...index.points, { date: today, level: 312, prints: 38, maturity: "2031-12-20" }] } : { ...index, partial: false }) } as CdxBoardPayload;
+  for (const width of [100, 140]) {
+    await openedOn("index", {}, board, width);
+    const frame = tui.frame();
+    expect(frame).toContain("SPREAD EQ");
+    expect(frame).toMatch(/CDX HY .*357\.5bp/);
+    expect(frame).toMatch(new RegExp(`iTraxx Crossover .*(${today.slice(0, 5)})?${today.slice(5)} so far`));
+  }
 });

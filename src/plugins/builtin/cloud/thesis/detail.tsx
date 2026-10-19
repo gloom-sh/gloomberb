@@ -32,6 +32,7 @@ import {
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
 import { ClippedText } from "../../../../components/ui/display";
+import { logFailure } from "../../../../utils/log-failure";
 
 type Row =
   | { kind: "heading"; id: string; label: string; section: Section }
@@ -159,7 +160,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
 
   const reloadSignals = useCallback(async () => {
     const current = ++generation.current;
-    const detail = await thesisStore.loadDetail(thesis.id).catch(() => null);
+    const detail = await thesisStore.loadDetail(thesis.id).catch(logFailure("cloud.thesis.detail", "Load thesis signals failed", null));
     if (generation.current !== current || !detail) return;
     setSignals(detail.signals);
   }, [thesis.id]);

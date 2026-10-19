@@ -7,7 +7,7 @@ import {
   type ChartSeriesCatalogItem,
 } from "../../../capabilities";
 import type { TimeSeriesFieldDefinition } from "../../../time-series/types";
-import type { SeriesCatalogEntry } from "../../../series/types";
+import type { SeriesCatalogEntry, SeriesPlacement } from "../../../series/types";
 import {
   canonicalExchange,
   parsePublicTickerKey,
@@ -31,13 +31,20 @@ interface SeriesCatalogSuggestionText {
 }
 
 /**
- * One series to add, or a catalog formula (`42*HO=F - CL=F`): its legs join
- * the chart with the study that weighs them.
+ * One series to add, the lines of a registered series that draws several, or
+ * a catalog formula (`42*HO=F - CL=F`): its legs join the chart with the study
+ * that weighs them.
  */
 export type SeriesCatalogSuggestion = SeriesCatalogSuggestionText & (
-  | { expression: ParsedSeriesExpression; formula?: never }
-  | { formula: string; expression?: never }
-);
+  | { expression: ParsedSeriesExpression; formula?: never; lines?: never }
+  | { lines: ParsedSeriesExpression[]; expression?: never; formula?: never }
+  | { formula: string; expression?: never; lines?: never }
+) & {
+  /** A registered series' own name, and where it asks to be drawn for the ticker it was filled in for. */
+  seriesName?: string;
+  placement?: SeriesPlacement;
+  symbol?: string;
+};
 
 export interface SeriesSearchAnalysis {
   directInstrument: SeriesCatalogInstrument | null;
@@ -306,31 +313,44 @@ function registeredSeriesSuggestions(
   if (!query.trim() || registered.length === 0) return [];
   const instrument = analysis.directInstrument ?? defaultInstrument;
   const tickerQuery = analysis.directInstrument ? analysis.metricQuery : query;
-  const hits: Array<{ entry: SeriesCatalogEntry; rank: number } & (
-    | { expression: ParsedSeriesExpression; formula?: never }
-    | { formula: string; expression?: never }
+  const hits: Array<{ entry: SeriesCatalogEntry; rank: number; symbol?: string } & (
+    | { expression: ParsedSeriesExpression; formula?: never; lines?: never }
+    | { lines: ParsedSeriesExpression[]; expression?: never; formula?: never }
+    | { formula: string; expression?: never; lines?: never }
   )> = [];
   for (const entry of registered) {
     let template = entry.expression;
     let text = query;
+    let symbol: string | undefined;
+    const fill = (value: string) => symbol
+      ? value.replaceAll("{ticker}", value.startsWith("CAP:") ? encodeURIComponent(symbol) : symbol)
+      : value;
     if (entry.input) {
       // Ticker fields are ranked against the security below; options and pairs need their own symbol.
       if (entry.input !== "ticker" || /^\{ticker\}:[A-Za-z]/.test(template) || !tickerQuery.trim()) continue;
-      const symbol = publicTickerKey(instrument.symbol, instrument.exchange);
-      template = template.replaceAll("{ticker}", template.startsWith("CAP:") ? encodeURIComponent(symbol) : symbol);
+      symbol = publicTickerKey(instrument.symbol, instrument.exchange);
+      template = fill(template);
       text = tickerQuery;
     }
     if (!matchesAliasQuery(text, entry.name, entry.expression, entry.id, entry.group ?? "", ...(entry.tags ?? []))) continue;
+    const prefix = symbol ? `${symbol} · ` : "";
+    if (entry.lines?.length) {
+      const lines = entry.lines.flatMap((line) => {
+        const parsed = parseSeriesExpression(fill(line.expression));
+        return parsed ? [{ ...parsed, label: `${prefix}${entry.name} · ${line.name}`, ...(line.style ? { style: line.style } : {}) }] : [];
+      });
+      if (lines.length === entry.lines.length) hits.push({ entry, rank: registeredMatchRank(entry, text), lines, ...(symbol ? { symbol } : {}) });
+      continue;
+    }
     const parsed = parseSeriesExpression(template);
     if (!parsed) {
       if (!entry.input && catalogFormula(template)) hits.push({ entry, rank: registeredMatchRank(entry, text), formula: template });
       continue;
     }
-    const label = entry.input ? `${publicTickerKey(instrument.symbol, instrument.exchange)} · ${entry.name}` : entry.name;
-    hits.push({ entry, rank: registeredMatchRank(entry, text), expression: { ...parsed, label } });
+    hits.push({ entry, rank: registeredMatchRank(entry, text), expression: { ...parsed, label: `${prefix}${entry.name}` }, ...(symbol ? { symbol } : {}) });
   }
   hits.sort((left, right) => left.rank - right.rank || left.entry.name.length - right.entry.name.length);
-  return hits.map(({ entry, expression, formula }): SeriesCatalogSuggestion => {
+  return hits.map(({ entry, expression, lines, formula, symbol }): SeriesCatalogSuggestion => {
     const description = [entry.group, entry.unit, entry.frequency].filter(Boolean).join(" · ");
     const detail = entry.group ?? "Series";
     if (formula !== undefined) {
@@ -338,12 +358,28 @@ function registeredSeriesSuggestions(
       const formulaDescription = [formula, entry.unit, entry.frequency].filter(Boolean).join(" · ");
       return { id: `formula:${formula}`, label: entry.name, description: formulaDescription, detail, formula };
     }
+    const placed = {
+      seriesName: entry.name,
+      ...(entry.placement ? { placement: entry.placement } : {}),
+      ...(symbol ? { symbol } : {}),
+    };
+    if (lines) {
+      return {
+        id: `lines:${suggestionId(lines[0]!)}`,
+        label: `${symbol ? `${symbol} · ` : ""}${entry.name}`,
+        description: [entry.lines!.map((line) => line.name).join(", "), entry.group].filter(Boolean).join(" · "),
+        detail,
+        lines,
+        ...placed,
+      };
+    }
     return {
       id: suggestionId(expression),
       label: expression.kind === "capability" ? expression.label ?? entry.name : `${entry.expression} · ${entry.name}`,
       description,
       detail,
       expression,
+      ...placed,
     };
   });
 }

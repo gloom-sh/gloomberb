@@ -24,7 +24,12 @@ export interface MarketBoardRow {
   asOf: string | null;
   asOfText?: string;
   history: PricePoint[];
-  status?: "available" | "stale" | "unavailable";
+  /**
+   * Stale and partial rows carry a word beside their date: `stale` (in the
+   * warning colour) for an observation too old to be the market now, `so far`
+   * for a day still trading, whose figures will move until it ends.
+   */
+  status?: "available" | "stale" | "partial" | "unavailable";
   /**
    * Which way a move is bad news when `signedChange` colours it: a spread
    * widening is "up"; a price falling is "down", the default.
@@ -82,10 +87,12 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
  * before the data columns.
  */
 const FIT_STEPS = ["labelDetail", "history", "shortAsOf", "changeAsOf", "percentile"] as const;
+/** The narrowest the name column gives way to in a board too narrow for every column. */
+const MIN_GROW_WIDTH = 10;
 /** An as-of date without its year ("09-17"). */
 const SHORT_AS_OF_WIDTH = 5;
-/** The word a stale row's date carries, with its space: "2026-09-17 stale". */
-const STALE_WORD = " stale";
+/** The word a stale or partial row's date carries, with its space: "2026-09-17 stale", "2026-10-19 so far". */
+const STATUS_WORDS: Partial<Record<NonNullable<MarketBoardRow["status"]>, string>> = { stale: " stale", partial: " so far" };
 
 function shortIsoDate(text: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.slice(5) : text;
@@ -113,10 +120,13 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
     shortAsOf = false;
     columns = withAsOfWidth(columns, fullAsOf);
   }
-  // The detail name, when it survives, is the column that grows.
+  // The detail name, when it survives, is the column that grows, and the one
+  // that gives way when the board is still too wide, so the date and its word are never cut.
   const growId = columns.some((column) => column.id === "labelDetail") ? "labelDetail" : "label";
+  const excess = Math.max(0, getTableWidth(columns) - width);
   return {
-    columns: columns.map((column) => column.id === growId ? { ...column, flexGrow: 1 } : column),
+    columns: columns.map((column) => column.id === growId
+      ? { ...column, width: Math.max(MIN_GROW_WIDTH, column.width - excess), flexGrow: 1 } : column),
     shortAsOf,
   };
 }
@@ -136,8 +146,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     return compareSortValues(left, right, sort.direction);
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
-  // A stale row's date carries a word, so the column has room for both and the date is never cut.
-  const wordWidth = rows.some((row) => row.status === "stale") ? STALE_WORD.length : 0;
+  // A stale or partial row's date carries a word, so the column has room for both and the date is never cut.
+  const wordWidth = Math.max(0, ...rows.map((row) => (row.status ? STATUS_WORDS[row.status]?.length : 0) ?? 0));
   const { columns, shortAsOf } = fitBoardColumns([
     { id: "label", label: labelHeader, width: labelWidth, align: "left" },
     ...(rows.some((row) => row.labelDetail !== undefined)
@@ -166,7 +176,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     const asOfText = shortAsOf ? shortIsoDate(asOf) : asOf;
     // A narrow board drops the year; the export keeps the full date. The word
     // stays with the color, so a stale row is not color alone.
-    return { text: row.status === "stale" ? `${asOfText}${STALE_WORD}` : asOfText, ...(row.asOf ? { value: row.asOf } : {}),
+    const word = row.status ? STATUS_WORDS[row.status] ?? "" : "";
+    return { text: `${asOfText}${word}`, ...(row.asOf ? { value: row.asOf } : {}),
       color: row.status === "stale" ? colors.warning : colors.textDim };
   };
   return <DataTableStackView columns={columns} items={items} getItemKey={(row) => row.id} renderCell={renderCell}

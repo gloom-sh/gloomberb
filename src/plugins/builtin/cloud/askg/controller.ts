@@ -35,6 +35,7 @@ import {
   type ToolResultPayload,
 } from "./protocol";
 import { toolErrorNote } from "./notes";
+import { logFailure } from "../../../../utils/log-failure";
 
 /** Turns kept as context for the next question. */
 const MAX_HISTORY_TURNS = 8;
@@ -486,8 +487,8 @@ export class ASKGSessionController {
       const manifest = this.manifest ?? await this.options.loadManifest();
       this.manifest = manifest;
       return await this.options.getExecutor(manifest)?.preview?.(call, signal) ?? null;
-    } catch {
-      return null;
+    } catch (error) {
+      return logFailure("cloud.askg.controller", "Preview a tool call for approval failed", null)(error);
     }
   }
 
@@ -698,7 +699,8 @@ export class ASKGSessionController {
     const sessionId = this.session?.sessionId;
     const remoteTurnId = turn?.remoteTurnId;
     if (sessionId && remoteTurnId) {
-      void this.options.transport.cancelTurn(sessionId, remoteTurnId).catch(() => {});
+      void this.options.transport.cancelTurn(sessionId, remoteTurnId)
+        .catch(logFailure("cloud.askg.controller", "Cancel the turn on the server failed"));
     }
   }
 

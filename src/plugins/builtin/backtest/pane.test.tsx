@@ -94,7 +94,7 @@ test("a short stacked pane sizes the chart with the kit: the legend names the li
   expect(lines.slice(0, row).join("\n")).toContain("• Buy & hold");
   expect(lines.slice(0, row).join("\n")).toContain("+ Strategy");
   // The table keeps its header and four metrics under the chart.
-  for (const label of ["Total return", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
+  for (const label of ["Price return", "CAGR", "Volatility (ann.)", "Sharpe (0% cash)"]) {
     expect(lines.slice(row).join("\n")).toContain(label);
   }
 });

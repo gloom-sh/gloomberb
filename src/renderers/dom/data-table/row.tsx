@@ -159,7 +159,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
           >
             {column.headerLeading !== undefined ? <Leading>{column.headerLeading}</Leading> : null}
             <span
-              title={column.label || undefined}
+              title={column.title ?? (column.label || undefined)}
               style={{
                 ...clippedCellTextStyle(column, color, TextAttributes.BOLD),
                 width: "auto",

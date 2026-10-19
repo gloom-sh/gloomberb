@@ -195,7 +195,8 @@ export function formatSeriesExpression(series: ChartSeriesSpec): string {
 export function registeredSeriesName(source: { capabilityId: string; seriesId: string }): string | null {
   const found = getSharedRegistry()?.series?.findLoaded(source.capabilityId, source.seriesId);
   if (!found) return null;
-  return found.ticker ? `${found.ticker} ${found.series.definition.name}` : found.series.definition.name;
+  const name = found.line ? `${found.series.definition.name} · ${found.line.name}` : found.series.definition.name;
+  return found.ticker ? `${found.ticker} ${name}` : name;
 }
 
 export function chartSeriesLabel(series: ChartSeriesSpec): string {

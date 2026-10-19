@@ -214,6 +214,11 @@ export interface ResolvedSeries {
   points: TimeSeriesPoint[];
   /** Who a report of a loaded series cites, when its loader names the dataset and publisher. */
   attribution?: SeriesAttribution;
+  /**
+   * The ticker whose price the values are in, such as a moving average of it:
+   * the chart draws the series on that price's axis when it shows the price.
+   */
+  priceOf?: string;
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;

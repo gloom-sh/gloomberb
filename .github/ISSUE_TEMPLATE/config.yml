@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/gloom-sh/gloomberb/security/advisories/new
     about: Report it privately instead of opening a public issue. See SECURITY.md.
+  - name: Ask a question or share an idea
+    url: https://gloom.sh/discord
+    about: "Join the Gloom Discord. Development questions go in #contributors."

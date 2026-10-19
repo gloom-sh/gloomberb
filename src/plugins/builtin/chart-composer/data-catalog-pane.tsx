@@ -25,6 +25,7 @@ import {
   catalogEmptyCopy,
   catalogExpressionForRow,
   catalogInstrumentMatchesQuery,
+  catalogPlacedSeriesForRow,
   catalogRowsForListedCrypto,
   catalogRowsForResolvedInstruments,
   catalogRowsFromEntries,
@@ -40,6 +41,7 @@ import {
   type CatalogSeriesRow,
 } from "./catalog-inventory";
 import { useCatalogUniverse, useRegisteredSeries } from "./use-series-catalog";
+import { buildRegisteredSeriesChart } from "./presets";
 
 type CatalogColumnId = "series" | "group" | "unit" | "frequency" | "publisher" | "expression";
 type CatalogColumn = DataTableColumn & { id: CatalogColumnId };
@@ -105,7 +107,7 @@ function buildColumns(width: number, showGroup: boolean): CatalogColumn[] {
 }
 
 export function DataCatalogPane({ focused, width, height }: PaneProps) {
-  const { createPaneFromTemplate } = usePluginAppActions();
+  const { createPaneFromTemplate, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [seedQuery] = usePaneSettingValue("query", "");
   const [searchQuery, setSearchQuery] = useState(seedQuery);
@@ -152,6 +154,22 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
 
   const columns = useMemo(() => buildColumns(width, filter === "all"), [filter, width]);
 
+  // A series that says where it is drawn, or draws several lines, opens as the chart it builds.
+  const chartPlacedSeries = useCallback((row: CatalogSeriesRow, ticker?: string): boolean => {
+    if (!row.seriesName) return false;
+    const series = catalogPlacedSeriesForRow(row, ticker);
+    if (!series) return true;
+    let chartSpec: ReturnType<typeof buildRegisteredSeriesChart>;
+    try {
+      chartSpec = buildRegisteredSeriesChart(series, series.symbol);
+    } catch (error) {
+      notify({ body: error instanceof Error ? error.message : `${series.name} cannot be charted.`, type: "error" });
+      return true;
+    }
+    createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, { shareData: { chartSpec } });
+    return true;
+  }, [createPaneFromTemplate, notify]);
+
   const chartSelected = useCallback(async (row: CatalogSeriesRow | null) => {
     if (!row) return;
     if (row.input) {
@@ -176,13 +194,15 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
           />
         ),
       }).catch(() => undefined);
+      if (chartPlacedSeries(row, ticker)) return;
       const expression = catalogExpressionForRow(row, ticker);
       if (!expression) return;
       createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, { arg: expression });
       return;
     }
+    if (chartPlacedSeries(row)) return;
     createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, { arg: row.template });
-  }, [createPaneFromTemplate, dialog]);
+  }, [chartPlacedSeries, createPaneFromTemplate, dialog]);
 
   // `/` and `g` are footer hints, which bind their own keys; the table only
   // hands the cursor up into the search from its first row.

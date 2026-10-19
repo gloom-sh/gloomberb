@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
-import { Notice, Section, SectionHeading, usePaneFooter, usePaneTabs, type PaneHint, type TableSection } from "../../../components";
+import { Notice, Section, SectionHeading, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneHint, type TableSection } from "../../../components";
 import { t, tf } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -35,6 +35,18 @@ function entry(id: string, badges: string[], description: string): ShortcutTable
   return { id, badges, description };
 }
 
+/**
+ * Real functions on real tickers, one click each, for someone who has not
+ * learned a code yet. Each row runs its text as if typed into the bar.
+ */
+const TRY_THESE = [
+  { query: "DES AAPL", description: "Apple at a glance" },
+  { query: "GP NVDA", description: "Nvidia's price chart" },
+  { query: "FA MSFT", description: "Microsoft's financials" },
+  { query: "CMP AAPL MSFT", description: "Apple and Microsoft side by side" },
+  { query: "EE TSLA", description: "What analysts expect from Tesla" },
+] as const;
+
 function HelpPane({ focused, width, height }: PaneProps) {
   const registry = getSharedRegistry();
   const { openCommandBar, showPane, createPaneFromTemplate } = usePluginAppActions();
@@ -46,6 +58,12 @@ function HelpPane({ focused, width, height }: PaneProps) {
   }, []);
   const commandShortcuts = resolveCommandShortcuts(registry);
   const windowTemplates = resolveWindowTemplates(registry);
+  // The codes this app has: the web, a plugin switched off or one never
+  // installed leaves some out, and Basics only points at codes that run. A
+  // string, so the rows built from it keep their identity between renders.
+  const knownCodesKey = registry
+    ? [...new Set([...commandShortcuts, ...windowTemplates].map((shortcut) => shortcut.badges[0] ?? ""))].sort().join(" ")
+    : null;
   const uiHost = useUiHost();
   const shortcutPlatform = detectShortcutPlatform();
   const shortcutDisplayMode = getShortcutDisplayMode(uiHost.kind);
@@ -134,12 +152,36 @@ function HelpPane({ focused, width, height }: PaneProps) {
   // The footer binds each hint's key; a search field keeps its typing.
   usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
 
+  const runQuery = useCallback((query: string) => {
+    registry?.runCommandBarQuery(query);
+  }, [registry]);
+  const hasCode = useMemo(() => {
+    const known = knownCodesKey === null ? null : new Set(knownCodesKey.split(" "));
+    return (code: string) => !known || known.has(code);
+  }, [knownCodesKey]);
+  const tryRows = useMemo(() => TRY_THESE.filter((row) => hasCode(row.query.split(" ")[0]!)), [hasCode]);
+  const trySections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => tryRows.length > 0 ? [{
+    label: "Try These",
+    items: tryRows.map((row) => ({
+      ...entry(`try:${row.query}`, row.query.split(" "), row.description),
+      run: () => runQuery(row.query),
+    })),
+  }] : [], [runQuery, tryRows]);
+  // The keyboard reaches the same rows from the pane menu.
+  usePaneMenuItems("help:try-these", () => activeTabId === "basics"
+    ? tryRows.map((row) => ({
+      id: `try:${row.query}`,
+      label: `${t(row.description)} (${row.query})`,
+      onSelect: () => runQuery(row.query),
+    }))
+    : null, [activeTabId, runQuery, tryRows]);
+
   // What to do first, by task rather than by key: new people leave when they
-  // do not know any code or what the data is for.
+  // do not know any code or what the data is for. DES leads Try These and the
+  // command bar list below, so it is not repeated here.
   const startSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Start Here",
     items: [
-      entry("start-des", ["DES", "<ticker>"], "Research a company: the overview, then tabs for the chart, financials, news, filings and earnings calls."),
       entry("start-ap", ["AP"], "Add what you own. Alerts and emails then follow your portfolio."),
       entry("start-pf", ["PF"], "Your portfolio and watchlists."),
       entry("start-most", ["MOST"], "Today's biggest movers, with pre-market, after-hours and gap lists."),
@@ -147,8 +189,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("start-ern", ["ERN"], "Upcoming earnings, with the move options imply."),
       entry("start-eco", ["ECO"], "The economic calendar."),
       entry("start-askg", ["ASKG", "<question>"], "Ask Gloom: answers that cite filings, calls and news."),
-    ],
-  }], []);
+    ].filter((item) => hasCode(item.badges[0]!)),
+  }], [hasCode]);
 
   const commandBarSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Command Bar",
@@ -285,15 +327,20 @@ function HelpPane({ focused, width, height }: PaneProps) {
       default:
         return (
           <>
+            {trySections.length > 0 && (
+              <Box marginBottom={1}>
+                <ShortcutTable sections={trySections} width={bodyWidth} keyLabel="TYPE" descriptionLabel="OPENS" />
+              </Box>
+            )}
+
             <Box flexDirection="column" gap={1}>
               <SectionHeading title="How To Use Gloomberb" />
               <Box flexDirection="column">
-                <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
                 <Text fg={colors.textDim} wrapText>{t("Click anything to use it; the keys shown beside actions are shortcuts.")}</Text>
                 <Text fg={colors.textDim} wrapText>
                   {commandBarBadges[0]
-                    ? tf("Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
-                    : t("Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
+                    ? tf("Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                    : t("Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.")}
                 </Text>
               </Box>
             </Box>

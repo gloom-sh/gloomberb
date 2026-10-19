@@ -1,5 +1,5 @@
-import { useLayoutEffect } from "react";
-import { t } from "../../../i18n";
+import { useLayoutEffect, useState } from "react";
+import { t, tf } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
@@ -11,6 +11,9 @@ import type { CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
+import { takeCommandBarExample } from "./prompt-example";
+import { useAppSelector } from "../../../state/app/context";
+import { showsCommandBarIntro } from "../../../app/command-bar-intro";
 import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
@@ -19,11 +22,15 @@ const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 /**
  * The root screen keeps the closed prompt's own words. Opening the bar puts the
  * caret in the same input the header was already showing, so changing the
- * placeholder underneath it read as the control being swapped out. Nested
- * screens are a different screen and say so.
+ * placeholder underneath it read as the control being swapped out. The first
+ * opens are the exception: they show plain words to type instead, picked once
+ * when the bar opens and kept until it closes. Nested screens are a different
+ * screen and say so.
  */
-function resolvePromptPlaceholder(listState: ListScreenState): string {
-  if (listState.kind === "root") return t("Search or run a command");
+function resolvePromptPlaceholder(listState: ListScreenState, example: string | null): string {
+  if (listState.kind === "root") {
+    return example ? tf("Try: {example}", { example }) : t("Search or run a command");
+  }
   if (listState.title === "Security Description") return t("Search tickers");
   return t("Filter");
 }
@@ -65,6 +72,10 @@ export function CommandBarPanel({
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
   const palette = useCommandBarPalette(nativePaneChrome);
+  // The count already includes this opening, so this reads the same until the bar closes.
+  const intro = useAppSelector((state) => showsCommandBarIntro(state.config));
+  // The bar mounts on each opening, so each of the first openings gets its own example.
+  const [example] = useState(() => (intro ? takeCommandBarExample() : null));
 
   useLayoutEffect(() => {
     const scrollBox = nativeListScrollRef.current;
@@ -88,11 +99,11 @@ export function CommandBarPanel({
     publishCommandBarPrompt({
       screenKey: `${visibleListState.kind}:${visibleListState.title}`,
       query: visibleListState.query,
-      placeholder: resolvePromptPlaceholder(visibleListState),
+      placeholder: resolvePromptPlaceholder(visibleListState, example),
       ghostSuffix: visibleListState.kind === "root" ? rootGhostSuffix : null,
       onQueryChange,
     });
-  }, [onQueryChange, rootGhostSuffix, visibleListState]);
+  }, [example, onQueryChange, rootGhostSuffix, visibleListState]);
   useLayoutEffect(() => () => publishCommandBarPrompt(null), []);
 
   useLayoutEffect(() => {

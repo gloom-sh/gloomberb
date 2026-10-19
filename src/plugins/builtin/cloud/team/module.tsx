@@ -9,6 +9,7 @@ import { TeamStatusWidget } from "./status-widget";
 import { teamStore } from "../../../../team/store";
 import { installTeamStateHost } from "./team-state-host";
 import { createCloudViewsCapability, teamViewsStore } from "./views";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * Teams inside the cloud plugin: the store every surface reads, the team pane
@@ -63,7 +64,10 @@ export const teamModule: PluginModule = {
     // The chat sidebar reads channels from the chat controller; when a team's
     // channels or membership change, that list is stale until refetched.
     disposeChannelRefresh = teamStore.onTeamUpdated((event) => {
-      if (event.change !== "settings") void chatController.refreshChatState().catch(() => {});
+      if (event.change !== "settings") {
+        void chatController.refreshChatState()
+          .catch(logFailure("cloud.team", "Refresh chat channels after a team change failed"));
+      }
     });
   },
   dispose() {

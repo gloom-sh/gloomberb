@@ -10,10 +10,12 @@ import {
 } from "./chart-spec-edit";
 import { setBuiltinStudies } from "./studies";
 import {
+  appendCatalogSuggestion,
   buildComparisonChartPreset,
   buildCustomChartPreset,
   buildFundamentalChartPreset,
   buildPriceChartPreset,
+  buildRegisteredSeriesChart,
 } from "./presets";
 
 describe("chart composer series placement", () => {
@@ -296,5 +298,64 @@ describe("chart composer research rebinding", () => {
     expect(rebindResearchChartSpec(comparison, "ASML:XAMS", "ASML:NASDAQ")).toBe(comparison);
     const economic = buildCustomChartPreset("FRED:CPIAUCSL");
     expect(rebindResearchChartSpec(economic, "ASML:XAMS", "ASML:XNAS")).toBe(economic);
+  });
+});
+
+describe("registered series that say where they are drawn", () => {
+  const entry = (placement: "price" | "panel") => ({
+    name: "Bands",
+    template: "CAP:lab:bands/{ticker}",
+    placement,
+    lines: [
+      { id: "mid", name: "Middle", expression: "CAP:lab:bands~mid/{ticker}" },
+      { id: "hist", name: "Spread", style: "columns" as const, expression: "CAP:lab:bands~hist/{ticker}" },
+    ],
+  });
+
+  test("CAT draws a panel series' lines together under the ticker's price, and a price series' lines over it", () => {
+    const panel = buildRegisteredSeriesChart(entry("panel"), "AAPL");
+    expect(panel.series.map((series) => [series.label ?? "price", series.panelId, series.style])).toEqual([
+      ["price", "main", "candles"],
+      ["AAPL · Bands · Middle", "panel-2", "line"],
+      ["AAPL · Bands · Spread", "panel-2", "columns"],
+    ]);
+    expect(panel.panels.find((entry) => entry.id === "panel-2")).toMatchObject({ label: "Bands" });
+    expect(panel.series[1]!.source).toEqual({ kind: "capability", capabilityId: "lab", seriesId: "bands~mid/AAPL" });
+
+    const over = buildRegisteredSeriesChart(entry("price"), "AAPL");
+    expect(over.series.map((series) => series.panelId)).toEqual(["main", "main", "main"]);
+  });
+
+  test("adding one from the chart's search puts every line where it asks, beside what the chart already shows", () => {
+    const chart = buildCustomChartPreset("AAPL:price, MSFT:price");
+    const lines = entry("panel").lines.map((line) => ({
+      kind: "capability" as const, capabilityId: "lab", seriesId: line.expression.slice("CAP:lab:".length).replace("{ticker}", "MSFT"),
+      label: `MSFT · Bands · ${line.name}`,
+    }));
+    const suggestion = { id: "lines", label: "MSFT · Bands", description: "", detail: "", lines, seriesName: "Bands", symbol: "MSFT" };
+    const inPanel = appendCatalogSuggestion(chart, { ...suggestion, placement: "panel" }).spec;
+    const added = inPanel.series.slice(2);
+    expect(new Set(added.map((series) => series.panelId)).size).toBe(1);
+    expect(added[0]!.panelId).not.toBe("main");
+    expect(inPanel.panels.some((panel) => panel.id === added[0]!.panelId && panel.label === "Bands")).toBe(true);
+
+    const overPrice = appendCatalogSuggestion(chart, { ...suggestion, placement: "price" }).spec;
+    expect(overPrice.series.slice(2).map((series) => series.panelId)).toEqual(["main", "main"]);
+    expect(() => appendCatalogSuggestion(buildCustomChartPreset("A, B, C, D, E, F, G, H, I"), { ...suggestion, placement: "panel" }))
+      .toThrow(/up to 10 base series/);
+  });
+
+  test("a chart that follows another ticker takes a registered series of the ticker along", () => {
+    const rebound = rebindChartSecuritySymbol(buildRegisteredSeriesChart(entry("panel"), "AAPL"), "AAPL", "NVDA");
+    expect(rebound.series.map((series) => series.source.kind === "capability" ? series.source.seriesId : series.source.kind))
+      .toEqual(["security", "bands~mid/NVDA", "bands~hist/NVDA"]);
+    expect(rebound.series[1]!.label).toBe("NVDA · Bands · Middle");
+  });
+
+  test("so does any other registered series of that ticker, placed or not", () => {
+    const chart = buildCustomChartPreset("AAPL, CAP:lab:days/AAPL, CAP:lab:days/MSFT");
+    const rebound = rebindChartSecuritySymbol(chart, "AAPL", "NVDA");
+    expect(rebound.series.map((series) => series.source.kind === "capability" ? series.source.seriesId : series.source.kind))
+      .toEqual(["security", "days/NVDA", "days/MSFT"]);
   });
 });

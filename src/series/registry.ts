@@ -8,11 +8,15 @@ import type {
   RegisteredSeries,
   SeriesCatalogEntry,
   SeriesDefinition,
+  SeriesLine,
 } from "./types";
 
+/** Between a series' name and one of its lines in a capability series id: `bands~upper/AAPL`. */
+const LINE_SEPARATOR = "~";
+
 /** The expression a loaded series charts as: the namespace is its chart-series capability. */
-function loadedSeriesExpression(definition: Pick<SeriesDefinition, "id" | "input">): string {
-  return `CAP:${definition.id}${definition.input ? `/${TICKER_PLACEHOLDER}` : ""}`;
+function loadedSeriesExpression(definition: Pick<SeriesDefinition, "id" | "input">, lineId?: string): string {
+  return `CAP:${definition.id}${lineId ? `${LINE_SEPARATOR}${lineId}` : ""}${definition.input ? `/${TICKER_PLACEHOLDER}` : ""}`;
 }
 
 export function seriesExpression(definition: SeriesDefinition): string {
@@ -20,25 +24,31 @@ export function seriesExpression(definition: SeriesDefinition): string {
 }
 
 /**
- * The capability series id a loaded series charts under: its name, and for a
- * series with an input, the symbol after a slash (`days-to-cover/AAPL`).
+ * The capability series id a loaded series charts under: its name, one of its
+ * lines after a tilde, and for a series with an input, the symbol after a
+ * slash (`days-to-cover/AAPL`, `bands~upper/AAPL`).
  */
-export function capabilitySeriesId(definition: Pick<SeriesDefinition, "id">, ticker?: string): string {
-  const name = splitSeriesId(definition.id)?.name ?? definition.id;
+export function capabilitySeriesId(definition: Pick<SeriesDefinition, "id">, ticker?: string, lineId?: string): string {
+  const name = `${splitSeriesId(definition.id)?.name ?? definition.id}${lineId ? `${LINE_SEPARATOR}${lineId}` : ""}`;
   return ticker ? `${name}/${encodeURIComponent(ticker.trim().toUpperCase())}` : name;
 }
 
-/** The registered id and the typed symbol a capability series id names. */
-function parseCapabilitySeriesId(namespace: string, seriesId: string): { id: string; ticker?: string } {
+/** The registered id, the line and the typed symbol a capability series id names. */
+function parseCapabilitySeriesId(namespace: string, seriesId: string): { id: string; ticker?: string; line?: string } {
   const slash = seriesId.indexOf("/");
-  if (slash < 0) return { id: `${namespace}:${seriesId}` };
+  const named = slash < 0 ? seriesId : seriesId.slice(0, slash);
+  const tilde = named.indexOf(LINE_SEPARATOR);
+  const name = tilde < 0 ? named : named.slice(0, tilde);
+  const line = tilde < 0 ? undefined : named.slice(tilde + 1);
+  const base = { id: `${namespace}:${name}`, ...(line ? { line } : {}) };
+  if (slash < 0) return base;
   let ticker: string;
   try {
     ticker = decodeURIComponent(seriesId.slice(slash + 1));
   } catch {
     ticker = seriesId.slice(slash + 1);
   }
-  return { id: `${namespace}:${seriesId.slice(0, slash)}`, ticker };
+  return { ...base, ticker };
 }
 
 export function seriesCatalogEntry(series: RegisteredSeries): SeriesCatalogEntry {
@@ -54,6 +64,16 @@ export function seriesCatalogEntry(series: RegisteredSeries): SeriesCatalogEntry
     ...(definition.publisher ? { publisher: definition.publisher } : {}),
     ...(definition.url ? { url: definition.url } : {}),
     ...(definition.input ? { input: definition.input } : {}),
+    ...(definition.placement ? { placement: definition.placement } : {}),
+    ...(definition.lines?.length ? {
+      lines: definition.lines.map((line) => ({
+        id: line.id,
+        name: line.name,
+        // A line shading the area to another is drawn as a band: its line inside the shade.
+        ...(line.fill ? { style: "band" as const } : line.style ? { style: line.style } : {}),
+        expression: loadedSeriesExpression(definition, line.id),
+      })),
+    } : {}),
     expression: seriesExpression(definition),
     pluginId,
   };
@@ -131,14 +151,20 @@ export class SeriesRegistry {
     return this.namespaces.get(namespace)?.pluginId;
   }
 
-  /** The loaded series a chart-series capability source names, with the typed symbol. */
-  findLoaded(capabilityId: string, seriesId: string): { series: RegisteredSeries; ticker?: string } | null {
+  /**
+   * The loaded series a chart-series capability source names, with the typed
+   * symbol and the line. A series with lines named without one is its first line.
+   */
+  findLoaded(capabilityId: string, seriesId: string): { series: RegisteredSeries; ticker?: string; line?: SeriesLine } | null {
     if (!this.namespaces.has(capabilityId)) return null;
-    const { id, ticker } = parseCapabilitySeriesId(capabilityId, seriesId);
+    const { id, ticker, line: lineId } = parseCapabilitySeriesId(capabilityId, seriesId);
     const series = this.entries.get(id);
     if (!series?.definition.load) return null;
     if (!!series.definition.input !== !!ticker) return null;
-    return { series, ...(ticker ? { ticker } : {}) };
+    const lines = series.definition.lines;
+    const line = lines?.length ? lineId ? lines.find((entry) => entry.id === lineId) : lines[0] : undefined;
+    if (lineId && !line) return null;
+    return { series, ...(ticker ? { ticker } : {}), ...(line ? { line } : {}) };
   }
 
   /** The series that charts as this exact expression (`FRED:UNRATE`), if one without an input does. */

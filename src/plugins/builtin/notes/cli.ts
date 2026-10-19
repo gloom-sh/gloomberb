@@ -7,6 +7,7 @@ import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../c
 import { createPluginPersistence } from "../../plugin-persistence";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
+import { logFailure } from "../../../utils/log-failure";
 import { readChatSessionState } from "../chat/controller/persistence";
 import { exportNotesToDirectory, type NotesExportSource } from "./export";
 import { NotesFiles } from "./files";
@@ -46,11 +47,12 @@ export const notesCliCommand: CliCommandDef = {
           const session = readChatSessionState(cloudPersistence, null);
           if (!session?.sessionToken) return;
           apiClient.setSessionToken(session.sessionToken);
-          const user = await apiClient.ensureVerifiedSession().catch(() => null);
+          const user = await apiClient.ensureVerifiedSession()
+            .catch(logFailure("notes.cli", "Verify the saved session for the notes export failed", null));
           if (!user) return;
           const notesPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:notes", "notes");
           sources.push({ label: "mine", store: new CloudNotesStore({ kind: "user" }, notesPersistence) });
-          const teams = await apiClient.listTeams().catch(() => []);
+          const teams = await apiClient.listTeams().catch(logFailure("notes.cli", "List teams for the notes export failed", []));
           for (const team of teams) {
             sources.push({ label: team.name, store: new CloudNotesStore({ kind: "team", teamId: team.id }, notesPersistence) });
           }
@@ -92,8 +94,10 @@ export const notesCliCommand: CliCommandDef = {
       }
       if (action === "delete" || action === "rm") {
         const symbol = await noteSymbol("Usage: gloomberb notes delete <symbol>");
-        // Only picks the message; an unreadable note is still deleted.
-        const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => true);
+        const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => {
+          // Intentional ignore: an unreadable note is still deleted, so the message says it existed.
+          return true;
+        });
         if (!ctx.cliOptions.dryRun) await notes.delete(symbol);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol }, ...read }, {
           text: (data) => existed

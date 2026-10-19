@@ -80,7 +80,9 @@ const ISSUER_COLUMNS: HeadlessPaneColumn[] = [
 
 /**
  * A listed issuer as the report keeps it: its level and moves as quoted, with
- * their unit, beside the level in bp it always has.
+ * their unit, beside the level in bp it always has. It is dated by its 5Y
+ * level's day (JPM's can be weeks before its last trade), or by its last
+ * trade without one.
  */
 function issuerRow(row: CdsIssuerSummary): HeadlessPaneRow {
   const quoted = quotedLevel(row);
@@ -98,6 +100,7 @@ function issuerRow(row: CdsIssuerSummary): HeadlessPaneRow {
     change1M: quoted.change1m,
     unit: quoted.unit,
     ...(row.quote === "upfront" ? { couponBp: row.couponBp } : {}),
+    asOf: row.spread5yDate ?? row.lastTradeAt,
   };
 }
 
@@ -108,9 +111,10 @@ const DAILY_DAYS = { defaultValue: 365, minimum: 30, maximum: 730 };
  * Each day's 5Y level on the contract on the run that day, newest first,
  * over the last `days`: the chart as a table, which `--csv --section daily`
  * exports. Its key is `day`, not `date`, so the history is not read as the
- * report's own observation dates.
+ * report's own observation dates. Each exported row is the name's, dated by
+ * its own day, in the unit the line is quoted in (`bp`, or `pts` upfront).
  */
-function dailySection(history: CdsSpreadHistory, days: number): HeadlessBundleSection {
+function dailySection(history: CdsSpreadHistory, days: number, name: string): HeadlessBundleSection {
   const latest = history.points.at(-1)?.date;
   const from = latest ? new Date(Date.parse(`${latest}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10) : "";
   // A name quoted upfront lists each day's points beside its spread.
@@ -134,11 +138,15 @@ function dailySection(history: CdsSpreadHistory, days: number): HeadlessBundleSe
       .map((point) => ({
         day: point.date,
         spreadBp: point.spreadBp,
-        ...(upfront ? { upfrontPts: point.upfrontPts ?? null, unit: "pts" } : {}),
+        ...(upfront ? { upfrontPts: point.upfrontPts ?? null } : {}),
+        unit: upfront ? "pts" : "bp",
         prints: point.prints,
         maturity: point.maturity,
       })),
     empty: "No daily 5Y levels.",
+    symbol: name,
+    rowUnitKey: "unit",
+    rowAsOfKey: "day",
   };
 }
 
@@ -230,15 +238,20 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     const why = line ? noLevelMessage(line.noLevelReason, line.points.at(-1)?.date ?? null) : null;
     if (why) notes.push(`${why}.`);
     else if (line && entries.length === 0) notes.push(`No 5Y spread level for ${name} in the last two years.`);
+    // The 5Y figures are dated by their level's day, each trade and each daily level by its own.
+    const levelDate = line ? spreadSummary(line)?.date : undefined;
     const sections: HeadlessBundleSection[] = [
-      ...(entries.length ? [{ title: name, entries }] : []),
+      ...(entries.length ? [{ title: name, entries, symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
       {
         title: "Trades",
         columns: TRADE_COLUMNS,
         rows: sortTrades(activity.trades, DEFAULT_TRADE_SORT).map((trade) => ({ ...trade })),
         empty,
+        rowSymbolKey: "issuer",
+        rowUnitKey: "currency",
+        rowAsOfKey: "eventAt",
       },
-      ...(line?.points.length ? [dailySection(line, days)] : []),
+      ...(line?.points.length ? [dailySection(line, days, name)] : []),
     ];
     return {
       sections,
@@ -260,6 +273,10 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
       columns: ISSUER_COLUMNS,
       rows: sortIssuers(issuers, issuerListSort(sort)).map(issuerRow),
       empty,
+      // Each row is its issuer's, in the unit it is quoted in (bp, or pts upfront), on its own day.
+      rowSymbolKey: "issuer",
+      rowUnitKey: "unit",
+      rowAsOfKey: "asOf",
     }],
     metadata: { ...metadata, sort: issuerListSort(sort).columnId },
     freshness: cdsFreshness(lastTradeOf(activity.trades)),

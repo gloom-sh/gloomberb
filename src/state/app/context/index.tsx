@@ -458,6 +458,7 @@ export function AppProvider({
   const effectiveThemeId = getEffectiveThemeId(state);
   const previousRecentTickers = useRef(state.recentTickers);
   const previousRecentCommands = useRef(state.config.recentCommands);
+  const previousCommandBarOpens = useRef(state.config.commandBarOpens);
   const stateRef = useRef(state);
   const listenersRef = useRef(new Set<() => void>());
   const storeRef = useRef<AppContextStoreValue | null>(null);
@@ -537,6 +538,14 @@ export function AppProvider({
     previousRecentCommands.current = state.config.recentCommands;
     scheduleConfigSave(() => ({ ...stateRef.current.config, recentTickers: stateRef.current.recentTickers }));
   }, [state.config.recentCommands]);
+
+  // Opening the empty bar changes only config.commandBarOpens, until it stops
+  // counting; nothing else saves it.
+  useEffect(() => {
+    if (previousCommandBarOpens.current === state.config.commandBarOpens) return;
+    previousCommandBarOpens.current = state.config.commandBarOpens;
+    scheduleConfigSave(() => ({ ...stateRef.current.config, recentTickers: stateRef.current.recentTickers }));
+  }, [state.config.commandBarOpens]);
 
   useEffect(() => {
     if (!desktopBridge) return;

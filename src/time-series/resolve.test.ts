@@ -127,6 +127,42 @@ describe("resolveChartSpecData", () => {
     expect(withoutMetadata.series[0]?.unit).toBe("currency");
   });
 
+  test("a series drawn in a ticker's price shares that price's axis instead of taking a scale of its own", async () => {
+    const history = [
+      { date: new Date("2026-01-14"), close: 75, volume: 10 },
+      { date: new Date("2026-01-15"), close: 77.53, volume: 12 },
+    ];
+    const provider = createTestDataProvider({
+      getQuote: async () => ({ symbol: "NESN", listingExchangeName: "SWX", currency: "CHF", instrumentType: "EQUITY", price: 77.53, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-16") }),
+      getTickerFinancials: async () => emptyFinancials(),
+      getPriceHistory: async () => history,
+      getPriceHistoryForResolution: async () => history,
+    });
+    const line = (id: string, priceOf?: string) => async () => ({
+      id, label: id, color: "#fff", unit: "currency", unitGroup: "series:currency", ...(priceOf ? { priceOf } : {}),
+      nativeFrequency: "daily" as const, dataShape: "scalar" as const, style: "line" as const, transform: "raw" as const,
+      axis: "left" as const, panelId: "main", interpolation: "none" as const,
+      points: [{ date: new Date("2026-01-15"), observedAt: new Date("2026-01-15"), value: 76 }],
+    });
+    const spec = chartSpec({
+      viewport: { range: "1M", resolution: "1d" },
+      series: [
+        chartSeries({ id: "price", source: { kind: "security", instrument: { symbol: "NESN", exchange: "SWX" }, fieldId: "market.close" } }),
+        chartSeries({ id: "average", source: { kind: "capability", capabilityId: "lab", seriesId: "avg/NESN%3ASWX" }, axis: "auto" }),
+      ],
+    });
+    const sources = { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") };
+    const over = await resolveChartSpecData(spec, { ...sources, resolveCapabilitySeries: line("avg", "NESN:SWX") });
+    expect(over.series.map((entry) => [entry.id, entry.unitGroup, entry.axis])).toEqual([
+      ["price", "price:CHF", "left"],
+      ["average", "price:CHF", "left"],
+    ]);
+    expect(over.warnings.filter((warning) => warning.includes("axis"))).toEqual([]);
+    // Without priceOf, a series in an unknown currency keeps its own scale on the other axis.
+    const apart = await resolveChartSpecData(spec, { ...sources, resolveCapabilitySeries: line("avg") });
+    expect(apart.series[1]).toMatchObject({ unitGroup: "series:currency", axis: "right" });
+  });
+
   test("seeds study series so their panels survive the wait for real data", async () => {
     const date = new Date("2026-01-05T00:00:00.000Z");
     const seeded = seedChartResolutionResult(

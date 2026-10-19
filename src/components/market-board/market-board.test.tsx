@@ -26,13 +26,16 @@ async function board(width: number, rows: MarketBoardRow[]) {
 }
 
 describe("MarketBoardStack", () => {
-  // A stale row carries the word beside its date, in a column made wide enough
-  // for both, so a narrow board never cuts the date to fit the word.
-  test("a stale row reads its whole date and the word at wide and narrow widths", async () => {
+  // A stale row, or a day still trading, carries its word beside its date, in a
+  // column made wide enough for both, so a narrow board never cuts the date to fit the word.
+  test("a stale or partial row reads its whole date and the word at wide and narrow widths", async () => {
     for (const width of [100, 64, 56]) {
       const frame = await board(width, [row("DGS2", "stale"), row("DGS10", "available")]);
       expect(frame).toMatch(/(2026-)?10-09 stale/);
       expect(frame).not.toContain("…");
+      const partial = await board(width, [row("DGS2", "partial"), row("DGS10", "available")]);
+      expect(partial).toMatch(/(2026-)?10-09 so far/);
+      expect(partial).not.toContain("…");
     }
     const fresh = await board(100, [row("DGS2", "available")]);
     expect(fresh).toContain("2026-10-09");

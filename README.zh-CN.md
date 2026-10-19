@@ -14,6 +14,8 @@
 &nbsp;&middot;&nbsp;
 <a href="https://term.gloom.sh"><strong>在浏览器中打开</strong></a>
 &nbsp;&middot;&nbsp;
+<a href="https://gloom.sh/discord">Discord</a>
+&nbsp;&middot;&nbsp;
 <a href="README.md">English</a>
 
 <br />

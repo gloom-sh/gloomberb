@@ -24,8 +24,11 @@ const BOARD_DAYS = 365;
 const finiteOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 const isDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && Number.isFinite(Date.parse(value));
+const optionalFinite = (value: unknown) => value === undefined || finiteOrNull(value);
+const isInstant = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
 const validPoints = (points: unknown) => Array.isArray(points) && points.every((point: CreditBoardPoint) =>
-  point && isDate(point.date) && isDate(point.maturity) && Number.isFinite(point.level) && Number.isInteger(point.prints));
+  point && isDate(point.date) && isDate(point.maturity) && Number.isFinite(point.level) && Number.isInteger(point.prints)
+  && optionalFinite(point.spreadBp));
 
 function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
   if (!payload || !Array.isArray(payload.indexes) || payload.indexes.some((index) =>
@@ -33,7 +36,11 @@ function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
     || (index.quote !== "spread" && index.quote !== "price")
     || !finiteOrNull(index.level) || !finiteOrNull(index.change1D) || !finiteOrNull(index.change1W)
     || (index.change1M !== undefined && !finiteOrNull(index.change1M))
-    || !finiteOrNull(index.prints) || (index.date !== null && !isDate(index.date)) || !validPoints(index.points))) {
+    || !finiteOrNull(index.prints) || (index.date !== null && !isDate(index.date)) || !validPoints(index.points)
+    || !optionalFinite(index.spreadBp) || (index.recovery !== undefined && !Number.isFinite(index.recovery))
+    || (index.partial !== undefined && typeof index.partial !== "boolean")
+    || (index.lastPrintAt != null && !isInstant(index.lastPrintAt))
+    || (index.changeDate != null && !isDate(index.changeDate)))) {
     throw new Error("The server returned an invalid index CDS board");
   }
   return payload;

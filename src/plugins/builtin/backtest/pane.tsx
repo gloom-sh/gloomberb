@@ -29,7 +29,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import type { BacktestTrade } from "./engine";
 import { backtestEquityCsv } from "./export";
-import { formatStat, SUMMARY_ROWS, type SummaryRow } from "./format";
+import { formatStat, PRICE_RETURN_NOTE, SUMMARY_ROWS, type SummaryRow } from "./format";
 import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
 import { backtestPriceUnit, backtestReport } from "./report";
 import { parseRule } from "./rules";
@@ -157,9 +157,14 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   usePaneFooter("backtest", () => ({
     info: [
       ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
+      // The metric column reads "Price return"; what that leaves out is said here, once,
+      // and kept as the row narrows: the session count and bar rate give way first.
       ...(result ? [{ id: "window", parts: [{
-        text: `${result.start} to ${result.end} · ${result.sessions} sessions · ${barsPerYearLabel(result.barsPerYear)}`, tone: "muted" as const,
-      }] }] : []),
+        text: `${result.start} to ${result.end} · ${result.sessions} sessions · ${barsPerYearLabel(result.barsPerYear)} · ${PRICE_RETURN_NOTE}`, tone: "muted" as const,
+      }], variants: [
+        [{ text: `${result.start} to ${result.end} · ${PRICE_RETURN_NOTE}`, tone: "muted" as const }],
+        [{ text: PRICE_RETURN_NOTE, tone: "muted" as const }],
+      ] }] : []),
     ],
     hints: [
       { id: "edit", key: "e", label: "dit rules", onPress: edit },
@@ -188,7 +193,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
       exportCsv={exportCsv}
       emptyStateTitle="No statistics"
       renderCell={(row, column) => {
-        if (column.id === "metric") return { text: row.label };
+        if (column.id === "metric") return { text: row.paneLabel ?? row.label };
         const value = column.id === "strategy" ? row.strategy(result!) : row.benchmark?.(result!) ?? null;
         const text = formatStat(value);
         const signed = value?.kind === "signed" && value.value != null && value.value !== 0;

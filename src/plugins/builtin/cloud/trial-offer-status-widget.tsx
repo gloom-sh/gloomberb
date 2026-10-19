@@ -35,6 +35,7 @@ import { Box, Span, Text, useCommandBarShortcut } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginState } from "../../runtime";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { logFailure } from "../../../utils/log-failure";
 
 export const TRIAL_OFFER_EXPERIMENT = "web_terminal_trial_offer";
 /**
@@ -127,7 +128,7 @@ function WebTrialOffer({ expose = exposeWebExperiment, delayMs = TRIAL_OFFER_DEL
           setState("done");
           return;
         }
-        const pricing = await apiClient.getCloudPricing().catch(() => null);
+        const pricing = await apiClient.getCloudPricing().catch(logFailure("cloud.trial-offer", "Load pricing for the trial offer failed", null));
         if (pricing && pricing.trialDays > 0) setTrialDays(pricing.trialDays);
         setState("shown");
       });

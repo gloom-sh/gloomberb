@@ -4,7 +4,7 @@ import { validateRequiredWorkflowFields } from "../../../components/command-bar/
 import { createTestTemplateContext } from "../../../test-support/headless";
 import { CHART_SPEC_SETTING_KEY, parseChartSpec, parseChartSpecOr } from "./chart-spec";
 import { chartComposerModule } from "./index";
-import { buildEmptyChartPreset } from "./presets";
+import { buildEmptyChartPreset, buildRegisteredSeriesChart } from "./presets";
 
 const template = chartComposerModule.paneTemplates!.find((entry) => entry.id === "chart-composer-pane")!;
 
@@ -32,6 +32,25 @@ describe("Custom Chart wizard", () => {
   test("an empty series with no active ticker opens an empty chart", async () => {
     const instance = await template.createInstance!(createTestTemplateContext(), { values: { series: "" } });
     expect(parseChartSpec(instance?.settings?.[CHART_SPEC_SETTING_KEY])?.series).toEqual([]);
+  });
+});
+
+describe("a chart of a registered series", () => {
+  test("is titled by its ticker and the series once, and a line filled to another stays a band", async () => {
+    const chartSpec = buildRegisteredSeriesChart({
+      name: "Z-score",
+      template: "CAP:pine:z-score/{ticker}",
+      placement: "panel",
+      lines: [
+        { name: "Z", expression: "CAP:pine:z-score~z/{ticker}" },
+        { name: "Upper", style: "band", expression: "CAP:pine:z-score~upper/{ticker}" },
+        { name: "Lower", expression: "CAP:pine:z-score~lower/{ticker}" },
+      ],
+    }, "AAPL");
+    const instance = await template.createInstance!(createTestTemplateContext(), { shareData: { chartSpec } });
+    expect(instance?.title).toBe("G AAPL · Z-score");
+    const spec = parseChartSpec(JSON.parse(JSON.stringify(instance?.settings?.[CHART_SPEC_SETTING_KEY])));
+    expect(spec?.series.map((series) => series.style)).toEqual(["candles", "line", "band", "line"]);
   });
 });
 

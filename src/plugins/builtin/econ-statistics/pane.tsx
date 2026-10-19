@@ -78,7 +78,7 @@ function buildColumns(width: number, stacked: boolean): Column[] {
     { id: "latest", label: "LATEST", width: 10, align: "right" },
     { id: "previous", label: "PREV", width: 9, align: "right" },
     ...(withPercentile
-      ? [{ id: "percentile" as const, label: "%ILE", width: 6, align: "right" as const }]
+      ? [{ id: "percentile" as const, label: "%ILE", title: "Percentile of the latest reading in the range", width: 6, align: "right" as const }]
       : []),
     ...(withPeriod
       ? [{ id: "period" as const, label: "DATE", width: PERIOD_WIDTH, align: "right" as const }]

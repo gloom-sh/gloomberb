@@ -1,5 +1,6 @@
 import type { AppConfig } from "../../../types/config";
 import { updateKeybindingsConfig } from "../../../app/keybindings/config";
+import { recordCommandBarOpen } from "../../../app/command-bar-intro";
 import { resolveTickerFinancialsQuoteState } from "../../../market-data/quotes/resolution";
 import {
   bringFloatingToFront,
@@ -36,6 +37,14 @@ export {
   syncConfigActiveLayoutState,
 };
 export type { AppAction, AppState, CollectionSortPreference, PaneRuntimeState };
+
+/** One more open of the empty command bar; past the introduction the count stays put. */
+function countEmptyCommandBarOpen(state: AppState): AppState {
+  const commandBarOpens = recordCommandBarOpen(state.config.commandBarOpens);
+  return commandBarOpens === state.config.commandBarOpens
+    ? state
+    : { ...state, config: { ...state.config, commandBarOpens } };
+}
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   const layoutState = reduceLayoutAction(state, action);
@@ -154,7 +163,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "TOGGLE_COMMAND_BAR":
       return state.commandBarOpen
         ? { ...state, commandBarOpen: false, commandBarQuery: "", commandBarLaunchRequest: null, themePreview: null }
-        : { ...state, commandBarOpen: true, commandBarQuery: "", commandBarLaunchRequest: null };
+        : { ...countEmptyCommandBarOpen(state), commandBarOpen: true, commandBarQuery: "", commandBarLaunchRequest: null };
 
     case "SET_COMMAND_BAR": {
       const launchRequest = action.open && action.launch
@@ -163,8 +172,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             sequence: (state.commandBarLaunchRequest?.sequence ?? 0) + 1,
           }
         : null;
+      // Only an open onto the empty bar counts: one that runs text or goes
+      // straight to a search never shows the bar's own list.
+      const opensEmpty = action.open && !state.commandBarOpen && !launchRequest && !action.query;
       return {
-        ...state,
+        ...(opensEmpty ? countEmptyCommandBarOpen(state) : state),
         commandBarOpen: action.open,
         commandBarQuery: action.open ? (action.query ?? "") : "",
         commandBarLaunchRequest: launchRequest,

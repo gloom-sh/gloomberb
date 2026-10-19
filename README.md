@@ -14,6 +14,8 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 &nbsp;&middot;&nbsp;
 <a href="https://term.gloom.sh"><strong>Open in browser</strong></a>
 &nbsp;&middot;&nbsp;
+<a href="https://gloom.sh/discord">Discord</a>
+&nbsp;&middot;&nbsp;
 <a href="README.zh-CN.md">简体中文</a>
 
 <br />
