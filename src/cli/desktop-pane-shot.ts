@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
@@ -76,6 +77,8 @@ export interface DesktopPaneShotPayload {
   intradayHistories: DesktopPaneShotIntradayHistory[];
   optionsChains: NonNullable<SnapshotMarketData["optionsChains"]>;
   tapeSnapshots?: TapeCapture[];
+  /** What each scanner pane's feed answered the capture process, which the page replays since its own socket cannot ask. */
+  scannerSnapshots?: ScannerCapture[];
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;

@@ -5,10 +5,9 @@ import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 import { flowHeadless, hiloHeadless } from "./headless";
 import { flowLockNote } from "./lock-note";
+import { FLOW_PANE_ID, HILO_PANE_ID } from "../shared/scanner-capture";
 
 
-const HILO_PANE_ID = "scanner-hilo";
-const FLOW_PANE_ID = "scanner-flow";
 
 function hiloSettings(): PaneSettingsDef {
   return {

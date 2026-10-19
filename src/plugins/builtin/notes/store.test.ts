@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { CloudNote, CloudNoteScope, CloudNoteSummary } from "../../../api-client";
 import { NoteConflictError } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { debugLog, type LogEntry } from "../../../utils/debug-log";
 import { NotesFiles } from "./files";
-import { migrateLocalNotes } from "./migration";
+import { migrateLocalNotes, notesMigratedAt } from "./migration";
 import { CloudNotesStore, joinNoteKey, NotesStoreRegistry, splitNoteKey } from "./store";
 
 type ServerNote = CloudNote;
@@ -241,5 +244,57 @@ describe("migrateLocalNotes", () => {
     // Stamped: the next launch does not try again.
     expect(await migrateLocalNotes(files, cloud, persistence)).toBeNull();
     await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  test("a note or quick notes index it cannot read waits for the next launch while the rest go up", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gloomberb-notes-move-"));
+    const fs = await import("fs/promises");
+    try {
+      const files = new NotesFiles(dir);
+      await files.save("GOOD", "readable");
+      await files.save(files.quickNoteKey("q1"), "quick body");
+      await fs.mkdir(join(dir, "LOCKED.md"));
+      await fs.writeFile(join(dir, "__quick-notes-index__.json"), "{ not json");
+      const server = fakeServer();
+      const persistence = new MemoryPluginPersistence();
+      const cloud = new CloudNotesStore({ kind: "user" }, persistence, server.client);
+
+      expect(await migrateLocalNotes(files, cloud, persistence)).toEqual({ uploaded: 1, skipped: 0, rejected: [] });
+      expect(notesMigratedAt(persistence)).toBeNull();
+      // Held back, not uploaded untitled.
+      expect([...server.notes.values()].map((note) => `${note.kind}:${note.key}`)).toEqual(["ticker:GOOD"]);
+
+      await fs.rm(join(dir, "LOCKED.md"), { recursive: true });
+      await files.save("LOCKED", "readable now");
+      await files.saveQuickNotesIndex([{ id: "q1", title: "Ideas" }]);
+      expect(await migrateLocalNotes(files, cloud, persistence)).toEqual({ uploaded: 2, skipped: 1, rejected: [] });
+      expect(notesMigratedAt(persistence)).not.toBeNull();
+      const byKey = new Map([...server.notes.values()].map((note) => [`${note.kind}:${note.key}`, note]));
+      expect(byKey.get("ticker:LOCKED")?.content).toBe("readable now");
+      expect(byKey.get("quick:q1")).toMatchObject({ title: "Ideas", content: "quick body" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a notes folder it cannot read leaves the move unfinished, and one never created holds no notes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gloomberb-notes-move-"));
+    const fs = await import("fs/promises");
+    try {
+      // A file where the folder should be cannot be listed (ENOTDIR).
+      const blocked = join(dir, "notes");
+      await fs.writeFile(blocked, "");
+      const persistence = new MemoryPluginPersistence();
+      const cloud = new CloudNotesStore({ kind: "user" }, persistence, fakeServer().client);
+      await expect(migrateLocalNotes(new NotesFiles(blocked), cloud, persistence)).rejects.toBeDefined();
+      expect(notesMigratedAt(persistence)).toBeNull();
+      // Everyday listing still reads that as no notes.
+      expect(await new NotesFiles(blocked).list()).toEqual([]);
+
+      expect(await migrateLocalNotes(new NotesFiles(join(dir, "missing")), cloud, persistence)).toEqual({ uploaded: 0, skipped: 0, rejected: [] });
+      expect(notesMigratedAt(persistence)).not.toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

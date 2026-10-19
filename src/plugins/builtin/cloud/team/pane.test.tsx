@@ -39,6 +39,8 @@ function respond(path: string, method: string): unknown {
 
 const requests: string[] = [];
 let receivedInvitations: unknown[] = [];
+/** Paths that answer 503, as an outage would. */
+let failing = new Set<string>();
 
 async function flush() {
   for (let i = 0; i < 4; i += 1) {
@@ -75,12 +77,14 @@ function Pane({ focused = true }: { focused?: boolean }) {
 beforeEach(() => {
   requests.length = 0;
   receivedInvitations = [];
+  failing = new Set();
   setCloudApiFetchTransport(async (url, init) => {
     const parsed = new URL(url);
     const method = init?.method ?? "GET";
     requests.push(`${method} ${parsed.pathname}`);
-    return new Response(JSON.stringify(respond(parsed.pathname, method)), {
-      status: 200,
+    const down = failing.has(parsed.pathname);
+    return new Response(JSON.stringify(down ? { error: "Service unavailable" } : respond(parsed.pathname, method)), {
+      status: down ? 503 : 200,
       headers: { "content-type": "application/json" },
     });
   });
@@ -121,6 +125,24 @@ describe("TeamPane", () => {
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
     expect(frame).toContain("3 uses");
     expect(frame).not.toContain("@example.com");
+  });
+
+  test("invitations or invite links that fail to load say so instead of listing none", async () => {
+    failing = new Set(["/teams/org-1/invitations", "/teams/org-1/invite-links"]);
+    await act(async () => {
+      await tui.render(<Pane />, { width: 84, height: 24 });
+    });
+    await flush();
+    await act(async () => {
+      requestTeamPaneView({ teamId: "org-1", section: "invites" });
+    });
+    await tui.waitForFrameToContain("Service unavailable");
+    await flush();
+    // The New link button stays: making a link may work while listing them failed.
+    const frame = await tui.waitForFrameToContain("New link");
+    expect(frame.match(/Service unavailable/g)).toHaveLength(2);
+    expect(frame).not.toContain("none pending");
+    expect(frame).not.toContain("of 10 active");
   });
 
   test("shows a banner for an invitation addressed to me", async () => {

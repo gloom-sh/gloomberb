@@ -209,7 +209,7 @@ function createNotesFilesCapability(): PluginCapability {
         await io(input).delete(file(input));
         return null;
       }, "action"),
-      listKeys: op((input: any) => io(input).listKeys()),
+      listKeys: op((input: any) => io(input).listKeys({ strict: input.strict === true })),
     },
   };
 }

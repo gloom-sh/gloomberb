@@ -1,6 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { isNoSourceAnswer } from "../../sources/provider-errors";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
+import { captureScannerEvent, SCANNER_PANE_KINDS, type ScannerCapture } from "../../plugins/builtin/shared/scanner-capture";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
@@ -522,6 +523,7 @@ export async function buildDesktopShotPayload(
   scale: number,
   watermark: string | null,
   loadModel: () => Promise<LoadedHeadlessPaneModel> = () => loadResolvedHeadlessPaneModel(resolved, context, rawArg),
+  scannerFeed: Pick<typeof apiClient, "subscribeScanner"> = apiClient,
 ): Promise<DesktopPaneShotPayload> {
   // The requested size is the output size. Scale shrinks the CSS viewport and
   // raises the device scale factor by the same factor, so a 1200px wide shot at
@@ -728,6 +730,11 @@ export async function buildDesktopShotPayload(
       if (chain) optionsChains.push([symbol, chain]);
     }
   }
+  // A scanner pane reads one answer from the capture's own session: the page's socket is refused (see createSnapshotScannerClient).
+  const scannerKind = SCANNER_PANE_KINDS[resolved.pane.id];
+  const scannerSnapshots: ScannerCapture[] = scannerKind
+    ? [[scannerKind, await captureScannerEvent(scannerFeed, scannerKind, new AbortController().signal)]]
+    : [];
   layout.instances[0] = shotInstance;
   config.layout.instances[0] = shotInstance;
   if (config.layouts[0]) config.layouts[0].layout.instances[0] = shotInstance;
@@ -752,6 +759,7 @@ export async function buildDesktopShotPayload(
     intradayHistories,
     optionsChains,
     ...(tapeSnapshots.length ? { tapeSnapshots } : {}),
+    ...(scannerSnapshots.length ? { scannerSnapshots } : {}),
     valuationSeries,
     statSeries,
     paneState,

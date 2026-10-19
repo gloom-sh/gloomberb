@@ -1,8 +1,8 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import type {
-  ScannerFeedEvent,
   ScannerFlowPayload,
   ScannerHiloPayload,
+  ScannerKind,
   ScannerPayload,
 } from "../../../api-client";
 import type {
@@ -20,70 +20,22 @@ import {
   type FlowFilters,
 } from "./flow-model";
 import { explainRefusal } from "../shared/cloud-denied";
+import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
-type ScannerName = "hilo" | "flow";
-
-// An idle scanner has to win the lock and seed its universe before it reports,
-// which takes several seconds; a short wait turned every cold call into a
-// timeout or a stale "degraded" row.
-const SCANNER_SNAPSHOT_TIMEOUT_MS = 30_000;
-
-const SCANNER_LABELS: Record<ScannerName, string> = {
-  hilo: "Highs and lows",
-  flow: "Options flow",
-};
-
-/**
- * Resolves on the first live or closed payload. A degraded payload is kept
- * and returned only if nothing better arrives before the deadline, since a
- * scanner warming up can pass through a stale row on its way to live.
- */
 function loadScannerSnapshot<T extends ScannerPayload>(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
-  scanner: ScannerName,
+  scanner: ScannerKind,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
 ): Promise<T> {
-  const label = SCANNER_LABELS[scanner];
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let unsubscribe: (() => void) | null = null;
-    let degraded: T | null = null;
-    const finish = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      unsubscribe?.();
-      callback();
-    };
-    const onAbort = () => finish(() => reject(signal.reason instanceof Error
-      ? signal.reason
-      : new Error(`${label} snapshot aborted`)));
-    const timer = setTimeout(() => finish(() => {
-      if (degraded) resolve(degraded);
-      else reject(new Error(`${label} snapshot timed out`));
-    }), timeoutMs);
-    signal.addEventListener("abort", onAbort, { once: true });
-    unsubscribe = client.subscribeScanner(scanner, (event: ScannerFeedEvent) => {
-      if (event.type === "denied") {
-        // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
-        finish(() => reject(event.reason === "pro_required"
-          ? new ApiRequestError("Pro access required", 402)
-          : new ApiRequestError("Sign in required", 401)));
-        return;
-      }
-      const payload = event.payload as T;
-      if (payload.status === "starting") return;
-      if (payload.status === "degraded") {
-        degraded = payload;
-        return;
-      }
-      finish(() => resolve(payload));
-    });
-    if (settled) unsubscribe();
+  return captureScannerEvent(client, scanner, signal, timeoutMs).then((event) => {
+    if (event.type !== "denied") return event.payload as T;
+    // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
+    throw event.reason === "pro_required"
+      ? new ApiRequestError("Pro access required", 402)
+      : new ApiRequestError("Sign in required", 401);
   });
 }
 

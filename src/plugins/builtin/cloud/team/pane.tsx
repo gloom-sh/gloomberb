@@ -9,7 +9,7 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { QueryBar, loadingText, useFieldRing, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
+import { QueryBar, loadingText, unavailableText, useFieldRing, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
@@ -91,11 +91,25 @@ interface TeamDetails {
   members: TeamMember[];
   invitations: TeamSentInvitation[];
   links: TeamInviteLink[];
+  /** Why the sent invitations or the invite links did not load; the section says so instead of listing none. */
+  invitationsError: string | null;
+  linksError: string | null;
   loading: boolean;
   error: string | null;
 }
 
-const EMPTY_DETAILS: TeamDetails = { members: [], invitations: [], links: [], loading: false, error: null };
+const EMPTY_DETAILS: TeamDetails = {
+  members: [], invitations: [], links: [], invitationsError: null, linksError: null, loading: false, error: null,
+};
+
+/** A list the team pane loads beside the members: its rows, or why they did not load. */
+async function settleList<T>(request: Promise<T[]>, fallback: string): Promise<{ rows: T[]; error: string | null }> {
+  try {
+    return { rows: await request, error: null };
+  } catch (error) {
+    return { rows: [], error: error instanceof Error && error.message ? error.message : fallback };
+  }
+}
 
 /**
  * Members, sent invitations, and invite links for the team on screen. Reloads
@@ -119,17 +133,22 @@ function useTeamDetails(team: TeamSummary | null) {
     const manage = canManageTeam(role);
     const canLink = manage || allowMemberInvites;
     try {
+      const none = { rows: [], error: null };
       const [membersResult, invitations, links] = await Promise.all([
         apiClient.getTeamMembers(teamId),
-        manage
-          ? apiClient.listTeamInvitations(teamId).catch(logFailure("cloud.team.pane", "Load team invitations failed", []))
-          : Promise.resolve([]),
-        canLink
-          ? apiClient.listTeamInviteLinks(teamId).catch(logFailure("cloud.team.pane", "Load team invite links failed", []))
-          : Promise.resolve([]),
+        manage ? settleList(apiClient.listTeamInvitations(teamId), unavailableText("Pending invitations")) : none,
+        canLink ? settleList(apiClient.listTeamInviteLinks(teamId), unavailableText("Invite links")) : none,
       ]);
       if (generation.current !== current) return;
-      setDetails({ members: membersResult.members, invitations, links, loading: false, error: null });
+      setDetails({
+        members: membersResult.members,
+        invitations: invitations.rows,
+        links: links.rows,
+        invitationsError: invitations.error,
+        linksError: links.error,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       if (generation.current !== current) return;
       setDetails((previous) => ({ ...previous, loading: false, error: errorText(error, "Could not load the team.") }));
@@ -689,6 +708,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                 team={team}
                 invitations={details.invitations}
                 links={details.links}
+                invitationsError={details.invitationsError}
+                linksError={details.linksError}
                 username={inviteUsername}
                 width={contentWidth}
                 busy={busy}
