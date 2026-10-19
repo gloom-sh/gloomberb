@@ -15,7 +15,7 @@ export function formatFundYield(value: number): string {
 }
 
 /** A duration in years: `7.13 yrs`. */
-export function formatDurationYears(value: number): string {
+function formatDurationYears(value: number): string {
   return `${value.toFixed(2)} yrs`;
 }
 
@@ -27,7 +27,7 @@ export function formatDurationYears(value: number): string {
 export const NOT_SEC_YIELD = "not SEC yield";
 
 /** The sponsor's duration measure as a label: effective (option-adjusted), or Vanguard's month-end average. */
-export function bondDurationLabel(bond: FundBondFacts, short = false): string {
+function bondDurationLabel(bond: FundBondFacts, short = false): string {
   const average = bond.duration?.measure === "average";
   return short ? (average ? "Avg Duration" : "Eff Duration") : average ? "Average duration" : "Effective duration";
 }

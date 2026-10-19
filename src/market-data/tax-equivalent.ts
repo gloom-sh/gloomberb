@@ -22,8 +22,8 @@ import { formatFundYield, NOT_SEC_YIELD } from "./bond-funds";
  * CMF 3.87% at 40.8% + 13.3% California: 8.43%). The ratio compares pre-tax
  * yields, the convention for muni/Treasury ratios.
  */
-export const TAX_EQUIVALENT_FORMULA = "tax-equivalent yield = yield / (1 - (federal rate + state rate)); the state rate counts only for a single-state muni fund of --state";
-export const MUNI_TREASURY_RATIO_FORMULA = "muni/Treasury ratio = yield / Treasury par yield at the GC tenor nearest the fund's duration";
+const TAX_EQUIVALENT_FORMULA = "tax-equivalent yield = yield / (1 - (federal rate + state rate)); the state rate counts only for a single-state muni fund of --state";
+const MUNI_TREASURY_RATIO_FORMULA = "muni/Treasury ratio = yield / Treasury par yield at the GC tenor nearest the fund's duration";
 
 export interface TaxRates {
   /** Percent: federal income tax plus the net investment income tax (40.8). */
@@ -49,12 +49,12 @@ function percentOption(value: unknown, flag: string): number {
 }
 
 /** A tax rate option as typed: `40.8` or `40.8%`, kept as the number. */
-export function normalizeTaxRate(value: string): number {
+function normalizeTaxRate(value: string): number {
   return percentOption(value, "--tax-rate");
 }
 
 /** A state code as typed: `ca`, `CA`. */
-export function normalizeStateCode(value: string): string {
+function normalizeStateCode(value: string): string {
   const code = value.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) throw new Error("--state takes a two-letter US state code, such as CA or NY.");
   return code;

@@ -12,7 +12,7 @@ type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
  * A bond fund as its sponsor classes it: `municipal` when its interest is
  * exempt from federal income tax, `taxable` otherwise.
  */
-export type BondFundClass = "municipal" | "taxable";
+type BondFundClass = "municipal" | "taxable";
 
 /**
  * What a bond fund's sponsor publishes about its yield and rate risk, each
