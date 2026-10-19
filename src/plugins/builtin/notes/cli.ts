@@ -7,6 +7,7 @@ import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../c
 import { createPluginPersistence } from "../../plugin-persistence";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
+import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import { readChatSessionState } from "../chat/controller/persistence";
 import { exportNotesToDirectory, type NotesExportSource } from "./export";
@@ -42,29 +43,47 @@ export const notesCliCommand: CliCommandDef = {
         // (personal and every team), one folder each.
         const dir = args[1] ?? `${config.dataDir}/notes-export-${new Date().toISOString().slice(0, 10)}`;
         const sources: NotesExportSource[] = [{ label: "local", store: notes }];
+        // A Cloud source left out or unreadable is a warning, as `quote` reports
+        // a symbol it found nothing for: the local files are always written.
+        const warnings: string[] = [];
+        const leftOut = (what: string, failure: string) => (error: unknown) => {
+          logFailure("notes.cli", failure)(error);
+          warnings.push(`${what} (${errorMessage(error)}).`);
+          return null;
+        };
         await withCliServices(ctx, async (services) => {
           const cloudPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:gloomberb-cloud", "gloomberb-cloud");
           const session = readChatSessionState(cloudPersistence, null);
           if (!session?.sessionToken) return;
           apiClient.setSessionToken(session.sessionToken);
           const user = await apiClient.ensureVerifiedSession()
-            .catch(logFailure("notes.cli", "Verify the saved session for the notes export failed", null));
+            .catch(leftOut("Skipped Gloom Cloud notes: the saved session could not be checked", "Verify the saved session for the notes export failed"));
           if (!user) return;
           const notesPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:notes", "notes");
           sources.push({ label: "mine", store: new CloudNotesStore({ kind: "user" }, notesPersistence) });
-          const teams = await apiClient.listTeams().catch(logFailure("notes.cli", "List teams for the notes export failed", []));
+          const teams = await apiClient.listTeams()
+            .catch(leftOut("Skipped team notes: the team list could not be read", "List teams for the notes export failed")) ?? [];
           for (const team of teams) {
             sources.push({ label: team.name, store: new CloudNotesStore({ kind: "team", teamId: team.id }, notesPersistence) });
           }
         });
         if (ctx.cliOptions.dryRun) {
-          ctx.printResult({ data: { dryRun: true, dir, sources: sources.map((source) => source.label) } }, {
+          ctx.printResult({ data: { dryRun: true, dir, sources: sources.map((source) => source.label) }, ...(warnings.length > 0 ? { warnings } : {}) }, {
             text: (data) => `Would export ${data.sources.join(", ")} notes to ${data.dir}.${dryRunNote(true)}`,
           });
           return;
         }
         const result = await exportNotesToDirectory(dir, sources);
-        ctx.printResult({ data: { dir: result.dir, files: result.files, sources: sources.map((source) => source.label) } }, {
+        for (const { label, reason } of result.skipped) warnings.push(`Skipped ${label}: its notes could not be read (${reason}).`);
+        ctx.printResult({
+          data: {
+            dir: result.dir,
+            files: result.files,
+            sources: result.exported,
+            ...(result.skipped.length > 0 ? { skipped: result.skipped } : {}),
+          },
+          ...(warnings.length > 0 ? { warnings } : {}),
+        }, {
           text: (data) => `Exported ${data.files} notes from ${data.sources.join(", ")} to ${data.dir}.`,
         });
         return;

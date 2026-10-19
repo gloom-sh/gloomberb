@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../utils/errors";
 import type { NoteFileEntry, QuickNoteEntry } from "./files";
 import type { NotesStore } from "./store";
 import { noteOwnerKey, splitNoteKey } from "./store";
@@ -10,6 +11,10 @@ export interface NotesExportSource {
 export interface NotesExportResult {
   dir: string;
   files: number;
+  /** The sources whose notes were written, in the order given. */
+  exported: string[];
+  /** Sources whose notes could not be read, and why; none of their notes were written. */
+  skipped: Array<{ label: string; reason: string }>;
 }
 
 function safeFileName(value: string): string {
@@ -29,13 +34,16 @@ export async function exportNotesToDirectory(
   const fsModulePath = "fs/promises";
   const { mkdir, writeFile } = await import(fsModulePath) as typeof import("fs/promises");
   let files = 0;
+  const exported: string[] = [];
+  const skipped: NotesExportResult["skipped"] = [];
   for (const source of sources) {
     const folder = sources.length > 1 ? `${dir}/${safeFileName(source.label)}` : dir;
     let entries: NoteFileEntry[];
     let quick: QuickNoteEntry[];
     try {
       [entries, quick] = await Promise.all([source.store.list(), source.store.loadQuickNotesIndex()]);
-    } catch {
+    } catch (error) {
+      skipped.push({ label: source.label, reason: errorMessage(error) });
       continue;
     }
     const titles = new Map(quick.map((entry) => [entry.id, entry.title]));
@@ -48,8 +56,9 @@ export async function exportNotesToDirectory(
       await writeFile(path, entry.text, "utf-8");
       files += 1;
     }
+    exported.push(source.label);
   }
-  return { dir, files };
+  return { dir, files, exported, skipped };
 }
 
 export function exportSourceLabel(store: NotesStore, teamName?: string): string {
