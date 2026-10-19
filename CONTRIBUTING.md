@@ -2,7 +2,7 @@
 
 Gloomberb is one Bun and React codebase with three front ends: the terminal app, rendered with [OpenTUI](https://opentui.com/); the desktop app, built on Electrobun; and the web app at term.gloom.sh. Almost every feature is a plugin drawn with a shared UI kit, so the same pane runs in all three.
 
-Bug reports and pull requests are welcome. Please follow the [code of conduct](CODE_OF_CONDUCT.md), and report security issues privately as described in [SECURITY.md](SECURITY.md).
+Bug reports and pull requests are welcome. Please follow the [code of conduct](CODE_OF_CONDUCT.md), and report security issues privately as described in [SECURITY.md](SECURITY.md). Questions or ideas: join #contributors on [Discord](https://gloom.sh/discord).
 
 ## Running locally
 
