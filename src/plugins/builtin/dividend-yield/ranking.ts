@@ -54,7 +54,7 @@ function incompleteReason(entry: DividendRankingEntry): string | null {
 function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new Date()): Record<string, unknown>[] {
   const rows = entries.map((entry, index) => {
     if ("error" in entry) {
-      return { index, failed: true, row: { symbol: entry.symbol, currency: null, price: null, priceAsOf: null, trailingYield: null, forwardYield: null,
+      return { index, failed: true, trailingYield: null, row: { symbol: entry.symbol, currency: null, price: null, priceAsOf: null, trailingYield: null, forwardYield: null,
         payoutRatio: null, growth1Y: null, growth3Y: null, lastExDate: null, payDate: null, frequency: null, note: incompleteNote(entry), error: entry.error } };
     }
     const { data } = entry;
@@ -62,6 +62,8 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
     return {
       index,
       failed: false,
+      // Ranked on the measured yield, rounded only in the row, so two that round alike still rank higher first.
+      trailingYield: metrics.trailingYield,
       row: {
         symbol: entry.symbol,
         currency: data.currency ?? null,
@@ -81,10 +83,10 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
       },
     };
   });
-  const yieldOf = (row: Record<string, unknown>) => typeof row.trailingYield === "number" && Number.isFinite(row.trailingYield) ? row.trailingYield : null;
+  const yieldOf = (value: number | null) => value != null && Number.isFinite(value) ? value : null;
   return rows.sort((left, right) => {
-    const a = yieldOf(left.row);
-    const b = yieldOf(right.row);
+    const a = yieldOf(left.trailingYield);
+    const b = yieldOf(right.trailingYield);
     if (a != null && b != null && a !== b) return b - a;
     if ((a == null) !== (b == null)) return a == null ? 1 : -1;
     return Number(left.failed) - Number(right.failed) || left.index - right.index;

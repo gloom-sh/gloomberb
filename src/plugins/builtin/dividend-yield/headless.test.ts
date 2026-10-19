@@ -133,6 +133,8 @@ test("several symbols are one table ranked by trailing yield; a read without its
     // A rand payer beside dollar payers: yields are ratios, so they rank together.
     "SBK.JO": withYield(0.0578, { currency: "ZAR", priceAsOf: "2026-01-16T15:00:00.000Z", declared: [{ exDate: "2030-03-10", amount: 9.5, payDate: "2030-04-01" }] }),
     KO: withYield(0.0223539, { currency: "USD", priceAsOf: "2026-01-16T21:00:00.000Z" }),
+    // Rounds to KO's 2.2354% but yields more, so it ranks above KO though typed after it.
+    PEP: withYield(0.0223541, { currency: "USD" }),
     NEW: withYield(null, { currency: "USD" }),
     HALF: withYield(null, { currency: "USD", historyError: "Incomplete cash history; totals unavailable." }),
     NOSUM: withYield(0.031, { currency: "USD", summaryError: "Dividend summary unavailable." }),
@@ -143,12 +145,12 @@ test("several symbols are one table ranked by trailing yield; a read without its
       return data[symbol]!;
     },
   });
-  const symbols = ["NEW", "KO", "GONE", "HALF", "SBK.JO", "NOSUM"];
+  const symbols = ["NEW", "KO", "GONE", "HALF", "SBK.JO", "NOSUM", "PEP"];
   const request = { rawArgument: symbols.join(" "), argument: symbols, symbols, options: { type: "all", limit: 40 } };
   const result = await definition.load(request, context);
   expect(result.sections).toHaveLength(1);
   const rows = result.sections[0]!.rows!;
-  expect(rows.map((row) => row.symbol)).toEqual(["SBK.JO", "NOSUM", "KO", "NEW", "HALF", "GONE"]);
+  expect(rows.map((row) => row.symbol)).toEqual(["SBK.JO", "NOSUM", "PEP", "KO", "NEW", "HALF", "GONE"]);
   expect(rows[0]).toMatchObject({ trailingYield: 0.0578, payDate: "2030-04-01", payoutRatio: null, note: null });
   expect(result).toMatchObject({ complete: false, unavailableSymbols: ["GONE", "HALF", "NOSUM"] });
   const text = renderHeadlessPaneText(definition, result, request, "DVD");

@@ -40,6 +40,24 @@ function targetsFromTickers(tickers: TickerRecord[]): SupplementalTarget[] {
   }));
 }
 
+/**
+ * Whether the pane is still mounted. A batch's results are keyed by symbol and
+ * land whenever it settles, even after the effect that started it re-ran:
+ * the targets grow as each row's fundamentals arrive, and the new run skips
+ * the symbols still in flight, so a batch dropped on cleanup would leave them
+ * unread with nothing to ask again.
+ */
+function useMountedRef() {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return mounted;
+}
+
 function needsAnyColumn(columns: ColumnConfig[], ids: Set<string>): boolean {
   return columns.some((column) => ids.has(column.id));
 }
@@ -125,6 +143,7 @@ function useAnalystSupplemental(
   setState: Dispatch<SetStateAction<SupplementalState>>,
 ) {
   const inFlightRef = useRef(new Set<string>());
+  const mountedRef = useMountedRef();
   const targetsKey = targetKey(targets);
 
   useEffect(() => {
@@ -141,7 +160,6 @@ function useAnalystSupplemental(
     if (batch.length === 0) return;
     for (const target of batch) inFlightRef.current.add(target.symbol);
 
-    let cancelled = false;
     Promise.all(batch.map(async (target) => {
       try {
         const data = await provider.getAnalystResearch!(target.symbol, target.exchange);
@@ -152,14 +170,9 @@ function useAnalystSupplemental(
         inFlightRef.current.delete(target.symbol);
       }
     })).then((entries) => {
-      if (cancelled) return;
-      setState((current) => setAnalystValues(current, entries));
+      if (mountedRef.current) setState((current) => setAnalystValues(current, entries));
     }).catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, provider, setState, state.analystResearch, targetsKey]);
+  }, [enabled, mountedRef, provider, setState, state.analystResearch, targetsKey]);
 }
 
 function useCorporateSupplemental(
@@ -170,6 +183,7 @@ function useCorporateSupplemental(
   setState: Dispatch<SetStateAction<SupplementalState>>,
 ) {
   const inFlightRef = useRef(new Set<string>());
+  const mountedRef = useMountedRef();
   const targetsKey = targetKey(targets);
 
   useEffect(() => {
@@ -186,7 +200,6 @@ function useCorporateSupplemental(
     if (batch.length === 0) return;
     for (const target of batch) inFlightRef.current.add(target.symbol);
 
-    let cancelled = false;
     Promise.all(batch.map(async (target) => {
       try {
         const data = await provider.getCorporateActions!(target.symbol, target.exchange);
@@ -197,14 +210,9 @@ function useCorporateSupplemental(
         inFlightRef.current.delete(target.symbol);
       }
     })).then((entries) => {
-      if (cancelled) return;
-      setState((current) => setCorporateValues(current, entries));
+      if (mountedRef.current) setState((current) => setCorporateValues(current, entries));
     }).catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, provider, setState, state.corporateActions, targetsKey]);
+  }, [enabled, mountedRef, provider, setState, state.corporateActions, targetsKey]);
 }
 
 function useEarningsSupplemental(
@@ -215,6 +223,7 @@ function useEarningsSupplemental(
   setState: Dispatch<SetStateAction<SupplementalState>>,
 ) {
   const inFlightRef = useRef(false);
+  const mountedRef = useMountedRef();
   const targetsKey = targetKey(targets);
 
   useEffect(() => {
@@ -233,14 +242,12 @@ function useEarningsSupplemental(
     if (missingSymbols.length === 0 || inFlightRef.current) return;
 
     inFlightRef.current = true;
-    let cancelled = false;
     loadEarningsCalendar(provider, missingSymbols)
       .then(({ events }) => {
-        if (cancelled) return;
-        setState((current) => setEarningsValues(current, missingSymbols, events));
+        if (mountedRef.current) setState((current) => setEarningsValues(current, missingSymbols, events));
       })
       .catch(() => {
-        if (cancelled) return;
+        if (!mountedRef.current) return;
         setState((current) => ({
           ...current,
           earningsEvents: markMissing(
@@ -253,11 +260,7 @@ function useEarningsSupplemental(
       .finally(() => {
         inFlightRef.current = false;
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, provider, setState, state.earningsEvents, targetsKey]);
+  }, [enabled, mountedRef, provider, setState, state.earningsEvents, targetsKey]);
 }
 
 export function usePortfolioSupplementalData(
