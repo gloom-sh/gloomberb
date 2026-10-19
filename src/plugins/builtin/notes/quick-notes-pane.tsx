@@ -9,6 +9,7 @@ import { confirmDialog, EmptyState, TextField, usePaneFooter, usePaneTabs } from
 import { useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { debugLog } from "../../../utils/debug-log";
+import { logFailure } from "../../../utils/log-failure";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
   formatDeleteNoteTitle,
@@ -145,8 +146,8 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       void Promise.all(owners.map(async (owner) => {
         try {
           return (await storeFor(owner).loadQuickNotesIndex()).map((entry) => ({ ...entry, owner }));
-        } catch {
-          return [] as OwnedQuickNote[];
+        } catch (error) {
+          return logFailure("notes.quick-notes", "Load a quick notes index failed", [] as OwnedQuickNote[])(error);
         }
       })).then((lists) => {
         if (cancelled) return;

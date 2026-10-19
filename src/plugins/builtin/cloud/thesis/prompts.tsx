@@ -1,5 +1,6 @@
 import { ChoiceDialog, TextPromptDialog, type ChoiceDialogChoice, type TextPromptDialogProps } from "../../../../components";
 import type { DialogApi, PromptContext } from "../../../../ui/dialog";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * The questions a thesis flow asks, on the same dialog pattern as the rest
@@ -17,7 +18,7 @@ async function ask(dialog: DialogApi, props: Omit<TextPromptDialogProps, keyof P
         footer={props.multiline ? "Enter save · Shift+Enter newline · Esc cancel" : "Enter save · Esc cancel"}
       />
     ),
-  }).catch(() => undefined);
+  }).catch(logFailure("cloud.thesis.prompts", "A thesis text prompt failed"));
 }
 
 export function promptText(
@@ -57,7 +58,7 @@ export async function promptChoice(
     content: (context: PromptContext<string>) => (
       <ChoiceDialog {...context} title={title} choices={choices} selectedChoiceId={selectedChoiceId} />
     ),
-  }).catch(() => undefined);
+  }).catch(logFailure("cloud.thesis.prompts", "A thesis choice prompt failed"));
   return value || undefined;
 }
 

@@ -8,6 +8,7 @@ import type { DialogApi, PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { teamAccentHex, teamPrefix } from "../../../team/model";
 import { teamStore } from "../../../team/store";
+import { logFailure } from "../../../utils/log-failure";
 import { NoteConflictError, type NoteOwner, noteOwnerKey } from "./store";
 
 export function useNoteTeams(): TeamSummary[] {
@@ -84,7 +85,7 @@ export async function chooseNoteOwner(dialog: DialogApi, teams: readonly TeamSum
         selectedChoiceId={noteOwnerKey(preferred)}
       />
     ),
-  }).catch(() => undefined);
+  }).catch(logFailure("notes.owner", "The new note owner prompt failed"));
   if (!choice) return null;
   return choice === "user" ? { kind: "user" } : { kind: "team", teamId: choice.slice("team:".length) };
 }
@@ -113,7 +114,7 @@ export async function resolveNoteConflict(dialog: DialogApi, error: NoteConflict
         selectedChoiceId="keep"
       />
     ),
-  }).catch(() => undefined);
+  }).catch(logFailure("notes.owner", "The note conflict prompt failed"));
   return choice === "reload" || choice === "overwrite" ? choice : "keep";
 }
 

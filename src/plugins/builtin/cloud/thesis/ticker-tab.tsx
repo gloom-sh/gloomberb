@@ -17,6 +17,7 @@ import { thesesCovering } from "./model";
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
+import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * The Thesis tab on a ticker: the theses that hold it, or the first question
@@ -68,7 +69,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
         .then((notes) => notes.find((entry) => entry.kind === "ticker" && entry.key === ticker.metadata.ticker.toUpperCase()))
         .then((summary) => (summary ? apiClient.getCloudNote(summary.id) : null))
         .then((full) => full?.content ?? null)
-        .catch(() => null);
+        .catch(logFailure("cloud.thesis.ticker-tab", "Load the ticker note for a new thesis failed", null));
       const thesis = await flows.startThesis(ctx, {
         instruments: [{ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }],
         scope,

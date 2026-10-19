@@ -38,6 +38,7 @@ import {
   type McpKeyFailure,
 } from "./model";
 import { useMcpConnectSections } from "./sections";
+import { logFailure } from "../../../../utils/log-failure";
 
 /** Wide enough for a key and its closing quote on one snippet row. */
 const MAX_CONTENT_WIDTH = 78;
@@ -231,7 +232,7 @@ function McpConnectDialog({
     if (isPlainKey(event, "d")) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      void renderer.openExternal(MCP_DOCS_URL).catch(() => {});
+      void renderer.openExternal(MCP_DOCS_URL).catch(logFailure("cloud.mcp-connect", "Open the MCP docs link failed"));
       return;
     }
     if (event.name === "escape") {
@@ -328,7 +329,7 @@ export function openMcpConnectDialog(dialog: DialogApi, options: { viewportWidth
       style: { width: width + TERMINAL_DIALOG_CHROME },
       content: (context) => <McpConnectDialog {...context} width={width} />,
     })
-    .then(() => {}, () => {});
+    .then(() => {}, logFailure("cloud.mcp-connect", "The MCP connect dialog failed"));
 }
 
 const dialogRequestListeners = new Set<() => void>();

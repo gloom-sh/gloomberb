@@ -8,6 +8,11 @@ const EXCLUDED = [
   "src/plugins/builtin/", "src/sync/", "src/renderers/", "src/components/",
   "src/layout-marketplace/", "src/app.tsx",
 ];
+// Folders inside an excluded one that are already checked; bring the next one in with a line here.
+const INCLUDED = [
+  "src/plugins/builtin/cloud/",
+  "src/plugins/builtin/notes/",
+];
 
 type SilentCatch = {
   file: string;
@@ -196,8 +201,9 @@ export function scanSilentCatches(file: string, text: string): Scan {
   const constants = constantBindings(source);
   const sites: SilentCatch[] = [];
   const markerProblems: MarkerProblem[] = [];
-  const excluded = EXCLUDED.find((prefix) => prefix.endsWith("/") ? file.startsWith(prefix) : file === prefix);
-  const folder = excluded ?? (file.split("/").length > 2 ? `${file.split("/").slice(0, 2).join("/")}/` : "src/");
+  const included = INCLUDED.find((prefix) => file.startsWith(prefix));
+  const excluded = included ? undefined : EXCLUDED.find((prefix) => prefix.endsWith("/") ? file.startsWith(prefix) : file === prefix);
+  const folder = included ?? excluded ?? (file.split("/").length > 2 ? `${file.split("/").slice(0, 2).join("/")}/` : "src/");
   function visit(node: ts.Node): void {
     let body: ts.ConciseBody | undefined;
     let parameters = new Set<string>();
@@ -265,7 +271,7 @@ if (import.meta.main) {
   const inventoryIndex = args.indexOf("--inventory");
   if (inventoryIndex >= 0) {
     const counts: Record<string, { total: number; intentional: number; silent: number }> = {};
-    for (const folder of EXCLUDED) counts[folder] = { total: 0, intentional: 0, silent: 0 };
+    for (const folder of [...EXCLUDED, ...INCLUDED]) counts[folder] = { total: 0, intentional: 0, silent: 0 };
     for (const site of sites) {
       const count = counts[site.folder] ??= { total: 0, intentional: 0, silent: 0 };
       count.total++;

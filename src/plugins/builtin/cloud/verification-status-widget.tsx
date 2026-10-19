@@ -7,6 +7,7 @@ import { useAppActive } from "../../../state/app/activity";
 import { useCommandBarShortcut } from "../../../ui";
 import { useToastHost } from "../../../ui/toast";
 import { usePlanAccess } from "../../../api-client/plan-access";
+import { logFailure } from "../../../utils/log-failure";
 
 /** How often the widget re-reads the session while a verification is pending. */
 const VERIFICATION_POLL_MS = 30_000;
@@ -31,7 +32,7 @@ export function CloudVerificationStatusWidget() {
 
   useEffect(() => {
     if (!pending || !appActive) return;
-    const check = () => { void apiClient.getSession().catch(() => {}); };
+    const check = () => { void apiClient.getSession().catch(logFailure("cloud.verification", "Check whether the email is verified failed")); };
     check();
     const timer = setInterval(check, VERIFICATION_POLL_MS);
     return () => clearInterval(timer);

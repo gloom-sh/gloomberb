@@ -10,6 +10,7 @@ import {
 } from "../../custom-view";
 import { teamPrefix } from "../../../../team/model";
 import { teamStore } from "../../../../team/store";
+import { logFailure } from "../../../../utils/log-failure";
 
 const CLOUD_VIEWS_CAPABILITY_ID = "cloud.views";
 
@@ -52,7 +53,7 @@ class TeamViewsStore {
   start(): void {
     setViewRefResolver(async (source) => {
       const cached = this.views.get(source.viewId);
-      const view = cached ?? (await apiClient.getTeamView(source.viewId).catch(() => null));
+      const view = cached ?? (await apiClient.getTeamView(source.viewId).catch(logFailure("cloud.team.views", "Load a team view failed", null)));
       if (!view) return null;
       if (!cached) this.upsert(view);
       return parseViewSpec(view.spec);
@@ -92,10 +93,16 @@ class TeamViewsStore {
       for (const id of [...this.views.keys()]) this.remove(id);
       return;
     }
-    const lists = await Promise.all(teams.map((team) => apiClient.listTeamViews(team.id).catch(() => [] as TeamView[])));
+    const failed = new Set<string>();
+    const lists = await Promise.all(teams.map((team) => apiClient.listTeamViews(team.id).catch((error: unknown) => {
+      failed.add(team.id);
+      return logFailure("cloud.team.views", "List a team's views failed", [] as TeamView[])(error);
+    })));
+    // A team whose list failed keeps the views it had, and the next refresh asks again.
+    if (failed.size > 0) this.lastTeamKey = "";
     const next = new Map(lists.flat().map((view) => [view.id, view]));
-    for (const id of [...this.views.keys()]) {
-      if (!next.has(id)) this.remove(id);
+    for (const [id, view] of [...this.views]) {
+      if (!next.has(id) && !failed.has(view.teamId)) this.remove(id);
     }
     for (const view of next.values()) this.upsert(view);
   }

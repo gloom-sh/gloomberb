@@ -114,6 +114,7 @@ import {
   UNDO_KEY,
 } from "./tool-timeline";
 import { ClippedText } from "../../../../components/ui/display";
+import { logFailure } from "../../../../utils/log-failure";
 
 export const ASKG_PANE_ID = "askg";
 
@@ -895,7 +896,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       // A pane asked about meanwhile has the pane to itself.
       if (!conversation || current.turns.length > 0 || current.conversationId || attachedRef.current || queuedPaneRef.current) return;
       controller.openConversation(conversation);
-    }).catch(() => {});
+    }).catch(logFailure("cloud.askg.pane", "Restore the last open conversation failed"));
   }, [controller, planAccess.emailVerified]);
 
   useEffect(() => {
@@ -1104,7 +1105,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           }))}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("cloud.askg.pane", "The answer tickers prompt failed"));
     if (symbol) openTicker(symbol);
   }, [answerTickers, catalog, dialog, openTicker]);
 

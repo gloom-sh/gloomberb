@@ -71,6 +71,7 @@ import {
 } from "./pane-sections";
 import { Muted, PaneButton, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
 import { teamStore } from "../../../../team/store";
+import { logFailure } from "../../../../utils/log-failure";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
 
@@ -120,8 +121,12 @@ function useTeamDetails(team: TeamSummary | null) {
     try {
       const [membersResult, invitations, links] = await Promise.all([
         apiClient.getTeamMembers(teamId),
-        manage ? apiClient.listTeamInvitations(teamId).catch(() => []) : Promise.resolve([]),
-        canLink ? apiClient.listTeamInviteLinks(teamId).catch(() => []) : Promise.resolve([]),
+        manage
+          ? apiClient.listTeamInvitations(teamId).catch(logFailure("cloud.team.pane", "Load team invitations failed", []))
+          : Promise.resolve([]),
+        canLink
+          ? apiClient.listTeamInviteLinks(teamId).catch(logFailure("cloud.team.pane", "Load team invite links failed", []))
+          : Promise.resolve([]),
       ]);
       if (generation.current !== current) return;
       setDetails({ members: membersResult.members, invitations, links, loading: false, error: null });
@@ -422,7 +427,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     void run("channel", async () => {
       const channel = await apiClient.createTeamChannel(team.id, name);
       setChannelName("");
-      await chatController.refreshChatState().catch(() => {});
+      await chatController.refreshChatState()
+        .catch(logFailure("cloud.team.pane", "Refresh chat channels after creating a channel failed"));
       return { tone: "success", text: `#${channel.name} is ready. Open it from the list.` };
     });
   }, [channelName, run, team]);
@@ -719,7 +725,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                 onDelete={(channel) => {
                   void run(channel.id, async () => {
                     await apiClient.deleteTeamChannel(team.id, channel.id);
-                    await chatController.refreshChatState().catch(() => {});
+                    await chatController.refreshChatState()
+                      .catch(logFailure("cloud.team.pane", "Refresh chat channels after deleting a channel failed"));
                     return { tone: "info", text: `Deleted #${channel.name}.` };
                   });
                 }}
