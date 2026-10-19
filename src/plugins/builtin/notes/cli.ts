@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { withCliServices, withConfigData } from "../../../cli/scoped-context";
+import type { CliServicesContext } from "../../../cli/types";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
@@ -51,7 +52,7 @@ export const notesCliCommand: CliCommandDef = {
           warnings.push(`${what} (${errorMessage(error)}).`);
           return null;
         };
-        await withCliServices(ctx, async (services) => {
+        const addCloudSources = async (services: CliServicesContext) => {
           const cloudPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:gloomberb-cloud", "gloomberb-cloud");
           const session = readChatSessionState(cloudPersistence, null);
           if (!session?.sessionToken) return;
@@ -66,14 +67,19 @@ export const notesCliCommand: CliCommandDef = {
           for (const team of teams) {
             sources.push({ label: team.name, store: new CloudNotesStore({ kind: "team", teamId: team.id }, notesPersistence) });
           }
+        };
+        // The Cloud stores read and cache through these services, so the
+        // export runs before they close.
+        const result = await withCliServices(ctx, async (services) => {
+          await addCloudSources(services);
+          return ctx.cliOptions.dryRun ? null : await exportNotesToDirectory(dir, sources);
         });
-        if (ctx.cliOptions.dryRun) {
+        if (!result) {
           ctx.printResult({ data: { dryRun: true, dir, sources: sources.map((source) => source.label) }, ...(warnings.length > 0 ? { warnings } : {}) }, {
             text: (data) => `Would export ${data.sources.join(", ")} notes to ${data.dir}.${dryRunNote(true)}`,
           });
           return;
         }
-        const result = await exportNotesToDirectory(dir, sources);
         warnings.push(...result.skipped.map(describeExportSkip));
         ctx.printResult({
           data: {
