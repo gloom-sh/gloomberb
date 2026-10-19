@@ -49,6 +49,7 @@ function shareDataOpens(template: Pick<PaneTemplateDef, "publicShare">, shareDat
   try {
     return restore(shareData as Record<string, unknown>) !== null;
   } catch {
+    // Intentional ignore: data the template cannot restore asks for its settings form instead.
     return false;
   }
 }
