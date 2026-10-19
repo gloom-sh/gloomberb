@@ -96,6 +96,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     [...(data?.trades.map((trade) => trade.price) ?? []), data?.session.low ?? null, data?.session.high ?? null]))?.digits ?? 2, [data, symbol]);
   const quoteDigits = useMemo(() => (quoteDecision.current = stickyTapePriceDigits(quoteDecision.current, symbol,
     data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []))?.digits ?? 2, [data, symbol]);
+  // The session range stands beside the tab's own prices, so it reads at their decimals: the quote tab's bid and ask, not the trades'.
+  const sessionDigits = tab === "quotes" ? quoteDigits : tradeDigits;
   const freeze = () => { setPaused(frozen || !resource.data ? null : { data: resource.data, epoch: resource.epoch }); setDetail(null); };
   const reload = () => { setPaused(null); setDetail(null); setRefresh((value) => value + 1); };
   useShortcut((event) => {
@@ -107,7 +109,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : []),
     ...(pinnedBeforeTape ? [`The pinned moment is before this tape's first ${tab === "quotes" ? "quote" : "print"}, ${tapeStampNewYork(rowTime(rows.at(-1)!))}.`] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] },
+    info: data ? [{ id: "feed", quoteStatus: true, parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
@@ -132,7 +134,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
             { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockNewYork(stats.from) : "--"}` },
             { id: "range", label: "Range", value: `${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`, detail: `last ${rank(stats.pricePercentile)}` },
           ]),
-          ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, tradeDigits)} to ${tapePrice(data.session.high, tradeDigits)}` }] : []),
+          ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, sessionDigits)} to ${tapePrice(data.session.high, sessionDigits)}` }] : []),
         ]} />}
         renderCell={(row, column) => {
           if (row.trade) {
