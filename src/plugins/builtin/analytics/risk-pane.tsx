@@ -58,6 +58,7 @@ import {
   riskPercentile,
   riskAmountBase,
   riskEvidence,
+  riskReturnsCurrency,
   riskValue,
   RISK_VIEWS,
   type PortfolioRiskModel,
@@ -301,7 +302,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const loader = useCallback(
     async (force: boolean) => {
       const [market, brokerOptions] = await Promise.all([
-        loadPortfolioRiskMarket(requests, force),
+        loadPortfolioRiskMarket(requests, force, portfolio!.currency),
         loadPortfolioOptionBook(localTickers, portfolio!),
       ]);
       return { ...market, brokerOptions };
@@ -466,6 +467,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   // What the basket views leave out, unless the body already says why they show nothing.
   const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageHeadline(model.coverage) : null;
   const asOfDate = model?.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
+  // The views estimated from returns name the currency a non-USD account's returns were converted into.
+  const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" ? riskReturnsCurrency(model) : null;
+  const amountBase = rows.map(riskAmountBase).find(Boolean);
   // Dated evidence only when a row has a date; a missing date is not a claim about history.
   const asOfText = !model
     ? null
@@ -473,7 +477,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         ...(basketBody ? [] : [
           ...(asOfDate && sharedEvidence ? [sharedEvidence] : []),
           // The value the tail losses in money are taken on names the currency too.
-          rows.map(riskAmountBase).find(Boolean) ?? model.portfolio.currency,
+          ...(amountBase
+            ? [amountBase, ...(returnsCurrency ? [returnsCurrency] : [])]
+            : [returnsCurrency ?? model.portfolio.currency]),
           ...(asOfDate ? [asOfDate] : []),
           ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
         ]),

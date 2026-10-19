@@ -15,6 +15,7 @@ import {
   RISK_VIEWS,
   riskEvidence,
   riskPercentile,
+  riskReturnsCurrency,
   riskValue,
   sinceFallbackNote,
   sinceFiledMethod,
@@ -142,7 +143,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Explicit local evidence for account returns and attribution",
     ],
     limitations: [
-      `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out.`,
+      `Fixed-current-weight equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value, in the account's currency; foreign listings convert to USD at daily FX closes, and a non-USD account's returns then convert into its currency at its own daily FX closes; metadata.coverage states the covered share of market value and each holding left out.`,
       "--since filed buys the 13F's own weights at the filing-date close and holds them (--weights current holds today's weights fixed instead).",
       "No account performance inferred.",
       "ETF price-return factor proxies.",
@@ -246,6 +247,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
             ctx.apiClient,
             new Date(),
             ctx.signal,
+            local.portfolio.currency,
           ),
       localOnly
         ? Promise.resolve(undefined)
@@ -270,7 +272,12 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Options for views the report does not print are named, not dropped silently; the fallback from --since opens the report.
     const fallback = sinceFallbackNote(local.portfolio);
     const shifted = ["equity-shift", "rate-shift", "vol-shift"].filter((key) => args.options[key] != null);
+    // A non-USD account's returns were converted, and the basket views say into what.
+    const returnsCurrency = riskReturnsCurrency(model);
     const notices = [
+      ...(returnsCurrency && (!requestedView || (BASKET_VIEWS.has(requestedView) && requestedView !== "holdings"))
+        ? [`${returnsCurrency[0]!.toUpperCase()}${returnsCurrency.slice(1)}.`]
+        : []),
       ...(model.window.kind === "since-filed" ? [sinceFiledMethod(model.window, model.benchmark)] : []),
       ...(args.options.since === "filed" && model.window.kind !== "since-filed" ? [fallback] : []),
       ...(requestedView && requestedView !== "stress" && shifted.length ? [`${shifted.map((key) => `--${key}`).join(", ")} change${shifted.length === 1 ? "s" : ""} the stress view only, not --view ${requestedView}`] : []),
@@ -335,6 +342,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(basketView && model.coverage
           ? { coverage: coverageSummary(model.coverage, COMPACT_LEFT_OUT_LIMIT) }
           : {}),
+        // The currency a non-USD account's returns and amounts are in, and the daily pair they converted at.
+        ...(basketView && model.accountConversion ? { accountConversion: model.accountConversion } : {}),
         asOf: model.fetchedAt,
         ...(notices.length ? { notices } : {}),
       },

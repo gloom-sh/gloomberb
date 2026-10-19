@@ -16,12 +16,15 @@ import { qualifySharpeCadence } from "./sharpe-cadence";
 import { evidenceDay } from "./risk-evidence";
 import { FX_LIVE_RATE_MAX_DEVIATION } from "../../../market-data/coordinator/fx-legs";
 import {
+  accountFxPair,
+  accountFxReason,
   convertClosesToUsd,
   FX_DISAGREES,
   FX_NO_PAIR,
   FX_UNAVAILABLE,
   riskConversion,
   validateFxHistory,
+  type AccountFx,
   type FxCloses,
   type RiskConversion,
 } from "./risk-fx";
@@ -65,8 +68,10 @@ export interface RiskMarketSnapshot {
   fetchedAt: string;
   warnings: string[];
   brokerOptions?: import("./risk-options").PortfolioOptionBook;
-  /** USD per unit of each listing or position currency of the holdings, at load time. */
+  /** USD per unit of the account currency and of each listing or position currency of the holdings, at load time. */
   fxRates?: Record<string, number>;
+  /** For an account not in USD: the daily closes its returns convert at, or why they cannot. */
+  accountFx?: AccountFx;
 }
 /**
  * The most holdings one load requests daily history for, largest current USD
@@ -313,7 +318,9 @@ const largestFirst = (
  * competes at its value at the current rate and, when requested, also loads
  * its currency's daily FX history once per currency, so its closes convert to
  * USD. Holdings with no FX pair, positions the caller marks unsupported and
- * holdings past the limit get no history request; their entry says why. The
+ * holdings past the limit get no history request; their entry says why. An
+ * account in another currency than USD also loads that currency's current
+ * rate and daily FX history, which the model converts every return with. The
  * signal stops the fetch: no request starts once it
  * aborts, the ones in flight are cancelled, and the call rejects instead of
  * returning a partial snapshot nobody is waiting for.
@@ -323,6 +330,7 @@ export async function fetchPortfolioRiskMarket(
   client: RiskCloudClient = apiClient,
   now = new Date(),
   signal?: AbortSignal,
+  accountCurrency = "USD",
 ): Promise<RiskMarketSnapshot> {
   signal?.throwIfAborted();
   const normalized = (row: RiskInstrument): RiskInstrument => ({
@@ -417,14 +425,16 @@ export async function fetchPortfolioRiskMarket(
     }
   }
   // Current rates value a foreign holding: its rank, its mark, and its size when left out.
+  // The account currency's comes first: it values every holding.
+  const account = accountCurrency === "USD" ? null : accountCurrency;
   const fxCurrencies = [
     ...new Set(
-      [...entries.values()].flatMap((row) => {
+      [...(account ? [account] : []), ...[...entries.values()].flatMap((row) => {
         const currency = resolveCurrencyUnit(
           listings.get(row.id)?.currency ?? (quotes.has(row.id) ? null : row.request.currency),
         ).currency;
         return currency && currency !== "USD" ? [currency] : [];
-      }),
+      })],
     ),
   ].slice(0, MAX_FX_CURRENCIES);
   const fx = await Promise.allSettled(
@@ -539,6 +549,22 @@ export async function fetchPortfolioRiskMarket(
     }
     return loading;
   };
+  // The account currency's daily closes, shared with any listing that converts from it.
+  const accountWork: Promise<AccountFx | undefined> = (async () => {
+    if (!account) return undefined;
+    const failed = (error: string): AccountFx =>
+      ({ currency: account, pair: accountFxPair(account), closes: {}, first: null, asOf: null, error });
+    const conversion = riskConversion(account);
+    if (!conversion || conversion.divisor !== 1) return failed(accountFxReason(account, FX_NO_PAIR));
+    try {
+      const closes = await fxHistory(conversion);
+      return { currency: account, pair: accountFxPair(account), closes: Object.fromEntries(closes.closes),
+        first: closes.first, asOf: closes.asOf, error: null };
+    } catch (error) {
+      if (isAccessDenied(error) || signal?.aborted) throw error;
+      return failed(accountFxReason(account, message(error)));
+    }
+  })();
   const pending = instruments.flatMap(([id], index) =>
     requestedIds.has(id) ? [index] : [],
   );
@@ -596,7 +622,7 @@ export async function fetchPortfolioRiskMarket(
       }
     }),
   );
-  const [, fred] = await Promise.all([
+  const [, fred, accountFx] = await Promise.all([
     historyWork,
     Promise.allSettled(
       ["DGS10", "VIXCLS"].map(async (id) =>
@@ -611,6 +637,7 @@ export async function fetchPortfolioRiskMarket(
         ),
       ),
     ),
+    accountWork,
   ]);
   signal?.throwIfAborted();
   for (const [index, result] of fred.entries()) {
@@ -628,25 +655,30 @@ export async function fetchPortfolioRiskMarket(
     fetchedAt: now.toISOString(),
     warnings,
     fxRates,
+    ...(accountFx ? { accountFx } : {}),
   };
 }
-/** What changes the requests: identity, size and whether a holding can enter the basket. */
-const cacheKey = (holdings: readonly RiskHoldingRequest[]) =>
+/**
+ * What changes the requests: identity, size, whether a holding can enter the
+ * basket, and an account currency other than USD (whose daily FX the load adds).
+ */
+const cacheKey = (holdings: readonly RiskHoldingRequest[], accountCurrency: string) =>
   [
     ...new Set(
       holdings.map(
         (row) => `${riskInstrumentId(row)}|${row.quantity ?? ""}|${row.currency ?? ""}|${row.unsupported ? 1 : 0}`,
       ),
     ),
-  ].sort().join(",");
+  ].sort().join(",") + (accountCurrency === "USD" ? "" : `@${accountCurrency}`);
 export async function loadPortfolioRiskMarket(
   holdings: readonly RiskHoldingRequest[],
   force = false,
+  accountCurrency = "USD",
 ) {
   const { payload, stale, refreshError } = await loadCloudResource(
     portfolioRiskCache,
-    cacheKey(holdings),
-    () => fetchPortfolioRiskMarket(holdings),
+    cacheKey(holdings, accountCurrency),
+    () => fetchPortfolioRiskMarket(holdings, undefined, undefined, undefined, accountCurrency),
     { force },
   );
   return {

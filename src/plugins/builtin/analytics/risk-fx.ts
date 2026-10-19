@@ -4,8 +4,25 @@ import { dailyFxCloses, FxHistoryError, type FxCloses } from "../../../market-da
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import type { DatedReturn } from "./metrics";
 
 export type { FxCloses };
+
+/**
+ * The daily closes that restate a non-USD account's returns, as the market
+ * load keeps them (plain data, so the cache can hold them), or why there are none.
+ */
+export interface AccountFx {
+  currency: string;
+  /** "USD/TRY" or "EUR/USD", as the pair trades; null when no daily pair prices the currency. */
+  pair: string | null;
+  /** USD per unit of the account currency at each completed daily close; empty with an error. */
+  closes: Record<string, number>;
+  first: string | null;
+  asOf: string | null;
+  /** Why returns cannot convert into the account currency; every holding is left out with it. */
+  error: string | null;
+}
 
 /** How a listing quoted in another currency is restated in USD. */
 export interface RiskConversion {
@@ -34,6 +51,50 @@ const MAX_LOCAL_CLOSED_DAYS = 10;
 /** The calendar the basket, SPY and the factor proxies share. */
 const BASKET_CALENDAR = "NYSE";
 const DAY_MS = 86_400_000;
+
+/** The daily pair of an account currency as dealers quote it ("USD/TRY", "EUR/USD"), or null when none prices it. */
+export function accountFxPair(currency: string): string | null {
+  const leg = fxLegForCurrency(currency);
+  return !leg ? null : leg.invert ? `USD/${leg.currency}` : `${leg.currency}/USD`;
+}
+
+/**
+ * Why the account currency's daily closes cannot convert a holding: the
+ * problem a listing's own conversion would report (stale, unavailable,
+ * gapped, disagreeing with the current rate), said of the account's pair.
+ */
+export function accountFxReason(currency: string, problem: string): string {
+  const pair = accountFxPair(currency);
+  if (!pair) return `No daily FX pair converts USD into the account currency ${currency}`;
+  const tail = /^Foreign holdings: (daily FX .*)$/.exec(problem)?.[1];
+  return `${pair} ${tail ?? "daily FX closes unavailable"}`;
+}
+
+/**
+ * Restates daily USD returns in the account currency at the FX closes of each
+ * return's own start and end dates: the holding's USD value is divided by the
+ * USD price of one account unit on both dates, so a return becomes
+ * (1 + r) * fx(start) / fx(end) - 1. A listing already converted from its own
+ * currency to USD therefore converts at the cross of the two closes of the
+ * same date. Returns before the first FX close or after the last are dropped,
+ * so the series starts and ends with the FX history; a return inside it with an
+ * endpoint that has no FX close rejects the whole series instead of bridging it.
+ */
+export function convertReturnsToAccount(
+  returns: readonly DatedReturn[],
+  fx: Pick<AccountFx, "currency" | "closes" | "first" | "asOf">,
+): DatedReturn[] {
+  if (!fx.first || !fx.asOf) throw new Error(accountFxReason(fx.currency, FX_UNAVAILABLE));
+  const converted: DatedReturn[] = [];
+  for (const point of returns) {
+    if (point.startDateKey < fx.first || point.dateKey > fx.asOf) continue;
+    const start = fx.closes[point.startDateKey],
+      end = fx.closes[point.dateKey];
+    if (!(start! > 0) || !(end! > 0)) throw new Error(accountFxReason(fx.currency, FX_GAP));
+    converted.push({ ...point, value: (1 + point.value) * (start! / end!) - 1 });
+  }
+  return converted;
+}
 
 /** The pair that restates a listing currency in USD, or null when there is none. */
 export function riskConversion(listingCurrency: string): RiskConversion | null {

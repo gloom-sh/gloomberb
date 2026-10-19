@@ -9,7 +9,9 @@ import {
   riskCoverageShortfall,
   riskCoverageText,
   riskExclusionText,
+  riskReturnsCurrency,
 } from "./risk-model";
+import { FX_NO_PAIR } from "./risk-fx";
 import {
   BEYOND_SIZE_REASON,
   fetchPortfolioRiskMarket,
@@ -140,6 +142,60 @@ test("foreign listings with daily FX closes enter the basket in USD and the foot
   expect(model.notes).toContain(
     "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
   );
+});
+test("a TRY account converts each holding's USD returns at its own dates' USD/TRY closes and leaves out only what cannot convert", async () => {
+  const account: Portfolio = { ...BROKER_PORTFOLIO, currency: "TRY" };
+  // Two US listings, a yen listing that converts on to TRY through USD, and a riyal listing no daily pair converts.
+  const holdings = [
+    { symbol: "US01", exchange: "NASDAQ", currency: "USD", quantity: 100, price: 100 },
+    { symbol: "US02", exchange: "NYSE", currency: "USD", quantity: 500, price: 100 },
+    { symbol: "JPY1", exchange: "JPX", currency: "JPY", quantity: 500, price: 3_000 },
+    { symbol: "SAR1", exchange: "TADAWUL", currency: "SAR", quantity: 100, price: 30 },
+  ];
+  const tickers = brokerFixtureTickers(holdings);
+  const load = (currency: string) => fetchPortfolioRiskMarket(
+    portfolioRiskRequests(tickers, BROKER_PORTFOLIO.id), brokerRiskClient(now, holdings, { fx: true }) as never, now, undefined, currency,
+  );
+  const [usdMarket, market] = await Promise.all([load("USD"), load("TRY")]);
+  const usd = buildPortfolioRisk(BROKER_PORTFOLIO, tickers, usdMarket);
+  const model = buildPortfolioRisk(account, tickers, market);
+  const fx = market.accountFx!;
+  expect(fx).toMatchObject({ currency: "TRY", pair: "USD/TRY", error: null });
+  const held = (symbol: string, from = model) => from.holdings.find((row) => row.symbol === symbol)!;
+  // V = USD value / USD per lira on each date, so a return is (1 + r) * fx(start) / fx(end) - 1; the yen listing's USD series chains on.
+  for (const symbol of ["US01", "JPY1"]) {
+    const inUsd = held(symbol, usd).returns, inTry = held(symbol).returns;
+    expect(inTry.map((row) => row.dateKey)).toEqual(inUsd.map((row) => row.dateKey));
+    const error = Math.max(...inUsd.map((row, index) =>
+      Math.abs(inTry[index]!.value - ((1 + row.value) * fx.closes[row.startDateKey]! / fx.closes[row.dateKey]! - 1))));
+    expect(error).toBeLessThan(1e-12);
+    expect(inTry.some((row, index) => Math.abs(row.value - inUsd[index]!.value) > 1e-4)).toBe(true);
+  }
+  // Values and the tail losses in money are in lira at the current rate; the weights are the USD account's.
+  expect(held("US01").value).toBeCloseTo(10_000 / 0.0202, 6);
+  for (const row of model.holdings) expect(row.weight ?? 0).toBeCloseTo(held(row.symbol, usd).weight ?? 0, 12);
+  expect(model.rows.risk.find((row) => row.id === "var")).toMatchObject({ amountCurrency: "TRY", amountBase: model.coverage.coveredValue });
+  expect(model.coverage.coveredValue).toBeCloseTo((10_000 + 50_000 + 500 * 3_000 * 0.0068) / 0.0202, 4);
+  // Only the listing with no FX path is left out; everything else estimates, and says in what currency.
+  expect(model.coverage.leftOut.map((row) => [row.symbol, row.reason])).toEqual([["SAR1", FX_NO_PAIR]]);
+  expect(model.metrics.every((row) => row.value != null)).toBe(true);
+  expect(model.factors.every((row) => row.value != null)).toBe(true);
+  expect(riskReturnsCurrency(model)).toBe("returns in TRY at daily USD/TRY closes");
+  expect(riskReturnsCurrency(usd)).toBeNull();
+
+  // A missing lira close on a holding's dates leaves that holding out, never bridged; one whose history starts later still converts.
+  const us02 = market.histories.find((row) => row.instrument.symbol === "US02")!;
+  us02.returns = us02.returns.slice(-80);
+  const gap = held("US01", usd).returns[10]!.dateKey;
+  const { [gap]: _missing, ...closes } = fx.closes;
+  const gapped = buildPortfolioRisk(account, tickers, { ...market, accountFx: { ...fx, closes } });
+  expect(gapped.coverage.leftOut.map((row) => [row.symbol, row.reason])).toEqual([
+    ["JPY1", "USD/TRY daily FX history has gaps on the holding's dates"],
+    ["US01", "USD/TRY daily FX history has gaps on the holding's dates"],
+    ["SAR1", FX_NO_PAIR],
+  ]);
+  expect(gapped.coverage.sufficient).toBe(true);
+  expect(gapped.metrics.every((row) => row.value != null)).toBe(true);
 });
 test("past the size limit the largest holdings by value are modelled and the rest left out", async () => {
   // Listed smallest first, so the limit has to rank by value rather than keep the order.

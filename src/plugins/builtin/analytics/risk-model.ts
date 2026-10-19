@@ -36,6 +36,7 @@ import {
   type RiskHoldingRequest,
   type RiskMarketSnapshot,
 } from "./risk-client";
+import { accountFxPair, accountFxReason, convertReturnsToAccount, FX_UNAVAILABLE, type AccountFx } from "./risk-fx";
 
 interface PortfolioRiskHolding {
   id: string;
@@ -43,7 +44,10 @@ interface PortfolioRiskHolding {
   exchange: string;
   quantity: number;
   currency: string;
-  /** Signed USD value at the current mark; only these marks weight the basket. */
+  /**
+   * Signed value at the current USD mark, in the account currency at its
+   * current rate; only these marks weight the basket.
+   */
   value: number | null;
   /** Weight in the covered basket, null outside it. */
   weight: number | null;
@@ -59,6 +63,7 @@ interface PortfolioRiskHolding {
   /** The listing currency its closes were converted from at daily FX closes; null for a USD listing. */
   convertedFrom: string | null;
   historyAsOf: string | null;
+  /** Daily returns in the account currency. */
   returns: DatedReturn[];
   error: string | null;
   /** Why the holding is outside the basket; null when it qualifies. */
@@ -325,6 +330,24 @@ function outsideValue(
   const value = resolvePortfolioMarketValue(metrics, unit != null && Number.isFinite(unit) ? unit : null)?.gross;
   return value != null && Number.isFinite(value) ? value : null;
 }
+/** USD returns in the account currency, or none with the reason its daily closes cannot convert them. */
+function accountReturns(returns: readonly DatedReturn[], account: AccountFx): { returns: DatedReturn[]; error: string | null } {
+  if (account.error) return { returns: [], error: account.error };
+  try {
+    return { returns: convertReturnsToAccount(returns, account), error: null };
+  } catch (error) {
+    return { returns: [], error: error instanceof Error ? error.message : accountFxReason(account.currency, FX_UNAVAILABLE) };
+  }
+}
+/**
+ * "returns in TRY at daily USD/TRY closes": the currency the basket views of a
+ * non-USD account are in and how they got there; null for a USD account, or
+ * when its daily closes were unavailable and nothing converted.
+ */
+export function riskReturnsCurrency(model: Pick<PortfolioRiskModel, "accountConversion"> | null | undefined): string | null {
+  const conversion = model?.accountConversion;
+  return conversion ? `returns in ${conversion.currency} at daily ${conversion.pair} closes` : null;
+}
 // The epsilon keeps 29 of 100 at 29%, not the 28 that 0.29 * 100 rounds down to.
 const coveragePercent = (share: number) => Math.floor(share * 100 + 1e-9);
 const holdingCount = (count: number) => `${count} holding${count === 1 ? "" : "s"}`;
@@ -441,7 +464,27 @@ export function buildPortfolioRisk(
   const byId = new Map(
     market.histories.map((row) => [riskInstrumentId(row.instrument), row]),
   );
-  const rates = market.fxRates ?? {};
+  // A non-USD account converts every USD return at its currency's daily closes and every USD mark at its current rate.
+  const account: AccountFx | null =
+    portfolio.currency === "USD"
+      ? null
+      : market.accountFx?.currency === portfolio.currency
+        ? market.accountFx
+        : {
+            currency: portfolio.currency,
+            pair: accountFxPair(portfolio.currency),
+            closes: {},
+            first: null,
+            asOf: null,
+            error: accountFxReason(portfolio.currency, FX_UNAVAILABLE),
+          };
+  // Without a current rate the latest daily close values the account.
+  const latestAccountClose = account?.asOf ? account.closes[account.asOf] : undefined;
+  const rates: Readonly<Record<string, number>> =
+    account && !((market.fxRates?.[account.currency] ?? 0) > 0) && latestAccountClose
+      ? { ...market.fxRates, [account.currency]: latestAccountClose }
+      : (market.fxRates ?? {});
+  const accountRate = account ? rates[account.currency] : undefined;
   const holdings: PortfolioRiskHolding[] = portfolioRiskTickers(
     tickers,
     portfolio.id,
@@ -471,13 +514,10 @@ export function buildPortfolioRisk(
     const listingCurrency =
       quote?.currency ?? close?.currency ?? history?.listing?.currency ?? ticker.metadata.currency;
     const foreign = !convertedFrom && listingCurrency !== "USD";
-    const error =
+    const usdError =
       syntheticPositionUnsupportedReason(ticker, "USD", portfolio.id) ??
       (lots.some((row) => !Number.isFinite(row.shares))
         ? "Invalid position quantity"
-        : null) ??
-      (portfolio.currency !== "USD"
-        ? "Historical account-currency FX is required"
         : null) ??
       (ticker.metadata.currency &&
       (convertedFrom ?? mark?.currency) &&
@@ -490,10 +530,13 @@ export function buildPortfolioRisk(
         : null) ??
       history?.error ??
       (!history ? "Daily history unavailable" : null);
+    // A holding with a USD history converts into the account currency, or is left out with the reason it cannot.
+    const inAccount = account && !usdError ? accountReturns(history?.returns ?? [], account) : null;
+    const error = usdError ?? inAccount?.error ?? null;
     const priceDate = close ? close.date : regularClose ? regularClose.date : quoteDate(quote?.lastUpdated);
     const marked =
       mark &&
-      mark.currency === portfolio.currency &&
+      mark.currency === "USD" &&
       !mark.stale &&
       Number.isFinite(mark.price) &&
       mark.price > 0 &&
@@ -506,8 +549,9 @@ export function buildPortfolioRisk(
         error?.startsWith("Short positions"))
         ? quantity * mark.price
         : null;
-    const value = marked != null && Number.isFinite(marked) ? marked : null;
-    const returns = history?.returns ?? [];
+    const accountValue = marked == null || !account ? marked : accountRate! > 0 ? marked / accountRate! : null;
+    const value = accountValue != null && Number.isFinite(accountValue) ? accountValue : null;
+    const returns = inAccount?.returns ?? history?.returns ?? [];
     const leftOut =
       error ??
       (value == null || value <= 0
@@ -529,7 +573,8 @@ export function buildPortfolioRisk(
       priceAsOf: priceDate,
       markSource: close ? "close" : regularClose ? "regular-close" : quote ? "quote" : null,
       convertedFrom,
-      historyAsOf: history?.asOf ?? null,
+      // Converted returns end with the account currency's last daily close.
+      historyAsOf: (inAccount ? inAccount.returns.at(-1)?.dateKey : null) ?? history?.asOf ?? null,
       returns,
       error,
       leftOut,
@@ -610,7 +655,14 @@ export function buildPortfolioRisk(
     );
     return (instrument && byId.get(riskInstrumentId(instrument))?.returns) || [];
   };
-  const benchmark = proxy(RISK_BENCHMARK);
+  // SPY's USD returns are the market factor and the equity stress; the risk
+  // rows compare the basket with SPY in the basket's own currency. A session
+  // without an account close is a gap in that benchmark, never bridged, so it
+  // cannot blank the holdings the closes do cover.
+  const spy = proxy(RISK_BENCHMARK);
+  const benchmark = account
+    ? accountReturns(spy.filter((point) => account.closes[point.startDateKey] && account.closes[point.dateKey]), account).returns
+    : spy;
   // Since the filing only for a portfolio that has one; any other keeps the trailing window and says why.
   const filed = window.since === "filed" ? portfolio.importedFrom?.filed ?? null : null;
   if (window.since === "filed" && !filed)
@@ -647,12 +699,13 @@ export function buildPortfolioRisk(
   const metrics = filed
     ? sinceBasketRisk(sample, filed, RISK_BENCHMARK)
     : rollingBasketRisk(sample, undefined, RISK_BENCHMARK);
+  // Factor proxies stay in USD: a beta is the account-currency move per unit of the factor as it trades.
   const factors = [
-    { id: "market", label: "Market (SPY)", series: benchmark },
+    { id: "market", label: "Market (SPY)", series: spy },
     {
       id: "size",
       label: "Size (IWM - SPY)",
-      series: subtractReturns(proxy("IWM"), benchmark),
+      series: subtractReturns(proxy("IWM"), spy),
     },
     {
       id: "value",
@@ -662,7 +715,7 @@ export function buildPortfolioRisk(
     {
       id: "momentum",
       label: "Momentum (MTUM - SPY)",
-      series: subtractReturns(proxy("MTUM"), benchmark),
+      series: subtractReturns(proxy("MTUM"), spy),
     },
     { id: "rates", label: "Rates (IEF)", series: proxy("IEF") },
     {
@@ -690,7 +743,7 @@ export function buildPortfolioRisk(
     {
       id: "equity",
       label: `Index ${shifts.equity > 0 ? "+" : ""}${shifts.equity}%`,
-      series: benchmark,
+      series: spy,
       shock: shifts.equity / 100,
       source: "SPY price return",
     },
@@ -772,7 +825,7 @@ export function buildPortfolioRisk(
       asOf: row.priceAsOf,
       detail: row.leftOut
         ? row.leftOut
-        : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" || row.markSource === "regular-close" ? ` at ${row.priceAsOf} close` : ""}${row.convertedFrom ? ` from ${row.convertedFrom} at daily FX` : ""}; history ${row.historyAsOf}`,
+        : `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${portfolio.currency}${row.markSource === "close" || row.markSource === "regular-close" ? ` at ${row.priceAsOf} close` : ""}${row.convertedFrom ? ` from ${row.convertedFrom} at daily FX` : ""}; history ${row.historyAsOf}`,
       ...(row.leftOut ? { leftOut: row.leftOut } : {}),
     })),
     correlation: correlation.map((row) => ({
@@ -947,6 +1000,11 @@ export function buildPortfolioRisk(
     notes,
     fetchedAt: market.fetchedAt,
     benchmark: RISK_BENCHMARK,
+    /** The currency a non-USD account's returns converted into, at the daily closes of `pair`; null for USD. */
+    accountConversion:
+      account && !account.error && account.pair
+        ? { currency: account.currency, pair: account.pair, asOf: account.asOf }
+        : null,
     window: filed
       ? {
           kind: "since-filed" as const,

@@ -76,6 +76,9 @@ const BROKER_FX_RATES: Readonly<Record<string, number>> = {
   HKD: 0.128,
   JPY: 0.0068,
   TWD: 0.031,
+  // An account currency, and a listing currency with no daily FX pair.
+  TRY: 0.0202,
+  SAR: 0.2667,
 };
 export const BROKER_PORTFOLIO: Portfolio = { id: "broker", name: "Broker account", currency: "USD" };
 
