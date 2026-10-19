@@ -4,6 +4,7 @@ import { KeyValueRow, Notice, RatioBar, SectionHeading } from "../../../componen
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import type { TicketViewModel } from "./ticket";
+import { strategyLegLabel } from "./strategy";
 
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
@@ -25,12 +26,37 @@ export function TicketOrderHeadline({ model: m, large = false }: { model: Ticket
     <FigureText part={large ? "value" : "sub"} style={large ? undefined : { fontSize: "var(--gloom-type-heading)", fontWeight: "var(--gloom-weight-bold)" }}>{`${ticketNumber(draft?.quantity)} ${m.symbol}`}</FigureText>
   </Box>;
 }
+/** A spread's legs as they fill: side, contracts across all spreads, contract, and each leg's mid at this broker. */
+/** `inset`: in the order form, the legs line up with the fields' labels. */
+export function TicketLegs({ model: m, width, inset = false }: { model: TicketViewModel; width: number; inset?: boolean }) {
+  const c = useThemeColors();
+  const native = useUiCapabilities().nativePaneChrome;
+  const draft = m.draft;
+  if (!draft?.legs?.length) return null;
+  const pad = inset && !native ? 2 : 0;
+  return <Box flexDirection="column" width={width} paddingLeft={pad} data-gloom-selectable="true">
+    {draft.legs.map((leg, index) => {
+      const label = strategyLegLabel(leg, draft.quantity);
+      const quote = m.legQuotes?.[index];
+      const mid = quote && Number.isFinite(quote.bid) && Number.isFinite(quote.ask) ? (quote.bid! + quote.ask!) / 2 : undefined;
+      return <Box key={index} flexDirection="row" gap={1}>
+        <Text fg={leg.action === "BUY" ? c.positive : c.negative} attributes={TextAttributes.BOLD}>{label.side}</Text>
+        <Text fg={c.text}>{label.contracts}</Text>
+        <Box flexGrow={1} minWidth={0}><Text fg={c.text} truncate>{label.contract}</Text></Box>
+        {mid !== undefined ? <Text fg={c.textDim}>{mid.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</Text> : null}
+      </Box>;
+    })}
+  </Box>;
+}
 export function TicketOrderSummary({ model: m, width, compact = false, receipt = false }: { model: TicketViewModel; width: number; compact?: boolean; receipt?: boolean }) {
   const c = useThemeColors(); const draft = m.draft; const account = m.accounts.find((a) => a.accountId === m.accountId);
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
   const px = draft?.limitPrice ?? draft?.stopPrice ?? m.quote?.price;
   const total = m.phase === "result" ? m.preview?.estimatedCost : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
-  const positionAfter = m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
+  const strategy = !!draft?.legs?.length;
+  const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";
+  // A spread changes each leg's position, which its legs list.
+  const positionAfter = !strategy && m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
   const powerAfter = m.preview?.buyingPowerAfter;
   const sideColor = draft?.action === "SELL" ? c.negative : c.positive;
   if (compact && receipt) return <Box flexDirection="column">
@@ -44,9 +70,11 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const rowWidth = width;
   if (receipt) return <TicketSection width={width} title="Account impact" selectable>
     <Text fg={c.textDim}>After this order fills</Text>
-    <Box paddingY={1}><FigureText>{positionAfter === undefined ? "Unknown position" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`}</FigureText></Box>
-    <TicketReceiptRow label="Current position" value={ticketNumber(m.position)} width={rowWidth} />
-    <TicketReceiptRow label="Order quantity" value={`${draft?.action === "SELL" ? "−" : "+"}${ticketNumber(draft?.quantity)}`} color={sideColor} width={rowWidth} />
+    {strategy ? <Box paddingY={1}><TicketLegs model={m} width={rowWidth} /></Box> : <>
+      <Box paddingY={1}><FigureText>{positionAfter === undefined ? "Unknown position" : `${ticketNumber(positionAfter)} ${unit}`}</FigureText></Box>
+      <TicketReceiptRow label="Current position" value={ticketNumber(m.position)} width={rowWidth} />
+      <TicketReceiptRow label="Order quantity" value={`${draft?.action === "SELL" ? "−" : "+"}${ticketNumber(draft?.quantity)}`} color={sideColor} width={rowWidth} />
+    </>}
     <Box marginTop={1}><SectionHeading title="Buying power · broker preview" /></Box>
     <TicketReceiptRow label="Before order" value={ticketMoney(m.preview?.buyingPowerBefore ?? account?.buyingPower, currency)} width={rowWidth} />
     <TicketReceiptRow label="Broker impact" value={ticketMoney(m.preview?.buyingPowerImpact, currency)} width={rowWidth} />
@@ -56,12 +84,13 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <TicketOrderHeadline model={m} large />
     <Text fg={c.textDim}>{`${ticketTypeName[draft?.orderType ?? "LMT"]} · ${draft?.tif ?? "DAY"}${draft?.outsideRth ? " · Extended hours" : ""}`}</Text>
     <Box flexDirection="column" paddingY={1}><Text fg={c.textDim}>Estimated order value</Text><FigureText>{ticketMoney(total, currency)}</FigureText></Box>
-    <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
-    <TicketReceiptRow label="Price" value={draft?.orderType === "MKT" ? "At market" : ticketMoney(px, currency)} width={rowWidth} />
+    {strategy ? <TicketLegs model={m} width={rowWidth} /> : null}
+    <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${unit}`} width={rowWidth} />
+    <TicketReceiptRow label={strategy ? draft?.action === "SELL" ? "Net credit" : "Net debit" : "Price"} value={draft?.orderType === "MKT" ? "At market" : ticketMoney(px, currency)} width={rowWidth} />
     {m.phase === "result" ? <Text fg={c.textDim}>Estimates from order preview</Text> : null}
     <TicketReceiptRow label="Fees / commission" value={m.preview || m.phase === "result" ? `${ticketMoney(m.preview?.fees, currency)} / ${ticketMoney(m.preview?.commission, currency)}` : "At review"} width={rowWidth} />
     <TicketReceiptRow label="Broker power after" value={ticketMoney(powerAfter, currency)} width={rowWidth} />
-    <TicketReceiptRow label="Position after" value={positionAfter === undefined ? "Not reported" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
+    {strategy ? null : <TicketReceiptRow label="Position after" value={positionAfter === undefined ? "Not reported" : `${ticketNumber(positionAfter)} ${unit}`} width={rowWidth} />}
     {m.phase !== "result" ? <Box marginTop={1}><Notice variant="callout" tone="warning">{m.quoteData !== "realtime" ? "Delayed broker quote. Execution prices may differ." : "Final cost and availability are checked at review."}</Notice></Box> : null}
   </TicketSection>;
 }

@@ -5,11 +5,18 @@ import type { BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
 import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder } from "./orders-data";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { optionContractIdentity } from "../../../utils/options";
+import { isStrategyOrder } from "./strategy";
 
-export function ticketOrderMatches(order: Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract">, contract: BrokerContractRef, profileId: string, accountId?: string): boolean {
+export function ticketOrderMatches(order: Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">, contract: BrokerContractRef, profileId: string, accountId?: string): boolean {
   if (!accountId || order.accountId !== accountId || order.brokerInstanceId && order.brokerInstanceId !== profileId
     || order.contract.brokerInstanceId && order.contract.brokerInstanceId !== profileId || order.contract.brokerId !== contract.brokerId) return false;
   const held = order.contract;
+  // A spread is its underlying's order: the stock's ticket and a spread ticket on it both list it.
+  const spreadTicket = contract.secType?.toUpperCase() === "BAG";
+  if (isStrategyOrder(order) || spreadTicket) {
+    return isStrategyOrder(order) && held.symbol.trim().toUpperCase() === contract.symbol.trim().toUpperCase()
+      && (spreadTicket || !contract.secType || ["STK", "ETF"].includes(contract.secType.toUpperCase()));
+  }
   if (held.conId !== undefined && contract.conId !== undefined) return held.conId === contract.conId;
   // An option is its OCC contract, however the broker routes it or writes its expiry.
   const option = optionContractIdentity(held);

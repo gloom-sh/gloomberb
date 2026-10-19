@@ -16,6 +16,7 @@ import { BrokerAccountPicker } from "./account-picker";
 import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
 import type { BrokerContractRef } from "../../../types/instrument";
 import { ticketOrderMatches } from "./chart-levels";
+import { orderInstrumentLabel, strategyShape } from "./strategy";
 import { stepNumber } from "../../../components/ui/number-step";
 import { ticketEditingPriceStep } from "./ticket";
 import { ticketTypeName } from "./ticket-parts";
@@ -78,7 +79,7 @@ function age(timestamp: number, now: number): string {
 function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: number): DataTableCell {
   const status = brokerOrderStatus(order.status);
   switch (column.id) {
-    case "symbol": return { text: order.contract.localSymbol || order.contract.symbol, attributes: TextAttributes.BOLD };
+    case "symbol": return { text: orderInstrumentLabel(order), attributes: TextAttributes.BOLD };
     case "status": return { text: status, content: <Badge label={status === "Partially filled" ? "Partial fill" : status} variant={status === "Working" ? "solid" : "subtle"} tone={status === "Rejected" ? "negative" : status === "Filled" ? "positive" : ["UNKNOWN", "Pending cancel", "Partially filled"].includes(status) ? "warning" : "accent"} /> };
     case "side": return { text: order.action, content: <Badge label={order.action} tone={order.action === "BUY" ? "positive" : "negative"} /> };
     case "quantity": return { text: `${quantity(order.filled)} / ${quantity(order.quantity)}`, content: <Box flexDirection="row" gap={1} alignItems="center" justifyContent="flex-end" width={column.width}>
@@ -205,8 +206,8 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       controller.requestCancel(order);
       if (compact) { setInlineCancel(true); setKeepOrder(false); return; }
       const confirmed = await confirmDialog(dialog, {
-        title: `Cancel ${order.contract.localSymbol || order.contract.symbol} order?`,
-        body: [`${order.action} ${quantity(order.quantity)} ${order.contract.localSymbol || order.contract.symbol}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountMode(account)} · ${account.name}`],
+        title: `Cancel ${orderInstrumentLabel(order)} order?`,
+        body: [`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountMode(account)} · ${account.name}`],
         confirmLabel: "Cancel order", cancelLabel: "Keep order", confirmVariant: "danger",
       });
       await controller.confirmCancel(confirmed);
@@ -315,7 +316,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       </Box>
     </Box>
     {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={0.5}>
-      <Text fg={colors.textBright}>Cancel {trading.cancelOrder?.action} {trading.cancelOrder?.quantity} {trading.cancelOrder?.contract.symbol}?</Text>
+      <Text fg={colors.textBright}>Cancel {trading.cancelOrder?.action} {trading.cancelOrder?.quantity} {trading.cancelOrder ? orderInstrumentLabel(trading.cancelOrder) : ""}?</Text>
       {trading.cancelOrder ? <Text fg={colors.text}>{orderTerms(trading.cancelOrder)}</Text> : null}
       <Text fg={colors.textDim} wrapText>The order can still fill before cancellation is confirmed.</Text>
       <Box flexDirection="row" gap={1}>
@@ -334,9 +335,11 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
         return <Box key={key} position="relative" flexDirection="row" alignItems="center" gap={1} paddingLeft={1} height={native ? 1.6 : 1} backgroundColor={picked ? colors.panel : undefined}>
           {picked ? <Box position="absolute" left={0} top={0} width={1} height="100%" backgroundColor={focused ? colors.borderFocused : colors.border} style={native ? { width: 2 } : undefined} /> : null}
           <Box flexGrow={1} minWidth={0}>
-            <Button label={`${order.action} ${quantity(order.quantity)} ${order.contract.symbol}, ${state}`} width={native ? undefined : Math.max(10, width - 9)} active={focused && picked} variant="quiet" flush onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
+            <Button label={`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${state}`} width={native ? undefined : Math.max(10, width - 9)} active={focused && picked} variant="quiet" flush onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
               <Box flexDirection="row" gap={1} alignItems="center" width="100%">
                 <Text fg={order.action === "BUY" ? colors.positive : colors.negative} attributes={TextAttributes.BOLD} flexShrink={0}>{`${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)}`}</Text>
+                {/* The drawer is the ticker's: a spread names its shape, the stock needs no name. */}
+                {order.legs?.length ? <Text fg={colors.text} truncate wrapMode="none" flexShrink={1} minWidth={0}>{strategyShape(order.legs)}</Text> : null}
                 <Text fg={colors.text} selectable flexShrink={0}>{priceEdit?.key === key ? `→ ${priceEdit.value}` : order.orderType === "MKT" ? "Mkt" : price(order.limitPrice ?? order.stopPrice)}</Text>
                 <Text fg={colors.warning} truncate wrapMode="none" flexShrink={1} minWidth={0}>{compactOrderState(order)}</Text>
               </Box>

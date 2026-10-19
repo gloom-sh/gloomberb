@@ -565,3 +565,35 @@ describe("modification, cancellation and unknown outcomes", () => {
     expect(count("cancelOrder")).toBe(1);
   });
 });
+
+describe("spreads", () => {
+  const leg = (strike: number, action: "BUY" | "SELL") => ({ action, ratio: 1, contract: { brokerId: "demo-broker", brokerInstanceId: "demo-simulation-profile", symbol: "AAPL",
+    localSymbol: `AAPL261026C00${strike}000`, secType: "OPT", currency: "USD", lastTradeDateOrContractMonth: "20261026", right: "C" as const, strike, multiplier: "100" } });
+  const spread = (draft: BrokerOrderRequest, changes: Partial<BrokerOrderRequest> = {}): BrokerOrderRequest => ({ ...draft, orderType: "LMT", quantity: 2, limitPrice: 0.3,
+    contract: { ...draft.contract, secType: "BAG", exchange: "SMART", multiplier: "100" }, legs: [leg(345, "BUY"), leg(350, "SELL")], ...changes });
+
+  test("a spread is priced from its legs at this broker, placed with them, and its short leg needs no stock held", async () => {
+    const f = setup({ realtime: true, quoteAgeMs: 0 });
+    f.setPosition(0);
+    f.controller.setDraft(spread(f.demo.draft));
+    await f.controller.review();
+    // Debit side: buy the 345 at 2.85 and sell the 350 at 2.50 at once, or the reverse at the bids.
+    expect(f.controller.getSnapshot().quote?.quote).toMatchObject({ bid: 0.15, ask: 0.35, price: 0.25 });
+    expect(f.controller.getSnapshot().quote?.legs?.map((quote) => quote.symbol)).toEqual(["AAPL261026C00345000", "AAPL261026C00350000"]);
+    await f.controller.confirm();
+    expect(f.demo.calls.find((call) => call.method === "placeOrder")?.request?.legs?.map((value) => `${value.action} ${value.contract.strike}`)).toEqual(["BUY 345", "SELL 350"]);
+    // A modification keeps the legs it was placed with.
+    f.controller.beginModify(f.controller.getSnapshot().result!);
+    expect(() => f.controller.setDraft({ ...f.controller.getSnapshot().draft!, legs: [leg(345, "BUY"), leg(355, "SELL")] })).toThrow("legs");
+  });
+
+  test("a spread the broker cannot take as one order does not reach review", async () => {
+    const f = setup({ realtime: true, quoteAgeMs: 0 });
+    for (const [legs, message] of [[[leg(345, "BUY")], "2 to 4 legs"], [[leg(345, "BUY"), leg(345, "SELL")], "only one leg"],
+      [[leg(345, "BUY"), { ...leg(350, "SELL"), contract: { ...leg(350, "SELL").contract, symbol: "MSFT" } }], "underlying"]] as const) {
+      f.controller.setDraft(spread(f.demo.draft, { legs: [...legs] }));
+      await expect(f.controller.review()).rejects.toThrow(message);
+    }
+    expect(f.count("previewOrder")).toBe(0);
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, ticketPositionContext } from "./pane-model";
+import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newStrategyDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, ticketPositionContext } from "./pane-model";
 import { createDemoBroker } from "./test-fixture";
 
 describe("ticket profile and draft resolution", () => {
@@ -87,4 +87,15 @@ describe("ticket profile and draft resolution", () => {
     expect(choices.map((choice) => choice.tradingMode)).toEqual(["simulation", "live"]);
     expect(choices[1]).toMatchObject({ profileId: "other-profile", accountId: account.accountId, profileLabel: "Other profile" });
   });
+});
+
+test("a strategy opens as a spread on the ticket's underlying and profile, and switching its side turns every leg over", () => {
+  const demo = createDemoBroker();
+  const intent = { action: "BUY" as const, quantity: 2, legs: [{ contractSymbol: "AAPL261026C00345000", action: "BUY" as const, ratio: 1 }, { contractSymbol: "AAPL261026C00350000", action: "SELL" as const, ratio: 1 }] };
+  const draft = newStrategyDraft(demo.adapter, demo.instance, demo.draft.contract, intent, demo.draft.accountId);
+  expect(draft).toMatchObject({ action: "BUY", quantity: 2, orderType: "LMT", tif: "DAY", contract: { brokerId: "demo-broker", brokerInstanceId: demo.instance.id, symbol: "AAPL", secType: "BAG" } });
+  expect(draft.legs?.map((leg) => [leg.action, leg.contract.brokerInstanceId, leg.contract.lastTradeDateOrContractMonth, leg.contract.strike])).toEqual([["BUY", demo.instance.id, "20261026", 345], ["SELL", demo.instance.id, "20261026", 350]]);
+  const sold = editTicketDraft(demo.adapter, demo.instance, { ...draft, limitPrice: 1.8 }, "action", "SELL");
+  expect([sold.action, sold.limitPrice, sold.legs?.map((leg) => leg.action)]).toEqual(["SELL", undefined, ["SELL", "BUY"]]);
+  expect(() => newStrategyDraft(demo.adapter, demo.instance, demo.draft.contract, { ...intent, legs: [{ ...intent.legs[0]!, contractSymbol: "MSFT261026C00345000" }, intent.legs[1]!] })).toThrow("listed AAPL option");
 });

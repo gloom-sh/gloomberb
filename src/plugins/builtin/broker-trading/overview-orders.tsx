@@ -13,6 +13,7 @@ import { Box, Text } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { usePluginBrokerActions } from "../../runtime";
 import { ticketOrderMatches } from "./chart-levels";
+import { strategyShape } from "./strategy";
 import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder } from "./orders-data";
 import { resolveTicketContract, subscribeTradingStatus } from "./pane-model";
 
@@ -46,7 +47,7 @@ async function loadTickerOrders(sources: readonly TickerOrderSource[]): Promise<
       Promise.resolve().then(() => broker.listExecutions?.(instance) ?? []),
     ]);
     if (open.status === "rejected" || recent.status === "rejected") failed = true;
-    const mine = <T extends Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract">>(row: T) => ticketOrderMatches(row, contract, instance.id, row.accountId);
+    const mine = <T extends Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">>(row: T) => ticketOrderMatches(row, contract, instance.id, row.accountId);
     return {
       open: (open.status === "fulfilled" ? open.value : []).filter((order) => mine(order) && !DONE.has(brokerOrderStatus(order.status))),
       recent: (recent.status === "fulfilled" ? recent.value : []).filter(mine),
@@ -75,7 +76,7 @@ function orderSummary(order: BrokerOrder): string {
   const type = ORDER_TYPE[order.orderType] ?? order.orderType;
   const priced = order.orderType === "MKT" ? type : `${type} ${money(order.limitPrice ?? order.stopPrice)}`;
   const state = status === "Partially filled" ? `${amount(order.filled)} of ${amount(order.quantity)} filled` : status === "Working" ? "" : status;
-  return [`${order.action === "BUY" ? "Buy" : "Sell"} ${amount(order.quantity)}`, priced, state].filter(Boolean).join(" · ");
+  return [`${order.action === "BUY" ? "Buy" : "Sell"} ${amount(order.quantity)}${order.legs?.length ? ` ${strategyShape(order.legs)}` : ""}`, priced, state].filter(Boolean).join(" · ");
 }
 
 function fillSummary(execution: BrokerExecution): string {

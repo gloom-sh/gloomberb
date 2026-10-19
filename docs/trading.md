@@ -10,6 +10,12 @@ Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens Rese
 
 For a small terminal, run **Fullscreen Pane** from the command bar to give the focused ticket the available window. The same command restores its previous size.
 
+## Spreads
+
+A spread of two to four option legs on one underlying trades as one order, filled whole or not at all, where the broker takes spreads. Build it in OSA: add legs from the chain or OMON (`a`), then press **Trade** (`t`). OSA opens the underlying's Trade tab with the legs, at the common contract count: 2 long 345 calls and 2 short 350 calls are 2 of the 1x1 vertical. One leg opens that contract's own ticket instead. **Trade** appears only when an enabled broker profile can trade the position, so OSA reads the same without one.
+
+The ticket lists each leg with its side, ratio times the spread quantity, contract and mid. Quantity counts spreads. Buy pays a net debit and Sell receives a net credit; the price is always the positive net per spread, and switching side turns every leg over. The spread's bid and ask come from its legs' broker quotes: buying it pays the long legs' asks and receives the short legs' bids, and the bid is the reverse. Review names the strategy, such as `AAPL call vertical`, lists the legs and warns when the quotes net the other way from the side chosen. Spread orders appear in Open orders and on Overview for the underlying, with the strategy's name, and change and cancel like any other order; a change keeps the legs and their ratios. Spreads take market or limit orders, DAY or GTC, with no extended hours. Whether each leg opens or closes a position is the broker's to decide from the account's holdings.
+
 ## Review and confirmation
 
 1. Choose the account and check its SIM or LIVE mode.

@@ -3,6 +3,11 @@ import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
+import { usePaneAppConfig } from "../../../state/app/context";
+import { usePluginBrokerActions, usePluginTickerActions } from "../../runtime";
+import { brokerCanTrade, brokerCanTradeStrategy, openTradeTicket } from "../broker-trading/command";
+import { MAX_STRATEGY_LEGS, strategyFromLegs } from "../broker-trading/strategy";
+import { optionContractName } from "../../../utils/options";
 import { Box } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
@@ -72,13 +77,16 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [consumedSeed, setConsumedSeed] = usePluginPaneState<string | null>("consumedSeed", null);
   const [localError, setLocalError] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const brokerInstrument = target?.instrument ?? null;
   const explicitSpot = Number(settings.spot);
   const loadMarket = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    return loadScenarioMarket({ instrument: { symbol: underlying, exchange },
-      expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
-  }, [underlying, exchange, expiration]);
+    // The chain OMON reads for this ticker, from its broker when it is linked to one: one chain, one source, one cache entry.
+    return loadScenarioMarket({ instrument: { symbol: underlying, exchange, brokerId: brokerInstrument?.brokerId,
+      brokerInstanceId: brokerInstrument?.brokerInstanceId, instrument: brokerInstrument },
+    expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
+  }, [underlying, exchange, expiration, brokerInstrument]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
   const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
@@ -240,6 +248,32 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   };
   // Freezing keeps the marks shown at this moment as the scenario's inputs.
   const freeze = () => { if (live) setPosition(live.position); setFollow(false); };
+  // With a broker that takes them, the position trades as one order: a
+  // spread on the underlying's Trade tab, or one contract's own ticket. The
+  // live mids, else the entry prices, say whether it opens for a debit or a credit.
+  const { pinTicker } = usePluginTickerActions();
+  const { getBrokerAdapter } = usePluginBrokerActions();
+  const { brokerInstances } = usePaneAppConfig();
+  const tradeIntent = useMemo(() => {
+    const legs = position?.legs ?? [];
+    if (frozen || !underlying || !legs.length || legs.length > MAX_STRATEGY_LEGS || legs.some((leg) => leg.multiplier !== 100 || !legSymbols.get(leg.id))) return null;
+    const intent = strategyFromLegs(legs.map((leg) => {
+      const quote = live?.quotes.get(leg.id);
+      return { contractSymbol: legSymbols.get(leg.id)!, quantity: leg.quantity, price: quote ? optionMid(quote) ?? leg.price : leg.price };
+    }));
+    if (!intent) return null;
+    const tradable = intent.legs.length === 1 ? brokerCanTrade(brokerInstances, getBrokerAdapter, intent.legs[0]!.contractSymbol, "OPT")
+      : brokerCanTradeStrategy(brokerInstances, getBrokerAdapter, underlying, intent.legs.length);
+    return tradable ? intent : null;
+  }, [frozen, underlying, position?.legs, legSymbols, live?.quotes, brokerInstances, getBrokerAdapter]);
+  const trade = () => {
+    if (!tradeIntent) return;
+    const [only] = tradeIntent.legs;
+    if (tradeIntent.legs.length === 1 && only) {
+      openTradeTicket({ pinTicker }, only.contractSymbol, { action: only.action, quantity: tradeIntent.quantity * only.ratio },
+        { instrument: null, listing: { name: optionContractName(only.contractSymbol) ?? only.contractSymbol, exchange: "", currency: position?.currency ?? "USD", type: "OPT" } });
+    } else openTradeTicket({ pinTicker }, symbol ?? underlying, tradeIntent);
+  };
   const hints = detail === "chain" ? [{ id: "expiry", key: "d", label: "ate", onPress: () => chainExpiryControl.current?.open() }] : detail || volActive ? [] : [
     { id: "add", key: "a", label: "dd leg", onPress: addTyped },
     { id: "chain", key: "c", label: "hain", onPress: () => setDetail("chain") },
@@ -250,6 +284,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       { id: "vol", key: "v", label: "ol shift", onPress: () => setVolActive(true) },
       { id: "save", key: "s", label: "ave", onPress: () => setDetail("save") }] : []),
     { id: "load", key: "b", label: "rowse saved", onPress: () => void loadSaved() },
+    ...(tradeIntent ? [{ id: "trade", key: "t", label: "rade", onPress: trade }] : []),
     ...(live ? [{ id: "follow", key: "f", label: "reeze", onPress: freeze }]
       : follow || frozen || frozenMarket || !storedPosition ? [] : [{ id: "follow", key: "f", label: "ollow market", onPress: () => setFollow(true) }]),
   ];

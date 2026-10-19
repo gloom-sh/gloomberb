@@ -6,6 +6,7 @@ import type { BrokerContractRef } from "../../../types/instrument";
 import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import type { BrokerAccountChoice } from "./account-picker";
+import { reverseStrategy, strategyContract, strategyOrderLegs, type StrategyIntent } from "./strategy";
 
 /** Successful broker reads may publish status heartbeats. They must not schedule another read. */
 export function subscribeTradingStatus(broker: BrokerAdapter, profile: BrokerInstanceConfig, onChange: () => void): () => void {
@@ -133,7 +134,34 @@ export function newTicketDraft(broker: BrokerAdapter, instance: BrokerInstanceCo
   return { brokerInstanceId: instance.id, accountId, contract, action, orderType, quantity: defaultQuantity(capabilities), tif };
 }
 
+/**
+ * A spread on the underlying this ticket trades, on the ticket's profile.
+ * Throws when the broker takes no spread of this size or a leg is not a
+ * listed contract of the underlying.
+ */
+export function newStrategyDraft(broker: BrokerAdapter, instance: BrokerInstanceConfig, underlying: BrokerContractRef, intent: StrategyIntent, accountId?: string): BrokerOrderRequest {
+  if (underlying.secType && !["STK", "ETF"].includes(underlying.secType.toUpperCase())) throw new Error("Open the spread from its underlying stock or fund.");
+  const contract = strategyContract({ ...underlying, brokerInstanceId: instance.id });
+  const capabilities = broker.getTradingCapabilities?.(instance, contract);
+  // Trading switched off still opens the spread, with the ticket's Enable trading; a broker that rejects the contract does not.
+  if (capabilities && !capabilities.orderTypes.length && capabilities.disabledReason) throw new Error(capabilities.disabledReason);
+  if (!capabilities || (capabilities.maxLegs ?? 0) < Math.max(2, intent.legs.length)) {
+    throw new Error(capabilities?.maxLegs ? `${broker.name} takes spreads of 2 to ${capabilities.maxLegs} legs.` : `${broker.name} does not take multi-leg orders here.`);
+  }
+  const legs = strategyOrderLegs(intent.legs, contract, contract.currency);
+  if (!legs) throw new Error(`Every leg must be a listed ${contract.symbol} option.`);
+  const draft = newTicketDraft(broker, instance, contract, accountId, intent.action);
+  return { ...draft, legs, quantity: intent.quantity };
+}
+
 export function editTicketDraft(broker: BrokerAdapter, instance: BrokerInstanceConfig, draft: BrokerOrderRequest, field: string, value: string | boolean): BrokerOrderRequest {
+  // Switching a spread's side is the opposite trade: every leg turns over.
+  // A debit is not a credit, so the price starts again from the quote.
+  if (field === "action" && draft.legs?.length) {
+    if (value === draft.action) return draft;
+    const { limitPrice: _debit, ...reversed } = reverseStrategy(draft);
+    return reversed;
+  }
   const numeric = ["quantity", "limitPrice", "stopPrice"].includes(field);
   const next = { ...draft, [field]: numeric ? value === "" ? field === "quantity" ? NaN : undefined : Number(value) : value };
   if (field === "orderType") {

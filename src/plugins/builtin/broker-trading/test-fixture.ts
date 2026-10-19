@@ -54,7 +54,13 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
     brokerInstanceId: instance.id, accountId: defaultAccount, contract,
     action: "BUY", orderType: "LMT", quantity: 10, limitPrice: 336.50, tif: "DAY", outsideRth: false,
   };
-  const quote = (symbol = "AAPL"): Quote => ({
+  // An AAPL call quotes lower the higher its strike: a 345 call 2.75/2.85, a 350 call 2.50/2.60.
+  const quote = (symbol = "AAPL"): Quote => /^AAPL\d{6}C(\d{8})$/.test(symbol) ? {
+    symbol, providerId: DEMO_BROKER_ID, price: (400 - Number(symbol.slice(-8)) / 1000) / 20 + 0.05,
+    bid: (400 - Number(symbol.slice(-8)) / 1000) / 20, ask: (400 - Number(symbol.slice(-8)) / 1000) / 20 + 0.1,
+    currency: "USD", change: 0, changePercent: 0, lastUpdated: now() - (options.quoteAgeMs ?? 15 * 60_000), receivedAt: now(),
+    dataSource: options.realtime ? "live" : "delayed", delivery: "poll", marketState: "REGULAR", sessionConfidence: "explicit",
+  } : ({
     symbol, name: symbol === "AAPL" ? "Apple Inc." : "Synthetic security", providerId: DEMO_BROKER_ID,
     price: 336.42, bid: 336.40, ask: 336.50, bidSize: 200, askSize: 300,
     currency: "USD", change: 1.20, changePercent: 0.36, previousClose: 335.22,
@@ -115,7 +121,10 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
     async importPositions() { calls.push({ method: "importPositions" }); return positions(); },
     async importPortfolioSnapshot() { return { accounts: accounts(), positions: positions() }; },
     async getQuote(symbol) { calls.push({ method: "getQuote" }); if (!connected) throw new Error("Demo Broker is disconnected."); return quote(symbol); },
-    getTradingCapabilities(profile) {
+    getTradingCapabilities(profile, contract) {
+      // Spreads of up to four legs, market or limit, in whole spreads.
+      if (contract?.secType === "BAG") return { enabled: profile.config.tradingEnabled === true, orderTypes: ["MKT", "LMT"], tif: ["DAY", "GTC"],
+        minQuantity: 1, quantityStep: 1, priceDecimals: 2, modify: true, cancel: true, executionKind: "fills", maxLegs: 4 };
       return {
         enabled: profile.config.tradingEnabled === true,
         disabledReason: profile.config.tradingEnabled ? undefined : "Trading is off for this profile.",
