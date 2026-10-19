@@ -15,7 +15,7 @@ import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, pro
 
 export const DISCOUNT_OPTIONS = DISCOUNT_RATES.map((rate) => ({ value: String(Math.round(rate * 100)), label: `${Math.round(rate * 100)}%` }));
 /** The margin setting that follows the company's own trailing margin, the pane's default. */
-export const COMPANY_MARGIN = "company";
+const COMPANY_MARGIN = "company";
 /** The company's own margin first, then 5% to 60% in steps of 5, the range `--margin` takes. */
 export const MARGIN_OPTIONS = [{ value: COMPANY_MARGIN, label: "Company's own" },
   ...Array.from({ length: 12 }, (_, index) => ({ value: String((index + 1) * 5), label: `${(index + 1) * 5}%` }))];

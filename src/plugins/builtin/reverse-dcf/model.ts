@@ -98,7 +98,7 @@ function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowt
  * period and currency. A missing, zero or negative figure, or a free cash flow
  * above the revenue (a mismatch, not a margin), has none.
  */
-export function trailingFcfMargin(fundamentals: Pick<Fundamentals, "freeCashFlow" | "revenue"> | null | undefined):
+function trailingFcfMargin(fundamentals: Pick<Fundamentals, "freeCashFlow" | "revenue"> | null | undefined):
   { margin: number; gap: null } | { margin: null; gap: string } {
   const finite = (value: number | undefined): value is number => typeof value === "number" && Number.isFinite(value);
   const revenue = fundamentals?.revenue, fcf = fundamentals?.freeCashFlow;
