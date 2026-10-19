@@ -10,11 +10,11 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerContractRef } from "../../../types/instrument";
 import type { BrokerExecution, BrokerOrder } from "../../../types/trading";
 import { Box, Text } from "../../../ui";
-import { formatNumber } from "../../../utils/format";
 import { usePluginBrokerActions } from "../../runtime";
 import { ticketOrderMatches } from "./chart-levels";
 import { strategyShape } from "./strategy";
-import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder } from "./orders-data";
+import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as money, formatOrderQuantity as amount, isBuySide } from "./orders-data";
+import { ticketTypeName } from "./ticket-parts";
 import { resolveTicketContract, subscribeTradingStatus } from "./pane-model";
 
 export interface TickerOrderSource {
@@ -32,7 +32,6 @@ export interface TickerOrders {
 }
 
 const RECENT_LIMIT = 5;
-const DONE = new Set(["Cancelled", "Filled", "Rejected", "Expired"]);
 
 /**
  * This ticker's working orders and latest fills across connected trading
@@ -49,7 +48,7 @@ async function loadTickerOrders(sources: readonly TickerOrderSource[]): Promise<
     if (open.status === "rejected" || recent.status === "rejected") failed = true;
     const mine = <T extends Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">>(row: T) => ticketOrderMatches(row, contract, instance.id, row.accountId);
     return {
-      open: (open.status === "fulfilled" ? open.value : []).filter((order) => mine(order) && !DONE.has(brokerOrderStatus(order.status))),
+      open: (open.status === "fulfilled" ? open.value : []).filter((order) => mine(order) && !brokerOrderDone(order.status)),
       recent: (recent.status === "fulfilled" ? recent.value : []).filter(mine),
     };
   }));
@@ -67,21 +66,16 @@ function ago(timestamp: number, now: number): string {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
-const amount = (value: number) => formatNumber(value, Number.isInteger(value) ? 0 : 4);
-const money = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : "--";
-const ORDER_TYPE: Record<string, string> = { LMT: "Limit", MKT: "Market", STP: "Stop", STP_LMT: "Stop limit", "STP LMT": "Stop limit" };
-
 function orderSummary(order: BrokerOrder): string {
   const status = brokerOrderStatus(order.status);
-  const type = ORDER_TYPE[order.orderType] ?? order.orderType;
+  const type = ticketTypeName[order.orderType] ?? order.orderType;
   const priced = order.orderType === "MKT" ? type : `${type} ${money(order.limitPrice ?? order.stopPrice)}`;
   const state = status === "Partially filled" ? `${amount(order.filled)} of ${amount(order.quantity)} filled` : status === "Working" ? "" : status;
   return [`${order.action === "BUY" ? "Buy" : "Sell"} ${amount(order.quantity)}${order.legs?.length ? ` ${strategyShape(order.legs)}` : ""}`, priced, state].filter(Boolean).join(" · ");
 }
 
 function fillSummary(execution: BrokerExecution): string {
-  const bought = ["BUY", "BOT", "B"].includes(execution.side.toUpperCase());
-  return `${bought ? "Bought" : "Sold"} ${amount(execution.shares)} at ${money(execution.price)}`;
+  return `${isBuySide(execution.side) ? "Bought" : "Sold"} ${amount(execution.shares)} at ${money(execution.price)}`;
 }
 
 /**

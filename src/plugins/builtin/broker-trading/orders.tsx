@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
-import { Badge, Button, DataTableView, IconButton, PaneStatusBody, RatioBar, SegmentedControl, Notice, SectionHeading, confirmDialog, usePaneFooter, usePaneNoticeFooter, type DataTableCell, type DataTableColumn, type SelectControl } from "../../../components";
+import {
+  Badge, Button, DataTableView, IconButton, PaneStatusBody, RatioBar, SegmentedControl, Notice, SectionHeading, confirmDialog, usePaneFooter, usePaneNoticeFooter,
+  type DataTableCell, type DataTableColumn, type SelectControl,
+} from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -10,10 +13,10 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount, BrokerExecution, BrokerOrder, BrokerOrderType } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogState } from "../../../ui/dialog";
-import { formatNumber } from "../../../utils/format";
 import { BrokerTradingController, type BrokerTradingContext } from "./controller";
 import { BrokerAccountPicker } from "./account-picker";
-import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
+import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as price, formatOrderQuantity as quantity, isBuySide, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
+import { accountModeLabel } from "./account-picker";
 import type { BrokerContractRef } from "../../../types/instrument";
 import { ticketOrderMatches } from "./chart-levels";
 import { orderInstrumentLabel, strategyShape } from "./strategy";
@@ -57,15 +60,11 @@ const activityColumns: DataTableColumn[] = [
   { id: "quantity", label: "Quantity", width: 12, align: "right" }, { id: "price", label: "Price", width: 12, align: "right" },
   { id: "fees", label: "Fees", width: 12, align: "right" }, { id: "age", label: "Age", width: 5, align: "right" },
 ];
-const quantity = (value: number) => Number.isFinite(value) ? formatNumber(value, Number.isInteger(value) ? 0 : 4) : "--";
-const price = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : "--";
 /** An order's type, prices and time in force, as a cancellation names them: "Limit 336.50 · DAY". */
 function orderTerms(order: BrokerOrder): string {
   const prices = order.orderType === "MKT" ? "" : order.orderType === "STP LMT" ? ` ${price(order.stopPrice)}, limit ${price(order.limitPrice)}` : ` ${price(order.limitPrice ?? order.stopPrice)}`;
   return `${ticketTypeName[order.orderType] ?? order.orderType}${prices} · ${order.tif ?? "DAY"}`;
 }
-const accountMode = (account: BrokerAccount | undefined) => account?.tradingMode === "simulation" ? "SIMULATION" : account?.tradingMode === "live" ? "LIVE" : "UNKNOWN";
-const terminalStatuses = new Set(["Cancelled", "Filled", "Rejected", "Expired"]);
 
 function age(timestamp: number, now: number): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return "--";
@@ -80,7 +79,10 @@ function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: numbe
   const status = brokerOrderStatus(order.status);
   switch (column.id) {
     case "symbol": return { text: orderInstrumentLabel(order), attributes: TextAttributes.BOLD };
-    case "status": return { text: status, content: <Badge label={status === "Partially filled" ? "Partial fill" : status} variant={status === "Working" ? "solid" : "subtle"} tone={status === "Rejected" ? "negative" : status === "Filled" ? "positive" : ["UNKNOWN", "Pending cancel", "Partially filled"].includes(status) ? "warning" : "accent"} /> };
+    case "status": {
+      const tone = status === "Rejected" ? "negative" : status === "Filled" ? "positive" : ["UNKNOWN", "Pending cancel", "Partially filled"].includes(status) ? "warning" : "accent";
+      return { text: status, content: <Badge label={status === "Partially filled" ? "Partial fill" : status} variant={status === "Working" ? "solid" : "subtle"} tone={tone} /> };
+    }
     case "side": return { text: order.action, content: <Badge label={order.action} tone={order.action === "BUY" ? "positive" : "negative"} /> };
     case "quantity": return { text: `${quantity(order.filled)} / ${quantity(order.quantity)}`, content: <Box flexDirection="row" gap={1} alignItems="center" justifyContent="flex-end" width={column.width}>
       <RatioBar ratio={order.quantity > 0 ? order.filled / order.quantity : 0} width={4} color={order.filled > 0 ? colors.positive : colors.textMuted} track thickness={5} />
@@ -102,7 +104,7 @@ function compactOrderState(order: BrokerOrder): string {
 function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn, now: number): DataTableCell {
   switch (column.id) {
     case "symbol": return { text: execution.contract.localSymbol || execution.contract.symbol };
-    case "side": return { text: execution.side, content: <Badge label={execution.side} tone={["BUY", "BOT", "B"].includes(execution.side.toUpperCase()) ? "positive" : "negative"} /> };
+    case "side": return { text: execution.side, content: <Badge label={execution.side} tone={isBuySide(execution.side) ? "positive" : "negative"} /> };
     case "quantity": return { text: quantity(execution.shares), value: execution.shares };
     case "price": return { text: price(execution.price), value: execution.price };
     case "fees": return { text: execution.commission === undefined ? "--" : `${price(execution.commission)} ${execution.commissionCurrency ?? ""}`.trim() };
@@ -110,7 +112,10 @@ function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn
   }
 }
 
-export function BrokerOrdersView({ broker, instance, accounts, accountId, onAccountChange, onModify, onBack, onHide, width, height, focused, active = true, initialSnapshot, compact = false, contract, onOrders, onContentRows, blocked = false, onBusy, latestOrder }: BrokerOrdersViewProps) {
+export function BrokerOrdersView({
+  broker, instance, accounts, accountId, onAccountChange, onModify, onBack, onHide, width, height, focused,
+  active = true, initialSnapshot, compact = false, contract, onOrders, onContentRows, blocked = false, onBusy, latestOrder,
+}: BrokerOrdersViewProps) {
   const [view, setView] = useState<"open" | "activity">("open");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedKeyRef = useRef<string | null>(null);
@@ -171,13 +176,13 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
     if (!result || result.accountId !== accountId || contract && !ticketOrderMatches(result, contract, instance.id, accountId)) return source;
     const status = brokerOrderStatus(result.status);
     const pending = ["UNKNOWN", "Pending cancel"].includes(status);
-    if (!pending && !terminalStatuses.has(status)) return source;
+    if (!pending && !brokerOrderDone(status)) return source;
     const key = brokerOrderKey(result);
     return source.some((order) => brokerOrderKey(order) === key)
       ? source.map((order) => brokerOrderKey(order) === key ? result : order) : pending ? [result, ...source] : source;
   }, [snapshot, trading.result, accountId, instance.id, contract, latestOrder]);
   // Keep terminal acknowledgements in the projection even after hiding their rows.
-  const rows = useMemo(() => compact ? reconciledRows.filter((order) => !terminalStatuses.has(brokerOrderStatus(order.status))) : reconciledRows, [compact, reconciledRows]);
+  const rows = useMemo(() => compact ? reconciledRows.filter((order) => !brokerOrderDone(order.status)) : reconciledRows, [compact, reconciledRows]);
   useEffect(() => { onOrders?.(reconciledRows); }, [reconciledRows, onOrders]);
   // Only an order the trader chose is selected: c, m and Enter never fall back to another row.
   const selected = rows.find((order) => brokerOrderKey(order) === selectedKey);
@@ -207,7 +212,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       if (compact) { setInlineCancel(true); setKeepOrder(false); return; }
       const confirmed = await confirmDialog(dialog, {
         title: `Cancel ${orderInstrumentLabel(order)} order?`,
-        body: [`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountMode(account)} · ${account.name}`],
+        body: [`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountModeLabel(account?.tradingMode)} · ${account.name}`],
         confirmLabel: "Cancel order", cancelLabel: "Keep order", confirmVariant: "danger",
       });
       await controller.confirmCancel(confirmed);
@@ -295,7 +300,11 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
         ...(canCancel ? [{ id: "cancel-order", key: "c", label: "ancel", onPress: () => { void cancel(); } }] : []),
       ] : []),
       ...(compact ? [] : [{ id: "account", key: "a", label: "ccount", onPress: () => accountControl.current?.open() }]),
-      ...(account ? [{ id: "view", key: "v", label: view === "open" ? "Activity" : "Open orders", onPress: () => setView(view === "open" ? "activity" : "open") }, { id: "refresh", key: "r", label: "efresh", onPress: refresh }, ...(view === "open" ? [{ id: "navigate", key: compact ? "j/k" : "↑↓", label: compact ? "Rows · ↑↓ Price · Enter Review" : "j/k Rows" }] : [])] : []),
+      ...(account ? [
+        { id: "view", key: "v", label: view === "open" ? "Activity" : "Open orders", onPress: () => setView(view === "open" ? "activity" : "open") },
+        { id: "refresh", key: "r", label: "efresh", onPress: refresh },
+        ...(view === "open" ? [{ id: "navigate", key: compact ? "j/k" : "↑↓", label: compact ? "Rows · ↑↓ Price · Enter Review" : "j/k Rows" }] : []),
+      ] : []),
       ...(onBack ? [{ id: "back", key: "Esc", label: "Ticket", onPress: onBack }] : []),
     ],
   } : null, [active, resource.loading, trading.phase, status, view, selected, canModify, canCancel, modify, cancel, busy, account, onBack, refresh, compact, keepOrder, inlineCancel]);
@@ -307,7 +316,8 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
 
 
   // Docked on the desktop, the drawer fills what the ticket above leaves it.
-  if (compact || inlineCancel && trading.phase === "cancel-review") return <Box width={width} height={compact && native ? "100%" : height} flexDirection="column" border={native ? undefined : ["top"]} borderColor={colors.border} style={native ? { borderTop: `1px solid ${colors.border}` } : undefined} overflow="hidden">
+  if (compact || inlineCancel && trading.phase === "cancel-review") return <Box width={width} height={compact && native ? "100%" : height} flexDirection="column" overflow="hidden"
+    border={native ? undefined : ["top"]} borderColor={colors.border} style={native ? { borderTop: `1px solid ${colors.border}` } : undefined}>
     <Box flexDirection="row" paddingX={1} alignItems="center" justifyContent="space-between" flexShrink={0}>
       <SectionHeading title={view === "open" ? `Open orders (${rows.length})` : summaries ? "Order summaries" : "Activity"} />
       <Box flexDirection="row" alignItems="center" gap={native ? 0.5 : 0}>
@@ -335,7 +345,8 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
         return <Box key={key} position="relative" flexDirection="row" alignItems="center" gap={1} paddingLeft={1} height={native ? 1.6 : 1} backgroundColor={picked ? colors.panel : undefined}>
           {picked ? <Box position="absolute" left={0} top={0} width={1} height="100%" backgroundColor={focused ? colors.borderFocused : colors.border} style={native ? { width: 2 } : undefined} /> : null}
           <Box flexGrow={1} minWidth={0}>
-            <Button label={`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${state}`} width={native ? undefined : Math.max(10, width - 9)} active={focused && picked} variant="quiet" flush onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
+            <Button label={`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${state}`} width={native ? undefined : Math.max(10, width - 9)}
+              active={focused && picked} variant="quiet" flush onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
               <Box flexDirection="row" gap={1} alignItems="center" width="100%">
                 <Text fg={order.action === "BUY" ? colors.positive : colors.negative} attributes={TextAttributes.BOLD} flexShrink={0}>{`${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)}`}</Text>
                 {/* The drawer is the ticker's: a spread names its shape, the stock needs no name. */}
@@ -350,7 +361,9 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
             <IconButton icon="close" label="Cancel order" shortcut="c" color={colors.negative} disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} />
           </Box>
         </Box>;
-      }) : executions.map((execution) => <Box key={execution.execId} paddingX={1} height={native ? 1.6 : 1} flexDirection="row" alignItems="center"><Text selectable>{`${execution.side} ${quantity(execution.shares)} @ ${price(execution.price)}`}</Text></Box>)}
+      }) : executions.map((execution) => <Box key={execution.execId} paddingX={1} height={native ? 1.6 : 1} flexDirection="row" alignItems="center">
+        <Text selectable>{`${execution.side} ${quantity(execution.shares)} @ ${price(execution.price)}`}</Text>
+      </Box>)}
       {!resource.loading && (view === "open" ? !rows.length : !executions.length) ? <Box paddingX={1}><Text fg={colors.textDim}>{view === "open" ? "No open orders for this ticker." : "No recent activity."}</Text></Box> : null}
     </ScrollBox>}
   </Box>;
@@ -360,7 +373,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
         <BrokerAccountPicker accounts={accounts.map((item) => ({ value: item.accountId, label: item.name, profileLabel: instance.label || broker.name, tradingMode: item.tradingMode }))}
           value={accountId} onChange={onAccountChange} controlRef={accountControl} disabled={busy} width={Math.max(16, Math.min(42, width - (summaries ? 49 : 43)))} />
       </Box>
-      {account && <Badge label={accountMode(account)} tone={account.tradingMode === "simulation" ? "accent" : "negative"} />}
+      {account && <Badge label={accountModeLabel(account?.tradingMode)} tone={account.tradingMode === "simulation" ? "accent" : "negative"} />}
       <SegmentedControl value={view} options={[{ value: "open", label: "Open orders" }, { value: "activity", label: summaries ? "Order summaries" : "Activity" }]} onChange={(next) => setView(next === "activity" ? "activity" : "open")} />
     </Box>
     <PaneStatusBody subject="orders" loading={canRead && resource.loading && !snapshot} error={!snapshot ? resource.error : null}
@@ -368,7 +381,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       {view === "open" ? <DataTableView<BrokerOrder> rootWidth={width} rootHeight={Math.max(2, height - 2)} focused={focused && !busy && !dialogOpen}
         columns={orderColumns} items={rows} sortColumnId={null} sortDirection="desc" getItemKey={brokerOrderKey} renderCell={(order, column) => {
           if (column.id !== "actions") return renderOrderCell(order, column, now);
-          if (terminalStatuses.has(brokerOrderStatus(order.status))) return { text: "" };
+          if (brokerOrderDone(order.status)) return { text: "" };
           const allowed = broker.getTradingCapabilities?.(instance, order.contract);
           const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);
           return { text: "Modify Cancel", content: <Box flexDirection="row" gap={1} justifyContent="flex-end" width={column.width}>

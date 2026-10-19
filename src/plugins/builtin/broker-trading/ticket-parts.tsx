@@ -100,8 +100,12 @@ export function TicketStatus({ model: m, width }: { model: TicketViewModel; widt
   const filled = status === "FILLED"; const partial = status === "PARTIALLY_FILLED"; const active = !["UNKNOWN", "REJECTED", "CANCELLED", "CANCELED", "PENDING_CANCEL"].includes(status);
   const currentStep = filled ? 2 : ["SUBMITTED", "PENDING_NEW"].includes(status) ? 0 : 1;
   return <Box flexDirection="column" gap={native ? 0.35 : 0}>
-    {active ? <Box flexDirection="row" gap={1}>{["Submitted", "Working", "Filled"].map((label, index) => <Text key={label} fg={index <= currentStep ? c.positive : c.textDim} attributes={index === currentStep ? TextAttributes.BOLD : undefined}>{`${index ? "· " : ""}${label}`}</Text>)}</Box> : null}
-    {partial || filled ? <><RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} /><Text fg={c.text} wrapText>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text></> : null}
+    {active ? <Box flexDirection="row" gap={1}>{["Submitted", "Working", "Filled"].map((label, index) =>
+      <Text key={label} fg={index <= currentStep ? c.positive : c.textDim} attributes={index === currentStep ? TextAttributes.BOLD : undefined}>{`${index ? "· " : ""}${label}`}</Text>)}</Box> : null}
+    {partial || filled ? <>
+      <RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} />
+      <Text fg={c.text} wrapText>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text>
+    </> : null}
     {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">Outcome unconfirmed. Refresh and reconcile in Orders. No automatic retry.</Notice> : null}
     {status === "REJECTED" ? <Notice variant="callout" tone="negative">{m.error ?? m.result?.warningText ?? "The broker rejected this order. Check the order before trying again."}</Notice> : null}
     {status === "PENDING_CANCEL" ? <Notice variant="callout" tone="warning">Cancellation requested. The order can still fill until the broker confirms.</Notice> : null}

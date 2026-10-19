@@ -88,7 +88,8 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
   }, [captureTicket, selectTab, tabId]);
   const split = visible && docked;
   const ticketFocused = split && panelFocused;
-  const context = useMemo(() => ({ ...projection, symbol, available, docked, visible, ticketFocused, open: openTicket, close, publish, ...(available ? { orders } : {}) }), [projection, symbol, available, docked, visible, ticketFocused, openTicket, close, orders]);
+  const context = useMemo(() => ({ ...projection, symbol, available, docked, visible, ticketFocused, open: openTicket, close, publish, ...(available ? { orders } : {}) }),
+    [projection, symbol, available, docked, visible, ticketFocused, openTicket, close, orders]);
   useShortcut((event) => {
     if (event.name !== "f6" || event.repeat) return;
     event.preventDefault(); event.stopPropagation(); captureTicket(false); setPanelFocused((value) => !value);

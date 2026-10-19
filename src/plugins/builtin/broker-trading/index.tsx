@@ -3,6 +3,9 @@ import { brokerOrdersHeadless } from "./headless";
 import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
 import { brokerCanTrade, createTradeCommand, openTradeTicket } from "./command";
 
+/** A ticker without a saved asset category trades as its research instrument kind says. */
+const INSTRUMENT_CATEGORY: Record<string, string> = { option: "OPT", future: "FUT", bond: "BOND", crypto: "CRYPTO", currency: "CASH" };
+
 /** Trading lives with broker profiles, with one research tab and one orders view. */
 export const brokerTradingModule: PluginModule = {
   panes: [{
@@ -23,7 +26,7 @@ export const brokerTradingModule: PluginModule = {
     ctx.registerTickerResearchTab({
       id: "broker-trade", name: "Trade", order: 20, component: BrokerTradeTab,
       instruments: ["equity", "fund", "option", "future", "bond", "crypto", "currency", "other"],
-      isVisible: ({ ticker, instrumentKind }) => supported(ticker?.metadata.ticker ?? "", ticker?.metadata.assetCategory ?? ({ option: "OPT", future: "FUT", bond: "BOND", crypto: "CRYPTO", currency: "CASH" } as Record<string, string>)[instrumentKind] ?? "STK"),
+      isVisible: ({ ticker, instrumentKind }) => supported(ticker?.metadata.ticker ?? "", ticker?.metadata.assetCategory ?? INSTRUMENT_CATEGORY[instrumentKind] ?? "STK"),
     });
     for (const side of ["BUY", "SELL"] as const) {
       ctx.registerCommand(createTradeCommand(ctx, side, supported));

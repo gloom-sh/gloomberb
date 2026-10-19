@@ -1,6 +1,7 @@
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerExecution, BrokerOrder } from "../../../types/trading";
+import { formatNumber } from "../../../utils/format";
 
 export interface BrokerOrdersSnapshot {
   brokerInstanceId: string;
@@ -32,10 +33,21 @@ export function brokerOrderStatus(status: string): string {
   return status || "UNKNOWN";
 }
 
-export function canChangeBrokerOrder(order: BrokerOrder): boolean {
-  return !["Pending cancel", "Cancelled", "Filled", "Rejected", "Expired", "UNKNOWN"].includes(brokerOrderStatus(order.status))
-    && order.remaining > 0;
+const DONE = new Set(["Cancelled", "Filled", "Rejected", "Expired"]);
+/** Whether a broker status, or its label, is final: cancelled, filled, rejected or expired. */
+export function brokerOrderDone(status: string): boolean {
+  return DONE.has(brokerOrderStatus(status));
 }
+
+export function canChangeBrokerOrder(order: BrokerOrder): boolean {
+  const status = brokerOrderStatus(order.status);
+  return !DONE.has(status) && status !== "Pending cancel" && status !== "UNKNOWN" && order.remaining > 0;
+}
+
+export const formatOrderQuantity = (value: number) => Number.isFinite(value) ? formatNumber(value, Number.isInteger(value) ? 0 : 4) : "--";
+export const formatOrderPrice = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : "--";
+/** Execution sides as brokers write them: BUY, BOT or B. */
+export const isBuySide = (side: string) => ["BUY", "BOT", "B"].includes(side.toUpperCase());
 
 /** Both the pane and report use the same account projection, including partial failures. */
 export async function loadBrokerOrdersSnapshot(
