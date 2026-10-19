@@ -55,8 +55,9 @@ export interface CdxDay {
  * complete days, so a morning's few prints never make a 1D. A server that
  * says (`partial`) has already measured them that way, across a roll on one
  * contract. An older one dates them from the latest day; when that day is
- * today's New York trade date the moves are measured again here from the
- * complete days before it, on the same contract only (none across a roll).
+ * today's New York trade date or later (Asia's prints) the moves are measured
+ * again here from the complete days before it, on the same contract only
+ * (none across a roll).
  */
 export function cdxDay(index: CdxBoardIndex, now = Date.now()): CdxDay {
   const served = { change1D: index.change1D, change1W: index.change1W, change1M: index.change1M ?? null };
@@ -66,7 +67,9 @@ export function cdxDay(index: CdxBoardIndex, now = Date.now()): CdxDay {
       changeDate: index.changeDate !== undefined ? index.changeDate : index.partial ? null : index.date, ...served,
     };
   }
-  if (!index.date || index.date !== newYorkTradeDate(now)) return { partial: false, lastPrintAt: null, changeDate: index.date, ...served };
+  // Asia-session prints are dated the next local day, so from about 00:00 to 04:00 UTC (and from
+  // Sunday evening in New York) the latest day can be New York's tomorrow: still trading too.
+  if (!index.date || index.date < newYorkTradeDate(now)) return { partial: false, lastPrintAt: null, changeDate: index.date, ...served };
   const complete = index.points.filter((point) => point.date < index.date!);
   const anchor = complete.at(-1) ?? null;
   const move = (base: string, maxLagDays: number): number | null => {

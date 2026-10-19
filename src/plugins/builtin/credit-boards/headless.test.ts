@@ -112,6 +112,21 @@ test("a server that does not flag the day: today's New York trade date is partia
   expect(cdxDay(main, Date.parse("2026-10-20T05:00:00Z"))).toMatchObject({ partial: false, changeDate: "2026-10-19", change1D: 1.42 });
 });
 
+test("a server that does not flag the day: Asia's prints, dated New York's tomorrow, are partial too", () => {
+  // Tue 01:00 UTC is Mon 21:00 in New York; Tokyo's first four prints are dated Tuesday, and the server's 1D is theirs.
+  const main: CdxBoardIndex = { ...index("MAIN", "iTraxx Main", "spread", 66.9, 2.2, 3.62), date: "2026-10-20", prints: 4,
+    points: [
+      { date: "2026-10-15", maturity: "2031-12-20", level: 64.38, prints: 330 },
+      { date: "2026-10-16", maturity: "2031-12-20", level: 63.28, prints: 261 },
+      { date: "2026-10-19", maturity: "2031-12-20", level: 64.7, prints: 290 },
+      { date: "2026-10-20", maturity: "2031-12-20", level: 66.9, prints: 4 },
+    ] };
+  const tuesday = cdxDay(main, Date.parse("2026-10-20T01:00:00Z"));
+  expect(tuesday).toMatchObject({ partial: true, changeDate: "2026-10-19" });
+  // Monday against Friday, not Tuesday's four prints against Monday.
+  expect(tuesday.change1D).toBeCloseTo(64.7 - 63.28, 6);
+});
+
 test("a named index adds its daily levels newest first, which do not date the board", async () => {
   const hy = payload.indexes[1]!;
   const history = { ...payload, indexes: [payload.indexes[0]!, { ...hy, points: [{ ...hy.points[0]!, date: "2026-08-03" }, ...hy.points] }] };
