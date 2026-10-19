@@ -107,7 +107,7 @@ function buildColumns(width: number, showGroup: boolean): CatalogColumn[] {
 }
 
 export function DataCatalogPane({ focused, width, height }: PaneProps) {
-  const { createPaneFromTemplate } = usePluginAppActions();
+  const { createPaneFromTemplate, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [seedQuery] = usePaneSettingValue("query", "");
   const [searchQuery, setSearchQuery] = useState(seedQuery);
@@ -159,11 +159,16 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     if (!row.seriesName) return false;
     const series = catalogPlacedSeriesForRow(row, ticker);
     if (!series) return true;
-    createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, {
-      shareData: { chartSpec: buildRegisteredSeriesChart(series, series.symbol) },
-    });
+    let chartSpec: ReturnType<typeof buildRegisteredSeriesChart>;
+    try {
+      chartSpec = buildRegisteredSeriesChart(series, series.symbol);
+    } catch (error) {
+      notify({ body: error instanceof Error ? error.message : `${series.name} cannot be charted.`, type: "error" });
+      return true;
+    }
+    createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, { shareData: { chartSpec } });
     return true;
-  }, [createPaneFromTemplate]);
+  }, [createPaneFromTemplate, notify]);
 
   const chartSelected = useCallback(async (row: CatalogSeriesRow | null) => {
     if (!row) return;

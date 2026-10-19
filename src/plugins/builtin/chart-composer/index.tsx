@@ -101,16 +101,65 @@ function bindSelectedContract(spec: ChartSpec, context: PaneTemplateContext, opt
   )) };
 }
 
+/**
+ * What a registered series reads as in a chart's title: without its ticker
+ * when the chart shows that ticker's price, and once for all of its lines
+ * (`Z-score`, not `AAPL · Z-score · Z · AAPL · Z-score · Upper`).
+ */
+function capabilityTitlePart(
+  source: { capabilityId: string; seriesId: string },
+  label: string,
+  pricedTickers: ReadonlySet<string>,
+): { text: string; group: string | null } {
+  const slash = source.seriesId.indexOf("/");
+  const named = slash < 0 ? source.seriesId : source.seriesId.slice(0, slash);
+  let ticker: string | null = null;
+  if (slash >= 0) {
+    try {
+      ticker = decodeURIComponent(source.seriesId.slice(slash + 1));
+    } catch {
+      ticker = source.seriesId.slice(slash + 1);
+    }
+  }
+  let text = label;
+  if (ticker && pricedTickers.has(ticker.toUpperCase())) {
+    for (const lead of [`${ticker} · `, `${ticker} `]) {
+      if (text.startsWith(lead) && text.length > lead.length) {
+        text = text.slice(lead.length);
+        break;
+      }
+    }
+  }
+  const tilde = named.indexOf("~");
+  if (tilde < 0) return { text, group: null };
+  const lineAt = text.lastIndexOf(" · ");
+  return {
+    text: lineAt > 0 ? text.slice(0, lineAt) : text,
+    group: `${source.capabilityId}:${named.slice(0, tilde)}/${ticker ?? ""}`,
+  };
+}
+
 function chartTitle(spec: ChartSpec, prefix = "G"): string {
-  const labels = spec.series.slice(0, 3).map((series) => (
-    series.source.kind === "security"
-      ? tickerInstrumentLabel(publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)
-      : series.source.kind === "economic"
-        ? `FRED:${series.source.seriesId}`
-        : series.label?.trim() || registeredSeriesName(series.source) || series.source.seriesId
-  ));
+  const pricedTickers = new Set(spec.series.flatMap((series) => series.source.kind === "security"
+    ? [publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange).toUpperCase(), series.source.instrument.symbol.toUpperCase()]
+    : []));
+  const groups = new Set<string>();
+  const parts = spec.series.flatMap((series) => {
+    if (series.source.kind === "security") {
+      return [tickerInstrumentLabel(publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)];
+    }
+    if (series.source.kind === "economic") return [`FRED:${series.source.seriesId}`];
+    const label = series.label?.trim() || registeredSeriesName(series.source) || series.source.seriesId;
+    const { text, group } = capabilityTitlePart(series.source, label, pricedTickers);
+    if (group) {
+      if (groups.has(group)) return [];
+      groups.add(group);
+    }
+    return [text];
+  });
+  const labels = parts.slice(0, 3);
   if (labels.length === 0) return "Custom Chart";
-  const remaining = spec.series.length - labels.length;
+  const remaining = parts.length - labels.length;
   return `${prefix} ${labels.join(" · ")}${remaining > 0 ? ` +${remaining}` : ""}`;
 }
 

@@ -351,4 +351,11 @@ describe("registered series that say where they are drawn", () => {
       .toEqual(["security", "bands~mid/NVDA", "bands~hist/NVDA"]);
     expect(rebound.series[1]!.label).toBe("NVDA · Bands · Middle");
   });
+
+  test("so does any other registered series of that ticker, placed or not", () => {
+    const chart = buildCustomChartPreset("AAPL, CAP:lab:days/AAPL, CAP:lab:days/MSFT");
+    const rebound = rebindChartSecuritySymbol(chart, "AAPL", "NVDA");
+    expect(rebound.series.map((series) => series.source.kind === "capability" ? series.source.seriesId : series.source.kind))
+      .toEqual(["security", "days/NVDA", "days/MSFT"]);
+  });
 });

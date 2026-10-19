@@ -37,18 +37,34 @@ interface UseAppPaneTemplateRuntimeOptions {
 }
 
 /**
+ * Whether shared data opens the pane by itself: the template takes it whole
+ * (a chart a plugin built), so its settings form would ask for what the data
+ * already says. A template that restores shares decides; any other takes data
+ * that holds something.
+ */
+function shareDataOpens(template: Pick<PaneTemplateDef, "publicShare">, shareData: unknown): boolean {
+  if (!shareData || typeof shareData !== "object" || Array.isArray(shareData)) return false;
+  const restore = template.publicShare?.restore;
+  if (!restore) return Object.keys(shareData).length > 0;
+  try {
+    return restore(shareData as Record<string, unknown>) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether opening a template asks for its settings first, in the same form the
- * command bar opens, which creates the pane when it is sent. Data the template
- * takes whole (a chart a plugin built) already says what the form would ask.
+ * command bar opens, which creates the pane when it is sent.
  */
 export function templateAsksForSettings(
-  template: Pick<PaneTemplateDef, "wizard">,
+  template: Pick<PaneTemplateDef, "wizard" | "publicShare">,
   options: PaneTemplateCreateOptions | undefined,
 ): boolean {
   return !!template.wizard
     && template.wizard.length > 0
     && !options?.values
-    && options?.shareData === undefined
+    && !shareDataOpens(template, options?.shareData)
     && (!options?.arg || template.wizard.some((step) => step.type === "textarea"));
 }
 
