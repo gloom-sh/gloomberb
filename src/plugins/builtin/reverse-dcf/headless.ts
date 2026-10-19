@@ -4,7 +4,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompactCurrency } from "../../../utils/format";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadReverseDcfInputs } from "./client";
-import { DEFAULT_FCF_MARGIN, DISCOUNT_RATES, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth } from "./model";
+import { describeFcfMargin, DISCOUNT_RATES, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth } from "./model";
 
 const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--";
 /** An assumption as it is set: 9%, 2.5%. */
@@ -18,16 +18,18 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { screenshotReadiness: "live-dom", limitations: ["Trailing twelve-month free cash flow against the reported enterprise value."] },
   options: [
     { key: "discountRate", type: "integer", minimum: 7, maximum: 12, defaultValue: 9, description: "Discount rate in percent" },
-    { key: "margin", type: "integer", minimum: 5, maximum: 60, defaultValue: Math.round(DEFAULT_FCF_MARGIN * 100),
-      description: "Free cash flow margin in percent behind the implied year-10 revenue" },
+    { key: "margin", type: "integer", minimum: 5, maximum: 60,
+      description: "Free cash flow margin in percent behind the implied year-10 revenue; the company's own trailing margin when left out" },
   ],
   async load(args, ctx) {
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     const inputs = await loadReverseDcfInputs({ instrument, signal: ctx.signal }, ctx.marketData);
     ctx.signal.throwIfAborted();
     const discountRate = (Number(args.options.discountRate) || 9) / 100;
-    const fcfMargin = (Number(args.options.margin) || DEFAULT_FCF_MARGIN * 100) / 100;
-    const model = projectReverseDcf(inputs.financials, { symbol: instrument.symbol, discountRate, fcfMargin });
+    const chosenMargin = Number(args.options.margin);
+    const model = projectReverseDcf(inputs.financials, { symbol: instrument.symbol, discountRate,
+      fcfMargin: chosenMargin > 0 ? chosenMargin / 100 : undefined });
+    const { fcfMargin, fcfMarginBasis } = model;
     const growth = implied(model.implied);
     const currency = model.currency ?? undefined;
     const quote = inputs.financials?.quote;
@@ -39,7 +41,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
           { label: "Implied FCF growth, 10 years", value: growth == null ? "--"
             : `${typeof growth === "number" ? percent(growth) : growth} at ${rate(discountRate)} discount, ${rate(TERMINAL_GROWTH)} terminal` },
           { label: "Implied revenue, year 10", value: model.impliedRevenue == null ? "--"
-            : `${formatCompactCurrency(model.impliedRevenue, currency)} at ${rate(fcfMargin)} FCF margin` },
+            : `${formatCompactCurrency(model.impliedRevenue, currency)} at ${describeFcfMargin(fcfMargin, fcfMarginBasis)}` },
           { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} over ${model.pastGrowth.years}y` : "--" },
           { label: "FCF yield", value: percent(model.fcfYield) },
           { label: "Enterprise value", value: `${formatCompactCurrency(model.enterpriseValue ?? undefined, currency)}${model.enterpriseValueNote ? " (provider)" : ""}` },
@@ -60,6 +62,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
       errors: [inputs.error, model.error].filter((value): value is string => !!value),
       ...(model.enterpriseValueNote ? { notes: [model.enterpriseValueNote] } : {}),
       metadata: { currency: model.currency, discountRate, terminalGrowth: TERMINAL_GROWTH, discountRates: DISCOUNT_RATES, fcfMargin,
+        fcfMarginSource: fcfMarginBasis.source, companyFcfMargin: fcfMarginBasis.company, fcfMarginGap: fcfMarginBasis.gap,
         impliedRevenue: model.impliedRevenue, stale: inputs.stale, fetchedAt: inputs.fetchedAt, methodology: "docs/research-data.md#reverse-dcf" },
     };
   },

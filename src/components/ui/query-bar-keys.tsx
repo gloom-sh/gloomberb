@@ -86,7 +86,9 @@ export function useQueryBarKeys({
     ...filters.map((filter) => {
       if (filter.kind === "toggle") return `${filter.id}:${filter.value}`;
       if (filter.kind === "multi") return `${filter.id}:${filter.values.join(",")}`;
-      return `${filter.id}:${String(filter.value)}`;
+      if (filter.kind === "text") return `${filter.id}:${filter.value}`;
+      // The label too: a choice named from loaded data (a company's own value) changes while the value stays.
+      return `${filter.id}:${String(filter.value)}:${filter.options.find((option) => option.value === filter.value)?.label ?? ""}`;
     }),
     view ? `view:${String(view.value)}` : "",
     narrowingCount,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
-import { dcfValue, FORECAST_YEARS, projectReverseDcf, solveImpliedGrowth } from "./model";
+import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, projectReverseDcf, solveImpliedGrowth } from "./model";
 
 const financials = (fundamentals: TickerFinancials["fundamentals"], annual: Partial<FinancialStatement>[] = []): TickerFinancials =>
   ({ fundamentals, annualStatements: annual as FinancialStatement[], quarterlyStatements: [], priceHistory: [] });
@@ -56,5 +56,53 @@ describe("reverse DCF", () => {
     const unavailable = projectReverseDcf({ ...financials(withdrawn), quote }, { symbol: "X", discountRate: 0.09 });
     expect(unavailable).toMatchObject({ enterpriseValue: null, implied: null, impliedRevenue: null });
     expect(unavailable.error).toStartWith("EV unavailable: the provider's");
+  });
+});
+
+describe("the margin behind the implied year-10 revenue", () => {
+  const model = (fundamentals: Partial<NonNullable<TickerFinancials["fundamentals"]>>, fcfMargin?: number) =>
+    projectReverseDcf(financials({ enterpriseValue: 2_000, financialCurrency: "USD", marketCapCurrency: "USD", ...fundamentals }),
+      { symbol: "X", discountRate: 0.09, fcfMargin });
+  const grown = (base: number, m: ReturnType<typeof model>) => base * (1 + (m.implied?.kind === "rate" ? m.implied.value : NaN)) ** FORECAST_YEARS;
+
+  test("is the company's own trailing margin, so a high converter needs far less revenue than a thin one", () => {
+    const high = model({ revenue: 230, freeCashFlow: 127 });
+    expect(high.fcfMargin).toBeCloseTo(127 / 230, 12);
+    expect(high.fcfMarginBasis).toEqual({ source: "company", company: 127 / 230, gap: null });
+    // The year-10 revenue is the trailing revenue grown at the implied rate: no margin guess in between.
+    expect(high.impliedRevenue).toBeCloseTo(grown(230, high), 6);
+    expect(describeFcfMargin(high.fcfMargin, high.fcfMarginBasis)).toBe("55.2% FCF margin (company TTM)");
+
+    const thin = model({ revenue: 700, freeCashFlow: 21 });
+    expect(thin.fcfMargin).toBeCloseTo(0.03, 12);
+    expect(thin.impliedRevenue).toBeCloseTo(grown(700, thin), 6);
+    expect(thin.impliedRevenue! / grown(21, thin)).toBeCloseTo(1 / 0.03, 8);
+    expect(describeFcfMargin(thin.fcfMargin, thin.fcfMarginBasis)).toBe("3% FCF margin (company TTM)");
+  });
+
+  test("a chosen margin overrides it and still names the company's", () => {
+    const chosen = model({ revenue: 230, freeCashFlow: 127 }, 0.25);
+    expect(chosen.fcfMargin).toBe(0.25);
+    expect(chosen.fcfMarginBasis).toMatchObject({ source: "chosen", company: 127 / 230 });
+    expect(chosen.impliedRevenue).toBeCloseTo(grown(127, chosen) / 0.25, 6);
+    expect(describeFcfMargin(chosen.fcfMargin, chosen.fcfMarginBasis)).toBe("25% FCF margin (chosen; company TTM 55.2%)");
+    expect(describeFcfMargin(0.25, { source: "chosen", company: null, gap: "no TTM revenue" })).toBe("25% FCF margin (chosen)");
+  });
+
+  test("falls back to the stated default, and says why, when revenue is missing or the margin means nothing", () => {
+    const missing = model({ freeCashFlow: 100 });
+    expect(missing.fcfMargin).toBe(DEFAULT_FCF_MARGIN);
+    expect(missing.fcfMarginBasis).toEqual({ source: "default", company: null, gap: "no TTM revenue" });
+    expect(missing.impliedRevenue).toBeCloseTo(grown(100, missing) / DEFAULT_FCF_MARGIN, 6);
+    expect(describeFcfMargin(missing.fcfMargin, missing.fcfMarginBasis)).toBe("30% FCF margin (default; no TTM revenue)");
+
+    // A free cash flow of zero or below is no margin: the pane's error stands, and the margin is the default.
+    const negative = model({ revenue: 500, freeCashFlow: -40 });
+    expect(negative.error).toContain("negative");
+    expect(negative).toMatchObject({ impliedRevenue: null, fcfMargin: DEFAULT_FCF_MARGIN,
+      fcfMarginBasis: { source: "default", company: null, gap: "TTM FCF not positive" } });
+
+    expect(model({ revenue: -500, freeCashFlow: 40 }).fcfMarginBasis.gap).toBe("TTM revenue not positive");
+    expect(model({ revenue: 30, freeCashFlow: 40 })).toMatchObject({ fcfMargin: DEFAULT_FCF_MARGIN, fcfMarginBasis: { gap: "TTM FCF above revenue" } });
   });
 });

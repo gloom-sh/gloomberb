@@ -1,5 +1,5 @@
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
-import type { TickerFinancials } from "../../../types/financials";
+import type { Fundamentals, TickerFinancials } from "../../../types/financials";
 import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueReconciliationNote, enterpriseValueWithdrawn,
   reportedEnterpriseValue } from "../../../utils/fundamentals";
 
@@ -8,10 +8,23 @@ export const FORECAST_YEARS = 10;
 export const TERMINAL_GROWTH = 0.025;
 export const DISCOUNT_RATES = [0.07, 0.08, 0.09, 0.1, 0.11, 0.12];
 export const TERMINAL_GROWTHS = [0.02, 0.025, 0.03];
-/** The free cash flow margin the implied year-ten revenue assumes unless told otherwise. */
+/** The free cash flow margin the implied year-ten revenue falls back to when the company's own is not a meaningful figure. */
 export const DEFAULT_FCF_MARGIN = 0.3;
 /** The growth range searched; a price outside it reads as below or above. */
 const MIN_GROWTH = -0.5, MAX_GROWTH = 1;
+
+/**
+ * Where the margin behind the implied revenue comes from: the company's own
+ * trailing margin, one the reader chose, or `DEFAULT_FCF_MARGIN` because the
+ * company's has no meaning (`gap` says why).
+ */
+export interface FcfMarginBasis {
+  source: "company" | "chosen" | "default";
+  /** Trailing free cash flow over trailing revenue, when that ratio is a margin. */
+  company: number | null;
+  /** Why `company` is missing. */
+  gap: string | null;
+}
 
 /** A solved growth rate, or which side of the searched range the price lies on. */
 export type ImpliedGrowth = { kind: "rate"; value: number } | { kind: "below" } | { kind: "above" };
@@ -33,6 +46,7 @@ export interface ReverseDcfModel {
   implied: ImpliedGrowth | null;
   /** The margin `impliedRevenue` assumes. */
   fcfMargin: number;
+  fcfMarginBasis: FcfMarginBasis;
   /** Year-ten revenue at `fcfMargin`: trailing free cash flow grown at the implied rate for ten years, over the margin. */
   impliedRevenue: number | null;
   /** Annual FCF growth between the latest annual statement and one up to five years earlier, when both are positive. */
@@ -78,6 +92,35 @@ function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowt
   return years > 0 ? { rate: (last.freeCashFlow! / first.freeCashFlow!) ** (1 / years) - 1, years } : null;
 }
 
+/**
+ * The company's trailing free cash flow margin: the twelve-month free cash
+ * flow over the twelve-month revenue, which Gloom Cloud serves for the same
+ * period and currency. A missing, zero or negative figure, or a free cash flow
+ * above the revenue (a mismatch, not a margin), has none.
+ */
+export function trailingFcfMargin(fundamentals: Pick<Fundamentals, "freeCashFlow" | "revenue"> | null | undefined):
+  { margin: number; gap: null } | { margin: null; gap: string } {
+  const finite = (value: number | undefined): value is number => typeof value === "number" && Number.isFinite(value);
+  const revenue = fundamentals?.revenue, fcf = fundamentals?.freeCashFlow;
+  const gap = !finite(revenue) ? "no TTM revenue" : !(revenue > 0) ? "TTM revenue not positive"
+    : !finite(fcf) ? "no TTM FCF" : !(fcf > 0) ? "TTM FCF not positive" : fcf > revenue ? "TTM FCF above revenue" : null;
+  return gap ? { margin: null, gap } : { margin: fcf! / revenue!, gap: null };
+}
+
+/** A margin as the surfaces say it: 55.2%, 30%, 1.9%. */
+export function formatFcfMargin(margin: number): string {
+  return `${Number((margin * 100).toFixed(1))}%`;
+}
+
+/** The margin behind the implied revenue and where it is from, as the pane and `fn RDCF` say it: `55.2% FCF margin (company TTM)`. */
+export function describeFcfMargin(margin: number, basis: FcfMarginBasis): string {
+  const company = basis.company == null ? "" : formatFcfMargin(basis.company);
+  const source = basis.source === "company" ? "company TTM"
+    : basis.source === "chosen" ? `chosen${company ? `; company TTM ${company}` : ""}`
+    : `default; ${basis.gap ?? "company margin unavailable"}`;
+  return `${formatFcfMargin(margin)} FCF margin (${source})`;
+}
+
 /** Revenue in the last forecast year: the free cash flow grown at `growth` over the margin it is taken to be. */
 function impliedYearTenRevenue(fcf: number, growth: number, fcfMargin: number): number | null {
   return fcf > 0 && fcfMargin > 0 && fcfMargin <= 1 ? fcf * (1 + growth) ** FORECAST_YEARS / fcfMargin : null;
@@ -85,6 +128,7 @@ function impliedYearTenRevenue(fcf: number, growth: number, fcfMargin: number): 
 
 export function projectReverseDcf(
   financials: TickerFinancials | null,
+  /** `fcfMargin` is the margin the reader chose; without one the company's own trailing margin applies. */
   options: { symbol: string; discountRate: number; fcfMargin?: number },
 ): ReverseDcfModel {
   // The enterprise value at the regular session price, as `valuation` measures it: after the close, the close's.
@@ -93,10 +137,13 @@ export function projectReverseDcf(
   const enterpriseValue = reportedEnterpriseValue(fundamentals) ?? null;
   const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
   const freeCashFlow = fundamentals?.freeCashFlow ?? null;
-  const fcfMargin = options.fcfMargin ?? DEFAULT_FCF_MARGIN;
+  const company = trailingFcfMargin(fundamentals);
+  const fcfMargin = options.fcfMargin ?? company.margin ?? DEFAULT_FCF_MARGIN;
+  const fcfMarginBasis: FcfMarginBasis = { company: company.margin, gap: company.gap,
+    source: options.fcfMargin != null ? "chosen" : company.margin != null ? "company" : "default" };
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
     enterpriseValue, computedEnterpriseValue: check?.computed ?? null, enterpriseValueNote: check ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
-    freeCashFlow, fcfYield: null, implied: null, fcfMargin, impliedRevenue: null,
+    freeCashFlow, fcfYield: null, implied: null, fcfMargin, fcfMarginBasis, impliedRevenue: null,
     pastGrowth: financials ? pastFcfGrowth(financials) : null, sensitivity: [], error: null };
   const valueCurrency = fundamentals?.marketCapCurrency;
   // ADRs and cross-listings can report cash flows in one currency and trade in another.

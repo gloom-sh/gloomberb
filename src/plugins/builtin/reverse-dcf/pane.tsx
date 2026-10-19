@@ -10,12 +10,22 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { formatCompact, formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
-import { DEFAULT_FCF_MARGIN, DISCOUNT_RATES, FORECAST_YEARS, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth,
-  type ReverseDcfModel } from "./model";
+import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
+  type ImpliedGrowth, type ReverseDcfModel } from "./model";
 
 export const DISCOUNT_OPTIONS = DISCOUNT_RATES.map((rate) => ({ value: String(Math.round(rate * 100)), label: `${Math.round(rate * 100)}%` }));
-/** 5% to 60% in steps of 5, the range `--margin` takes. */
-export const MARGIN_OPTIONS = Array.from({ length: 12 }, (_, index) => ({ value: String((index + 1) * 5), label: `${(index + 1) * 5}%` }));
+/** The margin setting that follows the company's own trailing margin, the pane's default. */
+export const COMPANY_MARGIN = "company";
+/** The company's own margin first, then 5% to 60% in steps of 5, the range `--margin` takes. */
+export const MARGIN_OPTIONS = [{ value: COMPANY_MARGIN, label: "Company's own" },
+  ...Array.from({ length: 12 }, (_, index) => ({ value: String((index + 1) * 5), label: `${(index + 1) * 5}%` }))];
+
+/** `MARGIN_OPTIONS` with the company's own margin named, as the query bar offers it: `55.2% (own)`. */
+function marginOptions(model: ReverseDcfModel | null) {
+  const { company, gap } = model?.fcfMarginBasis ?? { company: null, gap: null };
+  const own = company != null ? `${formatFcfMargin(company)} (own)` : gap ? "Own unavailable" : "Own";
+  return MARGIN_OPTIONS.map((option, index) => index === 0 ? { ...option, label: own } : option);
+}
 
 function pct(value: number | null | undefined, signed = true): string {
   if (value == null) return "--";
@@ -46,7 +56,7 @@ function renderCell(row: Row, column: DataTableColumn): DataTableCell {
 export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const { symbol, ticker, error: identityError } = usePaneTicker();
   const [discount, setDiscount] = usePaneSettingValue("discountRate", "9");
-  const [margin] = usePaneSettingValue("margin", String(Math.round(DEFAULT_FCF_MARGIN * 100)));
+  const [margin, setMargin] = usePaneSettingValue("margin", COMPANY_MARGIN);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
   const controller = useRef<AbortController | null>(null);
@@ -63,9 +73,9 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   usePaneRefreshKey(() => { void inputs.reload(); }, { focused });
 
   const discountRate = (Number(discount) || 9) / 100;
-  const fcfMargin = (Number(margin) || DEFAULT_FCF_MARGIN * 100) / 100;
-  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate, fcfMargin }) : null,
-    [inputs.data, discountRate, fcfMargin, symbol]);
+  const chosenMargin = Number(margin) > 0 ? Number(margin) / 100 : undefined;
+  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate, fcfMargin: chosenMargin }) : null,
+    [inputs.data, discountRate, chosenMargin, symbol]);
 
   usePaneNoticeFooter({ registrationId: "reverse-dcf-notices", focused,
     notices: [...new Set([identityError, inputs.error, inputs.data?.error, model?.enterpriseValueNote]
@@ -86,7 +96,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
         tone: implied == null || !past ? undefined : implied > past.rate ? "negative" : "positive",
         detail: `a year for ${FORECAST_YEARS}y, then ${pct(TERMINAL_GROWTH, false)}` },
       { id: "revenue", label: `Revenue, yr ${FORECAST_YEARS}`, value: formatCompactCurrency(model.impliedRevenue ?? undefined, currency),
-        detail: `at ${Number((model.fcfMargin * 100).toFixed(2))}% FCF margin` },
+        detail: `at ${describeFcfMargin(model.fcfMargin, model.fcfMarginBasis)}` },
       { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : "--", detail: past ? `per year over ${past.years}y` : undefined },
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency) },
@@ -100,7 +110,10 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width));
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <QueryBar width={width} filters={[{ id: "discount", label: "Discount", value: String(discount), options: DISCOUNT_OPTIONS, onChange: setDiscount }]} />
+    <QueryBar width={width} filters={[
+      { id: "discount", label: "Discount", value: String(discount), options: DISCOUNT_OPTIONS, onChange: setDiscount },
+      { id: "margin", label: "FCF margin", value: String(margin), options: marginOptions(model), onChange: setMargin },
+    ]} />
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
       error={!model ? inputs.error ?? identityError ?? null : model.error} empty={false}>
       {model && !model.error ? <>

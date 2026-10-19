@@ -12,7 +12,7 @@ export const reverseDcfModule: PluginModule = {
     reportFreshness: reverseDcfHeadless.freshness,
     settings: { title: "Reverse DCF Settings", fields: [
       { key: "discountRate", label: "Discount rate", type: "select", options: DISCOUNT_OPTIONS },
-      { key: "margin", label: "FCF margin", description: "The free cash flow margin the implied year-10 revenue assumes.", type: "select", options: MARGIN_OPTIONS },
+      { key: "margin", label: "FCF margin", description: "The free cash flow margin the implied year-10 revenue assumes; the company's own trailing margin unless you pick one.", type: "select", options: MARGIN_OPTIONS },
     ] },
   }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({
