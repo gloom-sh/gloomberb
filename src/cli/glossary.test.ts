@@ -193,7 +193,7 @@ test("the bond fund and muni words are found by plain names, and DVD explains th
     "Muni/Treasury ratio   81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
   ].join("\n");
   expect(terms(reportGlossary("DVD", report))).toEqual([
-    "SEC yield", "Distribution yield", "Yield to worst", "Duration", "Tax-equivalent yield", "Muni/Treasury ratio",
+    "SEC yield", "Yield to worst", "Distribution yield", "Duration", "Tax-equivalent yield", "Muni/Treasury ratio",
   ]);
   // A stock's DVD report prints none of them.
   expect(reportGlossary("DVD", "Trailing yield  2.24% (last 12 months of distributions)\nForward yield  2.26%")).toEqual([]);

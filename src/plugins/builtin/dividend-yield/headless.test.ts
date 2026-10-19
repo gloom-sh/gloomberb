@@ -239,4 +239,42 @@ describe("a bond fund's yields", () => {
     const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => { throw new Error("offline"); } });
     expect(await report(definition)).toMatch(/\nForward yield +3\.27% \(latest distribution annualized, as of 2026-10-01\)\n/);
   });
+
+  test("a ranking with a bond fund says its yields are distribution yields and gives each its SEC yield, dated; one without reads as before", async () => {
+    const priced = (data: DividendData, trailingYield: number, forwardYield: number): DividendData =>
+      ({ ...data, currency: "USD", priceAsOf: "2026-10-16T20:00:00.000Z", metrics: { ...data.metrics, trailingYield, forwardYield } });
+    const rows: Record<string, DividendData> = { MUB: priced(mubData, 0.0333561, 0.0327109), KO: priced(fixture, 0.0291, 0.0294) };
+    const bonds: Record<string, FundBondFacts | null> = { MUB, KO: null };
+    const request: HeadlessPaneLoadArgs = { rawArgument: "MUB, KO", argument: "MUB, KO", symbols: ["MUB", "KO"], options: {} };
+    const rank = async (loadBond: (symbol: string) => Promise<FundBondFacts | null>) => {
+      const definition = createDividendYieldHeadless({ loadData: async (symbol) => rows[symbol]!, loadBond });
+      const result = await definition.load(request, context);
+      const freshness = deriveHeadlessFreshness(definition, result);
+      return {
+        result,
+        text: renderHeadlessPaneText(definition, result, request, "DVD"),
+        csv: renderReportCsv(headlessReportTables(definition, result, request, "DVD", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+          .split("\n"),
+      };
+    };
+
+    const { result, text, csv } = await rank(async (symbol) => bonds[symbol] ?? null);
+    expect(text).toContain("Ranked by trailing yield; payout is over TTM diluted EPS; a bond fund's yields are distribution yields, not SEC yield");
+    expect(text).toMatch(/Ticker +Yield TTM +Fwd yield +SEC yield +SEC as of +Payout/);
+    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +2026-10-15 /);
+    expect(text).toMatch(/\nKO +2\.91% +2\.94% +— +— /);
+    // Each row still names its ticker, the percent unit and its price's time; the SEC yield has its own date.
+    expect(csv[0]).toStartWith("Ticker,Yield TTM (%),Fwd yield (%),SEC yield (%),SEC as of,Payout (%),");
+    expect(csv.find((line) => line.startsWith("MUB,"))).toMatch(/^MUB,3\.3356,3\.2711,4\.0418,2026-10-15,.*,MUB,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z$/);
+    expect(csv.find((line) => line.startsWith("KO,"))).toMatch(/^KO,2\.91,2\.94,,,.*,KO,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z$/);
+    expect(result.metadata).toMatchObject({ secYieldMethod: expect.stringContaining("distribution yields, not SEC yield") });
+
+    // No bond fund ranked, or its facts not read: the ranking as before, with no SEC columns or fields.
+    const plain = await rank(async () => null);
+    const failed = await rank(async () => { throw new Error("offline"); });
+    expect(failed.text).toBe(plain.text);
+    expect(plain.text).toMatch(/Ticker +Yield TTM +Fwd yield +Payout/);
+    expect(plain.text).not.toMatch(/SEC|distribution yields/);
+    expect(JSON.stringify(plain.result)).not.toMatch(/secYield/);
+  });
 });

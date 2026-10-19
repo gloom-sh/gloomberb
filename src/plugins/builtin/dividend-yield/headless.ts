@@ -274,8 +274,10 @@ export function createDividendYieldHeadless(
         throw new Error(`${historyOptions.join(" and ")} ${historyOptions.length === 1 ? "filters" : "filter"} one ticker's payment history, and a ranking of several lists none. Drop ${historyOptions.length === 1 ? "it" : "them"}, or run DVD on one ticker.`);
       }
       const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
+        // A fund's bond facts never fail its row: without them it ranks as before.
+        const bond = dependencies.loadBond?.(symbol, context).catch(() => null) ?? null;
         try {
-          return { symbol, data: await dependencies.loadData(symbol, context) };
+          return { symbol, data: await dependencies.loadData(symbol, context), bond: await bond };
         } catch (error) {
           return { symbol, error: error instanceof Error ? error.message : String(error) };
         }
