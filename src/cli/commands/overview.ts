@@ -21,6 +21,7 @@ import {
   type MoverRankBasis,
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
+import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -317,8 +318,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
   await withCliServices(ctx, async () => {
-    const { data: events, fetchedAt, stale } = await loadCalendar(ctx.cliOptions.refresh);
     const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+    // An earlier day reads the stored calendar, which keeps past events after the week's listing drops them.
+    const past = fromOption != null && fromOption < isoDate(new Date(todayStart)) ? await fetchEconCalendarFrom(fromOption) : null;
+    const { data: events, fetchedAt, stale } = past ? { data: past.events, fetchedAt: Date.now(), stale: false } : await loadCalendar(ctx.cliOptions.refresh);
     // The calendar lists from today (UTC). --from moves the first day; --tail
     // alone keeps the newest events of the whole calendar, the past week's too.
     const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
@@ -327,6 +330,14 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const listedThrough = lastEvent ? lastEvent.toISOString().slice(0, 10) : null;
     // A calendar that stops short of a week ahead says so under the table.
     const listedAfter = shortCalendarEnd(events, Math.max(todayStart, fromTime)) ? `No events listed after ${listedThrough}` : null;
+    // A day before anything the calendar holds says where its listing starts.
+    const firstEvent = events.reduce<Date | null>((first, event) => (!first || event.date < first ? event.date : first), null);
+    const listedFrom = firstEvent ? firstEvent.toISOString().slice(0, 10) : null;
+    const startsLater = fromOption != null && (past ? past.storedFrom == null || past.storedFrom > fromOption : listedFrom != null && listedFrom > fromOption);
+    const listedBefore = !startsLater ? null
+      : past?.storedFrom ? `The stored calendar starts ${past.storedFrom}; nothing earlier is listed`
+      : `No events are stored before ${listedFrom ?? isoDate(new Date(todayStart))}`;
+    const footnote = [listedBefore, listedAfter].filter((note): note is string => !!note).join("\n");
     const rows = events
       .filter((event) => event.date.getTime() >= fromTime && matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
@@ -342,14 +353,14 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }));
     ctx.printResult({
       data: rows,
-      metadata: { country, impact, from, listedThrough },
+      metadata: { country, impact, from, listedThrough, storedFrom: past?.storedFrom ?? null },
       // The calendar as read, not its rows: those are scheduled, mostly ahead.
       freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),
     }, {
       dateKey: "date",
       defaultLimit: 50,
       empty: econEmptyMessage(from, listedThrough, listedAfter != null),
-      ...(listedAfter ? { footnote: listedAfter } : {}),
+      ...(footnote ? { footnote } : {}),
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
@@ -658,9 +669,9 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
-        { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day reaches past events` },
+        { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
       ],
-      examples: ["econ", "econ --country US --impact high", "econ --tail 20"],
+      examples: ["econ", "econ --country US --impact high", "econ --from 2026-10-12 --country US", "econ --tail 20"],
     },
     execute: runEcon,
   },

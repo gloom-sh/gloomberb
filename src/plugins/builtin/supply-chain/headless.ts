@@ -1,12 +1,13 @@
 import type { SupplyRow } from "../../../api-client/supply-chain";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
-import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
-import type { HeadlessBundleResult, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
+import type { GraphEvidence, GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
+import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { fetchSupplyChain } from "./client";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
-import { exposureLabel, pathLabel } from "./graph-model";
-import { counterpartyName, disclosedValue, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
+import { entityTicker, exposureLabel, pathLabel } from "./graph-model";
+import { graphEvidenceRow } from "./graph-evidence";
+import { counterpartyName, disclosedValue, disclosureText, earlierRows, isTaggedFact, lockedDisclosures, nativeValue, periodText, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
 
 /**
  * The Table tab's columns, printed as the pane prints them: the share with
@@ -44,6 +45,18 @@ const pathColumns = [
   { key: "score", header: "Rank score", description: "Product of normalized edge weights; not a probability." },
   { key: "confidence", header: "Confidence" }, { key: "exposureLabel", header: "Estimated exposure" },
 ];
+/**
+ * What a graph disclosure says in words: the text itself, or for a tagged
+ * XBRL fact the sentence a filing-text disclosure of the same link quotes,
+ * else the fact read out ("Customer, Gold, revenue").
+ */
+function graphStatement(item: GraphEvidence, siblings: readonly GraphEvidence[]): string {
+  const row = graphEvidenceRow(item);
+  if (!isTaggedFact(row)) return item.quote;
+  const sentence = siblings.find((other) => other.id !== item.id && other.sourceKind === "filing_text" && other.reporter.id === item.reporter.id && other.quote.trim());
+  return sentence?.quote ?? disclosureText(row);
+}
+
 function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   const links = new Map(data.links.map(link => [link.id, link]));
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
@@ -58,15 +71,17 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
       title: direction === "upstream" ? "Upstream suppliers" : direction === "downstream" ? "Downstream customers" : "Related companies",
       columns: [{ key: "company", header: "Company" }, { key: "ticker", header: "Ticker" }, ...pathColumns],
       rows: data[direction].map(reach => ({ ...route(data.options.ranking === "shortest" ? reach.shortestPath : reach.bestPath), entityId: reach.entityId, company: nodes.get(reach.entityId)?.name,
-        ticker: nodes.get(reach.entityId)?.ticker, direction: reach.direction, bestPath: route(reach.bestPath), shortestPath: route(reach.shortestPath) })),
+        ticker: nodes.get(reach.entityId) ? entityTicker(nodes.get(reach.entityId)!) : null, direction: reach.direction, bestPath: route(reach.bestPath), shortestPath: route(reach.shortestPath) })),
     }));
   sections.push({ title: "Disclosure evidence", columns: [
     { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
     { key: "role", header: "Role" }, { key: "pct", header: "% disclosed" }, { key: "denominator", header: "Denominator" },
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
-    { key: "quote", header: "Quote" }, { key: "filingUrl", header: "Filing" },
+    // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.
+    { key: "quote", header: "Quote", textFormat: (value, row) => row.statement == null ? String(value ?? "") : String(row.statement) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
+    statement: graphStatement(item, link.evidence),
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
@@ -98,7 +113,8 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Unconfirmed leads are opt-in and excluded from flow and disclosed values.", "Restricted publisher articles expose links only.",
       "Table and Flow evidence tiers differ from Graph and Path evidence tiers."] },
   options: [
-    { key: "view", type: "enum", settingKey: "view", defaultValue: "says", values: [{ value: "says" }, { value: "names" }], description: "Statements by the company, or other sources naming it." },
+    // No default: left out, the report prints both views; the pane opens on what the company says.
+    { key: "view", type: "enum", settingKey: "view", values: [{ value: "says" }, { value: "names" }], description: "Statements by the company, or other sources naming it; both when left out." },
     { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: ["table", "flow", "graph", "path"].map(value => ({ value })), description: "Disclosures table, direct flow, multi-hop graph or routes to a target." },
     { key: "route", type: "integer", minimum: 1, maximum: 50, defaultValue: 1, settingKey: "route", description: "Selected route for graph and evidence screenshots." },
     { key: "evidence", type: "boolean", settingKey: "evidence", defaultValue: false, description: "Open selected relationship or path evidence in screenshots." },
@@ -128,21 +144,42 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The pane's figures, per tab: Table shows one direction, Flow both.
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
-    return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? supplyPreviewNote(data, lockedDisclosures(data, ["says", "names"])) : "Additional relationships need Gloom Pro"] : [],
-      sections: (["says", "names"] as const).flatMap((view) => [false, true].map((leads) => ({ title: `${view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`}${leads ? " | Unconfirmed" : ""}`,
-        rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => sourced(row, { counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
-          pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
-          nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
-          jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
-          evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
-          leadStatus: row.leadStatus ?? "none", whyUnconfirmed: row.whyUnconfirmed ?? null,
-          firstSeenAt: row.firstSeenAt, lastSeenAt: row.lastSeenAt, lastConfirmedAt: row.lastConfirmedAt,
-          source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name,
-          quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
-          quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
-          evidence: row.evidence ?? [] })) })).filter((section) => section.rows.length > 0))
-        .map((section) => ({ ...section, columns: tableColumns(section.rows, sources, data.entity?.id) })),
-      metadata: { symbol: data.symbol, asOf: data.asOf, counterparties: figures("counterparties"), locked: figures("locked"),
-        counts: data.counts, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
+    const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
+      pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
+      nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
+      jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
+      evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
+      leadStatus: row.leadStatus ?? "none", whyUnconfirmed: row.whyUnconfirmed ?? null,
+      firstSeenAt: row.firstSeenAt, lastSeenAt: row.lastSeenAt, lastConfirmedAt: row.lastConfirmedAt,
+      source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name,
+      quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
+      quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
+      evidence: row.evidence ?? [] });
+    // --view prints that view alone and says when it is empty; left out, both views print, each only when it has rows.
+    const requested: "says" | "names" | null = args.options.view === "says" || args.options.view === "names" ? args.options.view : null;
+    const views: ("says" | "names")[] = requested ? [requested] : ["says", "names"];
+    const viewTitle = (view: "says" | "names") => view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`;
+    const sections = views.flatMap((view): HeadlessBundleSection[] => {
+      const shown = (rows: SupplyRow[]) => rows.filter((row) => matchesSupplyOptions(row, options));
+      const parts = [
+        { title: viewTitle(view), rows: shown(data[view]).filter((row) => !isUnconfirmed(row)).map(record) },
+        { title: `${viewTitle(view)} | Unconfirmed`, rows: shown(data[view]).filter(isUnconfirmed).map(record) },
+        // Shares from before the reporter's latest period on the same basis: each dated by its own period, never current.
+        { title: `${viewTitle(view)} | Earlier periods`, rows: shown(earlierRows(data, view)).map(record) },
+      ].filter((section) => section.rows.length > 0).map((section) => ({ ...section, columns: tableColumns(section.rows, sources, data.entity?.id) }));
+      if (parts.length || !requested) return parts;
+      // "In the free preview" only when this view holds rows the preview leaves out.
+      const scope = lockedDisclosures(data, [view]) > 0 ? " in the free preview" : "";
+      return [{ title: viewTitle(view), rows: [], empty: view === "names"
+        ? `No other company's disclosures name ${data.symbol}${scope}.`
+        : `${data.symbol}'s own disclosures name no relationship${scope}.` }];
+    });
+    // A requested view is complete when the preview leaves none of its own rows out.
+    const locked = lockedDisclosures(data, views);
+    const truncated = data.truncated && (!requested || locked > 0);
+    return { complete: !truncated, errors: truncated ? [data.access === "preview" ? supplyPreviewNote(data, locked) : "Additional relationships need Gloom Pro"] : [],
+      sections,
+      metadata: { symbol: data.symbol, asOf: data.asOf, view: requested ?? "both", counterparties: figures("counterparties"), locked: figures("locked"),
+        counts: data.counts, earlierCounts: data.earlierCounts ?? null, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
   },
 };

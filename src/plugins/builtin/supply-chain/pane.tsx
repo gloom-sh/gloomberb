@@ -28,8 +28,9 @@ import { cachedSupplyChain, loadSupplyChain, SUPPLY_UNAVAILABLE, validateSupplyC
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
+import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
   shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -179,17 +180,21 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const allRows = useMemo(() => data ? [...data.says, ...data.names].filter((row) => matchesSupplyOptions(row, options)) : [], [data, options]);
   const [flowIds, setFlowIds] = useState<string[]>([]);
   const rows = useMemo(() => data ? sortRows(data[view].filter((row) => matchesSupplyOptions(row, options)), sort) : [], [data, view, sort, options]);
-  const selectionRows = tab === "flow" ? allRows.filter((row) => flowIds.includes(row.id)) : rows;
+  // Shares from before the reporter's latest period: their own section, never among the current rows or the flow.
+  const earlier = useMemo(() => data ? sortRows(earlierRows(data, view).filter((row) => matchesSupplyOptions(row, options)), sort) : [], [data, view, sort, options]);
+  const tableRows = useMemo(() => [...rows, ...earlier], [rows, earlier]);
+  const selectionRows = tab === "flow" ? allRows.filter((row) => flowIds.includes(row.id)) : tableRows;
   const selected = tab === "flow" && selectedId?.startsWith("more:") ? null
     : selectionRows.find((row) => row.id === selectedId) ?? (tab === "flow" ? allRows.find((row) => row.id === flowIds[0]) : rows[0]) ?? null;
-  const openRow = allRows.find((row) => row.id === openId) ?? (openingEvidence && openId === null ? rows[0] : null) ?? null;
-  useSupplyEvidence(graphTab ? null : data, tab, view, tab === "flow" ? flowIds : rows.map((row) => row.id), openRow?.id ?? null, options.tiers);
+  const openRow = allRows.find((row) => row.id === openId) ?? earlier.find((row) => row.id === openId) ?? (openingEvidence && openId === null ? rows[0] : null) ?? null;
+  useSupplyEvidence(graphTab ? null : data, tab, view, tab === "flow" ? flowIds : tableRows.map((row) => row.id), openRow?.id ?? null, options.tiers);
   const locked = data?.truncated ? lockedDisclosures(data, [view]) : 0;
   const items = useMemo<SectionedRow<Item>[]>(() => buildSectionedRows<Item>([
     { label: "Relationships", items: rows.filter((row) => !isUnconfirmed(row)).map((row) => ({ kind: "edge", row })) },
     { label: "Unconfirmed", items: rows.filter(isUnconfirmed).map((row) => ({ kind: "edge", row })) },
+    { label: "Earlier periods", items: earlier.map((row) => ({ kind: "edge", row })) },
     { label: "Pro", items: Array.from({ length: Math.min(3, locked) }, (_, i) => ({ kind: "locked", id: `locked:${i}` })) },
-  ], itemId), [rows, locked]);
+  ], itemId), [rows, earlier, locked]);
   const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [{ value: "table", label: "Table" }, { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused: focused && !graphTab });
@@ -220,13 +225,13 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
   ] });
   const focusId = data?.entity?.id;
-  const values = rows.filter((row) => nativeValue(row) !== null || row.usd !== null);
+  const values = tableRows.filter((row) => nativeValue(row) !== null || row.usd !== null);
   const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
-  const bases = rows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [displayWidth(share.basis)] : []; });
+  const bases = tableRows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [displayWidth(share.basis)] : []; });
   // The period's length follows its end date when the source states it (2026-07-31 half) and costs
   // no column; laid out a cell narrower, the table also clears its own scrollbar. Otherwise the
   // evidence view says it.
-  const periodWidth = Math.max(PERIOD_DATE_CELLS, ...rows.map((row) => displayWidth(cellText(row, "fy"))));
+  const periodWidth = Math.max(PERIOD_DATE_CELLS, ...tableRows.map((row) => displayWidth(cellText(row, "fy"))));
   const dated = tableColumns(width, desktop, locked > 0, valueWidth, bases);
   const lengths = periodWidth > PERIOD_DATE_CELLS ? tableColumns(width - 1, desktop, locked > 0, valueWidth, bases, periodWidth) : null;
   const columns = lengths?.some((column) => column.id === "fy") && lengths.map((column) => column.id).join() === dated.map((column) => column.id).join() ? lengths : dated;
@@ -254,7 +259,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         // The desktop always says it in one word: the Role column beside it names the role, and the name takes the room.
         const full = counterpartyKindLabel(row);
         const kind = !desktop && full && displayWidth(counterpartyLabel(row)) + displayWidth(full) + 4 <= column.width ? full : counterpartyKindLabel(row, true);
-        const ticker = !columns.some((entry) => entry.id === "ticker") ? row.counterparty.ticker : null;
+        const ticker = !columns.some((entry) => entry.id === "ticker") ? entityTicker(row.counterparty) : null;
         const room = Math.max(8, column.width - (kind ? displayWidth(kind) + 4 : 0) - (ticker ? displayWidth(ticker) + 1 : 0));
         // On the desktop the name gives way at the column's edge by CSS and the ticker and kind keep their room.
         return { text: cellText(row, "name"), content: <Box flexDirection="row" height={1} gap={ticker ? 1 : 2} overflow="hidden" {...(desktop ? { flexShrink: 1, minWidth: 0 } : {})}>
@@ -264,7 +269,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         </Box> };
       }
       case "ticker": {
-        const ticker = row.counterparty.ticker;
+        const ticker = entityTicker(row.counterparty);
         if (!ticker) return { text: "", value: null };
         return { text: ticker, color: colors.textBright, content: desktop ? <Badge label={ticker} tone="accent" /> : undefined };
       }
@@ -296,7 +301,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
   const selectedShare = selected ? shareParts(selected, focusId) : null;
-  const flowMeta = selected ? `${selected.reportingEntity.ticker ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
+  const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
     : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${roleLabel(selected.role)}, no figure disclosed`}` : undefined;
   return <Box width={width} height={height} flexDirection="column">
     {strip}

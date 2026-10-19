@@ -25,16 +25,24 @@ const twoWeeks = [
   event("2026-10-23T12:30:00.000Z", "US", "high", "Housing Starts"),
 ];
 
-/** The text `econ` prints for `args` against a calendar of `events`, read fresh each time. */
-async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}): Promise<string> {
+/**
+ * The text `econ` prints for `args` against a calendar of `events`, read fresh
+ * each time. The stored calendar answers an earlier --from with the same
+ * events and `storedFrom`; "none" is a server that keeps no past events.
+ */
+async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" = "none"): Promise<string> {
   resetEconCalendarPersistence();
   attachEconCalendarPersistence(new MemoryPluginPersistence());
-  setCloudApiFetchTransport(async () => ({
-    ok: true,
-    status: 200,
-    headers: new Headers(),
-    text: async () => JSON.stringify(events),
-  }) as Response);
+  setCloudApiFetchTransport(async (url) => {
+    const history = new URL(url).pathname.endsWith("/calendar/history");
+    const missing = history && storedFrom === "none";
+    return {
+      ok: !missing,
+      status: missing ? 404 : 200,
+      headers: new Headers(),
+      text: async () => missing ? JSON.stringify({ message: "Not found" }) : JSON.stringify(history ? { events, storedFrom } : events),
+    } as Response;
+  });
   const cli = createTestCliContext({}, cliOptions);
   await econ.execute(args, cli.context);
   const { result, options } = cli.printed[0]!;
@@ -62,6 +70,20 @@ test("a calendar that ended with last week says so instead of listing last week"
   expect(from).toContain("FOMC Meeting Minutes");
   // A month-name date, as a shell passes the quoted "Oct 1 2026", reads as the same kind of day.
   expect(await econText(weekOnly, ["--from", "Oct 1 2026", "--country", "US"])).toContain("FOMC Meeting Minutes");
+});
+
+test("an earlier --from lists the stored calendar's past events and says where it starts", async () => {
+  // Read on the Sunday after: the current week's listing no longer holds last week's CPI; the stored calendar does.
+  setSystemTime(new Date("2026-10-18T23:00:00.000Z"));
+  const stored = await econText(twoWeeks, ["--from", "2026-10-12", "--country", "US"], {}, "2026-09-01");
+  expect(stored).toContain("Core Inflation Rate YoY");
+  expect(stored).not.toContain("The stored calendar starts");
+  const late = await econText(twoWeeks, ["--from", "2026-08-01", "--country", "US"], {}, "2026-09-01");
+  expect(late).toContain("The stored calendar starts 2026-09-01; nothing earlier is listed");
+  // A server that keeps no past events lists what it has and says where that starts.
+  const old = await econText(twoWeeks.slice(4), ["--from", "2026-10-12", "--country", "US"]);
+  expect(old).toContain("Housing Starts");
+  expect(old).toContain("No events are stored before 2026-10-23");
 });
 
 test("a calendar two weeks ahead lists from today on a Saturday, with nothing to flag", async () => {

@@ -88,13 +88,20 @@ export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayloa
       return Array.isArray(rows) && rows.every(validSupplyRow) && new Set(rows.map((entry) => entry.id)).size === rows.length
         && SUPPLY_ROLES.every((role) => Number.isInteger(data.counts?.[key]?.[role])
           && data.counts[key][role] >= rows.filter((entry) => entry.role === role).length);
-    }) && Number.isInteger(data.totalRows) && data.totalRows >= data.says.length + data.names.length
+    }) && (data.earlier === undefined || ["says", "names"].every((view) => {
+      const key = view as "says" | "names";
+      const rows = data.earlier![key];
+      return Array.isArray(rows) && rows.every(validSupplyRow) && new Set(rows.map((entry) => entry.id)).size === rows.length
+        && SUPPLY_ROLES.every((role) => Number.isInteger(data.earlierCounts?.[key]?.[role])
+          && data.earlierCounts![key][role] >= rows.filter((entry) => entry.role === role).length);
+    })) && Number.isInteger(data.totalRows) && data.totalRows >= data.says.length + data.names.length
     && ["full", "preview"].includes(data.access) && Number.isInteger(data.lockedRows) && data.lockedRows >= 0
     && typeof data.truncated === "boolean" && [3, null].includes(data.previewRowsPerRole)
     && text(data.disclaimer) && (data.tierCounts === undefined || TIER_OPTIONS.every(({ value }) => Number.isInteger(data.tierCounts?.[value]) && data.tierCounts![value] >= 0));
   if (!valid) throw new Error("The server returned unreadable supply chain disclosures");
   const normalizeEntity = (value: SupplyEntity): SupplyEntity => ({ ...value, aggregate: value.aggregate ?? false });
-  return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeSupplyRow), names: data.names.map(normalizeSupplyRow) };
+  return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeSupplyRow), names: data.names.map(normalizeSupplyRow),
+    ...(data.earlier ? { earlier: { says: data.earlier.says.map(normalizeSupplyRow), names: data.earlier.names.map(normalizeSupplyRow) } } : {}) };
 }
 export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiClient, "getCloudSupplyChain"> = apiClient, options: SupplyOptions = {}) {
   try { return validateSupplyChain(await client.getCloudSupplyChain(symbol, options)); }

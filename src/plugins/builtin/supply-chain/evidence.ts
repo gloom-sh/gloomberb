@@ -4,6 +4,7 @@ import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/scr
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchSupplyChain, validateSupplyChain } from "./client";
+import { earlierRows } from "./model";
 import { isUnconfirmed, matchesSupplyOptions, supplyOptions } from "./trust";
 import { fetchSupplyGraph, graphOptions, validateGraph } from "./graph-client";
 
@@ -61,7 +62,8 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
         if (!["says", "names"].includes(String(value.view))) return null;
         const payload = validateSupplyChain(value.payload as unknown as SupplyChainPayload);
         const options = supplyOptions(value.tiers);
-        const eligible = (value.tab === "flow" ? [...payload.says, ...payload.names].filter(row => !isUnconfirmed(row)) : payload[value.view as "says" | "names"])
+        const view = value.view as "says" | "names";
+        const eligible = (value.tab === "flow" ? [...payload.says, ...payload.names].filter(row => !isUnconfirmed(row)) : [...payload[view], ...earlierRows(payload, view)])
           .filter(row => matchesSupplyOptions(row, options));
         if (value.rowIds.some(id => !eligible.some(row => row.id === id))) return null;
         if ((value.evidenceOpen || value.evidenceId != null) && !eligible.some(row => row.id === value.evidenceId)) return null;

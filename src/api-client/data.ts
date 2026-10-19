@@ -472,6 +472,11 @@ export class CloudDataApi {
     return this.request<CloudEconEventPayload[]>("/cloud/econ/calendar");
   }
 
+  /** The calendar from a UTC day, past events included, and the first day the stored calendar holds. */
+  async getCloudEconomicCalendarFrom(from: string): Promise<{ events: CloudEconEventPayload[]; storedFrom: string | null }> {
+    return this.request<{ events: CloudEconEventPayload[]; storedFrom: string | null }>(`/cloud/econ/calendar/history?from=${encodeURIComponent(from)}`);
+  }
+
   async getCloudMacroReleaseDays(): Promise<CloudMacroReleaseDaysPayload> {
     return this.request<CloudMacroReleaseDaysPayload>("/cloud/econ/release-days");
   }

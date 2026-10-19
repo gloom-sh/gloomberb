@@ -2,6 +2,7 @@ import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow } from ".
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { countOf, freePreviewNote } from "../shared/free-preview";
+import { entityTicker } from "./graph-model";
 import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, trustTier } from "./trust";
 
 /** One colour per role from the shared series palette, the same in the table, the flow and the evidence. */
@@ -43,7 +44,7 @@ export function scopeWords(scope: string): string {
  */
 export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): { value: string; basis: string } | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
-  const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${row.reportingEntity.ticker ?? row.reportingEntity.name} ` : "";
+  const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   // XBRL dimensions can qualify the numerator, denominator, or both. NVDA's
@@ -55,6 +56,25 @@ export function shareParts(row: SupplyRow, focusId?: string | null, { includeRep
   // Form alone does not identify a metric's duration: a 10-Q includes YTD facts.
   return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `of ${reporter}${scoped}` };
 }
+/** An XBRL fact's tagged dimensions, as the filing reader stores them in place of a sentence: "ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=StandardChartered;". */
+const TAGGED_DIMENSIONS = /^\s*[A-Za-z][\w.:-]*=[^;=]*(?:;\s*[A-Za-z][\w.:-]*=[^;=]*)*;?\s*$/;
+export const isTaggedFact = (row: Pick<SupplyRow, "sourceKind" | "quote">) => row.sourceKind === "xbrl" && TAGGED_DIMENSIONS.test(row.quote);
+
+/**
+ * What a disclosure says, in words. A sentence from the filing reads as it is;
+ * a tagged XBRL fact reads as the kind of concentration it tags, its tagged
+ * context and what the share is of: "Customer, Gold, revenue", never the
+ * dimension names.
+ */
+export function disclosureText(row: Pick<SupplyRow, "sourceKind" | "quote" | "pctScope" | "pctBasis">): string {
+  if (!isTaggedFact(row)) return row.quote;
+  const type = /(?:^|;)\s*ConcentrationRiskByType=([^;]*)/.exec(row.quote)?.[1]?.replace(/^.*:/, "").replace(/ConcentrationRisk(Member)?$/, "") ?? "";
+  const kind = type.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+  const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
+  return [kind ? kind[0]!.toUpperCase() + kind.slice(1).toLowerCase() : null, row.pctScope ? scopeWords(row.pctScope) : null, basis]
+    .filter((part): part is string => !!part).join(", ") || "Tagged in the filing";
+}
+
 export function counterpartyName(row: SupplyRow): string {
   if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return row.counterparty.name;
@@ -78,22 +98,32 @@ export interface SupplyRoleCount { role: SupplyRole; counterparties: number; loc
  * a free preview withholds is reported apart as locked disclosures rather
  * than added to the companies.
  */
-export function supplyRoleCounts(data: Pick<SupplyChainPayload, "says" | "names" | "counts">, views: readonly ("says" | "names")[], options: Required<SupplyOptions>): SupplyRoleCount[] {
+export function supplyRoleCounts(data: Pick<SupplyChainPayload, "says" | "names" | "counts" | "earlier" | "earlierCounts">, views: readonly ("says" | "names")[], options: Required<SupplyOptions>): SupplyRoleCount[] {
   return SUPPLY_ROLE_ORDER.map((role) => {
     const companies = new Set<string>();
     let locked = 0;
     for (const view of views) {
       const rows = data[view].filter((row) => row.role === role);
       for (const row of rows) if (!row.counterparty.aggregate && !isUnconfirmed(row) && matchesSupplyOptions(row, options)) companies.add(row.counterparty.id);
-      locked += Math.max(0, data.counts[view][role] - rows.length);
+      locked += Math.max(0, data.counts[view][role] - rows.length)
+        + Math.max(0, (data.earlierCounts?.[view][role] ?? 0) - earlierRows(data, view).filter((row) => row.role === role).length);
     }
     return { role, counterparties: companies.size, locked };
   }).filter((entry) => entry.counterparties > 0 || entry.locked > 0);
 }
 
+/**
+ * A view's shares from before the latest period their reporter disclosed on
+ * the same basis: dated, listed apart from the current rows and never counted
+ * as current counterparties. Empty from servers that do not split them.
+ */
+export const earlierRows = (data: Pick<SupplyChainPayload, "earlier">, view: "says" | "names"): SupplyRow[] => data.earlier?.[view] ?? [];
+
 /** Disclosures a free preview withholds from these views: the server's counts less the rows it sent. */
-export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names" | "counts">, views: readonly ("says" | "names")[]): number {
-  return views.reduce((sum, view) => sum + Math.max(0, Object.values(data.counts[view]).reduce((a, b) => a + b, 0) - data[view].length), 0);
+export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names" | "counts" | "earlier" | "earlierCounts">, views: readonly ("says" | "names")[]): number {
+  const total = (counts: Record<SupplyRole, number> | undefined) => Object.values(counts ?? {}).reduce((a, b) => a + b, 0);
+  return views.reduce((sum, view) => sum + Math.max(0, total(data.counts[view]) - data[view].length)
+    + Math.max(0, total(data.earlierCounts?.[view]) - earlierRows(data, view).length), 0);
 }
 
 /** The lock line of a free preview, in the same words in the pane and `fn SPLC`. */
@@ -127,7 +157,7 @@ export const periodText = (row: Pick<SupplyRow, "period" | "periodMonths">) => {
 };
 export const sourceLabel = (row: SupplyRow) => row.sourceKind === "xbrl" ? "XBRL" : row.sourceKind === "filing_text" ? row.form ?? "Filing" : row.sourceKind === "call" ? "Call" : row.sourceKind === "news" ? "News" : row.sourceKind === "press_release" ? "Release" : row.sourceKind === "web" ? "Web" : "Disclosure";
 export function cellText(row: SupplyRow, column: string): string {
-  return column === "name" ? counterpartyName(row) : column === "ticker" ? row.counterparty.ticker ?? "--"
+  return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? "--"
     : column === "role" ? roleLabel(row.role) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
     : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
