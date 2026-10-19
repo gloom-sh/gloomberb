@@ -23,4 +23,14 @@ test("the position a save starts from totals several manual lots and leaves what
   expect(prefill(lot(10, 150), lot(5, 170, { currency: "EUR" }))).toEqual({ lotCount: 2, position: null, currencies: ["USD", "EUR"] });
   expect(prefill(lot(10, 150), lot(5, 170, { side: "short" }))).toEqual({ lotCount: 2, position: null });
   expect(prefill(lot(10, 150), lot(-10, 160))).toEqual({ lotCount: 2, position: null });
+  // Shorts total as a short, and a lot marked short reads as the negative count it is entered as.
+  expect(prefill(lot(-10, 150), lot(-5, 180, { side: "short" }), lot(5, 180, { side: "short" })).position)
+    .toMatchObject({ shares: -20, avgCost: 165 });
+  expect(prefill(lot(4, 200, { side: "short" })).position).toEqual({ portfolio: "main", shares: -4, avgCost: 200, currency: "USD", broker: "manual" });
+  // Contracts of different sizes count different things.
+  expect(prefill(lot(-2, 4200, { multiplier: 100 }), lot(-3, 4210, { multiplier: 100 })).position).toMatchObject({ shares: -5, multiplier: 100 });
+  expect(prefill(lot(-2, 4200, { multiplier: 100 }), lot(-3, 4210, { multiplier: 10 })).position).toBeNull();
+  // A lot of no shares adds nothing and blocks nothing, whatever its side or size; lots of nothing but zero total nothing.
+  expect(prefill(lot(10, 150), lot(0, 999, { side: "short", multiplier: 5 }), lot(5, 180)).position).toMatchObject({ shares: 15, avgCost: 160 });
+  expect(prefill(lot(0, 150), lot(0, 160)).position).toBeNull();
 });

@@ -45,6 +45,7 @@ import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
+import { isFuturesTicker } from "../../portfolio/futures-positions";
 import { createBaseConverter } from "../base-converter";
 import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
@@ -308,7 +309,8 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
 
     for (const [index, position] of positions.entries()) {
       const portfolioName = config.portfolios.find((portfolio) => portfolio.id === position.portfolio)?.name ?? position.portfolio;
-      const multiplier = position.multiplier ?? 1;
+      // A future counts contracts whether or not its lot states their size.
+      const contracts = isFuturesTicker(tickerFile) || (position.multiplier ?? 1) > 1;
       const metrics = getPortfolioPositionMetrics({ ...tickerFile, metadata: { ...tickerFile.metadata, positions: [position] } }, undefined, quoteCurrency, undefined, quote);
       const positionCurrency = metrics.positionCurrency;
       const currentPrice = getPortfolioQuoteDisplay(metrics, quote)?.price ?? null;
@@ -326,7 +328,7 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       const stats: CliStatEntry[] = [
         [
           "Position",
-          `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : multiplier > 1 ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"}`,
+          `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : contracts ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"}`,
         ],
         ["Cost Basis", formatCurrency(costBasisBase, config.baseCurrency)],
         ["Market Value", formatCurrency(marketValueBase, config.baseCurrency)],

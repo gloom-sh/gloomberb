@@ -26,7 +26,7 @@ test("weights include cash, leave unpriced holdings out, and trades reach the ta
     targets: { VTI: 50, TLT: 10, ETF: 5, CASH: 30 },
   });
 
-  expect(allocation.total).toBe(100_000);
+  expect(allocation).toMatchObject({ total: 100_000, weightBasis: "total", weightBase: 100_000 });
   expect(allocation.unpriced).toEqual(["ETF"]);
   expect(allocation.targetSum).toBe(95);
   const [vti, option, unpriced, tlt, untargeted] = allocation.rows;
@@ -43,14 +43,32 @@ test("weights include cash, leave unpriced holdings out, and trades reach the ta
   expect(optionTrade.rows[0]?.tradeUnits).toBe(1);
 });
 
-test("a short weighs against the net total, and a total that is not positive has no weights", () => {
+test("a book that holds a short weighs against its gross exposure, so a hedge netting near zero or below still has weights, and cash has none", () => {
   const longShort = buildPortfolioAllocation({ holdings: [held("LONG", 150, 1), held("SHORT", -50, -1)], cashValue: 0 });
-  expect(longShort.total).toBe(100);
-  expect(longShort.rows.map((row) => row.weight)).toEqual([150, -50]);
+  expect(longShort).toMatchObject({ total: 100, weightBasis: "gross", weightBase: 200 });
+  expect(longShort.rows.map((row) => row.weight)).toEqual([75, -25]);
 
+  // A miner's hedge: the short nets the long to $200, and the cash is no exposure.
+  const hedge = buildPortfolioAllocation({
+    holdings: [held("GDX", 420_000, 6_000), held("GC=F", -419_800, -1)],
+    cashValue: 5_000,
+    targets: { CASH: 10 },
+  });
+  expect(hedge).toMatchObject({ total: 5_200, weightBasis: "gross", weightBase: 839_800 });
+  const [long, short] = hedge.rows.map((row) => row.weight!);
+  expect(long).toBeCloseTo((420_000 / 839_800) * 100, 10);
+  expect(short).toBeCloseTo((-419_800 / 839_800) * 100, 10);
+  expect(Math.abs(long) + Math.abs(short)).toBeCloseTo(100, 10);
+  expect(hedge.cash).toMatchObject({ value: 5_000, weight: null, targetWeight: 10, drift: null, tradeValue: null });
+
+  // Net short: weights all the same, the short's -100% buying back to a target of none.
   const underwater = buildPortfolioAllocation({ holdings: [held("SHORT", -500, -5)], cashValue: 100, targets: { SHORT: 0 } });
-  expect(underwater.total).toBe(-400);
-  expect(underwater.rows[0]).toMatchObject({ weight: null, drift: null, tradeValue: null });
+  expect(underwater).toMatchObject({ total: -400, weightBasis: "gross", weightBase: 500 });
+  expect(underwater.rows[0]).toMatchObject({ weight: -100, drift: -100, tradeValue: 500 });
+
+  // A short without a price still makes the book a hedge; the gross is what is priced.
+  const unpriced = buildPortfolioAllocation({ holdings: [held("LONG", 100, 1), held("SHORT", null, -5)], cashValue: 50 });
+  expect(unpriced).toMatchObject({ weightBasis: "gross", weightBase: 100, unpriced: ["SHORT"] });
 
   // Cash in a currency without a rate leaves the total unknown, not smaller.
   expect(buildPortfolioAllocation({ holdings: [held("VTI", 100, 1)], cashValue: Number.NaN }).total).toBeNull();
@@ -69,6 +87,8 @@ test("targets parse as percents and their sum names what is left unallocated", (
   expect(describeTargetSum(null)).toBeNull();
   expect(describeTargetSum(92.5)).toBe("Targets add up to 92.5%; 7.5% is unallocated.");
   expect(describeTargetSum(110)).toBe("Targets add up to 110.0%, 10.0% over the whole portfolio.");
+  // A hedged book's targets are shares of gross exposure, and what they leave is a short's share, not cash to place.
+  expect(describeTargetSum(70, "gross")).toBe("Targets add up to 70.0% of gross exposure; 30.0% has no target.");
 });
 
 test("drift and trades round to their column's precision without a stray sign", () => {

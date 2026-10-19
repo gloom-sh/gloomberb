@@ -8,6 +8,7 @@ import { headlineQuoteDisplay } from "../../../../portfolio/column-values";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import type { AllocationHolding } from "../../../../portfolio/allocation";
 import { getPortfolioValuationDisplay, type PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
+import type { PortfolioFuturesTerms } from "../../../../portfolio/futures-positions";
 import {
   getPortfolioPositionMetrics,
   resolvePortfolioMarketValue,
@@ -27,9 +28,17 @@ interface PricedPortfolioLot {
 }
 
 export interface PortfolioSummaryTotals {
+  /** Gross: every lot at its absolute value. */
   totalMktValue: number;
   netMktValue?: number;
+  /** The long lots' value and the short lots' (negative); net is their sum, gross their difference. */
+  longMktValue?: number;
+  shortMktValue?: number;
   hasShorts?: boolean;
+  /** Futures held without a contract size, so they are not valued at all. */
+  unknownContractSizeSymbols?: string[];
+  /** Whether a future is held: at the close it is valued at its settlement. */
+  hasFutures?: boolean;
   unavailableSymbols?: string[];
   unavailableCostSymbols?: string[];
   brokerPnlSymbols?: string[];
@@ -103,10 +112,14 @@ export function calculatePortfolioSummaryTotals(
   isPortfolio: boolean,
   collectionId: string | null,
   valuationBasis: PortfolioValuationBasis = "latest-print",
+  /** Each future's contract size and settlement by symbol, as the rows read them. */
+  futuresTerms?: ReadonlyMap<string, PortfolioFuturesTerms>,
 ): PortfolioSummaryTotals {
   let totalMktValue = 0;
   let netMktValue = 0;
   let hasShorts = false;
+  let hasFutures = false;
+  const unknownContractSizeSymbols = new Set<string>();
   const unavailableSymbols = new Set<string>();
   const unavailableCostSymbols = new Set<string>();
   const brokerPnlSymbols = new Set<string>();
@@ -149,7 +162,7 @@ export function calculatePortfolioSummaryTotals(
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
       currency: totalsCurrency, convert: toBase,
     }, quote);
-    activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, valuationBasis);
+    activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, valuationBasis, futuresTerms?.get(ticker.metadata.ticker)?.settlement);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;
     if (positionMetrics.positionCount === 0) {
       // Not held, so a missing rate is no gap in the totals: it only leaves the trade in units out.
@@ -161,6 +174,14 @@ export function calculatePortfolioSummaryTotals(
     const currentUnitPrice = activeQuote ? toBaseQuote(activeQuote.price) : null;
     hasPositions = true;
     hasShorts ||= positionMetrics.hasShorts;
+    hasFutures ||= positionMetrics.isFuture;
+    if (positionMetrics.unknownContractSize) {
+      // A future whose contract size is unknown has no value to count, never one unit a contract: it is
+      // left out of every total and named, as `portfolio show` does, rather than leaving no total at all.
+      unknownContractSizeSymbols.add(ticker.metadata.ticker);
+      allocationHoldings.push({ symbol: ticker.metadata.ticker, held: true, marketValue: null, units: positionMetrics.totalShares, unitPrice: currentUnitPrice });
+      continue;
+    }
     totalCostBasis += totalCost;
     if (!positionMetrics.hasCostBasis) unavailableCostSymbols.add(ticker.metadata.ticker);
 
@@ -213,6 +234,9 @@ export function calculatePortfolioSummaryTotals(
     }
   }
 
+  // Each lot adds its value to gross and its signed value to net, so the longs are half their sum and the shorts half their difference.
+  const longMktValue = (totalMktValue + netMktValue) / 2;
+  const shortMktValue = (netMktValue - totalMktValue) / 2;
   const dailyPnl = signedDailyPnl;
   const dailyPnlPct = totalPrevValue !== 0 ? (dailyPnl / totalPrevValue) * 100 : 0;
   const unrealizedPnl = signedUnrealizedPnl;
@@ -222,7 +246,11 @@ export function calculatePortfolioSummaryTotals(
   return {
     totalMktValue,
     netMktValue,
+    longMktValue,
+    shortMktValue,
     hasShorts,
+    ...(hasFutures ? { hasFutures } : {}),
+    ...(unknownContractSizeSymbols.size ? { unknownContractSizeSymbols: [...unknownContractSizeSymbols].sort() } : {}),
     ...(unavailableSymbols.size ? { unavailableSymbols: [...unavailableSymbols].sort() } : {}),
     ...(unavailableCostSymbols.size ? { unavailableCostSymbols: [...unavailableCostSymbols].sort() } : {}),
     ...(brokerPnlSymbols.size ? { brokerPnlSymbols: [...brokerPnlSymbols].sort() } : {}),

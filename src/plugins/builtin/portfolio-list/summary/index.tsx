@@ -29,6 +29,8 @@ const PRICED_AT_TEXT: Record<PortfolioValuationBasis, string> = {
   "latest-print": "(latest print)",
   "regular-close": "(regular close)",
 };
+/** A book holding futures at the close: they have no regular close, and are valued at their settlement. */
+const PRICED_AT_SETTLE_TEXT = "(regular close, futures settle)";
 
 export interface PortfolioSummarySegment {
   id: string;
@@ -299,7 +301,10 @@ export function buildPortfolioSummarySegments({
   candidates.push(createSummarySegment("val", [
     { text: broker || totals.hasShorts ? "Gross" : "Val", tone: "label" },
     { text: money(totalMarketValue), tone: "value", bold: true },
-    ...(valuationBasis ? [{ text: PRICED_AT_TEXT[valuationBasis], tone: "muted" as const }] : []),
+    ...(valuationBasis ? [{
+      text: valuationBasis === "regular-close" && totals.hasFutures ? PRICED_AT_SETTLE_TEXT : PRICED_AT_TEXT[valuationBasis],
+      tone: "muted" as const,
+    }] : []),
   ]));
 
   if (totals.hasShorts && totals.netMktValue != null) {
@@ -336,6 +341,18 @@ export function buildPortfolioSummarySegments({
     { text: money(accountMetrics.unrealizedPnl, true), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.unrealizedPnlPct) },
   ]));
+
+  // A book with shorts splits its gross into the two sides, after the headline numbers.
+  if (totals.hasShorts && totals.longMktValue != null && totals.shortMktValue != null) {
+    candidates.push(createSummarySegment("long-value", [
+      { text: "Long", tone: "label" },
+      { text: money(totals.longMktValue), tone: "value", bold: true },
+    ]));
+    candidates.push(createSummarySegment("short-value", [
+      { text: "Short", tone: "label" },
+      { text: money(totals.shortMktValue), tone: "value", bold: true },
+    ]));
+  }
 
   if (!account) return candidates;
 
@@ -454,8 +471,13 @@ export function buildPortfolioSummaryNotices({
     // Missing pairs are named above, so the rate summary only adds staleness and timing.
     notices.push(`FX ${fxStatusLabel(missingPairs.size > 0 ? { ...fxStatus, unavailable: 0 } : fxStatus)}`);
   }
-  if (totals.unavailableSymbols?.length) notices.push(`Market value unavailable: ${listSymbols(totals.unavailableSymbols)}`);
-  if (totals.unavailableCostSymbols?.length) notices.push(`Cost unavailable: ${listSymbols(totals.unavailableCostSymbols)}`);
+  // A future without its contract size is named for that, not again as a missing value and cost.
+  const unsized = new Set(totals.unknownContractSizeSymbols ?? []);
+  const unpriced = (totals.unavailableSymbols ?? []).filter((symbol) => !unsized.has(symbol));
+  const uncosted = (totals.unavailableCostSymbols ?? []).filter((symbol) => !unsized.has(symbol));
+  if (unsized.size > 0) notices.push(`No contract size, so not valued: ${listSymbols([...unsized])}`);
+  if (unpriced.length) notices.push(`Market value unavailable: ${listSymbols(unpriced)}`);
+  if (uncosted.length) notices.push(`Cost unavailable: ${listSymbols(uncosted)}`);
   return notices;
 }
 

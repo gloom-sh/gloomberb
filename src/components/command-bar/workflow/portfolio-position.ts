@@ -1,9 +1,11 @@
 import type { CommandBarFieldValue, CommandBarWorkflowField } from "./types";
 import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
-import { tf } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { getManualPortfolioPositionPrefill, type ManualPortfolioPositionPrefill } from "../../../portfolio/manual-lots";
-import { isManualPortfolio, resolveManualPositionCurrency } from "../../../portfolio/mutations";
+import { isManualPortfolio, positionQuantityLabel, resolveManualPositionCurrency } from "../../../portfolio/mutations";
+import { futuresLotCurrency, isFuturesTicker } from "../../../portfolio/futures-positions";
+import { US_CENTS } from "../../../utils/currency-units";
 
 export interface SetPortfolioPositionWorkflowState {
   fields: CommandBarWorkflowField[];
@@ -14,6 +16,8 @@ export interface SetPortfolioPositionWorkflowState {
 interface ManualPortfolioPositionWorkflowOptions {
   preferredPortfolioId?: string | null;
   ticker: TickerRecord | null;
+  /** The ticker's quote currency, when one is loaded: a corn future quotes in US cents (USX). */
+  quoteCurrency?: string | null;
   pendingLabel: string;
   positionOptional?: boolean;
   defaultAvgCost?: number | null;
@@ -49,6 +53,9 @@ function buildManualPortfolioPositionWorkflow(
   const hasUntotalledLots = (prefill?.lotCount ?? 0) > 1 && !preferredPosition;
   const lotsHint = prefill ? lotsReplacementHint(prefill, preferredPortfolio.name) : undefined;
   const showPortfolioField = !options.hidePortfolioFieldWhenSingleOption || manualPortfolios.length > 1;
+  // A future's cost is typed as it is quoted, which for corn is cents: what a blank currency then saves.
+  const contractCurrency = options.ticker && isFuturesTicker(options.ticker)
+    && options.quoteCurrency?.trim().toUpperCase() === US_CENTS ? US_CENTS : undefined;
 
   const fields: CommandBarWorkflowField[] = [
     ...(showPortfolioField ? [{
@@ -71,10 +78,11 @@ function buildManualPortfolioPositionWorkflow(
     },
     {
       id: "shares",
-      label: "Shares",
+      // A future is held in contracts.
+      label: positionQuantityLabel(options.ticker),
       type: "number",
       placeholder: "10",
-      ...(lotsHint ? { description: lotsHint } : {}),
+      description: lotsHint ?? t("Negative for a short."),
       required: !options.positionOptional,
     },
     {
@@ -91,7 +99,7 @@ function buildManualPortfolioPositionWorkflow(
       // What a blank field saves: the ticker's own currency before the
       // portfolio's. Without a ticker yet there is nothing true to show.
       placeholder: options.ticker
-        ? resolveManualPositionCurrency(undefined, options.ticker, preferredPortfolio, config.baseCurrency)
+        ? resolveManualPositionCurrency(undefined, options.ticker, preferredPortfolio, config.baseCurrency, contractCurrency)
         : undefined,
       required: false,
     },
@@ -106,7 +114,8 @@ function buildManualPortfolioPositionWorkflow(
       : Number.isFinite(options.defaultAvgCost) && !hasUntotalledLots
         ? String(options.defaultAvgCost)
         : "",
-    currency: preferredPosition?.currency ?? "",
+    // A corn lot saved before contract sizes, in dollars, is read in cents: saving the form unchanged keeps it so.
+    currency: (preferredPosition ? futuresLotCurrency(preferredPosition, contractCurrency) : undefined) ?? "",
   };
 
   return {
@@ -121,11 +130,13 @@ export function buildSetPortfolioPositionWorkflow(
   options: {
     activeCollectionId: string | null;
     activeTicker: TickerRecord | null;
+    activeQuoteCurrency?: string | null;
   },
 ): SetPortfolioPositionWorkflowState | null {
   return buildManualPortfolioPositionWorkflow(config, {
     preferredPortfolioId: options.activeCollectionId,
     ticker: options.activeTicker,
+    quoteCurrency: options.activeQuoteCurrency,
     pendingLabel: "Saving position…",
   });
 }
@@ -135,12 +146,14 @@ export function buildAddToPortfolioWorkflow(
   options: {
     preferredPortfolioId?: string | null;
     ticker: TickerRecord | null;
+    quoteCurrency?: string | null;
     defaultAvgCost?: number | null;
   },
 ): SetPortfolioPositionWorkflowState | null {
   return buildManualPortfolioPositionWorkflow(config, {
     preferredPortfolioId: options.preferredPortfolioId,
     ticker: options.ticker,
+    quoteCurrency: options.quoteCurrency,
     pendingLabel: "Adding to portfolio…",
     positionOptional: true,
     defaultAvgCost: options.defaultAvgCost,

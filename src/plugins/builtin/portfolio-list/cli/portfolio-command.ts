@@ -7,6 +7,9 @@ import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requir
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
+import type { FuturesContractTermsPayload } from "../../../../api-client/futures-curve";
+import { futuresQuantityText, isFuturesTicker } from "../../../../portfolio/futures-positions";
+import { loadFuturesEntrySize } from "../../../../portfolio/futures-terms";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
@@ -22,6 +25,7 @@ import {
   deleteManualPortfolio,
   hasOpenPortfolioPositions,
   isManualPortfolio,
+  positionQuantityLabel,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -282,34 +286,52 @@ async function setPositionCommand(
   rawCurrency: string | undefined,
   exchange: string | undefined,
   ctx: CliCommandContext,
+  futuresTerms?: (symbol: string) => Promise<FuturesContractTermsPayload | null>,
 ) {
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
       rejectCashSymbol(symbol, exchange, portfolio.name);
-      const shares = parseAmountArg(sharesValue, "Shares");
+      // Read before the symbol is looked up, so a bad number never reaches the network: a size typed
+      // for a continuous future (GC=F) counts contracts. Zero is refused once the listing is known.
+      const shares = parseAmountArg(sharesValue, positionQuantityLabel({ metadata: { ticker: symbol, assetCategory: undefined } }));
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
-      const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
+      // A future is held in contracts of the size its terms give, as `quote` states it, and a cost typed as
+      // corn is quoted counts cents.
+      const future = isFuturesTicker(ticker);
+      const size = await loadFuturesEntrySize(ticker, futuresTerms);
+      const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency, size?.currency);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,
         currency,
+        ...(size ? { multiplier: size.multiplier } : {}),
       });
+      const multiplier = result.ticker.metadata.positions.find((position) => position.portfolio === portfolio.id)?.multiplier;
+      if (future && !multiplier) {
+        notes.push(`No contract size is known for ${savedListingName(result.ticker).label}, so its value and P&L are not shown.`);
+      }
       const firstPosition = !hasOpenPortfolioPositions(portfolio.id, await store.loadAllTickers());
       await store.saveTicker(result.ticker);
       const adopted = firstPosition ? adoptFirstPositionCurrency(config, portfolio.id, currency) : null;
       if (adopted) await saveConfig(adopted);
       const saved = savedListingName(result.ticker);
+      const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
       ctx.printResult({
-        data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency },
+        data: {
+          changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency,
+          ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
+        },
         warnings: notes.length > 0 ? notes : undefined,
       }, {
         text: () => [
           cliStyles.success(`Set position for ${saved.label} in "${portfolio.name}".`),
           renderStats([
-            ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],
+            future
+              ? ["Contracts", futuresQuantityText(quantity, size ?? (multiplier ? { size: formatMarketQuantity(multiplier) } : null))]
+              : ["Shares", quantity],
             ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
             ["Currency", currency],
           ]),
@@ -391,7 +413,9 @@ function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly
   for (const [symbol, weight] of Object.entries(portfolio?.targetWeights ?? {})) {
     if (listed.has(symbol)) sum = (sum ?? 0) + weight;
   }
-  const note = describeTargetSum(sum);
+  // A book that holds a short is weighed, and targeted, against its gross exposure.
+  const short = tickers.some((ticker) => ticker.metadata.positions.some((position) => position.portfolio === portfolioId && position.shares < 0));
+  const note = describeTargetSum(sum, short ? "gross" : "total");
   return note ? cliStyles.muted(note) : null;
 }
 
@@ -739,7 +763,18 @@ const VALUE_HELP = {
   title: "Value",
   lines: [
     "show prices each holding at its latest print, pre-market and after hours included, as brokers do, and says so under the title. As of (UTC) is when each row's price is from.",
-    "--close prices the book at the regular close instead: Value is Last times the shares, P&L, weights and the total follow, and the day's move from the close before is printed under the table.",
+    "--close prices the book at the regular close instead: Value is Last times the shares, P&L, weights and the total follow, and the day's move from the close before is printed under the table. A future is priced at its exchange settlement, dated by its session, as quote states it.",
+    "A short is a negative position: its value, cost and P&L are negative, and the Exposure line under the table adds up the longs, the shorts, net and gross.",
+    "A future is held in contracts: Qty reads 1,000 × 100 oz, and Value is the contracts times the contract size times the price. A future whose contract size is unknown is not valued.",
+  ],
+};
+
+/** What `portfolio position set` takes, in its help. */
+const POSITION_HELP = {
+  title: "Positions",
+  lines: [
+    "position set replaces the portfolio's lots of the symbol with one: a negative size is a short, and 0 is refused (portfolio remove drops the symbol).",
+    "A future's size is in contracts, at a price per unit of its contract (GC=F: per troy ounce); the contract size is read from its terms, as quote shows them.",
   ],
 };
 
@@ -757,7 +792,7 @@ const AMOUNTS_HELP = {
   lines: [
     "Numbers take either decimal mark: 1.234,5, 1234,5 and 1,234.5 are 1234.5, and 18,50 is 18.5.",
     "Cash and --notional are amounts of a currency (cash in the portfolio's unless named, --notional in USD), so 500,000 and 1.234 are thousands, a third decimal being below a cent. In a currency with three decimals (KWD, BHD, OMR) they could be either, and the command asks which.",
-    "Shares and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234).",
+    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234).",
   ],
 };
 
@@ -776,7 +811,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
       "portfolio remove <portfolio> <symbols...> [--file <path>]",
-      "portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]",
+      "portfolio position set <portfolio> <symbol> <shares|contracts> <avg-cost> [currency]",
       "portfolio cash set <portfolio> <amount> [currency]",
       "portfolio cash clear <portfolio>",
       "portfolio target set <portfolio> <symbol|CASH> <weight%>",
@@ -787,7 +822,7 @@ export const portfolioCliCommand: CliCommandDef = {
     options: [
       EXCHANGE_OPTION,
       FILE_OPTION,
-      { flags: "--close", description: "show: value the book at the regular close, not the latest print" },
+      { flags: "--close", description: "show: value the book at the regular close (futures at the settlement), not the latest print" },
       { flags: "--drip", description: "show: project the shares and income reinvested dividends add, year by year" },
       { flags: "--years <1-5>", description: `show --drip: how many years to project (default ${DRIP_DEFAULT_YEARS})` },
       { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
@@ -805,6 +840,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio add Research --file holdings.csv",
       "portfolio add Research --file holdings.csv --dry-run",
       "portfolio position set Research ASML 10 800 EUR",
+      "portfolio position set Hedge GC=F -10 4216.30",
       "portfolio cash set Research 25000 USD",
       "portfolio target set Research ASML 12.5%",
       "portfolio target set Research CASH 10",
@@ -814,7 +850,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio show Research --drip --years 3 --withholding 15",
       "portfolio import --13f 0001067983 --top 10",
     ],
-    sections: [VALUE_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
+    sections: [VALUE_HELP, POSITION_HELP, INCOME_HELP, AMOUNTS_HELP, SYMBOL_LIST_HELP],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
@@ -901,12 +937,12 @@ export const portfolioCliCommand: CliCommandDef = {
     if (action === "position") {
       const subaction = args[1];
       if (subaction !== "set") {
-        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares> <avg-cost> [currency]");
+        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency]");
       }
       const [, , ...rest] = args;
       const currency = rest[4];
       if (rest.length < 4) {
-        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares> <avg-cost> [currency]");
+        ctx.fail("Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency]");
       }
       await setPositionCommand(rest[0]!, rest[1]!, rest[2]!, rest[3]!, currency, exchange, ctx);
       return;

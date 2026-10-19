@@ -3,6 +3,7 @@ import type { FuturesContractSpec, FuturesContractTermsPayload } from "../api-cl
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { Quote } from "../types/financials";
 import { parsePublicTickerKey } from "../utils/exchanges";
+import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 
@@ -270,4 +271,41 @@ export function loadFuturesPriceUnit(
 export function resetFuturesPriceUnits(): void {
   priceUnits.clear();
   priceUnitsInFlight.clear();
+}
+
+/** A day's settlement lands the morning after its session; the terms change only with a roll. */
+const TERMS_TTL_MS = 30 * 60_000;
+const termsCache = new Map<string, { at: number; ttl: number; terms: FuturesContractTermsPayload | null }>();
+const termsInFlight = new Map<string, Promise<FuturesContractTermsPayload | null>>();
+
+function termsKey(symbol: string): string {
+  return parsePublicTickerKey(symbol).symbol.trim().toUpperCase();
+}
+
+/**
+ * A futures symbol's terms and settlement as portfolios read them: asked once
+ * per symbol for the roll window, a failure again a minute later. Null when
+ * the server has none for it or could not answer.
+ */
+export function loadFuturesContractTermsCached(
+  symbol: string,
+  load: (symbol: string) => Promise<FuturesContractTermsPayload> = loadFuturesContractTerms,
+): Promise<FuturesContractTermsPayload | null> {
+  const key = termsKey(symbol);
+  const cached = termsCache.get(key);
+  if (cached && Date.now() - cached.at < cached.ttl) return Promise.resolve(cached.terms);
+  const pending = termsInFlight.get(key);
+  if (pending) return pending;
+  const request = load(key)
+    .then((terms) => ({ terms, ttl: TERMS_TTL_MS }), (error: unknown) => {
+      logFailure("futures-contract", "Read futures contract terms failed", null)(error);
+      return { terms: null, ttl: PRICE_UNIT_RETRY_MS };
+    })
+    .then(({ terms, ttl }) => {
+      termsCache.set(key, { at: Date.now(), ttl, terms });
+      return terms;
+    })
+    .finally(() => { termsInFlight.delete(key); });
+  termsInFlight.set(key, request);
+  return request;
 }

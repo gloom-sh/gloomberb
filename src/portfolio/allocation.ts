@@ -10,9 +10,10 @@ import { parseTypedNumber } from "../utils/decimal-comma";
  * here, so a weight never differs between them.
  *
  * A weight is a share of the total value, cash included: the priced holdings
- * at their net market value (a short counts against it) plus the cash line.
- * A holding without a price is left out of the total and the weights and is
- * listed as unpriced, never valued at zero.
+ * at their net market value plus the cash line. A book that holds a short
+ * weighs against its gross exposure instead (WeightBasis). A holding without
+ * a price is left out of the total and the weights and is listed as
+ * unpriced, never valued at zero.
  */
 
 /** The cash line's symbol in targets and reports. */
@@ -35,7 +36,7 @@ export interface AllocationHolding {
 }
 
 export interface AllocationFigures {
-  /** Percent of the total, cash included. */
+  /** Percent of the weight base: the total, cash included, or a hedged book's gross exposure. */
   weight: number | null;
   /** Percent. */
   targetWeight: number | null;
@@ -61,6 +62,10 @@ export interface PortfolioAllocation {
   cash: PortfolioCashLine | null;
   /** Priced holdings plus cash; null when it cannot be valued. */
   total: number | null;
+  /** What the weights are a share of. */
+  weightBasis: WeightBasis;
+  /** The amount they divide: the total, or the gross exposure; null when there is no positive one. */
+  weightBase: number | null;
   /** Held symbols without a price, left out of the total and the weights. */
   unpriced: string[];
   /** The targets of the listed symbols and cash added up; null when none is set. */
@@ -106,7 +111,45 @@ export function allocationFigures(
 }
 
 /**
- * One lot's share of the total, in percent. A ticker held in several lots
+ * What weights divide by. `total`: the total value, cash included, as a book
+ * without a short is weighed. `gross`: a book that holds a short weighs each
+ * position's signed value against its gross exposure, longs plus shorts at
+ * their absolute value, so the absolute weights add up to 100% however close
+ * to zero the hedge nets, or below it. Cash is no exposure and has no weight
+ * there.
+ */
+export type WeightBasis = "total" | "gross";
+
+/** Whether any held position is short: its value, or its units when it has no price, below zero. */
+function holdsShort(holdings: readonly AllocationHolding[]): boolean {
+  return holdings.some((holding) => holding.held && (finite(holding.marketValue) ? holding.marketValue < 0 : holding.units < 0));
+}
+
+/** What the weights of these holdings are a share of, and how much it is. */
+export function allocationWeightBase(
+  holdings: readonly AllocationHolding[],
+  cashValue: number | null | undefined,
+): { basis: WeightBasis; value: number | null } {
+  if (!holdsShort(holdings)) return { basis: "total", value: weightBase(allocationTotal(holdings, cashValue)) };
+  let gross = 0;
+  for (const holding of holdings) {
+    if (holding.held && finite(holding.marketValue)) gross += Math.abs(holding.marketValue);
+  }
+  return { basis: "gross", value: weightBase(gross) };
+}
+
+/** The line that says what a hedged book's weights are a share of; null on the total, which needs none. */
+export function weightBasisNote(
+  base: Pick<PortfolioAllocation, "weightBasis" | "weightBase">,
+  money: (value: number) => string,
+): string | null {
+  if (base.weightBasis !== "gross") return null;
+  const amount = base.weightBase != null ? ` (${money(base.weightBase)})` : "";
+  return `Weights are shares of gross exposure${amount}, longs plus shorts at their absolute value, as the book holds a short; cash has no weight.`;
+}
+
+/**
+ * One lot's share of the weight base, in percent. A ticker held in several lots
  * weighs each by its own value; the lots add up to the ticker's weight.
  */
 export function lotWeight(marketValue: number | null | undefined, total: number | null | undefined): number | null {
@@ -135,12 +178,15 @@ export function buildPortfolioAllocation({
   targets?: Readonly<Record<string, number>>;
 }): PortfolioAllocation {
   const total = allocationTotal(holdings, cashValue);
-  const rows = holdings.map((holding) => ({ ...holding, ...allocationFigures(holding, total, holdingTarget(targets, holding.symbol)) }));
+  const base = allocationWeightBase(holdings, cashValue);
+  const rows = holdings.map((holding) => ({ ...holding, ...allocationFigures(holding, base.value, holdingTarget(targets, holding.symbol)) }));
   const cashTarget = targets?.[CASH_SYMBOL];
   const cash = cashValue != null || finite(cashTarget)
     ? {
       value: cashValue ?? 0,
-      ...allocationFigures({ held: true, marketValue: cashValue ?? 0, units: 0, unitPrice: null }, total, cashTarget),
+      // Cash is no exposure: against a gross base it keeps its target but has no weight or trade.
+      ...allocationFigures({ held: true, marketValue: cashValue ?? 0, units: 0, unitPrice: null },
+        base.basis === "gross" ? null : base.value, cashTarget),
     }
     : null;
   let targetSum: number | null = null;
@@ -152,6 +198,8 @@ export function buildPortfolioAllocation({
     rows,
     cash,
     total,
+    weightBasis: base.basis,
+    weightBase: base.value,
     unpriced: holdings.filter((holding) => holding.held && !finite(holding.marketValue)).map((holding) => holding.symbol),
     targetSum,
   };
@@ -198,9 +246,15 @@ export function parseTargetWeight(raw: string | undefined): number {
 }
 
 /** A one-line note when the targets do not add up to the whole portfolio, else null. */
-export function describeTargetSum(targetSum: number | null): string | null {
+export function describeTargetSum(targetSum: number | null, basis: WeightBasis = "total"): string | null {
   if (targetSum == null || Math.abs(targetSum - 100) < 0.05) return null;
   const remainder = 100 - targetSum;
+  // Against gross exposure, what no target covers is not cash waiting: it is a short's share, or a holding without a target.
+  if (basis === "gross") {
+    return remainder > 0
+      ? `Targets add up to ${formatAllocationWeight(targetSum)} of gross exposure; ${formatAllocationWeight(remainder)} has no target.`
+      : `Targets add up to ${formatAllocationWeight(targetSum)}, ${formatAllocationWeight(-remainder)} over the gross exposure.`;
+  }
   return remainder > 0
     ? `Targets add up to ${formatAllocationWeight(targetSum)}; ${formatAllocationWeight(remainder)} is unallocated.`
     : `Targets add up to ${formatAllocationWeight(targetSum)}, ${formatAllocationWeight(-remainder)} over the whole portfolio.`;

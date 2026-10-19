@@ -30,6 +30,7 @@ import {
 } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import { OnboardingWizard } from "./onboarding-wizard";
+import { loadFuturesContractTermsCached } from "../../market-data/futures-contract";
 
 const tui = createOpenTuiTestHarness();
 let tempDataDir: string | null = null;
@@ -43,6 +44,8 @@ const KNOWN_LISTINGS: Record<string, { symbol: string; name: string; exchange: s
   "TTALO.HE": { symbol: "TTALO", name: "Terveystalo Oyj", exchange: "HEL", currency: "EUR" },
   // Neither search nor quote knows this listing's currency.
   BARE: { symbol: "BARE", name: "Bare Listing", exchange: "XETRA", currency: "" },
+  // Oats quote in US cents a bushel.
+  "ZO=F": { symbol: "ZO=F", name: "Oats Dec 26", exchange: "CBT", currency: "USX" },
 };
 
 /** Exact-symbol search plus a flat 100 quote in the listing's currency, enough to resolve and value a position. */
@@ -404,6 +407,31 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.portfolios.find((portfolio) => portfolio.id === "main")?.currency).toBe("EUR");
     expect(await positionOf("BARE")).toBe("EUR");
     expect((await tickerRepository.loadTicker("BARE"))?.metadata.currency).toBe("");
+  });
+
+  test("a future is entered in contracts of its size at the cents it quotes in, and leaves the portfolio's currency alone", async () => {
+    // The wizard reads a future's terms where the portfolio does: oats are 5,000 bushels, quoted in US cents.
+    await loadFuturesContractTermsCached("ZO=F", async (symbol) => ({
+      symbol, root: "ZO", name: "Oats", contract: "ZOZ26", contractSymbol: "ZOZ26", deliveryMonth: "2026-12",
+      spec: { unit: "US cents / bushel", size: "5,000 bushels", pointValue: 50, tick: 0.25, tickValue: 12.5, settlement: "physical" },
+      lastTrade: null, firstNotice: null, inDelivery: false, settlement: null,
+    }));
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-future-"));
+    const tickerRepository = new JsonTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+
+    // Short two contracts; a blank cost is the quote's 100 cents.
+    await addManualPosition("ZO=F", "-2");
+    expect((await tickerRepository.loadTicker("ZO=F"))?.metadata.positions).toEqual([
+      { portfolio: "main", shares: -2, avgCost: 100, currency: "USX", broker: "manual", multiplier: 5000 },
+    ]);
+    // US cents never become a portfolio's currency, as pence never do.
+    expect(capturedConfig?.portfolios.find((portfolio) => portfolio.id === "main")?.currency ?? "USD").toBe("USD");
   });
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {

@@ -1,4 +1,5 @@
 import type { DataProvider } from "../types/data-provider";
+import { fixedUsdRate } from "../utils/currency-units";
 import { logFailure } from "../utils/log-failure";
 
 export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchangeRate">, baseCurrency: string) {
@@ -6,7 +7,7 @@ export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchang
 
   const getRate = async (currency: string): Promise<number> => {
     const normalizedCurrency = currency.toUpperCase();
-    const cached = rateCache.get(normalizedCurrency);
+    const cached = rateCache.get(normalizedCurrency) ?? fixedUsdRate(normalizedCurrency);
     if (cached != null) return cached;
     try {
       const rate = await dataProvider.getExchangeRate(normalizedCurrency);

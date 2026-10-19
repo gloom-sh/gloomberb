@@ -14,6 +14,9 @@ import { buildBrokerWorkflowRoute } from "../command-bar/workflow/broker";
 import { buildBuiltInWorkflowRoute } from "../command-bar/workflow/builtin";
 import { getFirstVisibleFieldId, normalizeWizardFields } from "../command-bar/workflow/fields";
 import type { FormRoute } from "./model";
+import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
+import { resolveEntryData } from "../../market-data/selectors";
+import { instrumentFromTicker } from "../../market-data/request-types";
 
 /** What to fill in, once the host resolved what the caller asked for. */
 export type FormRouteResult =
@@ -26,15 +29,26 @@ function focusedTicker(state: AppState): TickerRecord | null {
   return symbol ? state.tickers.get(symbol) ?? null : null;
 }
 
+/** The currency a ticker's loaded quote is in, which for corn is US cents (USX); null before it loads. */
+function loadedQuoteCurrency(state: AppState, ticker: TickerRecord): string | null {
+  const stored = state.financials.get(ticker.metadata.ticker)?.quote?.currency;
+  if (stored) return stored;
+  const instrument = instrumentFromTicker(ticker);
+  const coordinator = getSharedMarketDataCoordinator();
+  return (instrument && coordinator ? resolveEntryData(coordinator.getQuoteEntry(instrument))?.currency : null) || null;
+}
+
 export function buildBuiltInFormRoute(
   actionId: string,
   state: AppState,
   brokerDirectory: BrokerDirectoryEntry[],
 ): FormRouteResult {
+  const activeTicker = focusedTicker(state);
   return buildBuiltInWorkflowRoute({
     actionId,
     activeCollectionId: getFocusedCollectionId(state),
-    activeTicker: focusedTicker(state),
+    activeTicker,
+    activeQuoteCurrency: activeTicker ? loadedQuoteCurrency(state, activeTicker) : null,
     buildBrokerWorkflow: (title, subtitle, submitLabel) => buildBrokerWorkflowRoute({
       directory: brokerDirectory,
       submitLabel,
@@ -96,6 +110,7 @@ export function buildAddToPortfolioFormRoute(
   const workflow = buildAddToPortfolioWorkflow(state.config, {
     preferredPortfolioId: portfolioId,
     ticker,
+    quoteCurrency: loadedQuoteCurrency(state, ticker),
     defaultAvgCost: state.financials.get(ticker.metadata.ticker)?.quote?.price ?? null,
   });
   if (!workflow) return { kind: "notice", message: "Create a manual portfolio first." };

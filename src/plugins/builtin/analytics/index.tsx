@@ -257,6 +257,10 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     ...(sectorAllocation.unvaluedSymbols.length > 0 ? [{
       text: `Weights unavailable: missing prices or FX for ${sectorAllocation.unvaluedSymbols.join(", ")}.`, tone: "warning" as const,
     }] : []),
+    // Named once in the pane's notices: its totals and its sectors leave the same futures out.
+    ...(sectorAllocation.unsizedSymbols.length > 0 ? [{
+      text: `No contract size, so not valued: ${sectorAllocation.unsizedSymbols.join(", ")}.`, tone: "warning" as const,
+    }] : []),
   ];
   const sectorRows = sectorAllocation.rows;
   const sortedSectorRows = useMemo(

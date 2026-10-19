@@ -5,6 +5,7 @@ import { useAppSelector, usePaneAppConfig } from "../../../../state/app/context"
 import { useLiveTickerFinancialsMap } from "../../../../state/hooks/live-ticker-financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { getPortfolioPositionValue } from "../../../../portfolio/position-value";
+import { isFuturesTicker } from "../../../../portfolio/futures-positions";
 import { calculatePortfolioSummaryTotals } from "../../portfolio-list/metrics";
 import { buildTrackedCurrencies, getCollectionTickersFromConfig } from "../../portfolio-list/pane/data";
 import type { SymbolExposure } from "./model";
@@ -14,6 +15,8 @@ const NO_INSTRUMENT_OPTIONS = {};
 function holdsOptions(ticker: TickerRecord): boolean {
   if (ticker.metadata.assetCategory === "OPT") return true;
   if (ticker.metadata.broker_contracts?.some((contract) => contract.secType === "OPT")) return true;
+  // A future's multiplier is its contract size, not an option's: its value carries no premium.
+  if (isFuturesTicker(ticker)) return false;
   return ticker.metadata.positions.some((position) => (position.multiplier ?? 1) !== 1);
 }
 

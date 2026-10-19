@@ -1,9 +1,10 @@
 import type { AppConfig } from "../types/config";
 import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
-import { resolveCurrencyUnit } from "../utils/currency-units";
+import { resolveCurrencyUnit, US_CENTS } from "../utils/currency-units";
 import { slugifyName } from "../utils/slugify";
 import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
+import { isFuturesTicker } from "./futures-positions";
 import { manualPortfolioLots } from "./manual-lots";
 
 export interface DeleteWatchlistResult {
@@ -28,9 +29,39 @@ export interface RemoveTickerFromPortfolioResult {
 }
 
 export interface SetManualPortfolioPositionInput {
+  /** Signed: a negative number is a short. A future counts contracts. */
   shares: number;
   avgCost: number;
   currency: string;
+  /**
+   * A future's contract multiplier from its terms (futuresContractSize). Left
+   * out, the lot keeps the one it had, so an edit while the terms cannot be
+   * read does not unsize it.
+   */
+  multiplier?: number;
+}
+
+/** What a position's size counts, as its field and messages name it. */
+export type PositionQuantityLabel = "Contracts" | "Shares";
+
+/** A future is held in contracts, everything else in shares. */
+export function positionQuantityLabel(
+  ticker: { metadata: Pick<TickerRecord["metadata"], "ticker" | "assetCategory"> } | null | undefined,
+): PositionQuantityLabel {
+  return ticker && isFuturesTicker(ticker) ? "Contracts" : "Shares";
+}
+
+/**
+ * A signed size as every manual entry takes it: a finite number, negative for
+ * a short, never zero, which is no position. The message names what it
+ * counts.
+ */
+export function validatePositionShares(shares: number, label: PositionQuantityLabel = "Shares"): string | null {
+  if (!Number.isFinite(shares)) return label === "Contracts" ? "Contracts must be a number." : "Shares must be a number.";
+  if (shares !== 0) return null;
+  return label === "Contracts"
+    ? "Contracts cannot be 0. Enter a negative number for a short."
+    : "Shares cannot be 0. Enter a negative number for a short.";
 }
 
 export interface SetManualPortfolioPositionResult {
@@ -62,19 +93,25 @@ export function getManualPortfolioPosition(ticker: TickerRecord, portfolioId: st
   return manualPortfolioLots(ticker, portfolioId)[0] ?? null;
 }
 
+/**
+ * The currency a position is saved in: the one typed, else what a future's
+ * contract prices in (USX, US cents, for corn, so a cost typed as quoted
+ * counts cents), else the listing's, the portfolio's or the base currency.
+ */
 export function resolveManualPositionCurrency(
   rawCurrency: string | undefined,
   ticker: TickerRecord,
   portfolio: Portfolio,
   baseCurrency: string | undefined,
+  contractCurrency?: string | null,
 ): string {
-  return (rawCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
+  return (rawCurrency?.trim() || contractCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
 }
 
-/** A plain ISO code in major units (AUD), else null: pence-type units and free text never total a portfolio. */
+/** A plain ISO code in major units (AUD), else null: pence-type units, US cents and free text never total a portfolio. */
 function majorCurrencyCode(value: string | undefined): string | null {
   const raw = value?.trim() ?? "";
-  return /^[A-Z]{3}$/.test(raw) && resolveCurrencyUnit(raw).divisor === 1 ? raw : null;
+  return /^[A-Z]{3}$/.test(raw) && raw !== US_CENTS && resolveCurrencyUnit(raw).divisor === 1 ? raw : null;
 }
 
 /** The currencies of a portfolio's open positions, as entered (or the listing's when a position has none). */
@@ -356,9 +393,8 @@ export function setManualPortfolioPosition(
   input: SetManualPortfolioPositionInput,
 ): SetManualPortfolioPositionResult {
   const nextCurrency = input.currency.trim().toUpperCase();
-  if (!Number.isFinite(input.shares) || input.shares <= 0) {
-    throw new Error("Shares must be greater than 0.");
-  }
+  const sharesError = validatePositionShares(input.shares, positionQuantityLabel(ticker));
+  if (sharesError) throw new Error(sharesError);
   if (!Number.isFinite(input.avgCost)) {
     throw new Error("Average cost must be a valid number.");
   }
@@ -372,6 +408,10 @@ export function setManualPortfolioPosition(
   // acquisition date. A consolidated replacement of several lots has no one date.
   const dateAcquired = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual"
     ? replacedPositions[0].dateAcquired : undefined;
+  // A contract's size does not change with the count held; one the lots agree on carries over.
+  const keptMultipliers = new Set(replacedPositions.map((position) => position.multiplier));
+  const keptMultiplier = keptMultipliers.size === 1 ? [...keptMultipliers][0] : undefined;
+  const multiplier = validMultiplier(input.multiplier) ?? validMultiplier(keptMultiplier);
   const nextPositions = ticker.metadata.positions.filter((position) => position.portfolio !== portfolioId);
   const addedMembership = !ticker.metadata.portfolios.includes(portfolioId);
 
@@ -382,6 +422,7 @@ export function setManualPortfolioPosition(
     currency: nextCurrency,
     broker: "manual",
     ...(dateAcquired ? { dateAcquired } : {}),
+    ...(multiplier !== undefined ? { multiplier } : {}),
   });
 
   return {
@@ -393,6 +434,10 @@ export function setManualPortfolioPosition(
       positions: nextPositions,
     }),
   };
+}
+
+function validMultiplier(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 export function deleteManualPortfolio(

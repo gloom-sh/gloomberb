@@ -96,8 +96,10 @@ import { perpetualDisplaySymbol, perpetualListing, perpetualVenueName } from "..
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
+import { withFuturesContractSizes } from "../../../../portfolio/futures-positions";
+import { usePortfolioFuturesTerms } from "./futures-terms";
 import {
-  allocationTotal,
+  allocationWeightBase,
   buildPortfolioAllocation,
   CASH_SYMBOL,
   hasTargetWeights,
@@ -166,9 +168,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const viewMode: PortfolioViewMode = isPortfolioTab ? paneSettings.viewMode : "table";
   const valuationBasis = paneSettings.valueAtClose ? "regular-close" as const : "latest-print" as const;
 
-  const tickers = useMemo(
+  const collectionTickers = useMemo(
     () => getCollectionTickersFromConfig(config, tickersBySymbol, activeCollectionId),
     [activeCollectionId, config, tickersBySymbol],
+  );
+  // A future counts contracts of the size its terms give, and at the close is valued at its settlement.
+  const futuresTerms = usePortfolioFuturesTerms(collectionTickers, { enabled: isPortfolioTab, settlement: valuationBasis === "regular-close" });
+  const tickers = useMemo(
+    () => withFuturesContractSizes(collectionTickers, futuresTerms.terms),
+    [collectionTickers, futuresTerms.terms],
   );
   const financialsInstrumentOptions = useMemo(() => ({
     portfolioId: isPortfolioTab ? activeCollectionId : undefined,
@@ -238,13 +246,16 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       isPortfolioTab,
       activeCollectionId,
       valuationBasis,
+      futuresTerms.terms,
     ).allocationHoldings : undefined,
     [financialsMap],
-    [activeCollectionId, exchangeRates, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency, valuationBasis],
+    [activeCollectionId, exchangeRates, futuresTerms.terms, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency, valuationBasis],
     WEIGHT_TOTAL_THROTTLE_MS,
   );
-  // Priced holdings plus cash, as `portfolio show` totals them.
-  const portfolioTotalMarketValue = weightHoldings ? allocationTotal(weightHoldings, cashValue) ?? undefined : undefined;
+  // Priced holdings plus cash, or a hedged book's gross exposure, as `portfolio show` weighs them.
+  const weightBase = weightHoldings ? allocationWeightBase(weightHoldings, cashValue) : null;
+  const portfolioWeightBase = weightBase?.value ?? undefined;
+  const portfolioWeightBasis = weightBase?.basis;
 
   // The header, footer and notices move with live quotes a few times a second,
   // not on every tick.
@@ -257,9 +268,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       isPortfolioTab,
       activeCollectionId,
       valuationBasis,
+      futuresTerms.terms,
     ),
     [financialsMap],
-    [activeCollectionId, exchangeRates, isPortfolioTab, tickers, totalsCurrency, valuationBasis],
+    [activeCollectionId, exchangeRates, futuresTerms.terms, isPortfolioTab, tickers, totalsCurrency, valuationBasis],
     FOOTER_TOTALS_THROTTLE_MS,
   );
 
@@ -269,7 +281,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     baseCurrency: totalsCurrency,
     exchangeRates,
     valuationBasis,
-    portfolioTotalMarketValue,
+    portfolioWeightBase,
+    portfolioWeightBasis,
     portfolioTargets,
     supplementalVersion: supplementalData.version,
     analystResearch: supplementalData.analystResearch,
@@ -277,13 +290,17 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     earningsEvents: supplementalData.earningsEvents,
     perpetuals: perpetuals.markets,
     perpetualsVersion: perpetuals.version,
+    futuresTerms: futuresTerms.terms,
+    futuresTermsVersion: futuresTerms.version,
   }), [
     activeCollectionId,
     exchangeRates,
+    futuresTerms,
     isPortfolioTab,
     perpetuals,
     portfolioTargets,
-    portfolioTotalMarketValue,
+    portfolioWeightBase,
+    portfolioWeightBasis,
     supplementalData,
     totalsCurrency,
     valuationBasis,

@@ -166,6 +166,30 @@ describe("membership of a ticker held in several lots", () => {
     expect(applyMembership(mixed, localId, "portfolio", null, "USD")?.metadata.positions).toEqual([]);
   });
 
+  test("a short future goes up as a negative quantity and comes back a short of the same contract size", () => {
+    const gold = (shares: number, extra: Partial<TickerPosition> = {}): TickerRecord => ({
+      metadata: { ...blankTickerRecord("GC=F", "CMX", "USD").metadata, assetCategory: "FUTURE", portfolios: [localId],
+        positions: [lot(shares, 4216.3, { multiplier: 100, dateAcquired: "2026-10-01", ...extra })] },
+    });
+    const short = gold(-5);
+    const local = localMembership(new Map([["GC=F", short]]), localId, "portfolio");
+    expect(diffMembership(local, new Map()).add).toEqual([{ symbol: "GC=F", quantity: -5 }]);
+    // The server stores and returns the sign, so the pull that follows the push changes nothing.
+    expect(applyMembership(short, localId, "portfolio", item("GC=F", -5), "USD")).toBeNull();
+    // A teammate's new count keeps the cost, the date and the contract size.
+    expect(applyMembership(short, localId, "portfolio", item("GC=F", -7), "USD")?.metadata.positions).toEqual([
+      lot(-7, 4216.3, { multiplier: 100, dateAcquired: "2026-10-01" }),
+    ]);
+    // One that turns the short into a long is another position: the short's cost and date go, the size stays.
+    expect(applyMembership(short, localId, "portfolio", item("GC=F", 3), "USD")?.metadata.positions).toEqual([
+      { portfolio: localId, shares: 3, currency: "USD", broker: "manual", multiplier: 100 },
+    ]);
+    // A short entered as a positive count on a short side goes up, and comes back, negative.
+    const sided = gold(5, { side: "short" });
+    expect(localMembership(new Map([["GC=F", sided]]), localId, "portfolio").get("GC=F")?.quantity).toBe(-5);
+    expect(applyMembership(sided, localId, "portfolio", item("GC=F", -5), "USD")).toBeNull();
+  });
+
   test("a single lot keeps its cost and date, and is rewritten only when the quantity changes", () => {
     const single = held(lot(10, 150, { dateAcquired: "2024-01-02" }));
     expect(localMembership(new Map([["AAPL", single]]), localId, "portfolio").get("AAPL")).toMatchObject({ quantity: 10 });

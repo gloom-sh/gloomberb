@@ -12,11 +12,14 @@ import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   collectionQuoteHeadline,
   dayMoveLine,
+  exposureLine,
+  weightBasisLine,
   extendedQuoteFields,
   extendedSessionsOf,
   findCollection,
   listingLabel,
   loadCollectionQuotes,
+  holdsFutures,
   portfolioDayMove,
   valuationTimeText,
   valuePortfolioAllocation,
@@ -24,7 +27,9 @@ import {
   type CollectionMatch,
   type PortfolioValuation,
 } from "./cli/render";
-import { VALUATION_BASIS_LABELS, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
+import { valuationBasisLabel, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
+import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures-positions";
+import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
 import { EXTENDED_SESSION_LABELS, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
@@ -56,9 +61,13 @@ const signedAmount = (value: unknown) => (
 const percent = (value: unknown) => formatPercentRaw(typeof value === "number" ? value : undefined);
 const weight = (value: unknown) => formatAllocationWeight(typeof value === "number" ? value : null);
 const drift = (value: unknown) => formatAllocationDrift(typeof value === "number" ? value : null);
-const quantity = (value: unknown, row: HeadlessPaneRow) => (
-  typeof value === "number" ? formatMarketQuantity(value, { assetCategory: textOf(row.assetCategory) }) : formatNumber(undefined)
-);
+/** Shares, or a future's contracts and what each one is: 1,000 × 100 oz. */
+const quantity = (value: unknown, row: HeadlessPaneRow) => {
+  if (typeof value !== "number") return formatNumber(undefined);
+  const text = formatMarketQuantity(value, { assetCategory: textOf(row.assetCategory) });
+  const size = textOf(row.contractSize) ?? (typeof row.contractMultiplier === "number" ? formatMarketQuantity(row.contractMultiplier) : undefined);
+  return size ? futuresQuantityText(text, { size }) : text;
+};
 const tradeUnits = (value: unknown, row: HeadlessPaneRow) => (
   typeof value === "number" ? formatTradeUnits(value, { units: finite(row.shares) ?? 0, assetCategory: textOf(row.assetCategory) }) : formatNumber(undefined)
 );
@@ -87,14 +96,17 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
 ];
 
+/** The weight of a book that holds a short: a share of its gross exposure. */
+const GROSS_WEIGHT_DESCRIPTION = "Percent of gross exposure, longs plus shorts at their absolute value, as the book holds a short; negative for a short, cash and unpriced holdings left out.";
+
 /** Last, after the targets: when the price each row is valued at is from. */
 const VALUATION_TIME_COLUMN: HeadlessPaneColumn = {
   key: "valuationAsOf",
   header: "As of (UTC)",
   // Exports keep the ISO time.
-  textFormat: (value) => valuationTimeText(value),
+  textFormat: (value, row) => valuationTimeText(value, undefined, row.valuationPriceKind === "settle" ? "settle" : undefined),
   shrink: false,
-  description: "When the price the row is valued at is from: its print, or the regular close with --close.",
+  description: "When the price the row is valued at is from: its print, or the regular close with --close (a future's settlement).",
 };
 
 /** Shown once the portfolio has a target weight. */
@@ -201,14 +213,21 @@ function resolveTarget(rawArgument: string, ctx: HeadlessPaneContext): Collectio
  * them, and only its P&L is unknown.
  */
 function unavailableFigureErrors(
-  { unavailableMarketValue, unavailablePnl, unavailableCost }: Pick<PortfolioValuation, "unavailableMarketValue" | "unavailablePnl" | "unavailableCost">,
+  { unavailableMarketValue, unavailablePnl, unavailableCost, unknownContractSize, unsettled }:
+    Pick<PortfolioValuation, "unavailableMarketValue" | "unavailablePnl" | "unavailableCost" | "unknownContractSize" | "unsettled">,
 ): string[] {
-  const noValue = [...unavailableMarketValue];
-  const pnlOnly = [...unavailablePnl].filter((symbol) => !unavailableMarketValue.has(symbol));
+  // A future without its contract size or settlement is said once, for that cause.
+  const explained = (symbol: string) => unknownContractSize.has(symbol) || unsettled.has(symbol);
+  const noValue = [...unavailableMarketValue].filter((symbol) => !explained(symbol));
+  const pnlOnly = [...unavailablePnl].filter((symbol) => !unavailableMarketValue.has(symbol) && !explained(symbol));
   const noCost = pnlOnly.filter((symbol) => unavailableCost.has(symbol));
   const noPnl = pnlOnly.filter((symbol) => !unavailableCost.has(symbol));
   const them = (symbols: readonly string[]) => (symbols.length === 1 ? "it" : "them");
+  const unsized = [...unknownContractSize];
+  const unpriced = [...unsettled];
   return [
+    ...(unsized.length ? [`No contract size for ${unsized.join(", ")}, so ${unsized.length === 1 ? "its" : "their"} value, cost and P&L are unknown; totals and weights leave ${them(unsized)} out.`] : []),
+    ...(unpriced.length ? [`No confirmed settlement for ${unpriced.join(", ")}, so ${unpriced.length === 1 ? "it is" : "they are"} not valued at the close; totals and weights leave ${them(unpriced)} out.`] : []),
     ...(noValue.length ? [`No market value for ${noValue.join(", ")}; totals and weights leave ${them(noValue)} out.`] : []),
     ...(noCost.length ? [`No cost for ${noCost.join(", ")}, so ${noCost.length === 1 ? "its" : "their"} P&L is unknown; totals and weights still count ${them(noCost)}.`] : []),
     ...(noPnl.length ? [`P&L unavailable for ${noPnl.join(", ")}; totals and weights still count ${them(noPnl)}.`] : []),
@@ -267,7 +286,15 @@ async function portfolioHoldings(
   if (!resolved) throw new Error(`Holdings for ${target.id} are not available here.`);
   const tickers = [...resolved.tickers].sort(bySymbol);
   const currency = resolvePortfolioTotalsCurrency(target.portfolio, ctx.config.baseCurrency);
-  const quotes = await loadCollectionQuotes(tickers, target, ctx.marketData);
+  const futuresHeld = tickers.filter((ticker) => isFuturesTicker(ticker)
+    && ticker.metadata.positions.some((position) => position.portfolio === target.id && position.shares !== 0));
+  const [quotes, futures] = await Promise.all([
+    loadCollectionQuotes(tickers, target, ctx.marketData),
+    loadPortfolioFuturesTerms(futuresHeld, {
+      settlement: basis === "regular-close",
+      sources: { history: dailyFuturesHistory(ctx.marketData) },
+    }),
+  ]);
   ctx.signal.throwIfAborted();
   const toBase = createBaseConverter(ctx.marketData, currency);
   const valuation = await valuePortfolioPositions({
@@ -278,6 +305,7 @@ async function portfolioHoldings(
     baseCurrency: ctx.config.baseCurrency,
     toBase,
     basis,
+    futures,
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
@@ -304,7 +332,7 @@ async function portfolioHoldings(
     || exposure(finite(right.row.marketValue)) - exposure(finite(left.row.marketValue))
   ));
   const rows = ordered
-    .map(({ ticker, headline, extended, row, valuation: priced }) => {
+    .map(({ ticker, headline, extended, row, valuation: priced, futures: contract, position }) => {
       const marketValue = finite(row.marketValue);
       // A ticker held in several lots carries its allocation, the whole position's, on its first row.
       const figures = seen.has(ticker.metadata.ticker) ? undefined : allocationBySymbol.get(ticker.metadata.ticker);
@@ -336,7 +364,9 @@ async function portfolioHoldings(
         tradeValue: figures?.tradeValue ?? null,
         ...priced,
         // Only on a ticker held in several lots: `lots` says the allocation on its first row is the whole position's, `lotWeight` is this lot's own share.
-        ...(lots > 1 ? { lots, lotWeight: lotWeight(marketValue, allocation.total) } : {}),
+        ...(lots > 1 ? { lots, lotWeight: lotWeight(marketValue, allocation.weightBase) } : {}),
+        // Only on a future: `shares` counts contracts, each `contractMultiplier` units of the price, as the exchange sizes it.
+        ...(contract && position ? { contractMultiplier: position.multiplier ?? null, contractSize: contract.size?.size ?? null } : {}),
       };
     });
   const shown: HeadlessPaneRow[] = rows.slice(0, limit);
@@ -357,13 +387,15 @@ async function portfolioHoldings(
   const errors = unavailableFigureErrors(valuation);
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
   const showTargets = allocation.targetSum != null;
-  const targetNote = describeTargetSum(allocation.targetSum);
+  const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
   const imported = importedFromText(target.portfolio);
   const dayMove = basis === "regular-close" ? portfolioDayMove(valuation) : null;
   const notices = [
     ...(imported ? [imported] : []),
     // At the close, Mkt Val is Last times the shares; the day's move from the close before gets its own line.
     ...(basis === "regular-close" ? [dayMoveLine(dayMove, currency)] : []),
+    ...(held.length > 0 ? [exposureLine(valuation.exposure, currency)] : []),
+    ...[weightBasisLine(allocation, currency)].filter((line): line is string => !!line),
     ...(rows.length > limit
       ? [`${rows.length - limit} more position${rows.length - limit === 1 ? "" : "s"} not shown; totals include every position.`]
       : []),
@@ -371,8 +403,11 @@ async function portfolioHoldings(
     ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
   ];
 
+  const positionColumns = allocation.weightBasis === "gross"
+    ? POSITION_COLUMNS.map((column) => column.key === "weight" ? { ...column, description: GROSS_WEIGHT_DESCRIPTION } : column)
+    : POSITION_COLUMNS;
   const columns = withListingLabels(
-    withExtendedColumns([...POSITION_COLUMNS, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
+    withExtendedColumns([...positionColumns, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
     tickers,
   );
   const lotted = withPositionLines(shown, columns, allocationBySymbol);
@@ -383,7 +418,7 @@ async function portfolioHoldings(
       source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
       observedKey: "valuationAsOf",
       citeOldest: true,
-      note: `priced at ${VALUATION_BASIS_LABELS[basis]}`,
+      note: `priced at ${valuationBasisLabel(basis, { futures: holdsFutures(valuation) })}`,
     },
     columns,
     rows: shown,
@@ -399,6 +434,9 @@ async function portfolioHoldings(
       totals: {
         marketValue: sum("marketValue"),
         grossMarketValue: gross,
+        // The priced holdings on each side: longs, and shorts as a negative value.
+        longMarketValue: valuation.exposure.long,
+        shortMarketValue: valuation.exposure.short,
         costBasis: sum("costBasis"),
         unrealizedPnl: valuation.totalPnl,
         cash: allocation.cash ? finite(allocation.cash.value) : null,
@@ -406,6 +444,8 @@ async function portfolioHoldings(
         // At the regular close, the holdings' move from the close before.
         ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
       },
+      // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
+      ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
       ...(cash ? { cash } : {}),
       ...(showTargets ? { targetSum: allocation.targetSum } : {}),
       unpricedCount: allocation.unpriced.length,
@@ -466,7 +506,7 @@ async function watchlistHoldings(
 export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   description:
-    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash and when each row's price is from, largest first, then the cash line and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
+    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash (of the gross exposure for a book that holds a short) and when each row's price is from, largest first, then the cash line and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
     limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows."],
