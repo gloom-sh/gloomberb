@@ -5,7 +5,7 @@ import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 import { flowHeadless, hiloHeadless } from "./headless";
 import { flowLockNote } from "./lock-note";
-import { FLOW_PANE_ID, HILO_PANE_ID } from "./snapshot-client";
+import { FLOW_PANE_ID, HILO_PANE_ID } from "../shared/scanner-capture";
 
 
 

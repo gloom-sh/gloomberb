@@ -7,7 +7,7 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import HiloPane from "./hilo-pane";
 import FlowPane from "./flow-pane";
-import { createSnapshotScannerClient, ScannerClientContext, type ScannerCapture } from "./snapshot-client";
+import { createSnapshotScannerClient, ScannerClientContext, type ScannerCapture } from "../shared/scanner-capture";
 
 const originalSubscribe = apiClient.subscribeScanner;
 let socketSubscriptions = 0;

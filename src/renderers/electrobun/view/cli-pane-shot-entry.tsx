@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useState, type ReactNode } from "react";
 import { TapeClientContext } from "../../../plugins/builtin/time-sales/use-tape";
 import { createSnapshotTapeClient } from "../../../plugins/builtin/time-sales/snapshot-client";
-import { createSnapshotScannerClient, ScannerClientContext } from "../../../plugins/builtin/scanner/snapshot-client";
+import { createSnapshotScannerClient, ScannerClientContext } from "../../../plugins/builtin/shared/scanner-capture";
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";

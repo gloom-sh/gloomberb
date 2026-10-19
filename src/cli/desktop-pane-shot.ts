@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import type { ScannerCapture } from "../plugins/builtin/scanner/snapshot-client";
+import type { ScannerCapture } from "../plugins/builtin/shared/scanner-capture";
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";

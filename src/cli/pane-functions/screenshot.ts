@@ -1,8 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { isNoSourceAnswer } from "../../sources/provider-errors";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
-import { captureScannerEvent } from "../../plugins/builtin/scanner/headless";
-import { SCANNER_PANE_KINDS, type ScannerCapture } from "../../plugins/builtin/scanner/snapshot-client";
+import { captureScannerEvent, SCANNER_PANE_KINDS, type ScannerCapture } from "../../plugins/builtin/shared/scanner-capture";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
