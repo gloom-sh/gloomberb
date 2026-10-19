@@ -23,14 +23,36 @@ const COLUMN_ALIASES: Record<string, ExtraColumnId> = {
   evebitda: "evEbitda", evtoebitda: "evEbitda",
 };
 
-/** `--columns`: a comma list of the fields above (or their short names), in order, as the canonical names. */
+/**
+ * The report's own columns under the names a caller asks for them by. Asking for one adds nothing: `--columns trailingPE`
+ * was refused as an unknown field, so the P/E the report already carries read as one RV could not give.
+ */
+const REPORT_COLUMN_NAMES = new Set([
+  "symbol", "ticker", "price", "last", "changepercent", "chg", "change",
+  "marketcap", "mktcap", "cap",
+  "trailingpe", "pe", "peratio", "priceearnings", "pricetoearnings", "ttmpe",
+  "forwardpe", "fwdpe",
+  "evsales", "evs", "evtosales", "evrevenue", "evtorevenue",
+  "fcfyield", "fcf", "freecashflowyield",
+  "revenuegrowth", "quarterrevenueyoy", "revenueyoy", "growth",
+  "operatingmargin", "opmargin", "ttmopmargin",
+]);
+
+const REPORT_COLUMNS_SENTENCE = "Last, Chg%, Mkt Cap, P/E, Fwd P/E, EV/S, FCF Yield, Quarter Revenue YoY and TTM Op Margin are always in the report";
+
+/**
+ * `--columns`: a comma list of the fields above (or their short names), in order, as the canonical names. A column the
+ * report always has is accepted and adds nothing, so `--columns trailingPE` alone is the plain report.
+ */
 export function normalizeExtraColumns(value: string): string {
   const tokens = value.split(/[,\s]+/).filter(Boolean);
   if (tokens.length === 0) throw new Error(`--columns needs one or more of: ${EXTRA_COLUMN_IDS.join(", ")}.`);
-  const ids = tokens.map((token) => {
-    const id = COLUMN_ALIASES[token.toLowerCase().replace(/[^a-z]/g, "")];
-    if (!id) throw new Error(`Unknown --columns field "${token}". Use any of: ${EXTRA_COLUMN_IDS.join(", ")}.`);
-    return id;
+  const ids = tokens.flatMap((token) => {
+    const name = token.toLowerCase().replace(/[^a-z]/g, "");
+    const id = COLUMN_ALIASES[name];
+    if (id) return [id];
+    if (REPORT_COLUMN_NAMES.has(name)) return [];
+    throw new Error(`Unknown --columns field "${token}". Use any of: ${EXTRA_COLUMN_IDS.join(", ")}. ${REPORT_COLUMNS_SENTENCE}.`);
   });
   return [...new Set(ids)].join(",");
 }

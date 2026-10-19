@@ -83,6 +83,8 @@ const PEER_SELECTION_SETTING = "peerSelection";
 
 export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["relative-valuation-pane"],
+  // What Ask Gloom reads. The template's "across peers" never said this is where a list of holdings' P/E is.
+  description: "P/E, forward P/E, market cap, EV/sales, FCF yield, growth and margin for each ticker, one row each.",
   freshness: { datesEachVenue: true },
   shape: "rows",
   describe: ({ symbols }, result) => {
