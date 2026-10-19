@@ -3,6 +3,7 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerContractRef } from "../../../types/instrument";
 import type { CommandDef, GloomPluginContext, PinTickerOptions } from "../../../types/plugin";
 import type { BrokerOrder } from "../../../types/trading";
+import { strategyContract, type StrategyIntentLeg } from "./strategy";
 
 export interface TradeIntent {
   action: "BUY" | "SELL";
@@ -10,6 +11,11 @@ export interface TradeIntent {
   limitPrice?: number;
   /** Load this working order into the ticket to change it, as its edit button does. */
   modify?: BrokerOrder;
+  /**
+   * A strategy to trade as one spread on the ticker the ticket opens (its
+   * underlying); `quantity` then counts spreads.
+   */
+  legs?: StrategyIntentLeg[];
 }
 
 /** An enabled profile can place and preview orders for this instrument. */
@@ -27,13 +33,29 @@ export function brokerCanTrade(
   });
 }
 
+/** An enabled profile takes a spread of this many legs on this underlying. */
+export function brokerCanTradeStrategy(
+  profiles: readonly BrokerInstanceConfig[],
+  getBrokerAdapter: (brokerType: string) => BrokerAdapter | undefined | null,
+  underlying: string,
+  legs: number,
+): boolean {
+  return profiles.some((profile) => {
+    if (profile.enabled === false) return false;
+    const adapter = getBrokerAdapter(profile.brokerType);
+    if (!adapter?.placeOrder || !adapter.previewOrder) return false;
+    const capabilities = adapter.getTradingCapabilities?.(profile, strategyContract({ brokerId: adapter.id, brokerInstanceId: profile.id, symbol: underlying, secType: "STK" }));
+    return !!capabilities?.orderTypes.length && legs >= 2 && legs <= (capabilities.maxLegs ?? 0);
+  });
+}
+
 const pendingIntents = new Map<string, TradeIntent>();
 
 /** Only the opaque token enters saved pane state; a draft cannot replay after restart. */
 export function createTradeIntent(value: TradeIntent): string {
   while (pendingIntents.size >= 32) pendingIntents.delete(pendingIntents.keys().next().value!);
   const id = crypto.randomUUID();
-  pendingIntents.set(id, { ...value });
+  pendingIntents.set(id, structuredClone(value));
   return id;
 }
 

@@ -3,6 +3,8 @@ import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broke
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
+import { optionContractIdentity } from "../../../utils/options";
+import { isStrategyOrder, strategyQuote } from "./strategy";
 
 export interface BrokerTradingContext {
   adapter: BrokerAdapter;
@@ -24,6 +26,8 @@ export interface BrokerTicketQuote {
   receivedAt: number;
   delayed: boolean;
   stale: boolean;
+  /** A spread's own legs' quotes, in leg order; `quote` is the spread's. */
+  legs?: Quote[];
 }
 
 interface BrokerOrderReview {
@@ -174,10 +178,11 @@ export class BrokerTradingController {
 
   setDraft(request: BrokerOrderRequest): void {
     this.editable();
-    if (this.modifyOrder && (canonical(request.contract) !== canonical(this.modifyOrder.contract) || request.action !== this.modifyOrder.action || request.accountId !== this.modifyOrder.accountId || request.orderType !== this.modifyOrder.orderType || request.tif !== this.modifyOrder.tif)) {
-      throw new Error("A modification keeps the original account, instrument, side, type and time in force.");
+    if (this.modifyOrder && (canonical(request.contract) !== canonical(this.modifyOrder.contract) || canonical(request.legs ?? null) !== canonical(this.modifyOrder.legs ?? null) || request.action !== this.modifyOrder.action || request.accountId !== this.modifyOrder.accountId || request.orderType !== this.modifyOrder.orderType || request.tif !== this.modifyOrder.tif)) {
+      throw new Error("A modification keeps the original account, instrument, legs, side, type and time in force.");
     }
-    const changedContract = canonical(request.contract) !== canonical(this.snapshot.draft?.contract);
+    // A spread's legs are its instrument: other legs need another quote.
+    const changedContract = canonical([request.contract, request.legs ?? null]) !== canonical([this.snapshot.draft?.contract, this.snapshot.draft?.legs ?? null]);
     this.version++;
     this.gate = undefined;
     if (changedContract) { this.quoteVersion++; this.modifyOrder = undefined; }
@@ -209,7 +214,10 @@ export class BrokerTradingController {
     if (!request.contract.symbol.trim() || !["BUY", "SELL"].includes(request.action)) throw new Error("Choose an instrument and order side.");
     if (!capabilities.orderTypes.includes(request.orderType)) throw new Error("This broker does not support the selected order type.");
     if (!positive(request.quantity) || request.quantity < (capabilities.minQuantity ?? 0)) throw new Error("Enter a valid positive quantity.");
-    if (request.action === "SELL" && !capabilities.shortSelling) {
+    const strategy = isStrategyOrder(request);
+    if (strategy) this.checkLegs(request, context, capabilities);
+    // A spread's short legs are the broker's to check: its preview answers for margin and holdings.
+    if (request.action === "SELL" && !capabilities.shortSelling && !strategy) {
       if (context.availablePosition === undefined || !Number.isFinite(context.availablePosition)) throw new Error("Refresh the position before selling. The held quantity is unavailable.");
       if (request.quantity > Math.max(0, context.availablePosition)) throw new Error("Sell quantity exceeds the held position. This broker has not enabled short selling.");
     }
@@ -228,6 +236,22 @@ export class BrokerTradingController {
     return copy(request);
   }
 
+  private checkLegs(request: BrokerOrderRequest, context: BrokerTradingContext, capabilities: BrokerTradingCapabilities): void {
+    const legs = request.legs ?? [];
+    const maxLegs = capabilities.maxLegs ?? 0;
+    if (maxLegs < 2) throw new Error("This broker does not take multi-leg orders here.");
+    if (request.contract.secType?.toUpperCase() !== "BAG" || legs.length < 2 || legs.length > maxLegs) throw new Error(`This broker takes spreads of 2 to ${maxLegs} legs.`);
+    const identities = new Set<string>();
+    for (const leg of legs) {
+      const identity = optionContractIdentity(leg.contract);
+      if (!identity || leg.contract.brokerId !== context.adapter.id || (leg.contract.brokerInstanceId && leg.contract.brokerInstanceId !== context.instance.id)) throw new Error("Every leg must be an option from this broker profile.");
+      if (leg.contract.symbol.trim().toUpperCase() !== request.contract.symbol.trim().toUpperCase()) throw new Error("Every leg must be an option on the spread's underlying.");
+      if (!["BUY", "SELL"].includes(leg.action) || !Number.isSafeInteger(leg.ratio) || leg.ratio <= 0) throw new Error("Every leg needs a side and a whole number of contracts.");
+      if (identities.has(identity)) throw new Error("A contract can appear in only one leg.");
+      identities.add(identity);
+    }
+  }
+
   private quoteRisk(quote: BrokerTicketQuote): string {
     return `${quote.delayed}:${this.quoteIsStale(quote.quote)}`;
   }
@@ -240,17 +264,27 @@ export class BrokerTradingController {
     const { context } = this.context(false);
     const draft = this.snapshot.draft;
     if (!draft || !context.adapter.getQuote) throw new Error("This broker cannot provide a quote for the ticket.");
-    const fingerprint = this.key(), contractKey = canonical(draft.contract), version = ++this.quoteVersion;
+    const instrumentKey = (request?: BrokerOrderRequest) => canonical([request?.contract, request?.legs ?? null]);
+    const fingerprint = this.key(), contractKey = instrumentKey(draft), version = ++this.quoteVersion;
     this.publish({ loadingQuote: true, error: undefined });
     try {
-      const quote = await context.adapter.getQuote(draft.contract.symbol, context.instance, draft.contract.exchange, copy(draft.contract));
-      if (this.disposed || version !== this.quoteVersion || fingerprint !== this.key() || contractKey !== canonical(this.snapshot.draft?.contract)) throw new Error("The quote belongs to an earlier ticket selection. Refresh it.");
-      const allowedSymbols = [draft.contract.symbol, draft.contract.localSymbol].filter(Boolean).map((symbol) => symbol!.replace(/\s+/g, "").toUpperCase());
-      if (!allowedSymbols.includes(quote.symbol.replace(/\s+/g, "").toUpperCase()) || !positive(quote.price)) throw new Error("The broker returned no usable quote for this instrument.");
+      const strategy = !!draft.legs?.length;
+      // A spread is priced from its legs' quotes at the same broker; it has no quote of its own.
+      const legQuotes = strategy ? await Promise.all(draft.legs!.map((leg) => context.adapter.getQuote!(leg.contract.localSymbol ?? leg.contract.symbol, context.instance, leg.contract.exchange, copy(leg.contract)))) : undefined;
+      const quote = legQuotes ? strategyQuote(draft, legQuotes) : await context.adapter.getQuote(draft.contract.symbol, context.instance, draft.contract.exchange, copy(draft.contract));
+      if (this.disposed || version !== this.quoteVersion || fingerprint !== this.key() || contractKey !== instrumentKey(this.snapshot.draft)) throw new Error("The quote belongs to an earlier ticket selection. Refresh it.");
+      const compact = (symbol: string) => symbol.replace(/\s+/g, "").toUpperCase();
+      if (legQuotes) {
+        if (legQuotes.some((legQuote, index) => compact(legQuote.symbol) !== compact(draft.legs![index]!.contract.localSymbol ?? draft.legs![index]!.contract.symbol))) throw new Error("The broker returned a quote for another contract than a leg.");
+        if (!quote) throw new Error("The broker has no bid and ask for every leg of this spread.");
+      } else {
+        const allowedSymbols = [draft.contract.symbol, draft.contract.localSymbol].filter(Boolean).map((symbol) => compact(symbol!));
+        if (!quote || !allowedSymbols.includes(compact(quote.symbol)) || !positive(quote.price)) throw new Error("The broker returned no usable quote for this instrument.");
+      }
       const delayed = quote.dataSource !== "live" || context.connection.quoteData !== "realtime";
       const result: BrokerTicketQuote = { quote: copy(quote), brokerId: context.adapter.id, brokerInstanceId: context.instance.id,
         sourceLabel: `${context.adapter.name}${delayed ? ", delayed" : ""}`, receivedAt: this.now(), delayed,
-        stale: this.quoteIsStale(quote) };
+        stale: this.quoteIsStale(quote), ...(legQuotes ? { legs: copy(legQuotes) } : {}) };
       this.publish({ quote: result, loadingQuote: false });
       return copy(result);
     } catch (error) {
@@ -265,7 +299,8 @@ export class BrokerTradingController {
     const draft = this.snapshot.draft, value = this.snapshot.quote;
     if (!draft || !value) throw new Error("Load this broker's quote before choosing a price.");
     const quote = value.quote;
-    const price = source === "mid" ? positive(quote.bid) && positive(quote.ask) ? (quote.bid + quote.ask) / 2 : undefined : source === "last" ? quote.price : quote[source];
+    // A spread's last is its mid: legs do not trade together.
+    const price = source === "mid" || (source === "last" && draft.legs?.length) ? positive(quote.bid) && positive(quote.ask) ? (quote.bid + quote.ask) / 2 : undefined : source === "last" ? quote.price : quote[source];
     if (!positive(price)) throw new Error("That broker quote price is unavailable.");
     const decimals = tradingCapabilities(this.options.getContext(draft), draft).priceDecimals;
     this.setDraft({ ...draft, [field]: decimals === undefined ? price : Number(price.toFixed(decimals)) });
@@ -319,6 +354,9 @@ export class BrokerTradingController {
       if (quote.stale) warnings.push("The broker quote is stale. Prices may have changed.");
       if (request.orderType === "MKT" && (quote.delayed || quote.stale)) warnings.push("A market order can fill far from the displayed price.");
       if (quote.quote.marketState === "CLOSED") warnings.push("The broker reports the market is closed. The order may wait for another session.");
+      // Legs whose quotes net the other way: a debit order that would be paid, or a credit order that would pay.
+      if (request.legs?.length && Number.isFinite(quote.quote.price) && quote.quote.price <= 0) warnings.push(request.action === "BUY"
+        ? "At current quotes this spread receives a credit. Choose Sell to be paid for it." : "At current quotes this spread costs a debit. Choose Buy to pay for it.");
       const estimate = preview.estimatedCost ?? (request.limitPrice ?? quote.quote.price) * request.quantity * Number(request.contract.multiplier ?? "1");
       if (positive(account.buyingPower) && Number.isFinite(estimate) && Math.abs(estimate) > account.buyingPower * 0.25) warnings.push("This order exceeds 25% of the account's buying power.");
       const result: BrokerOrderReview = { request, preview: copy(preview), warnings: [...new Set(warnings)], account: copy(account), brokerName: context.adapter.name,
@@ -380,7 +418,8 @@ export class BrokerTradingController {
 
   private orderRequest(order: BrokerOrder): BrokerOrderRequest {
     return { brokerInstanceId: order.brokerInstanceId, accountId: order.accountId, contract: copy(order.contract), action: order.action,
-      orderType: order.orderType as BrokerOrderRequest["orderType"], quantity: order.quantity, limitPrice: order.limitPrice, stopPrice: order.stopPrice, tif: order.tif };
+      orderType: order.orderType as BrokerOrderRequest["orderType"], quantity: order.quantity, limitPrice: order.limitPrice, stopPrice: order.stopPrice, tif: order.tif,
+      ...(order.legs?.length ? { legs: copy(order.legs) } : {}) };
   }
 
   requestCancel(order: BrokerOrder): void {
@@ -414,6 +453,7 @@ export class BrokerTradingController {
 
   private unknown(request: BrokerOrderRequest, original?: BrokerOrder): BrokerOrder {
     return { ...original, orderId: original?.orderId ?? 0, brokerInstanceId: request.brokerInstanceId, accountId: request.accountId, contract: copy(request.contract),
+      ...(request.legs?.length ? { legs: copy(request.legs) } : {}),
       status: "UNKNOWN", action: request.action, orderType: request.orderType, quantity: request.quantity, filled: original?.filled ?? 0,
       remaining: original?.remaining ?? request.quantity, limitPrice: request.limitPrice, stopPrice: request.stopPrice, tif: request.tif, updatedAt: this.now() };
   }

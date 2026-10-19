@@ -10,7 +10,7 @@ import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
-import { TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTypeName as typeName } from "./ticket-parts";
+import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTypeName as typeName } from "./ticket-parts";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
 export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders";
@@ -18,6 +18,8 @@ export interface TicketViewModel {
   brokerName: string; symbol: string; accounts: BrokerAccount[]; accountId?: string;
   accountChoices?: readonly BrokerAccountChoice[]; accountChoiceValue?: string;
   quote?: Quote; quoteData?: "realtime" | "delayed";
+  /** A spread's legs' quotes, in leg order. `quote` is then the spread's own. */
+  legQuotes?: Quote[];
   phase: "enable" | "editing" | "previewing" | "review" | "submitting" | "result" | "cancel-review" | "cancelling";
   draft?: BrokerOrderRequest; preview?: BrokerOrderPreview; warnings: string[]; result?: BrokerOrder; error?: string;
   resultQuantities?: "confirmed" | "unconfirmed" | "last-known";
@@ -92,7 +94,8 @@ function TicketNumberInput({ value, focused, onChange, ...props }: {
 function DockedQuote({ quote, delayed, source, updated, price, width }: { quote?: Quote; delayed: boolean; source: string; updated: string; price(value: number | undefined): string; width: number }) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
-  const change = quote ? `${quote.change >= 0 ? "+" : ""}${number(quote.change)} (${quote.changePercent >= 0 ? "+" : ""}${number(quote.changePercent)}%)` : "";
+  // A spread has no change of its own.
+  const change = quote && Number.isFinite(quote.change) ? `${quote.change >= 0 ? "+" : ""}${number(quote.change)} (${quote.changePercent >= 0 ? "+" : ""}${number(quote.changePercent)}%)` : "";
   const sized = (size: number | undefined) => size !== undefined && Number.isFinite(size) ? `× ${number(size)}` : "";
   // Sizes drop before bid and ask leave one line.
   const showSizes = `Bid ${price(quote?.bid)} ${sized(quote?.bidSize)}  Ask ${price(quote?.ask)} ${sized(quote?.askSize)}`.length <= width;
@@ -129,7 +132,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const sell = draft?.action === "SELL";
   const sideTone = sell ? "negative" : "positive";
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
-  const unit = draft?.contract.secType === "OPT" ? "contracts" : "shares";
+  const strategy = !!draft?.legs?.length;
+  const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";
   const busy = blocked || ["previewing", "submitting", "cancelling"].includes(m.phase);
   const fast = mode === "simulation" && m.confirmOrders === false && !m.modifying;
   const fastSubmitting = m.phase === "submitting" && fast && !m.warnings.length && !m.preview?.errors?.length;
@@ -176,7 +180,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   }, [review]);
   const confirmationSymbol = (draft?.contract.symbol ?? m.symbol).toUpperCase();
   const typedMatches = !live || m.typedConfirmation?.trim().toUpperCase() === confirmationSymbol;
-  const holdingBlocked = sell && !m.capabilities?.shortSelling && (m.position === undefined || (draft?.quantity ?? 0) > Math.max(0, m.position));
+  const holdingBlocked = sell && !strategy && !m.capabilities?.shortSelling && (m.position === undefined || (draft?.quantity ?? 0) > Math.max(0, m.position));
   const validPrice = (value: number | undefined) => value !== undefined && Number.isFinite(value) && value > 0;
   const canReview = m.connected && m.tradingEnabled && !!account && !!draft && validPrice(draft.quantity) && !holdingBlocked && !busy
     && (!showLimit || validPrice(draft.limitPrice)) && (!showStop || validPrice(draft.stopPrice));
@@ -188,7 +192,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     onCapture?.(focused && textActive);
     return () => onCapture?.(false);
   }, [focused, textActive, onCapture]);
-  const quickDisabled = (key: TicketAction) => key === "priceBid" ? !validPrice(m.quote?.bid) : key === "priceAsk" ? !validPrice(m.quote?.ask)
+  // A spread sizes by hand: its cost and holdings are per leg.
+  const quickDisabled = (key: TicketAction) => strategy && ["all", "quantity25", "quantity50", "priceLast"].includes(key) ? true : key === "priceBid" ? !validPrice(m.quote?.bid) : key === "priceAsk" ? !validPrice(m.quote?.ask)
     : key === "priceMid" ? !validPrice(m.quote?.bid) || !validPrice(m.quote?.ask) : key === "priceLast" ? !validPrice(m.quote?.price)
     : sell ? m.position === undefined || m.position <= 0 : !account || !validPrice(account.buyingPower) || !validPrice(m.quote?.ask ?? m.quote?.price);
   const quickActions: TicketAction[] = ["all", "quantity25", "quantity50", "priceBid", "priceMid", "priceAsk", "priceLast"];
@@ -216,7 +221,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     keyAction("t", "ime in force", () => { setActive("tif"); tifControl.current?.open(); }, !!m.modifying),
     ...(["MKT", "LMT", "STP", "STP LMT"] as const).map((type, index) => editShortcut(String(index + 1), typeName[type]!, "orderType", type, !!m.modifying || !m.capabilities?.orderTypes.includes(type))),
     ...([["5", "25%", "quantity25"], ["6", "50%", "quantity50"], ["7", "Max", "all"]] as const).map(([key, label, action]) => actionShortcut(key, label, action, quickDisabled(action))),
-    ...(showLimit || showStop ? ([["8", "Bid", "priceBid"], ["9", "Mid", "priceMid"], ["0", "Ask", "priceAsk"], ["p", "Last", "priceLast"]] as const).map(([key, label, action]) => actionShortcut(key, label, action, quickDisabled(action))) : []),
+    ...(showLimit || showStop ? ([["8", "Bid", "priceBid"], ["9", "Mid", "priceMid"], ["0", "Ask", "priceAsk"], ...(strategy ? [] : [["p", "Last", "priceLast"]] as const)] as const).map(([key, label, action]) => actionShortcut(key, label, action, quickDisabled(action))) : []),
     ...(extendedHours ? [editShortcut("x", "Extended", "outsideRth", !draft?.outsideRth, !!m.modifying)] : []),
   ] : review ? [actionShortcut("e", "dit", "back"), actionShortcut("o", "rders", "orders")]
     : m.phase === "enable" ? [actionShortcut("e", "nable", "enable", !m.connected)]
@@ -319,7 +324,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           </Box>
         </Box>
         <Box flexDirection={narrow ? "column" : "row"} alignItems={narrow ? "flex-start" : "center"} gap={narrow ? 0.5 : 2}>
-          <Box flexDirection="row" alignItems="center" gap={2}><FigureText>{money(m.quote?.price, currency)}</FigureText><FigureText part="sub" change={m.quote?.change}>{m.quote ? `${m.quote.change >= 0 ? "+" : ""}${number(m.quote.change)} (${m.quote.changePercent >= 0 ? "+" : ""}${number(m.quote.changePercent)}%)` : ""}</FigureText></Box>
+          <Box flexDirection="row" alignItems="center" gap={2}><FigureText>{money(m.quote?.price, currency)}</FigureText><FigureText part="sub" change={m.quote?.change}>{m.quote && Number.isFinite(m.quote.change) ? `${m.quote.change >= 0 ? "+" : ""}${number(m.quote.change)} (${m.quote.changePercent >= 0 ? "+" : ""}${number(m.quote.changePercent)}%)` : ""}</FigureText></Box>
           <Box flexDirection="row" gap={1}>
             <Box flexDirection="column" paddingX={1} border={["bottom"]} borderColor={c.positive} style={native ? { borderBottom: `2px solid ${c.positive}` } : undefined}><Text fg={c.textDim}>{`Bid${m.quote?.bidSize !== undefined ? ` × ${number(m.quote.bidSize)}` : ""}`}</Text><Text fg={c.positive} attributes={TextAttributes.BOLD}>{quotePrice(m.quote?.bid)}</Text></Box>
             <Box flexDirection="column" paddingX={1} border={["bottom"]} borderColor={c.negative} style={native ? { borderBottom: `2px solid ${c.negative}` } : undefined}><Text fg={c.textDim}>{`Ask${m.quote?.askSize !== undefined ? ` × ${number(m.quote.askSize)}` : ""}`}</Text><Text fg={c.negative} attributes={TextAttributes.BOLD}>{quotePrice(m.quote?.ask)}</Text></Box>
@@ -331,7 +336,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     <ScrollBox ref={scrollRef} flexGrow={docked ? 0 : 1} flexShrink={1} scrollY>
       <Box ref={bodyRef} onSizeChange={native ? undefined : reportContentHeight} flexShrink={0} flexDirection="column" paddingX={docked ? 1 : native ? 3 : 1} paddingY={native ? wide ? 1 : 0.4 : 0} gap={native ? wide ? 1 : 0.3 : 0}>
         {!docked ? <Box flexDirection="row" gap={1} flexWrap={native ? "wrap" : "nowrap"}>
-          <Text fg={c.textDim}>{`Position ${m.position === undefined ? "unknown" : `${number(m.position)} ${unit === "shares" ? "sh" : "ct"}`}${m.avgCost === undefined ? "" : ` @ ${money(m.avgCost, currency)}`}`}</Text>
+          {/* A spread's positions are its legs', which the form lists. */}
+          {strategy ? null : <Text fg={c.textDim}>{`Position ${m.position === undefined ? "unknown" : `${number(m.position)} ${unit === "shares" ? "sh" : "ct"}`}${m.avgCost === undefined ? "" : ` @ ${money(m.avgCost, currency)}`}`}</Text>}
           {m.positionPnl !== undefined ? <Text fg={m.positionPnl >= 0 ? c.positive : c.negative}>{`P&L ${money(m.positionPnl, currency)}`}</Text> : null}
           <Text fg={c.textDim}>{`Buying power ${money(account?.buyingPower, currency)}`}</Text>
           {m.accountType ? <Text fg={c.textDim}>{m.accountType}</Text> : null}
@@ -342,8 +348,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
               {!m.connected ? m.reconnecting ? <Notice tone="muted">{`Reconnecting to ${m.brokerName}...`}</Notice> : <Notice variant="callout">Broker disconnected. Connect in Brokers.</Notice> : !m.tradingEnabled ? <Notice variant="callout">Trading is off for this profile.</Notice> : null}
               <Box ref={nodeRef("action")} flexDirection="row" onMouseDown={() => setActive("action")}>{!native ? <FieldLabel label="" width={2} active={focused && active === "action"} /> : null}<Box flexGrow={1}><SegmentedControl variant="flat" accessibleLabel="Order side" value={draft.action} options={[{ value: "BUY", label: "Buy", tone: "positive", disabled: busy || m.modifying }, { value: "SELL", label: "Sell", tone: "negative", disabled: busy || m.modifying }]} size="large" width="100%" focused={focused && active === "action"} onChange={(v) => onEdit("action", v)} shortcutScope={scope} /></Box></Box>
               <Box ref={nodeRef("orderType")} flexDirection="row" gap={1} alignItems="center" onMouseDown={() => { if (!busy) setActive("orderType"); }}><FieldLabel label={docked ? "Type" : "Order type"} width={docked ? 10 : native ? 11 : 14} active={active === "orderType"} /><SelectButton label="Order type" showLabel={false} variant="well" width={docked ? Math.max(14, formInner - 11) : 22} value={draft.orderType} options={(m.capabilities?.orderTypes ?? ["LMT"]).map((t) => ({ value: t, label: typeName[t] ?? t }))} disabled={busy || m.modifying} emphasized={focused && active === "orderType"} controlRef={orderTypeControl} onFocus={() => setActive("orderType")} onChange={(v) => onEdit("orderType", v)} /></Box>
-              {numeric("quantity", "Quantity", draft.quantity, unit, <>{quick("quantity25", "25%", sell && m.position === undefined)}{quick("quantity50", "50%", sell && m.position === undefined)}{quick("all", sell ? `Max ${number(m.position)}` : "Max", sell && !(m.position && m.position > 0))}</>)}
-              {showLimit ? numeric("limitPrice", docked ? "Limit" : "Limit price", draft.limitPrice, currency, <>{quick("priceBid", "Bid", !m.quote?.bid)}{quick("priceMid", "Mid", !m.quote?.bid || !m.quote?.ask)}{quick("priceAsk", "Ask", !m.quote?.ask)}{quick("priceLast", "Last", !m.quote?.price)}</>) : null}
+              {strategy ? <TicketLegs model={m} width={formInner} inset /> : null}
+              {numeric("quantity", strategy ? docked ? "Spreads" : "Quantity" : "Quantity", draft.quantity, unit, strategy ? undefined : <>{quick("quantity25", "25%", sell && m.position === undefined)}{quick("quantity50", "50%", sell && m.position === undefined)}{quick("all", sell ? `Max ${number(m.position)}` : "Max", sell && !(m.position && m.position > 0))}</>)}
+              {showLimit ? numeric("limitPrice", strategy ? sell ? docked ? "Credit" : "Net credit" : docked ? "Debit" : "Net debit" : docked ? "Limit" : "Limit price", draft.limitPrice, currency, <>{quick("priceBid", "Bid", !(m.quote?.bid! > 0))}{quick("priceMid", "Mid", !(m.quote?.bid! > 0) || !(m.quote?.ask! > 0))}{quick("priceAsk", "Ask", !(m.quote?.ask! > 0))}{strategy ? null : quick("priceLast", "Last", !m.quote?.price)}</>) : null}
               {showStop ? numeric("stopPrice", docked ? "Stop" : "Stop price", draft.stopPrice, currency) : null}
               <Box flexDirection="row" flexWrap="wrap" alignItems="center" gap={docked ? rowGap : 1}><Box ref={nodeRef("tif")} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => setActive("tif")}><FieldLabel label="TIF" width={docked ? 10 : native ? 11 : 14} active={active === "tif"} /><SelectButton label="Time in force" title="Time in force" showLabel={false} variant="well" width={docked ? Math.max(14, formInner - 11) : 22} value={draft.tif ?? "DAY"} options={(m.capabilities?.tif ?? ["DAY"]).map((v) => ({ value: v, label: tifName[v] ?? v, short: docked ? ({ DAY: "Day", GTC: "GTC", IOC: "IOC", FOK: "FOK", EXTENDED_HOURS: "Extended", AT_THE_OPENING: "At open", AT_THE_CLOSE: "At close" } as Record<string, string>)[v] : undefined }))} disabled={busy || m.modifying} emphasized={focused && active === "tif"} controlRef={tifControl} onFocus={() => setActive("tif")} onChange={(v) => onEdit("tif", v)} /></Box>{extendedHours ? <Box ref={nodeRef("outsideRth")}><Checkbox label="Outside RTH" checked={draft.outsideRth ?? false} disabled={busy || m.modifying} active={focused && active === "outsideRth"} onChange={(v) => { setActive("outsideRth"); onEdit("outsideRth", v); }} /></Box> : null}</Box>
               {holdingBlocked ? <Notice tone="negative">{m.position === undefined ? "Refresh holdings before selling." : `You hold ${number(m.position)} ${unit}. Short selling is unavailable.`}</Notice> : null}
@@ -353,7 +360,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 {fast ? <Text fg={c.warning}>SIM one-click · preview required</Text> : null}
               </Box> : null}
               {docked ? <Box flexDirection="column">
-                <TicketReceiptRow label={docked ? "Est. cost" : "Estimated cost"} value={money((draft.limitPrice ?? draft.stopPrice ?? m.quote?.price ?? NaN) * draft.quantity * Number(draft.contract.multiplier ?? 1), currency)} width={formInner} />
+                <TicketReceiptRow label={strategy && sell ? docked ? "Est. credit" : "Estimated credit" : docked ? "Est. cost" : "Estimated cost"} value={money((draft.limitPrice ?? draft.stopPrice ?? m.quote?.price ?? NaN) * draft.quantity * Number(draft.contract.multiplier ?? 1), currency)} width={formInner} />
                 <TicketReceiptRow label="Buying power" value={money(account?.buyingPower, currency)} width={formInner} />
               </Box> : null}
               <Box marginTop={native && !docked ? 0.5 : 0}>{m.tradingEnabled ? action("review", busy ? blocked ? "Order action pending..." : m.phase === "submitting" ? "Submitting..." : "Requesting preview..." : `${sell ? "Sell" : "Buy"} ${number(draft.quantity)} ${m.symbol}`, !canReview, true) : action("enable", "Enable trading", !m.connected, true, "neutral")}</Box>
@@ -369,7 +376,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         </TicketSection>{wide ? <TicketOrderSummary model={m} width={summaryWidth} /> : null}</Box> : null}
         {review ? <Box flexDirection={wide ? "row" : "column"} gap={wide ? 3 : 0} alignItems="flex-start"><TicketSection width={formWidth} title={m.modifying ? "Review replacement" : "Review order"} selectable>
           <TicketOrderHeadline model={m} large />
-          <Text fg={c.textDim}>{`${typeName[draft?.orderType ?? "LMT"]}${showLimit ? ` at ${money(draft?.limitPrice, currency)}` : ""}${showStop ? ` · Stop ${money(draft?.stopPrice, currency)}` : ""} · ${draft?.tif ?? "DAY"}`}</Text>
+          {strategy ? <TicketLegs model={m} width={formInner} /> : null}
+          <Text fg={c.textDim}>{`${typeName[draft?.orderType ?? "LMT"]}${showLimit ? ` ${strategy ? sell ? "net credit" : "net debit" : "at"} ${money(draft?.limitPrice, currency)}` : ""}${showStop ? ` · Stop ${money(draft?.stopPrice, currency)}` : ""} · ${draft?.tif ?? "DAY"}`}</Text>
           <Box marginTop={native && wide ? 1 : 0} flexDirection="column" gap={native && wide ? 0.4 : 0}>
             <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formInner} />
             <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formInner} />
@@ -388,7 +396,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <Box flexDirection="column" gap={native ? 0.5 : 0}>{action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, "negative")}</Box>
         </TicketSection> : null}
         {m.phase === "result" ? <Box flexDirection={wide ? "row" : "column"} gap={3}><TicketSection width={formWidth} title={title} selectable>
-          <TicketOrderHeadline model={m} large /><TicketStatus model={m} width={formInner} />
+          <TicketOrderHeadline model={m} large />{strategy ? <TicketLegs model={m} width={formInner} /> : null}<TicketStatus model={m} width={formInner} />
           {m.resultQuantities === "last-known" ? <Text fg={c.warning}>Last known quantities</Text> : null}
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={m.resultQuantities === "unconfirmed" || !Number.isFinite(m.result?.filled) ? "Not confirmed" : number(m.result?.filled)} width={formInner} /> : null}
           <TicketReceiptRow label="Remaining" value={m.resultQuantities === "unconfirmed" || !Number.isFinite(m.result?.remaining) ? "Not confirmed" : number(m.result?.remaining)} width={formInner} />

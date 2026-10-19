@@ -46,6 +46,16 @@ test("an option order matches its contract by OCC identity, however the broker w
   }
 });
 
+test("a spread is its underlying's order: the stock's ticket and a spread ticket list it, a leg's own ticket does not", () => {
+  const f = createDemoBroker();
+  const option = { ...f.draft.contract, symbol: "AAPL", localSymbol: "AAPL261026C00345000", secType: "OPT", lastTradeDateOrContractMonth: "20261026", right: "C" as const, strike: 345, multiplier: "100" };
+  const spread = { ...f.order(f.draft, "WORKING", 1), contract: { ...f.draft.contract, secType: "BAG", exchange: "SMART" }, legs: [{ contract: option, action: "BUY" as const, ratio: 1 }] };
+  const match = (contract: typeof f.draft.contract, order: Parameters<typeof ticketOrderMatches>[0] = spread) => ticketOrderMatches(order, contract, f.instance.id, f.draft.accountId);
+  expect([match(f.draft.contract), match(spread.contract), match(option), match({ ...f.draft.contract, symbol: "MSFT" })]).toEqual([true, true, false, false]);
+  // The spread ticket lists spreads only, not the stock's orders.
+  expect(match(spread.contract, f.order(f.draft, "WORKING", 2))).toBe(false);
+});
+
 test("an older submission receipt cannot revive a line after a newer cancellation acknowledgement", () => {
   const f = createDemoBroker();
   const submitted = { ...f.order(f.draft, "WORKING", 1), updatedAt: 10 };

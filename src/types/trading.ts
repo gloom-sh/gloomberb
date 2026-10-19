@@ -26,6 +26,11 @@ export interface BrokerTradingCapabilities {
   modify?: boolean;
   cancel?: boolean;
   executionKind?: "fills" | "order-summaries";
+  /**
+   * Multi-leg option orders take up to this many legs (at least 2). Declared
+   * for a combo contract (`secType: "BAG"`); omit when the broker takes none.
+   */
+  maxLegs?: number;
 }
 
 export interface BrokerCashBalance {
@@ -92,10 +97,25 @@ export interface BrokerPortfolioPerformance {
   points: BrokerPortfolioPerformancePoint[];
 }
 
+/**
+ * One leg of a multi-leg option order. The action is what happens to this
+ * contract when the order fills; the ratio is its contracts per spread.
+ */
+export interface BrokerOrderLeg {
+  contract: BrokerContractRef;
+  action: BrokerOrderAction;
+  ratio: number;
+}
+
 export interface BrokerOrderRequest {
   brokerInstanceId?: string;
   accountId?: string;
+  /** A combo contract (`secType: "BAG"`, the underlying's symbol) when the order has legs. */
   contract: BrokerContractRef;
+  /**
+   * BUY pays a net debit and SELL receives a net credit. With legs, the
+   * legs' own actions say which contracts are bought and sold.
+   */
   action: BrokerOrderAction;
   orderType: BrokerOrderType;
   quantity: number;
@@ -103,6 +123,11 @@ export interface BrokerOrderRequest {
   stopPrice?: number;
   tif?: string;
   outsideRth?: boolean;
+  /**
+   * 2 or more option legs filled as one order. `quantity` counts spreads and
+   * `limitPrice` is the positive net price of one spread.
+   */
+  legs?: BrokerOrderLeg[];
 }
 
 export interface BrokerOrderPreview {
@@ -147,6 +172,8 @@ export interface BrokerOrder {
   reviewUrl?: string;
   updatedAt: number;
   contract: BrokerContractRef;
+  /** A multi-leg order's legs, as on its request. */
+  legs?: BrokerOrderLeg[];
 }
 
 export interface BrokerExecution {

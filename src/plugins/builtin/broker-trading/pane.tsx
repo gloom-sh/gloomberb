@@ -18,7 +18,8 @@ import { takeTradeIntent } from "./command";
 import { BrokerAccountPicker } from "./account-picker";
 import { BrokerOrdersView } from "./orders";
 import { brokerOrderKey, brokerOrderStatus } from "./orders-data";
-import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, subscribeTradingStatus, ticketAccountChoiceKey, ticketPositionContext, type ProfileAccountChoice, type TicketPositionSnapshot } from "./pane-model";
+import { isStrategyOrder, orderInstrumentLabel } from "./strategy";
+import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newStrategyDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, subscribeTradingStatus, ticketAccountChoiceKey, ticketPositionContext, type ProfileAccountChoice, type TicketPositionSnapshot } from "./pane-model";
 import { BrokerTicketView, type TicketAction, type TicketField } from "./ticket";
 import { ticketChartLevels, ticketOrderMatches } from "./chart-levels";
 import { useResearchTrading } from "../shared/research-trading";
@@ -36,7 +37,7 @@ function noteOrderFill(order: BrokerOrder): number | undefined {
   return before;
 }
 function orderToastBody(order: BrokerOrder): string {
-  const symbol = order.contract.localSymbol || order.contract.symbol;
+  const symbol = orderInstrumentLabel(order);
   const qty = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 4 });
   const filled = order.filled > 0 && Number.isFinite(order.avgFillPrice) ? ` · ${qty(order.filled)} filled at ${order.avgFillPrice!.toLocaleString("en-US", { maximumFractionDigits: 4 })}` : "";
   const limit = order.orderType === "MKT" ? "market" : `${order.orderType === "STP" ? "stop" : "limit"} ${(order.limitPrice ?? order.stopPrice)?.toLocaleString("en-US", { maximumFractionDigits: 4 }) ?? ""}`.trim();
@@ -90,7 +91,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const connected = connection?.state === "connected";
   const reconnecting = connection?.state === "connecting";
   const ticketContract = draft?.contract ?? contract;
-  const contractKey = JSON.stringify(ticketContract);
+  const strategy = !!draft?.legs?.length;
+  const contractKey = JSON.stringify([ticketContract, draft?.legs ?? null]);
   const [ordersBusy, setOrdersBusy] = useState(false);
   const ticketBusy = state.phase === "previewing" || state.phase === "submitting" || state.phase === "cancelling";
   const busy = ticketBusy || ordersBusy;
@@ -108,7 +110,9 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     if (intent.modify) { setPendingModify(intent.modify); return; }
     try {
       if (controller.uncertain()) throw new Error("Refresh and reconcile the unknown order before starting another order.");
-      const next = newTicketDraft(broker, instance, contract, current.current.accountId, intent.action);
+      // A strategy from the builder trades as one spread on this underlying.
+      const next = intent.legs?.length ? newStrategyDraft(broker, instance, contract, { action: intent.action, quantity: intent.quantity ?? 1, legs: intent.legs }, current.current.accountId)
+        : newTicketDraft(broker, instance, contract, current.current.accountId, intent.action);
       if (intent.quantity !== undefined) next.quantity = intent.quantity;
       if (intent.limitPrice !== undefined) {
         if (!broker.getTradingCapabilities?.(instance, contract).orderTypes.includes("LMT")) throw new Error("This broker does not support limit orders for this instrument.");
@@ -280,7 +284,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
         else if (action === "orders") setPage("orders");
         else if (action === "new") {
           controller.reset();
-          controller.setDraft(newTicketDraft(broker, instance, ticketContract, accountId));
+          // After a spread, a new order is for the ticket's own instrument again.
+          controller.setDraft(newTicketDraft(broker, instance, isStrategyOrder({ contract: ticketContract }) ? contract : ticketContract, accountId));
           setTyped(""); setDefaultPriceLabel(undefined); setPage("ticket");
         }
       } catch (failure) { reportError(failure); }
@@ -317,13 +322,15 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     setPendingModify(undefined);
     onModify(pendingModify);
   });
-  const position = ticketPositionContext(positions, instance, accountId, ticketContract);
+  // A spread has no position of its own; its legs' positions belong to each contract.
+  const position = strategy ? undefined : ticketPositionContext(positions, instance, accountId, ticketContract);
   const mode = accounts.find((account) => account.accountId === accountId)?.tradingMode;
   useEffect(() => {
-    const orders = openOrders.filter((order) => ticketOrderMatches(order, ticketContract, instance.id, accountId));
-    const latestOrder = state.result && ticketOrderMatches(state.result, ticketContract, instance.id, accountId) ? state.result : undefined;
-    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder, avgCost: position?.avgCost, position: position?.quantity, colors, priceStep: caps?.priceStep, priceDecimals: caps?.priceDecimals }) });
-  }, [publish, mode, busy, draft, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals]);
+    // A spread's net premium is not a price on the underlying's chart.
+    const orders = openOrders.filter((order) => !isStrategyOrder(order) && ticketOrderMatches(order, ticketContract, instance.id, accountId));
+    const latestOrder = state.result && !isStrategyOrder(state.result) && ticketOrderMatches(state.result, ticketContract, instance.id, accountId) ? state.result : undefined;
+    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft: strategy ? undefined : draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder, avgCost: position?.avgCost, position: position?.quantity, colors, priceStep: caps?.priceStep, priceDecimals: caps?.priceDecimals }) });
+  }, [publish, mode, busy, draft, strategy, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals]);
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
   // Docked, the open orders show only while this ticker has some, or when asked
   // for: o focuses them, Shift+O or Hide/Show orders toggles them.
@@ -356,10 +363,10 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     <Box visible={docked || page !== "orders"} height={docked && native ? undefined : ticketHeight} maxHeight={ticketHeight} flexShrink={0}>
     <PaneFooterScope active={page !== "orders"}>
     <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
-    brokerName: broker.name, symbol: ticketContract.localSymbol ?? ticketContract.symbol, accounts, accountId,
+    brokerName: broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
-    quote: state.quote?.quote, quoteData: connection?.quoteData,
+    quote: state.quote?.quote, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,
     phase: page === "enable" ? "enable" : state.phase, draft: receipt?.request ?? draft, preview: state.review?.preview ?? receipt?.preview, warnings: state.review?.warnings ?? [], result: state.result, resultQuantities: state.resultQuantities,
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error, reconnecting,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
