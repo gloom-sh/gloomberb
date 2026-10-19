@@ -114,7 +114,7 @@ Chords use the accelerator grammar: `Ctrl`, `Cmd`, `Alt`, `Shift`, and `CmdOrCtr
 
 Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar prefixes are listed here for quick scanning.
 
-The empty command bar opens on **Start Here**: the common first tasks in plain words (look up a company, chart a stock, compare stocks, see who reports earnings, check the economy), each with its code on the right. A row runs what its code's own row runs, and the full list follows it. Its placeholder suggests plain words that find something, such as `top news` or `apple`. Help's Basics tab starts with **Try These**, functions on real tickers (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`) that open with one click or from the pane menu.
+The first ten times the empty command bar opens on a machine, it leads with **Start Here**: the common first tasks in plain words (look up a company, chart a stock, compare stocks, see who reports earnings, check the economy), each with its code on the right, and its placeholder suggests plain words that find something, such as `top news` or `apple`. A row runs what its code's own row runs, and the full list follows it. From the eleventh open on, the bar shows the list alone. Help's Basics tab starts with **Try These**, functions on real tickers (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`) that open with one click or from the pane menu.
 
 ### Searching by asset class
 

@@ -22,6 +22,7 @@ import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
 import { buildHelpArgumentItems } from "./help-items";
 import { buildStartHereItems } from "./start-here";
+import { showsCommandBarIntro } from "../../../../app/command-bar-intro";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
 
@@ -351,15 +352,17 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       }));
     }
     items.push(...providerMatchItems);
-    // Plain-word rows for the common first tasks, ahead of the codes. Each
-    // runs what its code's own row below runs.
-    items.push(...buildStartHereItems({
-      templatesForCode: getAvailablePaneShortcutTemplates,
-      createTemplateItem: (template) => createPaneTemplateItem(template, { showShortcut: true }),
-      lookUpCompany: availableCommands.some((command) => command.id === "security-description")
-        ? () => openModeRoute("ticker-search", "")
-        : null,
-    }));
+    // Plain-word rows for the common first tasks, ahead of the codes, for the
+    // first opens only. Each runs what its code's own row below runs.
+    if (showsCommandBarIntro(state.config)) {
+      items.push(...buildStartHereItems({
+        templatesForCode: getAvailablePaneShortcutTemplates,
+        createTemplateItem: (template) => createPaneTemplateItem(template, { showShortcut: true }),
+        lookUpCompany: availableCommands.some((command) => command.id === "security-description")
+          ? () => openModeRoute("ticker-search", "")
+          : null,
+      }));
+    }
     items.push(...paneShortcutItems());
     for (const command of availableCommands) {
       const item = commandToItem(command);

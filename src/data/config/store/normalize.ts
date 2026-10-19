@@ -27,6 +27,7 @@ import { isRecord } from "../../../utils/guards";
 import { debugLog } from "../../../utils/debug-log";
 import { DEFAULT_THEME, themes } from "../../../theme/themes";
 import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
+import { sanitizeCommandBarOpens } from "../../../app/command-bar-intro";
 import { sanitizeUpdatesConfig } from "../../../updater/channel";
 
 const configLog = debugLog.createLogger("config");
@@ -100,6 +101,7 @@ export function normalizeLoadedConfig(
     fontSize: sanitizeFontSize(candidate.fontSize, defaults.fontSize),
     recentTickers: sanitizeStringArray(candidate.recentTickers, defaults.recentTickers),
     recentCommands: sanitizeRecentCommands(candidate.recentCommands, defaults.recentCommands),
+    commandBarOpens: sanitizeCommandBarOpens(candidate.commandBarOpens),
     language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
     onboardingComplete,
     onboardingProgress,
@@ -162,6 +164,7 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     fontSize: sanitizeFontSize(config.fontSize, defaults.fontSize),
     recentTickers: sanitizeStringArray(config.recentTickers, []),
     recentCommands: sanitizeRecentCommands(config.recentCommands, []),
+    commandBarOpens: sanitizeCommandBarOpens(config.commandBarOpens),
     onboardingComplete: onboardingProgress ? false : config.onboardingComplete,
     onboardingProgress,
   };

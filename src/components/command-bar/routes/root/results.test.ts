@@ -434,7 +434,7 @@ describe("Start Here in the empty bar", () => {
       availableCommands: [describeCommand],
       buildRecentTickerItem: (symbol) => ({ ...paneRow, id: `ticker:${symbol}`, label: symbol, kind: "ticker" }),
       state: {
-        config: { watchlists: [], portfolios: [], recentCommands: [] },
+        config: { watchlists: [], portfolios: [], recentCommands: [], commandBarOpens: 1 },
         recentTickers: ["AAPL"],
         focusedPaneId: null,
       } as unknown as RootResultModelOptions["state"],

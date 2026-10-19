@@ -12,19 +12,25 @@ import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-sur
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
 import { takeCommandBarExample } from "./prompt-example";
+import { useAppSelector } from "../../../state/app/context";
+import { showsCommandBarIntro } from "../../../app/command-bar-intro";
 import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 
 /**
- * The closed prompt already says what the bar is for, so the open root screen
- * shows something to type instead: plain words that work, picked once when the
- * bar opens and kept until it closes. Nested screens are a different screen and
- * say so.
+ * The root screen keeps the closed prompt's own words. Opening the bar puts the
+ * caret in the same input the header was already showing, so changing the
+ * placeholder underneath it read as the control being swapped out. The first
+ * opens are the exception: they show plain words to type instead, picked once
+ * when the bar opens and kept until it closes. Nested screens are a different
+ * screen and say so.
  */
-function resolvePromptPlaceholder(listState: ListScreenState, example: string): string {
-  if (listState.kind === "root") return tf("Try: {example}", { example });
+function resolvePromptPlaceholder(listState: ListScreenState, example: string | null): string {
+  if (listState.kind === "root") {
+    return example ? tf("Try: {example}", { example }) : t("Search or run a command");
+  }
   if (listState.title === "Security Description") return t("Search tickers");
   return t("Filter");
 }
@@ -66,8 +72,10 @@ export function CommandBarPanel({
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
   const palette = useCommandBarPalette(nativePaneChrome);
-  // The bar mounts on each opening, so each opening gets its own example.
-  const [example] = useState(takeCommandBarExample);
+  // The count already includes this opening, so this reads the same until the bar closes.
+  const intro = useAppSelector((state) => showsCommandBarIntro(state.config));
+  // The bar mounts on each opening, so each of the first openings gets its own example.
+  const [example] = useState(() => (intro ? takeCommandBarExample() : null));
 
   useLayoutEffect(() => {
     const scrollBox = nativeListScrollRef.current;
