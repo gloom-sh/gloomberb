@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { currentReportItemsLabel, hiddenFilingsNote, isPricingSupplement, isScheduleAboutAnotherCompany, loadLatestFilings } from "./sec-filings";
+import { currentReportItemsLabel, hiddenFilingsNote, isPricingSupplement, isScheduleAboutAnotherCompany, loadLatestFilings, pricingSupplementTest } from "./sec-filings";
 import type { SecFilingItem } from "../types/data-provider";
 
 test.each([
@@ -27,6 +27,28 @@ test("an 8-K's items read by number and name, exhibits only when alone", () => {
   expect(items.filter((code) => currentReportItemsLabel(code)?.includes("Item"))).toEqual([]);
   expect(currentReportItemsLabel("")).toBeNull();
   expect(currentReportItemsLabel(undefined)).toBeNull();
+});
+
+test("a plain 424B3 is a term sheet among a note shelf's supplements, and a company's merger or resale prospectus otherwise", () => {
+  const filing = (form: string, date: string, cik = "19617", primaryDocDescription = ""): SecFilingItem =>
+    ({ form, filingDate: new Date(`${date}T00:00:00Z`), cik, primaryDocDescription, accessionNumber: `${cik}-${date}-${form}`, filingUrl: "" });
+  // JPM: a day's notes, then its FORM 424B3 term sheet; its 2008 merger prospectus filed before it sold notes.
+  const termSheet = filing("424B3", "2026-10-15", "19617", "FORM 424B3");
+  const merger = filing("424B3", "2008-11-25", "19617", "FINAL PROSPECTUS");
+  const bank = [termSheet, ...Array.from({ length: 30 }, (_, index) => filing(index % 2 ? "FWP" : "424B2", "2026-10-14")), merger];
+  // AT&T-like: dozens of bond deals over the years, at most a few in any two months, and a merger prospectus.
+  const bonds = Array.from({ length: 40 }, (_, index) => filing(index % 2 ? "FWP" : "424B2", new Date(Date.UTC(2020, index * 2, 1)).toISOString().slice(0, 10), "732717"));
+  const company = filing("424B3", "2021-06-01", "732717", "424B3");
+  // Another filer under the same ticker, the same day as the bank's notes.
+  const other = filing("424B3", "2026-10-15", "1665650", "424B3");
+
+  const isSupplement = pricingSupplementTest([...bank, ...bonds, company, other]);
+  expect(isSupplement(termSheet)).toBe(true);
+  expect(isSupplement(merger)).toBe(false);
+  expect(isSupplement(company)).toBe(false);
+  expect(isSupplement(other)).toBe(false);
+  // Nineteen supplements are not a shelf.
+  expect(pricingSupplementTest([termSheet, ...bank.slice(1, 20)])(termSheet)).toBe(false);
 });
 
 test.each([

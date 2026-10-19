@@ -124,7 +124,7 @@ export function createCoreCliCommands(
         usage: ["ticker <symbol>"],
         options: [
           EXCHANGE_OPTION,
-          { flags: "--all", description: "List a bank's pricing supplements (424B2, FWP) and the 13D/13G it filed about other companies among the recent SEC filings" },
+          { flags: "--all", description: "List a bank's pricing supplements (424B2, FWP, its notes' 424B3) and the 13D/13G it filed about other companies among the recent SEC filings" },
         ],
         examples: ["ticker AAPL", "ticker SAN:EPA", "ticker 7203.T", "ticker AAPL --json"],
       },

@@ -18,6 +18,8 @@ const filing = (form: string, index: number, extra: Partial<SecFilingItem> = {})
 });
 const issuer = [
   ...Array.from({ length: 30 }, (_, index) => filing(index % 3 ? "424B2" : "FWP", index)),
+  // A note's term sheet filed as a plain 424B3, among the supplements.
+  filing("424B3", 31, { primaryDocDescription: "FORM 424B3" }),
   filing("SCHEDULE 13G/A", 40, { fileNumber: "" }),
   filing("SCHEDULE 13G/A", 41, { fileNumber: "" }),
   filing("8-K", 100, { items: "2.02,9.01", primaryDocDescription: "8-K", fileNumber: "001-05805" }),
@@ -30,6 +32,12 @@ const issuer = [
   filing("SC 13G/A", 51),
   ...Array.from({ length: 4 }, (_, index) => filing("4", 200 + index)),
   filing("10-Q", 300),
+];
+// Rallybio files its merger prospectus as a 424B3, and no notes.
+const merger = [
+  filing("EFFECT", 70, { cik: "1739410" }),
+  filing("424B3", 71, { cik: "1739410", primaryDocDescription: "424B3" }),
+  filing("S-4/A", 72, { cik: "1739410" }),
 ];
 // Apple's schedules are all about Apple.
 const apple = [
@@ -72,7 +80,7 @@ test("ticker's recent SEC filings are the company's own: no pricing supplements 
   expect(forms(data)).toEqual(["8-K", "8-K", "SCHEDULE 13G", "SC 13G/A", "4"]);
   // Codes in items, as fn SEC and filings give them; the words the text shows beside them.
   expect(data.recentSecFilings[0]).toMatchObject({ items: "2.02,9.01", itemsLabel: "2.02 Results of operations" });
-  expect(data.recentSecFilingsHidden).toEqual({ pricingSupplements: 30, ownershipReportsAboutOthers: 3 });
+  expect(data.recentSecFilingsHidden).toEqual({ pricingSupplements: 31, ownershipReportsAboutOthers: 3 });
 
   const { text } = await report({ json: false });
   const section = text.slice(text.indexOf("Recent SEC Filings"));
@@ -80,14 +88,20 @@ test("ticker's recent SEC filings are the company's own: no pricing supplements 
   expect(section).toContain("Items 7.01 Regulation FD disclosure");
   expect(section).not.toContain("424B2");
   expect(section).not.toContain("SCHEDULE 13G/A");
-  expect(section).toContain("30 pricing supplements and 3 ownership reports about other companies hidden, --all to show");
+  expect(section).not.toContain("424B3");
+  expect(section).toContain("31 pricing supplements and 3 ownership reports about other companies hidden, --all to show");
 
   const all = await report({ all: true });
   expect(forms(all.data)).toEqual(["FWP", "424B2", "424B2", "FWP", "424B2"]);
   expect(all.data.recentSecFilingsHidden).toEqual({ pricingSupplements: 0, ownershipReportsAboutOthers: 0 });
-  // Past the supplements, --all lists the schedules about other companies too.
+  // Past the supplements, --all lists the term sheet and the schedules about other companies too.
   expect(forms((await report({ all: true, filings: issuer.slice(30) })).data))
-    .toEqual(["SCHEDULE 13G/A", "SCHEDULE 13G/A", "8-K", "SCHEDULE 13D/A", "8-K"]);
+    .toEqual(["424B3", "SCHEDULE 13G/A", "SCHEDULE 13G/A", "8-K", "SCHEDULE 13D/A"]);
+
+  // A company's 424B3 merger prospectus is its own.
+  const company = await report({ filings: merger });
+  expect(forms(company.data)).toEqual(["EFFECT", "424B3", "S-4/A"]);
+  expect(company.data.recentSecFilingsHidden).toEqual({ pricingSupplements: 0, ownershipReportsAboutOthers: 0 });
 
   const own = await report({ filings: apple });
   expect(forms(own.data)).toEqual(["SCHEDULE 13G", "4", "SC 13G/A"]);

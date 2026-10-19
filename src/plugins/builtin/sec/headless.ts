@@ -86,7 +86,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       },
       {
         key: "all",
-        description: "Also list the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, which are left out by default.",
+        description: "Also list the pricing supplements and term sheets (424B2, FWP, and a 424B3 filed among them) a bank files for each structured note, which are left out by default.",
         type: "boolean",
         defaultValue: false,
         pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },

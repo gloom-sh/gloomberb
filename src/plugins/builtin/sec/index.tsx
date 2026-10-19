@@ -19,7 +19,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
-import { isPricingSupplement } from "../../../utils/sec-filings";
+import { pricingSupplementTest } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -304,10 +304,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // A bank files a pricing supplement for each note it sells, hundreds a week, which bury its
   // reports; they stay out until asked for, counted among the filings the other filters keep.
   const [showSupplements, setShowSupplements] = usePluginPaneState<boolean>("pricingSupplements", false);
-  const supplementCount = useMemo(() => scopedFilings.filter(isPricingSupplement).length, [scopedFilings]);
+  // Read over the issuer's whole list, so a Form or Filer filter does not change which 424B3 are term sheets.
+  const isSupplement = useMemo(() => pricingSupplementTest(issuerFilings), [issuerFilings]);
+  const supplementCount = useMemo(() => scopedFilings.filter(isSupplement).length, [isSupplement, scopedFilings]);
   const filings = useMemo(
-    () => (showSupplements || supplementCount === 0 ? scopedFilings : scopedFilings.filter((filing) => !isPricingSupplement(filing))),
-    [scopedFilings, showSupplements, supplementCount],
+    () => (showSupplements || supplementCount === 0 ? scopedFilings : scopedFilings.filter((filing) => !isSupplement(filing))),
+    [isSupplement, scopedFilings, showSupplements, supplementCount],
   );
   const filterHistoryCapped = !!forms && issuerFilings.length >= SEC_FILING_FETCH_LIMIT;
   const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
@@ -329,7 +331,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     const index = filings.findIndex((filing) => filing.accessionNumber === openItemId);
     if (index < 0) {
       // A pricing supplement opened from the command bar shows the supplements rather than closing.
-      const supplement = !showSupplements && scopedFilings.some((filing) => filing.accessionNumber === openItemId && isPricingSupplement(filing));
+      const supplement = !showSupplements && scopedFilings.some((filing) => filing.accessionNumber === openItemId && isSupplement(filing));
       if (supplement) setShowSupplements(true);
       else if (!loading) setOpenItemId(null);
       return;
@@ -337,7 +339,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     if (index >= visibleCount) {
       setVisibleCount(Math.ceil((index + 1) / SEC_FILING_PAGE_SIZE) * SEC_FILING_PAGE_SIZE);
     }
-  }, [filings, loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
+  }, [filings, isSupplement, loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
   const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();

@@ -76,17 +76,85 @@ export function currentReportItemsLabel(items: string | null | undefined): strin
   return named.length > 0 ? named.join("; ") : null;
 }
 
+/** A form without its amendment suffix: `424B2/A` is `424B2`. */
+const formBase = (form: string) => form.trim().toUpperCase().replace(/\/A$/, "");
+
+/** The forms a note shelf files for each note it sells. */
+const isNoteSupplementForm = (form: string) => {
+  const base = formBase(form);
+  return base === "424B2" || base === "FWP";
+};
+
 /**
  * The pricing supplements and term sheets of the notes an issuer sells off
  * its shelf: a bank files one for each structured note, hundreds a week
  * (JPM, WFC), as a 424B2 or a free writing prospectus. Another 424B
  * prospectus counts when it calls itself one; a 424B3 is otherwise often a
- * merger or resale prospectus, which stays.
+ * merger or resale prospectus, which stays, unless a note shelf files it
+ * among its supplements (pricingSupplementTest).
  */
 export function isPricingSupplement(filing: Pick<SecFilingItem, "form" | "primaryDocDescription">): boolean {
-  const form = filing.form.trim().toUpperCase().replace(/\/A$/, "");
-  if (form === "424B2" || form === "FWP") return true;
-  return /^424B\d$/.test(form) && /\b(?:PRICING SUPPLEMENT|TERM SHEET)\b/i.test(filing.primaryDocDescription ?? "");
+  if (isNoteSupplementForm(filing.form)) return true;
+  return /^424B\d$/.test(formBase(filing.form)) && /\b(?:PRICING SUPPLEMENT|TERM SHEET)\b/i.test(filing.primaryDocDescription ?? "");
+}
+
+/**
+ * A plain 424B3 is a note's term sheet when its filer filed at least this
+ * many 424B2 or FWP within SHELF_DAYS of it. A note shelf files hundreds a
+ * month (JPM, GS, MS, C, BAC) or dozens (US Bancorp, up to 52 in two months);
+ * a company selling bonds a handful (in any two months since 1994, AT&T at
+ * most 10, Apple 9). Over a list read back to 1994 Apple's, AT&T's and
+ * Microsoft's add up to dozens, so they are counted near the 424B3 only.
+ */
+const SHELF_SUPPLEMENTS = 20;
+const SHELF_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+/** A filing date as a time; persistence can hand back the Date as a string. */
+const filedAt = (filing: Pick<SecFilingItem, "filingDate">) => new Date(filing.filingDate as Date | string).getTime();
+
+/** How many of the sorted `times` fall within [from, to]. */
+function countWithin(times: readonly number[], from: number, to: number): number {
+  const firstAtOrAfter = (value: number) => {
+    let low = 0;
+    let high = times.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (times[middle]! < value) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  return firstAtOrAfter(to + 1) - firstAtOrAfter(from);
+}
+
+/**
+ * Which of an issuer's filings are pricing supplements, read over the
+ * filings loaded: those isPricingSupplement names, and a plain 424B3 filed
+ * among a structured-note shelf's supplements (JPM files its note term
+ * sheets as `FORM 424B3`). A company's 424B3 merger or resale prospectus
+ * stays. Each filer (CIK) is read on its own.
+ */
+export function pricingSupplementTest(
+  filings: readonly SecFilingItem[],
+): (filing: Pick<SecFilingItem, "form" | "primaryDocDescription" | "cik" | "filingDate">) => boolean {
+  const supplements = new Map<string, number[]>();
+  for (const filing of filings) {
+    const time = filedAt(filing);
+    if (!isNoteSupplementForm(filing.form) || !Number.isFinite(time)) continue;
+    const times = supplements.get(filing.cik) ?? [];
+    times.push(time);
+    supplements.set(filing.cik, times);
+  }
+  for (const times of supplements.values()) times.sort((left, right) => left - right);
+  return (filing) => {
+    if (isPricingSupplement(filing)) return true;
+    if (formBase(filing.form) !== "424B3") return false;
+    const times = supplements.get(filing.cik);
+    const time = filedAt(filing);
+    if (!times || times.length < SHELF_SUPPLEMENTS || !Number.isFinite(time)) return false;
+    return countWithin(times, time - SHELF_DAYS * DAY_MS, time + SHELF_DAYS * DAY_MS) >= SHELF_SUPPLEMENTS;
+  };
 }
 
 /** A 13D or 13G beneficial-ownership schedule or its amendment, under the old (`SC 13G`) or current (`SCHEDULE 13G`) form name. */
@@ -125,9 +193,10 @@ function keptFilings(
 ): { filings: SecFilingItem[]; hidden: HiddenFilings } {
   const kept: SecFilingItem[] = [];
   const hidden: HiddenFilings = { pricingSupplements: 0, ownershipReportsAboutOthers: 0 };
+  const isSupplement = pricingSupplementTest(filings);
   for (const filing of filings) {
     if (kept.length >= limit) break;
-    if (isPricingSupplement(filing)) hidden.pricingSupplements += 1;
+    if (isSupplement(filing)) hidden.pricingSupplements += 1;
     else if (schedulesAboutOthers && isScheduleAboutAnotherCompany(filing)) hidden.ownershipReportsAboutOthers += 1;
     else kept.push(filing);
   }

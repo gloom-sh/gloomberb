@@ -139,18 +139,23 @@ test("SEC reports document failures honestly and plain refresh retries only fail
 });
 
 test("a bank's pricing supplements stay out of the list behind a counted toggle that lists them", async () => {
-  const supplement = (index: number, form = "424B2"): SecFilingItem => ({
-    ...filing, form, primaryDocDescription: "PRICING SUPPLEMENT NO. 7", accessionNumber: `0001213900-26-${String(index).padStart(6, "0")}`,
+  const supplement = (index: number, form = "424B2", primaryDocDescription = "PRICING SUPPLEMENT NO. 7"): SecFilingItem => ({
+    ...filing, form, primaryDocDescription, accessionNumber: `0001213900-26-${String(index).padStart(6, "0")}`,
   });
+  // A note shelf's plain 424B3 term sheet counts with its supplements.
+  const shelf = [supplement(0, "424B3", "FORM 424B3"), supplement(1), supplement(2, "FWP"),
+    ...Array.from({ length: 18 }, (_, index) => supplement(3 + index))];
   await mount(createTestDataProvider({
-    getSecFilings: async () => [supplement(1), supplement(2, "FWP"), supplement(3), { ...filing, primaryDocDescription: "Earnings release" }],
+    getSecFilings: async () => [...shelf, { ...filing, primaryDocDescription: "Earnings release" }],
   }));
-  const hidden = await tui.waitForFrameToContain("Supplements (3)");
+  const hidden = await tui.waitForFrameToContain("Supplements (21)");
   expect(hidden).toContain("Earnings release");
   expect(hidden).not.toContain("424B2");
+  expect(hidden).not.toContain("424B3");
 
   await tui.clickFrameText("[ ] Supplements");
   await settleFrame(tui.setup(), 4);
+  expect(frame()).toContain("424B3");
   expect(frame()).toContain("424B2");
   expect(frame()).toContain("FWP");
 });
