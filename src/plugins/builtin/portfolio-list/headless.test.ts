@@ -7,6 +7,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestTicker } from "../../../test-support/ticker";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
+import { loadFuturesContractTermsCached } from "../../../market-data/futures-contract";
 import { collectionHoldingsHeadless } from "./headless";
 
 const BROKER = { id: "broker:ibkr-main:U1234567", name: "U1234567", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-main", brokerAccountId: "U1234567" };
@@ -213,6 +214,43 @@ test("a ticker held in several lots weighs each lot by its own value and gives i
     ]);
     // JSON and CSV keep one row per lot.
     expect(JSON.stringify(serializeHeadlessPaneResult(collectionHoldingsHeadless, result))).not.toContain("2 lots");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
+test("--close values a future at its exchange settlement, dated by its session, with the day's move from the settlement before", async () => {
+  // Short four platinum contracts of 50 oz, beside ten shares.
+  const platinum = createTestTicker("PL=F", "Platinum Jan 27", { exchange: "NYM", assetCategory: "FUTURE", portfolios: [MANUAL.id],
+    positions: [{ portfolio: MANUAL.id, shares: -4, avgCost: 1_620, currency: "USD", broker: "manual", multiplier: 50 }] });
+  // fn PF reads a future's terms where the portfolio pane does, through their cache: Friday settled at 1,600.
+  await loadFuturesContractTermsCached("PL=F", async (symbol) => ({
+    symbol, root: "PL", name: "Platinum", contract: "PLF27", contractSymbol: "PLF27", deliveryMonth: "2027-01",
+    spec: { unit: "USD / troy oz", size: "50 troy oz", pointValue: 50, tick: 0.1, tickValue: 5, settlement: "physical" },
+    lastTrade: null, firstNotice: null, inDelivery: false, settlement: { price: 1_600, date: "2026-10-16" },
+  }));
+  const base = context([holding("AAPL", 10, 150, MANUAL.id), platinum], { AAPL: 200, "PL=F": 1_650 });
+  const daily = [
+    { date: new Date("2026-10-15T00:00:00Z"), close: 1_590 },
+    { date: new Date("2026-10-16T00:00:00Z"), close: 1_600 },
+  ];
+  const ctx = { ...base, marketData: { ...base.marketData,
+    getPriceHistoryForResolutionWithMetadata: async () => ({ points: daily, resolution: "1d" as const }) } } as HeadlessPaneContext;
+  const closeArgs = args(MANUAL.id, { close: true } as unknown as Record<string, number>);
+  const result = await collectionHoldingsHeadless.load(closeArgs, ctx);
+
+  const future = result.rows.find((row) => row.symbol === "PL=F")!;
+  // At the settlement, never the 1,650 Globex print: -4 x 50 oz x 1,600.
+  expect(future).toMatchObject({ price: 1_600, marketValue: -320_000, unrealizedPnl: 4_000, valuationPrice: 1_600,
+    valuationAsOf: "2026-10-16", valuationPriceKind: "settle", contractMultiplier: 50, contractSize: "50 oz" });
+  expect(future.changePercent as number).toBeCloseTo((10 / 1_590) * 100, 8);
+  // The day: the short loses the settlement's 10 an ounce on 200 oz; AAPL's test quote is flat.
+  expect((result.metadata?.totals as { dayChange: number }).dayChange).toBeCloseTo(-2_000, 6);
+  expect(result.rows.find((row) => row.symbol === "AAPL")).not.toHaveProperty("valuationPriceKind");
+  expect(result.complete).toBe(true);
+  setCliColorEnabledOverride(false);
+  try {
+    expect(renderHeadlessPaneText(collectionHoldingsHeadless, result, closeArgs, "PF")).toMatch(/PL=F:NYM .* Fri 16 Oct settle/);
   } finally {
     setCliColorEnabledOverride(null);
   }

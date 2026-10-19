@@ -781,5 +781,24 @@ describe("a hedge in the PF pane: long shares and short gold futures", () => {
     expect(getSortValue(column("mkt_value"), unsized, financials.get("GC=F"), defaultColumnContext)).toBeNull();
     const gap = calculatePortfolioSummaryTotals([spy, unsized], financials, "USD", new Map(), true, "main");
     expect(buildPortfolioSummaryNotices({ totals: gap, accountState: null, baseCurrency: "USD" })).toEqual(["No contract size, so not valued: GC=F"]);
+    // Only the future is left out: the rest of the book still totals, as `portfolio show` totals it.
+    expect(gap).toMatchObject({ totalMktValue: 420_000, netMktValue: 420_000, totalCostBasis: 396_000, unrealizedPnl: 24_000, dailyPnl: 4_200,
+      unknownContractSizeSymbols: ["GC=F"] });
+    expect(gap.unavailableSymbols).toBeUndefined();
+  });
+
+  test("a grain future quoting in US cents is valued in dollars, in its row and in the header", () => {
+    const corn = createTestTicker("ZC=F", "Corn Dec 26", { exchange: "CBT", assetCategory: "FUTURE", portfolios: ["main"],
+      positions: [{ portfolio: "main", shares: 2, avgCost: 430, currency: "USX", broker: "manual", multiplier: 5000 }] });
+    const quote = createFinancials({ quote: { symbol: "ZC=F", price: 473.25, currency: "USX", change: -1, changePercent: -0.21, previousClose: 474.25 } });
+    // Two contracts of 5,000 bushels at 473.25 cents: $47,325, bought at 430 cents for $43,000.
+    expect(getSortValue(column("mkt_value"), corn, quote, defaultColumnContext)).toBeCloseTo(47_325, 6);
+    expect(getSortValue(column("cost_basis"), corn, quote, defaultColumnContext)).toBeCloseTo(43_000, 6);
+    expect(getSortValue(column("pnl"), corn, quote, defaultColumnContext)).toBeCloseTo(4_325, 6);
+    const totals = calculatePortfolioSummaryTotals([corn], new Map([["ZC=F", quote]]), "USD", new Map(), true, "main");
+    expect(totals.totalMktValue).toBeCloseTo(47_325, 6);
+    // A cent down on 10,000 bushels is $100.
+    expect(totals.dailyPnl).toBeCloseTo(-100, 6);
+    expect(totals.unavailableConversions).toBeUndefined();
   });
 });

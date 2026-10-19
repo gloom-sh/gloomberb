@@ -258,15 +258,15 @@ export function createCommandBarCollectionWorkflowActions(options: {
         throw new Error("Avg Cost must be a valid number.");
       }
 
+      // A future is entered in contracts, sized by its terms; a cost typed as corn is quoted counts cents.
+      const size = await loadFuturesEntrySize(ticker);
       const currency = resolveManualPositionCurrency(
         coerceFieldString(values.currency),
         ticker,
         portfolio,
         currentState.config.baseCurrency,
+        size?.currency,
       );
-
-      // A future is entered in contracts, sized by its terms.
-      const size = await loadFuturesEntrySize(ticker);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,

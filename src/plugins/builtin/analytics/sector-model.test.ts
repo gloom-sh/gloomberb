@@ -58,3 +58,12 @@ test("known zero broker values and marks retain zero weight and losses without b
     expect(calculate().rows.every((row) => row.weight === null)).toBe(true);
   }
 });
+
+test("a future without a contract size is left out of every sector by name, and the others keep their weights", () => {
+  const gold = createTestTicker("GC=F", "Gold", { assetCategory: "FUTURE", sector: "Commodities", portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: -2, avgCost: 4200, markPrice: 4198, currency: "USD", broker: "manual" }] });
+  const allocation = buildSectorRowsFromPortfolioColumns([holding("AAPL"), holding("QQQ", "USD", "ETF"), gold], new Map(), context());
+  expect(allocation).toMatchObject({ unsizedSymbols: ["GC=F"], unvaluedSymbols: [] });
+  expect(allocation.rows.map((row) => row.sector)).toEqual(["Funds", "Technology"]);
+  expect(allocation.rows.map((row) => row.weight)).toEqual([0.5, 0.5]);
+});

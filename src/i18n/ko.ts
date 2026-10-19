@@ -1410,6 +1410,7 @@ export const ko: Record<string, string> = {
   "Shares cannot be 0. Enter a negative number for a short.": "수량은 0일 수 없습니다. 공매도는 음수로 입력하세요.",
   "Shares must be a number.": "수량은 숫자여야 합니다.",
   "Contracts cannot be 0. Enter a negative number for a short.": "계약 수는 0일 수 없습니다. 공매도는 음수로 입력하세요.",
+  "Negative for a short.": "공매도는 음수로 입력.",
   "Contracts must be a number.": "계약 수는 숫자여야 합니다.",
   "This email already has an account, and that password did not match.": "이 이메일에는 이미 계정이 있으며 비밀번호가 일치하지 않습니다.",
   "Verification link sent to {email}.": "인증 링크를 {email}(으)로 보냈습니다.",

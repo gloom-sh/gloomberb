@@ -1,4 +1,5 @@
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
+import { fixedUsdRate } from "./currency-units";
 import { fxFreshUntil } from "./fx-market-hours";
 
 export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
@@ -33,9 +34,10 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   if (!data || typeof data !== "object" || !Number.isFinite(data.rate) || data.rate! <= 0
     || (data.fromCurrency !== undefined && data.fromCurrency !== currency)
     || (data.toCurrency !== undefined && data.toCurrency !== "USD")) return fail();
-  // The numeraire identity needs no market observation or upstream request.
-  if (currency === "USD") {
-    if (data.rate !== 1) return fail();
+  // The numeraire identity, and US cents as its fixed hundredth, need no market observation or upstream request.
+  const fixedRate = fixedUsdRate(currency);
+  if (fixedRate !== undefined) {
+    if (data.rate !== fixedRate) return fail();
     return { staleAt: Infinity, expiresAt: Infinity, source: "identity" };
   }
   const timestamp = (input: unknown): number | undefined => {

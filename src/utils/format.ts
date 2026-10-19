@@ -1,3 +1,5 @@
+import { fixedUsdRate } from "./currency-units";
+
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 
@@ -387,8 +389,9 @@ export function convertCurrency(
 ): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (fromCurrency === baseCurrency || value === 0) return value;
-  const fromRate = fromCurrency === "USD" ? 1 : exchangeRates.get(fromCurrency);
-  const baseRate = baseCurrency === "USD" ? 1 : exchangeRates.get(baseCurrency);
+  // The dollar and US cents (a grain future's USX) have fixed rates; any other is the market's.
+  const fromRate = fixedUsdRate(fromCurrency) ?? exchangeRates.get(fromCurrency);
+  const baseRate = fixedUsdRate(baseCurrency) ?? exchangeRates.get(baseCurrency);
   if (fromRate == null || baseRate == null || !Number.isFinite(fromRate) || !Number.isFinite(baseRate)
     || fromRate <= 0 || baseRate <= 0) return Number.NaN;
   return (value * fromRate) / baseRate;

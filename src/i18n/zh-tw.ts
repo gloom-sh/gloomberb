@@ -1412,6 +1412,7 @@ export const zhTW: Record<string, string> = {
   "Shares cannot be 0. Enter a negative number for a short.": "股數不能為 0。放空請輸入負數。",
   "Shares must be a number.": "股數必須是數字。",
   "Contracts cannot be 0. Enter a negative number for a short.": "合約數不能為 0。放空請輸入負數。",
+  "Negative for a short.": "放空請輸入負數。",
   "Contracts must be a number.": "合約數必須是數字。",
   "This email already has an account, and that password did not match.": "該電子郵件已有帳戶，且密碼不正確。",
   "Verification link sent to {email}.": "驗證連結已發送至 {email}。",

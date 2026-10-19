@@ -48,19 +48,21 @@ export function getManualPortfolioPositionPrefill(ticker: TickerRecord, portfoli
   if (currencies.length > 1) return { lotCount, position: null, currencies };
 
   // A long and a short lot offset each other, and lots of different contract
-  // sizes count different things: neither total is a position to save.
-  const directions = new Set(lots.map((lot) => signedPositionDirection(lot)));
-  const multipliers = new Set(lots.map((lot) => lot.multiplier));
-  if (lots.some((lot) => !Number.isFinite(lot.shares) || lot.shares === 0) || directions.size > 1 || multipliers.size > 1) {
+  // sizes count different things: neither total is a position to save. A lot
+  // of no shares adds nothing to a total, so it decides neither.
+  const held = lots.filter((lot) => lot.shares !== 0);
+  const directions = new Set(held.map((lot) => signedPositionDirection(lot)));
+  const multipliers = new Set(held.map((lot) => lot.multiplier));
+  if (lots.some((lot) => !Number.isFinite(lot.shares)) || held.length === 0 || directions.size > 1 || multipliers.size > 1) {
     return { lotCount, position: null };
   }
-  const magnitude = lots.reduce((sum, lot) => sum + Math.abs(lot.shares), 0);
+  const magnitude = held.reduce((sum, lot) => sum + Math.abs(lot.shares), 0);
   const totalShares = [...directions][0]! * magnitude;
   const costed = lots.every((lot) => Number.isFinite(lot.avgCost));
   const avgCost = costed
     ? tidyNumber(lots.reduce((sum, lot) => sum + Math.abs(lot.shares) * lot.avgCost!, 0) / magnitude)
     : undefined;
-  const multiplier = lots[0]!.multiplier;
+  const multiplier = held[0]!.multiplier;
   return {
     lotCount,
     position: {

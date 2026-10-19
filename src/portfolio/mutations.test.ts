@@ -202,6 +202,9 @@ describe("portfolio-list mutations", () => {
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "CAD" }), portfolio, "USD")).toBe("CAD");
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "" }), portfolio, "USD")).toBe("EUR");
     expect(resolveManualPositionCurrency("", makeTicker({ currency: "" }), { ...portfolio, currency: "" }, "USD")).toBe("USD");
+    // A corn future's cost is typed as corn is quoted, in US cents, unless a currency is typed.
+    expect(resolveManualPositionCurrency("", makeTicker({ currency: "USD" }), portfolio, "USD", "USX")).toBe("USX");
+    expect(resolveManualPositionCurrency("usd", makeTicker({ currency: "" }), portfolio, "USD", "USX")).toBe("USD");
   });
 
   test("the first position in an empty manual portfolio sets its currency, with the default USD base only", () => {
@@ -222,8 +225,9 @@ describe("portfolio-list mutations", () => {
     const audConfig = adoptFirstPositionCurrency(config, "asx", "AUD")!;
     expect(adoptFirstPositionCurrency(audConfig, "asx", "USD")?.portfolios.find((entry) => entry.id === "asx")?.currency).toBe("USD");
     expect(adoptFirstPositionCurrency(config, "asx", "USD")).toBeNull();
-    // Pence and free text never become a portfolio currency; team and broker portfolios keep theirs.
+    // Pence, US cents and free text never become a portfolio currency; team and broker portfolios keep theirs.
     expect(adoptFirstPositionCurrency(config, "asx", "GBX")).toBeNull();
+    expect(adoptFirstPositionCurrency(config, "asx", "USX")).toBeNull();
     expect(adoptFirstPositionCurrency(config, "asx", "Aussie")).toBeNull();
     expect(adoptFirstPositionCurrency(config, "team", "AUD")).toBeNull();
     expect(adoptFirstPositionCurrency(config, "broker:ibkr", "AUD")).toBeNull();

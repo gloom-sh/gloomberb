@@ -1,6 +1,6 @@
 import type { AppConfig } from "../types/config";
 import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
-import { resolveCurrencyUnit } from "../utils/currency-units";
+import { resolveCurrencyUnit, US_CENTS } from "../utils/currency-units";
 import { slugifyName } from "../utils/slugify";
 import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
@@ -93,19 +93,25 @@ export function getManualPortfolioPosition(ticker: TickerRecord, portfolioId: st
   return manualPortfolioLots(ticker, portfolioId)[0] ?? null;
 }
 
+/**
+ * The currency a position is saved in: the one typed, else what a future's
+ * contract prices in (USX, US cents, for corn, so a cost typed as quoted
+ * counts cents), else the listing's, the portfolio's or the base currency.
+ */
 export function resolveManualPositionCurrency(
   rawCurrency: string | undefined,
   ticker: TickerRecord,
   portfolio: Portfolio,
   baseCurrency: string | undefined,
+  contractCurrency?: string | null,
 ): string {
-  return (rawCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
+  return (rawCurrency?.trim() || contractCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
 }
 
-/** A plain ISO code in major units (AUD), else null: pence-type units and free text never total a portfolio. */
+/** A plain ISO code in major units (AUD), else null: pence-type units, US cents and free text never total a portfolio. */
 function majorCurrencyCode(value: string | undefined): string | null {
   const raw = value?.trim() ?? "";
-  return /^[A-Z]{3}$/.test(raw) && resolveCurrencyUnit(raw).divisor === 1 ? raw : null;
+  return /^[A-Z]{3}$/.test(raw) && raw !== US_CENTS && resolveCurrencyUnit(raw).divisor === 1 ? raw : null;
 }
 
 /** The currencies of a portfolio's open positions, as entered (or the listing's when a position has none). */

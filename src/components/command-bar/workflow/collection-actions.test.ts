@@ -9,6 +9,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import { createCommandBarCollectionWorkflowActions } from "./collection-actions";
 import { createTestTicker } from "../../../test-support/ticker";
 import { buildAddToPortfolioWorkflow, buildSetPortfolioPositionWorkflow } from "./portfolio-position";
+import { loadFuturesContractTermsCached } from "../../../market-data/futures-contract";
 
 function ticker(symbol: string, portfolios: string[] = []): TickerRecord {
   return createTestTicker(symbol, symbol, { portfolios });
@@ -92,6 +93,22 @@ describe("command-bar collection workflow actions", () => {
       expect(positions[0]).toMatchObject({ portfolio: "main", broker: "manual", shares: 15, currency: "USD" });
       expect(positions[0]!.shares * positions[0]!.avgCost!).toBeCloseTo(10 * 150 + 5 * 170, 9);
     }
+  });
+
+  test("a future saves in contracts of its size, a cost typed as it is quoted in cents counts cents, and zero names contracts", async () => {
+    // The form reads a future's terms where the portfolio does: oats are 5,000 bushels, quoted in US cents.
+    await loadFuturesContractTermsCached("ZO=F", async (symbol) => ({
+      symbol, root: "ZO", name: "Oats", contract: "ZOZ26", contractSymbol: "ZOZ26", deliveryMonth: "2026-12",
+      spec: { unit: "US cents / bushel", size: "5,000 bushels", pointValue: 50, tick: 0.25, tickValue: 12.5, settlement: "physical" },
+      lastTrade: null, firstNotice: null, inDelivery: false, settlement: null,
+    }));
+    const oats = createTestTicker("ZO=F", "Oats Dec 26", { exchange: "CBT", assetCategory: "FUTURE" });
+    const { actions, saved } = createHarness(oats);
+    // As the AP form fills it: the quote's price as the cost, the currency left blank.
+    const form = buildAddToPortfolioWorkflow(createDefaultConfig(":memory:"), { preferredPortfolioId: "main", ticker: oats, quoteCurrency: "USX", defaultAvgCost: 350 })!;
+    await actions.setPortfolioPositionFromWorkflow({ ...form.values, shares: "-3" });
+    expect(saved[0]!.metadata.positions).toEqual([{ portfolio: "main", shares: -3, avgCost: 350, currency: "USX", broker: "manual", multiplier: 5000 }]);
+    await expect(actions.setPortfolioPositionFromWorkflow({ ...form.values, shares: "0" })).rejects.toThrow("Contracts cannot be 0");
   });
 
   test("emits portfolio membership after the ticker is saved and dispatched", async () => {

@@ -4,6 +4,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { compareSortValues } from "../../../utils/sort-values";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
+import { hasUnknownFuturesContractSize } from "../../../portfolio/position-metrics";
 
 type SectorColumnId = "sector" | "weight" | "value" | "pnl" | "return" | "bar";
 
@@ -24,6 +25,8 @@ export interface SectorTableRow {
 export interface PortfolioSectorAllocation {
   rows: SectorTableRow[];
   unvaluedSymbols: string[];
+  /** Futures held without a contract size: left out of every sector by name, so the rest keep their weights. */
+  unsizedSymbols: string[];
   fundSymbols: string[];
 }
 
@@ -122,12 +125,17 @@ export function buildSectorRowsFromPortfolioColumns(
     costBasis: number | null;
   }>();
   const unvaluedSymbols: string[] = [];
+  const unsizedSymbols: string[] = [];
   const fundSymbols: string[] = [];
   const addKnown = (total: number | null, value: unknown): number | null => (
     total != null && typeof value === "number" && Number.isFinite(value) ? total + value : null
   );
 
   for (const ticker of tickers) {
+    if (hasUnknownFuturesContractSize(ticker, columnContext.activeTab)) {
+      unsizedSymbols.push(ticker.metadata.ticker);
+      continue;
+    }
     const financials = financialsMap.get(ticker.metadata.ticker);
     const value = getPortfolioPositionValue(ticker, financials, columnContext);
     if (value == null) unvaluedSymbols.push(ticker.metadata.ticker);
@@ -164,7 +172,7 @@ export function buildSectorRowsFromPortfolioColumns(
       returnPct: row.pnl != null && row.costBasis != null && row.costBasis !== 0 ? (row.pnl / row.costBasis) * 100 : null,
     }))
     .sort((left, right) => compareSortValues(left.weight, right.weight, "desc") || left.sector.localeCompare(right.sector));
-  return { rows, unvaluedSymbols, fundSymbols };
+  return { rows, unvaluedSymbols, unsizedSymbols, fundSymbols };
 }
 
 export function sortSectorRows(rows: SectorTableRow[], sort: SectorSortPreference): SectorTableRow[] {

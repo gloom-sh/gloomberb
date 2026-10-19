@@ -343,8 +343,14 @@ describe("a portfolio holding a hedge", () => {
     SPY: { symbol: "SPY", price: 700, currency: "USD", change: 7, changePercent: 1, previousClose: 693, lastUpdated: Date.now() },
     // The Sunday Globex print, after Friday's settlement.
     "GC=F": { symbol: "GC=F", price: 4198, currency: "USD", change: 16.9, changePercent: 0.4, previousClose: 4181.10, lastUpdated: Date.now() },
+    // Corn quotes in US cents a bushel.
+    "ZC=F": { symbol: "ZC=F", price: 473.25, currency: "USX", change: -1, changePercent: -0.21, previousClose: 474.25, lastUpdated: Date.now() },
   };
-  const terms = (symbol: string): Promise<FuturesContractTermsPayload | null> => Promise.resolve(symbol !== "GC=F" ? null : {
+  const terms = (symbol: string): Promise<FuturesContractTermsPayload | null> => Promise.resolve(symbol === "ZC=F" ? {
+    symbol, root: "ZC", name: "Corn", contract: "ZCZ26", contractSymbol: "ZCZ26", deliveryMonth: "2026-12",
+    spec: { unit: "US cents / bushel", size: "5,000 bushels", pointValue: 50, tick: 0.25, tickValue: 12.5, settlement: "physical" },
+    lastTrade: null, firstNotice: null, inDelivery: false, settlement: null,
+  } : symbol !== "GC=F" ? null : {
     symbol, root: "GC", name: "Gold", contract: "GCZ26", contractSymbol: "GCZ26", deliveryMonth: "2026-12",
     spec: { unit: "USD / troy oz", size: "100 troy oz", pointValue: 100, tick: 0.1, tickValue: 10, settlement: "physical" },
     lastTrade: null, firstNotice: null, inDelivery: false, settlement: { price: 4181.10, date: "2026-10-16" },
@@ -431,5 +437,23 @@ describe("a portfolio holding a hedge", () => {
     const text = await printed([spy, unsized], { futuresSources: noTerms });
     expect(text).toContain("No contract size for GC=F:CMX, so its value, cost and P&L are not shown.");
     expect(text).not.toContain("Cost unavailable for GC=F");
+  });
+
+  test("a grain future quotes in cents: a lot in cents is valued in dollars, as is one entered before it was sized or typed in dollars", async () => {
+    const corn = (lot: Partial<TickerRecord["metadata"]["positions"][number]> = {}) => createTestTicker("ZC=F", "Corn Dec 26", {
+      exchange: "CBT", assetCategory: "FUTURE", portfolios: ["hedge"],
+      positions: [{ portfolio: "hedge", shares: 2, avgCost: 430, currency: "USX", broker: "manual", multiplier: 5000, ...lot }],
+    });
+    // Two contracts of 5,000 bushels at 473.25 cents: $47,325, bought at 430 cents for $43,000.
+    for (const lot of [corn(), corn({ currency: "USD", multiplier: undefined }), corn({ avgCost: 4.30, currency: "USD" })]) {
+      const { data, metadata } = await exported([lot]);
+      const row = data.find((entry) => entry.symbol === "ZC=F")!;
+      expect(row.marketValue as number).toBeCloseTo(47_325, 6);
+      expect(row.costBasis as number).toBeCloseTo(43_000, 6);
+      expect(row.unrealizedPnl as number).toBeCloseTo(4_325, 6);
+      expect(metadata).toMatchObject({ complete: true });
+    }
+    const text = await printed([corn()]);
+    expect(text).toMatch(/ZC=F:CBT .* 2 × 5,000 bushels .* \$47,325 /);
   });
 });

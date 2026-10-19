@@ -298,10 +298,11 @@ async function setPositionCommand(
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
-      const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
-      // A future is held in contracts of the size its terms give, as `quote` states it.
+      // A future is held in contracts of the size its terms give, as `quote` states it, and a cost typed as
+      // corn is quoted counts cents.
       const future = isFuturesTicker(ticker);
       const size = await loadFuturesEntrySize(ticker, futuresTerms);
+      const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency, size?.currency);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,

@@ -1412,6 +1412,7 @@ export const ja: Record<string, string> = {
   "Shares cannot be 0. Enter a negative number for a short.": "株数を 0 にすることはできません。ショートは負の数で入力してください。",
   "Shares must be a number.": "株数は数値で入力してください。",
   "Contracts cannot be 0. Enter a negative number for a short.": "枚数を 0 にすることはできません。ショートは負の数で入力してください。",
+  "Negative for a short.": "ショートは負の数で入力。",
   "Contracts must be a number.": "枚数は数値で入力してください。",
   "This email already has an account, and that password did not match.": "このメールアドレスにはすでにアカウントがあり、パスワードが一致しません。",
   "Verification link sent to {email}.": "認証リンクを {email} に送信しました。",

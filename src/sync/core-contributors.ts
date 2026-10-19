@@ -33,6 +33,7 @@ import {
 import { isFiniteNumber, isRecord, recordOrNull } from "../utils/guards";
 import { getBrokerInstance } from "../utils/broker-instances";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
+import { positionContractMultiplier } from "../portfolio/position-metrics";
 import {
   clearLeftoverBrokerHoldings,
   knownBrokerHoldings,
@@ -405,6 +406,7 @@ function collectCoreConfigPayload(config: AppConfig) {
 }
 
 function positionValueBase(
+  ticker: TickerRecord,
   position: TickerPosition,
   financials: TickerFinancials | null | undefined,
   baseCurrency: string,
@@ -418,9 +420,11 @@ function positionValueBase(
   const hasMarkPrice = typeof position.markPrice === "number" && Number.isFinite(position.markPrice);
   const hasQuotePrice = typeof financials?.quote?.price === "number" && Number.isFinite(financials.quote.price);
   const price = hasMarkPrice ? position.markPrice : hasQuotePrice ? financials!.quote!.price : position.avgCost;
-  if (!Number.isFinite(position.shares) || typeof price !== "number" || !Number.isFinite(price)) return null;
+  // The multiplier the portfolio values the lot by: a future of unknown size has no value, never one at 1x.
+  const multiplier = positionContractMultiplier(ticker, position);
+  if (!Number.isFinite(position.shares) || typeof price !== "number" || !Number.isFinite(price) || multiplier === null) return null;
   return convertCurrency(
-    Math.abs(position.shares * price * (position.multiplier ?? 1)),
+    Math.abs(position.shares * price * multiplier),
     hasQuotePrice && !hasMarkPrice ? quoteCurrency : positionCurrency,
     baseCurrency,
     exchangeRates,
@@ -508,7 +512,7 @@ function collectAnalyticsByPortfolio(
       );
       for (const position of portfolioPositions) {
         if (position.shares === 0) continue;
-        const value = positionValueBase(position, tickerFinancials, config.baseCurrency, exchangeRates);
+        const value = positionValueBase(ticker, position, tickerFinancials, config.baseCurrency, exchangeRates);
         if (value == null || !Number.isFinite(value)) {
           unsupported = true;
           continue;

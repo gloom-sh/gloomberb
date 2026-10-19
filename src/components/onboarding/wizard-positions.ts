@@ -297,14 +297,14 @@ export function useOnboardingPositions({
           setError(t("No live price yet. Enter the average cost."));
           return false;
         }
+        // A future is entered in contracts, sized by its terms; a cost typed as corn is quoted counts cents.
+        const size = await loadFuturesEntrySize(ticker);
         positionCurrency = resolveManualPositionCurrency(
-          current.currency.trim() || listingCurrency || undefined,
+          current.currency.trim() || size?.currency || listingCurrency || undefined,
           ticker,
           portfolio ?? { id: portfolioId, name: portfolioId, currency: stateRef.current.config.baseCurrency },
           stateRef.current.config.baseCurrency,
         );
-        // A future is entered in contracts, sized by its terms.
-        const size = await loadFuturesEntrySize(ticker);
         nextTicker = setManualPortfolioPosition(ticker, portfolioId, {
           shares,
           avgCost: costBasis,

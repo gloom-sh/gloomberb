@@ -1,4 +1,4 @@
-import type { TickerRecord } from "../types/ticker";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
 import type { Quote } from "../types/financials";
 import type { PriceBasis } from "../types/instrument";
 import { resolvePriceBasis } from "../market-data/market/price-basis";
@@ -51,8 +51,27 @@ function hasContractMultiplier(multiplier: number | undefined): multiplier is nu
   return typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0;
 }
 
-function normalizePositionMultiplier(multiplier: number | undefined): number {
-  return hasContractMultiplier(multiplier) ? multiplier : 1;
+/**
+ * What one unit of a lot is worth in prices: its contract multiplier, 1 for a
+ * share or a unit that states none, and null for a future that states none,
+ * which counts contracts of an unknown size and so is never valued at 1x.
+ */
+export function positionContractMultiplier(
+  ticker: { metadata: Pick<TickerRecord["metadata"], "ticker" | "assetCategory"> },
+  position: Pick<TickerPosition, "multiplier">,
+): number | null {
+  if (hasContractMultiplier(position.multiplier)) return position.multiplier;
+  return isFuturesTicker(ticker) ? null : 1;
+}
+
+/**
+ * Whether a future is held, in `activeTab` or anywhere, in a lot with no
+ * contract size and no broker value: it is not valued, and readers leave it
+ * out by name rather than total it at one unit a contract.
+ */
+export function hasUnknownFuturesContractSize(ticker: TickerRecord, activeTab: string | undefined): boolean {
+  return ticker.metadata.positions.some((position) => (!activeTab || position.portfolio === activeTab) && position.shares !== 0
+    && positionContractMultiplier(ticker, position) === null && !Number.isFinite(position.marketValue));
 }
 
 /** An option lot without a contract multiplier (a manual entry) is valued per
@@ -126,8 +145,9 @@ export function getPortfolioPositionMetrics(
     const magnitude = Math.abs(position.shares);
     const basis = resolvePriceBasis(position.priceBasis, ticker.metadata.assetCategory);
     // A futures lot counts contracts: without a contract size it has no unit to value.
-    const unknownSize = isFuture && !hasContractMultiplier(position.multiplier);
-    const contractMultiplier = unknownSize ? Number.NaN : normalizePositionMultiplier(position.multiplier);
+    const knownMultiplier = positionContractMultiplier(ticker, position);
+    const unknownSize = knownMultiplier === null;
+    const contractMultiplier = knownMultiplier ?? Number.NaN;
     // Nominal face already includes the amount held. Keep the supplied contract
     // multiplier as metadata; it must not scale percent-of-par money again.
     const priceMultiplier = basis === "percent-of-par" ? .01 : basis === "per-unit" ? contractMultiplier : Number.NaN;

@@ -23,14 +23,16 @@ export interface PortfolioFuturesSources {
 /**
  * A month of a symbol's daily bars from `provider`: asked for by resolution,
  * since a month's default history can be intraday bars, whose closes are no
- * settlements.
+ * settlements. Bars a source says are of another cadence are none at all.
  */
 export function dailyFuturesHistory(
-  provider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryForResolution">,
+  provider: Pick<DataProvider, "getPriceHistory" | "getPriceHistoryForResolutionWithMetadata">,
 ): NonNullable<PortfolioFuturesSources["history"]> {
-  return (symbol, exchange) => provider.getPriceHistoryForResolution
-    ? provider.getPriceHistoryForResolution(symbol, exchange, "1M", "1d")
-    : provider.getPriceHistory(symbol, exchange, "1M");
+  return async (symbol, exchange) => {
+    if (!provider.getPriceHistoryForResolutionWithMetadata) return provider.getPriceHistory(symbol, exchange, "1M");
+    const result = await provider.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "1d");
+    return result.resolution == null || result.resolution === "1d" ? result.points : [];
+  };
 }
 
 /**

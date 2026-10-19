@@ -1,5 +1,6 @@
 import { nextResponseSequence } from "../../data/response-sequence";
 import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
+import { fixedUsdRate } from "../../utils/currency-units";
 import type { DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { OptionsChain } from "../../types/financials";
 import type { OptionsRequest, SecFilingsRequest } from "../request-types";
@@ -213,10 +214,12 @@ export function loadFxRateEntry(options: {
     && (current.staleAt == null || current.staleAt > Date.now())) {
     return Promise.resolve(current);
   }
-  if (normalizedCurrency === "USD") {
+  // The dollar, and US cents at a hundredth of it, are fixed: nothing to ask a source for.
+  const fixedRate = fixedUsdRate(normalizedCurrency);
+  if (fixedRate !== undefined) {
     const startedAt = Date.now();
     const attempts = [createAttempt("static", startedAt, "success")];
-    return Promise.resolve(store.update(key, (current) => readyEntry(current, 1, "static", attempts, { keepLastGoodOnEmpty: true })));
+    return Promise.resolve(store.update(key, (current) => readyEntry(current, fixedRate, "static", attempts, { keepLastGoodOnEmpty: true })));
   }
   return runSingleFlight(key, async () => {
     store.update(key, loadingEntry);

@@ -1416,6 +1416,7 @@ export const es: Record<string, string> = {
   "Shares cannot be 0. Enter a negative number for a short.": "Las acciones no pueden ser 0. Introduce un número negativo para una posición corta.",
   "Shares must be a number.": "Las acciones deben ser un número.",
   "Contracts cannot be 0. Enter a negative number for a short.": "Los contratos no pueden ser 0. Introduce un número negativo para una posición corta.",
+  "Negative for a short.": "Negativo para una posición corta.",
   "Contracts must be a number.": "Los contratos deben ser un número.",
   "This email already has an account, and that password did not match.": "Ese correo ya tiene una cuenta y la contraseña no coincide.",
   "Verification link sent to {email}.": "Enlace de verificación enviado a {email}.",

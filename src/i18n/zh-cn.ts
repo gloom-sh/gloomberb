@@ -1412,6 +1412,7 @@ export const zhCN: Record<string, string> = {
   "Shares cannot be 0. Enter a negative number for a short.": "数量不能为 0。做空请输入负数。",
   "Shares must be a number.": "数量必须是数字。",
   "Contracts cannot be 0. Enter a negative number for a short.": "合约数不能为 0。做空请输入负数。",
+  "Negative for a short.": "做空请输入负数。",
   "Contracts must be a number.": "合约数必须是数字。",
   "This email already has an account, and that password did not match.": "该邮箱已有账户，且密码不正确。",
   "Verification link sent to {email}.": "验证链接已发送至 {email}。",

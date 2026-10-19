@@ -164,13 +164,16 @@ export function applyMembership(
   if (has && (position?.shares ?? null) === quantity) return null;
   const positions = metadata.positions.filter((entry) => entry.portfolio !== localCollectionId);
   if (quantity !== null) {
+    // A count that turns a long into a short, or back, is a new position: the old one's cost and date
+    // were for what was closed, so the lot keeps neither and its cost is unknown until it is entered.
+    const flipped = !!position && quantity !== 0 && position.shares !== 0 && Math.sign(quantity) !== Math.sign(position.shares);
     positions.push({
       portfolio: localCollectionId,
       shares: quantity,
-      avgCost: position?.avgCost ?? 0,
+      ...(flipped ? {} : { avgCost: position?.avgCost ?? 0 }),
       currency: position?.currency ?? currency,
       broker: "manual",
-      ...(position?.dateAcquired ? { dateAcquired: position.dateAcquired } : {}),
+      ...(!flipped && position?.dateAcquired ? { dateAcquired: position.dateAcquired } : {}),
       // A future's contract size stays with the holding when the team changes its count.
       ...(position?.multiplier ? { multiplier: position.multiplier } : {}),
     });

@@ -34,13 +34,28 @@ describe("position form with several lots", () => {
     expect(hints(workflow)).toEqual(['2 lots in "Main Portfolio" are in different currencies (USD, EUR), so none is filled in. Saving replaces them with one position.']);
   });
 
-  test("a single lot and no lot fill in as before, with no hint", () => {
+  test("a single lot and no lot fill in as before, the count hinting only at how a short is entered", () => {
     const single = form(apple(lot(10, 150)));
     expect(single.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "10", avgCost: "150", currency: "USD" });
-    expect(hints(single)).toEqual([]);
+    expect(hints(single)).toEqual(["Negative for a short."]);
 
     const empty = buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker: apple(), defaultAvgCost: 190 })!;
     expect(empty.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "", avgCost: "190", currency: "" });
-    expect(hints(empty)).toEqual([]);
+    expect(hints(empty)).toEqual(["Negative for a short."]);
+  });
+
+  test("a future counts contracts, and its blank currency is the cents it quotes in when it quotes in cents", () => {
+    const oats = createTestTicker("ZO=F", "Oats Dec 26", { exchange: "CBT", assetCategory: "FUTURE" });
+    const field = (workflow: ReturnType<typeof form>, id: string) => workflow.fields.find((entry) => entry.id === id)!;
+    const cents = buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker: oats, quoteCurrency: "USX", defaultAvgCost: 350 })!;
+    expect(field(cents, "shares").label).toBe("Contracts");
+    expect(field(cents, "currency").placeholder).toBe("USX");
+    // A lot saved in dollars before contract sizes is read in cents, so saving it unchanged keeps it in cents.
+    const legacy = createTestTicker("ZO=F", "Oats Dec 26", { exchange: "CBT", assetCategory: "FUTURE", portfolios: ["main"], positions: [lot(2, 350)] });
+    expect(buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker: legacy, quoteCurrency: "USX" })!.values.currency).toBe("USX");
+    // Gold quotes in dollars: a blank currency is the portfolio's.
+    const gold = createTestTicker("GC=F", "Gold Dec 26", { exchange: "CMX", assetCategory: "FUTURE" });
+    expect(field(buildSetPortfolioPositionWorkflow(config, { activeCollectionId: "main", activeTicker: gold, activeQuoteCurrency: "USD" })!, "currency").placeholder)
+      .toBe("USD");
   });
 });

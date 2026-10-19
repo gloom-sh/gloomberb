@@ -3,6 +3,7 @@ import type { ActiveQuoteDisplay } from "../market-data/market/status";
 import type { PricePoint } from "../types/financials";
 import type { TickerPosition, TickerRecord } from "../types/ticker";
 import { classifyInstrumentType } from "../tickers/instrument-kind";
+import { US_CENTS } from "../utils/currency-units";
 import { parsePublicTickerKey } from "../utils/exchanges";
 
 /**
@@ -19,6 +20,12 @@ export interface FuturesContractSize {
   multiplier: number;
   /** One contract as the exchange words it, shortened for a row: "100 oz", "5,000 bushels", "$50 x index". */
   size: string;
+  /**
+   * What the price, and so a lot's average cost, counts when it is not the
+   * quote's dollars: US cents (USX) for a grain or a soft, whose 5,000-bushel
+   * multiplier makes a value in cents. Absent where the price is in dollars.
+   */
+  currency?: typeof US_CENTS;
 }
 
 /** A future's latest confirmed exchange settlement, and the one before it where the daily history has it. */
@@ -51,8 +58,13 @@ export function isFuturesTicker(ticker: { metadata: Pick<TickerRecord["metadata"
  */
 export function futuresContractSize(spec: Pick<FuturesContractSpec, "unit" | "size" | "pointValue"> | null | undefined): FuturesContractSize | null {
   if (!spec || !(typeof spec.pointValue === "number" && Number.isFinite(spec.pointValue) && spec.pointValue > 0)) return null;
-  const multiplier = US_CENTS_UNIT.test(spec.unit) ? spec.pointValue * 100 : spec.pointValue;
-  return { multiplier: Number(multiplier.toPrecision(12)), size: spec.size.replace(/\btroy oz\b/, "oz").trim() };
+  const cents = US_CENTS_UNIT.test(spec.unit);
+  const multiplier = cents ? spec.pointValue * 100 : spec.pointValue;
+  return {
+    multiplier: Number(multiplier.toPrecision(12)),
+    size: spec.size.replace(/\btroy oz\b/, "oz").trim(),
+    ...(cents ? { currency: US_CENTS } : {}),
+  };
 }
 
 /** A count of contracts and what each one is: "1,000 × 100 oz", or the count alone when the size is unknown. */
@@ -67,7 +79,10 @@ function hasMultiplier(position: Pick<TickerPosition, "multiplier">): boolean {
 /**
  * The ticker with each lot that states no contract size given the one its
  * terms do. Lots entered before positions were sized by contract, and lots a
- * team collection sends, carry none. The same record when nothing changes.
+ * team collection sends, carry none. Such a lot of a contract that quotes in
+ * cents took its cost as the market quotes it, so a lot in dollars, or in no
+ * currency, is read in cents (a cost of 430 for corn is 430 cents). The same
+ * record when nothing changes.
  */
 export function withFuturesContractSize(ticker: TickerRecord, size: FuturesContractSize | null | undefined): TickerRecord {
   if (!size || !isFuturesTicker(ticker) || ticker.metadata.positions.every(hasMultiplier)) return ticker;
@@ -75,19 +90,44 @@ export function withFuturesContractSize(ticker: TickerRecord, size: FuturesContr
     ...ticker,
     metadata: {
       ...ticker.metadata,
-      positions: ticker.metadata.positions.map((position) => hasMultiplier(position) ? position : { ...position, multiplier: size.multiplier }),
+      positions: ticker.metadata.positions.map((position) => {
+        if (hasMultiplier(position)) return position;
+        const currency = futuresLotCurrency(position, size.currency);
+        return { ...position, multiplier: size.multiplier, ...(currency !== position.currency ? { currency } : {}) };
+      }),
     },
   };
+}
+
+/**
+ * A future's lot's currency as the portfolio reads it: a lot saved before
+ * contract sizes, with no size and a dollar or no currency, of a future quoted
+ * in cents (`contractCurrency` USX) is in cents. Any other lot's own currency.
+ */
+export function futuresLotCurrency(
+  position: Pick<TickerPosition, "currency" | "multiplier">,
+  contractCurrency: string | null | undefined,
+): string | undefined {
+  const stored = position.currency?.trim();
+  return contractCurrency && !hasMultiplier(position) && (!stored || stored.toUpperCase() === "USD") ? contractCurrency : position.currency;
 }
 
 const DAY_MS = 86_400_000;
 
 /**
  * The trading date a daily bar stands for. Bars are dated at midnight, UTC
- * from Gloom Cloud but local where a runtime rebuilt the date, so the nearest
- * UTC midnight is the bar's day either way.
+ * from Gloom Cloud but local where a runtime rebuilt the date: a bar at UTC
+ * midnight is that UTC day, one at this runtime's midnight its local day,
+ * however far east or west (UTC+13 dates the evening before in UTC), and any
+ * other the nearest UTC midnight's.
  */
 function dailyBarDay(time: number): string {
+  const date = new Date(time);
+  if (time % DAY_MS === 0) return date.toISOString().slice(0, 10);
+  if (date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0) {
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
   return new Date(Math.round(time / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }
 

@@ -42,6 +42,23 @@ const SUB_UNIT_EXCHANGE_RULES = [
   { exchanges: new Set(["JSE"]), currency: "ZAR", divisor: 100 },
 ] as const;
 
+/**
+ * US cents, in which CBOT grains and ICE softs quote (corn at USX 473.25). Kept
+ * out of SUB_UNIT_CURRENCIES, whose divisor rescales quotes and histories into
+ * dollars: a cents future's price and chart stay in cents, and only money held
+ * in cents converts, at its fixed hundredth of a dollar.
+ */
+export const US_CENTS = "USX";
+
+/**
+ * A currency's rate to USD where it is fixed rather than quoted: the dollar
+ * itself, and US cents. Undefined for any other, whose rate the market sets.
+ */
+export function fixedUsdRate(currency: string | null | undefined): number | undefined {
+  const code = currency?.trim().toUpperCase();
+  return code === "USD" ? 1 : code === US_CENTS ? 0.01 : undefined;
+}
+
 export interface CurrencyUnitInfo {
   currency: string;
   divisor: number;

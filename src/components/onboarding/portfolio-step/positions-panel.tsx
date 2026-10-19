@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { priceColor } from "../../../theme/colors";
@@ -193,7 +193,7 @@ function DesktopPositionsPanel({
           <TextField {...fieldProps("ticker", 0)} onChange={(value) => state.setField("ticker", value)} />
         </Box>
         <Box style={{ width: 96, flexShrink: 0 }}>
-          <NumberField {...fieldProps("shares", 1)} onChange={(value) => state.setField("shares", value)} />
+          <NumberField {...fieldProps("shares", 1)} allowNegative onChange={(value) => state.setField("shares", value)} />
         </Box>
         <Box style={{ width: 128, flexShrink: 0 }}>
           <NumberField {...fieldProps("avgCost", 2)} onChange={(value) => state.setField("avgCost", value)} />
@@ -246,7 +246,7 @@ function TuiFieldRow({
   const colors = useThemeColors();
   const active = editing && index === state.fieldIdx;
   const value = state.draft[field];
-  const Field = field === "ticker" || field === "currency" ? TextField : NumberField;
+  const Field = field === "ticker" || field === "currency" ? TextField : field === "shares" ? SignedNumberField : NumberField;
   return (
     <Box height={1} flexDirection="row">
       <Box width={10} flexShrink={0}>
@@ -277,6 +277,11 @@ function TuiFieldRow({
       ) : null}
     </Box>
   );
+}
+
+/** The size held: negative for a short. */
+function SignedNumberField(props: ComponentProps<typeof NumberField>) {
+  return <NumberField {...props} allowNegative />;
 }
 
 function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut }: PositionsPanelProps) {

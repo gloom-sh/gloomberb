@@ -30,4 +30,7 @@ test("the position a save starts from totals several manual lots and leaves what
   // Contracts of different sizes count different things.
   expect(prefill(lot(-2, 4200, { multiplier: 100 }), lot(-3, 4210, { multiplier: 100 })).position).toMatchObject({ shares: -5, multiplier: 100 });
   expect(prefill(lot(-2, 4200, { multiplier: 100 }), lot(-3, 4210, { multiplier: 10 })).position).toBeNull();
+  // A lot of no shares adds nothing and blocks nothing, whatever its side or size; lots of nothing but zero total nothing.
+  expect(prefill(lot(10, 150), lot(0, 999, { side: "short", multiplier: 5 }), lot(5, 180)).position).toMatchObject({ shares: 15, avgCost: 160 });
+  expect(prefill(lot(0, 150), lot(0, 160)).position).toBeNull();
 });

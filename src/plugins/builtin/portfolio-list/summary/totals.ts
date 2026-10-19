@@ -175,7 +175,13 @@ export function calculatePortfolioSummaryTotals(
     hasPositions = true;
     hasShorts ||= positionMetrics.hasShorts;
     hasFutures ||= positionMetrics.isFuture;
-    if (positionMetrics.unknownContractSize) unknownContractSizeSymbols.add(ticker.metadata.ticker);
+    if (positionMetrics.unknownContractSize) {
+      // A future whose contract size is unknown has no value to count, never one unit a contract: it is
+      // left out of every total and named, as `portfolio show` does, rather than leaving no total at all.
+      unknownContractSizeSymbols.add(ticker.metadata.ticker);
+      allocationHoldings.push({ symbol: ticker.metadata.ticker, held: true, marketValue: null, units: positionMetrics.totalShares, unitPrice: currentUnitPrice });
+      continue;
+    }
     totalCostBasis += totalCost;
     if (!positionMetrics.hasCostBasis) unavailableCostSymbols.add(ticker.metadata.ticker);
 
