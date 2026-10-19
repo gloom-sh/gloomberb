@@ -24,7 +24,9 @@
  * `loaded=<n>` opens with the latest n messages already in the list, as a
  * reader who paged far back has them; `replies=1` makes every fifth message a
  * reply that quotes the one before it; `float=1` floats the chat pane over
- * the plain one instead of docking it beside it.
+ * the plain one instead of docking it beside it. `announcement=1` ends the
+ * channel on an announcement Gloom posted between a member's message, a bot's
+ * and a reply to it, as the transcript draws them side by side.
  */
 import { useState } from "react";
 import { Box } from "../../src/ui";
@@ -86,6 +88,7 @@ const MEMBERS: Record<string, ChatUserSummary> = {
   },
   deskbot: { id: "u3", username: "deskbot", displayName: "Deskbot", accountType: "managed_llm" },
   gloomwire: { id: "u9", username: "gloomwire", displayName: "Gloom Wire", accountType: "managed_llm" },
+  gloomhq: { id: "u10", username: "gloomhq", displayName: "Gloom", accountType: "managed_llm" },
 };
 const MEMBER_ORDER = ["quill", "marlow", "deskbot", "quill", "quill", "marlow"];
 const PHRASES = [
@@ -159,6 +162,31 @@ function withChips(messages: ChatMessage[]): ChatMessage[] {
   return messages;
 }
 
+/** An invented announcement as Gloom would post it, with a member's message and a bot's before it and a reply after. */
+function withAnnouncement(messages: ChatMessage[]): ChatMessage[] {
+  const at = messages.length;
+  const next = (offset: number, change: Partial<ChatMessage>): ChatMessage => invented(at + offset, change);
+  const announcement = next(2, {
+    id: "announcement",
+    user: MEMBERS.gloomhq!,
+    announcement: true,
+    content: "**Gloom is on Discord**\nSame channels as here, mirrored both ways: what you write here shows up on Discord and back.\nhttps://discord.gg/example",
+    reactions: [{ emoji: "🚀", count: 3, me: false, users: [MEMBERS.quill!, MEMBERS.marlow!] }],
+  });
+  return [
+    ...messages,
+    next(0, { user: MEMBERS.quill!, content: "Anyone watching the open today? Volumes look thin so far." }),
+    next(1, { user: MEMBERS.deskbot!, content: "Volumes are 12% under the 20-day average at this hour." }),
+    announcement,
+    next(3, {
+      user: MEMBERS.marlow!,
+      content: "nice, joined",
+      replyToId: announcement.id,
+      replyTo: quoteOf(announcement),
+    }),
+  ];
+}
+
 const replies = params.get("replies") === "1";
 const initialMessages = Array.from({ length: count }, (_, index) => invented(index, index % 23 === 11 ? {
   attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }],
@@ -170,7 +198,9 @@ if (replies) {
   }
 }
 const fake: ChatFake = {
-  messages: params.get("chips") === "1" ? withChips(initialMessages) : initialMessages,
+  messages: params.get("announcement") === "1"
+    ? withAnnouncement(params.get("chips") === "1" ? withChips(initialMessages) : initialMessages)
+    : params.get("chips") === "1" ? withChips(initialMessages) : initialMessages,
   historyRequests: 0,
   sent: [],
   connected: () => (sockets.get("everyone")?.size ?? 0) > 0,

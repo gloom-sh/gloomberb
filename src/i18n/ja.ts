@@ -821,6 +821,7 @@ export const ja: Record<string, string> = {
   // ── Chat ────────────────────────────────────────────────────
   // A bot Gloom runs: the line on its card and its icon's tooltip.
   "Bot run by Gloom": "Gloom が運営するボット",
+  "Announcement": "お知らせ",
   "Direct message": "ダイレクトメッセージ",
   "Group chat": "グループチャット",
   "Group": "グループ",

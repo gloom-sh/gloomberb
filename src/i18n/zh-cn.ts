@@ -821,6 +821,7 @@ export const zhCN: Record<string, string> = {
   // ── Chat ────────────────────────────────────────────────────
   // A bot Gloom runs: the line on its card and its icon's tooltip.
   "Bot run by Gloom": "由 Gloom 运营的机器人",
+  "Announcement": "公告",
   "Direct message": "私信",
   "Group chat": "群聊",
   "Group": "群组",

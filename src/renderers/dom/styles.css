@@ -249,13 +249,14 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   opacity: 1;
   pointer-events: auto;
 }
-/* The message a notification pointed at: marked, then fading out. */
+/* The message a notification pointed at: marked, then fading out to its own
+   background (an announcement's band, or none). */
 [data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
   animation: gloom-chat-highlight 2s ease-out forwards;
 }
 @keyframes gloom-chat-highlight {
   from { background-color: var(--chat-highlight-bg); }
-  to { background-color: transparent; }
+  to { background-color: var(--chat-highlight-rest, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {

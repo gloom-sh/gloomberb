@@ -1,12 +1,13 @@
 import { memo } from "react";
 import { Box, Text } from "../../../../ui";
+import { accentRuleOverlayStyle } from "../../../../components/ui/quote";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
 import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
-import { chatAuthorName, isQuotedAuthorManagedBot } from "../ghost-user";
+import { chatAuthorName, heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
 import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon } from "./header";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
@@ -16,7 +17,7 @@ import { DesktopChatMessageText } from "./inline-tokens";
 import { DesktopChatPaneChip } from "./pane-chip";
 import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
-import { chatHighlightBg, getChatMessageRenderState } from "./render-state";
+import { chatAnnouncementBg, chatHighlightBg, getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
 const DESKTOP_MESSAGE_RIGHT_PADDING = 2;
@@ -131,7 +132,12 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
       data-selected={state.isSelected ? "true" : "false"}
       data-hovered={state.isHovered ? "true" : "false"}
       data-highlighted={state.isHighlighted ? "true" : "false"}
-      style={{ "--chat-highlight-bg": chatHighlightBg(themeColors), minWidth: 0 }}
+      data-announcement={state.isAnnouncement ? "true" : undefined}
+      style={{
+        "--chat-highlight-bg": chatHighlightBg(themeColors),
+        minWidth: 0,
+        ...(state.isAnnouncement ? { position: "relative", "--chat-highlight-rest": chatAnnouncementBg("desktop") } : {}),
+      }}
     >
       {msg.replyTo && (
         <Box
@@ -148,7 +154,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         >
           {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
           <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
-          {isQuotedAuthorManagedBot(msg.replyTo, userByUsername) ? (
+          {isQuotedAuthorManagedBot(msg.replyTo, userByUsername, () => heldMessage(messages, msg.replyToId)) ? (
             // The bot's icon stands where the colon would.
             <>
               <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{msg.replyTo.user.username}</Text>
@@ -262,6 +268,8 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           />
         </Box>
       )}
+      {/* Last, so it draws over the rows' backgrounds. */}
+      {state.isAnnouncement && <Box data-gloom-role="chat-announcement-rule" style={accentRuleOverlayStyle()} />}
     </Box>
   );
 });

@@ -1,4 +1,4 @@
-import type { ChatUserSummary } from "../../../api-client";
+import type { ChatMessage, ChatUserSummary } from "../../../api-client";
 
 /**
  * A person on the Gloom Discord with no linked Gloom account. Their messages
@@ -18,14 +18,22 @@ export function isManagedBot(user: Pick<ChatUserSummary, "accountType"> | null |
 
 /**
  * A reply quotes its author by name only, so whether that author is a managed
- * assistant comes from the users the pane has seen.
+ * assistant comes from the users the pane has seen. A quoted announcement is
+ * Gloom speaking, not a bot, when the pane has it to tell.
  */
 export function isQuotedAuthorManagedBot(
   quoted: { user: { username?: string | null } },
   userByUsername: ReadonlyMap<string, ChatUserSummary>,
+  /** The quoted message, when the pane holds it. */
+  findQuoted?: () => Pick<ChatMessage, "announcement"> | null | undefined,
 ): boolean {
   const username = quoted.user.username?.toLowerCase();
-  return !!username && isManagedBot(userByUsername.get(username));
+  return !!username && isManagedBot(userByUsername.get(username)) && !findQuoted?.()?.announcement;
+}
+
+/** A message among those the pane holds, by id. */
+export function heldMessage(messages: readonly ChatMessage[], id: string | null | undefined): ChatMessage | null {
+  return id ? messages.find((message) => message.id === id) ?? null : null;
 }
 
 /** The name a message is signed with: the username, or for a ghost that has none the Discord name it carries. */

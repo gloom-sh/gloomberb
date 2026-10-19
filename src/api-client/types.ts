@@ -120,6 +120,12 @@ export interface ChatMessage {
   attachmentReview?: "pending" | "failed";
   /** What the message opens in the terminal (a Gloom Wire story or calendar). Only the server sets it. */
   paneLink?: ChatPaneLink;
+  /**
+   * An announcement Gloom posted, drawn as one. Only the server sets it, and
+   * only on one that still stands: a retracted announcement is the removal
+   * placeholder without it.
+   */
+  announcement?: true;
   clientStatus?: "sending" | "failed";
   clientError?: string | null;
   /** The idempotency key a local send went out with, so a retry repeats it. */

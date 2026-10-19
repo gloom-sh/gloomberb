@@ -12,7 +12,7 @@ import { setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
 import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
-import { chatHighlightBg } from "./message/render-state";
+import { chatAnnouncementBg, chatHighlightBg } from "./message/render-state";
 import { chatBotNameColor } from "./people";
 import { ICON_GLYPHS } from "../../../components/ui/icon";
 import { ChatStatusWidget } from "./status-widget";
@@ -1505,6 +1505,45 @@ describe("ChatContent", () => {
     const botCard = await tui.waitForFrameToContain(`@gloombot ${bot}`, POINTER_ATTEMPTS);
     expect(botCard).toContain("Bot run by Gloom");
     expect(botCard).not.toContain("Local time");
+  });
+
+  test("draws an announcement as a band with a rule and its mark in place of the bot icon, apart from its neighbours", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const gloomhq = { id: "g1", username: "gloomhq", displayName: "Gloom", accountType: "managed_llm" as const };
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "ask me anything", replyToId: null, createdAt: at(0), user: { id: "b1", username: "gloombot", displayName: "Gloombot", accountType: "managed_llm" } },
+        { id: "a1", channelId: "everyone", content: "Gloom is on Discord\nsame channels, both ways", replyToId: null, createdAt: at(10), user: gloomhq, announcement: true },
+        // Seconds later from the same account: still its own card, not a follow-on.
+        { id: "a2", channelId: "everyone", content: "and on the web", replyToId: null, createdAt: at(20), user: gloomhq, announcement: true },
+        { id: "m2", channelId: "everyone", content: "nice", replyToId: "a2", replyTo: { content: "and on the web", user: { id: "g1", username: "gloomhq" } }, createdAt: at(30), user: { id: "u1", username: "bob", displayName: "Bob", accountType: "human" } },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 16 });
+
+    const { bot } = ICON_GLYPHS;
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    expect(rows.find((row) => row.startsWith(" gloombot "))).toContain(bot);
+    const marked = rows.filter((row) => row.includes("gloomhq") && !row.includes("reply"));
+    expect(marked).toHaveLength(2);
+    for (const header of marked) {
+      expect(header).toMatch(/^┃gloomhq  Announcement  \S/);
+      expect(header).not.toContain(bot);
+    }
+    // The rule runs down every row of each card and stops there.
+    const first = rows.indexOf(marked[0]!);
+    expect(rows.slice(first, first + 6).map((row) => row[0])).toEqual(["┃", "┃", "┃", "┃", "┃", " "]);
+    expect(rows[first + 1]).toBe("┃  Gloom is on Discord");
+    // A reply quotes it without calling it a bot.
+    expect(rows.find((row) => row.includes("reply gloomhq"))).not.toContain(bot);
+
+    // The band is the accent's faint tint, under the selection and the highlight.
+    const spanBg = (text: string) => tui.setup().captureSpans().lines
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.includes(text))?.bg.toInts().join(",");
+    expect(spanBg("Gloom is on Discord")).toBe(hexToRgbaInts(chatAnnouncementBg("terminal")));
+    expect(spanBg("nice")).not.toBe(hexToRgbaInts(chatAnnouncementBg("terminal")));
   });
 
   test("at 70 columns the bot's icon fits beside its name, a quote and the reply being written, and a long staff row keeps its actions", async () => {

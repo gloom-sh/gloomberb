@@ -819,6 +819,7 @@ export const ko: Record<string, string> = {
   // ── Chat ────────────────────────────────────────────────────
   // A bot Gloom runs: the line on its card and its icon's tooltip.
   "Bot run by Gloom": "Gloom이 운영하는 봇",
+  "Announcement": "공지",
   "Direct message": "DM",
   "Group chat": "그룹 채팅",
   "Group": "그룹",

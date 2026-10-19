@@ -3,7 +3,7 @@ import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
-import { Button } from "../../../../components/ui";
+import { Badge, Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { CHAT_PERSON_ICON_WIDTH, chatPersonIcons, fitChatPersonIcons } from "../people";
 import { ChatPersonIcons } from "./person-icons";
@@ -90,13 +90,26 @@ const WIDEST_HEADER_ACTIONS = 1 + MESSAGE_ACTION_WIDTH * 3;
  * no longer depend on the width, so a row need not draw again as it changes.
  */
 export function chatHeaderFitsEveryIcon(msg: ChatMessageBaseProps["msg"], rowWidth: number): boolean {
-  const icons = chatPersonIcons(msg.user).length;
+  const icons = chatHeaderIcons(msg).length;
   if (icons === 0) return true;
   const spare = rowWidth - 1 - displayWidth(chatAuthorName(msg.user))
     - (msg.origin === "discord" ? 8 : 0)
     - 1 - WIDEST_HEADER_STATUS
     - WIDEST_HEADER_ACTIONS;
   return spare >= icons * CHAT_PERSON_ICON_WIDTH;
+}
+
+/** The mark an announcement carries beside its author, in place of the author's icons. */
+const ANNOUNCEMENT_LABEL = "Announcement";
+
+/** Cells the mark takes in the terminal: a cell of space, then the chip with a cell inside each edge. */
+function announcementMarkWidth(): number {
+  return 1 + displayWidth(t(ANNOUNCEMENT_LABEL)) + 2;
+}
+
+/** An announcement is signed by its mark alone: Gloom's account is not a bot speaking. */
+function chatHeaderIcons(msg: ChatMessageBaseProps["msg"]) {
+  return msg.announcement ? [] : chatPersonIcons(msg.user);
 }
 
 /**
@@ -106,7 +119,9 @@ export function chatHeaderFitsEveryIcon(msg: ChatMessageBaseProps["msg"], rowWid
  * the row is pointed at or selected, after the status, in the space the row
  * already has: nothing before them moves, and a row that is not pointed at
  * keeps no room for them. A row too narrow for its icons, its status and its
- * actions drops Pro first, then the role, and never cuts the name.
+ * actions drops Pro first, then the role, and never cuts the name. An
+ * announcement carries its mark beside the name instead, dropped only by a
+ * terminal row too narrow for it (the band and its rule still say what it is).
  */
 export function ChatMessageHeader({
   msg,
@@ -141,7 +156,8 @@ export function ChatMessageHeader({
       - (msg.origin === "discord" ? 8 : 0)
       - 1 - displayWidth(state.headerStatus)
       - state.actionsWidth;
-  const icons = chatPersonIcons(msg.user);
+  const icons = chatHeaderIcons(msg);
+  const showAnnouncementMark = msg.announcement === true && spare >= announcementMarkWidth();
   const besideName = fitChatPersonIcons(icons.filter((icon) => icon.id === "bot"), spare);
   const onPoint = fitChatPersonIcons(icons.filter((icon) => icon.id !== "bot"), spare - besideName.length * CHAT_PERSON_ICON_WIDTH);
   // An open reaction picker keeps the row's actions, so it keeps what stands before them too.
@@ -177,6 +193,12 @@ export function ChatMessageHeader({
         </Text>
       </Box>
       <ChatPersonIcons icons={besideName} selectedColor={iconColor} terminalTarget={profileTarget} />
+      {showAnnouncementMark && (
+        <>
+          <Text fg={state.headerStatusColor}> </Text>
+          <Badge label={ANNOUNCEMENT_LABEL} tone="accent" />
+        </>
+      )}
       {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {showOnPoint && <ChatPersonIcons icons={onPoint} selectedColor={iconColor} terminalTarget={profileTarget} />}

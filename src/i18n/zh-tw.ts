@@ -821,6 +821,7 @@ export const zhTW: Record<string, string> = {
   // ── Chat ────────────────────────────────────────────────────
   // A bot Gloom runs: the line on its card and its icon's tooltip.
   "Bot run by Gloom": "由 Gloom 營運的機器人",
+  "Announcement": "公告",
   "Direct message": "私訊",
   "Group chat": "群組聊天",
   "Group": "群組",

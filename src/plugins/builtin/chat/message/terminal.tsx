@@ -3,7 +3,7 @@ import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
-import { isQuotedAuthorManagedBot } from "../ghost-user";
+import { heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
 import { CHAT_PERSON_ICON_WIDTH } from "../people";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
@@ -86,7 +86,8 @@ export function TerminalChatMessage({
     : [];
   const reviewNote = chatImageReviewNote(msg);
   const imageColor = state.isSelected ? state.selectedTextColor : colors.textDim;
-  const quotedAuthorIsBot = !!msg.replyTo && isQuotedAuthorManagedBot(msg.replyTo, userByUsername);
+  const quotedAuthorIsBot = !!msg.replyTo
+    && isQuotedAuthorManagedBot(msg.replyTo, userByUsername, () => heldMessage(messages, msg.replyToId));
   const setHovered = () => setHoveredIdx((current) => (current === index ? current : index));
   const clearHovered = () => setHoveredIdx((current) => (current === index ? null : current));
   const messageRowProps = {
@@ -97,7 +98,7 @@ export function TerminalChatMessage({
   };
 
   return (
-    <Box key={msg.id} width={contentWidth} flexDirection="column">
+    <Box key={msg.id} width={contentWidth} flexDirection="column" position={state.isAnnouncement ? "relative" : undefined}>
       {msg.replyTo && (
         <Box
           {...messageRowProps}
@@ -223,6 +224,11 @@ export function TerminalChatMessage({
         rowProps={messageRowProps}
         width={messageBodyWidth}
       />
+      {state.isAnnouncement && (
+        // The accent rule down the band's first column, which every row leaves
+        // blank; last, so it draws over the rows' backgrounds.
+        <Box position="absolute" left={0} top={0} bottom={0} width={1} border={["left"]} borderStyle="heavy" borderColor={colors.borderFocused} />
+      )}
     </Box>
   );
 }

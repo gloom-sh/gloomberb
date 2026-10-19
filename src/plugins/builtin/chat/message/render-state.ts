@@ -2,6 +2,7 @@ import { TextAttributes } from "../../../../ui";
 import { blendHex, colors, hoverBg } from "../../../../theme/colors";
 import type { ChatMessage } from "../../../../api-client";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
+import { accentTint } from "../../../../components/ui/quote";
 import { isGroupedWithPrevious, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatAuthorNameColor } from "../people";
 
@@ -10,10 +11,28 @@ export function chatHighlightBg(palette = colors): string {
   return blendHex(palette.bg, palette.borderFocused, 0.22);
 }
 
+/** How far an announcement's band leans toward the accent in the terminal: a quote's faint tint. */
+const ANNOUNCEMENT_TINT = 0.07;
+
+/**
+ * An announcement's band at rest, well under a message the reader was sent
+ * to: on the desktop and the web the kit's accent tint over the list's own
+ * surface (a quote's), in the terminal the same strength over the background.
+ * Pointed at, a terminal band takes a step toward the selection, as a plain
+ * row does from nothing; the desktop's takes the hover band like any row.
+ */
+export function chatAnnouncementBg(host: "desktop" | "terminal", palette = colors, hovered = false): string {
+  if (host === "desktop") return accentTint();
+  const band = blendHex(palette.bg, palette.borderFocused, ANNOUNCEMENT_TINT);
+  return hovered ? blendHex(band, palette.selected, 0.5) : band;
+}
+
 export interface ChatMessageRenderState {
   isSelected: boolean;
   isHovered: boolean;
   isHighlighted: boolean;
+  /** An announcement Gloom posted: its own band, rule and mark. */
+  isAnnouncement: boolean;
   grouped: boolean;
   showReplyAction: boolean;
   /** Reactions are on offer here: the server takes them and the message can have them. */
@@ -79,6 +98,7 @@ export function getChatMessageRenderState({
   const isSelected = index === selectedIdx;
   const isHovered = index === hoveredIdx && !isSelected;
   const isHighlighted = highlighted && !isSelected;
+  const isAnnouncement = msg.announcement === true;
   const grouped = isGroupedWithPrevious(messages, index);
   const isSending = msg.clientStatus === "sending" && slowSend;
   const hasFailed = msg.clientStatus === "failed";
@@ -95,6 +115,7 @@ export function getChatMessageRenderState({
     isSelected,
     isHovered,
     isHighlighted,
+    isAnnouncement,
     grouped,
     showReplyAction,
     showReactAction: showReplyAction && canReact,
@@ -103,7 +124,13 @@ export function getChatMessageRenderState({
     actionsWidth: !canSend ? 0 : 1 + MESSAGE_ACTION_WIDTH * (hasFailed ? 1 : 1 + (canReact ? 1 : 0) + (canEdit ? 1 : 0)),
     showPersonIcons: isSelected || hoveredIdx === index,
     isSending,
-    bgColor: isSelected ? colors.selected : isHighlighted ? chatHighlightBg() : isHovered ? hoverBg() : undefined,
+    bgColor: isSelected
+      ? colors.selected
+      : isHighlighted
+        ? chatHighlightBg()
+        : isAnnouncement && (host === "terminal" || !isHovered)
+          ? chatAnnouncementBg(host, colors, isHovered)
+          : isHovered ? hoverBg() : undefined,
     selectedTextColor,
     replyMetaColor: isSelected ? selectedTextColor : colors.textMuted,
     replyAuthorColor: isSelected ? selectedTextColor : colors.textDim,

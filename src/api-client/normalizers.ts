@@ -134,6 +134,7 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
     if (paneLink) normalized.paneLink = paneLink;
     else delete normalized.paneLink;
   }
+  if ((message.announcement as unknown) !== true) delete normalized.announcement;
   return normalized;
 }
 

@@ -807,6 +807,7 @@ export const es: Record<string, string> = {
   // ── Chat ────────────────────────────────────────────────────
   // A bot Gloom runs: the line on its card and its icon's tooltip.
   "Bot run by Gloom": "Bot gestionado por Gloom",
+  "Announcement": "Anuncio",
   "Direct message": "Mensaje directo",
   "Group chat": "Chat grupal",
   "Group": "Grupo",
