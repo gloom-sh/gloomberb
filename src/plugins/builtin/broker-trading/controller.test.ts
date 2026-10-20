@@ -663,6 +663,19 @@ describe("spreads", () => {
     expect(() => f.controller.setDraft({ ...f.controller.getSnapshot().draft!, legs: [leg(345, "BUY"), leg(355, "SELL")] })).toThrow("legs");
   });
 
+  test("a spread whose legs stream reviews at the streamed net quote, without asking for a delayed one", async () => {
+    const f = setup({ realtime: true, quoteAgeMs: 0 });
+    f.setPosition(0);
+    f.controller.setDraft(spread(f.demo.draft));
+    for (const [symbol, bid] of [["AAPL261026C00345000", 2.7], ["AAPL261026C00350000", 2.5]] as const) {
+      f.controller.applyStreamQuote(symbol, { ...await f.demo.adapter.getQuote!(symbol, f.demo.instance), bid, ask: bid + 0.1, delivery: "stream" });
+    }
+    const asked = f.count("getQuote");
+    await f.controller.review();
+    expect(f.count("getQuote")).toBe(asked);
+    expect(f.controller.getSnapshot().quote?.quote).toMatchObject({ bid: 0.1, ask: 0.3 });
+  });
+
   test("a spread the broker cannot take as one order does not reach review", async () => {
     const f = setup({ realtime: true, quoteAgeMs: 0 });
     for (const [legs, message] of [[[leg(345, "BUY")], "2 to 4 legs"], [[leg(345, "BUY"), leg(345, "SELL")], "only one leg"],

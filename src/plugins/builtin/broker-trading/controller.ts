@@ -362,7 +362,8 @@ export class BrokerTradingController {
   private currentStreamQuote(draft: BrokerOrderRequest): BrokerTicketQuote | undefined {
     const streamed = this.streamed;
     if (!streamed || streamed.contractKey !== canonical([draft.contract, draft.legs ?? null])) return undefined;
-    const quotes = [streamed.quote.quote, ...(streamed.quote.legs ?? [])];
+    // A spread's net quote is made from its legs, so the legs say whether it is still streamed.
+    const quotes = streamed.quote.legs ?? [streamed.quote.quote];
     // The stream repeats an unchanged quote at least every minute while it is up.
     return quotes.every((quote) => quote.delivery === "stream") && this.now() - streamed.quote.receivedAt <= STREAM_QUOTE_MAX_SILENCE_MS ? streamed.quote : undefined;
   }
