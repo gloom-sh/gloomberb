@@ -21,7 +21,10 @@ export function validateExposure(value: ExposurePayload): ExposurePayload {
     && typeof data.evaluatedAt === "string" && Number.isFinite(Date.parse(data.evaluatedAt))
     && Number.isInteger(data.requestedHoldings) && Number.isInteger(data.lockedHoldings) && data.lockedHoldings >= 0
     && Array.isArray(data.holdings) && strings(data.unknowns) && strings(data.methodology);
-  try { parseCustomScenario(JSON.stringify(data.scenario)); } catch { valid = false; }
+  try { parseCustomScenario(JSON.stringify(data.scenario)); } catch {
+    // Intentional ignore: invalid scenarios use the payload validation error below.
+    valid = false;
+  }
   valid &&= data.holdings.every(h => typeof h.symbol === "string" && finite(h.weight) && Array.isArray(h.unknowns)
     && ["quantified", "partial", "unknown"].includes(h.status) && !!h.coverage
     && Array.isArray(h.measures) && h.measures.every(m => validRange(m.exposurePct) && nullableRange(m.impactPct) && strings(m.componentIds))

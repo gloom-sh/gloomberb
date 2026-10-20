@@ -130,6 +130,7 @@ function domainFromUrl(value: string | null | undefined) {
     const hostname = new URL(value).hostname.replace(/^www\./, "");
     return hostname || null;
   } catch {
+    // Intentional ignore: malformed source URLs have no displayable domain.
     return null;
   }
 }

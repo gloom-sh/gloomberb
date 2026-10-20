@@ -1,5 +1,6 @@
 import { apiClient } from "../../../../api-client";
 import { httpFetch } from "../../../../utils/http-transport";
+import { logFailure } from "../../../../utils/log-failure";
 import type {
   BuildoutAccess,
   BuildoutCompaniesPayload,
@@ -55,7 +56,10 @@ export async function buildoutApi<T>(path: string, token: string | null, init: R
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await httpFetch(`${BUILDOUT_API_URL}${path}`, { ...init, headers });
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
+    const body = await response.text().catch(() => {
+      // Intentional ignore: the failed request still throws its status when the error body is unreadable.
+      return "";
+    });
     throw new Error(body || `${BUILDOUT_NAME} request failed (${response.status})`);
   }
   return response.json() as Promise<T>;
@@ -124,12 +128,12 @@ export async function loadBuildoutData(token: string | null) {
 export async function getBuildoutProToken() {
   if (!apiClient.isSignedIn()) return null;
 
-  const session = await apiClient.getSession().catch(() => null);
+  const session = await apiClient.getSession().catch(logFailure("buildout.model", "Read session for access failed", null));
   if (!session) return null;
 
-  const account = await apiClient.getBuildoutAccount().catch(() => null);
+  const account = await apiClient.getBuildoutAccount().catch(logFailure("buildout.model", "Read subscription access failed", null));
   if (!account?.subscription.active) return null;
 
-  const token = await apiClient.getBuildoutToken().catch(() => null);
+  const token = await apiClient.getBuildoutToken().catch(logFailure("buildout.model", "Read access token failed", null));
   return token?.token ?? null;
 }

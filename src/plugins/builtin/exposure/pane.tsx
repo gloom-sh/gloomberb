@@ -8,6 +8,7 @@ import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePan
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
+import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -87,7 +88,11 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const [openingNav] = usePaneSettingValue("nav", "");
   const [openingCash] = usePaneSettingValue("cash", "");
   const [snapshotSetting] = usePaneSettingValue<ExposurePayload | null>("exposureSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateExposure(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
+  const snapshot = useMemo(() => {
+    try { return snapshotSetting ? validateExposure(snapshotSetting) : null; } catch (error) {
+      return logFailure("exposure.pane", "Read saved exposure snapshot failed", null)(error);
+    }
+  }, [snapshotSetting]);
   const initialInput = snapshot ? snapshot.holdings.map(h => `${h.symbol}=${h.weight}`).join(" ") : instance?.params?.input ?? instance?.params?.arg ?? "";
   const initialScenario = useMemo(() => { if (snapshot) return snapshot.scenario; try { return customSetting ? parseCustomScenario(customSetting) : DEFAULT_SCENARIO; } catch { return DEFAULT_SCENARIO; } }, [snapshot, customSetting]);
   const [inputs, setInputs] = usePluginPaneState<ExposureInputs>("exposure:inputs", { input: initialInput, source: /^(PORT|WATCH):/.test(initialInput) ? initialInput : "typed", nav: String(openingNav), cash: String(openingCash), depth: snapshot?.depth ?? Number(openingDepth), scenario: initialScenario });

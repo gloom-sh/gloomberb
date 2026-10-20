@@ -168,6 +168,10 @@ test("built-in plugins stay excluded except the folders brought into scope", () 
   expect(scope("src/plugins/builtin/news/wire/feed-config.ts")).toBe("in");
   expect(scope("src/plugins/builtin/custom-view/loader.ts")).toBe("in");
   expect(scope("src/plugins/builtin/thirteenf/data.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/buildout/model/index.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/dividend-yield/headless.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/exposure/holdings.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/trace-bonds/client.ts")).toBe("in");
   expect(scope("src/plugins/builtin/chat/controller/index.ts")).toBe("out");
   expect(scope("src/plugins/builtin/cloudflare/index.ts")).toBe("out");
   expect(scope("src/plugins/builtin/newsletter/index.ts")).toBe("out");

@@ -15,6 +15,7 @@ import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { mapWithConcurrency } from "../../../utils/concurrency";
+import { logFailure } from "../../../utils/log-failure";
 import { projectDividendRanking, roundedRatio, type DividendRankingEntry } from "./ranking";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
@@ -63,7 +64,8 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
       currentPrice = regularSessionValuationPrice(quote);
       currentPriceCurrency = quote.currency;
       referenceQuote = quote;
-    } catch {
+    } catch (error) {
+      logFailure("dividend-yield.headless", "Read dividend reference quote failed")(error);
       currentPrice = null;
     }
     const data = await fetchDividendData(symbol, currentPrice, exchange, currentPriceCurrency);
@@ -75,7 +77,8 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadBond(symbol, context) {
     const instrument = await context.resolveInstrument?.(symbol);
     const exchange = instrument?.exchange ?? "";
-    const quote = await context.marketData.getQuote(symbol, exchange).catch(() => undefined);
+    const quote = await context.marketData.getQuote(symbol, exchange)
+      .catch(logFailure("dividend-yield.headless", "Read bond fund classification quote failed"));
     const venue = exchange || quote?.exchangeName || "";
     if (resolveTickerInstrumentKind(null, { quote }) !== "fund" || (venue && !isUsListingExchange(venue))) return null;
     return fetchFundBondFacts(instrument?.symbol ?? symbol, context.apiClient);
@@ -252,8 +255,10 @@ export function createDividendYieldHeadless(
         const [data, bond, treasury] = await Promise.all([
           dependencies.loadData(symbol, context),
           // A fund's bond facts never fail the report: without them its yields read as before.
-          dependencies.loadBond?.(symbol, context).catch(() => null) ?? null,
-          rates ? dependencies.loadTreasury?.(context).catch(() => null) ?? null : null,
+          dependencies.loadBond?.(symbol, context)
+            .catch(logFailure("dividend-yield.headless", "Read bond fund facts for report failed", null)) ?? null,
+          rates ? dependencies.loadTreasury?.(context)
+            .catch(logFailure("dividend-yield.headless", "Read Treasury curve for tax comparison failed", null)) ?? null : null,
         ]);
         const forward = data.metrics.lapse ? null : distributionBasis(data.metrics.forwardYield, "forward", data.metrics.forwardRateAsOf ?? null);
         const tax = rates ? analyzeTaxEquivalent({
@@ -275,7 +280,8 @@ export function createDividendYieldHeadless(
       }
       const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
         // A fund's bond facts never fail its row: without them it ranks as before.
-        const bond = dependencies.loadBond?.(symbol, context).catch(() => null) ?? null;
+        const bond = dependencies.loadBond?.(symbol, context)
+          .catch(logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)) ?? null;
         try {
           return { symbol, data: await dependencies.loadData(symbol, context), bond: await bond };
         } catch (error) {

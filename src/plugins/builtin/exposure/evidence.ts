@@ -26,7 +26,10 @@ export const exposureScreenshotEvidence: PaneScreenshotEvidenceHook<ExposureCapt
       const rows = metadata.tab === "drivers" ? driverRows(payload) : metadata.tab === "paths" ? pathRows(payload) : metadata.tab === "portfolio" ? portfolioRows(payload, String(metadata.view)) : tableRows(payload);
       if (metadata.plottedValueCount !== rows.length || metadata.rowIds.length !== rows.length || metadata.rowIds.some(id => !rows.some(r => r.id === id))) return null;
       return metadata as unknown as ExposureCapture;
-    } catch { return null; }
+    } catch {
+      // Intentional ignore: malformed capture metadata cannot prove the screenshot's exposure data.
+      return null;
+    }
   },
   mismatches(evidence, { resolved, payload }) {
     const snapshot = payload.config.layout.instances.find(i => i.instanceId === payload.paneId)?.settings?.exposureSnapshot;

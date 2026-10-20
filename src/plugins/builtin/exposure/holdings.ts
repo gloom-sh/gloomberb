@@ -4,6 +4,7 @@ import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { convertCurrency } from "../../../utils/format";
+import { logFailure } from "../../../utils/log-failure";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue } from "../../../portfolio/position-metrics";
 
 /** Explicit NAV preserves cash, shorts and leverage; net holdings are never used as NAV. */
@@ -35,7 +36,8 @@ export async function portfolioHoldings(portfolio: Portfolio, tickers: TickerRec
   for (const currency of currencies) await ensureRate(currency);
   const holdings: ExposureHolding[] = [];
   for (const ticker of positions) {
-    const quote = await market.getQuote(ticker.metadata.ticker, ticker.metadata.exchange).catch(() => null);
+    const quote = await market.getQuote(ticker.metadata.ticker, ticker.metadata.exchange)
+      .catch(logFailure("exposure.holdings", "Load portfolio holding quote failed", null));
     const currency = quote?.currency || ticker.metadata.currency;
     if (!rates.has(currency)) await ensureRate(currency);
     const metrics = getPortfolioPositionMetrics(ticker, portfolio.id, currency, {

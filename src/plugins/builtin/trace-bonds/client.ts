@@ -4,6 +4,7 @@ import { signalWithTimeout } from "../../../utils/async-deadline";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { httpFetch } from "../../../utils/http-transport";
 import { isoDateOrNull, numericOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
+import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 
 const ENDPOINT = "https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities";
@@ -226,6 +227,7 @@ function dataRows(data: unknown): unknown[] | null {
     const parsed = JSON.parse(data) as unknown;
     return Array.isArray(parsed) ? parsed : null;
   } catch {
+    // Intentional ignore: malformed nested rows make postBondPage reject the response shape.
     return null;
   }
 }
@@ -340,7 +342,9 @@ async function readPayload(response: Response): Promise<unknown> {
 async function openSession(signal: AbortSignal): Promise<string> {
   const session = await httpFetch(ENDPOINT, { headers: REQUEST_HEADERS, signal });
   const token = xsrfToken(session);
-  await session.body?.cancel().catch(() => {});
+  await session.body?.cancel().catch(() => {
+    // Intentional ignore: only session headers are needed; discarding its unused body is best effort.
+  });
   if (!token) throw new Error(failureText(session.status, "session"));
   return token;
 }
@@ -477,7 +481,8 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
   let answer = first;
   let issuer: BondIssuer | null = null;
   if (first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.companyName) {
-    const company = await options.companyName(query.ticker).catch(() => null);
+    const company = await options.companyName(query.ticker)
+      .catch(logFailure("trace-bonds.client", "Resolve bond issuer company failed", null));
     const name = company ? tapeIssuerName(company) : null;
     if (company && name && name !== query.name) {
       issuer = { company, name };
@@ -492,7 +497,7 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
   // No prints for the query: date the answer by the market's newest sale.
   const market = await postBondPage(token, [TRADED], 1, deadline)
     .then((payload) => latestTradeDate(mergeBondAnswers([{ payload, accepts: anyBond, limit: 1 }]).bonds))
-    .catch(() => null);
+    .catch(logFailure("trace-bonds.client", "Load bond market date failed", null));
   return { ...result, tradeDate: market };
 }
 

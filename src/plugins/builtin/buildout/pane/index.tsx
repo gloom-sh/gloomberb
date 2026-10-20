@@ -16,6 +16,7 @@ import { handleRefreshKey } from "../../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../../types/plugin";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
+import { logFailure } from "../../../../utils/log-failure";
 import { nextHeaderSort, type SortPreference } from "../../../../utils/sort-values";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickerQuoteFact, useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -201,7 +202,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
           choices={openTargets.map((target) => ({ id: target.id, label: target.label, detail: target.detail }))}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("buildout.pane", "Choose open target failed"));
     const target = openTargets.find((entry) => entry.id === chosen);
     if (target) openTarget(target);
   }, [dialog, openTarget, openTargets]);
