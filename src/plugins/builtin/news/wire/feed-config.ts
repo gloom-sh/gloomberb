@@ -29,7 +29,7 @@ export interface UserNewsFeedInput {
 
 function parseJsonArray(value: unknown): unknown[] | null {
   if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
+  if (typeof value !== "string") return [];
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed : [];

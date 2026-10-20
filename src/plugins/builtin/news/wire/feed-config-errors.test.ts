@@ -52,11 +52,12 @@ test("unreadable feed settings stop migration and log no stored content", () => 
 });
 
 for (const key of ["feeds", "disabledDefaultFeedIds"]) {
-  test(`${key}: every feed write refuses unreadable settings without changing either value`, async () => {
+  test.each([["truncated", UNREADABLE], ["empty", ""], ["whitespace", " \n\t"]])(
+    `${key}: every feed write refuses %s JSON without changing either value`, async (_label, unreadable) => {
     const original = {
       feeds: JSON.stringify([FEED]),
       disabledDefaultFeedIds: JSON.stringify(DEFAULT_FEEDS.map((feed) => feed.id)),
-      [key]: UNREADABLE,
+      [key]: unreadable,
     };
     const { config, stored } = configFixture(original);
     const settings = loadNewsFeedSettings(config);
