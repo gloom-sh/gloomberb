@@ -7,6 +7,8 @@ import { t, tf } from "../../../i18n";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
+import { premiumToUnderlying } from "../../../market-data/perpetual-premium";
+import type { Quote } from "../../../types/financials";
 import { Box, Text } from "../../../ui";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import { displayWidth } from "../../../utils/format";
@@ -70,7 +72,14 @@ function fitColumns(width: number, venueWidth: number): Column[] {
  * PERP on its venue's deepest contract. The figures move with the quote stream while the venue streams; otherwise
  * the section says when the venues were read.
  */
-export function PerpMarketsSection({ symbol, exchange, instrumentType, width }: { symbol: string; exchange?: string; instrumentType?: string; width: number }) {
+export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, width }: {
+  symbol: string;
+  exchange?: string;
+  instrumentType?: string;
+  /** The security's own quote: a stock's contracts are priced against it while it streams. */
+  quote?: Quote | null;
+  width: number;
+}) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   const plan = usePlanAccess();
@@ -115,7 +124,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, width }: 
     if (column.id === "contract") return { text: contractText(market), color: colors.textMuted };
     if (column.id === "mark") return { text: price(row.markPrice ?? row.lastPrice), color: colors.text };
     if (column.id === "premium") {
-      const value = asset?.kind === "stock" ? row.underlyingPremium : row.premium;
+      const value = asset?.kind === "stock" ? premiumToUnderlying(row, quote) : row.premium;
       return { text: percent(value, 2), color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
     }
     if (column.id === "funding") {

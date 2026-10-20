@@ -53,7 +53,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
         // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.
         return perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange)
           ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} />
-          : <PerpMarketsSection symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} width={contentWidth} />;
+          : <PerpMarketsSection symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} quote={financials?.quote} width={contentWidth} />;
       } : undefined}
     />
   );

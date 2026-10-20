@@ -47,6 +47,14 @@ const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE, 
  * kept off market.subscribe: an older one would read `BTC` on HYPERLIQUID as a stock symbol.
  */
 const MARKET_PERPS_FEATURE = "market.perps";
+/**
+ * The most perpetual listings the app streams at once, across every pane: on screen and selected first. The server
+ * takes up to 100 from one connection (fewer signed out); the rest keep their fetched readings.
+ */
+const PERP_STREAM_BUDGET = 60;
+/** On screen and selected first, then by weight; equal ones keep the order they were asked in. */
+const perpStreamRank = (target: QuoteStreamTarget) => (target.selected ? 2 : 0) + (target.visible ? 1 : 0);
+const isPerpTarget = (target: QuoteStreamTarget) => !!perpetualListing(target.symbol, target.exchange);
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
@@ -149,6 +157,13 @@ export class CloudApiSocket {
   private featuresRequestedFor: WebSocket | null = null;
   /** What the last "ready" frame offered; kept across reconnects so a blip does not hide features. */
   private offeredFeatures: ReadonlySet<string> = new Set();
+  /**
+   * The connection whose server offered perpetual markets. Asked of every connection: a reconnect may reach an older
+   * server, which would read `BTC` on HYPERLIQUID as a stock symbol.
+   */
+  private perpsOfferedOn: WebSocket | null = null;
+  /** The perpetual listings this connection streams, within PERP_STREAM_BUDGET. */
+  private streamedPerps = new Map<string, QuoteStreamTarget>();
   private readonly offeredFeatureListeners = new Set<() => void>();
   private readonly connectionListeners = new Set<(event: "ready" | "closed") => void>();
   private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
@@ -766,14 +781,15 @@ export class CloudApiSocket {
     );
     const changed = next.size !== this.offeredFeatures.size
       || [...next].some((feature) => !this.offeredFeatures.has(feature));
-    const perpsOffered = next.has(MARKET_PERPS_FEATURE) && !this.offeredFeatures.has(MARKET_PERPS_FEATURE);
     this.offeredFeatures = next;
-    if (!changed) return;
-    // Perpetual listings held back since the socket opened go out now.
-    if (perpsOffered) {
-      const perps = [...this.quoteTargets.values()].filter((target) => perpetualListing(target.symbol, target.exchange));
-      if (perps.length > 0) this.sendSocketMessage({ type: "market.subscribe", symbols: perps.map((target) => this.serializeQuoteStreamTarget(target)) });
+    // Perpetual listings held back since the socket opened go out once this connection's server offers them.
+    const perpsOffered = next.has(MARKET_PERPS_FEATURE) ? this.ws : null;
+    if (perpsOffered !== this.perpsOfferedOn) {
+      this.perpsOfferedOn = perpsOffered;
+      this.streamedPerps.clear();
+      this.syncPerpSubscriptions();
     }
+    if (!changed) return;
     for (const listener of this.offeredFeatureListeners) listener();
   }
 
@@ -972,7 +988,7 @@ export class CloudApiSocket {
       this.sendSocketMessage({ type: "scanner.subscribe", scanner });
     }
 
-    const targets = [...this.quoteTargets.values()].filter((target) => this.streamable(target));
+    const targets = [...this.quoteTargets.values()].filter((target) => !isPerpTarget(target));
     if (targets.length > 0) {
       this.sendSocketMessage({
         type: "market.subscribe",
@@ -981,11 +997,32 @@ export class CloudApiSocket {
         ),
       });
     }
+    this.streamedPerps.clear();
+    this.syncPerpSubscriptions();
   }
 
-  /** Whether the server may hear about this target: anything but a perpetual listing, which waits for `market.perps`. */
-  private streamable(target: QuoteStreamTarget): boolean {
-    return this.offeredFeatures.has(MARKET_PERPS_FEATURE) || !perpetualListing(target.symbol, target.exchange);
+  /**
+   * Streams the perpetual listings within the budget, once this connection's server offers them: the best ranked
+   * across every pane. One that falls out is unsubscribed; one whose target changed (`changed`) is sent again.
+   */
+  private syncPerpSubscriptions(changed: ReadonlySet<string> = new Set()): void {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN || this.perpsOfferedOn !== ws) return;
+    const wanted = new Map(
+      [...this.quoteTargets]
+        .filter(([, target]) => isPerpTarget(target))
+        .sort(([, left], [, right]) => perpStreamRank(right) - perpStreamRank(left) || (right.weight ?? 0) - (left.weight ?? 0))
+        .slice(0, PERP_STREAM_BUDGET),
+    );
+    const unsubscribes = [...this.streamedPerps].filter(([key]) => !wanted.has(key)).map(([, target]) => target);
+    const subscribes = [...wanted].filter(([key]) => !this.streamedPerps.has(key) || changed.has(key)).map(([, target]) => target);
+    this.streamedPerps = wanted;
+    if (unsubscribes.length > 0) {
+      this.sendSocketMessage({ type: "market.unsubscribe", symbols: unsubscribes.map((target) => this.serializeQuoteStreamTarget(target)) });
+    }
+    if (subscribes.length > 0) {
+      this.sendSocketMessage({ type: "market.subscribe", symbols: subscribes.map((target) => this.serializeQuoteStreamTarget(target)) });
+    }
   }
 
   private scheduleQuoteSubscriptionFlush(): void {
@@ -1020,10 +1057,15 @@ export class CloudApiSocket {
       this.pendingQuoteUnsubscribes.clear();
       return;
     }
-    const subscribes = [...this.pendingQuoteSubscribes.values()].filter((target) => this.streamable(target));
-    const unsubscribes = [...this.pendingQuoteUnsubscribes.values()].filter((target) => this.streamable(target));
+    const subscribes = [...this.pendingQuoteSubscribes.values()].filter((target) => !isPerpTarget(target));
+    const unsubscribes = [...this.pendingQuoteUnsubscribes.values()].filter((target) => !isPerpTarget(target));
+    const perpsChanged = [...this.pendingQuoteSubscribes]
+      .filter(([, target]) => isPerpTarget(target))
+      .map(([key]) => key);
+    const perpsMoved = perpsChanged.length > 0 || [...this.pendingQuoteUnsubscribes.values()].some(isPerpTarget);
     this.pendingQuoteSubscribes.clear();
     this.pendingQuoteUnsubscribes.clear();
+    if (perpsMoved) this.syncPerpSubscriptions(new Set(perpsChanged));
     if (unsubscribes.length > 0) {
       this.sendSocketMessage({
         type: "market.unsubscribe",
