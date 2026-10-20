@@ -10,6 +10,8 @@ Atom feeds use the publisher's stable entry ID, and the feed timestamp reflects 
 
 A failed or malformed RSS/Atom response leaves the last successfully cached stories available and reports the feed failure in the existing status bar. Other available feeds continue to contribute stories; successful recovery clears the failure. An empty, valid feed differs from an invalid document. The reader does not resolve external DTDs or expand custom entity declarations; documents requiring internal DTD subsets are unsupported. The parser cache version changes with this correction, so old cached article links and IDs are refetched rather than reused. The legacy array-only `fetchNews` capability preserves available articles; use `fetchNewsPage` for its source-failure status.
 
+`gloomberb rss fetch <url>` exits with a non-zero status when the feed cannot be fetched or parsed. A valid feed with no items still succeeds; text output says "The feed has no items."
+
 ## Sources, times, tickers and topics
 
 The SOURCE column names the publisher of the story's lead article as a reader knows it: FT, Reuters, Business Wire, the SEC for an 8-K, an X account as its handle. A story often merges the same event from several outlets; its detail lists each one. Times are in your local time: the clock time today, the weekday and time for the six days before, and the date for anything older.
