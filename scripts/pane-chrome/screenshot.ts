@@ -46,7 +46,13 @@ const MAX_DIFFERING = 0.3;
 const MIN_SCREEN_INK = 150;
 
 interface Rect { x: number; y: number; width: number; height: number }
-interface Region { pane: string; name: string; selector: string }
+interface Region {
+  pane: string;
+  name: string;
+  selector: string;
+  /** Text: the copy sets glyphs a pixel or two off the screen's baseline, so only its ink counts. */
+  text?: true;
+}
 
 const REGIONS: Region[] = [
   { pane: "fear-greed:a", name: "speedometer gauge (SVG)", selector: "svg[role=img]" },
@@ -57,6 +63,7 @@ const REGIONS: Region[] = [
   { pane: "charts:a", name: "dashed legend cue (repeating gradient)", selector: "[data-shot-region=dashed-cue]" },
   { pane: "charts:a", name: "colour scale (gradient)", selector: "[data-shot-region=colour-scale]" },
   { pane: "charts:a", name: "toolbar icon (SVG mask)", selector: "[data-shot-region=masked-icon]" },
+  { pane: "charts:a", name: "grid rows (display: contents)", selector: "[data-shot-region=column-grid]", text: true },
 ];
 
 /** Page side: ink in each region of the screen and of the copy, measured against the region's commonest colour. */
@@ -152,7 +159,7 @@ async function checkPanes(cdp: Cdp, scale: number, out: string | undefined): Pro
       const ok = ink.screen >= MIN_SCREEN_INK * scale * scale
         && ink.copy >= ink.screen * MIN_INK_RATIO
         && ink.copy <= ink.screen * MAX_INK_RATIO
-        && ink.differing <= MAX_DIFFERING;
+        && (region.text || ink.differing <= MAX_DIFFERING);
       failed ||= !ok;
       results.push({ pane, name: region.name, scale, ...ink, ok });
     });

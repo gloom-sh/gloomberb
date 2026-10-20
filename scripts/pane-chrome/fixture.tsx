@@ -56,6 +56,7 @@ import { StaticChartSurface } from "../../src/components/chart/static/chart-surf
 import { DataTableView } from "../../src/components/data-table/view";
 import { ChartTableHeader } from "../../src/components/chart-table/header";
 import { QueryBar } from "../../src/components/ui/query-bar";
+import { ColumnGrid } from "../../src/components/ui/column-grid";
 // A namespace import: the frame budget builds this file against the base
 // branch's sources too, which may not have useHeatTreemapScene.
 import * as heatSurface from "../../src/components/metric-treemap/heat-surface";
@@ -257,7 +258,8 @@ const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><p
  * A canvas chart (the composite chart's bitmap) over an SVG one (a sparkline),
  * on invented data, with a toolbar laid over the canvas by z-index, then the
  * CSS image layers charts draw: a dashed legend cue (a repeating gradient), a
- * colour scale (a gradient) and a toolbar icon (a colour box cut by an SVG mask).
+ * colour scale (a gradient) and a toolbar icon (a colour box cut by an SVG mask),
+ * and a ColumnGrid, whose rows are `display: contents` (DES Fundamentals, a quote book).
  */
 function ChartsPane({ width }: PaneProps) {
   const points = inventedSeries(120, 100, 18);
@@ -305,6 +307,14 @@ function ChartsPane({ width }: PaneProps) {
             maskRepeat: "no-repeat",
             maskPosition: "center",
           }}
+        />
+      </Box>
+      <Box data-shot-region="column-grid" marginTop={1} style={{ width: 360 }}>
+        <ColumnGrid
+          columns={[{ width: 10, growFrom: 10 }, { width: 12, growFrom: 8, align: "right" }]}
+          rows={[["Volume", "1.20M"], ["Market Cap", "5.00B USD"], ["P/E (TTM)", "21.5"]].map(([label, value]) => [
+            { text: label!, color: "#9aa3b2" }, { text: value!, color: "#e5e7eb" },
+          ])}
         />
       </Box>
     </Box>
