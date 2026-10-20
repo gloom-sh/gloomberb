@@ -26,4 +26,11 @@ describe("Listing symbol aliases", () => {
     }
     expect(getListingSymbol("REP", "MCE")).toBe("REP.MC");
   });
+
+  test("a TSX Venture listing takes .V now that VENTURE reads as TSXV, and .V names it back", () => {
+    expect(getListingSymbol("FISH", "TSXV")).toBe("FISH.V");
+    expect(getListingSymbol("TTS:XTSX", "TSXV")).toBe("TTS.V");
+    expect(getListingSymbolsToTry("FISH", "TSXV", { exactExchange: true })).toEqual(["FISH.V"]);
+    expect(listingSuffixExchange("FISH.V")).toBe("TSXV");
+  });
 });

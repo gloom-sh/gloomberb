@@ -1,14 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { EXCHANGE_NOTATION, EXCHANGE_NOTATION_VERSION } from "./exchange-notation.generated";
 import {
   CANONICAL_EXCHANGE_ALIASES,
   canonicalExchange,
+  canonicalTickerKey,
   exchangeCodeVenues,
   exchangeLabel,
   publicExchange,
   publicTickerKey,
+  resolveExchangeTimeZone,
 } from "./exchanges";
+
+/**
+ * Market-data vendors, none of which this open-source repo's copy may name. Bare IEX is left out: it is a
+ * listing venue (Investors Exchange), not IEX Cloud.
+ */
+const DATA_VENDORS =
+  /yahoo|twelve ?data|finnhub|polygon|tiingo|eodhd|eod historical|alpha ?vantage|refinitiv|bloomberg|alpaca|iex ?cloud|iexapis|intrinio|quandl|nasdaq data link|financial ?modeling ?prep|\bfmp\b|marketstack|databento|xignite|morningstar|factset|capital ?iq|barchart|tradier|coingecko|coinmarketcap|kaiko|provider/i;
 
 // The exchange-notation table is Gloom Cloud's; the phone keeps the same copy.
 // These fail when the copy is edited by hand or the terminal reads a spelling
@@ -33,6 +43,22 @@ describe("exchange-notation copy", () => {
     for (const [code, shared] of Object.entries(EXCHANGE_NOTATION.sharedCodes)) {
       expect(exchangeCodeVenues(code)).toEqual([...shared.venues]);
     }
+  });
+
+  test("names no data vendor", () => {
+    const copy = readFileSync(new URL("./exchange-notation.generated.ts", import.meta.url), "utf8");
+    expect(copy.match(DATA_VENDORS)?.[0] ?? null).toBeNull();
+  });
+
+  // Four synced tickers carry these labels as their exchange (4403.T, 6525.T and 7741.T on "Tokyo Stock
+  // Exchange", 2395.TW on "Taiwan"); none on VENTURE. The terminal read them as unknown venues, so a key built
+  // from one wrote the label. No synced snapshot holds such a key (2026-10-20): the label appears only in those
+  // tickers' exchange field, so nothing stored moves when they key by the venue code instead.
+  test("reads a long venue name the phone read as its venue, and keys it by the code", () => {
+    expect(canonicalTickerKey("6525.T", "Tokyo Stock Exchange")).toBe("6525.T:JPX");
+    expect(canonicalTickerKey("2395.TW", "Taiwan")).toBe("2395.TW:TWSE");
+    expect(canonicalTickerKey("ABC", "VENTURE")).toBe("ABC:TSXV");
+    expect(resolveExchangeTimeZone("Tokyo Stock Exchange")).toBe("Asia/Tokyo");
   });
 
   test("reads every Saudi spelling as one listing", () => {

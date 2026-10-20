@@ -57,6 +57,7 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     TSEJ: "JPX",
     JPX: "JPX",
     XTKS: "JPX",
+    "TOKYO STOCK EXCHANGE": "JPX",
     HKG: "HKEX",
     HKEX: "HKEX",
     SEHK: "HKEX",
@@ -71,6 +72,7 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     TSXV: "TSXV",
     XTSX: "TSXV",
     VAN: "TSXV",
+    VENTURE: "TSXV",
     CVE: "TSXV",
     CN: "CSE",
     CNSX: "CSE",
@@ -141,6 +143,7 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     TPE: "TWSE",
     TWSE: "TWSE",
     TAI: "TWSE",
+    TAIWAN: "TWSE",
     TWO: "TPEX",
     TPEX: "TPEX",
     ROCO: "TPEX",
@@ -344,11 +347,14 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
   sharedCodes: {
     TSE: {
       venues: ["TSX", "JPX"],
-      bySymbol: [{ pattern: "^[0-9]{3}[0-9A-Z]$", venue: "JPX" }],
+      bySymbol: [
+        { pattern: "^[0-9][0-9A-Z][0-9][0-9A-Z]$", venue: "JPX" },
+        { pattern: "^[A-Z]", venue: "TSX" },
+      ],
     },
     KRX: { venues: ["KRX", "KOSDAQ"] },
     EURONEXT: { venues: ["AMS", "EPA", "BRU", "LIS", "OSL", "BIT"] },
   },
 }
 
-export const EXCHANGE_NOTATION_VERSION = "9bdf25740adc7dd1"
+export const EXCHANGE_NOTATION_VERSION = "936f2769090c78dd"
