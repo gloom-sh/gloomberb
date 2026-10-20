@@ -1,8 +1,9 @@
-import { expect, mock, spyOn, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import type { NewsCapability } from "../../../../capabilities";
 import { NewsService } from "../../../../news/aggregator";
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
 import type { CommandDef, GloomPluginContext, PluginConfigState } from "../../../../types/plugin";
+import { setHttpFetchTransport } from "../../../../utils/http-transport";
 import { DEFAULT_FEEDS } from "./default-feeds";
 import { newsWireModule } from "./index";
 
@@ -24,9 +25,10 @@ for (const key of ["feeds", "disabledDefaultFeedIds"]) {
     let registered: NewsCapability | undefined;
     const commands: CommandDef[] = [];
     const notify = mock(() => {});
-    const fetch = spyOn(globalThis, "fetch").mockImplementation(async () => {
+    const fetch = mock(async () => {
       throw new Error("Unexpected network request.");
     });
+    setHttpFetchTransport(fetch);
     try {
       await newsWireModule.setup!({
         configState,
@@ -64,7 +66,7 @@ for (const key of ["feeds", "disabledDefaultFeedIds"]) {
     } finally {
       newsWireModule.dispose!();
       service.stop();
-      fetch.mockRestore();
+      setHttpFetchTransport(null);
     }
   });
 }
