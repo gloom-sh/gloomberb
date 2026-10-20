@@ -136,13 +136,15 @@ function sameIdList(raw: unknown, normalized: string[]): boolean {
 }
 
 export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSettings {
-  const rawUserFeeds = configState.get<unknown>(USER_FEEDS_KEY);
+  return parseNewsFeedSettings(configState.get(USER_FEEDS_KEY), configState.get(DISABLED_DEFAULT_FEED_IDS_KEY));
+}
+
+export function parseNewsFeedSettings(rawUserFeeds: unknown, rawDisabledIds: unknown): NewsFeedSettings {
   const userFeedValues = parseJsonArray(rawUserFeeds);
   const userFeeds = (userFeedValues ?? [])
     .map(normalizeUserFeed)
     .filter((feed): feed is RssFeedConfig => !!feed);
 
-  const rawDisabledIds = configState.get<unknown>(DISABLED_DEFAULT_FEED_IDS_KEY);
   const disabledIdValues = parseJsonArray(rawDisabledIds);
   const disabledDefaultFeedIds = normalizeDisabledDefaultFeedIds(disabledIdValues ?? []);
   if (userFeedValues === null || disabledIdValues === null) {

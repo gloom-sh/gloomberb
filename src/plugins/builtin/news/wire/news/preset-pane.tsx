@@ -1,9 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Box } from "../../../../../ui";
 import type { NewsArticle, NewsQuery } from "../../../../../news/types";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../../news/hooks";
 import type { PaneProps } from "../../../../../types/plugin";
-import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
+import { useDebouncedPluginPaneState, usePluginConfigState, usePluginPaneState } from "../../../../runtime";
 import { PaneStatusBody, QueryBar, type QueryBarSearch } from "../../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./detail-view";
 import {
@@ -18,6 +18,7 @@ import { newsListEmptyCopy } from "../filter-articles";
 import { NEWS_LIST_SEARCH_PLACEHOLDER, useNewsListSearch, useNewsListSearchHint } from "./list-search";
 import { newsMutesApplyToFeed, useNewsMuteFilter } from "../mutes";
 import { usePopOutNewsArticle } from "./pop-out";
+import { parseNewsFeedSettings } from "../feed-config";
 
 interface NewsArticleStackOptions {
   /** Prefix of every key the pane persists, and of its footer registration. */
@@ -146,6 +147,13 @@ export function NewsPresetPane({
   emptyStateTitle,
   emptyStateHint,
 }: PaneProps & NewsPresetPaneConfig) {
+  const [storedFeeds] = usePluginConfigState<unknown>("feeds", null);
+  const [storedDisabledIds] = usePluginConfigState<unknown>("disabledDefaultFeedIds", null);
+  // The first query can finish before RSS registers, and desktop queries may
+  // use Cloud alone. A settings failure must remain visible in either case.
+  const settingsError = useMemo(() => query.feed === "latest"
+    ? parseNewsFeedSettings(storedFeeds, storedDisabledIds).error
+    : undefined, [query.feed, storedFeeds, storedDisabledIds]);
   const newsState = useNewsArticles(query);
   const persisted = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
   const articles = useNewsMuteFilter(persisted, newsMutesApplyToFeed(query.feed));
@@ -154,7 +162,7 @@ export function NewsPresetPane({
   // body rather than a definitive empty wire.
   const loading = newsState.phase === "loading"
     || (newsState.phase === "refreshing" && persisted.length === 0);
-  const error = newsState.error;
+  const error = settingsError ?? newsState.error;
   const { search, searchQuery, ...stack } = useNewsArticleStack({
     paneKey,
     articles,
