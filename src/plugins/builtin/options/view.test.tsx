@@ -235,6 +235,22 @@ test("Enter opens the cursor's contract on its broker, and with trading b and s 
   expect(pinned).toHaveLength(2);
 });
 
+test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees no 15m clock or upsell on it", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) })));
+  const profile: BrokerInstanceConfig = { id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} };
+  const brokerTicker = createTestTicker("AAPL", "AAPL", { assetCategory: "STK",
+    broker_contracts: [{ brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }] });
+  for (const [ticker, delayed] of [[makeTicker("AAPL"), true], [brokerTicker, false]] as const) {
+    await act(async () => {
+      await tui.render(<OptionsHarness ticker={ticker} quotePrice={101} brokerInstances={[profile]} showFooter height={20} width={160} />, { width: 160, height: 20 });
+    });
+    await renderSettled();
+    // The terminal draws Cloud's delay as the clock and its figure.
+    expect(tui.frame().includes("◷15m")).toBe(delayed);
+    expect(tui.frame().includes("upgrade")).toBe(delayed);
+  }
+});
+
 test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
   const chain = makeChain([700, 780], 780);
   chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }

@@ -807,6 +807,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   }, [selectContract, selectedSide]);
 
   useOptionsAccessFooter({
+    broker: !!optionQuoteBroker,
     chain,
     error: [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
       selectedContract && strikeChain && !selectedContractAvailable
