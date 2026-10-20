@@ -1,4 +1,6 @@
+import { createElement } from "react";
 import { TextAttributes } from "../../../ui";
+import { LogoMark } from "../../../components/ui/logo-mark";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { formatRelativeAge } from "../../../utils/datetime-format";
@@ -37,13 +39,15 @@ export function buildBrokerColumns(width: number): BrokerColumn[] {
   ];
 }
 
-export function renderBrokerCell(row: BrokerProfileRow, column: BrokerColumn): DataTableCell {
+/** `desktop`: the profile leads with its broker's logo, which the terminal does not draw. */
+export function renderBrokerCell(row: BrokerProfileRow, column: BrokerColumn, desktop = false): DataTableCell {
   switch (column.id) {
     case "profile":
       return {
         text: row.label,
         color: colors.text,
         attributes: TextAttributes.BOLD,
+        leading: desktop ? createElement(LogoMark, { src: row.logo, name: row.brokerName }) : undefined,
       };
     case "status":
       // A sign-in the broker is about to end replaces "Connected" until it is renewed.

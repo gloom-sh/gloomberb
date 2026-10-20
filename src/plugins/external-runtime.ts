@@ -24,6 +24,11 @@ export function listExternalPlugins(): readonly LoadedExternalPlugin[] {
   return entries;
 }
 
+/** The logo of a plugin loaded here, as a `data:` URL; null for a built-in or a plugin without one. */
+export function externalPluginIcon(pluginId: string): string | null {
+  return entries.find((entry) => entry.plugin.id === pluginId)?.icon ?? null;
+}
+
 /** Replaces the entry for the same plugin id or directory, or appends. */
 export function upsertExternalPlugin(entry: LoadedExternalPlugin): void {
   const index = entries.findIndex((existing) => (

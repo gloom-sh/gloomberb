@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePaneMenuItems, usePaneTabStripKeys } from "../layout/pane/footer/registration";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { useShortcut } from "../../react/input";
@@ -22,6 +22,14 @@ type TabPointerEvent = {
 interface TabItem {
   label: string;
   value: string;
+  /**
+   * Artwork before the label on the desktop and the web, such as the logo of
+   * the broker a portfolio's account is at (`LogoMark`). It is decoration: the
+   * terminal does not draw it, and automation and screen readers read only
+   * `label`. Keep the same element between renders (useMemo): a title-bar
+   * strip redraws when it changes.
+   */
+  leading?: ReactNode;
   disabled?: boolean;
   /** Text color while inactive; used for group markers such as a team accent. */
   fg?: string;

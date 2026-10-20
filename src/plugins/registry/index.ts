@@ -45,6 +45,7 @@ import type {
 import { debugLog } from "../../utils/debug-log";
 import { logFailure } from "../../utils/log-failure";
 import { EventBus, type HostEvents } from "../event-bus";
+import { externalPluginIcon } from "../external-runtime";
 import { isReservedBuiltinPluginId } from "../ownership";
 import { createPluginPersistence } from "../plugin-persistence";
 import { createPluginTeamState } from "../team-state";
@@ -531,6 +532,12 @@ export class PluginRegistry implements PluginRuntimeAccess {
   getBrokerPluginId(brokerType: string): string | undefined {
     return this.contributions.brokersMap.owners.get(brokerType);
   }
+
+  /** The logo of the plugin that registered `brokerType` (its gloom.json `icon`), for lists of brokers. */
+  getBrokerLogo = (brokerType: string): string | null => {
+    const owner = this.getBrokerPluginId(brokerType);
+    return owner ? externalPluginIcon(owner) : null;
+  };
 
   getShortcutPluginId(shortcutId: string): string | undefined {
     return this.contributions.shortcutsMap.owners.get(shortcutId);

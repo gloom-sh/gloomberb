@@ -219,6 +219,18 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
   icon.svg          # optional, 64x64, shown in the plugin directory
 ```
 
+The icon is the plugin's logo. The desktop and the web also draw it beside
+what the plugin contributes that a person picks from a list: a broker it
+registers leads with it in Add Broker Account, in the Brokers pane and on the
+tabs of the portfolios its accounts fill. Without one, those lists draw the
+broker's initial. A logo that is not `icon.svg` (or `icon.webp`, `icon.png`)
+is named in `gloom.json`, as a path inside the checkout; it is read up to
+256 KB, as SVG, WebP, PNG or JPEG:
+
+```json
+{ "id": "my-broker", "icon": "assets/logo.webp" }
+```
+
 ### Plugin ids
 
 Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs remain reserved so saved configuration can be migrated safely to their current owning plugin.

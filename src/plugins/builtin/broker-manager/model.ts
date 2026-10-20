@@ -1,3 +1,4 @@
+import { brokerProfileLogo, type BrokerPluginLogo } from "../../../brokers/logos";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
@@ -27,6 +28,8 @@ export interface BrokerProfileRow {
   accountIds: string[];
   /** When the broker ends this profile's sign-in, once Gloom says it is time to connect again. */
   signInEndsAt: number | null;
+  /** The broker's logo for the desktop and the web (brokers/logos.ts); null draws its initial. */
+  logo: string | null;
   instance: BrokerInstanceConfig;
   adapter: BrokerAdapter | null;
 }
@@ -111,6 +114,7 @@ export function buildBrokerProfileRows(
   adapters: ReadonlyMap<string, BrokerAdapter | null>,
   brokerAccounts: Record<string, BrokerAccount[]>,
   signInEnds: SignInEnds = new Map(),
+  pluginLogo: BrokerPluginLogo = () => null,
 ): BrokerProfileRow[] {
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
@@ -147,6 +151,7 @@ export function buildBrokerProfileRows(
       signInEndsAt: state.state === "error" || state.state === "disabled" || state.state === "unavailable"
         ? null
         : signInEnds.get(instance.id) ?? null,
+      logo: brokerProfileLogo(instance, adapter, pluginLogo),
       instance,
       adapter,
     };

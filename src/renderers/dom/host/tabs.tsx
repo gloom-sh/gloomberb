@@ -258,6 +258,11 @@ export function WebTabs({
               tab.onContextMenu?.(tab.value, event);
             } : undefined}
           >
+            {tab.leading !== undefined && (
+              <span data-gloom-role="tab-leading" aria-hidden="true" style={{ display: "flex", flex: "none", alignItems: "center" }}>
+                {tab.leading}
+              </span>
+            )}
             <span
               data-gloom-role="tab-label"
               style={{
@@ -349,6 +354,7 @@ export function WebTabs({
               items={tabs.map((tab) => ({
                 id: tab.value,
                 label: tab.label,
+                leading: tab.leading,
                 disabled: tab.disabled,
                 selected: tab.value === activeValue,
               }))}

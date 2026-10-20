@@ -447,6 +447,8 @@ export interface AsciiTextProps extends BoxProps {
 interface HostTabItem {
   label: string;
   value: string;
+  /** Artwork before the label, such as a logo; decoration only. */
+  leading?: ReactNode;
   disabled?: boolean;
   reorderable?: boolean;
   onClose?: (value: string) => void;
@@ -611,6 +613,8 @@ export interface HostMenuItem {
   checked?: boolean;
   /** Tints the label, e.g. a status in its tone; the words carry the meaning. */
   color?: string;
+  /** Artwork before the label, such as a logo; decoration only. */
+  leading?: ReactNode;
 }
 
 export interface HostMenuProps {

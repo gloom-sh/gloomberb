@@ -358,6 +358,19 @@ so the selected row reads in the selection color without each cell checking
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
+**Broker logos.** Wherever a list names a broker or an account at one (Add
+Broker Account, the Brokers pane's profiles, a portfolio's tab and its
+overflow menu, the first-run guide's brokers), the desktop and the web lead the
+name with the broker's logo: `LogoMark` (`components/ui/logo-mark.tsx`) with
+the image from `brokers/logos.ts`, which takes the icon of the plugin that
+registered the broker and falls back to Gloom's own mark for a broker it
+connects for you, then to the broker's initial on a tile. It goes in a table
+cell's `leading`, a `ListView` item's `leading`, or a tab's or menu item's
+`leading`; the terminal draws none of them and keeps its rows as they were. A
+row tile is one line tall; a choice whose row is two lines (`rowDescriptions`:
+its name, then one muted line under it on how it connects) takes the larger
+`lead` tile.
+
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
 
 **The body under a bar.** What sits under a pane's tabs, query bar and figures takes the rest of the pane by flex on the desktop and the web: spread `FILL_REST` (`components/ui/fill.ts`) on its box, and on the pane's own root box, instead of the rows the terminal counts. A chrome bar is taller than a row there, so a body given `height - 1` rows runs past the footer by the difference. Tables, charts and the 3D surface in that box fill it to the footer. `SeriesListDetail` does this for a series list beside its detail. A pane that shows other panes as views under its own bars (Fixed Income) puts each in a box with `data-gloom-role="nested-pane-content"`, and the view's root takes that box the way a pane's root takes the pane.

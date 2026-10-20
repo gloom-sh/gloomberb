@@ -1,4 +1,5 @@
 import { brokerMethodLabel, type BrokerDirectoryEntry } from "../../brokers/directory";
+import { brokerDirectoryLogo, type BrokerPluginLogo } from "../../brokers/logos";
 import type { SignedInBroker } from "../../brokers/signed-in/client";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
@@ -47,19 +48,25 @@ export type BrokerOption = {
   name: string;
   /** How this choice connects, when the same broker is also offered another way. */
   methodLabel?: string;
+  /** The broker's logo for the desktop and the web (brokers/logos.ts); null draws its initial. */
+  logo?: string | null;
 } & (
   | { adapter: BrokerAdapter; signedIn?: undefined }
   | { signedIn: SignedInBroker; adapter?: undefined }
 );
 
-export function getConnectableBrokerOptions(directory: readonly BrokerDirectoryEntry[]): BrokerOption[] {
+export function getConnectableBrokerOptions(
+  directory: readonly BrokerDirectoryEntry[],
+  pluginLogo: BrokerPluginLogo = () => null,
+): BrokerOption[] {
   const options: BrokerOption[] = [];
   for (const entry of directory) {
+    const logo = brokerDirectoryLogo(entry, pluginLogo);
     for (const method of entry.methods) {
       const methodLabel = entry.methods.length > 1 ? brokerMethodLabel(entry, method) : undefined;
       options.push(method.kind === "signed-in"
-        ? { id: `signed-in:${method.broker.id}`, name: entry.name, methodLabel, signedIn: method.broker }
-        : { id: method.adapter.id, name: method.adapter.name, methodLabel, adapter: method.adapter });
+        ? { id: `signed-in:${method.broker.id}`, name: entry.name, methodLabel, logo, signedIn: method.broker }
+        : { id: method.adapter.id, name: method.adapter.name, methodLabel, logo, adapter: method.adapter });
     }
   }
   return options;

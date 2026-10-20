@@ -14,6 +14,7 @@ import {
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { brokerDirectoryLogo } from "../../../brokers/logos";
 import { getSignedInBrokers, refreshSignedInBrokers, subscribeSignedInBrokers } from "../../../brokers/signed-in/catalog";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
 import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
@@ -25,13 +26,14 @@ import { showCollectionInPortfolioPane } from "../../../components/command-bar/p
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 
 import { listCursorMove, type ListViewItem } from "../../../components/ui/list-view";
+import { LogoMark } from "../../../components/ui/logo-mark";
 import { t, tf } from "../../../i18n";
 import { useShortcut, type KeyEventLike } from "../../../react/input";
 import { useAppDispatch, useAppGetState } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
-import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
@@ -360,6 +362,8 @@ export function BrokerAddFlowContent({
   scope: string;
 }) {
   const { flow } = addFlow;
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const { getBrokerLogo } = usePluginBrokerActions();
   if (!flow) return <Box flexGrow={1} />;
   const { step } = flow;
 
@@ -369,7 +373,15 @@ export function BrokerAddFlowContent({
         focused={focused}
         label={addFlow.title}
         cursor={flow.cursor}
-        items={flow.directory.map((entry) => ({ id: entry.key, label: entry.name, detail: brokerMethodSummary(entry) }))}
+        items={flow.directory.map((entry) => ({
+          id: entry.key,
+          label: entry.name,
+          // The desktop says how it connects under the name, beside its logo.
+          ...(desktop
+            ? { description: brokerMethodSummary(entry), leading: <LogoMark src={brokerDirectoryLogo(entry, getBrokerLogo)} name={entry.name} size="lead" /> }
+            : { detail: brokerMethodSummary(entry) }),
+        }))}
+        rowDescriptions={desktop}
         emptyMessage="No connectable brokers are installed."
         onCursorChange={addFlow.setCursor}
         onChoose={(index) => {
@@ -446,6 +458,7 @@ function ChoiceList({
   label,
   cursor,
   items,
+  rowDescriptions,
   emptyMessage,
   onCursorChange,
   onChoose,
@@ -454,10 +467,12 @@ function ChoiceList({
   label: string;
   cursor: number;
   items: ListViewItem[];
+  rowDescriptions?: boolean;
   emptyMessage?: string;
   onCursorChange: (index: number) => void;
   onChoose: (index: number) => void;
 }) {
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const selectedIndex = Math.min(Math.max(0, cursor), Math.max(0, items.length - 1));
   useShortcut((event: KeyEventLike) => {
     const move = listCursorMove(event, 10);
@@ -475,7 +490,8 @@ function ChoiceList({
   }, { enabled: focused });
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={1}>
+    // The desktop keeps the pane's inset above the first row, as on its sides.
+    <Box flexDirection="column" flexGrow={1} paddingX={1} style={desktop ? { paddingTop: "var(--gloom-inset)" } : undefined}>
       <ListView
         items={items}
         selectedIndex={selectedIndex}
@@ -485,6 +501,11 @@ function ChoiceList({
         scrollable
         flexGrow={1}
         remoteLabel={label}
+        rowDescriptions={rowDescriptions}
+        // The desktop sets the rows on the pane at its inset, and the pointer
+        // moves the one highlight the keys move. A two-line row has its own
+        // room above and below, so those rows sit one under the next.
+        {...(desktop ? { surface: "plain" as const, bgColor: "transparent", selectOnHover: true, ...(rowDescriptions ? { rowGap: 0 } : {}) } : {})}
       />
     </Box>
   );

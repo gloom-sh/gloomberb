@@ -524,7 +524,16 @@ export function OnboardingChoiceList({
       rowHeight={2}
       selectOnHover
       renderRow={(item, state) => (
-        <Box flexDirection="row" alignItems="center" width="100%" minWidth={0}>
+        <Box
+          flexDirection="row"
+          alignItems="center"
+          width="100%"
+          minWidth={0}
+          style={item.leading !== undefined ? { gap: "var(--gloom-space-sm)" } : undefined}
+        >
+          {item.leading !== undefined && (
+            <Box flexShrink={0} alignItems="center" aria-hidden="true">{item.leading}</Box>
+          )}
           <Box flexDirection="column" flexGrow={1} minWidth={0}>
             <Text
               fg={state.selected ? colors.textBright : colors.text}

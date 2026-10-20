@@ -23,7 +23,7 @@ import {
 } from "../../../state/app/context";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
@@ -50,7 +50,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const paneId = usePaneInstanceId();
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
-  const { getBrokerAdapter } = usePluginBrokerActions();
+  const { getBrokerAdapter, getBrokerLogo } = usePluginBrokerActions();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   // The profile is remembered by id so a reload lands on the same row.
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
@@ -81,8 +82,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const { ends: signInEnds, reload: reloadSignInEnds } = useSignInEnds(config.brokerInstances);
   const rows = useMemo(
-    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds),
-    [adapters, brokerAccounts, config, language, signInEnds, signedInBrokers, statusVersion],
+    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds, getBrokerLogo),
+    [adapters, brokerAccounts, config, getBrokerLogo, language, signInEnds, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
@@ -229,6 +230,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const tableWidth = Math.max(24, width);
   const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
+  const renderCell = useCallback(
+    (row: BrokerProfileRow, column: BrokerColumn) => renderBrokerCell(row, column, desktop),
+    [desktop],
+  );
+
   const openSelectedDetail = useCallback((_index: number, row: BrokerProfileRow) => {
     setSelectedId(row.id);
     setEditDraft(null);
@@ -319,7 +325,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           sortColumnId={null}
           sortDirection="asc"
           getItemKey={(row) => row.id}
-          renderCell={renderBrokerCell}
+          renderCell={renderCell}
           // The footer's a adds one.
           emptyContent={(
             <Box width="100%" paddingX={1} paddingY={1}>

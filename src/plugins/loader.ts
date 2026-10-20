@@ -33,6 +33,12 @@ export interface LoadedExternalPlugin {
   repo?: string;
   /** A symlink to a local checkout (`gloomberb plugin link`) rather than a clone. */
   linked?: boolean;
+  /**
+   * The plugin's logo as a `data:` URL (plugin-icon.ts), for the desktop and
+   * the web to draw beside what it contributes, such as its broker. The
+   * terminal draws no images and leaves it unread.
+   */
+  icon?: string;
   error?: string;
   /**
    * The Gloomberb the checkout declares it needs, when this one is older. The

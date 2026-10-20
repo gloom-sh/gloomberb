@@ -1,4 +1,6 @@
-import { Box } from "../../../../ui";
+import { Box, useUiCapabilities } from "../../../../ui";
+import { brokerPortfolioLogo } from "../../../../brokers/logos";
+import { LogoMark } from "../../../../components/ui/logo-mark";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -69,7 +71,7 @@ import { PortfolioGrid } from "../grid";
 import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
 import { getSharedRegistry } from "../../../registry";
-import { usePluginAppActions } from "../../../runtime";
+import { usePluginAppActions, usePluginBrokerActions } from "../../../runtime";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   cursorAfterRemoval,
@@ -420,10 +422,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     cancelPendingCursorSymbol();
     setCurrentCollectionId(collectionId);
   }, [cancelPendingCursorSymbol, setCurrentCollectionId]);
-  const collectionTabs = useMemo(
-    () => visibleCollections.map((collection) => ({ label: collection.name, value: collection.id })),
-    [visibleCollections],
-  );
+  const { getBrokerAdapter, getBrokerLogo } = usePluginBrokerActions();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const collectionTabs = useMemo(() => visibleCollections.map((collection) => {
+    const portfolio = desktop && collection.kind === "portfolio"
+      ? config.portfolios.find((entry) => entry.id === collection.id)
+      : undefined;
+    // A broker account's tab leads with its broker's logo on the desktop and the web.
+    const logo = portfolio ? brokerPortfolioLogo(portfolio, config.brokerInstances, getBrokerAdapter, getBrokerLogo) : null;
+    return {
+      label: collection.name,
+      value: collection.id,
+      ...(logo ? { leading: <LogoMark src={logo.src} name={logo.name} /> } : {}),
+    };
+  }), [config.brokerInstances, config.portfolios, desktop, getBrokerAdapter, getBrokerLogo, visibleCollections]);
   const { strip: tabStrip, rows: headerHeight } = usePaneTabs(showCollectionTabs
     ? {
       tabs: collectionTabs,
