@@ -23,6 +23,7 @@ import { debugLog } from "../utils/debug-log";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import { mergeQuoteSubscriptionTargets } from "../market-data/quote-subscription-target";
 import { recordServerClockSample } from "../market-data/quotes/clock";
+import { perpetualListing } from "../tickers/perpetual-listing";
 import {
   connectionHealth,
   GLOOM_CLOUD_SOCKET_CONNECTION_ID,
@@ -41,6 +42,11 @@ export const CHAT_ATTACHMENTS_FEATURE = "chat.attachments";
 /** The app can run terminal tools relayed from a remote assistant; it still announces itself first. */
 export const TERMINAL_RELAY_FEATURE = "terminal.relay";
 const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE, TERMINAL_RELAY_FEATURE] as const;
+/**
+ * The server streams perpetual listings (`BTC:HYPERLIQUID`) from their venues. Until a server offers it, they are
+ * kept off market.subscribe: an older one would read `BTC` on HYPERLIQUID as a stock symbol.
+ */
+const MARKET_PERPS_FEATURE = "market.perps";
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
@@ -760,8 +766,14 @@ export class CloudApiSocket {
     );
     const changed = next.size !== this.offeredFeatures.size
       || [...next].some((feature) => !this.offeredFeatures.has(feature));
+    const perpsOffered = next.has(MARKET_PERPS_FEATURE) && !this.offeredFeatures.has(MARKET_PERPS_FEATURE);
     this.offeredFeatures = next;
     if (!changed) return;
+    // Perpetual listings held back since the socket opened go out now.
+    if (perpsOffered) {
+      const perps = [...this.quoteTargets.values()].filter((target) => perpetualListing(target.symbol, target.exchange));
+      if (perps.length > 0) this.sendSocketMessage({ type: "market.subscribe", symbols: perps.map((target) => this.serializeQuoteStreamTarget(target)) });
+    }
     for (const listener of this.offeredFeatureListeners) listener();
   }
 
@@ -960,14 +972,20 @@ export class CloudApiSocket {
       this.sendSocketMessage({ type: "scanner.subscribe", scanner });
     }
 
-    if (this.quoteTargets.size > 0) {
+    const targets = [...this.quoteTargets.values()].filter((target) => this.streamable(target));
+    if (targets.length > 0) {
       this.sendSocketMessage({
         type: "market.subscribe",
-        symbols: [...this.quoteTargets.values()].map((target) =>
+        symbols: targets.map((target) =>
           this.serializeQuoteStreamTarget(target),
         ),
       });
     }
+  }
+
+  /** Whether the server may hear about this target: anything but a perpetual listing, which waits for `market.perps`. */
+  private streamable(target: QuoteStreamTarget): boolean {
+    return this.offeredFeatures.has(MARKET_PERPS_FEATURE) || !perpetualListing(target.symbol, target.exchange);
   }
 
   private scheduleQuoteSubscriptionFlush(): void {
@@ -1002,8 +1020,8 @@ export class CloudApiSocket {
       this.pendingQuoteUnsubscribes.clear();
       return;
     }
-    const subscribes = [...this.pendingQuoteSubscribes.values()];
-    const unsubscribes = [...this.pendingQuoteUnsubscribes.values()];
+    const subscribes = [...this.pendingQuoteSubscribes.values()].filter((target) => this.streamable(target));
+    const unsubscribes = [...this.pendingQuoteUnsubscribes.values()].filter((target) => this.streamable(target));
     this.pendingQuoteSubscribes.clear();
     this.pendingQuoteUnsubscribes.clear();
     if (unsubscribes.length > 0) {

@@ -77,6 +77,7 @@ import {
 import {
   getPerpetualHistory,
   getPerpetualQuote,
+  streamedPerpetualQuote,
   namesPerpetualMarket,
   perpetualTarget,
   searchPerpetualMarkets,
@@ -885,14 +886,23 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: QuoteSubscriptionTarget[],
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void {
-    // Perpetual markets are polled, a minute apart at the venue; the quote stream carries none.
-    const { valid } = cloudBatchTargets(splitPerpetualTargets(targets).others);
+    // A perpetual market streams as its listing on its venue (BTC:HYPERLIQUID): Gloom Cloud follows the venue's own
+    // socket for it, once the server says it can (the socket holds it back until then).
+    const { perpetuals, others } = splitPerpetualTargets(targets);
+    const valid: Array<{ target: QuoteSubscriptionTarget; request: { symbol: string; exchange?: string } }> = [
+      ...cloudBatchTargets(others).valid,
+      ...perpetuals.flatMap((target) => {
+        const listing = perpetualTarget(target.symbol, target.exchange);
+        return listing ? [{ target, request: { symbol: listing.symbol, exchange: listing.exchange } }] : [];
+      }),
+    ];
     if (!valid.length) return () => {};
     // No-op without a session credential; covers browser cookie sessions too.
     void apiClient.ensureVerifiedSession().catch(logFailure("sources.gloomberb-cloud.index", "Verifying the quote streaming session failed"));
     const targetMap = new Map<string, QuoteSubscriptionTarget[]>();
-    for (const { target } of valid) {
-      const key = quoteTargetKey(target.symbol, target.exchange);
+    for (const { target, request } of valid) {
+      // A perpetual comes back as its listing, whatever form it was asked for in.
+      const key = perpetuals.includes(target) ? quoteTargetKey(request.symbol, request.exchange) : quoteTargetKey(target.symbol, target.exchange);
       const matches = targetMap.get(key) ?? [];
       matches.push(target);
       targetMap.set(key, matches);
@@ -916,7 +926,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
         }
         const matchedKey = cloudResponseTargetKey(key, requested);
         const matches = matchedKey ? targetMap.get(matchedKey) ?? [] : [];
-        const mappedQuote = mapQuote(quote);
+        if (!matches.length) return;
+        const listing = perpetualTarget(target.symbol, target.exchange);
+        const mappedQuote = listing ? streamedPerpetualQuote(quote, listing) : mapQuote(quote);
+        if (!mappedQuote) return;
         for (const match of matches) {
           onQuote(match, retainRequestedQuoteSymbol(mappedQuote, match.symbol));
         }

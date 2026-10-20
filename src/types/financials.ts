@@ -1,3 +1,4 @@
+import type { PerpBoardRow } from "../api-client/perps";
 import type { PriceBasis } from "./instrument";
 
 export type MarketState = "PRE" | "REGULAR" | "POST" | "PREPRE" | "POSTPOST" | "CLOSED";
@@ -181,6 +182,12 @@ export interface Quote extends DepositaryReceiptFacts {
   provenance?: QuoteProvenance;
   /** Freshness class for the quote data. Provider identity lives in providerId/provenance. */
   dataSource?: QuoteDataSource;
+  /**
+   * A perpetual contract's whole market row as of this quote (funding, open
+   * interest, premium), so every view of the contract reads the figures that
+   * came with its price, streamed or fetched.
+   */
+  perpetual?: PerpBoardRow;
 }
 
 export interface QuoteContribution extends Quote {

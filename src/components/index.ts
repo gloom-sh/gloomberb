@@ -140,7 +140,7 @@ export {
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CardProps, CheckboxProps, ChoiceDialogChoice, ColumnGridCell,
-  ColumnGridColumn, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions,
+  ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
   FigureListItem, FigureListProps, GridField,

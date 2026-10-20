@@ -64,3 +64,19 @@ test("measures how far the server clock runs ahead from ready and batch stamps",
   ws.receive({ type: "market.quotes", at: Date.now() + 6_000, quotes: [] });
   expect(getServerClockOffsetMs()).toBeGreaterThan(5_500);
 });
+
+test("a perpetual listing reaches the server only once it offers perpetual markets", () => {
+  sockets = installTestWebSocket(0);
+  const socket = new CloudApiSocket(createTestSocketDeps());
+  socket.subscribeQuotes([{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "BTC", exchange: "HYPERLIQUID" }], () => {});
+  const ws = sockets.at(-1)!;
+  ws.open();
+  const subscribed = () => ws.sent.filter((message) => message.type === "market.subscribe")
+    .map((message) => (message.symbols as QuoteStreamTarget[]).map((target) => `${target.symbol}:${target.exchange}`));
+  // An older server would read BTC on HYPERLIQUID as a stock.
+  ws.receive({ type: "ready", user: null, serverTime: Date.now(), features: ["market.batch"] });
+  expect(subscribed()).toEqual([["AAPL:NASDAQ"]]);
+  ws.receive({ type: "ready", user: null, serverTime: Date.now(), features: ["market.batch", "market.perps"] });
+  ws.receive({ type: "ready", user: null, serverTime: Date.now(), features: ["market.batch", "market.perps"] });
+  expect(subscribed()).toEqual([["AAPL:NASDAQ"], ["BTC:HYPERLIQUID"]]);
+});

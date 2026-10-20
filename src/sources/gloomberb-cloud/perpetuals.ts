@@ -115,7 +115,46 @@ export function perpetualQuote(row: PerpBoardRow, listing: PerpetualListing): Qu
     dataSource: "delayed",
     ...(row.markPrice != null ? { mark: row.markPrice } : {}),
     ...(row.lastPrice != null ? { lastTradePrice: row.lastPrice } : {}),
-    ...(row.stale || row.delisted ? { stale: true } : {}),
+    // Said either way: a fresh reading merged over a stale one must clear it, not inherit it.
+    stale: row.stale === true || row.delisted === true,
+    perpetual: row,
+  };
+}
+
+const finiteOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
+
+/** A row the market socket carried for this listing's market, readable as a fetched one; null for anything else. */
+function streamedRow(value: unknown, listing: PerpetualListing): PerpBoardRow | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as PerpBoardRow;
+  return typeof row.marketId === "string" && row.marketId.toLowerCase() === listing.marketId.toLowerCase()
+    && typeof row.quoteCurrency === "string" && typeof row.observedAt === "string" && Number.isFinite(Date.parse(row.observedAt))
+    && [row.markPrice, row.lastPrice, row.fundingRate8h, row.openInterestUsd, row.premium].every(finiteOrNull)
+    ? row : null;
+}
+
+/**
+ * A perpetual's quote from the market socket: the same quote its fetched row
+ * makes, from the row the socket carried, marked live while the venue's own
+ * socket feeds it. Null when the frame holds no row for this market.
+ */
+export function streamedPerpetualQuote(
+  frame: { perpetual?: unknown; dataSource?: unknown; delivery?: unknown; stale?: unknown; bid?: unknown; ask?: unknown },
+  listing: PerpetualListing,
+): Quote | null {
+  const row = streamedRow(frame.perpetual, listing);
+  const quote = row ? perpetualQuote(row, listing) : null;
+  if (!quote) return null;
+  const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  const bid = number(frame.bid);
+  const ask = number(frame.ask);
+  return {
+    ...quote,
+    ...(frame.dataSource === "live" ? { dataSource: "live" as const } : {}),
+    ...(frame.delivery === "stream" || frame.delivery === "poll" ? { delivery: frame.delivery } : {}),
+    stale: quote.stale === true || frame.stale === true,
+    ...(bid !== undefined ? { bid } : {}),
+    ...(ask !== undefined ? { ask } : {}),
   };
 }
 

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow } from "../../../api-client/perps";
@@ -10,7 +10,9 @@ import { perpEquityIdentity } from "./equity-identity";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { loadPerpSelection, loadPerpsEquity } from "./client";
 import { compact, percent, perpDescription, price, readingTime } from "./model";
+import { useLivePerpRows } from "./live-rows";
 import { openPerpLabel, useOpenPerpMarket } from "./open-market";
+import { mergeVenueMarkets } from "./venue-markets";
 
 /**
  * A stock's perpetuals, or for a perpetual market itself its own contract: funding, open interest and when the venue
@@ -34,9 +36,15 @@ export function PerpEquityRow({ symbol, exchange, instrumentType, maxRows = 3, w
     : loadPerpsEquity({ symbol: listingSymbol!, exchange: listingExchange! }, accessKey, force), [marketId, listingSymbol, listingExchange, accessKey]);
   const resource = useAsyncResource(enabled ? loader : null, { clearOnError: isAccessDenied });
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  const rows = resource.data?.payload.rows.filter((row) => !row.delisted && (!marketId || row.marketId === marketId)) ?? [];
+  // A stock's contracts one per venue, deepest first, as DES lists them; the ones shown follow the quote stream.
+  const fetched = useMemo(() => {
+    const rows = resource.data?.payload.rows ?? [];
+    return marketId ? rows.filter((row) => !row.delisted && row.marketId === marketId) : mergeVenueMarkets(rows).map((market) => market.primary);
+  }, [marketId, resource.data]);
+  const shown = useMemo(() => fetched.slice(0, maxRows), [fetched, maxRows]);
+  const { rows } = useLivePerpRows(shown, { surface: marketId ? "detail" : "monitor", enabled });
   if (!enabled || !rows.length) return null;
-  return <>{rows.slice(0, maxRows).map((row) => <PerpRow key={row.marketId} row={row} stale={!!resource.data?.stale} width={width} own={!!marketId} />)}</>;
+  return <>{rows.map((row) => <PerpRow key={row.marketId} row={row} stale={!!resource.data?.stale} width={width} own={!!marketId} />)}</>;
 }
 
 /** The parts that fit `width`, dropped from the end; all of them when the width is not known. */

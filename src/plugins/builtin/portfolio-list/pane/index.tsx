@@ -214,7 +214,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
   const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
-  const perpetuals = useListPerpetuals(tickers, showsPerpetuals);
+  // The rows in view, from the last render: their contracts follow the quote stream.
+  const [perpetualsInView, setPerpetualsInView] = useState<ReadonlySet<string>>(() => new Set());
+  const perpetuals = useListPerpetuals(tickers, showsPerpetuals, perpetualsInView);
   const openPerpMarket = useOpenPerpMarket();
   const visibleWarmupRequirements = useMemo(
     () => resolveVisibleWarmupRequirements(columns),
@@ -549,6 +551,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
         end: Math.min(sortedTickers.length, Math.max(streamWindow.end, height + 4)),
       }
   ), [height, sortedTickers.length, streamWindow, viewMode]);
+
+  const perpetualsInViewKey = showsPerpetuals
+    ? sortedTickers.slice(effectiveStreamWindow.start, effectiveStreamWindow.end).map((ticker) => ticker.metadata.ticker).join("\u001f")
+    : "";
+  useEffect(() => {
+    setPerpetualsInView(new Set(perpetualsInViewKey ? perpetualsInViewKey.split("\u001f") : []));
+  }, [perpetualsInViewKey]);
 
   usePortfolioPaneStreaming({
     appActive,

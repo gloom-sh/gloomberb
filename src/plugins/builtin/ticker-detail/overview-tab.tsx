@@ -83,7 +83,8 @@ function contractField(line: FuturesContractLine): StatField {
 }
 
 interface OverviewTabProps {
-  perpetuals?: ReactNode;
+  /** The contracts on the security, given the width of the overview's content. */
+  perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
   width?: number;
   /** The tab's height; a short one keeps fewer futures contract terms. */
   height?: number;
@@ -431,7 +432,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           )}
         </Box>
 
-        {perpetuals && <PaneLinkMenu>{perpetuals}</PaneLinkMenu>}
+        {perpetuals && <PaneLinkMenu>{typeof perpetuals === "function" ? perpetuals(contentWidth) : perpetuals}</PaneLinkMenu>}
 
         {(hasDayRange || yearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={nativePaneChrome ? undefined : contentWidth}>

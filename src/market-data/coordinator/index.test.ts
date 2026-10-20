@@ -8,6 +8,9 @@ import type { PricePoint, Quote } from "../../types/financials";
 import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
 import { SNAPSHOT_FAILURE_RETRY_MS } from "./entries";
 import { AssetDataRouter } from "../../sources/provider-router";
+import { perpetualQuote, streamedPerpetualQuote } from "../../sources/gloomberb-cloud/perpetuals";
+import { perpetualListing } from "../../tickers/perpetual-listing";
+import { perpRow } from "../../plugins/builtin/perps/test-fixture";
 
 // Stream ticks apply on a data frame; these tests step that frame directly.
 const streamClock = createManualFrameDriver(0);
@@ -411,6 +414,37 @@ describe("MarketDataCoordinator", () => {
 
     streamClock.advance(0);
     expect(coordinator.getQuoteEntry(instrument).data?.price).toBe(412.5);
+  });
+
+  it("lets a perpetual's streamed reading replace a stale fetched one, its market row with it", async () => {
+    // As Gloom Cloud quotes BTC on Hyperliquid: a fetched read the venue had stopped answering, then the venue's socket.
+    const listing = perpetualListing("BTC:HYPERLIQUID", "HYPERLIQUID")!;
+    const row = (markPrice: number, fundingRate8h: number, observedAt: string, stale = false) => perpRow({
+      marketId: "hyperliquid:default:BTC", venue: "hyperliquid", dex: "default", symbol: "BTC", baseAsset: "BTC", quoteCurrency: "USDC",
+      markPrice, fundingRate8h, observedAt, stale,
+    });
+    const fetched = perpetualQuote(row(81_595, 0.0001, new Date(Date.now() - 7 * 60_000).toISOString(), true), listing)!;
+    let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    const provider = createProvider({
+      getTickerFinancials: async () => createTestFinancials({ quote: fetched }),
+      subscribeQuotes: (_targets, onQuote) => {
+        streamed = onQuote as typeof streamed;
+        return () => {};
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider, { frames: streamFrames });
+    const instrument = { symbol: "BTC:HYPERLIQUID", exchange: "HYPERLIQUID" };
+    coordinator.subscribeQuotes([{ instrument }]);
+    await coordinator.loadSnapshot(instrument);
+    const onStreamed = streamed as ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null;
+    if (!onStreamed) throw new Error("expected streaming callback");
+    // The socket says nothing of staleness for a fresh row; merged over the stale read it must not inherit it.
+    const tick = streamedPerpetualQuote({ perpetual: row(81_710, 0.0002, new Date(Date.now()).toISOString()), dataSource: "live", delivery: "stream" }, listing)!;
+    onStreamed({ symbol: "BTC:HYPERLIQUID", exchange: "HYPERLIQUID" }, tick);
+    streamClock.advance(10_000);
+    const quote = coordinator.getQuoteEntry(instrument).data;
+    expect(quote).toMatchObject({ price: 81_710, stale: false, dataSource: "live" });
+    expect(quote?.perpetual).toMatchObject({ markPrice: 81_710, fundingRate8h: 0.0002 });
   });
 
   it("reconciles stream quotes with cached provider day references before a snapshot loads", () => {

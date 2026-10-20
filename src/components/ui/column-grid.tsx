@@ -1,8 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Box, Text, useUiCapabilities } from "../../ui";
+import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { displayWidth, padTo, truncateToDisplayWidth } from "../../utils/format";
-import { ExternalLinkText } from "./external-link";
+import { ExternalLinkText, usePaneLinkMenuEntry } from "./external-link";
 
 /** One column of a ColumnGrid. */
 export interface ColumnGridColumn {
@@ -20,9 +21,19 @@ export interface ColumnGridColumn {
   gapBefore?: number;
 }
 
+/**
+ * What a cell's text opens (a row's market, a security's DES): the text is the
+ * target, as a key-value row's value is, and inside a `PaneLinkMenu` the pane
+ * menu lists it as `label`, so the keyboard reaches what a click opens.
+ */
+export interface ColumnGridLink {
+  label: string;
+  onOpen: () => void;
+}
+
 /** Text the grid fits to its column (padded on the terminal, cut by CSS on the desktop), or content the column holds. */
 export type ColumnGridCell =
-  | { text: string; color?: string }
+  | { text: string; color?: string; link?: ColumnGridLink }
   | { content: ReactNode }
   | null;
 
@@ -76,6 +87,35 @@ function gridTemplate(columns: readonly ColumnGridColumn[]): { template: string;
   return { template: tracks.join(" "), gap: undefined, lines };
 }
 
+/** A link cell's pointer handling and its pane-menu entry; nothing for a plain cell. */
+function useLinkTarget(link: ColumnGridLink | undefined) {
+  const colors = useThemeColors();
+  usePaneLinkMenuEntry(link ? `column-grid:${link.label}` : null, link?.label ?? "", () => link?.onOpen());
+  return link ? {
+    cursor: "pointer" as const,
+    hoverBackgroundColor: hoverBg(colors),
+    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
+    "data-gloom-interactive": "true",
+    "data-gloom-label": link.label,
+  } : {};
+}
+
+/** A text cell that opens something, in the terminal: its padded text is the target. */
+function TerminalLinkCell({ text, color, link, width, align }: { text: string; color?: string; link: ColumnGridLink; width: number; align?: "left" | "right" }) {
+  const target = useLinkTarget(link);
+  return <Box width={width} flexDirection="row" {...target}><Text fg={color}>{padTo(text, width, align)}</Text></Box>;
+}
+
+/** A text cell that opens something, on the desktop and the web. */
+function NativeLinkCell({ text, color, link, column, place }: { text: string; color?: string; link: ColumnGridLink; column: ColumnGridColumn; place: CSSProperties }) {
+  const target = useLinkTarget(link);
+  return (
+    <Text fg={color} data-gloom-ui="column-grid-text" {...clipOf(text, column)} {...target} style={{ ...place, ...TEXT_BOX, textAlign: column.align ?? "left" }}>
+      {text}
+    </Text>
+  );
+}
+
 /**
  * Columns of single-line text that line up from row to row: a table of
  * figures under its header, or label and value pairs set in columns. The terminal lays the
@@ -83,7 +123,8 @@ function gridTemplate(columns: readonly ColumnGridColumn[]): { template: string;
  * them. The desktop and the web lay out one CSS grid whose tracks are counted
  * in characters, so the columns follow a resize to the pixel, every row and
  * the header share the same tracks, and text that does not fit ends in an
- * ellipsis instead of being cut to a count of cells.
+ * ellipsis instead of being cut to a count of cells. A text cell with a `link`
+ * opens it on a click and is listed in the pane menu.
  */
 export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -98,7 +139,9 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
                 <Box key={index} flexDirection="row">
                   {column.gapBefore ? <Box width={column.gapBefore} /> : null}
                   {cell && "text" in cell
-                    ? <Text fg={cell.color}>{padTo(cell.text, column.width, column.align)}</Text>
+                    ? cell.link
+                      ? <TerminalLinkCell text={cell.text} color={cell.color} link={cell.link} width={column.width} align={column.align} />
+                      : <Text fg={cell.color}>{padTo(cell.text, column.width, column.align)}</Text>
                     : <Box width={column.width} flexDirection="row">{cell?.content}</Box>}
                 </Box>
               );
@@ -126,6 +169,7 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
             const cell = row[index] ?? null;
             if (!cell) return null;
             const place: CSSProperties = { gridColumn: lines[index], gridRow: rowIndex + 1 };
+            if ("text" in cell && cell.link) return <NativeLinkCell key={index} text={cell.text} color={cell.color} link={cell.link} column={column} place={place} />;
             return "text" in cell
               ? (
                 <Text
