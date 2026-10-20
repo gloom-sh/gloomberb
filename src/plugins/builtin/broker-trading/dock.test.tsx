@@ -242,10 +242,11 @@ test("Chart stays the chart alone, Trade puts the ticket beside it, and the divi
 test("Overview lists the ticker's working orders and fills without the ticket, and an order opens Trade to change it", async () => {
   const f = await mount();
   await f.tab("overview");
+  // Orders come from the shared feed and fills from their own read, so either can draw first.
   await tui.waitForFrameToContain("Buy 10 · Limit 336.50");
+  await tui.waitForFrameToContain("Sold 4 at 340.00");
   const frame = tui.frame();
   expect(frame).toContain("Sell 10 · Limit 340.00 · 4 of 10 filled");
-  expect(frame).toContain("Sold 4 at 340.00");
   expect(frame).not.toContain("Review");
   const row = frame.split("\n").findIndex((line) => line.includes("Buy 10 · Limit 336.50"));
   await act(async () => { await tui.setup().mockMouse.click(4, row); });
