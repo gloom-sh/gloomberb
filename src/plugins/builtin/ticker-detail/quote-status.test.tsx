@@ -138,14 +138,16 @@ test("a listing that no longer trades reads as its last session: no move, no boo
   expect(live).toContain("Bid");
   expect(live).toContain("Day Range");
   const accessText = () => footer.info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
-  expect(accessText()).toContain("delayed");
+  // A free plan's delay segment (its clock and the upgrade behind it), whatever its wording.
+  const delaySegment = () => footer.info.find((segment) => segment.id === "ticker-research-access");
+  expect(delaySegment()).toBeDefined();
   const delisting = { status: "delisted" as const, lastTradeDate: "2026-09-10", historyStart: "2016-01-04" };
   const ended = await replaceQuote({ ...trading, delisting });
   expect(ended).toContain("Delisted Sep 10, 2026");
   expect(ended).toContain("HK$107.50");
   for (const live of ["+0.60", "+0.56%", "Bid", "Ask", "Spr", "Day Range"]) expect(ended).not.toContain(live);
   expect(ended).toContain("Last Session");
-  expect(accessText()).not.toContain("delayed");
+  expect(delaySegment()).toBeUndefined();
   expect(accessText()).toBe("Delisted Sep 10, 2026");
 });
 
