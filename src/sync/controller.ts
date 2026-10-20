@@ -13,6 +13,7 @@ import {
   type SyncSnapshot,
   type SyncTransport,
 } from "./types";
+import type { LocalMarketDataLookup } from "./local-only";
 
 type CloudSyncPhase = "idle" | "disabled" | "syncing" | "synced" | "error";
 
@@ -32,6 +33,8 @@ interface SyncRuntime {
   getContributors: () => RegisteredSyncContributor[];
   getTransport: () => RegisteredSyncTransport | null;
   baselineStore?: SyncBaselineStore;
+  /** Sources whose quotes and bars never leave this device (`BrokerAdapter.localMarketData`); none when absent. */
+  isLocalMarketData?: LocalMarketDataLookup;
 }
 
 const CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
@@ -357,6 +360,7 @@ export class CloudSyncController {
         state: runtime.getState(),
         baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
         memo: this.memoFor(runtime, entry.contributor.id),
+        isLocalMarketData: runtime.isLocalMarketData,
       });
       payloads[entry.contributor.id] = {
         schemaVersion: entry.contributor.schemaVersion,

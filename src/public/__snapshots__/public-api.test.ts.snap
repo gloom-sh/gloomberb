@@ -4,6 +4,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
 {
   ".": [],
   "./broker": [
+    "LOCAL_BROKER_MARKET_DATA",
     "PRESERVED_PASSWORD_HINT",
     "cloudBrokerLink",
     "getBrokerRemoteClient",
@@ -204,6 +205,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
   ],
   "./market-data": [
     "computeTickerPriceReturns",
+    "createProviderMiss",
     "currencyMinorDigits",
     "formatCompactMarketPriceWithCurrency",
     "formatMarketChangeWithCurrency",

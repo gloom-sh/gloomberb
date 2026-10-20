@@ -483,13 +483,17 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         : { key: viewportKey, range }
     ));
   }, [viewportKey]);
+  // A chain read from a broker profile has its contracts quoted by that profile too.
+  const quoteBrokerId = instrument?.brokerId, quoteBrokerInstanceId = instrument?.brokerInstanceId;
+  const optionQuoteBroker = useMemo(() => quoteBrokerId || quoteBrokerInstanceId
+    ? { brokerId: quoteBrokerId, brokerInstanceId: quoteBrokerInstanceId } : undefined, [quoteBrokerId, quoteBrokerInstanceId]);
   const optionQuoteTargets = useMemo(
     () => buildOptionQuoteTargets(quoteRows, {
       fallbackHeight: height,
       selectedIndex: selectedStrikeIdx,
       visibleRange: visibleStrikeRange,
-    }),
-    [height, quoteRows, selectedStrikeIdx, visibleStrikeRange],
+    }, optionQuoteBroker),
+    [height, quoteRows, selectedStrikeIdx, visibleStrikeRange, optionQuoteBroker],
   );
   const {
     entries: optionQuoteEntries,
@@ -512,8 +516,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // The snapshot object itself comes back while nothing streamed, so the
   // memos below only recompute when a quote actually landed.
   const liveChain = useMemo(
-    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness).chain : null,
-    [optionQuoteEntries, optionQuoteFreshness, strikeChain],
+    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker).chain : null,
+    [optionQuoteEntries, optionQuoteFreshness, strikeChain, optionQuoteBroker],
   );
   const callsByStrike = useMemo(
     () => new Map(liveChain?.calls.map((c) => [c.strike, c]) ?? []),

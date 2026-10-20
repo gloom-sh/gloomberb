@@ -41,6 +41,12 @@ export function useCloudSyncRuntime({
       baselineStore,
       getContributors: () => pluginRegistry.getEnabledSyncContributors(),
       getTransport: () => pluginRegistry.getActiveSyncTransport(),
+      isLocalMarketData: (providerId) => {
+        const broker = pluginRegistry.brokers.get(providerId);
+        if (broker) return broker.localMarketData === true;
+        // A broker whose plugin is off may still have its quotes about from before; they stay here too.
+        return getState().config.brokerInstances.some((instance) => instance.brokerType === providerId);
+      },
     });
   }, [baselineStore, dispatch, getState, pluginRegistry, tickerRepository]);
 

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppContext, appReducer, createInitialState, type AppAction } from "../../../state/app/context";
@@ -7,9 +7,11 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { BrokerConnectionStatus } from "../../../types/broker";
 import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
 import { createTradeCommand } from "./command";
+import { brokerOrderFeed } from "./order-feed";
 import { createDemoBroker } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
+afterEach(() => brokerOrderFeed.clear());
 
 test("a command prefills the resolved ticket once, focuses Review, and invalidates an existing review", async () => {
   const demo = createDemoBroker({ seedOrders: false });
@@ -56,6 +58,8 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
   await tui.waitForFrameToContain("Buy 7 AAPL");
   expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
   expect(demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
+  // A refreshed ticker record (a portfolio sync, say) resolves the same contract: the draft stays.
+  await act(async () => { store.dispatch({ type: "UPDATE_TICKER", ticker: createTestTicker("AAPL", "Example company") }); });
   await tui.emitKeypress({ name: "enter", sequence: "\r" });
   await tui.waitForFrameToContain("Review Order");
   expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "BUY", quantity: 7, limitPrice: 150, orderType: "LMT" });

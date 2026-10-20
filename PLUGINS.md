@@ -789,6 +789,8 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
+A provider that has no data for a symbol it accepted throws `createProviderMiss(message, reason)` from `gloomberb/market-data`, naming the symbol: `createProviderMiss("No quote for XYZ.", "No quote for XYZ.")`. The router moves on to the next provider without logging a failure, and shows the reason where the data would be when no provider answers. Any other error is logged as a provider failure. Better still, have `canProvide` turn the symbol down so it is never asked.
+
 ### Data catalog series
 
 Everything the data catalog (`CAT`) lists, and the chart composer's series search finds, is a registered series: one definition per line that can be charted. Register yours and it can be drawn next to any built-in series, a FRED rate or a ticker's price.
@@ -971,7 +973,7 @@ await ctx.removeBrokerInstance(instance.id);
 
 #### Shared order ticket
 
-The built-in Trade tab and Orders pane use the selected `BrokerAdapter` directly. To opt into the shared ticket, implement `listAccounts`, `getQuote`, `previewOrder`, `placeOrder` and synchronous `getTradingCapabilities(instance, contract?, orderType?)`. An adapter without capability metadata remains read only in this ticket; its existing custom trading UI and method signatures keep working. The ticket does not reinterpret another broker's contract or use the market-data router to prefill prices.
+The built-in Trade tab and Orders pane use the selected `BrokerAdapter` directly. To opt into the shared ticket, implement `listAccounts`, `getQuote`, `previewOrder`, `placeOrder` and synchronous `getTradingCapabilities(instance, contract?, orderType?)`. An adapter without capability metadata remains read only in this ticket; its existing custom trading UI and method signatures keep working. The ticket does not reinterpret another broker's contract or use the market-data router to prefill prices. Its bid, ask and last come from the broker's own `subscribeQuotes` while `canStreamQuotes` allows it (answer it from the profile's configuration, not the session: the desktop app asks in its view, where the session is not): one target for the instrument (the contract's `symbol`, with the contract as `context.instrument`) or one per spread leg (its OCC `localSymbol`), all with `route: "broker"`. Without a stream it asks `getQuote` every 15 seconds. A review reuses a streamed quote while the stream is still pushing it, so an adapter should deliver an unchanged quote again at least once a minute while its stream is up; otherwise the review asks `getQuote`.
 
 ```typescript
 getTradingCapabilities(instance, contract, orderType) {
@@ -1014,9 +1016,11 @@ Set optional `BrokerAccount.accountType` to the broker-reported classification, 
 
 Optional `getOrderStatus(instance, orderId)` resolves an acknowledged numeric handle to its current broker order, including explicit terminal records from order history. Return `null` when the outcome is unconfirmed. The ticket uses this method when available; disappearance from open orders alone never proves cancellation or a fill.
 
+Optional `subscribeOrders(instance, listener)` pushes order changes as the broker reports them, for every account the profile includes: call `listener.order(order)` with the whole `BrokerOrder` on placement, each fill, replacement, cancellation, rejection and expiry, under the same `orderId` throughout, and `listener.live(true | false)` when pushes start and stop. Keep `brokerOrderId` the order's own native ID: a cancel request that the broker files under a new ID still reports the order it ends. Return a disposer. The host keeps one app-wide order feed per trading profile: it reads `listOpenOrders` when the profile connects, applies pushes as they come and reconciles with open orders once a minute. Without a stream, or while `live` is false, it polls open orders every 5 seconds while an order works and every 30 seconds otherwise. An order that leaves the open list is asked for with `getOrderStatus`. The order drawer, the Orders pane, Overview and the ticket's result read this feed, and it raises the app's fill, partial fill, cancellation, rejection and expiry notifications whether or not a ticket is open.
+
 `ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
 
-The shared ticket handles one instrument per order where the adapter declares support, and option spreads where it declares `maxLegs`. It does not infer unreported broker constraints or guarantee that a vanished open order was filled or cancelled. Polling refreshes open orders while a pending result remains visible. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
+The shared ticket handles one instrument per order where the adapter declares support, and option spreads where it declares `maxLegs`. It does not infer unreported broker constraints or guarantee that a vanished open order was filled or cancelled. The order feed keeps open orders and a pending result current, from the broker's order stream where it has one and by polling where it does not. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
 
 #### Option spreads
 
@@ -1858,6 +1862,8 @@ These names still work and are marked `@deprecated` in the types. None is remove
 The `DataProvider` history methods are deprecated on data providers only. `BrokerAdapter` has no `*WithMetadata` variants, so a broker keeps implementing `getPriceHistoryForResolution` and `getDetailedPriceHistory`.
 
 A broker whose intraday history can include pre-market and after-hours bars sets `extendedHoursHistory: true`. When a chart's Ext hours is on, those two methods then receive `{ session: "extended" }` as their last argument, and the chart opens the day at the pre-market. A broker without the flag is not asked for them: the chart's market-data providers answer first, as they do for an unlinked chart, and the broker's regular session answers only when none can.
+
+A broker whose terms restrict redistributing its market data sets `localMarketData: true`. Gloom Cloud sync then never uploads the quotes it supplies (a quote whose `providerId` is the broker's id) or anything derived from its bars; this also holds while its plugin is off. Its accounts still sync like any broker's, which roundups, alerts, the mobile app and Ask Gloom rely on. Users can keep a single connection's account data on the device in Brokers (`localOnly` on the profile); that is their choice, not the plugin's. An older host ignores the flag; a broker that must not reach Cloud there checks `LOCAL_BROKER_MARKET_DATA` from `gloomberb/broker` through a namespace import (`import * as broker from "gloomberb/broker"`) and asks for Cloud to be off when it is missing.
 
 ## Tips
 

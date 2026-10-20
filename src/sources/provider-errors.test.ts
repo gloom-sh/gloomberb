@@ -8,6 +8,7 @@ import {
   noteProviderMiss,
   notATickerSymbol,
   providerMissReason,
+  shouldLogProviderError,
   type ProviderMissNote,
 } from "./provider-errors";
 
@@ -72,4 +73,13 @@ test("only the router's own words name a symbol as not a ticker", () => {
   expect(isNoProviderMessage("No history provider available for 2222")).toBe(true);
   expect(isNoProviderMessage("Not a ticker: 2222.")).toBe(true);
   expect(isNoProviderMessage("request timed out")).toBe(false);
+});
+
+test("a miss raised by another copy of the module, as a plugin's can be, is still a miss", async () => {
+  // A plugin that resolves gloomberb/market-data from the source tree gets its own copy of this module.
+  const copy = await import(`./provider-errors.ts?copy=${Date.now()}`) as typeof import("./provider-errors");
+  const foreign = copy.createProviderMiss("No quote for SIVE.", "No quote for SIVE.");
+  expect(foreign).not.toBeInstanceOf((createProviderMiss("x") as Error).constructor);
+  expect(shouldLogProviderError(foreign)).toBe(false);
+  expect(providerMissReason(foreign)).toBe("No quote for SIVE.");
 });

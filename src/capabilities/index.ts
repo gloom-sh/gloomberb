@@ -25,7 +25,7 @@ export {
   AI_RUNNER_CAPABILITY_ID, BROKER_CAPABILITY_ID, NOTES_FILES_CAPABILITY_ID,
 } from "./service-capabilities";
 export type {
-  AiAuthProgressEvent, AiRunnerAgentMessage, AiRunnerEvent, BrokerQuoteEvent, BrokerRemoteEvent,
+  AiAuthProgressEvent, AiRunnerAgentMessage, AiRunnerEvent, BrokerOrderEvent, BrokerQuoteEvent, BrokerRemoteEvent,
   BrokerStatusEvent,
 } from "./service-capabilities";
 export {

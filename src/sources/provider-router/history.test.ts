@@ -57,6 +57,21 @@ describe("AssetDataRouter chart history", () => {
     }
   });
 
+  test("an option contract's chart answers mid-session however long since its last trade", async () => {
+    // 13:00 New York; the put traded at the open and not since.
+    Date.now = () => Date.parse("2026-09-10T17:00:00Z");
+    const persistence = new AppPersistence(createTempDbPath("quiet-option-history"));
+    const opening = ["2026-09-10T13:30:00Z", "2026-09-10T13:31:00Z"].map((date) => ({ date: new Date(date), close: 2.45 }));
+    const router = new AssetDataRouter({ ...fallbackProvider, async getPriceHistory() { return opening; } }, [], persistence.resources);
+    try {
+      expect((await router.getPriceHistory("BRZE261120P00047500", "", "1D")).map((point) => point.close)).toEqual([2.45, 2.45]);
+      // The same bars for a share are a source behind the market.
+      await expect(router.getPriceHistory("BRZE", "NASDAQ", "1D")).rejects.toThrow("No history provider available for BRZE");
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("does not log expected provider misses for missing chart data", async () => {
     const noisyProvider: DataProvider = {
       ...fallbackProvider,

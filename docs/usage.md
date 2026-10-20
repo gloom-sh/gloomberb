@@ -860,6 +860,10 @@ Gloomberb saves the connection data on the local device. It does not include thi
 
 While a broker is disconnected, failing, or missing its plugin, its portfolio in `PF` keeps the positions from its last sync. The footer says when that was and why the broker is offline (`as of Oct 17 14:02  IBKR disconnected`). Press `b` there to reconnect it: Interactive Brokers through Gloom asks you to sign in again, as `c` does in `BR`, any other broker connects, and the portfolio then syncs. A broker whose plugin is missing has no `b`; install the plugin first. A Flex profile only syncs on demand and is never shown as disconnected.
 
+With Gloom Cloud on, a broker's portfolios, account values and positions sync like your other portfolios, so daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom include them. Some brokers keep the quotes and charts they supply on your device (Aries does); Cloud supplies its own for those symbols.
+
+To keep one connection's account data on this device too, set **Account data** to **Keep on this device** when you connect it, or later with Edit in Brokers. Its profile, portfolios, account values and positions then stay out of Cloud sync, and the Cloud features above go without that account. A device that synced the connection before drops it at its next sync.
+
 ### Imported bond price basis
 
 A broker can declare bond cost and mark prices as `percent-of-par`: quantity is nominal face in the position currency, and monetary cost/value are nominal × quoted price ÷ 100. For example, 1,000 USD face at 87.742% par has a cost of 877.42 USD. The supplied contract multiplier remains separate metadata and is not applied again. Position cells use `face` and `% par`; bond ETFs continue to use ordinary share prices.

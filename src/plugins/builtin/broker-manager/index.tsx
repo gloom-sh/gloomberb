@@ -91,11 +91,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     ? getVisibleBrokerConfigFields(selectedRow.adapter, editDraft.values)
     : [];
   const editKeys = useMemo<BrokerEditKey[]>(
-    () => ["label", "enabled", ...editFields.map((field) => field.key)],
+    () => ["label", "enabled", ...editFields.map((field) => field.key), "localOnly"],
     [editFields],
   );
   const editSelectKeys = useMemo<ReadonlySet<BrokerEditKey>>(
-    () => new Set(["enabled", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
+    () => new Set(["enabled", "localOnly", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
     [editFields],
   );
   const editScope = `broker-edit:${paneId}`;
@@ -200,8 +200,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   });
 
   const cycleEditSelect = useCallback((key: BrokerEditKey, direction: -1 | 1) => {
-    if (key === "enabled") {
-      setEditDraft((current) => current ? { ...current, enabled: !current.enabled } : current);
+    if (key === "enabled" || key === "localOnly") {
+      setEditDraft((current) => current ? { ...current, [key]: !current[key] } : current);
       return;
     }
     const options = editFields.find((field) => field.key === key)?.options ?? [];
@@ -256,6 +256,10 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     setEditDraft((current) => current ? { ...current, enabled } : current);
   }, []);
 
+  const updateDraftLocalOnly = useCallback((localOnly: boolean) => {
+    setEditDraft((current) => current ? { ...current, localOnly } : current);
+  }, []);
+
   const saveCurrentEdit = useCallback(() => {
     saveEdit().catch(() => {});
   }, [saveEdit]);
@@ -288,6 +292,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       onActiveEditKeyChange={setActiveEditKey}
       onDraftLabelChange={updateDraftLabel}
       onDraftEnabledChange={updateDraftEnabled}
+      onDraftLocalOnlyChange={updateDraftLocalOnly}
       onDraftValueChange={updateDraftValue}
       onSaveEdit={saveCurrentEdit}
       onCancelEdit={cancelEdit}

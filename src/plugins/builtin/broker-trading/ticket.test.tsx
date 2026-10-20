@@ -5,8 +5,9 @@ import { createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { BrokerTradingController } from "./controller";
+import { ticketEditingPriceStep } from "./orders-data";
 import { editTicketDraft, newTicketDraft, quickTicketQuantity } from "./pane-model";
-import { BrokerTicketView, ticketEditingPriceStep, ticketQuoteAge, type TicketAction } from "./ticket";
+import { BrokerTicketView, ticketQuoteAge, type TicketAction } from "./ticket";
 import { TicketOrderSummary } from "./ticket-parts";
 import { createDemoBroker, type DemoOrderOutcome } from "./test-fixture";
 
@@ -101,7 +102,7 @@ test.each(["unconfirmed", "last-known", "confirmed"] as const)("UNKNOWN quantiti
     phase: "result", result: { ...demo.order(demo.draft), status: "UNKNOWN", filled: 4, remaining: 6 }, resultQuantities: provenance,
     warnings: [], connected: true, tradingEnabled: true,
   }} onEdit={() => {}} onAction={() => {}} onAccountChange={() => {}} />);
-  await tui.waitForFrameToContain("Outcome unconfirmed");
+  await tui.waitForFrameToContain("Not confirmed yet");
   const frame = tui.frame();
   expect(frame.split("\n").find(line => line.trim().startsWith("Filled"))).toContain(provenance === "unconfirmed" ? "Not confirmed" : "4");
   expect(frame.split("\n").find(line => line.trim().startsWith("Remaining"))).toContain(provenance === "unconfirmed" ? "Not confirmed" : "6");

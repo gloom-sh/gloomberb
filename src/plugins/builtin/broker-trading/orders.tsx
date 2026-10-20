@@ -13,16 +13,18 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount, BrokerExecution, BrokerOrder, BrokerOrderType } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogState } from "../../../ui/dialog";
-import { BrokerTradingController, type BrokerTradingContext } from "./controller";
+import { BrokerTradingController, type BrokerOrderOutcome, type BrokerTradingContext } from "./controller";
+import { usePluginAppActions } from "../../runtime";
 import { BrokerAccountPicker } from "./account-picker";
-import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as price, formatOrderQuantity as quantity, isBuySide, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
+import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, ticketEditingPriceStep, withLatestOrder, formatOrderPrice as price, formatOrderQuantity as quantity, isBuySide, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
 import { accountModeLabel } from "./account-picker";
 import type { BrokerContractRef } from "../../../types/instrument";
 import { ticketOrderMatches } from "./chart-levels";
+import { brokerOrderFeed, orderToastBody, useBrokerOrderFeed, useFeedOrderResult } from "./order-feed";
 import { orderInstrumentLabel, strategyShape } from "./strategy";
 import { stepNumber } from "../../../components/ui/number-step";
-import { ticketEditingPriceStep } from "./ticket";
 import { ticketTypeName } from "./ticket-parts";
+import { wrapTextLines } from "../../../utils/text-wrap";
 
 export interface BrokerOrdersViewProps {
   broker: BrokerAdapter;
@@ -36,6 +38,8 @@ export interface BrokerOrdersViewProps {
   onHide?: () => void;
   blocked?: boolean;
   onBusy?(busy: boolean): void;
+  /** A cancel question is open in the drawer, whose buttons must stay in view. */
+  onConfirming?(confirming: boolean): void;
   contract?: BrokerContractRef;
   onOrders?: (orders: BrokerOrder[]) => void;
   /** Compact: the rows it has to show, so the drawer can be as tall as its content. */
@@ -94,6 +98,19 @@ function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: numbe
   }
 }
 
+const CANCEL_NOTE = "The order can still fill before cancellation is confirmed.";
+/**
+ * "Cancel Buy 1 SPY?" over "Limit 759.50 · DAY": which order, when two of the same size wait at different prices.
+ * The terms keep a line of their own, so a narrow drawer never breaks a price across lines.
+ */
+function cancelLines(order: BrokerOrder | undefined): string[] {
+  return order ? [`Cancel ${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}?`, orderTerms(order)] : ["Cancel this order?"];
+}
+
+/** Until the broker takes a change, the order can be cancelled but not changed again. */
+/** Cancel, not change: the broker has not taken the last change, or not yet acknowledged the order. */
+const unsettled = (order: BrokerOrder) => ["Replacing", "Submitted"].includes(brokerOrderStatus(order.status));
+
 /** A drawer row's state in a word: working is what an open order is, so it says nothing. */
 function compactOrderState(order: BrokerOrder): string {
   const status = brokerOrderStatus(order.status);
@@ -114,12 +131,11 @@ function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn
 
 export function BrokerOrdersView({
   broker, instance, accounts, accountId, onAccountChange, onModify, onBack, onHide, width, height, focused,
-  active = true, initialSnapshot, compact = false, contract, onOrders, onContentRows, blocked = false, onBusy, latestOrder,
+  active = true, initialSnapshot, compact = false, contract, onOrders, onContentRows, blocked = false, onBusy, onConfirming, latestOrder,
 }: BrokerOrdersViewProps) {
   const [view, setView] = useState<"open" | "activity">("open");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedKeyRef = useRef<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [priceEdit, setPriceEdit] = useState<{ key: string; value: string }>();
   const priceEditRef = useRef(priceEdit); priceEditRef.current = priceEdit;
   const [keepOrder, setKeepOrder] = useState(false);
@@ -135,43 +151,62 @@ export function BrokerOrdersView({
   const connection = broker.getStatus?.(instance) ?? { state: "disconnected" as const, updatedAt: 0 };
   const context = useRef<BrokerTradingContext>({ adapter: broker, instance, accounts, accountId, connection });
   context.current = { adapter: broker, instance, accounts, accountId, connection };
-  const controller = useMemo(() => new BrokerTradingController({ getContext: () => context.current }), [broker, instance.id]);
+  const { notify } = usePluginAppActions();
+  // What a refused cancel came to, said once: the order feed records it quietly and reads the list again.
+  const onOutcome = useRef<(outcome: BrokerOrderOutcome) => void>(() => {});
+  onOutcome.current = (outcome) => {
+    brokerOrderFeed.note(instance.id, outcome.order);
+    brokerOrderFeed.refresh(instance.id);
+    notify({ type: outcome.type, title: outcome.title, body: orderToastBody(outcome.order) });
+  };
+  const controller = useMemo(() => new BrokerTradingController({ getContext: () => context.current, onOutcome: (outcome) => onOutcome.current(outcome) }), [broker, instance.id]);
+  const failed = useCallback((error: unknown, fallback: string) => notify({ type: "error", body: error instanceof Error && error.message ? error.message : fallback }), [notify]);
   const trading = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => { controller.syncContext(); }, [controller, instance, accountId, accounts, connection.state]);
   useEffect(() => broker.subscribeStatus?.(instance, connectionChanged), [broker, instance]);
 
-  const loader = useCallback(() => loadBrokerOrdersSnapshot(broker, instance, accountId!), [broker, instance, accountId]);
   const canRead = active && !!account && connection.state === "connected";
+  // Open orders come from the app's order feed, which the broker's pushes or polling keep current; activity is read here.
+  const feed = useBrokerOrderFeed(broker, instance, canRead);
+  const loader = useCallback(() => loadBrokerOrdersSnapshot(broker, instance, accountId!, undefined, { orders: [], failed: false }), [broker, instance, accountId]);
   const resource = useAsyncResource(canRead ? loader : null, { initialData: () => initialSnapshot && initialSnapshot.accountId === accountId && initialSnapshot.brokerInstanceId === instance.id ? initialSnapshot : null });
-  const reconcile = useCallback(async () => {
-    await controller.refreshResult();
-    const result = controller.getSnapshot().result;
-    if (!result) return;
-    const status = brokerOrderStatus(result.status);
-    setMessage(status === "Cancelled" ? "Cancelled. Broker confirmed." : status === "Filled" ? "Filled. The broker confirmed the order filled before cancellation."
-      : status === "UNKNOWN" ? "Outcome unknown. Refresh and reconcile in your broker." : "Cancellation requested. Awaiting broker confirmation.");
-  }, [controller]);
+  const reload = resource.reload;
+  // A new fill is new activity.
+  const fillsSeen = useRef(feed.fills);
   useEffect(() => {
-    if (!canRead || !visible || resource.loading || (!resource.data?.orders.length && !trading.result)) return;
-    const timer = setTimeout(() => { void reconcile().catch(() => {}); void resource.reload(); }, 15_000);
-    return () => clearTimeout(timer);
-  }, [canRead, visible, resource.loading, resource.data, resource.updatedAt, resource.error, resource.reload, trading.result, reconcile]);
+    if (feed.fills === fillsSeen.current) return;
+    fillsSeen.current = feed.fills;
+    if (canRead) void reload();
+  }, [feed.fills, canRead, reload]);
+  // A cancel this view sent follows the order feed, and is asked for every 15 seconds without pushed changes or while
+  // its outcome is unknown, which only the broker's answer settles. The fills and the end toast from the feed.
+  useFeedOrderResult(feed, instance.id, trading.result, controller.applyOrderUpdate);
+  const unknown = trading.result?.status.toUpperCase() === "UNKNOWN";
+  useEffect(() => {
+    if (!canRead || !visible || (feed.live && !unknown) || !trading.result || brokerOrderDone(trading.result.status)) return;
+    const timer = setInterval(() => { void controller.refreshResult().catch(() => {}); }, 15_000);
+    return () => clearInterval(timer);
+  }, [canRead, visible, feed.live, unknown, trading.result, controller]);
   const refresh = useCallback(() => {
-    void reconcile().catch(() => setMessage("Could not reconcile this order. Check its status in your broker."));
-    void resource.reload();
-  }, [reconcile, resource.reload]);
+    void controller.refreshResult().catch(() => {});
+    brokerOrderFeed.refresh(instance.id);
+    void reload();
+  }, [controller, reload, instance.id]);
   usePaneRefreshKey(refresh, { focused, enabled: active && !!account });
 
-  const snapshot = resource.data;
+  const snapshot = useMemo((): BrokerOrdersSnapshot | null => {
+    const data = resource.data;
+    if (!data) return null;
+    // Orders that ended moments ago stay in: they say what became of an order shown as working.
+    const orders = feed.orders.filter((order) => order.accountId === accountId
+      && (!order.brokerInstanceId || order.brokerInstanceId === instance.id) && (!order.contract.brokerInstanceId || order.contract.brokerInstanceId === instance.id));
+    return { ...data, orders, errors: [...(feed.failed ? ["Open orders are unavailable. Refresh to try again."] : []), ...data.errors] };
+  }, [resource.data, feed.orders, feed.failed, accountId, instance.id]);
   const reconciledRows = useMemo(() => {
     let source = snapshot && snapshot.accountId === accountId && snapshot.brokerInstanceId === instance.id
       ? snapshot.orders.filter((order) => !contract || ticketOrderMatches(order, contract, instance.id, accountId)) : [];
-    if (latestOrder && latestOrder.accountId === accountId && (!contract || ticketOrderMatches(latestOrder, contract, instance.id, accountId))) {
-      const key = brokerOrderKey(latestOrder);
-      const existing = source.find((order) => brokerOrderKey(order) === key);
-      if (!existing || existing.updatedAt <= latestOrder.updatedAt) source = [latestOrder, ...source.filter((order) => brokerOrderKey(order) !== key)];
-    }
+    if (latestOrder && latestOrder.accountId === accountId && (!contract || ticketOrderMatches(latestOrder, contract, instance.id, accountId))) source = withLatestOrder(source, latestOrder);
     const result = trading.result;
     if (!result || result.accountId !== accountId || contract && !ticketOrderMatches(result, contract, instance.id, accountId)) return source;
     const status = brokerOrderStatus(result.status);
@@ -182,7 +217,9 @@ export function BrokerOrdersView({
       ? source.map((order) => brokerOrderKey(order) === key ? result : order) : pending ? [result, ...source] : source;
   }, [snapshot, trading.result, accountId, instance.id, contract, latestOrder]);
   // Keep terminal acknowledgements in the projection even after hiding their rows.
-  const rows = useMemo(() => compact ? reconciledRows.filter((order) => !brokerOrderDone(order.status)) : reconciledRows, [compact, reconciledRows]);
+  // The full list shows an order that ended only when it is the one this view just acted on.
+  const rows = useMemo(() => reconciledRows.filter((order) => !brokerOrderDone(order.status)
+    || (!compact && !!trading.result && brokerOrderKey(order) === brokerOrderKey(trading.result))), [compact, reconciledRows, trading.result]);
   useEffect(() => { onOrders?.(reconciledRows); }, [reconciledRows, onOrders]);
   // Only an order the trader chose is selected: c, m and Enter never fall back to another row.
   const selected = rows.find((order) => brokerOrderKey(order) === selectedKey);
@@ -194,9 +231,10 @@ export function BrokerOrdersView({
   const capabilities = broker.getTradingCapabilities?.(instance, selected?.contract);
   const ownBusy = trading.phase === "cancelling" || trading.phase === "cancel-review";
   useEffect(() => { onBusy?.(ownBusy); }, [ownBusy, onBusy]);
+  useEffect(() => { onConfirming?.(trading.phase === "cancel-review"); }, [trading.phase, onConfirming]);
   const busy = ownBusy || blocked;
   const changeable = !!selected && canRead && capabilities?.enabled === true && canChangeBrokerOrder(selected) && !busy;
-  const canModify = changeable && !!broker.modifyOrder && capabilities?.modify === true;
+  const canModify = changeable && !unsettled(selected) && !!broker.modifyOrder && capabilities?.modify === true;
   const canCancel = changeable && !!broker.cancelOrder && capabilities?.cancel === true;
   const modifyOrder = useCallback((order: BrokerOrder) => {
     const capability = broker.getTradingCapabilities?.(instance, order.contract);
@@ -206,7 +244,6 @@ export function BrokerOrdersView({
   const cancelOrder = useCallback(async (order: BrokerOrder) => {
     const capability = broker.getTradingCapabilities?.(instance, order.contract);
     if (!account || !canRead || busy || !broker.cancelOrder || !capability?.enabled || !capability.cancel || !canChangeBrokerOrder(order)) return;
-    setMessage(null);
     try {
       controller.requestCancel(order);
       if (compact) { setInlineCancel(true); setKeepOrder(false); return; }
@@ -217,20 +254,18 @@ export function BrokerOrdersView({
       });
       await controller.confirmCancel(confirmed);
       if (confirmed) {
-        const result = controller.getSnapshot().result;
-        setMessage(result?.status === "UNKNOWN" ? "Outcome unknown. Refresh and reconcile in your broker." : "Cancellation requested. Awaiting broker confirmation.");
-        if (result?.status !== "UNKNOWN") await reconcile().catch(() => {});
-        void resource.reload();
+        if (controller.getSnapshot().result?.status === "PENDING_CANCEL") await controller.refreshResult().catch(() => {});
+        brokerOrderFeed.refresh(instance.id);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cancellation could not be confirmed.");
+      failed(error, "Cancellation could not be confirmed.");
     }
-  }, [account, canRead, busy, broker, instance, controller, dialog, resource.reload, reconcile, compact]);
+  }, [account, canRead, busy, broker, instance, controller, dialog, compact, failed]);
   const cancel = useCallback(() => { const order = rows.find((row) => brokerOrderKey(row) === selectedKeyRef.current); return order ? cancelOrder(order) : Promise.resolve(); }, [rows, cancelOrder]);
   const confirmInline = async (confirmed: boolean) => {
     if (controller.getSnapshot().phase !== "cancel-review") return;
-    try { await controller.confirmCancel(confirmed); setInlineCancel(false); if (confirmed) void resource.reload(); }
-    catch (failure) { setMessage(failure instanceof Error ? failure.message : "Cancellation could not be confirmed."); }
+    try { await controller.confirmCancel(confirmed); setInlineCancel(false); if (confirmed) brokerOrderFeed.refresh(instance.id); }
+    catch (failure) { failed(failure, "Cancellation could not be confirmed."); }
   };
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
@@ -286,7 +321,7 @@ export function BrokerOrdersView({
     if (!event.repeat) invoke();
   }, { enabled: focused && active && !dialogOpen, phase: "before", scope: keyboardScope });
 
-  const status = connection.state !== "connected" ? "Broker disconnected" : trading.error ?? message ?? resource.error
+  const status = connection.state !== "connected" ? "Broker disconnected" : trading.error ?? resource.error
     ?? (capabilities?.enabled === false ? capabilities.disabledReason ?? "Trading is off" : null);
   usePaneNoticeFooter({ registrationId: "broker-orders-notices", focused, enabled: active, notices: [...(snapshot?.errors ?? []), ...(snapshot?.notes ?? [])] });
   usePaneFooter("broker-orders", () => active ? {
@@ -311,7 +346,10 @@ export function BrokerOrdersView({
   const now = resource.updatedAt ?? Date.now();
   const summaries = snapshot?.executionKind === "order-summaries";
   const executions = (snapshot?.executions ?? []).filter((execution) => !compact || !contract || ticketOrderMatches(execution, contract, instance.id, accountId));
-  const contentRows = (view === "open" ? rows.length : executions.length) + (status ? 1 : 0) + (snapshot?.errors?.length ?? 0);
+  // Confirming a cancel takes a question, its wrapped note and the two buttons (the note's width is allowed some slack).
+  const contentRows = trading.phase === "cancel-review" ? 1 + [...cancelLines(trading.cancelOrder), CANCEL_NOTE]
+    .reduce((rows, text) => rows + Math.max(1, wrapTextLines(text, Math.max(12, width - 6)).length), 0)
+    : (view === "open" ? rows.length : executions.length) + (snapshot?.errors?.length ?? 0);
   useEffect(() => { if (compact) onContentRows?.(contentRows); }, [compact, contentRows, onContentRows]);
 
 
@@ -325,16 +363,14 @@ export function BrokerOrdersView({
         {onHide ? <IconButton icon="close" label="Hide open orders" shortcut="Shift+O" onPress={onHide} /> : null}
       </Box>
     </Box>
-    {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={0.5}>
-      <Text fg={colors.textBright}>Cancel {trading.cancelOrder?.action} {trading.cancelOrder?.quantity} {trading.cancelOrder ? orderInstrumentLabel(trading.cancelOrder) : ""}?</Text>
-      {trading.cancelOrder ? <Text fg={colors.text}>{orderTerms(trading.cancelOrder)}</Text> : null}
-      <Text fg={colors.textDim} wrapText>The order can still fill before cancellation is confirmed.</Text>
+    {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={native ? 0.5 : 0}>
+      {cancelLines(trading.cancelOrder).map((line, index) => <Text key={index} fg={index ? colors.text : colors.textBright} wrapText>{line}</Text>)}
+      <Text fg={colors.textDim} wrapText>{CANCEL_NOTE}</Text>
       <Box flexDirection="row" gap={1}>
         <Button label="Cancel order" variant="primary" tone="negative" active={!keepOrder} onPress={() => { void confirmInline(true); }} />
         <Button label="Keep order" variant="quiet" active={keepOrder} onPress={() => { void confirmInline(false); }} />
       </Box>
     </Box> : <ScrollBox flexGrow={1} scrollY>
-      {status ? <Notice tone="warning">{status}</Notice> : null}
       {(snapshot?.errors ?? []).map((error) => <Notice key={error} tone="negative">{error}</Notice>)}
       {view === "open" ? rows.map((order) => {
         const key = brokerOrderKey(order), picked = selected === order;
@@ -357,14 +393,14 @@ export function BrokerOrdersView({
             </Button>
           </Box>
           <Box flexDirection="row" flexShrink={0}>
-            <IconButton icon="edit" label="Modify order" shortcut="Enter" disabled={disabled || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} />
+            <IconButton icon="edit" label="Modify order" shortcut="Enter" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} />
             <IconButton icon="close" label="Cancel order" shortcut="c" color={colors.negative} disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} />
           </Box>
         </Box>;
       }) : executions.map((execution) => <Box key={execution.execId} paddingX={1} height={native ? 1.6 : 1} flexDirection="row" alignItems="center">
         <Text selectable>{`${execution.side} ${quantity(execution.shares)} @ ${price(execution.price)}`}</Text>
       </Box>)}
-      {!resource.loading && (view === "open" ? !rows.length : !executions.length) ? <Box paddingX={1}><Text fg={colors.textDim}>{view === "open" ? "No open orders for this ticker." : "No recent activity."}</Text></Box> : null}
+      {!resource.loading && (view === "open" ? feed.loaded && !rows.length : !executions.length) ? <Box paddingX={1}><Text fg={colors.textDim}>{view === "open" ? "No open orders for this ticker." : "No recent activity."}</Text></Box> : null}
     </ScrollBox>}
   </Box>;
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
@@ -385,7 +421,7 @@ export function BrokerOrdersView({
           const allowed = broker.getTradingCapabilities?.(instance, order.contract);
           const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);
           return { text: "Modify Cancel", content: <Box flexDirection="row" gap={1} justifyContent="flex-end" width={column.width}>
-            <Button label="Modify" compact variant="secondary" disabled={disabled || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} stopPropagation />
+            <Button label="Modify" compact variant="secondary" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} stopPropagation />
             <Button label="Cancel" compact variant="secondary" disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} stopPropagation />
           </Box> };
         }}

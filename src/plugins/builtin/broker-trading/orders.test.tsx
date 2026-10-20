@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
@@ -6,9 +6,11 @@ import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane"
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { BrokerOrder } from "../../../types/trading";
 import { BrokerOrdersView } from "./orders";
+import { brokerOrderFeed } from "./order-feed";
 import { createDemoBroker, type DemoBrokerOptions } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
+afterEach(() => brokerOrderFeed.clear());
 const paneId = "broker-orders:test";
 
 async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false) {
@@ -49,14 +51,15 @@ test("docked rows step a selected order into review and keep cancel confirmation
   expect(modifications[0]!.edit).toEqual({ review: true, price: Number((modifications[0]!.order.limitPrice! + 0.01).toFixed(2)) });
   expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder"].includes(call.method))).toEqual([]);
   await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancel SELL");
+  await tui.waitForFrameToContain("Cancel Sell 10 AAPL?");
+  expect(tui.frame()).toContain("Limit 340.00 · DAY");
   await act(async () => resize(false));
-  await tui.waitForFrameToContain("Cancel SELL");
+  await tui.waitForFrameToContain("Cancel Sell 10 AAPL?");
   await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(0);
   await act(async () => resize(true));
   await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancel SELL");
+  await tui.waitForFrameToContain("Cancel Sell 10 AAPL?");
   await tui.emitKeypress([{ name: "enter" }, { name: "enter" }], { trackPropagation: true });
   await tui.waitForFrameToContain("Cancelling");
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(1);
@@ -210,7 +213,7 @@ test("a cancel reports broker-confirmed cancellation from explicit status reconc
   await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Cancel AAPL order?");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancelled. Broker confirmed.");
+  await tui.waitForFrameToContain("Cancelled");
   await tui.emitKeypress({ name: "r", sequence: "r" }, { trackPropagation: true });
   expect(f.mutations().map((call) => call.method)).toEqual(["cancelOrder"]);
 });
@@ -223,7 +226,7 @@ test("a broker-confirmed terminal state suppresses stale open-row mutation contr
   await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Cancel AAPL order?");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancelled. Broker confirmed.");
+  await tui.waitForFrameToContain("Cancelled");
   const row = tui.frame().split("\n").find((line) => line.includes("BUY") && line.includes("Cancelled"));
   expect(row).toBeDefined();
   expect(row).not.toContain("Modify");

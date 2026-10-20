@@ -12,12 +12,13 @@ import { ResearchTradeActions, useResearchTrading } from "../shared/research-tra
 import { BrokerTradeTab } from "./pane";
 import { createTradeIntent } from "./command";
 import { createDemoBroker } from "./test-fixture";
+import { brokerOrderFeed } from "./order-feed";
 import type { AppNotificationRequest } from "../../../types/plugin";
 
 const toasts: AppNotificationRequest[] = [];
 
 const tui = createOpenTuiTestHarness({ width: 140, height: 40 });
-afterEach(() => setSharedRegistryForTests(undefined));
+afterEach(() => { setSharedRegistryForTests(undefined); brokerOrderFeed.clear(); brokerOrderFeed.setNotifier(undefined); });
 function PriceContext({ width, focused }: { width: number; focused: boolean }) {
   const trade = useResearchTrading();
   const [zooms, setZooms] = useState(0);
@@ -51,6 +52,8 @@ async function mount(outcome: "working" | "unknown" = "working", initialWidth = 
     dispatch: (action: AppAction) => { latest = appReducer(latest, action); for (const listener of listeners) listener(); } };
   const dispatch = store.dispatch;
   toasts.length = 0;
+  // The plugin's setup sends order toasts to the app's notifications.
+  brokerOrderFeed.setNotifier((notification) => { toasts.push(notification); });
   const runtime = createTestPluginRuntime({ getBrokerAdapter: () => demo.adapter, notify: (notification) => { toasts.push(notification); } });
   let resize!: (width: number) => void;
   function Harness() {

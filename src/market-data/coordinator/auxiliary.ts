@@ -66,11 +66,13 @@ export function loadOptionsEntry(options: {
         const attempt = createAttempt(dataProvider.id, startedAt, "unsupported", "UNSUPPORTED_RANGE", "Options are not available");
         return store.update(key, (current) => errorEntry(current, attempt));
       }
+      // This path has no handle on the provider's cache, so a refresh it asks for must reach the source, and a
+      // stored chain past its stale time (kept for two days) is refetched rather than shown as current.
       const data = await dataProvider.getOptionsChain(
         request.instrument.symbol,
         request.instrument.exchange ?? "",
         request.expirationDate,
-        toMarketDataContext(request.instrument),
+        { ...toMarketDataContext(request.instrument), cacheMode: forceRefresh ? "refresh" : "current" },
       );
       const attempts = [createAttempt(dataProvider.id, startedAt, data.expirationDates.length > 0 ? "success" : "empty", data.expirationDates.length === 0 ? "NO_DATA" : undefined)];
       return store.update(key, (current) => ({

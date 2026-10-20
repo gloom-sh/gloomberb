@@ -17,7 +17,7 @@ import type { BrokerManagerMessage } from "./pane-actions";
 import { signInEndNote } from "./sign-in-end";
 import { stateColor } from "./table";
 
-export type BrokerEditKey = "label" | "enabled" | string;
+export type BrokerEditKey = "label" | "enabled" | "localOnly" | string;
 
 type RowRef = (node: BoxRenderable | null) => void;
 
@@ -116,6 +116,7 @@ export function BrokerProfileForm({
   onActiveKeyChange,
   onLabelChange,
   onEnabledChange,
+  onLocalOnlyChange,
   onValueChange,
   onSubmit,
   onCancel,
@@ -139,6 +140,7 @@ export function BrokerProfileForm({
   onLabelChange: (label: string) => void;
   /** Editing only: a new profile starts enabled. */
   onEnabledChange?: (enabled: boolean) => void;
+  onLocalOnlyChange: (localOnly: boolean) => void;
   onValueChange: (key: string, value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -188,6 +190,25 @@ export function BrokerProfileForm({
           onSubmit={onSubmit}
         />
       ))}
+      <Box ref={rowRef("localOnly")} flexDirection="column" onMouseDown={() => onActiveKeyChange("localOnly")}>
+        <FieldLabel label={t("Account data")} active={activeKey === "localOnly"} />
+        <SegmentedControl
+          value={draft.localOnly ? "local" : "sync"}
+          focused={paneFocused && activeKey === "localOnly"}
+          options={[
+            { label: t("Sync with Gloom Cloud"), value: "sync" },
+            { label: t("Keep on this device"), value: "local" },
+          ]}
+          onChange={(value) => onLocalOnlyChange(value === "local")}
+          allowEditable
+          shortcutScope={scope}
+        />
+        {draft.localOnly ? (
+          <Text fg={colors.textMuted} wrapText>
+            {t("Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.")}
+          </Text>
+        ) : null}
+      </Box>
       <Box flexDirection="row" gap={1}>
         <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
         <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
@@ -216,6 +237,7 @@ export function BrokerDetailContent({
   onActiveEditKeyChange,
   onDraftLabelChange,
   onDraftEnabledChange,
+  onDraftLocalOnlyChange,
   onDraftValueChange,
   onSaveEdit,
   onCancelEdit,
@@ -237,6 +259,7 @@ export function BrokerDetailContent({
   onActiveEditKeyChange: (key: BrokerEditKey) => void;
   onDraftLabelChange: (label: string) => void;
   onDraftEnabledChange: (enabled: boolean) => void;
+  onDraftLocalOnlyChange: (localOnly: boolean) => void;
   onDraftValueChange: (key: string, value: string) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -282,6 +305,7 @@ export function BrokerDetailContent({
           <Text fg={colors.warning} width={width} wrapText>{signInEndNote(row.signInEndsAt)}</Text>
         )}
         <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatRelativeAge(row.lastSyncedAt) })}</Text>
+        {row.instance.localOnly ? <Text fg={colors.textMuted}>{t("Account data stays on this device, out of Gloom Cloud")}</Text> : null}
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />
 
@@ -303,6 +327,7 @@ export function BrokerDetailContent({
               onActiveKeyChange={onActiveEditKeyChange}
               onLabelChange={onDraftLabelChange}
               onEnabledChange={onDraftEnabledChange}
+              onLocalOnlyChange={onDraftLocalOnlyChange}
               onValueChange={onDraftValueChange}
               onSubmit={onSaveEdit}
               onCancel={onCancelEdit}

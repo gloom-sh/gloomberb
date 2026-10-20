@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
+import { buildQuoteKey, instrumentFromQuoteTarget } from "../../../market-data/selectors";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import { calculateOptionGreeks, solveChainVolatilities } from "./analytics";
@@ -149,6 +150,22 @@ describe("options live quotes", () => {
       ...freshness,
       now: freshness.subscriptionStartedAt + 1_000,
     })).toMatchObject({ liveCount: 0, status: "connecting", totalCount: 2 });
+  });
+
+  test("a broker's chain is quoted by the same profile, under the key its stream lands at", () => {
+    const rows = [row(100)];
+    const broker = { brokerId: "aries", brokerInstanceId: "aries-sim" };
+    const targets = buildOptionQuoteTargets(rows, { fallbackHeight: 14, selectedIndex: 0, visibleRange: { start: 0, end: 1 } }, broker);
+    expect(targets.every((target) => target.context?.brokerInstanceId === "aries-sim")).toBe(true);
+    const freshness = { now: 1_800_000_030_000, subscriptionStartedAt: 1_799_999_500_000 };
+    // The coordinator stores each streamed quote under its target's own key.
+    const entries = new Map(targets.map((target) => [buildQuoteKey(instrumentFromQuoteTarget(target)), readyQuote({
+      symbol: target.symbol, providerId: "aries", price: 2.5, bid: 2.45, ask: 2.55, currency: "USD", change: 0, changePercent: 0,
+      lastUpdated: 1_800_000_000_000, receivedAt: 1_800_000_010_000, dataSource: "live", delivery: "stream", stale: false,
+    })]));
+    const chain: OptionsChain = { underlyingSymbol: "AAPL", expirationDates: [1_785_456_000], calls: [rows[0]!.call!], puts: [rows[0]!.put!] };
+    expect(overlayOptionChainQuotes(chain, entries, freshness, broker).chain.calls[0]).toMatchObject({ bid: 2.45, ask: 2.55 });
+    expect(resolveOptionQuoteCoverage(targets, entries, freshness).status).toBe("live");
   });
 
   test("overlays streamed quote fields while preserving chain-only Greeks and open interest", () => {

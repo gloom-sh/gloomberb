@@ -631,7 +631,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
         updateLayout: (layout) => this.updateLayout(layout),
         resolvePaneTarget: (paneId) => this.resolvePaneTarget(paneId),
       }),
-      createBrokerInstance: (brokerType, label, values) => this.createBrokerInstance(brokerType, label, values),
+      createBrokerInstance: (brokerType, label, values, options) => this.createBrokerInstance(brokerType, label, values, options),
       updateBrokerInstance: this.updateBrokerInstance,
       syncBrokerInstance: this.syncBrokerInstance,
       removeBrokerInstance: this.removeBrokerInstance,

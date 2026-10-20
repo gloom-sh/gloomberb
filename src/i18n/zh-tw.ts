@@ -1623,4 +1623,9 @@ export const zhTW: Record<string, string> = {
   "{minutes} min": "{minutes} 分鐘",
   "Delisted {date}": "已下市 {date}",
   "Last traded {date}": "最後交易 {date}",
+  "Account data": "帳戶資料",
+  "Sync with Gloom Cloud": "與 Gloom Cloud 同步",
+  "Keep on this device": "保留在此裝置上",
+  "Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.": "每日摘要、每週簡報、持倉提醒、行動應用程式和 Ask Gloom 將不再包含此帳戶。",
+  "Account data stays on this device, out of Gloom Cloud": "帳戶資料保留在此裝置上，不上傳至 Gloom Cloud",
 };

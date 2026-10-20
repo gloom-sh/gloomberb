@@ -5,6 +5,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { optionContractIdentity } from "../../../utils/options";
 import { isStrategyOrder, strategyQuote } from "./strategy";
+import { brokerOrderDone, brokerOrderStatus, ticketEditingPriceStep } from "./orders-data";
 
 export interface BrokerTradingContext {
   adapter: BrokerAdapter;
@@ -42,6 +43,14 @@ interface BrokerOrderReview {
   confirmationText: string;
 }
 
+/** What became of an order whose change or cancel the broker refused: one line, which the view shows once. */
+export interface BrokerOrderOutcome {
+  title: string;
+  type: "info" | "error";
+  /** The order as the broker now reports it, else as it was. */
+  order: BrokerOrder;
+}
+
 export interface BrokerTradingSnapshot {
   phase: "editing" | "previewing" | "review" | "submitting" | "result" | "cancel-review" | "cancelling";
   draft?: BrokerOrderRequest;
@@ -69,7 +78,19 @@ interface ReviewGate {
 }
 
 const TERMINAL = new Set(["FILLED", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED", "SUPERSEDED"]);
-const uncertainMessage = "Outcome unknown. Refresh orders and reconcile in your broker before trying again.";
+/** A streamed quote older than this is no longer being pushed: the ticket asks the broker instead. */
+const STREAM_QUOTE_MAX_SILENCE_MS = 75_000;
+/** A placement whose answer was lost: only the broker's open orders can say whether it went in. */
+const uncertainPlacement = "Outcome unknown. Check open orders before placing it again.";
+/** A change or cancel whose answer was lost: the views ask the broker until it says. */
+const uncertainChange = "Outcome unknown. Checking with the broker.";
+/** The broker's own words come first: they say more than "outcome unknown". */
+const uncertainAfter = (error: unknown) => error instanceof Error && error.message && !error.message.includes(uncertainPlacement) ? `${error.message.trim().replace(/\.?$/, ".")} ${uncertainPlacement}` : uncertainPlacement;
+/** The broker answered no, or nothing was sent (see BrokerAdapter.placeOrder): its one-line reason, else undefined. */
+function refusal(error: unknown): string | undefined {
+  if (!(error instanceof Error) || (error as { refused?: unknown }).refused !== true) return undefined;
+  return error.message.trim().replace(/\.$/, "") || "The broker refused this action";
+}
 
 function copy<T>(value: T): T { return structuredClone(value); }
 function freeze<T>(value: T): T {
@@ -83,6 +104,10 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
+}
+/** The same broker order: by native ID when the result has one, else by its acknowledged handle. */
+function sameOrder(order: BrokerOrder, result: BrokerOrder): boolean {
+  return result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId;
 }
 function positive(value: number | undefined): value is number { return value !== undefined && Number.isFinite(value) && value > 0; }
 function errorMessage(error: unknown, fallback: string): string { return error instanceof Error && error.message ? error.message : fallback; }
@@ -108,9 +133,18 @@ export class BrokerTradingController {
   private identityKey = "";
   private disposed = false;
   private mutationPending = false;
+  /** The latest quote the broker's stream pushed per symbol, for the current instrument and its legs. */
+  private readonly streamQuotes = new Map<string, Quote>();
+  private streamed?: { contractKey: string; quote: BrokerTicketQuote };
+  /** The last failed quote request's message, which a streamed quote may clear. */
+  private quoteError?: string;
   private entryPending = false;
 
-  constructor(private readonly options: { getContext: (request?: BrokerOrderRequest) => BrokerTradingContext; now?: () => number; staleQuoteMs?: number; reviewTtlMs?: number }) {
+  constructor(private readonly options: {
+    getContext: (request?: BrokerOrderRequest) => BrokerTradingContext; now?: () => number; staleQuoteMs?: number; reviewTtlMs?: number;
+    /** A refused change or cancel, settled against the broker's current order. */
+    onOutcome?: (outcome: BrokerOrderOutcome) => void;
+  }) {
     this.now = options.now ?? Date.now;
     this.staleQuoteMs = options.staleQuoteMs ?? 60_000;
     this.reviewTtlMs = options.reviewTtlMs ?? 60_000;
@@ -154,12 +188,15 @@ export class BrokerTradingController {
       return;
     }
     this.publish({ confirmOrders: true });
+    // Another profile, account or connection: quotes pushed before it no longer stand.
+    this.streamQuotes.clear();
+    this.streamed = undefined;
     if (this.mutationPending) return;
     this.modifyOrder = undefined;
     // An order whose outcome is unknown stays the result through a reconnect or a refresh, until a refresh finds it:
     // dropping it would let the same draft be reviewed and placed a second time.
     if (this.uncertain()) {
-      this.publish({ review: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: uncertainMessage });
+      this.publish({ review: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: this.uncertainError() });
       return;
     }
     const changed = this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result;
@@ -174,10 +211,15 @@ export class BrokerTradingController {
     return this.snapshot.result?.status.toUpperCase() === "UNKNOWN";
   }
 
+  /** A lost placement asks the trader to check before placing again; a change the broker numbered is being checked. */
+  private uncertainError(): string {
+    return this.snapshot.result?.orderId ? uncertainChange : uncertainPlacement;
+  }
+
   private editable(): void {
     if (this.disposed) throw new Error("This order ticket is closed.");
     if (this.mutationPending) throw new Error("An order action is already pending.");
-    if (this.uncertain()) throw new Error(uncertainMessage);
+    if (this.uncertain()) throw new Error(this.uncertainError());
   }
 
   setDraft(request: BrokerOrderRequest): void {
@@ -191,7 +233,7 @@ export class BrokerTradingController {
     const changedContract = canonical([request.contract, request.legs ?? null]) !== canonical([this.snapshot.draft?.contract, this.snapshot.draft?.legs ?? null]);
     this.version++;
     this.gate = undefined;
-    if (changedContract) { this.quoteVersion++; this.modifyOrder = undefined; }
+    if (changedContract) { this.quoteVersion++; this.modifyOrder = undefined; this.streamQuotes.clear(); this.streamed = undefined; }
     this.publish({ phase: "editing", draft: copy(request), modifying: !!this.modifyOrder, review: undefined, receipt: undefined, cancelOrder: undefined, result: undefined, error: undefined,
       ...(changedContract ? { quote: undefined, loadingQuote: false } : {}) });
     this.contextKey = this.key();
@@ -269,35 +311,93 @@ export class BrokerTradingController {
     return quote.stale === true || !Number.isFinite(quote.lastUpdated) || this.now() - quote.lastUpdated > this.staleQuoteMs;
   }
 
+  /** The ticket's quote from the broker's answer, checked against the draft it was asked for. */
+  private ticketQuote(context: BrokerTradingContext, draft: BrokerOrderRequest, quote: Quote | null, legQuotes?: Quote[]): BrokerTicketQuote {
+    const compact = (symbol: string) => symbol.replace(/\s+/g, "").toUpperCase();
+    if (legQuotes) {
+      if (legQuotes.some((legQuote, index) => compact(legQuote.symbol) !== compact(draft.legs![index]!.contract.localSymbol ?? draft.legs![index]!.contract.symbol))) throw new Error("The broker returned a quote for another contract than a leg.");
+      if (!quote) throw new Error("The broker has no bid and ask for every leg of this spread.");
+    } else {
+      const allowedSymbols = [draft.contract.symbol, draft.contract.localSymbol].filter(Boolean).map((symbol) => compact(symbol!));
+      if (!quote || !allowedSymbols.includes(compact(quote.symbol)) || !positive(quote.price)) throw new Error("The broker returned no usable quote for this instrument.");
+    }
+    const delayed = quote.dataSource !== "live" || context.connection.quoteData !== "realtime";
+    return { quote: copy(quote), brokerId: context.adapter.id, brokerInstanceId: context.instance.id,
+      sourceLabel: `${context.adapter.name}${delayed ? ", delayed" : ""}`, receivedAt: this.now(), delayed,
+      stale: this.quoteIsStale(quote), ...(legQuotes ? { legs: copy(legQuotes) } : {}) };
+  }
+
+  /** The symbol a stream target names for the draft's instrument, or for each of a spread's legs. */
+  static streamSymbols(draft: BrokerOrderRequest): string[] {
+    return draft.legs?.length ? draft.legs.map((leg) => leg.contract.localSymbol ?? leg.contract.symbol) : [draft.contract.symbol];
+  }
+
+  /**
+   * A quote the broker's stream pushed for the draft's instrument or one of
+   * its legs. It replaces the ticket's quote once every leg has one, under the
+   * same checks as a requested quote.
+   */
+  applyStreamQuote(symbol: string, quote: Quote): void {
+    if (this.disposed) return;
+    const draft = this.snapshot.draft;
+    if (!draft) return;
+    const key = symbol.replace(/\s+/g, "").toUpperCase();
+    if (!BrokerTradingController.streamSymbols(draft).some((value) => value.replace(/\s+/g, "").toUpperCase() === key)) return;
+    this.streamQuotes.set(key, quote);
+    const context = this.options.getContext(draft);
+    if (context.connection.state !== "connected") return;
+    const strategy = !!draft.legs?.length;
+    const legQuotes = strategy ? draft.legs!.map((leg) => this.streamQuotes.get((leg.contract.localSymbol ?? leg.contract.symbol).replace(/\s+/g, "").toUpperCase())) : undefined;
+    if (legQuotes?.some((value) => !value)) return;
+    try {
+      const value = this.ticketQuote(context, draft, legQuotes ? strategyQuote(draft, legQuotes as Quote[]) : quote, legQuotes as Quote[] | undefined);
+      this.streamed = { contractKey: canonical([draft.contract, draft.legs ?? null]), quote: value };
+      // The stream answered what a quote request could not.
+      const answered = this.snapshot.error !== undefined && this.snapshot.error === this.quoteError;
+      this.publish({ quote: value, loadingQuote: false, ...(answered ? { error: undefined } : {}) });
+    } catch { /* A quote that fails the checks leaves the last good one. */ }
+  }
+
+  /** A streamed quote for the current draft, still being pushed, stands in for asking. */
+  private currentStreamQuote(draft: BrokerOrderRequest): BrokerTicketQuote | undefined {
+    const streamed = this.streamed;
+    if (!streamed || streamed.contractKey !== canonical([draft.contract, draft.legs ?? null])) return undefined;
+    const quotes = [streamed.quote.quote, ...(streamed.quote.legs ?? [])];
+    // The stream repeats an unchanged quote at least every minute while it is up.
+    return quotes.every((quote) => quote.delivery === "stream") && this.now() - streamed.quote.receivedAt <= STREAM_QUOTE_MAX_SILENCE_MS ? streamed.quote : undefined;
+  }
+
   async loadQuote(): Promise<BrokerTicketQuote> {
     const { context } = this.context(false);
     const draft = this.snapshot.draft;
     if (!draft || !context.adapter.getQuote) throw new Error("This broker cannot provide a quote for the ticket.");
+    // A new quote answers only the last quote's failure; why a review ended, say, stays in view.
+    const quoteErrorCleared = this.snapshot.error !== undefined && this.snapshot.error === this.quoteError ? { error: undefined } : {};
+    const streamed = this.currentStreamQuote(draft);
+    if (streamed) {
+      const value = { ...copy(streamed), stale: this.quoteIsStale(streamed.quote) };
+      this.publish({ quote: value, loadingQuote: false, ...quoteErrorCleared });
+      return copy(value);
+    }
     const instrumentKey = (request?: BrokerOrderRequest) => canonical([request?.contract, request?.legs ?? null]);
     const fingerprint = this.key(), contractKey = instrumentKey(draft), version = ++this.quoteVersion;
-    this.publish({ loadingQuote: true, error: undefined });
+    this.publish({ loadingQuote: true, ...quoteErrorCleared });
     try {
       const strategy = !!draft.legs?.length;
       // A spread is priced from its legs' quotes at the same broker; it has no quote of its own.
       const legQuotes = strategy ? await Promise.all(draft.legs!.map((leg) => context.adapter.getQuote!(leg.contract.localSymbol ?? leg.contract.symbol, context.instance, leg.contract.exchange, copy(leg.contract)))) : undefined;
       const quote = legQuotes ? strategyQuote(draft, legQuotes) : await context.adapter.getQuote(draft.contract.symbol, context.instance, draft.contract.exchange, copy(draft.contract));
       if (this.disposed || version !== this.quoteVersion || fingerprint !== this.key() || contractKey !== instrumentKey(this.snapshot.draft)) throw new Error("The quote belongs to an earlier ticket selection. Refresh it.");
-      const compact = (symbol: string) => symbol.replace(/\s+/g, "").toUpperCase();
-      if (legQuotes) {
-        if (legQuotes.some((legQuote, index) => compact(legQuote.symbol) !== compact(draft.legs![index]!.contract.localSymbol ?? draft.legs![index]!.contract.symbol))) throw new Error("The broker returned a quote for another contract than a leg.");
-        if (!quote) throw new Error("The broker has no bid and ask for every leg of this spread.");
-      } else {
-        const allowedSymbols = [draft.contract.symbol, draft.contract.localSymbol].filter(Boolean).map((symbol) => compact(symbol!));
-        if (!quote || !allowedSymbols.includes(compact(quote.symbol)) || !positive(quote.price)) throw new Error("The broker returned no usable quote for this instrument.");
-      }
-      const delayed = quote.dataSource !== "live" || context.connection.quoteData !== "realtime";
-      const result: BrokerTicketQuote = { quote: copy(quote), brokerId: context.adapter.id, brokerInstanceId: context.instance.id,
-        sourceLabel: `${context.adapter.name}${delayed ? ", delayed" : ""}`, receivedAt: this.now(), delayed,
-        stale: this.quoteIsStale(quote), ...(legQuotes ? { legs: copy(legQuotes) } : {}) };
+      // The stream answered while this request ran: its quote is the newer one.
+      const pushed = this.currentStreamQuote(draft);
+      const result = pushed ? { ...copy(pushed), stale: this.quoteIsStale(pushed.quote) } : this.ticketQuote(context, draft, quote, legQuotes);
       this.publish({ quote: result, loadingQuote: false });
       return copy(result);
     } catch (error) {
-      if (version === this.quoteVersion) this.publish({ loadingQuote: false, error: errorMessage(error, "The broker quote is unavailable.") });
+      if (version === this.quoteVersion) {
+        this.quoteError = errorMessage(error, "The broker quote is unavailable.");
+        this.publish({ loadingQuote: false, error: this.quoteError });
+      }
       throw error;
     }
   }
@@ -311,8 +411,12 @@ export class BrokerTradingController {
     // A spread's last is its mid: legs do not trade together.
     const price = source === "mid" || (source === "last" && draft.legs?.length) ? positive(quote.bid) && positive(quote.ask) ? (quote.bid + quote.ask) / 2 : undefined : source === "last" ? quote.price : quote[source];
     if (!positive(price)) throw new Error("That broker quote price is unavailable.");
-    const decimals = tradingCapabilities(this.options.getContext(draft), draft).priceDecimals;
-    this.setDraft({ ...draft, [field]: decimals === undefined ? price : Number(price.toFixed(decimals)) });
+    // To the tick: a sub-penny print is no limit for a stock above a dollar.
+    const capabilities = tradingCapabilities(this.options.getContext(draft), draft);
+    const step = capabilities.priceStep ?? ticketEditingPriceStep(price, capabilities.priceDecimals);
+    const decimals = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+    const rounded = Number((Math.round(price / step) * step).toFixed(Math.min(18, decimals)));
+    this.setDraft({ ...draft, [field]: positive(rounded) ? rounded : price });
   }
 
   setConfirmOrders(confirm: boolean): void {
@@ -408,8 +512,15 @@ export class BrokerTradingController {
         throw new Error("The broker's order acknowledgement could not be verified.");
       }
       this.publish({ phase: "result", result: copy(result), resultQuantities: "confirmed", review: undefined, receipt: review });
-    } catch {
-      this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), resultQuantities: gate.order ? "last-known" : "unconfirmed", error: uncertainMessage });
+    } catch (error) {
+      const reason = refusal(error);
+      if (reason && gate.order) await this.settleRefusal(gate.order, reason, "modify");
+      // A refused placement placed nothing: the order is the draft again, with the broker's reason.
+      else if (reason) this.publish({ phase: "editing", review: undefined, receipt: undefined, error: reason });
+      else {
+        this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), resultQuantities: gate.order ? "last-known" : "unconfirmed",
+          error: gate.order ? uncertainChange : uncertainAfter(error) });
+      }
     } finally { this.mutationPending = false; }
   }
 
@@ -417,7 +528,7 @@ export class BrokerTradingController {
     this.editable();
     const request = this.orderRequest(order);
     const { context, capabilities } = this.context(true, request);
-    this.checkOrder(order, context);
+    this.checkOrder(order, context, "modify");
     if (!capabilities.modify || !context.adapter.modifyOrder) throw new Error("This broker does not support modifying this order.");
     if (!["MKT", "LMT", "STP", "STP LMT"].includes(order.orderType)) throw new Error("This order type cannot be modified in the shared ticket.");
     this.modifyOrder = undefined;
@@ -426,9 +537,19 @@ export class BrokerTradingController {
     this.publish({ modifying: true });
   }
 
-  private checkOrder(order: BrokerOrder, context: BrokerTradingContext): void {
+  /** An order being replaced can still be cancelled: the cancel takes whichever terms the broker holds. */
+  /** The working order a modify replaces, as it was when the change began. */
+  modifyingOrder(): BrokerOrder | undefined { return this.modifyOrder && copy(this.modifyOrder); }
+
+  private checkOrder(order: BrokerOrder, context: BrokerTradingContext, action: "modify" | "cancel"): void {
     if (order.accountId !== context.accountId || (order.brokerInstanceId && order.brokerInstanceId !== context.instance.id) || order.contract.brokerId !== context.adapter.id) throw new Error("Select the order's original broker profile and account.");
-    if (TERMINAL.has(order.status.toUpperCase()) || ["UNKNOWN", "PENDING_CANCEL", "PENDING_REPLACE"].includes(order.status.toUpperCase())) throw new Error("Refresh and reconcile this order before changing it.");
+    const status = order.status.toUpperCase();
+    if (TERMINAL.has(status)) throw new Error("This order has ended.");
+    if (status === "PENDING_CANCEL") throw new Error("This order is already being cancelled.");
+    if (status === "PENDING_REPLACE" && action === "modify") throw new Error("The broker has not taken the last change yet. Wait for it, or cancel the order.");
+    // An order the venue has not acknowledged can be cancelled, not replaced: a replacement can lose it (Aries, in simulation).
+    if (status === "PENDING_NEW" && action === "modify") throw new Error("The broker has not acknowledged this order yet. Wait for it, or cancel the order.");
+    if (status === "UNKNOWN") throw new Error("The broker has not confirmed this order's last change yet.");
   }
 
   private orderRequest(order: BrokerOrder): BrokerOrderRequest {
@@ -440,7 +561,7 @@ export class BrokerTradingController {
   requestCancel(order: BrokerOrder): void {
     this.editable();
     const { context, capabilities } = this.context(true, this.orderRequest(order));
-    this.checkOrder(order, context);
+    this.checkOrder(order, context, "cancel");
     if (!capabilities.cancel || !context.adapter.cancelOrder) throw new Error("This broker does not support cancelling this order.");
     this.version++;
     this.gate = { context: this.key(), request: canonical(order), version: this.version, quoteRisk: "" };
@@ -456,7 +577,7 @@ export class BrokerTradingController {
       || !gate || gate.context !== this.key() || gate.version !== this.version || gate.request !== canonical(order)) {
       throw new Error("Confirm cancellation of the current order first.");
     }
-    this.checkOrder(order, context);
+    this.checkOrder(order, context, "cancel");
     this.gate = undefined;
     this.version++;
     this.mutationPending = true;
@@ -464,9 +585,47 @@ export class BrokerTradingController {
     try {
       await context.adapter.cancelOrder(context.instance, order.orderId);
       this.publish({ phase: "result", cancelOrder: undefined, resultQuantities: "last-known", result: { ...copy(order), status: "PENDING_CANCEL", updatedAt: this.now() } });
-    } catch {
-      this.publish({ phase: "result", cancelOrder: undefined, resultQuantities: "last-known", result: { ...copy(order), status: "UNKNOWN", updatedAt: this.now() }, error: uncertainMessage });
+    } catch (error) {
+      const reason = refusal(error);
+      if (reason) await this.settleRefusal(order, reason, "cancel");
+      else this.publish({ phase: "result", cancelOrder: undefined, resultQuantities: "last-known", result: { ...copy(order), status: "UNKNOWN", updatedAt: this.now() }, error: uncertainChange });
     } finally { this.mutationPending = false; }
+  }
+
+  /** The order as the broker reports it now, by its handle; undefined when the broker cannot say. */
+  private async lookup(order: BrokerOrder): Promise<BrokerOrder | undefined> {
+    const { context } = this.context(false);
+    try {
+      const orders = context.adapter.getOrderStatus && order.orderId !== 0
+        ? [await context.adapter.getOrderStatus(context.instance, order.orderId)]
+        : await context.adapter.listOpenOrders?.(context.instance) ?? [];
+      return orders.find((value): value is BrokerOrder => !!value && value.accountId === order.accountId
+        && value.contract.symbol === order.contract.symbol && (value.orderId === order.orderId || sameOrder(value, order)));
+    } catch { return undefined; }
+  }
+
+  /**
+   * After the broker refused a change or cancel, which leaves the order as it was, the order as the broker now
+   * reports it decides the one line said about it: "Already filled" when it ended first, "Order changed in Aries,
+   * refreshed" when it moved on elsewhere, else the broker's reason. A refused change of an order that stands as it
+   * was keeps the ticket on the change, with the reason in the form.
+   */
+  private async settleRefusal(order: BrokerOrder, reason: string, action: "modify" | "cancel"): Promise<void> {
+    const brokerName = this.context(false).context.adapter.name;
+    const current = await this.lookup(order);
+    if (this.disposed) return;
+    const now = current ?? order;
+    const label = brokerOrderStatus(now.status);
+    const ended = brokerOrderDone(now.status);
+    const changed = !!current && (current.brokerOrderId !== order.brokerOrderId || label !== brokerOrderStatus(order.status) || current.quantity !== order.quantity
+      || current.filled !== order.filled || current.limitPrice !== order.limitPrice || current.stopPrice !== order.stopPrice);
+    if (action === "modify" && !ended && !changed) {
+      this.publish({ phase: "editing", review: undefined, receipt: undefined, error: reason });
+      return;
+    }
+    this.publish({ phase: "result", cancelOrder: undefined, review: undefined, result: copy(now), resultQuantities: current ? "confirmed" : "last-known", error: undefined });
+    const title = ended ? label === "Rejected" ? reason : `Already ${label.toLowerCase()}` : changed ? `Order changed in ${brokerName}, refreshed` : reason;
+    this.options.onOutcome?.({ title, type: ended || changed ? "info" : "error", order: copy(now) });
   }
 
   private unknown(request: BrokerOrderRequest, original?: BrokerOrder): BrokerOrder {
@@ -486,11 +645,29 @@ export class BrokerTradingController {
       ? [await context.adapter.getOrderStatus(context.instance, result.orderId)].filter((order): order is BrokerOrder => order !== null)
       : await context.adapter.listOpenOrders?.(context.instance) ?? [];
     if (this.disposed || fingerprint !== this.key() || this.snapshot.result !== result) return;
-    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol
-      && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
-    if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainMessage : undefined });
+    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && sameOrder(order, result));
+    if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainChange : undefined });
     // Absence from open orders does not prove a fill, rejection or cancellation.
   }
+
+  /**
+   * The result's order as the broker last reported it, from the app's order
+   * feed (see useFeedOrderResult). Only the same account and native order (or
+   * acknowledged handle) updates it; an order that ended does not go back to
+   * working, and an unknown outcome waits for an end or a refresh. Answers the
+   * result as it now stands.
+   */
+  applyOrderUpdate = (order: BrokerOrder): BrokerOrder | undefined => {
+    const result = this.snapshot.result;
+    if (this.disposed || this.mutationPending || !result || order.accountId !== result.accountId || !sameOrder(order, result)) return result;
+    if (order.contract.brokerId !== result.contract.brokerId || (order.brokerInstanceId && result.brokerInstanceId && order.brokerInstanceId !== result.brokerInstanceId)) return result;
+    if (TERMINAL.has(result.status.toUpperCase()) && !TERMINAL.has(order.status.toUpperCase())) return result;
+    // An action whose outcome is unknown is settled by the order ending, or by refreshing it; a working order may not have seen it yet.
+    if (result.status.toUpperCase() === "UNKNOWN" && !TERMINAL.has(order.status.toUpperCase())) return result;
+    if (canonical(order) === canonical(result)) return result;
+    this.publish({ result: copy(order), resultQuantities: "confirmed", error: order.status === "UNKNOWN" ? uncertainChange : undefined });
+    return this.snapshot.result;
+  };
 
   reset(): void {
     this.editable();
@@ -500,5 +677,5 @@ export class BrokerTradingController {
     this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, error: undefined });
   }
 
-  dispose(): void { this.disposed = true; this.version++; this.quoteVersion++; this.gate = undefined; this.listeners.clear(); }
+  dispose(): void { this.disposed = true; this.version++; this.quoteVersion++; this.gate = undefined; this.listeners.clear(); this.streamQuotes.clear(); }
 }

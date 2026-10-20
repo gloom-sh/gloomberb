@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import type { LocalMarketDataLookup } from "./local-only";
 
 export const SYNC_SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -31,6 +32,8 @@ interface SyncContributorMemo {
 
 interface SyncCollectContext {
   state: AppState;
+  /** Sources whose quotes and bars never leave this device (`BrokerAdapter.localMarketData`); none when absent. */
+  isLocalMarketData?: LocalMarketDataLookup;
   /** The payload this device last pushed for this contributor, or null when it never synced. */
   baselinePayload?: unknown;
   memo?: SyncContributorMemo;

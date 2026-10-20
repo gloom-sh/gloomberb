@@ -9,6 +9,7 @@ import { strategyLegLabel } from "./strategy";
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
+export const ticketTifName: Record<string, string> = { DAY: "Day", GTC: "Good til cancelled", IOC: "Immediate or cancel", FOK: "Fill or kill", EXTENDED_HOURS: "Extended hours", AT_THE_OPENING: "At the opening", AT_THE_CLOSE: "At the close" };
 /** `selectable`: a review or receipt whose figures someone may copy by hand. */
 export function TicketSection({ children, width, title, selectable = false }: { children: ReactNode; width?: number; title?: string; selectable?: boolean }) {
   const native = useUiCapabilities().nativePaneChrome;
@@ -82,7 +83,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   </TicketSection>;
   return <TicketSection width={width} title="Order summary" selectable>
     <TicketOrderHeadline model={m} large />
-    <Text fg={c.textDim}>{`${ticketTypeName[draft?.orderType ?? "LMT"]} · ${draft?.tif ?? "DAY"}${draft?.outsideRth ? " · Extended hours" : ""}`}</Text>
+    <Text fg={c.textDim}>{`${ticketTypeName[draft?.orderType ?? "LMT"]} · ${ticketTifName[draft?.tif ?? "DAY"] ?? draft?.tif}${draft?.outsideRth ? " · Outside RTH" : ""}`}</Text>
     <Box flexDirection="column" paddingY={1}><Text fg={c.textDim}>Estimated order value</Text><FigureText>{ticketMoney(total, currency)}</FigureText></Box>
     {strategy ? <TicketLegs model={m} width={rowWidth} /> : null}
     <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${unit}`} width={rowWidth} />
@@ -106,7 +107,8 @@ export function TicketStatus({ model: m, width }: { model: TicketViewModel; widt
       <RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} />
       <Text fg={c.text} wrapText>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text>
     </> : null}
-    {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">Outcome unconfirmed. Refresh and reconcile in Orders. No automatic retry.</Notice> : null}
+    {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">
+      {m.result?.orderId ? "Not confirmed yet. Checking with the broker." : "Not confirmed. Check open orders before placing it again."}</Notice> : null}
     {status === "REJECTED" ? <Notice variant="callout" tone="negative">{m.error ?? m.result?.warningText ?? "The broker rejected this order. Check the order before trying again."}</Notice> : null}
     {status === "PENDING_CANCEL" ? <Notice variant="callout" tone="warning">Cancellation requested. The order can still fill until the broker confirms.</Notice> : null}
   </Box>;
