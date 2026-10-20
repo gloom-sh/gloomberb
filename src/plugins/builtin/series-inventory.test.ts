@@ -17,8 +17,9 @@ const NOT_MODULES = new Set(["shared"]);
 // the EU ETS common auction platform, which publishes the auction results; the BIS publishes the central
 // bank policy rates the policy-rate series chart outside the US and the euro area; GIE AGSI+ is the
 // storage operators' transparency platform, which asks to be named as the source of its data; IMF
-// PortWatch publishes the chokepoint transits, and the IMF's terms ask for attribution.
-const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch"]);
+// PortWatch publishes the chokepoint transits, and the IMF's terms ask for attribution; TurkStat, Türkiye's
+// statistics institute, compiles the Turkish CPI the central bank republishes.
+const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {
