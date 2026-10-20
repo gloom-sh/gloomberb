@@ -48,7 +48,6 @@ export function useBuildoutDataRuntime({
 
     async function load() {
       loadingPageKeysRef.current.clear();
-      onBeforeLoad();
       // A refresh keeps what is loaded; only the first load replaces the body.
       setState((current) => current.status === "ready"
         ? { ...current, refreshing: true, refreshError: null }
@@ -57,6 +56,7 @@ export function useBuildoutDataRuntime({
       const token = await getBuildoutProToken();
       const data = await loadBuildoutData(token);
       if (!cancelled) {
+        onBeforeLoad();
         setState({
           status: "ready",
           ...data,

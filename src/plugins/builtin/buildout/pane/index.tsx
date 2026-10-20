@@ -384,7 +384,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   }
 
   if (state.status === "error") {
-    return <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} width={width} height={height} />;
+    return <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} width={width} height={height} retry={{ onRetry: refresh }} />;
   }
 
   const listOpen = activeTab === "companies" && !!selectedList;

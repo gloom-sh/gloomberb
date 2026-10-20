@@ -128,12 +128,17 @@ export async function loadBuildoutData(token: string | null) {
 export async function getBuildoutProToken() {
   if (!apiClient.isSignedIn()) return null;
 
-  const session = await apiClient.getSession().catch(logFailure("buildout.model", "Read session for access failed", null));
-  if (!session) return null;
+  try {
+    const session = await apiClient.getSession();
+    if (!session) return null;
 
-  const account = await apiClient.getBuildoutAccount().catch(logFailure("buildout.model", "Read subscription access failed", null));
-  if (!account?.subscription.active) return null;
+    const account = await apiClient.getBuildoutAccount();
+    if (!account?.subscription.active) return null;
 
-  const token = await apiClient.getBuildoutToken().catch(logFailure("buildout.model", "Read access token failed", null));
-  return token?.token ?? null;
+    const token = await apiClient.getBuildoutToken();
+    return token?.token ?? null;
+  } catch (error) {
+    logFailure("buildout.model", "Check access failed")(error);
+    throw new Error("Access check failed. Access is unknown.");
+  }
 }
