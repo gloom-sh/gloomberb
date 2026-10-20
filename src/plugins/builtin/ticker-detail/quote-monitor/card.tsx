@@ -191,6 +191,8 @@ export function QuoteMonitorCard({
   const extendedParts = display && extended
     ? extendedLineParts(extended, formatMarketPriceWithCurrency(extended.price, currency, priceOptions), (text) => displayWidth(text) <= extendedRoom)
     : null;
+  // A desktop card says a listing no longer trades on a row of its own.
+  const endedRow = nativePaneChrome && quoteFailed && !!quoteStatus.ended && !extendedParts;
   const extendedColor = quoteFailed ? colors.textDim : priceColor(extended?.change ?? 0);
   const extendedDim = !!flashDirection && headlineHolds;
   const sparklineRange = resolvePriceSparklineRange(priceHistory, chartPeriod);
@@ -280,7 +282,7 @@ export function QuoteMonitorCard({
             minWidth={0}
             style={{
               gridColumn: "1",
-              gridRow: extendedParts ? "1" : "1 / span 2",
+              gridRow: extendedParts || endedRow ? "1" : "1 / span 2",
               minWidth: 0,
               overflow: "hidden",
             }}
@@ -288,7 +290,7 @@ export function QuoteMonitorCard({
             <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
               {symbol}
             </Text>
-            {quoteFailed && (
+            {quoteFailed && !endedRow && (
               <Text fg={quoteStatus.ended ? colors.warning : colors.negative} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
                 {quoteStatus.text}
               </Text>
@@ -335,6 +337,28 @@ export function QuoteMonitorCard({
               <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
             </Box>
           </Box>
+
+          {endedRow && (
+            // Under the price, across the card, so the date is never cut on a narrow card;
+            // backed like the price so the sparkline does not run through it.
+            <Text
+              fg={colors.warning}
+              style={{
+                gridColumn: "1 / -1",
+                gridRow: "2",
+                justifySelf: "start",
+                alignSelf: "start",
+                fontSize: "var(--gloom-type-ui)",
+                lineHeight: "14px",
+                whiteSpace: "nowrap",
+                backgroundColor: colors.bg,
+                borderRadius: "var(--gloom-radius-sm)",
+                boxShadow: `0 0 0 2px ${colors.bg}`,
+              }}
+            >
+              {quoteStatus.text}
+            </Text>
+          )}
 
           {extendedParts && (
             <ExtendedSessionLine
