@@ -83,6 +83,10 @@ export interface KpiObservation extends Omit<KpiObservationInput, "quote" | "sca
   conflict: boolean
   contested?: boolean
   evidence: KpiEvidence[]
+  /** Stored facts shown as this one: the same figure under other labels or periods. */
+  merged?: string[]
+  /** The labels that tell its series apart, the same on each of its facts; the stored ones stay in `dimensions`. */
+  seriesLabels?: Record<string, string>
 }
 export interface KpiGuidance extends Omit<KpiGuidanceInput, "quote" | "scale"> {
   id: string
@@ -97,6 +101,10 @@ export interface KpiGuidance extends Omit<KpiGuidanceInput, "quote" | "scale"> {
   direction: GuidanceDirection
   previousId: string | null
   midpointChangePct: number | null
+  /** Stored guides shown as this one. */
+  merged?: string[]
+  /** The labels that tell its series apart, as on its actuals. */
+  seriesLabels?: Record<string, string>
   actual: { observationId: string; value: number; outcome: "above" | "below" | "within"; favorable: "beat" | "miss" | "in_line" | "neutral"; difference: number; differencePct: number | null } | null
 }
 interface KpiCoverage {
@@ -118,6 +126,7 @@ export interface KpiSeries {
   currency: string | null
   basis: KpiBasis
   dimensions: Record<string, string>
+  seriesLabels?: Record<string, string>
   latest: KpiObservation
   observations: KpiObservation[]
 }

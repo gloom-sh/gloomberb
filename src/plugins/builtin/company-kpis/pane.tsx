@@ -21,7 +21,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
 import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
-  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesName,
+  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
@@ -42,7 +42,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
     <KeyValueRow label="Value" value={isGuidance(row) ? rangeText(row) : observationValue(row)} detail={row.currency || row.unit === "volume" || row.unit === "count" ? unitLabel(row) : undefined} labelWidth={18} />
     <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${row.period.start} to ${row.period.end}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${row.period.end}` : "Calendar dates unavailable"} labelWidth={18} />
     <KeyValueRow label="Basis" value={basisLabel(row.basis)} labelWidth={18} />
-    <KeyValueRow label="Scope" value={(desktop ? scopeWords(row.dimensions) : dimensionLabel(row.dimensions)) || "Consolidated"} labelWidth={18} />
+    <KeyValueRow label="Scope" value={(desktop ? scopeWords(seriesLabels(row)) : dimensionLabel(row.dimensions)) || "Consolidated"} labelWidth={18} />
     <KeyValueRow label="Definition" value={row.metric.definition} labelWidth={18} />
     <KeyValueRow label="Revision" value={`${row.revision}${row.current ? " · current" : " · superseded"}${!isGuidance(row) && (row.conflict || row.contested) ? " · conflicting disclosures" : ""}`} labelWidth={18} />
     {row.revisionReason ? <KeyValueRow label="Correction" value={row.revisionReason} labelWidth={18} /> : null}

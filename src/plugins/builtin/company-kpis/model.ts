@@ -42,24 +42,27 @@ export function scopeWords(dimensions: Record<string, string>, which: "parts" | 
     .map(([key, value]) => labelWords(key, value)).filter((words): words is string => !!words)
     .filter((words, index, list) => list.indexOf(words) === index).join(" · ");
 }
+/** The labels that tell a row's series apart: the server's `seriesLabels`, else (a server before them) its stored labels. */
+export const seriesLabels = (row: Pick<CompanyRow, "dimensions" | "seriesLabels">) => row.seriesLabels ?? row.dimensions;
 /**
  * What tells a series apart from the metric's other series, in plain words
  * (GLO-1046): its parts, a basis other than reported, then its qualifiers.
  * "Data Center", "Adjusted · diluted", "International · Constant currency".
  */
-export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions">): string {
-  return [scopeWords(row.dimensions, "parts"), row.basis === "reported" ? "" : basisLabel(row.basis), scopeWords(row.dimensions, "qualifiers")].filter(Boolean).join(" · ");
+export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions" | "seriesLabels">): string {
+  const labels = seriesLabels(row);
+  return [scopeWords(labels, "parts"), row.basis === "reported" ? "" : basisLabel(row.basis), scopeWords(labels, "qualifiers")].filter(Boolean).join(" · ");
 }
 /** A series named in plain words: "Revenue · Data Center", for a chart's series list and a detail title. */
-export const seriesName = (row: Pick<CompanyRow, "metric" | "basis" | "dimensions">) => [row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ");
+export const seriesName = (row: Pick<CompanyRow, "metric" | "basis" | "dimensions" | "seriesLabels">) => [row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ");
 const KIND_ORDER = ["quarter", "half", "ytd", "year", "instant", "other"];
 const BASIS_ORDER = ["reported", "adjusted", "constant_currency", "organic"];
 /** Series in reading order: by metric, the consolidated figure before its parts, reported before other bases, a quarter before its year. */
 export function seriesOrder(a: CompanyRow, b: CompanyRow): number {
   const rank = (list: string[], value: string) => { const index = list.indexOf(value); return index < 0 ? list.length : index; };
-  const parts = (row: CompanyRow) => scopeWords(row.dimensions, "parts");
+  const parts = (row: CompanyRow) => scopeWords(seriesLabels(row), "parts");
   return a.metric.name.localeCompare(b.metric.name) || Number(parts(a) !== "") - Number(parts(b) !== "") || parts(a).localeCompare(parts(b))
-    || rank(BASIS_ORDER, a.basis) - rank(BASIS_ORDER, b.basis) || scopeWords(a.dimensions, "qualifiers").localeCompare(scopeWords(b.dimensions, "qualifiers"))
+    || rank(BASIS_ORDER, a.basis) - rank(BASIS_ORDER, b.basis) || scopeWords(seriesLabels(a), "qualifiers").localeCompare(scopeWords(seriesLabels(b), "qualifiers"))
     || rank(KIND_ORDER, a.period.kind) - rank(KIND_ORDER, b.period.kind);
 }
 export const unitLabel = (row: Pick<CompanyRow, "unit" | "currency" | "dimensions">) => ({

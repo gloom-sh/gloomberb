@@ -110,6 +110,9 @@ test("the desktop names a series in plain words: its parts, a basis other than r
   expect(seriesDetail(observation({ basis: "adjusted", dimensions: { dilution: "diluted" } }))).toBe("Adjusted · diluted");
   expect(seriesDetail(observation({ basis: "constant_currency", dimensions: { geography: "International", excludes: "acquisitions" } }))).toBe("International · Constant currency · excl. acquisitions");
   expect(seriesDetail(observation({ dimensions: { fx_excluded: "true", window: "trailing twelve months" } }))).toBe("excl. fx · trailing twelve months");
+  // The server's series labels, not the fact's stored ones: NVDA's Data Center stored as a market platform.
+  expect(seriesDetail(observation({ dimensions: { scope: "market platform", platform: "Data Center" }, seriesLabels: { segment: "Data Center" } }))).toBe("Data Center");
+  expect(seriesDetail(observation({ dimensions: { type: "cash dividends paid" }, seriesLabels: {} }))).toBe("");
   // Its columns: the metric cell carries basis and scope.
   expect(companyColumns(false, false, false, false, true).map((column) => column.id)).toEqual(["metric", "period", "value", "change"]);
   expect(companyColumns(false, false, false).map((column) => column.id)).toEqual(["metric", "period", "value", "change", "basis", "scope"]);
