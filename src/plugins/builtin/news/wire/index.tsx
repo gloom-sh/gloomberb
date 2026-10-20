@@ -26,6 +26,7 @@ import { createRssNewsCapability } from "./rss/source";
 import { rssCliCommand } from "./rss/cli";
 import { newsFeedHeadless } from "../headless";
 import type { PaneDef } from "../../../../types/plugin";
+import { logFailure } from "../../../../utils/log-failure";
 
 const TopPane = createNewsPresetPane({
   paneKey: "top:curated",
@@ -195,11 +196,15 @@ export const newsWireModule: PluginModule = {
   setup(ctx) {
     const initialSettings = loadNewsFeedSettings(ctx.configState);
     if (initialSettings.needsMigration) {
-      void saveNewsFeedSettings(ctx.configState, initialSettings);
+      void saveNewsFeedSettings(ctx.configState, initialSettings)
+        .catch(logFailure("news.feed-config", "Migrate news feed settings failed"));
     }
 
     const source = createRssNewsCapability(
-      () => getEnabledNewsFeeds(loadNewsFeedSettings(ctx.configState)),
+      () => {
+        const settings = loadNewsFeedSettings(ctx.configState);
+        return { feeds: getEnabledNewsFeeds(settings), error: settings.error };
+      },
       { persistence: ctx.persistence },
     );
     ctx.registerCapability(source);
