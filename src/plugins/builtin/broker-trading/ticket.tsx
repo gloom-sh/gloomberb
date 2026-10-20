@@ -12,7 +12,7 @@ import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRender
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
 import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
-import { brokerOrderDone, ticketEditingPriceStep } from "./orders-data";
+import { brokerOrderDone, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
 export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders";
@@ -489,7 +489,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 {strategy ? null : <TicketReceiptRow label="Position" width={formWidth} value={m.position === undefined ? "Not reported" : m.position === 0 ? "None"
                   : `${number(m.position)} ${unit === "shares" ? "sh" : "ct"}${m.avgCost === undefined ? "" : ` @ ${money(m.avgCost, currency)}`}`} />}
                 <TicketReceiptRow label={sell ? strategy ? "Est. credit" : "Est. proceeds" : "Est. cost"} width={formWidth}
-                  value={money((draft.limitPrice ?? draft.stopPrice ?? m.quote?.price ?? NaN) * draft.quantity * Number(draft.contract.multiplier ?? 1), currency)} />
+                  value={money((orderEstimatePrice(draft, m.quote) ?? NaN) * draft.quantity * Number(draft.contract.multiplier ?? 1), currency)} />
                 <TicketReceiptRow label="Buying power" value={money(account?.buyingPower, currency)} width={formWidth} />
               </Box> : null}
               <Box marginTop={native && !docked ? 0.5 : 0}>{m.tradingEnabled
