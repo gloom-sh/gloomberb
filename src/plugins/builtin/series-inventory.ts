@@ -62,6 +62,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "crypto-board", chart: "Price sparklines for the large coins", series: ["crypto:*"] },
   { module: "perps", chart: "Perpetual funding, open interest, premium and long/short account share", series: ["perps:*"] },
   { module: "perps", chart: "Perpetual mark price", notInCatalog: "not-yet", reason: "The pair's price is in the catalog; the perpetual's own mark price could be a crypto series." },
+  { module: "primary-dealers", chart: "A primary dealer position's weekly net level, the sum of the release's series behind the row", notInCatalog: "not-yet", reason: "Weekly and dated, one series per row of the board; the pane reads each only when its row is selected, and none is registered for the composer yet." },
   { module: "short-interest", chart: "A ticker's short interest and days to cover", series: ["short-interest:*"] },
   { module: "short-volume", chart: "A ticker's daily short volume ratio", series: ["short-volume:*"] },
   { module: "social-mentions", chart: "A ticker's daily posts", series: ["social-mentions:*"] },

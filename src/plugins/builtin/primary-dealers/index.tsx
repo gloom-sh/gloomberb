@@ -9,7 +9,8 @@ export const primaryDealersModule: PluginModule = {
     paneId: PRIMARY_DEALERS_PANE_ID,
     label: "Primary Dealer Positions",
     description: "Weekly net positions with history, by sector and Treasury tenor, and settlement fails.",
-    keywords: ["primary", "dealer", "dealers", "positions", "fails", "treasury", "bills", "coupons", "tips", "frn", "agency", "mbs", "corporate", "munis", "abs", "pdlr"],
+    // No "muni": a muni search lands on DVD's muni funds alone (known-gaps.test.ts), not on a table of two functions.
+    keywords: ["primary", "dealer", "dealers", "positions", "fails", "treasury", "bills", "coupons", "tips", "frn", "mbs", "pdlr"],
     shortcut: { prefix: "PDLR" },
     headless: primaryDealersHeadless,
     createInstance: () => ({ placement: "floating" }),
