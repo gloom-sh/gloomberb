@@ -960,7 +960,8 @@ export async function buildTickerReport({
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
     indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
     quoteMarketStateLabel(quote) ?? undefined,
-    quote?.dataSource ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
+    // A listing that no longer trades has no delay to speak of: its quote is its last session's close.
+    quote?.dataSource && !quote.delisting ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
   ].filter((part): part is string => !!part);
   if (summaryParts.length > 0) {
     lines.push(cliStyles.muted(summaryParts.join(METADATA_SEPARATOR)));
