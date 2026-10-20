@@ -3,7 +3,8 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
-import { allObservations, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey } from "./model";
+import { allObservations, companyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+  seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
@@ -100,4 +101,30 @@ test("unknown calendar ends use fiscal categories with source dates left null", 
   expect(chart.xAxis?.formatCursor?.(0.5)).toBe("Q2 FY2026");
   expect(rows.every((row) => row.period.end === null)).toBe(true);
   expect(observationChange(rows[2]!, rows).value).toBe(0);
+});
+
+test("the desktop names a series in plain words: its parts, a basis other than reported, then its qualifiers (GLO-1046)", () => {
+  expect(seriesDetail(observation())).toBe("");
+  expect(seriesName(observation({ dimensions: { platform: "Data Center" } }))).toBe("Annual recurring revenue · Data Center");
+  expect(seriesDetail(observation({ dimensions: { segment: "Walmart U.S.", fuel: "excluded", comparison: "year_over_year" } }))).toBe("Walmart U.S. · excl. fuel · year over year");
+  expect(seriesDetail(observation({ basis: "adjusted", dimensions: { dilution: "diluted" } }))).toBe("Adjusted · diluted");
+  expect(seriesDetail(observation({ basis: "constant_currency", dimensions: { geography: "International", excludes: "acquisitions" } }))).toBe("International · Constant currency · excl. acquisitions");
+  expect(seriesDetail(observation({ dimensions: { fx_excluded: "true", window: "trailing twelve months" } }))).toBe("excl. fx · trailing twelve months");
+  // Its columns: the metric cell carries basis and scope.
+  expect(companyColumns(false, false, false, false, true).map((column) => column.id)).toEqual(["metric", "period", "value", "change"]);
+  expect(companyColumns(false, false, false).map((column) => column.id)).toEqual(["metric", "period", "value", "change", "basis", "scope"]);
+});
+
+test("series read by metric: the consolidated figure before its parts, reported before adjusted, a quarter before its year", () => {
+  const quarter = observation().period;
+  const year = { ...quarter, kind: "year" as const, fiscalQuarter: null, start: null, label: "FY2026" };
+  const rows = [
+    observation({ id: "segment-year", dimensions: { segment: "Cloud" }, period: year }),
+    observation({ id: "adjusted", basis: "adjusted" }),
+    observation({ id: "total-year", period: year }),
+    observation({ id: "segment-quarter", dimensions: { segment: "Cloud" } }),
+    observation({ id: "total-quarter" }),
+    observation({ id: "other-metric", metric: { ...observation().metric, name: "Active customers" } }),
+  ];
+  expect([...rows].sort(seriesOrder).map((row) => row.id)).toEqual(["other-metric", "total-quarter", "total-year", "adjusted", "segment-quarter", "segment-year"]);
 });

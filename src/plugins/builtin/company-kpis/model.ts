@@ -12,6 +12,56 @@ export const dimensionLabel = (dimensions: Record<string, string>) => Object.ent
   const rank = (key: string) => ["segment", "product", "geography", "region", "cohort"].includes(key) ? 0 : key === "comparison" ? 2 : 1;
   return rank(a) - rank(b) || a.localeCompare(b);
 }).map(([key, value]) => `${key.replaceAll("_", " ")}: ${value.replaceAll("_", " ")}`).join(" · ");
+/** Labels that name a part of the company, shown before the basis and the qualifiers. */
+const PART_KEY = /segment|product|offering|business|brand|platform|market|geograph|region|division|cloud|franchise|program|channel|line|customer|entity|scope|type|category/;
+/** Labels that say how a figure is measured, shown after the basis. */
+const QUALIFIER_KEY = /exclud|includ|except|without|compar|dilution|window|funded|horizon/;
+const FLAG_VALUE = /^(?:true|yes|y)$/i;
+const FALSE_VALUE = /^(?:false|no|n)$/i;
+const EXCLUDED_VALUE = /^(?:excluded|excludes|excluding|exclusive|ex)$/i;
+const INCLUDED_VALUE = /^(?:included|includes|including|inclusive)$/i;
+const plain = (text: string) => text.replaceAll("_", " ").replace(/\s+/g, " ").trim();
+/** One label in plain words: "Data Center", "excl. fuel", "year over year", never its key. */
+function labelWords(key: string, value: string): string | null {
+  const said = plain(value);
+  const subject = plain(key).replace(/\b(?:excluded|excludes|excluding|exclude|without|included|includes|including|include|ex)\b/gi, " ").replace(/\s+/g, " ").trim();
+  if (!said || FALSE_VALUE.test(said)) return null;
+  if (EXCLUDED_VALUE.test(said) || (FLAG_VALUE.test(said) && /exclud|without|(?:^|_)ex(?:_|$)/i.test(key))) return subject ? `excl. ${subject}` : null;
+  if (INCLUDED_VALUE.test(said) || (FLAG_VALUE.test(said) && /includ/i.test(key))) return subject ? `incl. ${subject}` : null;
+  if (FLAG_VALUE.test(said)) return subject || null;
+  if (/^(?:exclud|except|without)/i.test(key) && !/^(?:excl|exclud|except|without|ex\b)/i.test(said)) return `excl. ${said}`;
+  if (/^includ/i.test(key) && !/^incl/i.test(said)) return `incl. ${said}`;
+  return said;
+}
+const labelRank = (key: string) => QUALIFIER_KEY.test(key) ? 2 : PART_KEY.test(key) ? 0 : 1;
+/** What a series' labels name, in plain words: its parts, then its qualifiers. Empty for the company's consolidated figure. */
+export function scopeWords(dimensions: Record<string, string>, which: "parts" | "qualifiers" | "all" = "all"): string {
+  return Object.entries(dimensions)
+    .filter(([key]) => which === "all" || (which === "qualifiers") === (labelRank(key) === 2))
+    .sort(([a], [b]) => labelRank(a) - labelRank(b) || a.localeCompare(b))
+    .map(([key, value]) => labelWords(key, value)).filter((words): words is string => !!words)
+    .filter((words, index, list) => list.indexOf(words) === index).join(" · ");
+}
+/**
+ * What tells a series apart from the metric's other series, in plain words
+ * (GLO-1046): its parts, a basis other than reported, then its qualifiers.
+ * "Data Center", "Adjusted · diluted", "International · Constant currency".
+ */
+export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions">): string {
+  return [scopeWords(row.dimensions, "parts"), row.basis === "reported" ? "" : basisLabel(row.basis), scopeWords(row.dimensions, "qualifiers")].filter(Boolean).join(" · ");
+}
+/** A series named in plain words: "Revenue · Data Center", for a chart's series list and a detail title. */
+export const seriesName = (row: Pick<CompanyRow, "metric" | "basis" | "dimensions">) => [row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ");
+const KIND_ORDER = ["quarter", "half", "ytd", "year", "instant", "other"];
+const BASIS_ORDER = ["reported", "adjusted", "constant_currency", "organic"];
+/** Series in reading order: by metric, the consolidated figure before its parts, reported before other bases, a quarter before its year. */
+export function seriesOrder(a: CompanyRow, b: CompanyRow): number {
+  const rank = (list: string[], value: string) => { const index = list.indexOf(value); return index < 0 ? list.length : index; };
+  const parts = (row: CompanyRow) => scopeWords(row.dimensions, "parts");
+  return a.metric.name.localeCompare(b.metric.name) || Number(parts(a) !== "") - Number(parts(b) !== "") || parts(a).localeCompare(parts(b))
+    || rank(BASIS_ORDER, a.basis) - rank(BASIS_ORDER, b.basis) || scopeWords(a.dimensions, "qualifiers").localeCompare(scopeWords(b.dimensions, "qualifiers"))
+    || rank(KIND_ORDER, a.period.kind) - rank(KIND_ORDER, b.period.kind);
+}
 export const unitLabel = (row: Pick<CompanyRow, "unit" | "currency" | "dimensions">) => ({
   currency: row.currency ?? "Currency", currency_per_share: `${row.currency ?? "Currency"}/share`, currency_per_unit: `${row.currency ?? "Currency"}/${row.dimensions.unit ?? "unit"}`,
   percent: "%", basis_points: "bp", count: "Count", ratio: "x", volume: row.dimensions.unit ?? "Volume",
@@ -118,7 +168,11 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
     : column === "outcome" ? guide ? outcomeLabel(guide) : "--" : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
-export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false): DataTableColumn[] {
+/**
+ * The table's columns. `named` is the desktop's: the metric cell names the
+ * series in plain words (seriesDetail), so no basis or scope column repeats it.
+ */
+export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false, named = false): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "metric", label: "Metric", width: 27, flexGrow: 1, align: "left" },
     { id: "period", label: "Fiscal period", width: 14, align: "left" },
@@ -134,7 +188,8 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   ];
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
-  return order ? columns.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : columns;
+  const shown = named ? columns.filter((column) => column.id !== "basis" && column.id !== "scope") : columns;
+  return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
 }
 
 /** The lock line of a free preview, in the same words in the pane and `fn KPIS` / `fn GUIDE`. */
