@@ -68,7 +68,7 @@ const STALE_SESSION_LABEL = "STALE";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
-/** The books an extended session's bid and ask belong to, as `ticker` and the overview's quote book name them. */
+/** The books an extended session's bid and ask belong to, as `ticker` names them. */
 const EXTENDED_BOOK_LABELS: Partial<Record<MarketState, string>> = { PRE: "pre-market book", POST: "after-hours book" };
 
 /**
@@ -76,8 +76,8 @@ const EXTENDED_BOOK_LABELS: Partial<Record<MarketState, string>> = { PRE: "pre-m
  * pre-market or after-hours book, or a closed market's last quote with the
  * day it is from (ITA's $202.00 against $208.74 around a $206.65 close is no
  * open book). Null in the regular session or without a known state, when the
- * book is the live one. `ticker` prints it after Bid / Ask, the overview
- * under its quote book.
+ * book is the live one. `ticker` prints it after Bid / Ask; the overview's
+ * header already names the session, so its quote book does not repeat it.
  */
 export function quoteBookSessionLabel(quote: Quote): string | null {
   const state = quote.marketState;

@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
-import { quoteBookSessionLabel } from "../../../../market-data/market/status";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
@@ -165,8 +164,6 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   }
 
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
-  // Out of the regular session, whose book this is: the after-hours one, or a closed market's last quote.
-  const session = quoteBookSessionLabel(quote);
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
       <ColumnGrid
@@ -180,11 +177,6 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           row(t("Spr"), spreadText, colors.textDim),
         ]}
       />
-      {session ? (
-        <Box flexDirection="row" justifyContent="flex-end" width={nativePaneChrome ? undefined : width} overflow="hidden">
-          <Text fg={colors.textDim}>{t(session)}</Text>
-        </Box>
-      ) : null}
     </Box>
   );
 }
