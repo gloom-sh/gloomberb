@@ -289,6 +289,29 @@ describe("CLI portfolio commands", () => {
     }]);
   });
 
+  test("a size of 1.250 on a listing held in whole lots asks which was meant, as 1,250 does; a US listing takes it as 1.25", async () => {
+    const { dataDir } = await createCliFixture({
+      portfolios: [{ id: "lira", name: "Lira", currency: "TRY" }],
+      watchlists: [],
+      tickers: [
+        createTestTicker("THYAO.IS", "Turk Hava Yollari", { exchange: "BIST", currency: "TRY", assetCategory: "STK" }),
+        makeTicker({ assetCategory: "STK" }),
+      ],
+    });
+
+    const lots = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "THYAO.IS:BIST", "1.250", "312,50", "TRY"]));
+    expect(lots.exitCode).toBe(1);
+    expect(lots.stderr).toContain("Shares 1.250 could be 1250 (thousands) or 1.25 (decimal point), and THYAO.IS:BIST trades in whole shares; type 1250 or 1.25.");
+
+    const fraction = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "NVDA", "1.250", "180", "USD"]));
+    expect(fraction.exitCode).toBe(0);
+    const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
+    const store = new TickerRepository(persistence.tickers);
+    expect((await store.loadTicker("NVDA"))?.metadata.positions[0]?.shares).toBe(1.25);
+    expect((await store.loadTicker("THYAO.IS"))?.metadata.positions).toEqual([]);
+    persistence.close();
+  });
+
   test("removes portfolio membership and positions, then cleans all references on delete", async () => {
     const { dataDir } = await createCliFixture({
       portfolios: [

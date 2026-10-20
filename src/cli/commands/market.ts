@@ -297,8 +297,9 @@ async function readSymbols(symbols: readonly string[], dataProvider: Parameters<
 
 /**
  * The symbols of `--file <path>` or standard input (`-`), with any typed
- * beside them, read by the parser `watchlist add` uses. Standard input is read
- * only when asked for, so a script that pipes in nothing never waits on it.
+ * beside them, read by the parser `watchlist add` uses, and its notes on what
+ * it left out. Standard input is read only when asked for, so a script that
+ * pipes in nothing never waits on it.
  */
 async function readListedSymbols(
   args: readonly string[],
@@ -306,13 +307,13 @@ async function readListedSymbols(
   market: MarketContext,
   ctx: Parameters<CliCommandDef["execute"]>[1],
   usage: string,
-): Promise<string[]> {
+): Promise<{ symbols: string[]; notes: string[] }> {
   try {
     const list = await readSymbolList({
       args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider),
     });
     if (list.symbols.length === 0) ctx.fail(`No symbols in ${file && file !== "-" ? file : "standard input"}.`, usage);
-    return uniqueEntries(list.symbols);
+    return { symbols: uniqueEntries(list.symbols), notes: list.notes };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
     throw error;
@@ -718,9 +719,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   await withMarketData(ctx, async (market) => {
     const read = phrase ? await readPhraseArgument(phrase, market.dataProvider) : null;
     if (read?.kind === "phrase") return answerPhrase(read.phrase, market, ctx);
+    // A list read from a file names what it left out: a stray separator, the cells beside a table's symbols.
+    const list = listed && !read ? await readListedSymbols(args, file, market, ctx, usage) : null;
     const symbols = read?.kind === "name" ? [read.name]
       : read?.kind === "symbols" ? uniqueEntries(read.symbols)
-      : listed ? await readListedSymbols(args, file, market, ctx, usage)
+      : list ? list.symbols
       : await readSymbols(entries, market.dataProvider);
     // With several symbols, --exchange is for the ones that name no exchange of their own.
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
@@ -791,6 +794,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...formerIssuers[index] ? { formerIssuer: formerIssuers[index] } : {},
     }));
     const notes = [
+      ...list?.notes ?? [],
       // FB now lists another security; the company that was FB trades as META. A symbol a
       // company renamed into (META) is what was typed: its change is in the row, not here.
       // GOGL was Golden Ocean, which merged into CMB.Tech; a fund lists there now.

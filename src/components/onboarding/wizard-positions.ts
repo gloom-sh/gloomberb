@@ -12,6 +12,7 @@ import {
 } from "../../portfolio/mutations";
 import { isFuturesTicker } from "../../portfolio/futures-positions";
 import { loadFuturesEntrySize } from "../../portfolio/futures-terms";
+import { wholeUnitQuantityProblem } from "../../portfolio/position-quantity";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import { resolveTickerSearch, upsertTickerFromSearchResult, type ResolvedTickerSearch } from "../../tickers/search";
@@ -291,6 +292,13 @@ export function useOnboardingPositions({
       if (shares === null) {
         nextTicker = addTickerToPortfolio(ticker, portfolioId).ticker;
       } else {
+        // 1.250 on a listing held in whole lots could be 1,250 as well, and asks as 1,250 does.
+        const lots = wholeUnitQuantityProblem(current.shares.trim(), ticker, { label: quantityLabel });
+        if (lots) {
+          setFieldIdx(1);
+          setError(lots);
+          return false;
+        }
         const costBasis = avgCost ?? result.quote?.price;
         if (costBasis === undefined || costBasis === null || !Number.isFinite(costBasis)) {
           setFieldIdx(2);

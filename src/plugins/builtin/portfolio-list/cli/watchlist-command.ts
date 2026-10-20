@@ -125,7 +125,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       dryRun,
       add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
     });
-    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays, retry, dryRun });
+    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, notes: list.notes, retry, dryRun });
   });
 }
 
@@ -158,7 +158,7 @@ async function removeFromWatchlistCommand(args: string[], file: string | undefin
       store: context.store,
       remove: (ticker) => removeWatchlistMembership(ticker, watchlist.id),
     });
-    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays });
+    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, notes: list.notes });
   });
 }
 

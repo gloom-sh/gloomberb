@@ -47,6 +47,7 @@ import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImpo
 import { importedFromText } from "../imported-from";
 import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
+import { wholeUnitQuantityProblem } from "../../../../portfolio/position-quantity";
 import { parseTypedNumber, readCurrencyAmount } from "../../../../utils/decimal-comma";
 import {
   failPortfolioCommand,
@@ -207,7 +208,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       retry,
       add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
     });
-    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, strays: list.strays, retry, dryRun });
+    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, notes: list.notes, retry, dryRun });
   });
 }
 
@@ -274,7 +275,7 @@ async function removeFromPortfolioCommand(args: string[], file: string | undefin
       },
     });
     if (nextConfig !== context.config) await saveConfig(nextConfig);
-    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, strays: list.strays });
+    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, notes: list.notes });
   });
 }
 
@@ -298,6 +299,9 @@ async function setPositionCommand(
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
+      // `1.250` on a listing held in whole lots asks which was meant, as `1,250` did above.
+      const lots = wholeUnitQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
+      if (lots) throw new PortfolioCliError(lots);
       // A future is held in contracts of the size its terms give, as `quote` states it, and a cost typed as
       // corn is quoted counts cents.
       const future = isFuturesTicker(ticker);
@@ -792,7 +796,7 @@ const AMOUNTS_HELP = {
   lines: [
     "Numbers take either decimal mark: 1.234,5, 1234,5 and 1,234.5 are 1234.5, and 18,50 is 18.5.",
     "Cash and --notional are amounts of a currency (cash in the portfolio's unless named, --notional in USD), so 500,000 and 1.234 are thousands, a third decimal being below a cent. In a currency with three decimals (KWD, BHD, OMR) they could be either, and the command asks which.",
-    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234).",
+    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234). On a listing held in whole lots (shares listed outside the US, a future's contracts) a lone dot before three digits (1.250) asks too.",
   ],
 };
 

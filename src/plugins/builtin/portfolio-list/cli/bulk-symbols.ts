@@ -37,7 +37,7 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas or newlines that has spaces in it is a company's name when search finds one, read as its US listing first with a line under it saying which, and otherwise the symbols it holds. A CSV is read from its Symbol, Ticker or Code column, else its first. Quote a list name with spaces.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas or newlines that has spaces in it is a company's name when search finds one, read as its US listing first with a line under it saying which, and otherwise the symbols it holds. A CSV is read from its Symbol, Ticker or Code column. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
     "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
     "add --dry-run looks every symbol up and prints the same lines without saving.",
@@ -115,14 +115,15 @@ interface CollectionRef {
 /**
  * One line per symbol and the summary under them; `--json` and `--csv` give
  * the rows, with the summary in the JSON metadata and on standard error beside
- * CSV. A separator dropped from a symbol of the list is named as a warning. The
- * command exits non-zero when no symbol ended up as asked.
+ * CSV. A separator dropped from a symbol of the list, and the cells a table
+ * read by one column left out, are named as warnings. The command exits
+ * non-zero when no symbol ended up as asked.
  */
 export function printSymbolRows(
   ctx: CliCommandContext,
   rows: SymbolRow[],
-  { verb, collection, repeated, strays, retry, dryRun = false }: {
-    verb: Verb; collection: CollectionRef; repeated: number; strays: readonly string[];
+  { verb, collection, repeated, notes, retry, dryRun = false }: {
+    verb: Verb; collection: CollectionRef; repeated: number; notes: readonly string[];
     /** The add of some listings, for the line that adds what the symbols needing a choice trade as now. */
     retry?: (keys: string) => string;
     dryRun?: boolean;
@@ -137,7 +138,7 @@ export function printSymbolRows(
   ctx.printResult({
     data: rows,
     metadata: { [collection.kind]: collection.name, ...counts, repeated, summary, ...dryRun ? { dryRun } : {} },
-    ...strays.length > 0 ? { warnings: [...strays] } : {},
+    ...notes.length > 0 ? { warnings: [...notes] } : {},
   }, {
     text: () => [
       ...rows.filter((row) => row.status !== "needs_choice").map((row) => rowLines(row, verb)),
@@ -215,7 +216,7 @@ export async function requireSymbolList(
   file: string | undefined,
   usage: string,
   readEntries?: (entries: string[]) => Promise<string[]>,
-): Promise<{ symbols: string[]; repeated: number; strays: string[]; single: string | null }> {
+): Promise<{ symbols: string[]; repeated: number; notes: string[]; single: string | null }> {
   try {
     let typed: string[] = [];
     const list = await readSymbolList({ args, file, readEntries: async (entries) => {
