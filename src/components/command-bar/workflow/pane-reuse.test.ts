@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { setCloudApiFetchTransport } from "../../../api-client";
+import { resetGeoCatalogCache } from "../../../api-client/geo";
 import { createPaneCatalog } from "../../../cli/pane-functions/discovery";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { getLoadablePlugins } from "../../../plugins/catalog";
@@ -201,6 +203,8 @@ async function openFunctions(
 
 describe("every function opens once", () => {
   test("opening it again focuses its window, even after the pane picked up a setting of its own", async () => {
+    // CHOKE reads the geo catalog while opening: answer the Cloud API here, and leave nothing cached for the next file.
+    setCloudApiFetchTransport(async () => Response.json({ error: "NOT_FOUND", message: "Not found" }, { status: 404 }));
     const config = createDefaultConfig("/tmp/gloomberb-pane-reuse-catalog");
     const catalog = await createPaneCatalog({ config } as never, getLoadablePlugins());
     const dupes: string[] = [];
@@ -228,6 +232,8 @@ describe("every function opens once", () => {
       }
     } finally {
       catalog.destroy();
+      setCloudApiFetchTransport(null);
+      resetGeoCatalogCache();
     }
 
     expect([...new Set(dupes)].sort()).toEqual(Object.keys(OPENS_ANOTHER_WINDOW).sort());

@@ -314,6 +314,8 @@ describe("pane selectors", () => {
       },
     };
     const reported: string[] = [];
+    // Other files report crashes with no reporter installed, which queues them; start empty.
+    resetCrashReporterForTests();
     const uninstall = installCrashReporter({
       surface: "desktop",
       isEnabled: () => crashReportsEnabled(null),

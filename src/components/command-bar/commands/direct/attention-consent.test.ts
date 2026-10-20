@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createInitialState } from "../../../../state/app/context";
 import { createDefaultConfig } from "../../../../types/config";
 import { reportTelemetryConfig, subscribeTelemetryConfig } from "../../../../telemetry/live-config";
-import { PluginRegistry } from "../../../../plugins/registry";
+import type { PluginRegistry } from "../../../../plugins/registry";
 import type { ConfirmModalOptions } from "../../../form-modal/request";
 import { commands } from "../registry";
 import { runDirectCommandAction } from "./index";
@@ -22,7 +22,7 @@ test("attention requires a separate confirmation, keeps current settings and dis
     openBuiltInWorkflow: nothing, openModeRoute: nothing, openPaneSettings: nothing,
     pushRoute: nothing, quitApp: nothing, runSecurityDescriptionShortcut: nothing,
     setRootQuery: nothing, setRootThemeBaseId: nothing, cancelThemePreview: nothing,
-    pluginRegistry: new PluginRegistry(), getState: () => state,
+    pluginRegistry: {} as PluginRegistry, getState: () => state,
     openInlineConfirm: (request) => { confirmation = request; },
     dispatch: (action) => { if (action.type === "SET_CONFIG") state = { ...state, config: action.config }; },
     persistConfig: () => { saves += 1; },
