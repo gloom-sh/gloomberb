@@ -9,10 +9,11 @@ describe("ticket profile and draft resolution", () => {
     const demo = createDemoBroker();
     const result = resolveTicketContract({ symbol: "DEMO:XNAS", ticker: null, error: undefined, contract: undefined }, demo.adapter, demo.instance);
     expect(result.contract).toMatchObject({ symbol: "DEMO", localSymbol: "DEMO", exchange: "NASDAQ" });
-    // An option opened by its symbol alone has no listing currency: the ticket prices it in dollars, not in "".
+    // An option opened by its symbol alone has no listing currency or size: the ticket prices it in dollars, not
+    // in "", and per 100 shares.
     const option = createTestTicker("AAPL261023C00340000", "AAPL Oct 23 '26 $340 Call", { assetCategory: "OPTION", currency: "" });
     expect(resolveTicketContract({ symbol: "AAPL261023C00340000", ticker: option, error: undefined, contract: undefined }, demo.adapter, demo.instance).contract)
-      .toMatchObject({ secType: "OPT", currency: "USD" });
+      .toMatchObject({ secType: "OPT", currency: "USD", multiplier: "100" });
   });
   test("a foreign broker or profile contract cannot be relabelled for the selected profile", () => {
     const demo = createDemoBroker();

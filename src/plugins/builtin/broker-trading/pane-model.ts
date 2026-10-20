@@ -1,4 +1,5 @@
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { parseOptionTicker } from "../../../utils/options";
 import type { PaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { BrokerAdapter, BrokerPosition } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
@@ -121,8 +122,11 @@ export function resolveTicketContract(identity: PaneTickerIdentity, broker: Brok
     return { contract: { ...identity.contract, brokerInstanceId: instance.id } };
   }
   const listing = parsePublicTickerKey(identity.symbol);
+  const secType = tickerSecType(identity.ticker?.metadata.assetCategory);
   return { contract: { brokerId: broker.id, brokerInstanceId: instance.id, symbol: listing.symbol, localSymbol: listing.symbol,
-    secType: tickerSecType(identity.ticker?.metadata.assetCategory), currency: identity.ticker?.metadata.currency || "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange } };
+    secType, currency: identity.ticker?.metadata.currency || "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange,
+    // A listed option's OCC symbol names a standard contract of 100 shares, which its costs count.
+    ...(secType === "OPT" && parseOptionTicker(listing.symbol) ? { multiplier: "100" } : {}) } };
 }
 
 export function chooseTicketAccount(accounts: BrokerAccount[], previous?: string): string | undefined {
