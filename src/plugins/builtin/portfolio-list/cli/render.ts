@@ -12,7 +12,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
-import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
+import { getPortfolioPositionMetrics, lotCostAtTodaysRate, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
@@ -282,6 +282,12 @@ interface PortfolioPositionValue {
   row: Record<string, unknown>;
   /** A future's contract size and settlement from its terms; null for any other holding. */
   futures: PortfolioFuturesTerms | null;
+  /**
+   * Only on a lot held in another currency than the portfolio's: the rate its
+   * cost converted at (one unit of its currency in the portfolio's, when
+   * bought), or null when it converted at today's rate.
+   */
+  costFx?: { rate: number; currency: string } | null;
 }
 
 /** What a row's value is priced at: exported after every other field, so existing columns keep their places. */
@@ -309,6 +315,8 @@ export interface PortfolioValuation {
   unknownContractSize: Set<string>;
   /** Futures valued at the close without a confirmed settlement to value them at. */
   unsettled: Set<string>;
+  /** Holdings in another currency whose cost converts at today's rate: no purchase date or cost FX rate was entered. */
+  costAtTodaysRate: Set<string>;
   /** Long and short market value of the priced lots, and their net and gross, in the portfolio's currency. */
   exposure: PortfolioExposure;
 }
@@ -331,6 +339,15 @@ function portfolioExposure(values: Iterable<number | null | undefined>): Portfol
     else short += value;
   }
   return { long, short, net: long + short, gross: long - short };
+}
+
+/**
+ * What a book says of holdings in another currency whose cost converts at
+ * today's rate, which leaves the currency's move since purchase out of their
+ * P&L; `named` lists them as the table names its rows.
+ */
+export function costAtTodaysRateNote(named: string): string {
+  return `Cost converted at today's rate for ${named}; give portfolio position set a --date or --cost-fx to use the rate when bought.`;
 }
 
 /**
@@ -368,6 +385,7 @@ export async function valuePortfolioPositions({
   const brokerPnlSymbols = new Set<string>();
   const unknownContractSize = new Set<string>();
   const unsettled = new Set<string>();
+  const costAtTodaysRate = new Set<string>();
   const values: PortfolioPositionValue[] = [];
   const holdings: AllocationHolding[] = [];
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
@@ -409,11 +427,15 @@ export async function valuePortfolioPositions({
       const valuationQuote = getPortfolioValuationDisplay(metrics, quote, basis, settlement);
       const atSettlement = valuesAtSettlement(metrics, basis);
       const positionCurrency = metrics.positionCurrency;
-      const costBasisBase = positionCurrency ? await toBase(metrics.totalCost, positionCurrency) : Number.NaN;
-
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
+      // The cost converts at the rate the lot was bought at when one was entered, else at today's, as its value does.
       const baseMetrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency,
         { currency, convert: value => value * positionRate }, quote);
+      const costBasisBase = positionCurrency ? baseMetrics.totalCost : Number.NaN;
+      const boughtRate = positionCurrency ? lotCostFxRate(position, positionCurrency, currency) : null;
+      const atTodaysRate = !!positionCurrency && lotCostAtTodaysRate(position, positionCurrency, currency);
+      if (atTodaysRate && metrics.hasCostBasis) costAtTodaysRate.add(ticker.metadata.ticker);
+      const costFx = boughtRate !== null ? { rate: boughtRate, currency } : atTodaysRate ? null : undefined;
       const currentValueBase = resolvePortfolioMarketValue(baseMetrics,
         valuationQuote ? await toBase(valuationQuote.price, quoteCurrency) : null)?.gross ?? null;
       const selectedPnl = resolvePortfolioPositionPnl(baseMetrics,
@@ -436,7 +458,7 @@ export async function valuePortfolioPositions({
         ? { change: await toBase(metrics.totalPriceUnits * change, quoteCurrency),
           previousValue: await toBase(metrics.grossPriceUnits * (valuationQuote.price - change), quoteCurrency) }
         : null;
-      values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl, futures: futuresTerms,
+      values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl, futures: futuresTerms, ...(costFx !== undefined ? { costFx } : {}),
         dayMove: dayMove && Number.isFinite(dayMove.change) && Number.isFinite(dayMove.previousValue) ? dayMove : null,
         valuation: { valuationBasis: basis, valuationPrice: known(valuationQuote?.price),
           valuationAsOf: valuationTimeIso(getPortfolioValuationTime(quote, basis, metrics, settlement)),
@@ -455,7 +477,7 @@ export async function valuePortfolioPositions({
 
   const exposure = portfolioExposure(values.map((entry) => entry.position ? entry.row.marketValue as number | null : null));
   return { basis, positions: values, holdings, totalPnl, unavailablePnl, unavailableCost, unavailableMarketValue, brokerPnlSymbols,
-    unknownContractSize, unsettled, exposure };
+    unknownContractSize, unsettled, costAtTodaysRate, exposure };
 }
 
 /**
@@ -725,6 +747,7 @@ async function showCollectionWithMarketData(
       brokerPnlSymbols,
       unknownContractSize,
       unsettled,
+      costAtTodaysRate,
       exposure,
     } = valuation;
     const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: matchedPortfolio, account, toBase });
@@ -782,6 +805,8 @@ async function showCollectionWithMarketData(
           contractMultiplier: entry.position.multiplier ?? null,
           contractSize: entry.futures.size?.size ?? null,
         } : {}),
+        // Only on a lot held in another currency: the rate its cost converted at when bought, null when at today's.
+        ...(entry.costFx !== undefined ? { costFxRate: entry.costFx?.rate ?? null, costFxCurrency: entry.costFx?.currency ?? null } : {}),
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
@@ -884,6 +909,8 @@ async function showCollectionWithMarketData(
         exposure,
         ...(unknownContractSize.size > 0 ? { unknownContractSizeSymbols: [...unknownContractSize] } : {}),
         ...(unsettled.size > 0 ? { unsettledSymbols: [...unsettled] } : {}),
+        // Holdings in another currency with no purchase date or cost FX rate: their cost converts at today's rate.
+        ...(costAtTodaysRate.size > 0 ? { costAtTodaysRateSymbols: [...costAtTodaysRate] } : {}),
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
         ...(explain ? { glossary: glossaryExport(explained) } : {}),
@@ -1038,6 +1065,7 @@ async function showCollectionWithMarketData(
     const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
+    if (costAtTodaysRate.size > 0) notes.push(cliStyles.muted(costAtTodaysRateNote(named(costAtTodaysRate))));
     if (unknownContractSize.size > 0) {
       notes.push(cliStyles.warning(`No contract size for ${named(unknownContractSize)}, so ${unknownContractSize.size === 1 ? "its" : "their"} value, cost and P&L are not shown.`));
     }

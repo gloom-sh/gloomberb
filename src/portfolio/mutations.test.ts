@@ -195,6 +195,19 @@ describe("portfolio-list mutations", () => {
     expect(setManualPortfolioPosition(ticker, "main", input).ticker.metadata.positions[0]!.dateAcquired).toBeUndefined();
   });
 
+  test("the rate a cost was bought at stays with the lot while its currency does, and goes when the currency changes", () => {
+    const position = { portfolio: "main", shares: 10, avgCost: 410, currency: "USD", broker: "manual", dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" };
+    const ticker = makeTicker({ portfolios: ["main"], positions: [position] });
+    const kept = setManualPortfolioPosition(ticker, "main", { shares: 12, avgCost: 400, currency: "usd" }).ticker.metadata.positions[0]!;
+    expect(kept).toMatchObject({ dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" });
+    // Entered in the portfolio's currency, the cost needs no rate.
+    const lira = setManualPortfolioPosition(ticker, "main", { shares: 10, avgCost: 20310, currency: "TRY" }).ticker.metadata.positions[0]!;
+    expect(lira.costFxRate).toBeUndefined();
+    expect(setManualPortfolioPosition(ticker, "main", { shares: 10, avgCost: 410, currency: "USD", costFx: null }).ticker.metadata.positions[0]!.costFxRate).toBeUndefined();
+    expect(setManualPortfolioPosition(ticker, "main", { shares: 10, avgCost: 410, currency: "USD", costFx: { rate: 32.15, currency: "try" } }).ticker.metadata.positions[0])
+      .toMatchObject({ costFxRate: 32.15, costFxCurrency: "TRY" });
+  });
+
   test("resolves position currency from explicit, ticker, portfolio, or base currency defaults", () => {
     const portfolio = { id: "research", name: "Research", currency: "EUR" };
 

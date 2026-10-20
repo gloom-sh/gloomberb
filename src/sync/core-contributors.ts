@@ -264,6 +264,7 @@ function sanitizePosition(position: TickerPosition): TickerPosition {
     avgCost: position.avgCost,
     currency: position.currency,
     dateAcquired: position.dateAcquired,
+    ...(position.costFxRate != null && position.costFxCurrency ? { costFxRate: position.costFxRate, costFxCurrency: position.costFxCurrency } : {}),
     broker: position.broker,
     side: position.side,
     marketValue: position.marketValue,

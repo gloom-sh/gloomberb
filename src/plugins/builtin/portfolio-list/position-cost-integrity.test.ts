@@ -6,7 +6,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import { buildPositionRows } from "../ticker-detail/overview/model";
 import { buildSetPortfolioPositionWorkflow } from "../../../components/command-bar/workflow/portfolio-position";
 import { setManualPortfolioPosition } from "../../../portfolio/mutations";
-import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../portfolio/position-metrics";
+import { getPortfolioPositionMetrics, lotCostAtTodaysRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../portfolio/position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPortfolioSummarySegments } from "./summary";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -96,4 +96,27 @@ test("profit alone never manufactures cost or a complete market value, and overf
   const overflow = getPortfolioPositionMetrics(ticker(lot({ shares: Number.MAX_VALUE, markPrice: 2 })), "main", "USD");
   expect(overflow.hasBrokerMktValue).toBe(false);
   expect(resolvePortfolioPositionPnl(overflow, 2)).toEqual({ value: null, basis: "unavailable" });
+});
+
+test("a lot bought in another currency costs what its entered rate says in that currency, and today's rate in any other", () => {
+  // GLO-1044: 10 BRK.B at $410 in a TRY book, bought at 31.37 TRY per USD, now at 50 with the stock at $530.
+  const bought = ticker(lot({ avgCost: 410, costFxRate: 31.37, costFxCurrency: "TRY" }));
+  const source = { ...financials, quote: { ...financials.quote!, price: 530 } };
+  const rates = new Map([["TRY", 0.02], ["EUR", 1.25]]);
+  const lira = calculatePortfolioSummaryTotals([bought], new Map([["AAPL", source]]), "TRY", rates, true, "main");
+  expect(lira.totalCostBasis).toBeCloseTo(10 * 410 * 31.37, 6);
+  // The currency's fall since purchase is in the P&L: value at today's rate less cost at the rate paid.
+  expect(lira.unrealizedPnl).toBeCloseTo(10 * 530 * 50 - 10 * 410 * 31.37, 6);
+  const liraContext = { ...context, baseCurrency: "TRY", exchangeRates: rates };
+  expect(getSortValue(column("cost_basis"), bought, source, liraContext)).toBeCloseTo(128_617, 6);
+  // Valued in another currency than the one the rate converts into, the cost converts at today's rate as its value does.
+  const euro = calculatePortfolioSummaryTotals([bought], new Map([["AAPL", source]]), "EUR", rates, true, "main");
+  expect(euro.totalCostBasis).toBeCloseTo(10 * 410 / 1.25, 6);
+  expect(lotCostAtTodaysRate(bought.metadata.positions[0]!, "USD", "EUR")).toBe(true);
+  expect(lotCostAtTodaysRate(bought.metadata.positions[0]!, "USD", "TRY")).toBe(false);
+  // A lot in the book's own currency (GBp counting pence in a GBP book) has no rate to name.
+  expect(lotCostAtTodaysRate({}, "GBp", "GBP")).toBe(false);
+  // Without a rate, today's: (530 - 410) x 10 x 50.
+  const today = calculatePortfolioSummaryTotals([ticker(lot({ avgCost: 410 }))], new Map([["AAPL", source]]), "TRY", rates, true, "main");
+  expect(today.unrealizedPnl).toBeCloseTo(60_000, 6);
 });

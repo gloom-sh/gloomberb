@@ -39,6 +39,13 @@ export interface SetManualPortfolioPositionInput {
    * read does not unsize it.
    */
   multiplier?: number;
+  /** The purchase date, YYYY-MM-DD. Left out, a single manual lot keeps the one it had. */
+  dateAcquired?: string;
+  /**
+   * The rate the cost was bought at: one unit of `currency` in `costFx.currency`.
+   * Null clears it; left out, a single manual lot in the same currency keeps the one it had.
+   */
+  costFx?: { rate: number; currency: string } | null;
 }
 
 /** What a position's size counts, as its field and messages name it. */
@@ -406,8 +413,14 @@ export function setManualPortfolioPosition(
   const replacedPositionCount = replacedPositions.length;
   // Editing a single snapshot (for example after a split) does not change its
   // acquisition date. A consolidated replacement of several lots has no one date.
-  const dateAcquired = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual"
-    ? replacedPositions[0].dateAcquired : undefined;
+  const single = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual" ? replacedPositions[0] : null;
+  const dateAcquired = input.dateAcquired ?? single?.dateAcquired;
+  // The rate the cost was bought at goes with its cost: a lot kept in its currency keeps it unless it is replaced or cleared.
+  const keptCostFx = single && single.currency?.trim().toUpperCase() === nextCurrency
+    && typeof single.costFxRate === "number" && single.costFxCurrency
+    ? { rate: single.costFxRate, currency: single.costFxCurrency } : null;
+  const costFx = input.costFx === undefined ? keptCostFx : input.costFx;
+  if (costFx && !(Number.isFinite(costFx.rate) && costFx.rate > 0)) throw new Error("The cost FX rate must be a positive number.");
   // A contract's size does not change with the count held; one the lots agree on carries over.
   const keptMultipliers = new Set(replacedPositions.map((position) => position.multiplier));
   const keptMultiplier = keptMultipliers.size === 1 ? [...keptMultipliers][0] : undefined;
@@ -422,6 +435,7 @@ export function setManualPortfolioPosition(
     currency: nextCurrency,
     broker: "manual",
     ...(dateAcquired ? { dateAcquired } : {}),
+    ...(costFx ? { costFxRate: costFx.rate, costFxCurrency: costFx.currency.trim().toUpperCase() } : {}),
     ...(multiplier !== undefined ? { multiplier } : {}),
   });
 

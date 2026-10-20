@@ -9,6 +9,15 @@ const DEFAULT_TICKER_METADATA: Omit<TickerMetadata, "ticker" | "exchange" | "cur
   tags: [],
 };
 
+/** A lot's cost FX rate, kept only whole: a positive rate and the currency it converts into. */
+function hydrateCostFx(raw: Record<string, unknown>): Pick<TickerPosition, "costFxRate" | "costFxCurrency"> {
+  const rate = raw.costFxRate ?? raw.cost_fx_rate;
+  const currency = raw.costFxCurrency ?? raw.cost_fx_currency;
+  return typeof rate === "number" && Number.isFinite(rate) && rate > 0 && typeof currency === "string" && currency.trim()
+    ? { costFxRate: rate, costFxCurrency: currency.trim() }
+    : {};
+}
+
 function hydratePosition(raw: Record<string, unknown>): TickerPosition {
   const avgCost = Object.hasOwn(raw, "avgCost") ? raw.avgCost : raw.avg_cost;
   return {
@@ -18,6 +27,7 @@ function hydratePosition(raw: Record<string, unknown>): TickerPosition {
     priceBasis: raw.priceBasis === "per-unit" || raw.priceBasis === "percent-of-par" ? raw.priceBasis : undefined,
     currency: (raw.currency as string) ?? undefined,
     dateAcquired: (raw.dateAcquired ?? raw.date_acquired) as string | undefined,
+    ...hydrateCostFx(raw),
     broker: (raw.broker as string) ?? "manual",
     side: (raw.side as "long" | "short") ?? undefined,
     marketValue: (raw.marketValue ?? raw.market_value) as number | undefined,

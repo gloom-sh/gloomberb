@@ -103,6 +103,42 @@ function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["posit
   return withoutMultiplierError < withMultiplierError ? 1 : priceMultiplier;
 }
 
+/**
+ * The rate a lot's cost converts at when valued in `valuationCurrency`: the
+ * one it was bought at (`costFxRate`), when that rate converts into this very
+ * currency and the lot is held in another. Null otherwise, and the cost
+ * converts at today's rate as its value does.
+ */
+export function lotCostFxRate(
+  position: Pick<TickerPosition, "costFxRate" | "costFxCurrency">,
+  positionCurrency: string,
+  valuationCurrency: string,
+): number | null {
+  const rate = position.costFxRate;
+  const into = position.costFxCurrency?.trim();
+  if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0 || !into) return null;
+  return into === valuationCurrency.trim() && !sameCurrency(positionCurrency, into) ? rate : null;
+}
+
+/** Two currency codes in one currency, its minor units included: GBp is GBP, USX is USD. */
+export function sameCurrency(left: string, right: string): boolean {
+  return resolveCurrencyUnit(left).currency === resolveCurrencyUnit(right).currency;
+}
+
+/**
+ * Whether a lot's cost, valued in `valuationCurrency`, converts at today's
+ * rate: it is held in another currency and no rate from when it was bought
+ * applies, so its P&L leaves out the currency's move since.
+ */
+export function lotCostAtTodaysRate(
+  position: Pick<TickerPosition, "costFxRate" | "costFxCurrency">,
+  positionCurrency: string,
+  valuationCurrency: string,
+): boolean {
+  return !!positionCurrency.trim() && !sameCurrency(positionCurrency, valuationCurrency)
+    && lotCostFxRate(position, positionCurrency, valuationCurrency) === null;
+}
+
 export function getPortfolioPositionMetrics(
   ticker: TickerRecord,
   activeTab: string | undefined,
@@ -127,6 +163,11 @@ export function getPortfolioPositionMetrics(
     const currency = currencyFor(position);
     if (!currency) return Number.NaN;
     return valuation ? valuation.convert(value, currency) : currencies.size > 1 ? Number.NaN : value;
+  };
+  // A cost converts at the rate the lot was bought at, when it has one into the valuation's currency.
+  const convertCost = (value: number, position: typeof positions[number]) => {
+    const bought = valuation ? lotCostFxRate(position, currencyFor(position), valuation.currency) : null;
+    return bought !== null ? value * bought : convert(value, position);
   };
   const metrics: PortfolioPositionMetrics = {
     positionCurrency, positionCount: positions.length, hasShorts: false,
@@ -169,8 +210,8 @@ export function getPortfolioPositionMetrics(
     metrics.unknownContractSize ||= unknownSize && !Number.isFinite(position.marketValue);
     if (Number.isFinite(contractMultiplier)) metrics.multiplierHint = Math.max(metrics.multiplierHint, contractMultiplier);
     metrics.totalShares += magnitude * direction;
-    metrics.totalCost += convert(cost, position);
-    metrics.signedCost += direction * convert(cost, position);
+    metrics.totalCost += convertCost(cost, position);
+    metrics.signedCost += direction * convertCost(cost, position);
     metrics.totalCostUnits += magnitude * costMultiplier;
     metrics.totalPriceUnits += magnitude * quoteMultiplier * direction;
     metrics.grossPriceUnits += magnitude * quoteMultiplier;
@@ -191,7 +232,7 @@ export function getPortfolioPositionMetrics(
     if (pnl == null || !Number.isFinite(pnl)) metrics.hasBrokerPnl = false;
     else metrics.brokerPnl += convert(pnl, position);
     metrics.pnlLots.push({
-      signedCost: direction * convert(cost, position),
+      signedCost: direction * convertCost(cost, position),
       priceUnits: magnitude * quoteMultiplier * direction,
       direction,
       brokerMarketValue: marketValue != null && Number.isFinite(marketValue) ? convert(marketValue, position) : null,

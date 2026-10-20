@@ -24,6 +24,7 @@ import {
   valuationTimeText,
   valuePortfolioAllocation,
   valuePortfolioPositions,
+  costAtTodaysRateNote,
   type CollectionMatch,
   type PortfolioValuation,
 } from "./cli/render";
@@ -401,6 +402,7 @@ async function portfolioHoldings(
       : []),
     ...(targetNote ? [targetNote] : []),
     ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
+    ...(valuation.costAtTodaysRate.size > 0 ? [costAtTodaysRateNote([...valuation.costAtTodaysRate].join(", "))] : []),
   ];
 
   const positionColumns = allocation.weightBasis === "gross"

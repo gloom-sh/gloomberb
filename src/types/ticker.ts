@@ -8,6 +8,15 @@ export interface TickerPosition {
   priceBasis?: PriceBasis;
   currency?: string;
   dateAcquired?: string;
+  /**
+   * What one unit of the lot's `currency` cost in `costFxCurrency` when it was
+   * bought: entered with the position, or the FX close of its purchase date.
+   * Valued in that currency, the lot's cost converts at this rate rather than
+   * today's, so its P&L carries the currency's move since.
+   */
+  costFxRate?: number;
+  /** The currency `costFxRate` converts the cost into: the portfolio's when it was entered. */
+  costFxCurrency?: string;
   broker: string; // "manual" | future broker plugin IDs
   side?: "long" | "short";
   marketValue?: number;

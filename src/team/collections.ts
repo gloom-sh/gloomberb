@@ -174,6 +174,8 @@ export function applyMembership(
       currency: position?.currency ?? currency,
       broker: "manual",
       ...(!flipped && position?.dateAcquired ? { dateAcquired: position.dateAcquired } : {}),
+      // So does the rate its cost was bought at, with its cost.
+      ...(!flipped && position?.costFxRate != null && position.costFxCurrency ? { costFxRate: position.costFxRate, costFxCurrency: position.costFxCurrency } : {}),
       // A future's contract size stays with the holding when the team changes its count.
       ...(position?.multiplier ? { multiplier: position.multiplier } : {}),
     });
