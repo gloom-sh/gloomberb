@@ -86,13 +86,14 @@ const RISK_QUOTE_LIMIT = 500;
 const HISTORY_CONCURRENCY = 4;
 const MAX_FX_CURRENCIES = 24;
 export const BEYOND_SIZE_REASON = `Beyond the supported size: only the ${RISK_HISTORY_LIMIT} largest holdings by value are modelled`;
-// Listing venues as the quotes report them; MTUM lists on Cboe BZX, not Arca.
+// Listing venues as the quotes report them; MTUM and QUAL list on Cboe BZX, not Arca.
 export const RISK_FACTOR_INSTRUMENTS: RiskInstrument[] = [
   ["SPY", "ARCA"],
   ["IWM", "ARCA"],
   ["IWD", "ARCA"],
   ["IWF", "ARCA"],
   ["MTUM", "BATS"],
+  ["QUAL", "BATS"],
   ["IEF", "ARCA"],
   ["HYG", "ARCA"],
 ].map(([symbol, exchange]) => ({ symbol: symbol!, exchange: exchange! }));

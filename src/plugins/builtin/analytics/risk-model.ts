@@ -717,6 +717,11 @@ export function buildPortfolioRisk(
       label: "Momentum (MTUM - SPY)",
       series: subtractReturns(proxy("MTUM"), spy),
     },
+    {
+      id: "quality",
+      label: "Quality (QUAL - SPY)",
+      series: subtractReturns(proxy("QUAL"), benchmark),
+    },
     { id: "rates", label: "Rates (IEF)", series: proxy("IEF") },
     {
       id: "credit",

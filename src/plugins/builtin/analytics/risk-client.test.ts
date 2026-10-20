@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
-import { fetchPortfolioRiskMarket, validateRiskHistory } from "./risk-client";
+import { fetchPortfolioRiskMarket, RISK_FACTOR_INSTRUMENTS, validateRiskHistory } from "./risk-client";
 import { now, instrument, riskQuote, riskHistory } from "./risk-test-data";
 test("Cloud daily risk history rejects currency, listing, gap and duplicate ambiguity", () => {
   expect(
@@ -65,7 +65,7 @@ test("partial Cloud source failures stay local; permission rejection escapes the
     },
   };
   const result = await fetchPortfolioRiskMarket([], client as any, now);
-  expect(result.histories.filter((row) => !row.error)).toHaveLength(6);
+  expect(result.histories.filter((row) => !row.error)).toHaveLength(RISK_FACTOR_INSTRUMENTS.length - 1);
   expect(
     result.histories.find((row) => row.instrument.symbol === "HYG")?.error,
   ).toContain("Credit");

@@ -482,7 +482,7 @@ export const portfolioAnalyticsModule: PluginModule = {
       paneId: "analytics",
       label: prefix === "PORT" ? "Portfolio Analytics" : "Portfolio Market Risk",
       description: "Benchmark-relative risk, factor betas, stress shifts and local account evidence.",
-      keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio"],
+      keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio", "style", "quality", "factor tilt"],
       shortcut: { prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id" },
       headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
