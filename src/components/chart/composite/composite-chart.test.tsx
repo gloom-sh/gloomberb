@@ -2044,6 +2044,37 @@ describe("CompositeChart", () => {
     expect(frame).toContain("────────");
   });
 
+  // A seasonal chart rests on its latest week with no owner following its
+  // moves: the pointer moves the cursor all the same, and leaving puts it back.
+  test("a chart resting on a date follows the pointer and goes back to the date when it leaves", async () => {
+    await tui.render(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          showLegend={false}
+          navigable={false}
+          series={[series("price", "main", "left", "USD", [100, 200, 100, 100])]}
+          panels={[{ id: "main" }]}
+          cursorDate={new Date("2025-01-04T00:00:00.000Z")}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("2025-01-04");
+
+    await act(async () => capturedSurfaceProps!.onMouseMove(pointerEvent(0, 1)));
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("2025-01-01");
+    expect(tui.frame()).not.toContain("2025-01-04");
+
+    await act(async () => capturedSurfaceProps!.onMouseOut());
+    await act(async () => tui.setup().renderOnce());
+    expect(tui.frame()).toContain("2025-01-04");
+    expect(tui.frame()).not.toContain("2025-01-01");
+  });
+
   test.each([
     ["USD", "currency-total:USD", 90_007_000_000, "$90.01B"],
     ["EUR", "currency-total:EUR", -12_345_600_000, "-€12.35B"],

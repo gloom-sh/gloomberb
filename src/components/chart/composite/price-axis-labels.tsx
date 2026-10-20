@@ -281,7 +281,8 @@ export function PriceAxisLabels({
             transform: "translateY(-50%)",
             whiteSpace: "pre",
             pointerEvents: "none",
-            zIndex: 1,
+            // The value under the pointer reads whole, over a series' tag at that height.
+            zIndex: 3,
           }}
         >
           <Box flexDirection="row" width={axisWidth} justifyContent={axisLabelJustify} overflow="hidden">

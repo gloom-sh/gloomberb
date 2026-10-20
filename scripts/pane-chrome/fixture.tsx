@@ -428,6 +428,8 @@ function ChartRowsPane({ focused, width, height }: PaneProps) {
 
 const BOARD_TABS = [{ value: "one", label: "Stocks" }, { value: "two", label: "Rates" }];
 const BOARD_ROWS = TABLE_ROWS.slice(0, 12);
+/** The band's cursor rests on the latest close, as the inventories board's rests on the latest week. */
+const BOARD_CURSOR = CHART_SERIES[0]!.points.at(-1)!.date;
 
 /**
  * A board as the chart-table kit lays it out (inventories, money markets):
@@ -452,7 +454,7 @@ function ChartBoardPane({ paneId, focused, width, height }: PaneProps) {
             tableRows={BOARD_ROWS.length}
             tableColumns={TABLE_COLUMNS}
             query={<QueryBar width={width} meta="Invented closes" />}
-            chart={{ series: CHART_SERIES, minRows: 8 }}
+            chart={{ series: CHART_SERIES, minRows: 8, cursorDate: BOARD_CURSOR }}
           />
         )}
         selection={{ kind: "id", selectedId, getId: String, onChange: setSelectedId }}

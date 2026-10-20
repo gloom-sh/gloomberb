@@ -207,14 +207,12 @@ export function CompositePanelSurface({
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
   const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb, revealed: plotSize.revealed === true });
-  // The level line follows the pointer only. A keyboard or shared cursor knows
-  // its column, and the series markers and axis readout already say the value.
-  // A tool placed from the keyboard is the exception: its end is a level.
-  // On the desktop and the web an ordinary hover reads each series on its own
-  // axis and draws only the vertical line; the level line, and the pointer's
-  // value on the axes, belong to an armed or placing tool.
-  const readsPointerLevel = !isDesktopWeb || armedTool !== null || activeDrag !== null;
-  const pointerCursorYRatio = scene.cursorXRatio === null || !readsPointerLevel ? null : heldCursorYRatio;
+  // The chart under the pointer draws both lines: the level line follows the
+  // pointer, and its value sits on the axes, beside each series' own tag on
+  // the desktop and the web. A keyboard or shared cursor knows its column
+  // only, so a chart following another chart's cursor draws the time line
+  // alone. A tool placed from the keyboard is the exception: its end is a level.
+  const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
   const crosshair = useMemo(
     () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, colors.crosshair),
     [bitmap, colors.crosshair, panel, pointerCursorYRatio, scene],

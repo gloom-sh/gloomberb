@@ -186,7 +186,13 @@ function ThemedCompositeChart({
       (drawing) => drawing.id === selectedDrawingId ? { ...drawing, color } : drawing,
     ));
   }, [selectedDrawingId]);
-  const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
+  // A cursor the owner rests on without following its moves (a seasonal
+  // chart's latest week) is where the chart's own cursor goes back to: the
+  // pointer moves it as on any chart, and the pointer leaving returns it.
+  const restingCursor = cursorDate !== undefined && !onCursorDateChange;
+  const ownsCursor = cursorDate === undefined || restingCursor;
+  const resolvedCursorDate = cursorDate === undefined ? internalCursorDate
+    : restingCursor ? internalCursorDate ?? cursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
   const seriesIdentityRef = useRef<ResolvedSeries[]>([]);
@@ -417,18 +423,18 @@ function ThemedCompositeChart({
     const nextTimestamp = timestamp !== null && Number.isFinite(timestamp) ? timestamp : null;
     if (lastCursorTimestampRef.current === nextTimestamp) return;
     lastCursorTimestampRef.current = nextTimestamp;
-    if (cursorDate === undefined) setInternalCursorDate(date);
+    if (ownsCursor) setInternalCursorDate(date);
     onCursorDateChange?.(date);
     publishCursor?.(date && baseScene && nextTimestamp !== null ? compositeCursorAsOf(baseScene, date) : null);
-  }, [baseScene, cursorDate, onCursorDateChange, publishCursor]);
+  }, [baseScene, onCursorDateChange, ownsCursor, publishCursor]);
   // Another chart taking the cursor, or clearing it, takes it from this one,
   // so it does not come back here later. Read live: a move since the render
   // makes this chart's cursor the shared one again.
   useEffect(() => {
     void holdsSharedCursor;
-    if (!link || cursorDate !== undefined || lastCursorTimestampRef.current === null || link.held()) return;
+    if (!link || !ownsCursor || lastCursorTimestampRef.current === null || link.held()) return;
     updateCursor(null);
-  }, [cursorDate, holdsSharedCursor, link, updateCursor]);
+  }, [holdsSharedCursor, link, ownsCursor, updateCursor]);
   // Esc on a chart showing another chart's cursor clears it, as on that chart.
   // While the tab's cursor is pinned the arrows move the pin and Esc unpins it.
   const updateKeyboardCursor = useCallback((date: Date | null) => {

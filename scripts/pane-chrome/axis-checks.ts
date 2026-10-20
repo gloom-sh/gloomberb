@@ -56,8 +56,8 @@ async function picture(cdp: Cdp): Promise<string> {
 interface LevelReadout {
   /** Horizontal level lines, one entry per chart panel. */
   lines: boolean[];
-  /** The pointer-height value tags on the axes, with where their centres sit on the page. */
-  values: Array<{ text: string; y: number }>;
+  /** The pointer-height value tags on the axes, with where their centres sit on the page and how tall they are. */
+  values: Array<{ text: string; y: number; height: number }>;
   seriesTags: number;
   measure: string | null;
 }
@@ -65,16 +65,31 @@ interface LevelReadout {
 async function levelReadout(cdp: Cdp): Promise<LevelReadout> {
   return evaluate(cdp, `(() => ({
     lines: [...document.querySelectorAll('[data-gloom-role=composite-chart-panel]')].map(plot => !!plot.querySelector('[data-gloom-role=chart-crosshair-y]')),
-    values: [...document.querySelectorAll('[data-gloom-role=chart-price-axis-cursor]')].map(tag => { const r = tag.getBoundingClientRect(); return { text: tag.textContent.trim(), y: r.y + r.height / 2 }; }),
+    values: [...document.querySelectorAll('[data-gloom-role=chart-price-axis-cursor]')].map(tag => { const r = tag.getBoundingClientRect(); return { text: tag.textContent.trim(), y: r.y + r.height / 2, height: r.height }; }),
     seriesTags: document.querySelectorAll('[data-gloom-role=chart-series-axis-tag]').length,
     measure: document.querySelector('[data-gloom-role=composite-chart-measure]')?.textContent ?? null,
   }))()`);
 }
 
-/** An ordinary hover: the vertical line, the markers and the series tags, no level line or pointer-height value. */
-async function checkOrdinaryHover(cdp: Cdp): Promise<void> {
-  const level = await levelReadout(cdp);
-  if (level.lines.some(Boolean) || level.values.length) throw new Error(`Ordinary hover drew a pointer-height level ${JSON.stringify(level)}`);
+/**
+ * The pointer over panel `panel` of `plot` at `at`: that panel draws the level
+ * line, and the value at the pointer's height sits on the axis there (kept
+ * inside the panel at its edges); no other panel draws one. The series tags
+ * stay beside it.
+ */
+async function checkHoverLevel(cdp: Cdp, panel: number, plot: Rect, at: { y: number }, label = "hover"): Promise<LevelReadout> {
+  return assertHoverLevel(await levelReadout(cdp), panel, plot, at, label);
+}
+
+function assertHoverLevel(level: LevelReadout, panel: number, plot: Rect, at: { y: number }, label = "hover"): LevelReadout {
+  const expected = level.lines.map((_, index) => index === panel);
+  if (JSON.stringify(level.lines) !== JSON.stringify(expected)) throw new Error(`Panel ${panel}: ${label} did not draw one level line there ${JSON.stringify(level)}`);
+  const atHeight = (value: { y: number; height: number }) => Math.abs(value.y - Math.min(Math.max(at.y, plot.y + value.height / 2), plot.y + plot.height - value.height / 2)) <= 3;
+  if (!level.values.length || level.values.some((value) => !value.text || !atHeight(value))) {
+    throw new Error(`Panel ${panel}: ${label} shows no value at the pointer's height on the axis ${JSON.stringify({ at, level })}`);
+  }
+  if (level.seriesTags < 2) throw new Error(`Panel ${panel}: ${label} lost the series tags ${JSON.stringify(level)}`);
+  return level;
 }
 
 /** Moves the pointer to two heights in the plot, in the same column, and reads the chart at each. */
@@ -102,36 +117,28 @@ async function pressTool(cdp: Cdp, label: string): Promise<void> {
 }
 
 const toolSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((width) => ["three", "stacked"].map((kind) => ({
-  name: `series axis tags: ${host} ${width} tools place a level, hover does not (${kind})`,
+  name: `series axis tags: ${host} ${width} hover and tools place a level (${kind})`,
   scenario: `axis&axis=${kind}&host=${host}&theme=white&float=0&short=0`,
   async run(cdp: Cdp) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
     await frames(cdp, 8);
     try {
-      const panels = await plots(cdp);
+      let panels = await plots(cdp);
       if (!panels.length) throw new Error("No plotted fixture");
-      for (const [index, plot] of panels.entries()) {
-        // No tool: the same picture at both heights, and nothing at pointer height.
-        const [restHigh, restLow] = await atTwoHeights(cdp, plot, 0.44);
-        if (restHigh!.picture !== restLow!.picture) throw new Error(`Panel ${index}: pointer height changed the picture of an ordinary hover`);
-        await checkOrdinaryHover(cdp);
-        if (restHigh!.level.seriesTags < 2) throw new Error(`Panel ${index}: ordinary hover lost its series tags ${JSON.stringify(restHigh!.level)}`);
-      }
-      // An armed tool places a level: the line follows the pointer in the panel it is in, and its
-      // value sits on the axis at that height, beside the series tags.
-      await pressTool(cdp, "Ruler");
-      for (const [index, plot] of panels.entries()) {
-        const [high, low] = await atTwoHeights(cdp, plot, 0.44);
-        for (const read of [high!, low!]) {
-          const expected = panels.map((_, other) => other === index);
-          if (JSON.stringify(read.level.lines) !== JSON.stringify(expected)) throw new Error(`Panel ${index}: armed tool did not draw one level line there ${JSON.stringify(read.level)}`);
-          if (!read.level.values.length || read.level.values.some((value) => !value.text || Math.abs(value.y - read.at.y) > 3)) {
-            throw new Error(`Panel ${index}: armed tool shows no pointer-height value on the axis ${JSON.stringify(read)}`);
-          }
-          if (read.level.seriesTags < 2) throw new Error(`Panel ${index}: armed tool lost the series tags ${JSON.stringify(read.level)}`);
+      // An ordinary hover and an armed tool both place a level: the line follows the pointer in
+      // the panel it is in, and its value sits on the axis at that height, beside the series tags.
+      for (const tool of [null, "Ruler"] as const) {
+        if (tool) {
+          await pressTool(cdp, tool);
+          // The armed tool's key hint can move the plot.
+          panels = await plots(cdp);
         }
-        if (high!.picture === low!.picture) throw new Error(`Panel ${index}: the level line did not follow the pointer`);
-        if (high!.level.values.map((value) => value.text).join() === low!.level.values.map((value) => value.text).join()) throw new Error(`Panel ${index}: the axis value did not follow the pointer`);
+        for (const [index, plot] of panels.entries()) {
+          const [high, low] = await atTwoHeights(cdp, plot, 0.44);
+          for (const read of [high!, low!]) assertHoverLevel(read.level, index, plot, read.at, tool ?? "hover");
+          if (high!.picture === low!.picture) throw new Error(`Panel ${index}: the level line did not follow the pointer (${tool ?? "hover"})`);
+          if (high!.level.values.map((value) => value.text).join() === low!.level.values.map((value) => value.text).join()) throw new Error(`Panel ${index}: the axis value did not follow the pointer (${tool ?? "hover"})`);
+        }
       }
       // A measure drag keeps its readout, and its end reads its level on the axis.
       const plot = panels[0]!;
@@ -145,10 +152,11 @@ const toolSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((
       if (!held.measure || !held.lines[0] || !held.values.length || held.values.some((value) => Math.abs(value.y - to.y) > 3)) {
         throw new Error(`A dragged measure lost its readout, level line or axis value ${JSON.stringify(held)}`);
       }
-      // Back to the resting pointer: ordinary hover again.
+      // Back to the resting pointer: an ordinary hover, its level still under the pointer.
       await pressTool(cdp, "Pan");
-      await atTwoHeights(cdp, plot, 0.44);
-      await checkOrdinaryHover(cdp);
+      const rest = (await plots(cdp))[0]!;
+      const [, restLow] = await atTwoHeights(cdp, rest, 0.44);
+      await checkHoverLevel(cdp, 0, rest, restLow!.at);
       // Alt held on the press is a measure without a tool armed: the drag reads out, the hover after does not.
       const alt = (type: "mousePressed" | "mouseMoved" | "mouseReleased", at: { x: number; y: number }, held: boolean) => cdp.send("Input.dispatchMouseEvent", {
         type, x: at.x, y: at.y, modifiers: 1, button: type === "mouseMoved" && !held ? "none" : "left", buttons: held ? 1 : 0, clickCount: type === "mouseMoved" ? 0 : 1,
@@ -159,8 +167,10 @@ const toolSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((
       const modified = await levelReadout(cdp);
       await alt("mouseReleased", to, false); await frames(cdp, 3);
       if (!modified.measure || !modified.lines[0] || !modified.values.length) throw new Error(`A modifier-held measure lost its readout, level line or axis value ${JSON.stringify(modified)}`);
-      await mouse(cdp, "mouseMoved", to.x, to.y + 6, false); await frames(cdp, 4);
-      await checkOrdinaryHover(cdp);
+      const after = { x: to.x, y: to.y + 6 };
+      await mouse(cdp, "mouseMoved", after.x, after.y, false); await frames(cdp, 4);
+      const hover = await checkHoverLevel(cdp, 0, plot, after);
+      if (hover.measure) throw new Error(`The hover after a modifier-held measure kept its readout ${JSON.stringify(hover)}`);
     } finally {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     }
@@ -197,15 +207,14 @@ export const axisSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].fl
           if (process.env.AXIS_CAPTURE_BASE !== "1" || share === 0.95) await checkReadout(cdp);
           if (process.env.AXIS_CAPTURE_BASE === "1") continue;
           const first = await evaluate(cdp, "window.__axisReadout");
-          await checkOrdinaryHover(cdp);
-          const high = share === 0.44 ? await picture(cdp) : null;
-          await mouse(cdp, "mouseMoved", at.x, plot.y + plot.height * 0.85, false); await frames(cdp, 3);
+          await checkHoverLevel(cdp, panelIndex, plot, at);
+          const low = { x: at.x, y: plot.y + plot.height * 0.85 };
+          await mouse(cdp, "mouseMoved", low.x, low.y, false); await frames(cdp, 3);
           await checkReadout(cdp);
-          await checkOrdinaryHover(cdp);
+          await checkHoverLevel(cdp, panelIndex, plot, low);
+          // The pointer's height moves the level line and its value, never the series' observations.
           const second = await evaluate(cdp, "window.__axisReadout");
           if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error("Pointer height changed the observations");
-          // The bitmap too: moving only the pointer's height repaints nothing, so there is no level line or centre marker.
-          if (high !== null && high !== await picture(cdp)) throw new Error("Pointer height changed the picture of an ordinary hover");
         }
       }
       // Fast successive resizes, then inspect the actual laid-out plot again.

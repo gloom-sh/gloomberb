@@ -274,6 +274,10 @@ export interface CompositeChartProps {
   remoteKind?: string;
   /** Permit panning into an older unloaded window so the owner can backfill it. */
   allowHistoricalBackfill?: boolean;
+  /**
+   * The owner's cursor. With `onCursorDateChange` the owner moves it; without,
+   * the cursor rests there while no pointer is on the plot.
+   */
   cursorDate?: Date | null;
   /**
    * A crosshair shared with other charts. By default an interactive chart
