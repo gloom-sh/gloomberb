@@ -12,6 +12,10 @@ test("chart overlays require the same listing or exact broker instrument", () =>
   expect(researchTradeMatches(trade, { symbol: "AAPL:XNAS" })).toBe(true);
   expect(researchTradeMatches(trade, { symbol: "AAPL", exchange: "LSE" })).toBe(false);
   expect(researchTradeMatches(trade, { symbol: "OTHER", exchange: "NASDAQ" })).toBe(false);
+  // A routed share (Aries files every share on SMART) is on its listing's chart, and on no other listing.
+  const routed = { ...trade, contract: { ...f.draft.contract, exchange: "SMART" } };
+  expect(researchTradeMatches(routed, { symbol: "AAPL:XNAS", exchange: "NASDAQ" })).toBe(true);
+  expect(researchTradeMatches({ ...routed, contract: { ...routed.contract, primaryExchange: "LSE" } }, { symbol: "AAPL", exchange: "NASDAQ" })).toBe(false);
   const option = { ...trade, contract: { ...f.draft.contract, secType: "OPT", conId: 17 } };
   expect(researchTradeMatches(option, { symbol: "AAPL", exchange: "NASDAQ" })).toBe(false);
   expect(researchTradeMatches(option, { symbol: "AAPL", instrument: option.contract })).toBe(true);
