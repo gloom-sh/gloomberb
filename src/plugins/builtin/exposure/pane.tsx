@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
-import { ActionRow, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
+import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -83,18 +83,32 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const [openingScenario] = usePaneSettingValue("scenario", "taiwan-disruption");
-  const [customSetting] = usePaneSettingValue("customScenario", "");
+  const [customSetting, setCustomSetting] = usePaneSettingValue("customScenario", "");
   const [openingDepth] = usePaneSettingValue("depth", 2);
   const [openingNav] = usePaneSettingValue("nav", "");
   const [openingCash] = usePaneSettingValue("cash", "");
-  const [snapshotSetting] = usePaneSettingValue<ExposurePayload | null>("exposureSnapshot", null);
-  const snapshot = useMemo(() => {
-    try { return snapshotSetting ? validateExposure(snapshotSetting) : null; } catch (error) {
-      return logFailure("exposure.pane", "Read saved exposure snapshot failed", null)(error);
+  const [snapshotSetting, setSnapshotSetting] = usePaneSettingValue<ExposurePayload | null>("exposureSnapshot", null);
+  const savedSnapshot = useMemo(() => {
+    try { return { data: snapshotSetting === null ? null : validateExposure(snapshotSetting), error: null }; } catch (error) {
+      return logFailure("exposure.pane", "Read saved exposure snapshot failed", {
+        data: null, error: "Cannot read the saved exposure snapshot. Repair or reset it before analyzing.",
+      })(error);
     }
   }, [snapshotSetting]);
+  const snapshot = savedSnapshot.data;
   const initialInput = snapshot ? snapshot.holdings.map(h => `${h.symbol}=${h.weight}`).join(" ") : instance?.params?.input ?? instance?.params?.arg ?? "";
-  const initialScenario = useMemo(() => { if (snapshot) return snapshot.scenario; try { return customSetting ? parseCustomScenario(customSetting) : DEFAULT_SCENARIO; } catch { return DEFAULT_SCENARIO; } }, [snapshot, customSetting]);
+  const savedScenario = useMemo(() => {
+    try { return { data: snapshot?.scenario ?? (customSetting ? parseCustomScenario(customSetting) : DEFAULT_SCENARIO), error: null }; } catch (error) {
+      return logFailure("exposure.pane", "Read custom exposure scenario failed", {
+        data: null, error: "Cannot read the custom scenario. Repair or reset it before analyzing.",
+      })(error);
+    }
+  }, [snapshot, customSetting]);
+  const inputError = savedSnapshot.error ?? savedScenario.error;
+  // A repaired setting must replace any stale scenario in persisted editor state.
+  const repairingCustomSetting = useRef(false);
+  if (savedScenario.error) repairingCustomSetting.current = true;
+  const initialScenario = savedScenario.data ?? DEFAULT_SCENARIO;
   const [inputs, setInputs] = usePluginPaneState<ExposureInputs>("exposure:inputs", { input: initialInput, source: /^(PORT|WATCH):/.test(initialInput) ? initialInput : "typed", nav: String(openingNav), cash: String(openingCash), depth: snapshot?.depth ?? Number(openingDepth), scenario: initialScenario });
   const [scenarioId, setScenarioId] = usePluginPaneState("exposure:scenario", snapshot ? snapshot.scenario.id ?? "captured" : customSetting ? "custom" : openingScenario);
   const [openingTab] = usePaneSettingValue("tab", "table");
@@ -103,11 +117,11 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const [view, setView] = usePluginPaneState("exposure:view", openingView);
   const [selectedId, setSelected] = usePluginPaneState<string | null>("exposure:selected", null);
   const [detailId, setDetail] = usePluginPaneState<string | null>("exposure:detail", null);
-  const [editing, setEditing] = usePluginPaneState("exposure:editing", !initialInput && !snapshot);
+  const [editing, setEditing] = usePluginPaneState("exposure:editing", !initialInput && !snapshot && !inputError);
   const [sort, setSort] = usePluginPaneState("exposure:sort", { column: "exposure", direction: "desc" as "asc" | "desc" });
   const libraryLoader = useCallback(() => snapshot ? Promise.resolve([snapshot.scenario]) : fetchScenarios(), [snapshot, accessKey]);
-  const library = useAsyncResource(libraryLoader, { clearOnError: isAccessDenied });
-  const scenario = snapshot?.scenario ?? (scenarioId === "custom" ? inputs.scenario : library.data?.find(s => s.id === scenarioId) ?? (scenarioId === DEFAULT_SCENARIO.id ? DEFAULT_SCENARIO : null));
+  const library = useAsyncResource(inputError ? null : libraryLoader, { clearOnError: isAccessDenied });
+  const scenario = snapshot?.scenario ?? (scenarioId === "custom" ? repairingCustomSetting.current && customSetting ? savedScenario.data : inputs.scenario : library.data?.find(s => s.id === scenarioId) ?? (scenarioId === DEFAULT_SCENARIO.id ? DEFAULT_SCENARIO : null));
   const portfolio = config.portfolios.find(p => inputs.source === `PORT:${p.id}`);
   const localTickers = useMemo(() => [...tickers.values()], [tickers]);
   // Freeze a local selection until the user explicitly refreshes. Tick-by-tick marks must not rerun scenarios.
@@ -131,10 +145,10 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     return fetchExposure({ holdings, scenario, depth: inputs.depth, ...(cash === undefined ? {} : { cashWeight: cash }) });
   // Explicit request state, including the account, owns recalculation. Quote changes do not.
   }, [sourceKey, snapshot]);
-  const resource = useAsyncResource(inputs.input || inputs.source !== "typed" || snapshot ? loader : null, { clearOnError: isAccessDenied });
+  const resource = useAsyncResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { clearOnError: isAccessDenied });
   const data = resource.data;
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !editing });
+  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !editing && !inputError });
   const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
     const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? r.driver ? driverScope(r.driver) : "" : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
@@ -146,12 +160,12 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const activeRow = detail ?? selected;
   const source = activeRow?.components.flatMap(c => [...c.evidence, ...c.path.flatMap(h => h.evidence)]).find(e => e.url)?.url;
   const symbol = activeRow?.symbol.split(",")[0]?.trim();
-  const detailOpen = editing || !!detail || detailId === "unknowns";
+  const detailOpen = !savedSnapshot.error && (editing || (!inputError && (!!detail || detailId === "unknowns")));
   const { strip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: value => { setTab(value); setDetail(null); }, focused: focused && !editing, dense: true });
   useExposureEvidence(data, tab, view, rows.map(r => r.id));
-  const hints: PaneHint[] = editing ? [] : [
+  const hints: PaneHint[] = editing || savedSnapshot.error ? [] : [
     { id: "edit", key: "s", label: "cenario", title: "Edit scenario and holdings", onPress: () => setEditing(true) },
-    { id: "unknowns", key: "v", label: "isibility", title: "What we could not see", onPress: () => setDetail("unknowns") },
+    ...(!inputError ? [{ id: "unknowns", key: "v", label: "isibility", title: "What we could not see", onPress: () => setDetail("unknowns") }] : []),
     ...(selected ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setDetail(selected.id) }] : []),
     ...(source ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(source) }] : []),
     ...(symbol ? [
@@ -163,7 +177,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     ] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
   ];
-  usePaneStatusFooter({ registrationId: "exposure", loading: resource.loading, error: data ? resource.error : null, hints,
+  usePaneStatusFooter({ registrationId: "exposure", loading: resource.loading, error: inputError ?? (data ? resource.error : null), hints,
     info: data ? [{ id: "asof", parts: [{ text: `analyzed ${data.evaluatedAt.slice(0, 10)}`, tone: "muted" as const }] }] : [] });
   usePaneNoticeFooter({ registrationId: "exposure:notices", focused, notices: [...(library.error ? [library.error] : []), ...(data?.unknowns ?? []), ...(data?.holdings.flatMap(h => h.unknowns.map(u => `${h.symbol}: ${u}`)) ?? [])] });
   const sources = [{ value: "typed", label: "Typed holdings" }, ...config.portfolios.map(p => ({ value: `PORT:${p.id}`, label: `PORT · ${p.name}` })), ...config.watchlists.map(w => ({ value: `WATCH:${w.id}`, label: `Watchlist · ${w.name}` }))];
@@ -236,8 +250,10 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     {strip}
     <PageStackView focused={focused && !editing} detailOpen={detailOpen} onBack={() => { setDetail(null); setEditing(false); }}
       detailTitle={editing ? "Scenario and holdings" : detail ? `${detail.symbol} · ${detail.label}` : "What we could not see"}
-      detailContent={editing ? <ExposureEditor initial={{ ...inputs, scenario: scenario ?? inputs.scenario }} sources={sources} focused={focused} width={width} onCancel={() => setEditing(false)} onSave={value => { setInputs(value); setScenarioId("custom"); setEditing(false); setDetail(null); }} /> : data ? <ExposureDetail row={detail} data={data} width={width} /> : null}
-      rootContent={<PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="exposure analysis">
+      detailContent={editing && !savedSnapshot.error ? <ExposureEditor initial={{ ...inputs, scenario: scenario ?? inputs.scenario }} initialCustom={savedScenario.error ? customSetting : undefined} sources={sources} focused={focused} width={width} onCancel={() => setEditing(false)} onSave={value => { if (repairingCustomSetting.current && customSetting) setCustomSetting(JSON.stringify(value.scenario)); setInputs(value); setScenarioId("custom"); setEditing(false); setDetail(null); }} /> : data ? <ExposureDetail row={detail} data={data} width={width} /> : null}
+      rootContent={<PaneStatusBody loading={!data && resource.loading} error={inputError ?? (!data ? resource.error : null)} subject="exposure analysis"
+        actions={savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
+          : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined}>
         {data ? <DataTableView<ExposureRow> columns={columns} items={items} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: r => r.id, onChange: (id) => { if (!id.startsWith("locked:")) setSelected(id); } }}
           onActivate={row => row.id.startsWith("locked:") ? upgrade() : setDetail(row.id)} selectedTextOverridesCellColor showHorizontalScrollbar

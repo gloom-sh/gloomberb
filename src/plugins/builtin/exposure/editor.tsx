@@ -7,13 +7,13 @@ import type { ExposureScenario } from "../../../api-client/exposure";
 import { parseCustomScenario } from "./model";
 
 export interface ExposureInputs { input: string; source: string; nav: string; cash: string; depth: number; scenario: ExposureScenario; }
-export function ExposureEditor({ initial, sources, focused, width, onSave, onCancel }: {
-  initial: ExposureInputs; sources: { value: string; label: string }[]; focused: boolean; width: number;
+export function ExposureEditor({ initial, initialCustom, sources, focused, width, onSave, onCancel }: {
+  initial: ExposureInputs; initialCustom?: string; sources: { value: string; label: string }[]; focused: boolean; width: number;
   onSave: (value: ExposureInputs) => void; onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
   const first = initial.scenario.shocks[0]!;
-  const [custom, setCustom] = useState(initial.scenario.shocks.length > 1 || !!first.transmission ? JSON.stringify(initial.scenario) : "");
+  const [custom, setCustom] = useState(initialCustom ?? (initial.scenario.shocks.length > 1 || !!first.transmission ? JSON.stringify(initial.scenario) : ""));
   const [label, setLabel] = useState(initial.scenario.label);
   const [kind, setKind] = useState(first.kind);
   const [target, setTarget] = useState(first.target);
