@@ -40,7 +40,9 @@ export function researchTradeMatches(trade: ResearchTradeProjection | null, list
   if (contract.secType && !["STK", "ETF"].includes(contract.secType)) return false;
   if (contract.symbol.toUpperCase() !== parsePublicTickerKey(listing.symbol).symbol.toUpperCase()) return false;
   const exchange = canonicalExchange(listing.exchange ?? parsePublicTickerKey(listing.symbol).exchange);
-  return !contract.exchange || !exchange || canonicalExchange(contract.exchange) === exchange;
+  // SMART is a route, not a listing: a share a broker routes is on any of its venues.
+  const venue = [contract.exchange, contract.primaryExchange].map(canonicalExchange).find((name) => name && name !== "SMART");
+  return !venue || !exchange || venue === exchange;
 }
 
 /** Trading actions stay in the pane menu and keyboard, not the range toolbar. */
