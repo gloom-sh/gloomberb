@@ -2,7 +2,9 @@ import { formatPriceEarnings } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import type { CompanyProfile, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
-import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
+import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
+import type { BrokerInstanceConfig } from "../../../../types/config";
+import type { BrokerAccount } from "../../../../types/trading";
 import {
   formatCompact,
   formatCompactCurrency,
@@ -65,15 +67,45 @@ function daysAhead(days: number, prefix?: string): string[] {
   return days === 0 ? [`${lead}today`] : [`${lead}in ${days}d`, `${lead}${days}d`];
 }
 
-function compactPositionAccount(position: TickerPosition): string {
-  const rawAccount = position.brokerAccountId || position.portfolio;
-  const isBrokerPortfolio = rawAccount.startsWith("broker:");
-  const account = isBrokerPortfolio
-    ? rawAccount.split(":").filter(Boolean).at(-1) || rawAccount
-    : rawAccount;
-  const prefix = !isBrokerPortfolio && position.broker && position.broker !== "manual" ? `${position.broker} ` : "";
+/** What the Account column reads names from: the portfolios, the brokers' accounts and their profiles. */
+export interface PositionAccountNames {
+  portfolios: readonly Pick<Portfolio, "id" | "name" | "brokerAccountId" | "brokerInstanceId">[];
+  /** Accounts each broker profile reported, by profile id. */
+  brokerAccounts?: Readonly<Record<string, readonly Pick<BrokerAccount, "accountId" | "name">[]>>;
+  brokerInstances?: readonly Pick<BrokerInstanceConfig, "id" | "label">[];
+}
+
+const NO_ACCOUNT_NAMES: PositionAccountNames = { portfolios: [] };
+
+/**
+ * The account a position is held in, by the name the Portfolio pane gives its
+ * portfolio ("Aries individual (simulation)"), never the broker's raw account
+ * id: a portfolio still named by its id takes the name the broker reports for
+ * the account, then the broker profile's.
+ */
+function positionAccountName(position: TickerPosition, names: PositionAccountNames): string {
+  const portfolio = names.portfolios.find((entry) => entry.id === position.portfolio);
+  const brokerPortfolio = position.portfolio.startsWith("broker:");
+  const accountId = position.brokerAccountId || portfolio?.brokerAccountId
+    || (brokerPortfolio ? position.portfolio.split(":").slice(2).join(":") : "");
+  const named = (name: string | undefined) => {
+    const text = name?.trim();
+    return text && text !== accountId && text !== position.portfolio ? text : null;
+  };
+  const portfolioName = named(portfolio?.name);
+  if (portfolioName) return portfolioName;
+  const instanceId = position.brokerInstanceId || portfolio?.brokerInstanceId;
+  if (!accountId && !brokerPortfolio && !instanceId) return portfolio?.name.trim() || position.portfolio;
+  const accounts = instanceId ? names.brokerAccounts?.[instanceId] ?? [] : [];
+  const accountName = named(accounts.find((account) => account.accountId === accountId)?.name);
+  if (accountName) return accountName;
+  const profileName = named(names.brokerInstances?.find((instance) => instance.id === instanceId)?.label);
+  return profileName ?? position.broker;
+}
+
+function positionAccountLabel(position: TickerPosition, names: PositionAccountNames): string {
   const suffix = signedPositionDirection(position) < 0 ? " SHORT" : "";
-  return `${prefix}${account}${suffix}`;
+  return `${positionAccountName(position, names)}${suffix}`;
 }
 
 export function buildOverviewStats({
@@ -294,12 +326,14 @@ export function buildPositionRows({
   quoteCurrency,
   baseCurrency,
   toBase,
+  accountNames = NO_ACCOUNT_NAMES,
 }: {
   ticker: TickerRecord;
   quote: Quote | undefined;
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
+  accountNames?: PositionAccountNames;
 }): PositionTableRow[] {
   return ticker.metadata.positions.filter((position) => position.shares !== 0).map((position) => {
     const positionCurrency = getPortfolioPositionMetrics(
@@ -328,7 +362,7 @@ export function buildPositionRows({
     const unit = metrics.priceBasis === "percent-of-par" ? "" : ticker.metadata.assetCategory === "BOND" ? " units" : metrics.multiplierHint > 1 ? " ct" : " sh";
 
     return {
-      account: compactPositionAccount(position),
+      account: positionAccountLabel(position, accountNames),
       qty: `${formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency, maxWidth: metrics.priceBasis === "percent-of-par" ? 11 : undefined })}${unit}`,
       quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : undefined,
       // Avg and Mark sit side by side, so both keep the currency's minor unit ($118.40 beside $224.36).

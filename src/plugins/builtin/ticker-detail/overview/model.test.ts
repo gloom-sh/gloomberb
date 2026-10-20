@@ -83,6 +83,36 @@ function row(position: Partial<TickerPosition>, options: {
   })[0]!;
 }
 
+describe("position account names", () => {
+  const aries = { portfolio: "broker:aries-1:5UA1234567", broker: "aries", brokerInstanceId: "aries-1", brokerAccountId: "5UA1234567" };
+  const account = (position: Partial<TickerPosition>, accountNames: Parameters<typeof buildPositionRows>[0]["accountNames"]) => buildPositionRows({
+    ticker: createTestTicker("TEST", "Controlled position", {
+      portfolios: [position.portfolio ?? "test"],
+      positions: [{ portfolio: "test", broker: "manual", shares: 10, avgCost: 100, ...position }],
+    }),
+    quote: undefined, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value, accountNames,
+  })[0]!.account;
+
+  test("a broker position reads as its portfolio's name, never the raw account id", () => {
+    const portfolio = { id: aries.portfolio, name: "Aries individual (simulation)", brokerInstanceId: "aries-1", brokerAccountId: "5UA1234567" };
+    expect(account(aries, { portfolios: [portfolio] })).toBe("Aries individual (simulation)");
+    expect(account({ ...aries, side: "short" }, { portfolios: [portfolio] })).toBe("Aries individual (simulation) SHORT");
+    // A portfolio restored from positions alone is named by its account id: the broker's own name for the account wins.
+    const restored = { ...portfolio, name: "5UA1234567" };
+    expect(account(aries, {
+      portfolios: [restored],
+      brokerAccounts: { "aries-1": [{ accountId: "5UA1234567", name: "Aries individual (simulation)" }] },
+    })).toBe("Aries individual (simulation)");
+    expect(account(aries, { portfolios: [restored], brokerInstances: [{ id: "aries-1", label: "Aries" }] })).toBe("Aries");
+    expect(account(aries, { portfolios: [] })).toBe("aries");
+  });
+
+  test("a portfolio entered by hand keeps its own name", () => {
+    expect(account({}, { portfolios: [{ id: "test", name: "Long term" }] })).toBe("Long term");
+    expect(account({}, { portfolios: [] })).toBe("test");
+  });
+});
+
 describe("research position valuation", () => {
   test("equivalent short conventions retain gross exposure but reverse price P&L", () => {
     const positive = row({ side: "short" });

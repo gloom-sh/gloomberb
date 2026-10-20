@@ -3,7 +3,7 @@ import { fundFactOverviewFields } from "../sec/fund-facts";
 import { useFundFacts } from "../sec/fund-facts-view";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -103,6 +103,13 @@ const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: 
 
 function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const portfolios = useAppSelector((state) => state.config.portfolios);
+  const brokerInstances = useAppSelector((state) => state.config.brokerInstances);
+  const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
+  const accountNames = useMemo(
+    () => ({ portfolios, brokerInstances, brokerAccounts }),
+    [brokerAccounts, brokerInstances, portfolios],
+  );
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
   const figureCells = useFigureCells();
@@ -284,6 +291,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     quoteCurrency,
     baseCurrency,
     toBase,
+    accountNames,
   });
 
   return (

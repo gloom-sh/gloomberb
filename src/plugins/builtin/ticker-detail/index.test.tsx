@@ -575,9 +575,19 @@ describe("TickerResearchPane", () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
+    const config = createDetailConfig("SAP");
     await tui.render(
       <DetailHarness
-        config={createDetailConfig("SAP")}
+        config={{
+          ...config,
+          portfolios: [...config.portfolios, {
+            id: "broker:ibkr-interactive-brokers:UTEST12345",
+            name: "IBKR individual",
+            currency: "EUR",
+            brokerId: "ibkr",
+            brokerAccountId: "UTEST12345",
+          }],
+        }}
         ticker={createTestTicker("SAP", "SAP SE", {
           exchange: "XETRA",
           currency: "EUR",
@@ -622,7 +632,9 @@ describe("TickerResearchPane", () => {
     expect(frame).toContain("Cost");
     expect(frame).toContain("Value");
     expect(frame).toContain("Ret");
-    expect(frame).toContain("UTEST12345");
+    // The account by the portfolio's name, not the broker's raw account id.
+    expect(frame).toContain("IBKR individ");
+    expect(frame).not.toContain("UTEST12345");
     expect(frame).toContain("10 sh");
     expect(frame).toContain("€100");
     expect(frame).toContain("€125");
