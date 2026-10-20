@@ -1672,7 +1672,7 @@
             "code": "EXEC",
             "name": "Executives",
             "description": "Named executive officers and what they were paid, read from the company's proxy statement and checked against the filing.",
-            "access": "pro"
+            "access": "preview"
           },
           {
             "code": "TAS",
