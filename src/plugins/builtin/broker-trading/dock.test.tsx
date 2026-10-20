@@ -143,15 +143,18 @@ test("chart keys the ticket leaves still reach the chart, but not while a ticket
   expect(tui.frame()).not.toContain("ZOOMS 3");
 });
 
-test("docked open orders stay hidden without orders and toggle with Shift+O", async () => {
+test("docked open orders stay hidden without orders, and o shows them from the ticket and hides them again", async () => {
   await mount("working", 140, false, false);
   await tui.emitKeypress({ name: "b" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   expect(tui.frame()).not.toContain("Open Orders");
-  await tui.emitKeypress({ name: "O", shift: true });
+  await tui.emitKeypress({ name: "o" });
   await tui.waitForFrameToContain("Open Orders (0)");
-  await tui.emitKeypress({ name: "O", shift: true });
+  await tui.emitKeypress({ name: "o" });
   await tui.waitForFrameToExclude("Open Orders");
+  // Shift is no ticket key: Shift+O leaves them as they are.
+  await tui.emitKeypress({ name: "O", shift: true });
+  expect(tui.frame()).not.toContain("Open Orders");
 });
 
 test("orders follow the ticket content in Working, leaving spare height below the list", async () => {

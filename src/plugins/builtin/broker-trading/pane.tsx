@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { isPlainKey } from "../../../utils/keyboard";
 import { Button, EmptyState, Notice, PaneFooterScope, SelectButton, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useDialogState } from "../../../ui/dialog";
@@ -355,7 +356,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [publish, mode, busy, draft, strategy, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals]);
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
   // Docked, the open orders show only while this ticker has some, or when asked
-  // for: o focuses them, Shift+O or Hide/Show orders toggles them.
+  // for: o from the ticket shows and focuses them, o again (or Hide/Show orders) hides them.
   const tickerOrderCount = openOrders.filter((order) => ticketOrderMatches(order, ticketContract, instance.id, accountId) && !brokerOrderDone(order.status)).length;
   const [ordersPinned, setOrdersPinned] = useState<boolean>();
   // A review needs the room: unless asked for, the orders step aside until it is placed or edited.
@@ -368,14 +369,14 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [ordersShown, page]);
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   useShortcut((event) => {
-    if (event.ctrl || event.meta || event.alt || event.super || event.targetEditable || event.defaultPrevented) return;
-    if (event.name !== "O" && !(event.shift && event.name === "o")) return;
-    event.preventDefault(); event.stopPropagation();
-    if (!event.repeat) toggleOrders();
-  }, { enabled: focused && !!docked && !busy && !dialogOpen, phase: "before", scope: "broker-ticket:orders-toggle" });
+    if (event.targetEditable || event.defaultPrevented || event.propagationStopped || event.repeat || !isPlainKey(event, "o")) return;
+    event.preventDefault(); event.stopPropagation(); toggleOrders();
+  }, { enabled: focused && !!docked && page === "orders" && !busy && !dialogOpen, phase: "before", scope: "broker-ticket:orders-toggle" });
   usePaneMenuItems("broker-ticket:orders-toggle", () => focused && docked
-    ? [{ id: "ticket-orders-toggle", label: ordersShown ? "Hide open orders" : "Show open orders", accelerator: "Shift+O", enabled: !busy, onSelect: toggleOrders }]
-    : null, [focused, docked, ordersShown, busy, toggleOrders]);
+    ? [{ id: "ticket-orders-toggle", label: ordersShown ? "Hide open orders" : "Show open orders", enabled: !busy,
+      // o hides the orders from the orders; from the ticket it moves to them.
+      ...(ordersShown && page !== "orders" ? {} : { accelerator: "o" }), onSelect: ordersShown ? toggleOrders : () => setPage("orders") }]
+    : null, [focused, docked, ordersShown, page, busy, toggleOrders]);
   // The drawer is as tall as its rows, up to a third of the panel: one order is three lines, not a quarter of the screen.
   const rowHeight = native ? 1.6 : 1;
   const ordersHeight = ordersShown ? Math.min(Math.max(4, Math.floor(height / 3)), (native ? 2.6 : 2) + Math.max(1, drawerRows) * rowHeight) : 0;
@@ -388,7 +389,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   return <Box flexDirection="column" width={width} height={height}>
     <Box visible={docked || page !== "orders"} height={docked && native ? undefined : ticketHeight} maxHeight={ticketHeight} flexShrink={0}>
     <PaneFooterScope active={page !== "orders"}>
-    <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
+    <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} asking={drawerConfirming} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
     brokerName: broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,

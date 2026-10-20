@@ -158,11 +158,12 @@ test("rejected result focuses Edit order and preserves the rejected fields", asy
   f.controller.dispose();
 });
 
-test("filled result focuses New order without submitting a second order", async () => {
+test("filled result focuses New order without submitting a second order, and offers no refresh of a finished order", async () => {
   const f = await mount("simulation", "", "filled");
   await tui.clickFrameText("Place simulation order");
   await tui.waitForFrameToContain("10 of 10 filled");
-  expect(tui.frame()).toContain("Refresh status");
+  expect(tui.frame()).toContain("New order");
+  expect(tui.frame()).not.toContain("Refresh");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Limit price");
   expect(f.controller.getSnapshot()).toMatchObject({ phase: "editing", draft: { quantity: 1, tif: "DAY" } });
