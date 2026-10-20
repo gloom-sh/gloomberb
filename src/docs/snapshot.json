@@ -1401,9 +1401,9 @@
   },
   {
    "code": "ALRT",
-   "name": "Price alerts",
-   "description": "Price triggers",
-   "detail": "Your price alerts with current price, distance to target, and trigger state.",
+   "name": "Alerts",
+   "description": "Price, earnings, filing, news and flow alerts",
+   "detail": "Price alerts with current price, distance to target, and trigger state, plus alerts on earnings, CPI and FOMC dates, filings and 13F, news keywords, analyst changes, 52-week highs and lows, unusual volume, short interest, insider and congress trades, catalysts, IV spikes, options flow, and perps.",
    "category": "workspace",
    "shot": "https://gloom.sh/screenshots/fn/ALRT.png",
    "lesson": "/academy/terminal-and-workspace/your-workspace/alerts"

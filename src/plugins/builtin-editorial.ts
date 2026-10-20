@@ -31,7 +31,7 @@ export const BUILTIN_EDITORIAL: Readonly<Record<string, BuiltinEditorial>> = {
     tagline: "Account, chat, Ask Gloom and Cloud data.",
     icon: "plugin-icons/gloomberb-cloud.webp",
   },
-  alerts: { categories: ["alerts"], tagline: "Price, market and filing alerts." },
+  alerts: { categories: ["alerts"], tagline: "Price, earnings, filing, news and flow alerts." },
   "alt-data": {
     categories: ["research", "data"],
     tagline: "Supply chains, hiring, apps, GPUs and power.",
