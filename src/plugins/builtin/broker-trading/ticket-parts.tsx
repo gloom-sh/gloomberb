@@ -52,7 +52,8 @@ export function TicketLegs({ model: m, width, inset = false }: { model: TicketVi
 }
 export function TicketOrderSummary({ model: m, width, compact = false, receipt = false }: { model: TicketViewModel; width: number; compact?: boolean; receipt?: boolean }) {
   const c = useThemeColors(); const draft = m.draft; const account = m.accounts.find((a) => a.accountId === m.accountId);
-  const currency = draft?.contract.currency ?? account?.currency ?? "USD";
+  // A ticker opened by its symbol alone can carry an empty currency, which no formatter takes.
+  const currency = draft?.contract.currency || account?.currency || "USD";
   const px = draft ? orderEstimatePrice(draft, m.quote) : undefined;
   const total = m.phase === "result" ? m.preview?.estimatedCost === undefined ? undefined : Math.abs(m.preview.estimatedCost) : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
   const strategy = !!draft?.legs?.length;

@@ -122,7 +122,7 @@ export function resolveTicketContract(identity: PaneTickerIdentity, broker: Brok
   }
   const listing = parsePublicTickerKey(identity.symbol);
   return { contract: { brokerId: broker.id, brokerInstanceId: instance.id, symbol: listing.symbol, localSymbol: listing.symbol,
-    secType: tickerSecType(identity.ticker?.metadata.assetCategory), currency: identity.ticker?.metadata.currency ?? "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange } };
+    secType: tickerSecType(identity.ticker?.metadata.assetCategory), currency: identity.ticker?.metadata.currency || "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange } };
 }
 
 export function chooseTicketAccount(accounts: BrokerAccount[], previous?: string): string | undefined {

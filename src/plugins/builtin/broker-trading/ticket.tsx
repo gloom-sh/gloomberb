@@ -161,7 +161,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const draft = m.draft;
   const sell = draft?.action === "SELL";
   const sideTone = sell ? "negative" : "positive";
-  const currency = draft?.contract.currency ?? account?.currency ?? "USD";
+  // A ticker opened by its symbol alone can carry an empty currency, which no formatter takes.
+  const currency = draft?.contract.currency || account?.currency || "USD";
   const strategy = !!draft?.legs?.length;
   // A credit spread's preview reports what it receives as a negative cost.
   const previewCredit = (m.preview?.estimatedCost ?? 0) < 0;

@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test";
 import type { PaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount, editTicketDraft, newStrategyDraft, newTicketDraft, quickTicketQuantity, resolveTicketContract, ticketPositionContext } from "./pane-model";
 import { createDemoBroker } from "./test-fixture";
+import { createTestTicker } from "../../../test-support/pane";
 
 describe("ticket profile and draft resolution", () => {
   test("a qualified research ticker resolves the broker symbol and listing separately", () => {
     const demo = createDemoBroker();
     const result = resolveTicketContract({ symbol: "DEMO:XNAS", ticker: null, error: undefined, contract: undefined }, demo.adapter, demo.instance);
     expect(result.contract).toMatchObject({ symbol: "DEMO", localSymbol: "DEMO", exchange: "NASDAQ" });
+    // An option opened by its symbol alone has no listing currency: the ticket prices it in dollars, not in "".
+    const option = createTestTicker("AAPL261023C00340000", "AAPL Oct 23 '26 $340 Call", { assetCategory: "OPTION", currency: "" });
+    expect(resolveTicketContract({ symbol: "AAPL261023C00340000", ticker: option, error: undefined, contract: undefined }, demo.adapter, demo.instance).contract)
+      .toMatchObject({ secType: "OPT", currency: "USD" });
   });
   test("a foreign broker or profile contract cannot be relabelled for the selected profile", () => {
     const demo = createDemoBroker();
