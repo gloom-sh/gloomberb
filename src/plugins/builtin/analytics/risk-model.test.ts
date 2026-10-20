@@ -12,6 +12,7 @@ import {
   riskReturnsCurrency,
 } from "./risk-model";
 import { FX_NO_PAIR } from "./risk-fx";
+import { rollingBeta, subtractReturns } from "./risk-math";
 import {
   BEYOND_SIZE_REASON,
   fetchPortfolioRiskMarket,
@@ -182,6 +183,10 @@ test("a TRY account converts each holding's USD returns at its own dates' USD/TR
   expect(model.factors.every((row) => row.value != null)).toBe(true);
   expect(riskReturnsCurrency(model)).toBe("returns in TRY at daily USD/TRY closes");
   expect(riskReturnsCurrency(usd)).toBeNull();
+  // Factors stay in USD: quality is QUAL less SPY as they trade, not less SPY restated in lira.
+  const usdReturns = (symbol: string) => market.histories.find((row) => row.instrument.symbol === symbol)!.returns;
+  const quality = rollingBeta(model.basket, subtractReturns(usdReturns("QUAL"), usdReturns("SPY")), "", "quality");
+  expect(model.factors.find((row) => row.id === "quality")!.value).toBeCloseTo(quality.value!, 12);
 
   // A missing lira close on a holding's dates leaves that holding out, never bridged; one whose history starts later still converts.
   const us02 = market.histories.find((row) => row.instrument.symbol === "US02")!;

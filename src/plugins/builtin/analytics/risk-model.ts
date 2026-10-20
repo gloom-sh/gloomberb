@@ -720,7 +720,7 @@ export function buildPortfolioRisk(
     {
       id: "quality",
       label: "Quality (QUAL - SPY)",
-      series: subtractReturns(proxy("QUAL"), benchmark),
+      series: subtractReturns(proxy("QUAL"), spy),
     },
     { id: "rates", label: "Rates (IEF)", series: proxy("IEF") },
     {
