@@ -1033,7 +1033,8 @@ export async function buildTickerReport({
       // A future's move says what it is measured from: "vs Fri settle".
       ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
-      ["Day Range", quote.low != null || quote.high != null
+      // A listing that no longer trades: its last session's range, never today's.
+      [quote.delisting ? "Last Session" : "Day Range", quote.low != null || quote.high != null
         ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)
         : "—"],
       ["52W Range", quote.low52w != null || quote.high52w != null

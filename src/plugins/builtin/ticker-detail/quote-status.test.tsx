@@ -129,3 +129,23 @@ for (const width of [36, 48, 120]) {
     expect(await replaceQuote(quote())).not.toContain("Delisted");
   });
 }
+
+test("a listing that no longer trades reads as its last session: no move, no book, no delay", async () => {
+  await render("free", 120);
+  const trading = { ...quote(), bid: 107.4, ask: 107.6, open: 106.9, low: 106.5, high: 108 };
+  const live = await replaceQuote(trading);
+  expect(live).toContain("+0.60");
+  expect(live).toContain("Bid");
+  expect(live).toContain("Day Range");
+  const accessText = () => footer.info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+  expect(accessText()).toContain("delayed");
+  const delisting = { status: "delisted" as const, lastTradeDate: "2026-09-10", historyStart: "2016-01-04" };
+  const ended = await replaceQuote({ ...trading, delisting });
+  expect(ended).toContain("Delisted Sep 10, 2026");
+  expect(ended).toContain("HK$107.50");
+  for (const live of ["+0.60", "+0.56%", "Bid", "Ask", "Spr", "Day Range"]) expect(ended).not.toContain(live);
+  expect(ended).toContain("Last Session");
+  expect(accessText()).not.toContain("delayed");
+  expect(accessText()).toBe("Delisted Sep 10, 2026");
+});
+

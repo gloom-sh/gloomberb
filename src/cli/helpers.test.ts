@@ -34,3 +34,9 @@ test("without contract terms the line is the move alone", () => {
   expect(change(stock)).toBe("-$1.50 (-0.59%)");
   expect(change(coffee, null)).toBe("+1.05¢ (+0.33%)");
 });
+
+test("a listing that no longer trades has no move to give, whatever its last quote carried", () => {
+  const twitter = createTestQuote({ symbol: "TWTR", currency: "USD", price: 53.7, change: 0.51, changePercent: 0.96,
+    delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } });
+  expect(change(twitter)).toBe("—");
+});

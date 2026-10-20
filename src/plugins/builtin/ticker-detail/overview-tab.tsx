@@ -189,7 +189,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ],
     focused,
   });
-  const hasBidAsk = quote?.bid != null || quote?.ask != null;
+  // A listing that no longer trades has no book: its quote is its last session's close.
+  const delisted = !!quote?.delisting;
+  const hasBidAsk = !delisted && (quote?.bid != null || quote?.ask != null);
   const quoteBookInline = hasBidAsk && contentWidth >= 68;
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
@@ -201,8 +203,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // A price in cents says what it is per (314.95¢/lb), and a future's move what it is measured from (vs Fri settle).
   const quotePriceText = sessionQuote
     ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${minorUnitPricePer(contractTerms, quote?.currency)}` : "";
-  const quoteChangeText = sessionQuote ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
-  const quotePercentText = sessionQuote ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
+  // Nor a move: the close it ended on is where it stays.
+  const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
+  const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
   const changeBasis = futuresQuoteChangeBasis(contractTerms, quote);
   const changeBasisText = changeBasis ? futuresChangeBasisText(changeBasis) : "";
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
@@ -231,7 +234,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
     : "";
-  const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub")
+  const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub")
     + (changeBasisText ? 1 + displayWidth(changeBasisText) : 0);
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
@@ -245,7 +248,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const identityName = identityNameWidth >= 4 ? companyName : "";
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
-  const dayRangeLabel = t("Day Range");
+  // A listing that no longer trades: its range is its last session's, years ago perhaps, never today's.
+  const dayRangeLabel = delisted ? t("Last Session") : t("Day Range");
   const yearRangeLabel = t("52W Range");
   const rangeLabelWidth = Math.max(
     hasDayRange ? displayWidth(dayRangeLabel) : 0,
@@ -355,12 +359,14 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 alignItems={stackQuoteSummary ? undefined : "baseline"}
               >
                 <FigureText>{quotePriceText}</FigureText>
-                <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}
-                  alignItems={changeBasisText && !stackQuoteChange ? "baseline" : undefined}>
-                  <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
-                  <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
-                  {changeBasisText ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
-                </Box>
+                {!delisted && (
+                  <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}
+                    alignItems={changeBasisText && !stackQuoteChange ? "baseline" : undefined}>
+                    <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
+                    <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
+                    {changeBasisText ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
+                  </Box>
+                )}
               </Box>
             )}
             {extendedQuote && (
@@ -407,7 +413,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 low={quote.low!}
                 high={quote.high!}
                 label={dayRangeLabel}
-                shortLabel={t("Day")}
+                shortLabel={delisted ? t("Last") : t("Day")}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}

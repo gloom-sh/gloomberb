@@ -387,6 +387,8 @@ export function quoteHeadlineTime(quote: Quote): number {
  */
 export function getRegularSessionDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   if (!quote) return null;
+  // A listing that no longer trades: its last session's close, which moves no more.
+  if (quote.delisting) return { price: quote.price };
   const session = completedRegularSession(quote);
   if (session == null) return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
   const { close, reported } = session;
@@ -449,7 +451,7 @@ export function getRegularSessionBarClose(quote: Quote | null | undefined): { pr
  * when there is no extended print to show.
  */
 export function getExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
-  if (!quote) return null;
+  if (!quote || quote.delisting) return null;
   const overnight = overnightSessionDisplay(quote);
   if (overnight) return overnight;
   const state = quote.marketState;

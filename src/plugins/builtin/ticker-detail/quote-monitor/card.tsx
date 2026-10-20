@@ -179,8 +179,9 @@ export function QuoteMonitorCard({
   // One decimal count per instrument, so streamed ticks never narrow or widen the price column.
   const priceOptions = liveQuoteFormatOptions(quote, currency, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType);
   const priceText = display ? formatMarketPriceWithCurrency(display.price, currency, priceOptions) : "";
-  const changePercentText = display ? formatPercentRaw(display.changePercent) : "";
-  const changeValueText = display ? formatSignedMarketPrice(display.change, priceOptions) : "";
+  // A listing that no longer trades shows its last close alone: no move, not even a dash for one.
+  const changePercentText = display && !quote?.delisting ? formatPercentRaw(display.changePercent) : "";
+  const changeValueText = display && !quote?.delisting ? formatSignedMarketPrice(display.change, priceOptions) : "";
   const priceColumnWidth = Math.max(priceText.length, changePercentText.length + changeValueText.length + 1);
   const nameMaxWidth = Math.max(10, width - priceColumnWidth - (nativePaneChrome ? 5 : 3));
   // The terminal sets the line beside the change, under the symbol (or after it in a

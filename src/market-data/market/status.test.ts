@@ -241,6 +241,11 @@ describe("a quote older than its venue's latest completed session", () => {
     const firstRepublic = { ...twitter, symbol: "FRC", delisting: { status: "inactive" as const, lastTradeDate: "2023-04-28", historyStart: "2016-01-04" } };
     expect(quoteSessionLabel(firstRepublic, regular)).toBe("Last traded Apr 28, 2023");
     expect(quoteSessionStateLabel(firstRepublic, regular)).toBe("INACTIVE");
+    // Its last close, which moves no more, and no extended print, whatever an old quote carries.
+    const lateQuote = { ...twitter, change: 0.51, changePercent: 0.96, marketState: "POST" as const, postMarketPrice: 53.9,
+      postMarketChange: 0.04, postMarketChangePercent: 0.07 };
+    expect(getRegularSessionDisplay(lateQuote)).toEqual({ price: twitter.price });
+    expect(getExtendedSessionDisplay(lateQuote)).toBeNull();
   });
 
   test("a delisting the service sends malformed marks nothing", () => {

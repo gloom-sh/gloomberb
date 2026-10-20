@@ -31,6 +31,8 @@ export function quoteChangeText(
   options: MarketFormatOptions,
   terms?: Pick<FuturesContractTermsPayload, "settlement" | "spec"> | null,
 ): string {
+  // A listing that no longer trades: its last close moves no more.
+  if (quote.delisting) return "—";
   const move = colorBySign(
     `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
     session.change,
