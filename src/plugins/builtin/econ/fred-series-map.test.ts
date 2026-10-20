@@ -25,6 +25,12 @@ describe("resolveFredMapping", () => {
     expect(resolveFredMapping("CPI m/m", "GB")).toBeNull();
   });
 
+  test("maps Turkish CPI to the series Gloom Cloud serves for it, and nothing else of Türkiye's to US data", () => {
+    expect(resolveFredMapping("CPI y/y", "TR")?.seriesId).toBe("TURCPIYOY");
+    expect(resolveFredMapping("CPI m/m", "TR")?.seriesId).toBe("TURCPIMOM");
+    expect(resolveFredMapping("Unemployment Rate", "TR")).toBeNull();
+  });
+
   test("returns null for unmapped events", () => {
     expect(resolveFredMapping("President Trump Speaks", "US")).toBeNull();
     expect(resolveFredMapping("Bank Holiday", "US")).toBeNull();

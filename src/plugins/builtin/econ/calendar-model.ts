@@ -14,7 +14,8 @@ const CACHE_POLICY = {
 } as const;
 
 export type ImpactFilter = "high" | "medium" | "low" | "all";
-export type CountryFilter = "all" | "US" | "G7" | "EU";
+/** A region the pane cycles through, or one country by its two-letter code (`econ --country TR`). */
+export type CountryFilter = "all" | "US" | "G7" | "EU" | (string & {});
 
 export const FILTER_CYCLE: ImpactFilter[] = ["all", "high", "medium", "low"];
 /**
@@ -187,7 +188,7 @@ export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean
   if (filter === "US") return event.country === "US";
   if (filter === "G7") return G7_COUNTRIES.has(event.country);
   if (filter === "EU") return event.country === "EU";
-  return true;
+  return event.country === filter;
 }
 
 export function formatCountdown(ms: number): string {

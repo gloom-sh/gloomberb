@@ -1,4 +1,4 @@
-import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
+import { fredSeriesUrl, seriesNotOnFred } from "../../../sources/gloomberb-cloud/fred-series";
 import type { SeriesDefinition, SeriesFrequency } from "../../../series/types";
 
 type FredRow = readonly [seriesId: string, name: string, unit: string, frequency: SeriesFrequency, tags?: readonly string[]];
@@ -8,6 +8,8 @@ type FredRow = readonly [seriesId: string, name: string, unit: string, frequency
  * maturities (UST:2Y and so on, from the yield curve) and the credit spreads
  * and yields (from the credit plugin). Ids follow the server's allowlist: a
  * series added there is listed here to reach the catalog.
+ * Türkiye's CPI is served the same way but is not on FRED; its rows name
+ * TurkStat (`seriesNotOnFred`).
  */
 const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
   {
@@ -123,6 +125,8 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["T5YIE", "5Y breakeven inflation", "%", "daily", ["breakeven", "expectations", "TIPS"]],
       ["T10YIE", "10Y breakeven inflation", "%", "daily", ["breakeven", "expectations", "TIPS"]],
       ["T5YIFR", "5Y, 5Y forward inflation expectation", "%", "daily", ["breakeven", "expectations", "5y5y"]],
+      ["TURCPIYOY", "Türkiye CPI, y/y", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
+      ["TURCPIMOM", "Türkiye CPI, m/m", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
     ],
   },
   {
@@ -191,7 +195,7 @@ export const FRED_CATALOG_SERIES: readonly SeriesDefinition[] = GROUPS.flatMap((
     frequency,
     group,
     ...(tags?.length ? { tags } : {}),
-    publisher: "FRED",
+    publisher: seriesNotOnFred(seriesId)?.publisher ?? "FRED",
     url: fredSeriesUrl(seriesId),
     expression: `FRED:${seriesId}`,
   }))

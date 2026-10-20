@@ -53,9 +53,34 @@ export function resetFredSeriesPersistence(): void {
   cache.reset();
 }
 
-/** The series' page on the FRED site, where its notes and release schedule live. */
+/** Who publishes a series Gloom Cloud serves in FRED's shape that FRED does not carry, and its page. */
+interface SeriesNotOnFred {
+  /** Who compiles the figures (TurkStat). */
+  publisher: string;
+  /** Whose publication they are read from (the CBRT). */
+  via: string;
+  url: string;
+}
+
+const TURKISH_CPI: SeriesNotOnFred = {
+  publisher: "TurkStat",
+  via: "the CBRT",
+  url: "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Statistics/Inflation+Data/Consumer+Prices",
+};
+
+const NOT_ON_FRED: Readonly<Record<string, SeriesNotOnFred>> = {
+  TURCPIYOY: TURKISH_CPI,
+  TURCPIMOM: TURKISH_CPI,
+};
+
+/** The publisher of a served series FRED does not carry; null for FRED's own. */
+export function seriesNotOnFred(seriesId: string): SeriesNotOnFred | null {
+  return NOT_ON_FRED[seriesId.trim().toUpperCase()] ?? null;
+}
+
+/** The series' page on the FRED site, where its notes and release schedule live, or its publisher's page when FRED does not carry it. */
 export function fredSeriesUrl(seriesId: string): string {
-  return `https://fred.stlouisfed.org/series/${seriesId}`;
+  return seriesNotOnFred(seriesId)?.url ?? `https://fred.stlouisfed.org/series/${seriesId}`;
 }
 
 function cacheKey(request: FredSeriesRequest): string {

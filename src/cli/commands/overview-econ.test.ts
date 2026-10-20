@@ -106,3 +106,15 @@ test("a calendar two weeks ahead lists from today on a Saturday, with nothing to
   expect(text).not.toContain("Employment Change");
   expect(text).not.toContain("No events listed after");
 });
+
+test("--country takes any two-letter code, and a country the calendar does not list says which ones it does", async () => {
+  const withTurkey = [...twoWeeks, { ...event("2026-11-03T07:00:00.000Z", "TR", "high", "CPI y/y"), prior: "29.73%" }];
+  const turkey = await econText(withTurkey, ["--country", "tr"]);
+  expect(turkey).toContain("CPI y/y");
+  expect(turkey).toContain("29.73%");
+  expect(turkey).not.toContain("Housing Starts");
+  // UK is not GB: an empty list says what the calendar has rather than reading as a quiet fortnight.
+  const typo = await econText(withTurkey, ["--country", "UK"]);
+  expect(typo).toContain("The calendar lists no UK events; it lists CA, EU, TR, US");
+  await expect(econText(withTurkey, ["--country", "TUR"])).rejects.toThrow('Unknown country "TUR".');
+});

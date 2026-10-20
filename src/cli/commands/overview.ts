@@ -22,6 +22,7 @@ import {
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
+import { seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -311,9 +312,27 @@ function parseFilter<T extends string>(value: string | undefined, values: readon
   return match;
 }
 
+/** One of the pane's regions, or any country by its two-letter code (TR, DE), upper-cased. */
+function parseCountry(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): CountryFilter {
+  if (value == null) return COUNTRY_CYCLE[0]!;
+  const text = value.trim();
+  const region = COUNTRY_CYCLE.find((candidate) => candidate.toLowerCase() === text.toLowerCase());
+  if (region) return region;
+  if (/^[a-z]{2}$/i.test(text)) return text.toUpperCase();
+  return ctx.fail(`Unknown country "${value}".`, `Use ${COUNTRY_CYCLE.join(", ")}, or a two-letter country code such as TR.`);
+}
+
+/** A country the calendar lists nothing for says which ones it does list, so a typo (UK for GB) is not read as a quiet week. */
+function unlistedCountryMessage(country: CountryFilter, events: ReadonlyArray<{ country: string }>): string | null {
+  if ((COUNTRY_CYCLE as readonly string[]).includes(country)) return null;
+  const listed = [...new Set(events.map((event) => event.country).filter((code) => /^[A-Z]{2}$/.test(code)))].sort();
+  if (listed.length === 0 || listed.includes(country)) return null;
+  return `The calendar lists no ${country} events; it lists ${listed.join(", ")}.`;
+}
+
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const rawArgs = [...args];
-  const country: CountryFilter = parseFilter(takeOption(rawArgs, "--country"), COUNTRY_CYCLE, "country", ctx);
+  const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
@@ -363,7 +382,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     }, {
       dateKey: "date",
       defaultLimit: 50,
-      empty: econEmptyMessage(from, listedThrough, listedAfter != null),
+      empty: unlistedCountryMessage(country, events) ?? econEmptyMessage(from, listedThrough, listedAfter != null),
       ...(footnote ? { footnote } : {}),
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
@@ -485,7 +504,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const periodicity = periodicityOf(data.info?.frequency);
   const newestDate = rows.reduce<string | null>((newest, row) => (!newest || row.date > newest ? row.date : newest), null);
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
-  const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate));
+  const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
   const publisher = ahead?.publisher ?? data.info?.source?.trim();
   const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
@@ -498,7 +517,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       ...(latest ? { latestObservation: exportRow(latest) } : {}),
     },
     freshness: rowsFreshness(rows, {
-      source: ahead?.source ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      source: ahead?.source ?? notOnFredSource(seriesId) ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
       // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
       ...(periodicity ? { periodicity } : {}),
       ...(publisher ? { publisher } : {}),
@@ -520,6 +539,12 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       }] : []),
     ],
   });
+}
+
+/** Who a series FRED does not carry comes from, for a source line whose rows do not name it: `TurkStat via the CBRT`. */
+function notOnFredSource(seriesId: string): string | null {
+  const elsewhere = seriesNotOnFred(seriesId);
+  return elsewhere ? `${elsewhere.publisher} via ${elsewhere.via}` : null;
 }
 
 const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: "10Y", DGS30: "30Y" };
@@ -672,11 +697,11 @@ export const overviewCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.markets,
       usage: [ECON_USAGE],
       options: [
-        { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
+        { flags: "--country <region>", description: "US, G7, EU, all (default), or one country by its two-letter code, such as TR" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
       ],
-      examples: ["econ", "econ --country US --impact high", "econ --from 2026-10-12 --country US", "econ --tail 20"],
+      examples: ["econ", "econ --country US --impact high", "econ --country TR", "econ --from 2026-10-12 --country US", "econ --tail 20"],
     },
     execute: runEcon,
   },

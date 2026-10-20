@@ -128,12 +128,16 @@ test("fred --list ranks the group and title words a filter names above an id tha
     { id: "CPIAUCSL", title: "Consumer Price Index", group: "Prices" },
     { id: "CORESTICKM159SFRBATL", title: "Sticky Price CPI", group: "Prices" },
     { id: "EXFX", title: "Cross rates of the Swiss franc", group: "Rates" },
+    { id: "TURCPIYOY", title: "Consumer Price Index for Türkiye, Percent Change from Year Ago", group: "Inflation" },
   ];
   const ids = (filter: string) => filterFredSeries(rows, filter).map((row) => row.id);
   // The FX group, in catalog order, then the ids that spell fx.
   expect(ids("fx")).toEqual(["DEXBZUS", "DEXJPUS", "FDEFX", "EXFX"]);
   // A word of the title beats an id with the letters inside, and an exact id is found whole.
-  expect(ids("cpi")).toEqual(["CORESTICKM159SFRBATL", "CPIAUCSL"]);
+  expect(ids("cpi")).toEqual(["CORESTICKM159SFRBATL", "CPIAUCSL", "TURCPIYOY"]);
+  // Accents are not needed: turk finds Türkiye as a word of its title.
+  expect(ids("turk")).toEqual(["TURCPIYOY"]);
+  expect(ids("türkiye")).toEqual(["TURCPIYOY"]);
   expect(ids("cpiaucsl")).toEqual(["CPIAUCSL"]);
   expect(ids("def")).toEqual(["FDEFX"]);
   // Every word must match somewhere; the best match of each word ranks the row.

@@ -200,6 +200,20 @@ test("a yield ahead of FRED names Treasury and when it published, in the source 
   expect(listed.result.freshness).toMatchObject({ publisher: info.source, publishedAt: "2026-10-12T20:16:37.000Z" });
 });
 
+test("a series FRED does not carry names its publisher and where it is read from, never FRED", async () => {
+  // Turkish CPI: September 2026 read as it came out, August read with the history.
+  serveSeries(() => ({
+    observations: [
+      { date: "2026-09-01", value: 29.73, publisher: "TurkStat", publishedAt: "2026-10-05T07:05:00.000Z" },
+      { date: "2026-08-01", value: 31.51, publisher: "TurkStat" },
+    ],
+    info: { id: "TURCPIYOY", units: "Percent change from year ago", frequency: "Monthly", observationEnd: "2026-09-01" },
+  }));
+  const turkey = await runFred(["TURCPIYOY"]);
+  expect(turkey.text.split("\n").at(-1)).toStartWith("Source: TurkStat via the CBRT, published 2026-10-05 \u00b7 Sep 2026");
+  expect(turkey.result.freshness).toMatchObject({ publisher: "TurkStat", publishedAt: "2026-10-05T07:05:00.000Z" });
+});
+
 test("a monthly series is dated by its month, and a lagging one carries its note", async () => {
   serveSeries(() => ({
     observations: [{ date: "2026-08-01", value: 51.7 }, { date: "2026-07-01", value: 55.2 }],

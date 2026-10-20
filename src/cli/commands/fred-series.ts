@@ -1,4 +1,5 @@
 import { seriesMoves, type MoveHorizon } from "../../plugins/builtin/shared/move-rank";
+import { seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { ICE_SPREAD_SERIES } from "../../time-series/ice-credit";
 import { toBasisPoints } from "../../utils/basis-points";
 import { parseReportTime } from "../../utils/utc-time";
@@ -138,7 +139,10 @@ export interface FredProvenance {
  * looking for the figure in FRED's own data knows it is not there yet:
  * `U.S. Treasury via FRED, published 2026-10-09`. Null for FRED's own.
  */
-export function fredProvenance(observations: ReadonlyArray<{ date: string; publisher?: string; publishedAt?: string }>): FredProvenance | null {
+export function fredProvenance(
+  observations: ReadonlyArray<{ date: string; publisher?: string; publishedAt?: string }>,
+  seriesId?: string,
+): FredProvenance | null {
   const ahead = observations.filter((observation) => observation.publisher?.trim());
   if (ahead.length === 0) return null;
   const publishers = [...new Set(ahead.map((observation) => observation.publisher!.trim()))];
@@ -149,7 +153,8 @@ export function fredProvenance(observations: ReadonlyArray<{ date: string; publi
   const publishedAt = times.at(-1);
   const publisher = publishers.join(" and ");
   return {
-    source: `${publisher} via FRED${publishedAt ? `, published ${publishedAt.slice(0, 10)}` : ""}`,
+    // A series FRED does not carry names whose publication it is read from instead (TurkStat via the CBRT).
+    source: `${publisher} via ${(seriesId ? seriesNotOnFred(seriesId)?.via : null) ?? "FRED"}${publishedAt ? `, published ${publishedAt.slice(0, 10)}` : ""}`,
     publisher,
     ...(publishedAt ? { publishedAt } : {}),
   };
@@ -275,6 +280,11 @@ export interface FredListRow {
   group: string;
 }
 
+/** Lower case without accents, so `turk` and `turkiye` find Türkiye. */
+function foldAccents(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 /** How well a word of the filter matches a series, best first: its id or group name, a word of its group or title, the start of its id, then any text. */
 function matchTier(term: string, row: FredListRow, words: readonly string[]): number {
   if (row.id.toLowerCase() === term || row.group.toLowerCase() === term) return 0;
@@ -290,11 +300,11 @@ function matchTier(term: string, row: FredListRow, words: readonly string[]): nu
  * Catalog order breaks ties; an empty filter keeps the catalog as it is.
  */
 export function filterFredSeries(rows: readonly FredListRow[], filter: string): FredListRow[] {
-  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = foldAccents(filter).split(/\s+/).filter(Boolean);
   const ranked = rows.flatMap((row, index) => {
-    const text = `${row.id} ${row.title} ${row.group}`.toLowerCase();
+    const text = foldAccents(`${row.id} ${row.title} ${row.group}`);
     if (!terms.every((term) => text.includes(term))) return [];
-    const words = `${row.title} ${row.group}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const words = foldAccents(`${row.title} ${row.group}`).split(/[^a-z0-9]+/).filter(Boolean);
     const tiers = terms.map((term) => matchTier(term, row, words));
     return [{ row, index, worst: Math.max(0, ...tiers), total: tiers.reduce((sum, tier) => sum + tier, 0) }];
   });

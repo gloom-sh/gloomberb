@@ -51,12 +51,23 @@ const SERIES_MAP: Record<string, FredMapping> = {
   "unit labor costs q/q": { seriesId: "ULCNFB", displayMode: "qoq-annualized", relatedTickers: ["SPY", "^TNX"] },
 };
 
+/** Other countries' releases Gloom Cloud serves a series for, by country and normalized title. */
+const COUNTRY_SERIES_MAP: Record<string, Record<string, FredMapping>> = {
+  // TurkStat's CPI, published as percent changes; the related ticker is the US-listed MSCI Turkey ETF.
+  TR: {
+    "cpi y/y": { seriesId: "TURCPIYOY", displayMode: "level", relatedTickers: ["TUR"] },
+    "cpi m/m": { seriesId: "TURCPIMOM", displayMode: "level", relatedTickers: ["TUR"] },
+  },
+};
+
 function normalizeEventTitle(title: string): string {
   return title.toLowerCase().trim();
 }
 
 export function resolveFredMapping(eventTitle: string, country: string): FredMapping | null {
-  // Only US events have FRED data
+  const elsewhere = COUNTRY_SERIES_MAP[country];
+  if (elsewhere) return elsewhere[normalizeEventTitle(eventTitle)] ?? null;
+  // Otherwise only US events have FRED data
   if (country !== "US" && country !== "USD") return null;
 
   const normalized = normalizeEventTitle(eventTitle);
