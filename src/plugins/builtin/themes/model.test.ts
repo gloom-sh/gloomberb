@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeSummary } from "../../../api-client/themes";
 import { fitTableCellText, tableColumnWidth } from "../../../components/ui/table-layout";
 import {
-  aggregateText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberExtendedSessions, percent, snapshotFooterText, sortMembers, sortThemes, themeColumns,
+  aggregateText, boardYtdBase, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberExtendedSessions, percent, snapshotFooterText, sortMembers, sortThemes, themeColumns,
 } from "./model";
 
 const theme = (id: string, day: number | null, covered = 10): ThemeSummary => ({
@@ -55,6 +55,16 @@ test("an after-hours print gets a column after 1D that outlasts the longer windo
   expect(sortMembers(rows, { columnId: "afterHours", direction: "desc" }).map((row) => row.symbol)).toEqual(["B", "A", "C", "D"]);
 });
 
+test("YTD names the close it is measured from, shorter as its column narrows", () => {
+  const ytd = (columns: { id: string; label?: string }[]) => columns.find((column) => column.id === "returnYtdPercent")?.label?.trim();
+  expect(ytd(memberColumns(178, [], "31 Dec"))).toBe("YTD vs 31 Dec close");
+  expect(ytd(memberColumns(90, [], "31 Dec"))).toBe("YTD 31 Dec");
+  expect(ytd(themeColumns(250, [theme("Full", 1.23, 9)], "31 Dec"))).toBe("YTD vs 31 Dec close");
+  expect(boardYtdBase({ asOf: "2026-10-20T16:51:43.801Z" })).toBe("31 Dec");
+  // Outside the session the board is the close it names: 3 Jan 2023's YTD runs from Fri 30 Dec 2022.
+  expect(boardYtdBase({ asOf: "2023-01-04T01:00:00Z", regularSessionDate: "2023-01-03" })).toBe("30 Dec");
+});
+
 test("the footer names the close outside the regular session; in a session and from an older server it reads as before", () => {
   expect(snapshotFooterText({ regularSessionDate: "2026-10-09", regularSessionClosedAt: Date.UTC(2026, 9, 9, 20) }, "12m ago")).toBe("Fri 9 Oct close · snapshot 12m ago");
   for (const payload of [{ regularSessionDate: null, regularSessionClosedAt: null }, {}, { regularSessionDate: "Fri" }]) {
@@ -76,7 +86,7 @@ test("right-aligned headers end over numbers with and without a partial-coverage
   for (const width of [90, 250]) {
     for (const covered of [10, 9]) {
       const rows = [theme("Full", 1.23), theme("Partial", -0.27, covered)];
-      for (const column of themeColumns(width, rows)) {
+      for (const column of themeColumns(width, rows, "31 Dec")) {
         if (!THEME_PERIODS.includes(column.id as typeof THEME_PERIODS[number]) && column.id !== "breadth") continue;
         const metrics = rows.map((row) => column.id === "breadth" ? row.breadth : row.returns[column.id as typeof THEME_PERIODS[number]]);
         const noteWidth = coverageWidth(metrics);

@@ -39,6 +39,34 @@ test("history CSV keeps the price columns first, every row ends with its flag, w
   });
 });
 
+test("YTD, in any case, starts at the prior year's last close: LMT from 31 Dec, never the year's first session", async () => {
+  setSystemTime(new Date("2026-10-17T12:00:00Z"));
+  try {
+    const ranges: string[] = [];
+    const bar = (date: string, close: number) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1000 });
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "LMT", currency: "USD" }),
+        getPriceHistoryWithMetadata: async (_symbol, _exchange, range) => {
+          ranges.push(range);
+          return { resolution: "1d", points: [bar("2025-12-30", 488), bar("2025-12-31", 483.67), bar("2026-01-02", 497.07), bar("2026-10-16", 548.23)] };
+        },
+      }),
+    }, { format: "csv" });
+    await history.execute(["LMT", "--range", "ytd"], cli.context);
+    const [{ result }] = cli.printed;
+    expect(ranges).toEqual(["1Y"]);
+    expect((result.data as Array<{ date: string; close: number }>).map((row) => [row.date, row.close])).toEqual([
+      ["2025-12-31", 483.67], ["2026-01-02", 497.07], ["2026-10-16", 548.23],
+    ]);
+    expect(result.metadata).toMatchObject({ requestedRange: "YTD", firstDate: "2025-12-31", bars: 3 });
+    expect(result.warnings?.filter((warning) => warning.startsWith("Asked"))).toEqual([]);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a venue's daily bars are dated by its own trading days, not New York's", async () => {
   // Saturday 10 Oct 2026: EGX last traded Wednesday (Thursday was a holiday,
   // its week ends Thursday); New York traded Thursday and Friday since.

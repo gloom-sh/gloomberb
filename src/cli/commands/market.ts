@@ -1,6 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
+import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
@@ -238,7 +239,10 @@ import {
   type HolderForm,
 } from "../../plugins/builtin/holders/beneficial-report";
 
-const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
+/** The ranges `history` takes: the chart ranges, and YTD, which runs from the prior year's last close. */
+type HistoryRange = TimeRange | "YTD";
+const HISTORY_RANGES: HistoryRange[] = [...TIME_RANGES.slice(0, TIME_RANGES.indexOf("1Y")), "YTD", ...TIME_RANGES.slice(TIME_RANGES.indexOf("1Y"))];
+const VALID_RANGES = new Set<HistoryRange>(HISTORY_RANGES);
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
@@ -264,9 +268,9 @@ type FinancialsCliData = TickerFinancials & {
   providerId: string | null;
 };
 
-function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): TimeRange {
-  const range = (value ?? "1Y").toUpperCase() as TimeRange;
-  if (!VALID_RANGES.has(range)) ctx.fail(`Unknown range "${value}".`, `Use one of ${TIME_RANGES.join(", ")}.`);
+function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
+  const range = (value ?? "1Y").toUpperCase() as HistoryRange;
+  if (!VALID_RANGES.has(range)) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
   return range;
 }
 
@@ -1031,6 +1035,7 @@ function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandD
 
 const HISTORY_USAGE = "history <symbol> [--range <range>]";
 const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
+const HISTORY_YTD_RANGE = "YTD starts at the prior year's last close, the one year-to-date returns are measured from";
 /** Options people reach for to ask for dates, which history answers with a range. */
 const DATE_WINDOW_OPTIONS = new Set(["--from", "--to", "--start", "--end", "--since", "--until", "--date", "--start-date", "--end-date"]);
 /** Options people reach for to pick a bar size, which history derives from the range. */
@@ -1067,14 +1072,23 @@ function financialsOptionHint(flag: string, args: readonly string[]): string | n
 }
 
 function historyOptionHint(flag: string, args: readonly string[]): string | null {
-  if (DATE_WINDOW_OPTIONS.has(flag)) return `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`;
+  if (DATE_WINDOW_OPTIONS.has(flag)) return `history takes a --range instead of dates: ${HISTORY_RANGES.join(", ")}. ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}.`;
   if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
   return null;
+}
+
+/** "Asked YTD, data starts 2026-03-05 (first available bar)" when no bar reaches the prior year's last close. */
+function ytdHistoryNotes(rows: readonly { date: string }[]): string[] {
+  const first = rows[0]?.date.slice(0, 10);
+  const last = rows.at(-1)?.date.slice(0, 10);
+  return first && last && first > `${Number(last.slice(0, 4)) - 1}-12-31` ? [`Asked YTD, data starts ${first} (first available bar)`] : [];
 }
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const range = parseRange(takeOption(args, "--range"), ctx);
+  // YTD reads the year's daily bars and starts at the last one on or before 31 Dec.
+  const loadRange: TimeRange = range === "YTD" ? "1Y" : range;
   const requestedExchange = takeOption(args, "--exchange");
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
@@ -1083,8 +1097,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const { symbol, exchange } = listing.request;
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
     const load = () => market.dataProvider.getPriceHistoryWithMetadata
-      ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
-      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
+      ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
+      : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
     const quoted = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quoted);
     const [loaded, quote] = await Promise.all([
@@ -1107,7 +1121,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     };
     // A coin's volume is traded value in its quote currency: said in every row and on the status line.
     const volume = historyVolume(unit, traded);
-    const served = historyRows(points, resolution, unit.currency, unit.unit, volume);
+    const rows = historyRows(points, resolution, unit.currency, unit.unit, volume);
+    const served = range === "YTD" ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval))) : rows;
     // Bars stop arriving on the listing's own trading days, not New York's.
     const venue = quote?.listingExchangeName || exchange || undefined;
     // October's monthly bar on 16 Oct runs through the 15th: marked partial, and the status line says how far.
@@ -1137,7 +1152,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
       ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? [],
+      ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? []],
       // The status line says how far a bar still forming runs; the note is for the bars it does not name.
       gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
       historyBarStatusNote(forming ? served : data) ?? [],
@@ -2208,7 +2223,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: [HISTORY_USAGE],
       options: [
-        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y); ${HISTORY_ALL_RANGE}` },
+        { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y); ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
         EXCHANGE_OPTION,
       ],
       sections: [{

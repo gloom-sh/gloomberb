@@ -12,7 +12,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { useMembersMenu } from "../shared/members-menu";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
 import {
-  aggregateText, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
+  aggregateText, boardYtdBase, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
   SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, type ThemeSort,
 } from "./model";
 
@@ -45,8 +45,10 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   const rows = useMemo(() => sortMembers(data?.members ?? [], sort), [data, sort]);
   // Price and 1D are the regular session's; a pre-market or after-hours print gets its own column when a member has one.
   const extendedSessionsKey = useMemo(() => memberExtendedSessions(data?.members ?? []).join(","), [data]);
-  const columns = useMemo(() => memberColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
-    [extendedSessionsKey, width]);
+  // YTD names the close it is measured from, `31 Dec`.
+  const ytdBase = data ? boardYtdBase(data) : null;
+  const columns = useMemo(() => memberColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], ytdBase),
+    [extendedSessionsKey, width, ytdBase]);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   useSnapshotFooter("themes:members", resource, focused);
@@ -103,7 +105,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
   const resource = useAsyncResource(loadThemes, { initialData: cachedThemes });
   const data = resource.data?.payload;
   const rows = useMemo(() => sortThemes(data?.themes ?? [], sort), [data, sort]);
-  const columns = useMemo(() => themeColumns(width, data?.themes ?? []), [width, data]);
+  const columns = useMemo(() => themeColumns(width, data?.themes ?? [], data ? boardYtdBase(data) : null), [width, data]);
   const theme = opened && data ? matchTheme(data.themes, opened) : null;
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !opened });

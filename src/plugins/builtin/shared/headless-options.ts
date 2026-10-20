@@ -11,6 +11,17 @@ export const HISTORY_RANGE_VALUES: HeadlessPaneOptionValue[] = [
   { value: "ALL", aliases: ["max", "maximum"] },
 ];
 
+/**
+ * The history windows and YTD, which runs from the prior year's last close
+ * (the one year-to-date returns are measured from), for a chart that compares
+ * returns.
+ */
+export const RETURN_RANGE_VALUES: HeadlessPaneOptionValue[] = [
+  ...HISTORY_RANGE_VALUES.slice(0, 5),
+  { value: "YTD", aliases: ["year-to-date", "year to date"] },
+  ...HISTORY_RANGE_VALUES.slice(5),
+];
+
 export const FINANCIAL_PERIOD_OPTION: HeadlessPaneOptionDef = {
   key: "period",
   description: "Financial reporting period.",

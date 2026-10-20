@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition, HeadlessPaneOptionDef } from "../../../types/headless";
 import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-gaps";
-import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
+import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -111,10 +111,10 @@ export const paneSchemas = {
     options: [
       {
         key: "rangePreset",
-        description: "Price-history window.",
+        description: "Price-history window. YTD runs from the prior year's last close.",
         type: "enum",
         aliases: ["range"],
-        values: HISTORY_RANGE_VALUES,
+        values: RETURN_RANGE_VALUES,
         defaultValue: "1Y",
       },
       {

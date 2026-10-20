@@ -17,8 +17,9 @@ import {
   formatScreenValue,
   metricDate,
   parseScreenDefinition,
+  screenColumnLabel,
   screenDefinitionSyntax,
-  SHORT_LABELS,
+  screenYtdBase,
 } from "./model";
 import type { ScreenDefinition } from "../../../api-client/equity-screener";
 
@@ -145,7 +146,8 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
             ...(metric === "price" ? [] : [{ key: "price", header: "Last", align: "right" as const, format: price }]),
             ...(metric === "changePercent" ? [] : [{ key: "changePercent", header: "Chg%", align: "right" as const, format: percent }]),
             ...extendedSessions.map(extendedColumn),
-            { key: "value", header: SHORT_LABELS[metric], align: "right" },
+            // YTD names the close it is measured from: `YTD% vs 31 Dec close`.
+            { key: "value", header: screenColumnLabel(metric, screenYtdBase(data.rows, data.snapshot?.assembledAt), "report"), align: "right" },
             { key: "unit", header: "Unit" },
             { key: "percentile", header: "Covered pctl", align: "right" },
             { key: "asOf", header: "As of" },

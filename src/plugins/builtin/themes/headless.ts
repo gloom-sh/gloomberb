@@ -4,11 +4,15 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness 
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { fetchThemeMembers, fetchThemes } from "./client";
 import {
-  aggregateText, boardClose, DEFAULT_SORT, matchTheme, memberExtended, memberExtendedSessions, memberPrice, percent, PERIOD_LABELS,
+  aggregateText, boardClose, boardYtdBase, DEFAULT_SORT, matchTheme, memberExtended, memberExtendedSessions, memberPrice, percent, periodLabel,
   SNAPSHOT_STALE_MS, sortMembers, sortThemes,
 } from "./model";
 
-const periods: HeadlessPaneColumn[] = THEME_PERIODS.map((key) => ({ key, header: PERIOD_LABELS[key], align: "right", format: (value) => percent(value as number | null) }));
+/** The period columns; YTD names the close it is measured from, `YTD vs 31 Dec close`. */
+const periodColumns = (payload: ThemesPayload | ThemeMembersPayload): HeadlessPaneColumn[] => {
+  const base = boardYtdBase(payload);
+  return THEME_PERIODS.map((key) => ({ key, header: periodLabel(key, base), align: "right", format: (value) => percent(value as number | null) }));
+};
 
 /** The pre-market or after-hours print and its move from the regular close in Price, for the members that have one. */
 function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
@@ -90,6 +94,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
       const observation = boardObservation(data);
       // Price and 1D are the regular session's; an extended print gets a column only when a member has one.
       const extendedSessions = memberExtendedSessions(data.members);
+      const periods = periodColumns(data);
       return { rows: sortMembers(data.members, DEFAULT_SORT).map((row) => {
         const extended = memberExtended(row);
         return { ...row, extendedSession: extended?.session ?? null, extendedPrice: extended?.price ?? null,
@@ -104,6 +109,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
         metadata: { ...observation.metadata, theme: data.theme } };
     }
     const observation = boardObservation(board);
+    const periods = periodColumns(board);
     return { rows: sortThemes(board.themes, DEFAULT_SORT).map((row) => ({ name: row.name, memberCount: row.memberCount,
       ...Object.fromEntries(THEME_PERIODS.map((period) => [period, row.returns[period].value])), breadth: row.breadth.value, coverage: row.returns,
       breadthCoverage: row.breadth, best: row.best?.symbol ?? null, worst: row.worst?.symbol ?? null })),

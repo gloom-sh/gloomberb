@@ -17,6 +17,7 @@ import {
   type ScreenPayload,
   type ScreenRow,
 } from "../../../api-client/equity-screener";
+import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
@@ -160,8 +161,29 @@ export function resultFields(definition: ScreenDefinition, metric: NumericField)
   return [...new Set(fields)].filter((field) => definition.currency || !MONETARY.has(field) || field === metric);
 }
 
+/**
+ * The close the screen's YTD returns are measured from, `31 Dec`: NYSE's last
+ * session of the year before the newest session a row's YTD ends on, the
+ * snapshot's day without one.
+ */
+export function screenYtdBase(rows: readonly ScreenRow[], assembledAt?: string | null, now = Date.now()): string | null {
+  const day = rows.map((row) => row.metrics.returnYtdPercent?.asOf?.slice(0, 10) ?? "").filter(Boolean).sort().at(-1)
+    ?? assembledAt?.slice(0, 10);
+  return day ? yearToDateBaseLabel(day, "NYSE", now) : null;
+}
+
+/**
+ * A column's header. YTD names the close it is measured from: `YTD% vs 31 Dec
+ * close` in a report, `YTD% vs 31 Dec` in the pane and `YTD% 31 Dec` where
+ * the pane is short of room.
+ */
+export function screenColumnLabel(field: NumericField, ytdBase: string | null, form: "report" | "pane" | "compact" = "pane"): string {
+  if (field !== "returnYtdPercent" || !ytdBase) return SHORT_LABELS[field];
+  return form === "compact" ? `YTD% ${ytdBase}` : `YTD% vs ${ytdBase}${form === "report" ? " close" : ""}`;
+}
+
 /** Prices get room for a separated six-figure quote (757,398.00). */
-export const columnWidth = (field: NumericField) => Math.max(field === "price" ? 10 : 8, SHORT_LABELS[field].length);
+export const columnWidth = (field: NumericField, label = SHORT_LABELS[field]) => Math.max(field === "price" ? 10 : 8, label.length);
 
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,

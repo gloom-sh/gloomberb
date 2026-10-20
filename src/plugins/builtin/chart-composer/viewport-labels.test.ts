@@ -10,4 +10,7 @@ test("a fixed chart window names its session in the exchange's zone", () => {
     .toBe("Sep 23 session");
   expect(formatChartDateWindow({ start: "2025-12-29T14:30:00Z", end: "2026-01-02T21:00:00Z" }, "America/New_York", now))
     .toBe("Dec 29 2025 to Jan 2 2026");
+  // Calendar days (CMP --range YTD) are those days, not UTC midnight in New York.
+  expect(formatChartDateWindow({ start: "2025-12-31", end: "2026-10-20" }, "America/New_York", now))
+    .toBe("Dec 31 2025 to Oct 20 2026");
 });

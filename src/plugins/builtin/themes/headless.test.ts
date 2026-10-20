@@ -35,7 +35,7 @@ test("outside the regular session the report is as of the close with the snapsho
   expect(line).toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon · snapshot 12m ago");
   expect(result.metadata).toMatchObject({ asOf: "2026-10-09T20:00:00.000Z", snapshotAssembledAt: "2026-10-11T19:35:00.000Z", snapshotAgeMinutes: 12,
     regularSessionDate: "2026-10-09", snapshotId: "s", stale: false });
-  expect(result.columns?.map((column) => column.header)).toEqual(["Ticker", "Name", "Price $", "1D", "After Hours", "1W", "1M", "3M", "YTD"]);
+  expect(result.columns?.map((column) => column.header)).toEqual(["Ticker", "Name", "Price $", "1D", "After Hours", "1W", "1M", "3M", "YTD vs 31 Dec close"]);
   const after = result.columns!.find((column) => column.header === "After Hours")!;
   const [hii, row] = result.rows;
   expect(after.format!(row!.extendedPrice, row!)).toBe("510.19 +0.12%");

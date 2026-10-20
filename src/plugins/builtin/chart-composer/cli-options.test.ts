@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyChartComposerCapabilityOptions } from "./cli-options";
+import { applyChartComposerCapabilityOptions, yearToDateWindow } from "./cli-options";
 import { applySeriesTimestampMode } from "./chart-spec-edit";
 import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset } from "./presets";
 
@@ -19,6 +19,17 @@ describe("chart composer CLI options", () => {
     );
     expect(comparison.viewport).toMatchObject({ range: "3M", resolution: "1h" });
     expect(comparison.series.every((series) => series.transform === "raw")).toBe(true);
+
+    // YTD is a year of bars shown from the prior year's last close, the one YTD returns are measured from.
+    const ytd = applyChartComposerCapabilityOptions(
+      buildComparisonChartPreset(["LMT", "RTX"]),
+      "price-comparison",
+      { rangePreset: "YTD" },
+    );
+    const today = new Date().toISOString().slice(0, 10);
+    expect(ytd.viewport).toMatchObject({ range: "1Y", dateWindow: { start: yearToDateWindow(ytd).start, end: today } });
+    expect(yearToDateWindow(ytd, Date.parse("2026-10-20T16:00:00Z"))).toEqual({ start: "2025-12-31", end: "2026-10-20" });
+    expect(yearToDateWindow(ytd, Date.parse("2023-02-01T16:00:00Z")).start).toBe("2022-12-30");
 
     const initialFinancial = buildCustomChartPreset("AAPL:revenue");
     const financial = applyChartComposerCapabilityOptions(

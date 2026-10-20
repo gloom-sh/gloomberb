@@ -67,10 +67,11 @@ import {
   metricDate,
   parseScreenDefinition,
   resultFields,
-  SHORT_LABELS,
   SIGN_COLORED,
+  screenColumnLabel,
   screenLabel,
   screenRowId,
+  screenYtdBase,
 } from "./model";
 import { useScreenResults } from "./results";
 import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, sortLiveScreenRows, type LiveScreenRow } from "./live";
@@ -101,20 +102,19 @@ const EXTENDED_COLUMN_PREFIX = "ext:";
  * CHG% for each session in `extendedSessions`, and is added only whole, as
  * the metrics are.
  */
-function resultColumns(
+export function resultColumns(
   width: number,
   definition: ScreenDefinition,
   metric: NumericField,
   asOf: boolean,
   extendedSessions: readonly ExtendedSession[] = [],
+  ytdBase: string | null = null,
 ): DataTableColumn[] {
   const [focus, ...others] = resultFields(definition, metric);
-  const metricColumn = (field: NumericField): DataTableColumn => ({
-    id: `m:${field}`,
-    label: SHORT_LABELS[field],
-    width: columnWidth(field),
-    align: "right",
-  });
+  const metricColumn = (field: NumericField, form: "pane" | "compact"): DataTableColumn => {
+    const label = screenColumnLabel(field, ytdBase, form);
+    return { id: `m:${field}`, label, width: columnWidth(field, label), align: "right" };
+  };
   const extendedColumns = extendedSessions.map((session): DataTableColumn => ({
     id: `${EXTENDED_COLUMN_PREFIX}${session}`,
     label: extendedSessionStateLabel(session),
@@ -122,20 +122,21 @@ function resultColumns(
     align: "right",
   }));
   // The extended move reads beside CHG%, or first after the focus metric when that is CHG%.
-  const extras = [
+  const extras = (form: "pane" | "compact") => [
     ...(focus === "changePercent" ? extendedColumns : []),
-    ...others.flatMap((field) => field === "changePercent" ? [metricColumn(field), ...extendedColumns] : [metricColumn(field)]),
+    ...others.flatMap((field) => field === "changePercent" ? [metricColumn(field, form), ...extendedColumns] : [metricColumn(field, form)]),
   ];
   const build = (
     extra: DataTableColumn[],
     exchange: boolean,
     sector: boolean,
+    form: "pane" | "compact",
   ): DataTableColumn[] => [
     { id: "symbol", label: "SYMBOL", width: 8, align: "left" },
     { id: "name", label: "NAME", width: 18, flexGrow: 1, align: "left" },
     ...(exchange ? [{ id: "exchange", label: "EXCH", width: 7, align: "left" as const }] : []),
     ...(sector ? [{ id: "sector", label: "SECTOR", width: 22, align: "left" as const }] : []),
-    metricColumn(focus!),
+    metricColumn(focus!, form),
     { id: "percentile", label: "PCTL", width: 4, align: "right" },
     ...(asOf ? [{ id: "date", label: "AS OF", width: 10, align: "left" as const }] : []),
     ...extra,
@@ -143,15 +144,15 @@ function resultColumns(
   // Measured the way the table draws them (header floor, gaps, lead gaps), so a
   // column is only added when it fits whole.
   const fits = (columns: DataTableColumn[]) => getTableWidth(columns) <= width;
-  let shown: DataTableColumn[] = [];
-  for (const column of extras) {
-    const next = [...shown, column];
-    if (!fits(build(next, false, false))) break;
-    shown = next;
-  }
-  const exchange = fits(build(shown, true, false));
-  const sector = exchange && fits(build(shown, true, true));
-  return build(shown, exchange, sector);
+  // Columns are chosen with YTD's short header (`YTD% 31 Dec`), which reads
+  // `YTD% vs 31 Dec` when that still fits: naming the close never costs a column.
+  const compact = extras("compact");
+  let shown = 0;
+  while (shown < compact.length && fits(build(compact.slice(0, shown + 1), false, false, "compact"))) shown++;
+  const exchange = fits(build(compact.slice(0, shown), true, false, "compact"));
+  const sector = exchange && fits(build(compact.slice(0, shown), true, true, "compact"));
+  const named = build(extras("pane").slice(0, shown), exchange, sector, "pane");
+  return fits(named) ? named : build(compact.slice(0, shown), exchange, sector, "compact");
 }
 const loadFields = () => fetchScreenFields();
 function ScreenDetail({
@@ -351,7 +352,9 @@ function EquityScreenView({
   const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
   // A pre-market, after-hours or overnight column only while a row has such a print.
   const extendedSessions = screenExtendedSessions(rows);
-  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions);
+  // YTD names the close it is measured from, `31 Dec`.
+  const ytdBase = screenYtdBase(snapshotRows, data?.snapshot?.assembledAt);
+  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions, ytdBase);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));

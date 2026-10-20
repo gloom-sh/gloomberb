@@ -15,7 +15,9 @@ import {
   parseThreshold,
   resultFields,
   parseScreenDefinition,
+  screenColumnLabel,
   screenLabel,
+  screenYtdBase,
   SHORT_LABELS,
   SIGN_COLORED,
   validateScreenPayload,
@@ -193,4 +195,22 @@ test("the field list is requested with the volatility group, which servers witho
   } finally {
     ask.mockRestore();
   }
+});
+
+test("YTD's header names the prior year's last close the returns start from", () => {
+  const base = payload().rows[0]!;
+  const row = (asOf: string) => ({ ...base, metrics: { ...base.metrics,
+    returnYtdPercent: { ...base.metrics.returnYtdPercent, value: 13.27, asOf, state: "available" as const } } });
+  const now = Date.parse("2026-10-20T17:00:00Z");
+  expect(screenYtdBase([row("2026-10-19")], null, now)).toBe("31 Dec");
+  // A row still on the year's first session reads from the close before it.
+  expect(screenYtdBase([row("2026-01-02")], null, now)).toBe("31 Dec");
+  // No row with YTD: the snapshot's day.
+  expect(screenYtdBase([], "2026-10-20T16:30:00Z", now)).toBe("31 Dec");
+  expect(screenYtdBase([], null, now)).toBeNull();
+  expect(screenColumnLabel("returnYtdPercent", "31 Dec", "report")).toBe("YTD% vs 31 Dec close");
+  expect(screenColumnLabel("returnYtdPercent", "31 Dec")).toBe("YTD% vs 31 Dec");
+  expect(screenColumnLabel("returnYtdPercent", "31 Dec", "compact")).toBe("YTD% 31 Dec");
+  expect(screenColumnLabel("returnYtdPercent", null)).toBe(SHORT_LABELS.returnYtdPercent);
+  expect(screenColumnLabel("trailingPE", "31 Dec", "report")).toBe(SHORT_LABELS.trailingPE);
 });

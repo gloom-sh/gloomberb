@@ -55,7 +55,8 @@ function calendarParts(date: Date, timeZone: string): { key: string; year: numbe
 /**
  * A fixed chart window as the bar states it: one exchange session reads as
  * "Sep 23 session", a longer window as "Sep 17 to Sep 23". Dates are taken in
- * the exchange's zone, so a session that crosses UTC midnight stays one day.
+ * the exchange's zone, so a session that crosses UTC midnight stays one day;
+ * a window of calendar days (YYYY-MM-DD) names those days.
  */
 export function formatChartDateWindow(
   window: { start: string; end: string },
@@ -65,7 +66,9 @@ export function formatChartDateWindow(
   const start = new Date(window.start);
   const end = new Date(window.end);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return undefined;
-  let zone = timeZone;
+  // A window of calendar days (2025-12-31 to 2026-10-20) names those days, not UTC midnight in the exchange's zone.
+  const calendarDays = [window.start, window.end].every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+  let zone = calendarDays ? "UTC" : timeZone;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: zone });
   } catch {
