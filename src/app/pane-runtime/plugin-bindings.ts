@@ -479,9 +479,11 @@ export function bindAppPanePluginRegistry({
           throw error;
         }
       }
+      // Recorded before it registers: what redraws as its contributions land
+      // (a broker list and its logo) reads the entry this checkout now is.
+      upsertExternalPlugin(entry);
       try {
         await pluginRegistry.register(entry.plugin);
-        upsertExternalPlugin(entry);
       } catch (error) {
         upsertExternalPlugin({ ...entry, error: error instanceof Error ? error.message : String(error) });
         reportCrash(error, { kind: "plugin", plugin: pluginId });

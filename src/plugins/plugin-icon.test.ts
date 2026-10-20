@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -42,6 +42,13 @@ test("reads the declared icon, else a conventional one beside the entry", () => 
   expect(decoded(readPluginIcon(missing))).toBe(SVG);
 
   expect(readPluginIcon(plugin({ "gloom.json": { id: "plain" } }))).toBeNull();
+});
+
+// Root reads a file whatever its mode, so the failed read cannot be made there.
+test.skipIf(process.getuid?.() === 0)("a declared icon that cannot be read still falls back to the conventional names", () => {
+  const dir = plugin({ "gloom.json": { icon: "logo.png" }, "logo.png": "png", "icon.svg": SVG });
+  chmodSync(join(dir, "logo.png"), 0o000);
+  expect(decoded(readPluginIcon(dir))).toBe(SVG);
 });
 
 test("shows nothing that leaves the checkout, is not an image, or is too large to be a logo", () => {

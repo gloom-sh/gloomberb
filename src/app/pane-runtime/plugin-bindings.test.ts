@@ -18,6 +18,9 @@ import {
 } from "../../types/config";
 import type { PaneDef } from "../../types/plugin";
 import { subscribeFormModalRequests, type FormModalRequest } from "../../components/form-modal/request";
+import { externalPluginIcon } from "../../plugins/external-runtime";
+import type { LoadedExternalPlugin } from "../../plugins/loader";
+import { getMarketplaceHost } from "../../plugins/marketplace/store";
 import { bindAppPanePluginRegistry } from "./plugin-bindings";
 
 const paneDef: PaneDef = {
@@ -330,5 +333,69 @@ describe("switching plugins", () => {
     const stack = getNodeAtPath(after.config.layout.dockRoot, findDockLeaf(after.config.layout, "cds")!.path.slice(0, -1));
     expect(stack).toMatchObject({ axis: "vertical", ratio: 0.6, first: { instanceId: "list" }, second: { instanceId: "cds" } });
     expect(after.config.layout.instances.filter((instance) => instance.paneId === "cds")).toHaveLength(1);
+  });
+});
+
+describe("activating an installed plugin", () => {
+  /** The registry's listeners redraw while a plugin registers: what they read of its entry then is what shows. */
+  function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[]) {
+    const iconDuringRegister: Array<string | null> = [];
+    const allPlugins = new Map<string, unknown>(externalPlugins.map((entry) => [entry.plugin.id, entry.plugin]));
+    const pluginRegistry = {
+      panes: new Map(),
+      allPlugins,
+      getTermSize: () => ({ width: 120, height: 40 }),
+      unregister: (pluginId: string) => { allPlugins.delete(pluginId); },
+      register: async (plugin: { id: string }) => {
+        iconDuringRegister.push(externalPluginIcon(plugin.id));
+        allPlugins.set(plugin.id, plugin);
+      },
+      bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
+    } as any;
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-plugin-activation-test"));
+    bindAppPanePluginRegistry({
+      activatePane() {},
+      buildPaneInstance: () => null,
+      createPaneFromTemplate: async () => {},
+      dataProvider: createTestDataProvider(),
+      detachedPaneId: null,
+      dispatch() {},
+      externalPlugins,
+      focusVisiblePane() {},
+      isDetachedWindow: false,
+      openPaneSettings: async () => {},
+      openPinnedTicker: async () => {},
+      persistLayout() {},
+      placePaneInstance() {},
+      placePinnedTickerTarget() {},
+      pluginRegistry,
+      publishTickerOpenTarget() {},
+      resolveOpenTickerTarget: async () => null,
+      resolvePaneTarget: () => null,
+      selectTickerInPane() {},
+      showPane() {},
+      state,
+      stateRef: { current: state },
+      switchTickerResearchTab() {},
+      tickerRepository: {} as any,
+    });
+    return { host: getMarketplaceHost()!, iconDuringRegister };
+  }
+
+  const aries = (icon: string): LoadedExternalPlugin => ({
+    plugin: { id: "aries", name: "Aries", version: "1.0.0" },
+    path: "/plugins/gloom-aries",
+    directory: "gloom-aries",
+    icon,
+  } as LoadedExternalPlugin);
+
+  test("a broker plugin's logo is there while it registers, on install and on update", async () => {
+    const fresh = bindActivationRuntime([]);
+    await fresh.host.activate(aries("data:image/webp;base64,new"));
+    expect(fresh.iconDuringRegister).toEqual(["data:image/webp;base64,new"]);
+
+    const updated = bindActivationRuntime([aries("data:image/webp;base64,old")]);
+    await updated.host.activate(aries("data:image/webp;base64,newer"));
+    expect(updated.iconDuringRegister).toEqual(["data:image/webp;base64,newer"]);
   });
 });

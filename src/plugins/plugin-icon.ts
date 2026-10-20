@@ -42,17 +42,20 @@ function iconFile(pluginDir: string, name: string): { path: string; type: string
   return info.isFile() && info.size > 0 && info.size <= MAX_ICON_BYTES ? { path: real, type } : null;
 }
 
-/** The plugin's logo as a `data:` URL; a declared icon that is missing or unusable falls back to the conventional names. */
+/**
+ * The plugin's logo as a `data:` URL. A declared icon that is missing,
+ * unusable or unreadable falls back to the conventional names, each tried on
+ * its own, so one file the process may not read does not hide the next.
+ */
 export function readPluginIcon(pluginDir: string): string | null {
-  try {
-    const declared = readPluginManifest(pluginDir).icon;
-    for (const name of declared ? [declared, ...CONVENTIONAL_ICONS] : CONVENTIONAL_ICONS) {
+  const declared = readPluginManifest(pluginDir).icon;
+  for (const name of declared ? [declared, ...CONVENTIONAL_ICONS] : CONVENTIONAL_ICONS) {
+    try {
       const icon = iconFile(pluginDir, name);
       if (icon) return `data:${icon.type};base64,${readFileSync(icon.path).toString("base64")}`;
+    } catch (error) {
+      logFailure("plugin-icon", `Reading ${name} for ${basename(pluginDir)} failed`)(error);
     }
-    return null;
-  } catch (error) {
-    logFailure("plugin-icon", `Reading the icon of ${basename(pluginDir)} failed`)(error);
-    return null;
   }
+  return null;
 }
