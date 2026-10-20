@@ -376,7 +376,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const sourceAt = m.quote?.lastTradeTime ?? m.quote?.lastUpdated;
   const updated = sourceAt && Number.isFinite(sourceAt) ? `${new Date(sourceAt).toISOString().slice(11, 19)} UTC` : "unknown";
   const delayed = m.quoteData !== "realtime" || m.quote?.dataSource !== "live";
-  const source = `${m.brokerName}, ${delayed ? "delayed" : "real-time"} ${ticketQuoteAge(m.quote, m.now).replace(" old", "")}`;
+  const age = ticketQuoteAge(m.quote, m.now).replace(" old", "");
+  const source = `${m.brokerName}, ${delayed ? "delayed" : "real-time"} ${age}`;
   const accountPicker = (pickerWidth: number) => <BrokerAccountPicker
     accounts={m.accountChoices ?? m.accounts.map((a) => ({ value: a.accountId, label: a.name, tradingMode: a.tradingMode }))}
     value={m.accountChoiceValue ?? m.accountId} onChange={onAccountChange} disabled={!editing || busy || m.modifying}
@@ -426,7 +427,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           </Box>
         </Box>
         <Box flexDirection="row" flexWrap={native ? "wrap" : "nowrap"} alignItems="center" gap={1}>
-          <Text fg={delayed ? c.warning : c.textDim}>{source}</Text>
+          {/* A delayed quote is the yellow clock, as in pane footers, with the detail on hover. */}
+          {delayed ? <Box flexShrink={0} title={source}><Icon name="clock" color={c.warning} /></Box> : null}
+          <Text fg={c.textDim}>{delayed ? `${m.brokerName} ${age}` : source}</Text>
           <Text fg={c.textDim}>{`${updated}${m.synthetic && !wide && !narrow ? " · SYNTHETIC" : ""}`}</Text>
         </Box>
       </Box>
