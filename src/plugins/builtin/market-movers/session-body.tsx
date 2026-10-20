@@ -118,7 +118,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const listRows = payload?.items ?? NO_ROWS;
   // A free account's list is the one built a delay before: no live prices on its rows.
   const delayed = payload?.access === "delayed";
-  const live = !!payload && !delayed && sessionListIsLive(view, payload.session, session);
+  const sessionTrading = !!payload && sessionListIsLive(view, payload.session, session);
+  const live = sessionTrading && !delayed;
   // While the list's session trades it is rebuilt every minute, and a failed or
   // stale answer is asked for again as often; a finished list does not change,
   // so it follows the refresh interval the user set.
@@ -184,7 +185,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   }, [rows, selectedId]);
 
   const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
-  const asOfLabel = payload && delayed ? listAsOfLabel(payload.asOf, payload.session, session) : null;
+  // While its session trades, a free list says when it was built; a finished one is final and its date says enough.
+  const asOfLabel = payload && delayed && sessionTrading ? listAsOfLabel(payload.asOf, payload.session, session) : null;
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),

@@ -86,8 +86,9 @@ consolidated-tape half-hour bars, 04:00 to 20:00 New York, and rebuilt once a
 minute. Pre-market and After hours are on every plan; Gaps need Gloom Cloud
 Pro. With Pro, while a list's session is trading its rows update with live
 quotes. Without Pro, Pre-market and After hours are the list as it was built
-15 minutes earlier, the age of the account's quotes, with no live updates, and
-the footer gives the time it was built (`as of 07:45 ET`). MOST opens on the
+15 minutes earlier, the age of the account's quotes, with no live updates;
+while the session trades the footer gives the time it was built (`as of 07:45
+ET`). MOST opens on the
 session that is trading: Pre-market before 09:30, the day's lists during the
 regular session, After hours from the close. A list picked by hand stays until
 that session ends, and one asked for with `--list` stays until another is
