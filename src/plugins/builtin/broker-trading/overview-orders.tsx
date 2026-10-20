@@ -14,6 +14,7 @@ import { usePluginBrokerActions } from "../../runtime";
 import { ticketOrderMatches } from "./chart-levels";
 import { strategyShape } from "./strategy";
 import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as money, formatOrderQuantity as amount, isBuySide } from "./orders-data";
+import { useBrokerOrderFeeds } from "./order-feed";
 import { ticketTypeName } from "./ticket-parts";
 import { resolveTicketContract, subscribeTradingStatus } from "./pane-model";
 
@@ -23,39 +24,28 @@ export interface TickerOrderSource {
   contract: BrokerContractRef;
 }
 
-export interface TickerOrders {
-  open: BrokerOrder[];
+export interface TickerActivity {
   recent: BrokerExecution[];
-  /** Accounts the rows come from; with more than one, each row names its account. */
-  accounts: number;
   failed: boolean;
 }
 
 const RECENT_LIMIT = 5;
 
 /**
- * This ticker's working orders and latest fills across connected trading
- * profiles, newest first. One profile failing leaves the others shown.
+ * This ticker's latest fills across connected trading profiles, newest
+ * first. One profile failing leaves the others shown. Working orders come
+ * from the app's order feed.
  */
-async function loadTickerOrders(sources: readonly TickerOrderSource[]): Promise<TickerOrders> {
+async function loadTickerActivity(sources: readonly TickerOrderSource[]): Promise<TickerActivity> {
   let failed = false;
   const results = await Promise.all(sources.map(async ({ broker, instance, contract }) => {
-    if (broker.getStatus?.(instance).state !== "connected") return { open: [], recent: [] };
-    const [open, recent] = await Promise.allSettled([
-      Promise.resolve().then(() => broker.listOpenOrders?.(instance) ?? []),
-      Promise.resolve().then(() => broker.listExecutions?.(instance) ?? []),
-    ]);
-    if (open.status === "rejected" || recent.status === "rejected") failed = true;
-    const mine = <T extends Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">>(row: T) => ticketOrderMatches(row, contract, instance.id, row.accountId);
-    return {
-      open: (open.status === "fulfilled" ? open.value : []).filter((order) => mine(order) && !brokerOrderDone(order.status)),
-      recent: (recent.status === "fulfilled" ? recent.value : []).filter(mine),
-    };
+    if (broker.getStatus?.(instance).state !== "connected") return [];
+    try {
+      const recent = await Promise.resolve().then(() => broker.listExecutions?.(instance) ?? []);
+      return recent.filter((row) => ticketOrderMatches(row, contract, instance.id, row.accountId));
+    } catch { failed = true; return []; }
   }));
-  const open = results.flatMap((result) => result.open).sort((a, b) => b.updatedAt - a.updatedAt);
-  const recent = results.flatMap((result) => result.recent).sort((a, b) => b.time - a.time).slice(0, RECENT_LIMIT);
-  const accounts = new Set([...open, ...recent].map((row) => `${row.brokerInstanceId ?? row.contract.brokerInstanceId ?? ""}:${row.accountId ?? ""}`)).size;
-  return { open, recent, accounts, failed };
+  return { recent: results.flat().sort((a, b) => b.time - a.time).slice(0, RECENT_LIMIT), failed };
 }
 
 function ago(timestamp: number, now: number): string {
@@ -100,29 +90,32 @@ export function TickerOrdersSection({ width, onModify }: { width: number; onModi
     const unsubscribe = sources.map(({ broker, instance }) => subscribeTradingStatus(broker, instance, () => setStatusVersion((value) => value + 1)));
     return () => { for (const dispose of unsubscribe) dispose(); };
   }, [sources]);
-  const loader = useCallback(() => loadTickerOrders(sources), [sources, statusVersion]);
+  // Working orders from the app's order feed; fills are read again whenever the feed sees a new one.
+  const feeds = useBrokerOrderFeeds(sources, visible);
+  const open = useMemo(() => sources.flatMap(({ instance, contract }, index) => (feeds[index]?.orders ?? [])
+    .filter((order) => !brokerOrderDone(order.status) && ticketOrderMatches(order, contract, instance.id, order.accountId)))
+    .sort((a, b) => b.updatedAt - a.updatedAt), [sources, feeds]);
+  const fills = feeds.reduce((sum, feed) => sum + feed.fills, 0);
+  const loader = useCallback(() => loadTickerActivity(sources), [sources, statusVersion, fills]);
   const resource = useAsyncResource(visible && sources.length ? loader : null);
-  const { reload } = resource;
-  useEffect(() => {
-    if (!visible || !sources.length) return;
-    const timer = setInterval(() => { void reload(); }, 30_000);
-    return () => clearInterval(timer);
-  }, [visible, sources.length, reload]);
-  const data = resource.data;
-  if (!data || (!data.open.length && !data.recent.length && !data.failed)) return null;
+  const activity = resource.data;
+  const failed = !!activity?.failed || feeds.some((feed) => feed.failed);
+  const recent = activity?.recent ?? [];
+  if (!open.length && !recent.length && !failed) return null;
   const now = resource.updatedAt ?? Date.now();
-  const account = (row: { accountId?: string }) => data.accounts > 1 && row.accountId ? ` · ${row.accountId}` : "";
+  const accounts = new Set([...open, ...recent].map((row) => `${row.brokerInstanceId ?? row.contract.brokerInstanceId ?? ""}:${row.accountId ?? ""}`)).size;
+  const account = (row: { accountId?: string }) => accounts > 1 && row.accountId ? ` · ${row.accountId}` : "";
   return <Box flexDirection="column" width={width}>
     <SectionHeading title="Orders" />
-    {data.open.map((order) => {
+    {open.map((order) => {
       const changeable = canChangeBrokerOrder(order);
       return <ActionRow key={brokerOrderKey(order)} label={`${orderSummary(order)}${account(order)}`} disabled={!changeable} width={width}
         fg={order.action === "BUY" ? colors.positive : colors.negative} onPress={() => { if (changeable) onModify(order); }} />;
     })}
-    {data.recent.map((execution) => <Box key={execution.execId} flexDirection="row" gap={1} data-gloom-selectable="true">
+    {recent.map((execution) => <Box key={execution.execId} flexDirection="row" gap={1} data-gloom-selectable="true">
       <Text fg={colors.text} selectable>{`${fillSummary(execution)}${account(execution)}`}</Text>
       <Text fg={colors.textDim}>{ago(execution.time, now)}</Text>
     </Box>)}
-    {data.failed ? <Text fg={colors.warning}>Some orders could not be read. They refresh every 30 seconds.</Text> : null}
+    {failed ? <Text fg={colors.warning}>Some orders could not be read. They are read again shortly.</Text> : null}
   </Box>;
 }

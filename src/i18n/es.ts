@@ -1627,4 +1627,9 @@ export const es: Record<string, string> = {
   "{minutes} min": "{minutes} min",
   "Delisted {date}": "Excluida de bolsa el {date}",
   "Last traded {date}": "Última negociación el {date}",
+  "Account data": "Datos de la cuenta",
+  "Sync with Gloom Cloud": "Sincronizar con Gloom Cloud",
+  "Keep on this device": "Mantener en este dispositivo",
+  "Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.": "Los resúmenes diarios, el informe semanal, las alertas de posiciones, la app móvil y Ask Gloom no incluirán esta cuenta.",
+  "Account data stays on this device, out of Gloom Cloud": "Los datos de la cuenta se quedan en este dispositivo, fuera de Gloom Cloud",
 };

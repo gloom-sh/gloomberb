@@ -6,11 +6,13 @@ import { useShortcut } from "../../../react/input";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { Quote } from "../../../types/financials";
+import { formatPercentRaw } from "../../../utils/format";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
-import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTypeName as typeName } from "./ticket-parts";
+import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
+import { ticketEditingPriceStep } from "./orders-data";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
 export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders";
@@ -28,6 +30,8 @@ export interface TicketViewModel {
   /** The profile is reconnecting: it keeps its accounts and says so instead of "disconnected". */
   reconnecting?: boolean;
   capabilities?: BrokerTradingCapabilities; modifying?: boolean; defaultPriceLabel?: string; now?: number;
+  /** The working order being replaced, so its review says what changes. */
+  original?: BrokerOrder;
   initialFocus?: string; focusRevision?: number;
   confirmOrders?: boolean;
 }
@@ -43,37 +47,49 @@ export interface BrokerTicketViewProps {
   /** Terminal content measurement; the DOM uses intrinsic flex layout. */
   onContentHeight?(height: number): void;
 }
+/** "Limit at $759.50 · Day", "Stop $750.00 · Day": an order's terms, each named once. */
+function orderTerms(order: Pick<BrokerOrder, "orderType" | "limitPrice" | "stopPrice" | "tif"> & { outsideRth?: boolean }, limitWord: string, money: (value: number) => string): string {
+  const limit = order.limitPrice !== undefined ? `${limitWord} ${money(order.limitPrice)}` : "";
+  const stop = order.stopPrice !== undefined ? `Stop ${money(order.stopPrice)}` : "";
+  const price = order.orderType === "STP" && stop ? [stop] : order.orderType === "STP LMT" && stop ? [stop, ...(order.limitPrice !== undefined ? [`limit ${money(order.limitPrice)}`] : [])]
+    : [`${typeName[order.orderType] ?? order.orderType}${limit ? ` ${limit}` : ""}`, ...(stop ? [stop] : [])];
+  return [...price, ...(order.tif ? [ticketTifName[order.tif] ?? order.tif] : []), ...(order.outsideRth ? ["Outside RTH"] : [])].join(" · ");
+}
+
 export function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): string {
   const at = quote?.lastTradeTime ?? quote?.lastUpdated;
   if (!at || at > now) return "Age unknown";
   const seconds = Math.max(0, Math.floor((now - at) / 1000));
   return seconds < 60 ? `${seconds}s old` : seconds < 3600 ? `${Math.floor(seconds / 60)}m old` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m old`;
 }
-/** "+1.20 (+0.36%)", or nothing for a quote without a change of its own, such as a spread's. */
-function quoteChange(quote: Quote | undefined): string {
+/** The decimals a price step needs: 0.01 and 0.05 take two, 0.0001 four. Never fewer than two. */
+function stepDecimals(step: number): number {
+  return Number.isFinite(step) && step > 0 ? Math.max(2, Math.min(8, Math.ceil(-Math.log10(step) - 1e-9))) : 2;
+}
+/**
+ * "+1.20 (+0.36%)", or nothing for a quote without a change of its own, such as a spread's. The move takes the
+ * price's tick decimals, and its percent two.
+ */
+function quoteChange(quote: Quote | undefined, decimals: number): string {
   if (!quote || !Number.isFinite(quote.change)) return "";
-  const signed = (value: number) => `${value >= 0 ? "+" : ""}${number(value)}`;
-  return `${signed(quote.change)} (${signed(quote.changePercent)}%)`;
+  const move = quote.change.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: decimals });
+  return `${quote.change > 0 && /[1-9]/.test(move) ? "+" : ""}${move} (${formatPercentRaw(quote.changePercent)})`;
+}
+/** "Limit $760.00 → $759.50", what a replacement changes; "No change" when it changes nothing. */
+function replacementChanges(original: BrokerOrder, draft: BrokerOrderRequest, price: (value: number | undefined) => string): string {
+  const changes = [
+    original.quantity !== draft.quantity ? `Quantity ${number(original.quantity)} → ${number(draft.quantity)}` : "",
+    original.limitPrice !== draft.limitPrice && draft.limitPrice !== undefined ? `Limit ${price(original.limitPrice)} → ${price(draft.limitPrice)}` : "",
+    original.stopPrice !== draft.stopPrice && draft.stopPrice !== undefined ? `Stop ${price(original.stopPrice)} → ${price(draft.stopPrice)}` : "",
+  ].filter(Boolean);
+  return changes.length ? changes.join(" · ") : "No change from the working order";
 }
 const stateName: Record<string, string> = {
   NEW: "Working", WORKING: "Working", SUBMITTED: "Submitted", PENDING_NEW: "Submitted", PARTIALLY_FILLED: "Partially filled", FILLED: "Filled",
-  REJECTED: "Rejected", PENDING_CANCEL: "Pending cancel", CANCELED: "Cancelled", CANCELLED: "Cancelled", UNKNOWN: "Outcome unknown",
+  REJECTED: "Rejected", PENDING_CANCEL: "Pending cancel", PENDING_REPLACE: "Replacing", REPLACED: "Working", CANCELED: "Cancelled", CANCELLED: "Cancelled", UNKNOWN: "Outcome unknown",
 };
-const tifName: Record<string, string> = { DAY: "Day", GTC: "Good til cancelled", IOC: "Immediate or cancel", FOK: "Fill or kill", EXTENDED_HOURS: "Extended hours", AT_THE_OPENING: "At the opening", AT_THE_CLOSE: "At the close" };
 /** Beside the chart, the TIF button shows these. */
 const tifShortName: Record<string, string> = { DAY: "Day", GTC: "GTC", IOC: "IOC", FOK: "FOK", EXTENDED_HOURS: "Extended", AT_THE_OPENING: "At open", AT_THE_CLOSE: "At close" };
-
-/**
- * The wheel, arrow and +/- step for a price when the broker declares no tick:
- * a cent, or a hundredth of a cent under a dollar, never finer than the
- * decimals the broker accepts. Five accepted decimals are not a $0.00001 tick,
- * and stepping by one moved a $343 limit by nothing anyone could see.
- */
-export function ticketEditingPriceStep(price: number | undefined, decimals?: number): number {
-  const step = price !== undefined && Number.isFinite(price) && price > 0 && price < 1 ? 0.0001 : 0.01;
-  const finest = decimals !== undefined && Number.isInteger(decimals) && decimals >= 0 && decimals <= 18 ? 10 ** -decimals : 0;
-  return Math.max(step, finest);
-}
 
 /** Preserve intermediate edits such as an empty field or trailing decimal point. */
 function TicketNumberInput({ value, focused, onChange, ...props }: {
@@ -102,10 +118,11 @@ function TicketNumberInput({ value, focused, onChange, ...props }: {
  * red with their sizes, as a broker's quote panel reads. A delayed quote shows
  * a clock whose tooltip names the source and its age.
  */
-function DockedQuote({ quote, delayed, source, updated, price, width }: { quote?: Quote; delayed: boolean; source: string; updated: string; price(value: number | undefined): string; width: number }) {
+function DockedQuote({ quote, delayed, source, updated, price, change, width }: {
+  quote?: Quote; delayed: boolean; source: string; updated: string; price(value: number | undefined): string; change: string; width: number;
+}) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
-  const change = quoteChange(quote);
   const sized = (size: number | undefined) => size !== undefined && Number.isFinite(size) ? `× ${number(size)}` : "";
   // Sizes drop before bid and ask leave one line.
   const showSizes = `Bid ${price(quote?.bid)} ${sized(quote?.bidSize)}  Ask ${price(quote?.ask)} ${sized(quote?.askSize)}`.length <= width;
@@ -346,7 +363,10 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     {picks && !inlinePicks ? <Box flexDirection="row" justifyContent="flex-end" gap={1} paddingRight={docked ? 0 : 9}>{picks}</Box> : null}
     </Box>;
   };
-  const quotePrice = (value: number | undefined) => value === undefined ? "Unavailable" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: Math.max(2, Math.min(8, m.capabilities?.priceDecimals ?? 4)) });
+  // Quotes read to the instrument's tick: a sub-penny print of a stock above a dollar shows as cents.
+  const tickDecimals = (value: number | undefined) => stepDecimals(m.capabilities?.priceStep ?? ticketEditingPriceStep(value, m.capabilities?.priceDecimals));
+  const quotePrice = (value: number | undefined) => value === undefined ? "Unavailable" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: tickDecimals(value) });
+  const change = quoteChange(m.quote, tickDecimals(m.quote?.price));
   const sourceAt = m.quote?.lastTradeTime ?? m.quote?.lastUpdated;
   const updated = sourceAt && Number.isFinite(sourceAt) ? `${new Date(sourceAt).toISOString().slice(11, 19)} UTC` : "unknown";
   const delayed = m.quoteData !== "realtime" || m.quote?.dataSource !== "live";
@@ -361,7 +381,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     <Text fg={color} attributes={TextAttributes.BOLD}>{quotePrice(value)}</Text>
   </Box>;
   const resultQuantity = (value: number | undefined) => m.resultQuantities === "unconfirmed" || !Number.isFinite(value) ? "Not confirmed" : number(value);
-  const title = stateName[resultStatus] ?? m.result?.status ?? "Outcome unknown";
+  const title = stateName[resultStatus] ?? (m.result?.status ? `${m.result.status.charAt(0)}${m.result.status.slice(1).toLowerCase().replace(/_/g, " ")}` : "Outcome unknown");
   // A spread's limit is its net debit or credit.
   const limitLabel = strategy ? docked ? sell ? "Credit" : "Debit" : sell ? "Net credit" : "Net debit" : docked ? "Limit" : "Limit price";
   const warnings = [...new Set(m.warnings)];
@@ -375,7 +395,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         <Box ref={nodeRef("account")} flexShrink={1} minWidth={0}>{accountPicker(width - (onClose ? 6 : 2))}</Box>
         {onClose ? <IconButton icon="close" label="Close trade panel" shortcut="Esc" onPress={onClose} /> : null}
       </Box>
-      <DockedQuote quote={m.quote} delayed={delayed} source={source} updated={updated} price={quotePrice} width={width - 2} />
+      <DockedQuote quote={m.quote} delayed={delayed} source={source} updated={updated} price={quotePrice} change={change} width={width - 2} />
     </Box> : <Box flexShrink={0}>
       <Box flexDirection="column" data-gloom-selectable="true" paddingX={native ? 3 : 1} paddingY={native ? wide ? 1 : 0.5 : 0} gap={native ? wide ? 0.65 : 0.2 : 0} >
         <Box flexDirection={narrow ? "column" : "row"} justifyContent="space-between" alignItems={narrow ? "flex-start" : "center"} gap={narrow ? 0.4 : 1}>
@@ -392,7 +412,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         <Box flexDirection={narrow ? "column" : "row"} alignItems={narrow ? "flex-start" : "center"} gap={narrow ? 0.5 : 2}>
           <Box flexDirection="row" alignItems="center" gap={2}>
             <FigureText>{money(m.quote?.price, currency)}</FigureText>
-            <FigureText part="sub" change={m.quote?.change}>{quoteChange(m.quote)}</FigureText>
+            <FigureText part="sub" change={m.quote?.change}>{change}</FigureText>
           </Box>
           <Box flexDirection="row" gap={1}>
             {bookSide("Bid", m.quote?.bidSize, m.quote?.bid, c.positive)}
@@ -448,7 +468,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 <Box ref={nodeRef("tif")} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => setActive("tif")}>
                   <FieldLabel label="TIF" width={labelWidth} active={active === "tif"} />
                   <SelectButton label="Time in force" title="Time in force" showLabel={false} variant="well" width={selectWidth} value={draft.tif ?? "DAY"}
-                    options={(m.capabilities?.tif ?? ["DAY"]).map((v) => ({ value: v, label: tifName[v] ?? v, short: docked ? tifShortName[v] : undefined }))} disabled={busy || m.modifying}
+                    options={(m.capabilities?.tif ?? ["DAY"]).map((v) => ({ value: v, label: ticketTifName[v] ?? v, short: docked ? tifShortName[v] : undefined }))} disabled={busy || m.modifying}
                     emphasized={focused && active === "tif"} controlRef={tifControl} onFocus={() => setActive("tif")} onChange={(v) => onEdit("tif", v)} />
                 </Box>
                 {extendedHours ? <Box ref={nodeRef("outsideRth")}><Checkbox label="Outside RTH" checked={draft.outsideRth ?? false} disabled={busy || m.modifying}
@@ -461,12 +481,14 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 {fast ? <Text fg={c.warning}>SIM one-click · preview required</Text> : null}
               </Box> : null}
               {docked ? <Box flexDirection="column">
-                <TicketReceiptRow label={strategy && sell ? "Est. credit" : "Est. cost"} width={formWidth}
+                {strategy ? null : <TicketReceiptRow label="Position" width={formWidth} value={m.position === undefined ? "Not reported" : m.position === 0 ? "None"
+                  : `${number(m.position)} ${unit === "shares" ? "sh" : "ct"}${m.avgCost === undefined ? "" : ` @ ${money(m.avgCost, currency)}`}`} />}
+                <TicketReceiptRow label={sell ? strategy ? "Est. credit" : "Est. proceeds" : "Est. cost"} width={formWidth}
                   value={money((draft.limitPrice ?? draft.stopPrice ?? m.quote?.price ?? NaN) * draft.quantity * Number(draft.contract.multiplier ?? 1), currency)} />
                 <TicketReceiptRow label="Buying power" value={money(account?.buyingPower, currency)} width={formWidth} />
               </Box> : null}
               <Box marginTop={native && !docked ? 0.5 : 0}>{m.tradingEnabled
-                ? action("review", busy ? blocked ? "Order action pending..." : m.phase === "submitting" ? "Submitting..." : "Requesting preview..." : `${sell ? "Sell" : "Buy"} ${number(draft.quantity)} ${m.symbol}`, !canReview, true)
+                ? action("review", busy ? blocked ? "Order action pending..." : m.phase === "submitting" ? "Submitting..." : "Requesting preview..." : m.modifying ? "Review change" : `${sell ? "Sell" : "Buy"} ${number(draft.quantity)} ${m.symbol}`, !canReview, true)
                 : action("enable", "Enable trading", !m.connected, true, "neutral")}</Box>
             </Box>
           </TicketSection>
@@ -481,11 +503,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         {review ? <Box flexDirection={wide ? "row" : "column"} gap={wide ? 3 : 0} alignItems="flex-start"><TicketSection width={formWidth} title={m.modifying ? "Review replacement" : "Review order"} selectable>
           <TicketOrderHeadline model={m} large />
           {strategy ? <TicketLegs model={m} width={formWidth} /> : null}
-          <Text fg={c.textDim}>{[
-            `${typeName[draft?.orderType ?? "LMT"]}${showLimit ? ` ${strategy ? sell ? "net credit" : "net debit" : "at"} ${money(draft?.limitPrice, currency)}` : ""}`,
-            ...(showStop ? [`Stop ${money(draft?.stopPrice, currency)}`] : []),
-            draft?.tif ?? "DAY",
-          ].join(" · ")}</Text>
+          <Text fg={c.textDim}>{orderTerms({ orderType: draft?.orderType ?? "LMT", limitPrice: showLimit ? draft?.limitPrice : undefined,
+            stopPrice: showStop ? draft?.stopPrice : undefined, tif: draft?.tif ?? "DAY", outsideRth: draft?.outsideRth }, strategy ? sell ? "net credit" : "net debit" : "at", (value) => money(value, currency))}</Text>
+          {m.original && draft ? <Text fg={c.warning}>{replacementChanges(m.original, draft, (value) => money(value, currency))}</Text> : null}
           <Box marginTop={native && wide ? 1 : 0} flexDirection="column" gap={native && wide ? 0.4 : 0}>
             <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formWidth} />
             <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
@@ -515,7 +535,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <Box flexDirection="column" gap={native ? 0.5 : 0}>{action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, "negative")}</Box>
         </TicketSection> : null}
         {m.phase === "result" ? <Box flexDirection={wide ? "row" : "column"} gap={3}><TicketSection width={formWidth} title={title} selectable>
-          <TicketOrderHeadline model={m} large />{strategy ? <TicketLegs model={m} width={formWidth} /> : null}<TicketStatus model={m} width={formWidth} />
+          <TicketOrderHeadline model={m} large />{strategy ? <TicketLegs model={m} width={formWidth} /> : null}
+          {m.result ? <Text fg={c.textDim}>{orderTerms(m.result, strategy ? "net" : "at", (value) => money(value, currency))}</Text> : null}
+          <TicketStatus model={m} width={formWidth} />
           {m.resultQuantities === "last-known" ? <Text fg={c.warning}>Last known quantities</Text> : null}
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={resultQuantity(m.result?.filled)} width={formWidth} /> : null}
           <TicketReceiptRow label="Remaining" value={resultQuantity(m.result?.remaining)} width={formWidth} />
@@ -523,9 +545,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <TicketReceiptRow label={previewCredit ? "Preview credit" : "Preview cost"} value={money(previewCost, currency)} width={formWidth} />
           <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formWidth} />
           <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
-          <TicketReceiptRow label="Buying power after" value={money(m.preview?.buyingPowerAfter, currency)} width={formWidth} />
+          {m.preview?.buyingPowerAfter !== undefined ? <TicketReceiptRow label="Buying power after" value={money(m.preview.buyingPowerAfter, currency)} width={formWidth} /> : null}
           {m.error && !["UNKNOWN", "REJECTED"].includes(resultStatus) ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
-          {["NEW", "WORKING", "SUBMITTED", "PENDING_NEW", "PARTIALLY_FILLED"].includes(resultStatus) ? <Box flexDirection="row" alignItems="center" gap={1}>
+          {["NEW", "WORKING", "SUBMITTED", "PENDING_NEW", "PENDING_REPLACE", "REPLACED", "PARTIALLY_FILLED"].includes(resultStatus) ? <Box flexDirection="row" alignItems="center" gap={1}>
             {action("refresh", "Refresh status", false, false, "neutral", true)}<Text fg={c.textDim}>·</Text>
             {action("orders", "Open orders", false, false, "neutral", true)}<Text fg={c.textDim}>·</Text>
             {action("new", "New order", false, false, "neutral", true)}

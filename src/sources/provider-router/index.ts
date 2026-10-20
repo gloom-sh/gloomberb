@@ -412,7 +412,8 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain> {
-    return (await this.getCachedQuery("getOptionsChain", [ticker, exchange, expirationDate, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
+    return (await this.getCachedQuery("getOptionsChain", [ticker, exchange, expirationDate, context])
+      .load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground && context?.cacheMode !== "current" })).value;
   }
 
   getCachedQuery<K extends CachedAssetMethod>(method: K, args: CachedAssetArgs<K>) {

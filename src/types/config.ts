@@ -18,6 +18,12 @@ export interface BrokerInstanceConfig {
   config: Record<string, unknown>;
   enabled?: boolean;
   lastSyncedAt?: number;
+  /**
+   * The user keeps this connection's data on this device: Cloud sync leaves out the profile, its
+   * accounts' portfolios and account values, and the positions in them. Daily roundups, the weekly
+   * brief, position alerts, the mobile app and Ask Gloom's portfolio context then go without it.
+   */
+  localOnly?: boolean;
 }
 
 export interface ColumnConfig {

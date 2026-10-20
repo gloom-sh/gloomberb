@@ -105,7 +105,7 @@ export function bindPluginRegistryRuntimeAccess({
       pluginRegistry.events.emit("config:changed", { config: nextConfig });
     },
 
-    createBrokerInstance: async (brokerType, label, values) => {
+    createBrokerInstance: async (brokerType, label, values, options = {}) => {
       const instanceId = createBrokerInstanceId(
         brokerType,
         label,
@@ -118,6 +118,7 @@ export function bindPluginRegistryRuntimeAccess({
         connectionMode: typeof values.connectionMode === "string" ? values.connectionMode : undefined,
         config: values,
         enabled: true,
+        ...(options.localOnly ? { localOnly: true } : {}),
       };
       const nextConfig = {
         ...stateRef.current.config,
@@ -153,12 +154,15 @@ export function bindPluginRegistryRuntimeAccess({
         instance.id === instanceId
           ? (() => {
             const nextValues = options.replaceConfig ? values : { ...instance.config, ...values };
+            const { localOnly: wasLocalOnly, ...rest } = instance;
+            const localOnly = options.localOnly ?? wasLocalOnly === true;
             return {
-              ...instance,
+              ...rest,
               label: options.label ?? instance.label,
               enabled: options.enabled ?? instance.enabled,
               connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
               config: nextValues,
+              ...(localOnly ? { localOnly: true } : {}),
             };
           })()
           : instance,

@@ -119,7 +119,11 @@ export interface MarketDataRequestContext {
   brokerId?: string;
   brokerInstanceId?: string;
   instrument?: BrokerContractRef | null;
-  cacheMode?: "default" | "refresh";
+  /**
+   * "refresh" always fetches. "current" refetches a stored value past its stale time before answering, and
+   * answers with it only if that fetch fails: for a caller that cannot see a refresh landing in the background.
+   */
+  cacheMode?: "default" | "refresh" | "current";
   statementHistory?: "extended";
   /** A validated, same-target detailed retry constrained to one exhausted source. */
   historyRecovery?: import("../sources/history-retention").HistoryRecoveryCandidate;

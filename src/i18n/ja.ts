@@ -1623,4 +1623,9 @@ export const ja: Record<string, string> = {
   "{minutes} min": "{minutes} 分",
   "Delisted {date}": "上場廃止 {date}",
   "Last traded {date}": "最終取引 {date}",
+  "Account data": "口座データ",
+  "Sync with Gloom Cloud": "Gloom Cloud と同期",
+  "Keep on this device": "このデバイスに保存",
+  "Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.": "デイリーまとめ、週次ブリーフ、ポジションアラート、モバイルアプリ、Ask Gloom にはこの口座が含まれなくなります。",
+  "Account data stays on this device, out of Gloom Cloud": "口座データはこのデバイスに保存され、Gloom Cloud には送られません",
 };

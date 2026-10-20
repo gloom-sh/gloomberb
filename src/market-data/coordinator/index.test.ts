@@ -225,9 +225,11 @@ describe("MarketDataCoordinator", () => {
 
   it("force refreshes an options chain for periodic Greeks and IV updates", async () => {
     let optionsCalls = 0;
+    const modes: Array<string | undefined> = [];
     const provider = createProvider({
-      getOptionsChain: async () => {
+      getOptionsChain: async (_symbol, _exchange, _expiration, context) => {
         optionsCalls += 1;
+        modes.push(context?.cacheMode);
         return {
           underlyingSymbol: "AAPL",
           expirationDates: [1_800_000_000],
@@ -247,6 +249,8 @@ describe("MarketDataCoordinator", () => {
     await coordinator.loadOptions(request, { forceRefresh: true });
 
     expect(optionsCalls).toBe(2);
+    // Without a handle on the provider's cache, a refresh must reach the source and a stale stored chain is refetched.
+    expect(modes).toEqual(["current", "refresh"]);
   });
 
   it("uses cached chart data while a wider range request is loading", async () => {

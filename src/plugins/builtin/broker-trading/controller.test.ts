@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerAccount, BrokerOrderPreview, BrokerOrderRequest } from "../../../types/trading";
-import { BrokerTradingController, type BrokerTradingContext } from "./controller";
+import { BrokerTradingController, type BrokerOrderOutcome, type BrokerTradingContext } from "./controller";
 import { createDemoBroker, DEMO_LIVE_ACCOUNT, DEMO_SIM_ACCOUNT, type DemoBrokerOptions } from "./test-fixture";
 
 function setup(options: DemoBrokerOptions = {}) {
@@ -296,6 +296,14 @@ describe("shared broker review and confirmation gate", () => {
     expect(count("getQuote")).toBe(1);
     controller.setDraft({ ...demo.draft, contract: { ...demo.draft.contract, symbol: "MSFT" } });
     expect(() => controller.applyPriceDefault("ask")).toThrow("Load this broker");
+    // A sub-penny print takes the cent a stock above a dollar trades in, though the broker accepts five decimals.
+    const capabilities = demo.adapter.getTradingCapabilities!;
+    demo.adapter.getTradingCapabilities = (...args) => ({ ...capabilities(...args), priceDecimals: 5, priceStep: undefined });
+    demo.adapter.getQuote = async (symbol) => ({ ...demo.quote(symbol), price: 336.4249 });
+    controller.setDraft(demo.draft);
+    await controller.loadQuote();
+    controller.applyPriceDefault("last");
+    expect(controller.getSnapshot().draft?.limitPrice).toBe(336.42);
   });
 
   test("review carries delayed, stale, market order and large order warnings", async () => {
@@ -387,6 +395,42 @@ describe("shared broker review and confirmation gate", () => {
 });
 
 describe("modification, cancellation and unknown outcomes", () => {
+  test("a refused cancel or change says what became of the order instead of leaving its outcome unknown", async () => {
+    const refused = (message: string) => Object.assign(new Error(message), { refused: true });
+    const outcomes: BrokerOrderOutcome[] = [];
+    const { demo, getContext } = setup({ realtime: true, quoteAgeMs: 0 });
+    const controller = new BrokerTradingController({ getContext, onOutcome: (outcome) => outcomes.push(outcome) });
+    const order = demo.order(demo.draft); demo.seedOrder(order);
+    demo.adapter.cancelOrder = async () => { throw refused("Aries cannot find this order."); };
+    const cancel = async () => { controller.requestCancel(order); await controller.confirmCancel(true); return outcomes.at(-1); };
+    // It filled before the cancel arrived.
+    demo.adapter.getOrderStatus = async () => ({ ...order, status: "FILLED", filled: order.quantity, remaining: 0 });
+    expect(await cancel()).toMatchObject({ title: "Already filled", type: "info" });
+    expect(controller.getSnapshot()).toMatchObject({ result: { status: "FILLED" }, error: undefined });
+    // It was replaced elsewhere: a new native order at a new price, under the same handle.
+    demo.adapter.getOrderStatus = async () => ({ ...order, brokerOrderId: "replacement", limitPrice: order.limitPrice! + 1 });
+    expect(await cancel()).toMatchObject({ title: "Order changed in Demo Broker, refreshed", type: "info", order: { brokerOrderId: "replacement" } });
+    // It stands as it was: the broker's reason, and the order can be cancelled again.
+    demo.adapter.getOrderStatus = async () => structuredClone(order);
+    expect(await cancel()).toMatchObject({ title: "Aries cannot find this order", type: "error" });
+    expect(controller.getSnapshot().result?.status).toBe(order.status);
+    expect(() => controller.requestCancel(order)).not.toThrow();
+    // A refused change of an order as it was keeps the ticket on the change, with the reason in the form.
+    controller.reset();
+    demo.adapter.modifyOrder = async () => { throw refused("Aries refused the change."); };
+    controller.beginModify(order);
+    controller.setDraft({ ...controller.getSnapshot().draft!, limitPrice: order.limitPrice! - 1 });
+    await controller.review(); await controller.confirm();
+    expect(controller.getSnapshot()).toMatchObject({ phase: "editing", modifying: true, error: "Aries refused the change" });
+    // A refused placement placed nothing.
+    controller.reset();
+    demo.adapter.placeOrder = async () => { throw refused("Aries rejected this order."); };
+    controller.setDraft(demo.draft);
+    await controller.review(); await controller.confirm();
+    expect(controller.getSnapshot()).toMatchObject({ phase: "editing", result: undefined, error: "Aries rejected this order" });
+    expect(outcomes).toHaveLength(3);
+  });
+
   test("modification of price or quantity requires another exact review", async () => {
     const { demo, controller, count } = setup();
     const order = demo.order(demo.draft);
@@ -434,6 +478,24 @@ describe("modification, cancellation and unknown outcomes", () => {
     const option = demo.order({ ...demo.draft, contract: { ...demo.draft.contract, secType: "OPT" } });
     expect(() => controller.requestCancel(option)).toThrow("does not support cancelling");
     expect(() => controller.beginModify(option)).toThrow("does not support modifying");
+  });
+
+  test("an expired review says so after the ticket asks for a fresh quote", async () => {
+    const { controller, advance } = setup();
+    await controller.review();
+    advance(61_000);
+    await expect(controller.confirm()).rejects.toThrow("review expired");
+    await controller.loadQuote();
+    expect(controller.getSnapshot()).toMatchObject({ phase: "editing", error: "The review expired or the quote became stale. Review again." });
+  });
+
+  test("an order the broker is still replacing can be cancelled but not changed again", async () => {
+    const { demo, controller, count } = setup();
+    const order = demo.order(demo.draft, "PENDING_REPLACE"); demo.seedOrder(order);
+    expect(() => controller.beginModify(order)).toThrow("has not taken the last change");
+    controller.requestCancel(order);
+    await controller.confirmCancel(true);
+    expect(count("cancelOrder")).toBe(1);
   });
 
   test("cancel requires an explicit current-account confirmation and can be declined", async () => {
@@ -543,7 +605,7 @@ describe("modification, cancellation and unknown outcomes", () => {
     demo.adapter.listOpenOrders = async () => [];
     await controller.refreshResult();
     expect(controller.getSnapshot().result?.status).toBe("UNKNOWN");
-    expect(() => controller.requestCancel(controller.getSnapshot().result!)).toThrow("reconcile");
+    expect(() => controller.requestCancel(controller.getSnapshot().result!)).toThrow("Outcome unknown");
     expect(count("cancelOrder")).toBe(1);
   });
 

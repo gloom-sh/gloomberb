@@ -792,6 +792,130 @@ describe("core sync contributors", () => {
     });
   });
 
+  // Aries runs with Cloud on. Its accounts sync like any broker's, so roundups, alerts, mobile and
+  // Ask Gloom see them, but the quotes and bars it supplies never leave the device (its terms). A
+  // user can still keep one connection's data on the device.
+  function ariesState(keepOnDevice?: boolean) {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-local-only-test");
+    const aries = { id: "aries-sim", brokerType: "aries", label: "Aries", config: { clientSecret: "secret" }, enabled: true, lastSyncedAt: 1, ...(keepOnDevice ? { localOnly: true } : {}) };
+    config.brokerInstances = [aries, { id: "ibkr-main", brokerType: "ibkr", label: "IBKR", connectionMode: "gateway", config: {}, enabled: true, lastSyncedAt: 1 }];
+    const ariesAccount = { id: "broker:aries-sim:SIM1", name: "SIM1", currency: "USD", brokerId: "aries", brokerInstanceId: "aries-sim", brokerAccountId: "SIM1" };
+    const ibkrAccount = { id: "broker:ibkr-main:U1", name: "U1", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-main", brokerAccountId: "U1" };
+    config.portfolios = [config.portfolios[0]!, ariesAccount, ibkrAccount];
+    config.watchlists = [{ id: "tech", name: "Tech" }];
+    const ariesHeld = (shares: number) => ({ portfolio: ariesAccount.id, shares, broker: "aries", brokerInstanceId: "aries-sim", brokerAccountId: "SIM1" });
+    const state = createInitialState(config);
+    state.tickers = new Map([
+      ["NVDA", createTestTicker("NVDA", "NVIDIA", { portfolios: [ariesAccount.id], watchlists: ["tech"], positions: [ariesHeld(2)] })],
+      ["SPY", createTestTicker("SPY", "SPDR S&P 500", { portfolios: [ariesAccount.id], positions: [ariesHeld(21)] })],
+      ["AAPL", createTestTicker("AAPL", "Apple", {
+        portfolios: [ariesAccount.id, ibkrAccount.id],
+        positions: [ariesHeld(5), { portfolio: ibkrAccount.id, shares: 7, broker: "ibkr", brokerInstanceId: "ibkr-main" }],
+      })],
+    ]);
+    const bars = [{ date: new Date("2026-10-13T20:00:00Z"), close: 700 }, { date: new Date("2026-10-19T20:00:00Z"), close: 760 }];
+    const quoted = (symbol: string, price: number, providerId: string, priceHistorySourceKey?: string) => createTestFinancials({
+      quote: { symbol, price, currency: "USD", change: 1, changePercent: 1, lastUpdated: Date.parse("2026-10-20T15:00:00Z"), providerId },
+      priceHistory: bars, ...(priceHistorySourceKey ? { priceHistorySourceKey } : {}),
+    });
+    state.financials = new Map([
+      ["NVDA", quoted("NVDA", 217.74, "aries")],
+      // Cloud's quote over Aries's bars: the price goes up, the week's move from those bars does not.
+      ["SPY", quoted("SPY", 771.45, "gloomberb-cloud", "broker:aries:aries-sim")],
+      ["AAPL", quoted("AAPL", 342.97, "gloomberb-cloud", "provider:gloomberb-cloud")],
+    ]);
+    state.brokerAccounts = {
+      "aries-sim": [{ accountId: "SIM1", name: "SIM1", currency: "USD", netLiquidation: 100_000 }],
+      "ibkr-main": [{ accountId: "U1", name: "U1", currency: "USD", netLiquidation: 2_000 }],
+    } as typeof state.brokerAccounts;
+    return { config, state, ariesAccount };
+  }
+  const isLocalMarketData = (providerId: string) => providerId === "aries";
+  const tickersOf = (collections: any) => new Map<string, any>(collections.tickers.map((ticker: { ticker: string }) => [ticker.ticker, ticker]));
+
+  test("a broker's accounts sync like any other's, while the quotes and bars of one that keeps its market data local never do", async () => {
+    const { state } = ariesState();
+    const config = await coreConfigSyncContributor.collect({ state }) as any;
+    const collections = await coreCollectionsSyncContributor.collect({ state, isLocalMarketData }) as any;
+
+    expect(config.brokerInstances.map((instance: { id: string }) => instance.id)).toEqual(["aries-sim", "ibkr-main"]);
+    expect(JSON.stringify(config)).not.toContain("secret");
+    expect(collections.portfolios.map((portfolio: { id: string }) => portfolio.id)).toEqual(["main", "broker:aries-sim:SIM1", "broker:ibkr-main:U1"]);
+    expect(Object.keys(collections.accountsByPortfolio)).toEqual(["broker:aries-sim:SIM1", "broker:ibkr-main:U1"]);
+    const tickers = tickersOf(collections);
+    expect(tickers.get("SPY")).toMatchObject({ positions: [{ shares: 21, broker: "aries" }] });
+    expect(tickers.get("NVDA").quote).toBeUndefined();
+    expect(JSON.stringify(collections)).not.toContain("217.74");
+    expect(tickers.get("SPY").quote).toMatchObject({ price: 771.45 });
+    expect(tickers.get("SPY").quote.weekReferencePrice).toBeUndefined();
+    expect(tickers.get("AAPL").quote).toMatchObject({ price: 342.97, weekReferencePrice: 700 });
+  });
+
+  test("a connection the user keeps on this device stays off the push: its profile, accounts and positions", async () => {
+    const { state } = ariesState(true);
+    const config = await coreConfigSyncContributor.collect({ state }) as any;
+    const collections = await coreCollectionsSyncContributor.collect({ state, isLocalMarketData }) as any;
+
+    expect(config.brokerInstances.map((instance: { id: string }) => instance.id)).toEqual(["ibkr-main"]);
+    expect(config.portfolios.map((portfolio: { id: string }) => portfolio.id)).toEqual(["main", "broker:ibkr-main:U1"]);
+    expect(JSON.stringify([config, collections])).not.toMatch(/aries|SIM1|217\.74/);
+    expect(collections.portfolios.map((portfolio: { id: string }) => portfolio.id)).toEqual(["main", "broker:ibkr-main:U1"]);
+    expect(Object.keys(collections.accountsByPortfolio)).toEqual(["broker:ibkr-main:U1"]);
+    // SPY was only ever held there; NVDA stays for its watchlist.
+    const tickers = tickersOf(collections);
+    expect([...tickers.keys()].sort()).toEqual(["AAPL", "NVDA"]);
+    expect(tickers.get("NVDA")).toMatchObject({ portfolios: [], positions: [], watchlists: ["tech"] });
+    expect(tickers.get("AAPL")).toMatchObject({ portfolios: ["broker:ibkr-main:U1"], positions: [{ shares: 7, broker: "ibkr" }], quote: { price: 342.97 } });
+  });
+
+  test("a pull from another device keeps a connection kept on this device, and its portfolio and positions, in place", async () => {
+    const { config, state, ariesAccount } = ariesState(true);
+    // As the wire and the baseline store hand them back.
+    const pushedConfig = JSON.parse(JSON.stringify(await coreConfigSyncContributor.collect({ state })));
+    const pushedCollections = await coreCollectionsSyncContributor.collect({ state, isLocalMarketData }) as any;
+    let current = state;
+    const saved: TickerRecord[] = [];
+    const context = (baselinePayload: unknown) => ({
+      snapshot: { contributors: {} },
+      baselinePayload,
+      baselineState: state,
+      state,
+      getState: () => current,
+      isCurrent: () => true,
+      dispatch: (action: { type: string; config?: typeof config; tickers?: typeof state.tickers }) => {
+        if (action.type === "SET_CONFIG") current = { ...current, config: action.config! };
+        if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+      },
+      tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record); }, deleteTicker: async () => {} },
+    }) as unknown as Parameters<NonNullable<typeof coreConfigSyncContributor.apply>>[1];
+
+    // This device's own copy comes back: nothing changes.
+    await coreConfigSyncContributor.apply?.(pushedConfig, context(pushedConfig));
+    expect(current.config).toBe(state.config);
+
+    // Another device renamed the IBKR account and holds 9 AAPL there; an older build there pushed an Aries portfolio too.
+    const renamed = { ...pushedConfig, portfolios: pushedConfig.portfolios.map((portfolio: { id: string }) => (
+      portfolio.id === "broker:ibkr-main:U1" ? { ...portfolio, name: "IBKR main" } : portfolio)).concat([{ id: "broker:aries-sim:OTHER", name: "Old", currency: "USD", brokerId: "aries" }]) };
+    await coreConfigSyncContributor.apply?.(renamed, context(pushedConfig));
+    expect(current.config.brokerInstances.map((instance) => instance.id)).toEqual(["aries-sim", "ibkr-main"]);
+    expect(current.config.portfolios.map((portfolio) => [portfolio.id, portfolio.name])).toEqual([
+      ["main", config.portfolios[0]!.name], [ariesAccount.id, "SIM1"], ["broker:ibkr-main:U1", "IBKR main"],
+    ]);
+
+    const pulledTickers = pushedCollections.tickers.map((ticker: { ticker: string; positions: unknown[] }) => (
+      ticker.ticker === "AAPL" ? { ...ticker, positions: [{ portfolio: "broker:ibkr-main:U1", shares: 9, broker: "ibkr" }] } : ticker));
+    await coreCollectionsSyncContributor.apply?.(JSON.parse(JSON.stringify({ ...pushedCollections, tickers: pulledTickers })), context(pushedCollections));
+    const aapl = saved.find((record) => record.metadata.ticker === "AAPL")!.metadata;
+    expect(aapl.portfolios).toEqual([ariesAccount.id, "broker:ibkr-main:U1"]);
+    expect(aapl.positions.map((position) => [position.portfolio, position.shares])).toEqual([[ariesAccount.id, 5], ["broker:ibkr-main:U1", 9]]);
+    // NVDA is held only there: the pull leaves it as it is.
+    expect(current.tickers.get("NVDA")!.metadata.positions).toMatchObject([{ portfolio: ariesAccount.id, shares: 2 }]);
+    // A first pull, with nothing synced before to compare with, keeps them too.
+    current = state;
+    await coreCollectionsSyncContributor.apply?.(JSON.parse(JSON.stringify({ ...pushedCollections, tickers: pulledTickers })), context(undefined));
+    expect(current.tickers.get("AAPL")!.metadata.positions.map((position) => [position.portfolio, position.shares])).toEqual([[ariesAccount.id, 5], ["broker:ibkr-main:U1", 9]]);
+  });
+
   test("a watchlist removed elsewhere leaves no id on tickers, pulled or local", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-watchlist-removal-test");
     config.watchlists = [{ id: "watchlist", name: "Watchlist" }, { id: "tech", name: "Tech" }];

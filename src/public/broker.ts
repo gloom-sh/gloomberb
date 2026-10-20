@@ -21,6 +21,14 @@ export type { ResourceStore } from "../data/resource-store";
 export { resolveTickerFinancialsForInstrument } from "../market-data/coordinator";
 
 /**
+ * This host's Cloud sync honors `BrokerAdapter.localMarketData`. A broker whose market data must
+ * not reach Gloom Cloud reads it to tell an older host, which would sync its quotes and where it
+ * still has to ask for Cloud to be off: `import * as broker from "gloomberb/broker"`, then
+ * `broker.LOCAL_BROKER_MARKET_DATA === true`.
+ */
+export const LOCAL_BROKER_MARKET_DATA = true;
+
+/**
  * The app's cached-resource store. Set by the host at startup and cleared on
  * teardown; null before services are constructed.
  */

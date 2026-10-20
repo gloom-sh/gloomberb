@@ -30,6 +30,7 @@ const BROKER_INVOKE_OPERATIONS = new Set([
   "getChartResolutionCapabilities",
   "getOptionsChain",
   "listOpenOrders",
+  "getOrderStatus",
   "listExecutions",
   "previewOrder",
   "placeOrder",
@@ -116,6 +117,8 @@ function invokeBrokerOperation(
     case "previewOrder":
     case "placeOrder":
       return (broker[operation] as any)?.call(broker, instance, args[0]);
+    case "getOrderStatus":
+      return broker.getOrderStatus?.(instance, args[0] as number);
     case "modifyOrder":
       return broker.modifyOrder?.(instance, args[0] as number, args[1] as never);
     case "cancelOrder":
@@ -166,6 +169,15 @@ function createBrokerCapability(options: CoreCapabilityOptions): PluginCapabilit
             emit({ kind: "quote", target, quote });
           },
         );
+      }),
+      orders: stream((input: any, emit) => {
+        const instanceId = requireString(input.instanceId, "Broker instance");
+        const { instance, broker } = resolveBrokerInstance(options, instanceId);
+        if (!broker.subscribeOrders) throw new Error(`Broker "${broker.name}" does not stream orders.`);
+        return broker.subscribeOrders(instance, {
+          order: (order) => emit({ kind: "order", order }),
+          live: (live) => emit({ kind: "orders-live", live }),
+        });
       }),
       removeInstance: op(async (input: any) => {
         const { instance, broker } = resolveBrokerInstance(options, input.instanceId);

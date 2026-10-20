@@ -25,6 +25,11 @@ export type {
   AssetDisplayContext, AssetDisplayKind, MarketFormatOptions, StablePriceContext,
 } from "../market-data/market/format";
 
+// How a provider says it has nothing for a symbol, as built-in sources do: the
+// router tries the next provider, does not log it as a failure, and shows the
+// reason where the data would be.
+export { createProviderMiss } from "../sources/provider-errors";
+
 // The coordinator the app loads snapshots through, so a plugin pane that shows
 // its own list of tickers warms the same cache the rest of the app reads.
 export { getSharedMarketDataCoordinator } from "../market-data/coordinator";

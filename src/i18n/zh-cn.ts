@@ -1623,4 +1623,9 @@ export const zhCN: Record<string, string> = {
   "{minutes} min": "{minutes} 分钟",
   "Delisted {date}": "已退市 {date}",
   "Last traded {date}": "最后交易 {date}",
+  "Account data": "账户数据",
+  "Sync with Gloom Cloud": "与 Gloom Cloud 同步",
+  "Keep on this device": "保留在此设备上",
+  "Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.": "每日汇总、每周简报、持仓提醒、移动应用和 Ask Gloom 将不再包含此账户。",
+  "Account data stays on this device, out of Gloom Cloud": "账户数据保留在此设备上，不上传到 Gloom Cloud",
 };

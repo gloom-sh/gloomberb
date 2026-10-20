@@ -102,6 +102,7 @@ export function useBrokerManagerActions({
       await updateBrokerInstance(selectedRow.id, nextConfig, {
         label,
         enabled: editDraft.enabled,
+        localOnly: editDraft.localOnly,
         replaceConfig: true,
       });
       setEditDraft(null);

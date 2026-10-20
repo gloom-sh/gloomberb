@@ -902,6 +902,13 @@ export interface BrokerInstanceUpdateOptions {
   label?: string;
   enabled?: boolean;
   replaceConfig?: boolean;
+  /** Keep this connection's data on this device, out of Gloom Cloud sync (`BrokerInstanceConfig.localOnly`). */
+  localOnly?: boolean;
+}
+
+export interface BrokerInstanceCreateOptions {
+  /** Keep the new connection's data on this device from the start, before its first import. */
+  localOnly?: boolean;
 }
 
 export interface PinTickerOptions {
@@ -960,7 +967,7 @@ export interface GloomPluginContext {
   readonly paneSettings: PluginPaneSettingsState;
   readonly teamState: PluginTeamState;
 
-  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
+  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>, options?: BrokerInstanceCreateOptions): Promise<BrokerInstanceConfig>;
   updateBrokerInstance(instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions): Promise<void>;
   syncBrokerInstance(instanceId: string): Promise<void>;
   removeBrokerInstance(instanceId: string): Promise<void>;

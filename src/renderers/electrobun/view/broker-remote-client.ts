@@ -125,6 +125,22 @@ const client: BrokerRemoteClient = {
     });
   },
 
+  subscribeOrders(instanceId, listener) {
+    return subscribeBackendCapability({
+      subscriptionId: `broker-orders:${instanceId}:${nextSubscriptionId++}`,
+      capabilityId: BROKER_CAPABILITY_ID,
+      operationId: "orders",
+      payload: { instanceId },
+      onEvent: (message) => {
+        const event = message as BrokerRemoteEvent;
+        if (event.kind === "order") listener.order(event.order);
+        else if (event.kind === "orders-live") listener.live?.(event.live);
+      },
+      // A stream that cannot open leaves the host polling open orders.
+      onError: (error) => { listener.live?.(false); console.error("Failed to subscribe to broker orders", error); },
+    });
+  },
+
   async removeInstance(instanceId) {
     await invokeBrokerCapability("removeInstance", { instanceId });
     statuses.delete(instanceId);

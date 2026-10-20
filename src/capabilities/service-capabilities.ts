@@ -1,6 +1,7 @@
 import type { BrokerConnectionStatus } from "../types/broker";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
+import type { BrokerOrder } from "../types/trading";
 
 export const BROKER_CAPABILITY_ID = "broker.core";
 export const NOTES_FILES_CAPABILITY_ID = "notes.files";
@@ -18,7 +19,12 @@ export type BrokerQuoteEvent = {
   quote: Quote;
 };
 
-export type BrokerRemoteEvent = BrokerStatusEvent | BrokerQuoteEvent;
+/** An order change, or the order stream going live or quiet, from `BrokerAdapter.subscribeOrders`. */
+export type BrokerOrderEvent =
+  | { kind: "order"; order: BrokerOrder }
+  | { kind: "orders-live"; live: boolean };
+
+export type BrokerRemoteEvent = BrokerStatusEvent | BrokerQuoteEvent | BrokerOrderEvent;
 
 /**
  * What an AI runtime reports while it signs an account in.

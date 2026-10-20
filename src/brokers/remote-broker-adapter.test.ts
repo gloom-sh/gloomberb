@@ -15,6 +15,7 @@ function remoteClient(invoked: string[]): BrokerRemoteClient {
     getStatus: () => null,
     subscribeStatus: () => () => {},
     subscribeQuotes: () => () => {},
+    subscribeOrders: () => () => {},
     removeInstance: async () => {},
     destroyAll: async () => {},
   };

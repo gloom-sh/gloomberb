@@ -1621,4 +1621,9 @@ export const ko: Record<string, string> = {
   "{minutes} min": "{minutes}분",
   "Delisted {date}": "상장폐지 {date}",
   "Last traded {date}": "최종 거래 {date}",
+  "Account data": "계좌 데이터",
+  "Sync with Gloom Cloud": "Gloom Cloud와 동기화",
+  "Keep on this device": "이 기기에 보관",
+  "Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.": "일일 요약, 주간 브리핑, 포지션 알림, 모바일 앱, Ask Gloom에 이 계좌가 포함되지 않습니다.",
+  "Account data stays on this device, out of Gloom Cloud": "계좌 데이터는 Gloom Cloud에 올라가지 않고 이 기기에 남습니다",
 };

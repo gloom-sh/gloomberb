@@ -197,7 +197,7 @@ export function useBrokerAddFlow({
           title: "Enable trading?", body: "Orders can commit real money. Start with a simulation account. Every order needs review and confirmation; LIVE orders also need a typed confirmation. You can turn trading off in Brokers at any time.",
           confirmLabel: "Enable trading", confirmVariant: "danger",
         })) { setBusy(null); return; }
-        const instance = await createBrokerInstance(adapter.id, label, config);
+        const instance = await createBrokerInstance(adapter.id, label, config, { localOnly: draft.localOnly });
         instanceId = instance.id;
       } catch (error) {
         setBusy(null);
@@ -514,9 +514,9 @@ function DeviceProfileForm({
 }) {
   const { adapter, draft, activeKey } = step;
   const fields = getVisibleBrokerConfigFields(adapter, draft.values);
-  const keys = useMemo<BrokerEditKey[]>(() => ["label", ...fields.map((field) => field.key)], [fields]);
+  const keys = useMemo<BrokerEditKey[]>(() => ["label", ...fields.map((field) => field.key), "localOnly"], [fields]);
   const selectKeys = useMemo<ReadonlySet<BrokerEditKey>>(
-    () => new Set(fields.filter((field) => field.type === "select").map((field) => field.key)),
+    () => new Set(["localOnly", ...fields.filter((field) => field.type === "select").map((field) => field.key)]),
     [fields],
   );
   const { updateDraft, connectDevice, leave } = addFlow;
@@ -539,6 +539,10 @@ function DeviceProfileForm({
   }, [activeKey, keys, updateDraft]);
 
   const cycleSelect = useCallback((key: BrokerEditKey, direction: -1 | 1) => {
+    if (key === "localOnly") {
+      updateDraft((current) => ({ draft: { ...current.draft, localOnly: !current.draft.localOnly } }));
+      return;
+    }
     const options = fields.find((field) => field.key === key)?.options ?? [];
     if (options.length === 0) return;
     updateDraft((current) => {
@@ -576,6 +580,7 @@ function DeviceProfileForm({
           rowRef={rowRef}
           onActiveKeyChange={setActiveKey}
           onLabelChange={(label) => updateDraft((current) => ({ draft: { ...current.draft, label } }))}
+          onLocalOnlyChange={(localOnly) => updateDraft((current) => ({ draft: { ...current.draft, localOnly } }))}
           onValueChange={(key, value) => updateDraft((current) => ({
             draft: { ...current.draft, values: { ...current.draft.values, [key]: value } },
           }))}

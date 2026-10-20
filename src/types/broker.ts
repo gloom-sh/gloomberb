@@ -92,6 +92,21 @@ export interface BrokerHistoryOptions {
   session?: "extended";
 }
 
+/** What a broker's order stream calls. */
+export interface BrokerOrderListener {
+  /**
+   * An order as the broker now reports it: placed, partly or wholly filled,
+   * replaced, cancelled, rejected or expired. The same `orderId` names the
+   * order through all of them, as `getOrderStatus` and `cancelOrder` take it.
+   */
+  order(order: BrokerOrder): void;
+  /**
+   * Whether changes are being pushed now. While false, as before the first
+   * call, the host polls open orders instead; on true it reconciles once.
+   */
+  live?(live: boolean): void;
+}
+
 export interface BrokerAdapter {
   readonly id: string;
   readonly name: string;
@@ -102,6 +117,13 @@ export interface BrokerAdapter {
    * starts the day at the pre-market open; without it, the regular session.
    */
   readonly extendedHoursHistory?: boolean;
+  /**
+   * The quotes and bars this broker supplies stay on the user's device: Gloom Cloud sync never
+   * uploads them, for a broker whose terms restrict redistributing its market data. Its accounts
+   * sync like any broker's, unless the user keeps a connection on the device (`localOnly` on the
+   * profile). Hosts that honor it export `LOCAL_BROKER_MARKET_DATA` from `gloomberb/broker`.
+   */
+  readonly localMarketData?: boolean;
   validate(instance: BrokerInstanceConfig): Promise<boolean>;
   importPositions(instance: BrokerInstanceConfig): Promise<BrokerPosition[]>;
   importPortfolioSnapshot?(instance: BrokerInstanceConfig): Promise<{ accounts: BrokerAccount[]; positions: BrokerPosition[] }>;
@@ -150,6 +172,8 @@ export interface BrokerAdapter {
    * Whether this profile can stream quotes at all. Return false for modes that
    * only sync statements, so their positions stream from the cloud instead.
    * Quotes are also only routed to a broker whose status is "connected".
+   * Answer from the profile's configuration, not from session state: the
+   * desktop app asks in its view, while the session lives in the backend.
    */
   canStreamQuotes?(instance: BrokerInstanceConfig): boolean;
   subscribeQuotes?(
@@ -158,6 +182,12 @@ export interface BrokerAdapter {
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void;
   listOpenOrders?(instance: BrokerInstanceConfig): Promise<BrokerOrder[]>;
+  /**
+   * Pushes order changes as the broker reports them, for every account the
+   * profile includes. The host baselines from `listOpenOrders` and polls it
+   * while `live` is false or never called; see BrokerOrderListener.
+   */
+  subscribeOrders?(instance: BrokerInstanceConfig, listener: BrokerOrderListener): () => void;
   /** Explicit status, including terminal orders. Null means unconfirmed, never cancelled by absence. */
   getOrderStatus?(instance: BrokerInstanceConfig, orderId: number): Promise<BrokerOrder | null>;
   listExecutions?(instance: BrokerInstanceConfig): Promise<BrokerExecution[]>;
@@ -166,6 +196,11 @@ export interface BrokerAdapter {
   /** Config patch for the host's explicit enable/disable trading confirmation. Must not perform I/O. */
   getTradingConfigUpdate?(instance: BrokerInstanceConfig, enabled: boolean): Record<string, unknown>;
   previewOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrderPreview>;
+  /**
+   * Place, change and cancel throw when the broker did not take the action. An error with `refused: true` says the
+   * broker answered no, or nothing was sent: the order is as it was, and its message is one short line the app shows as
+   * it is ("Aries cannot find this order"). Any other error is a lost answer, whose outcome the app treats as unknown.
+   */
   placeOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder>;
   modifyOrder?(instance: BrokerInstanceConfig, orderId: number, request: BrokerOrderRequest): Promise<BrokerOrder>;
   cancelOrder?(instance: BrokerInstanceConfig, orderId: number): Promise<void>;

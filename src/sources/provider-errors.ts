@@ -1,4 +1,6 @@
-const PROVIDER_MISS_BRAND = Symbol("provider-miss");
+// Registered, so a miss raised by another copy of this module (a plugin that
+// resolved `gloomberb/market-data` from the source tree) is still recognized.
+const PROVIDER_MISS_BRAND = Symbol.for("gloomberb.provider-miss");
 const EXPECTED_PROVIDER_MISS = /No data found|symbol may be delisted|"code":"Not Found"|No history for /i;
 
 const MAX_REASON_LENGTH = 200;
