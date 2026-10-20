@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
-import { useLiveBrokerAccounts, type LiveBrokerAccounts } from "./live-accounts";
+import { resolveOfflineBroker, useLiveBrokerAccounts, type LiveBrokerAccounts } from "./live-accounts";
 
 const tui = createOpenTuiTestHarness();
 let latest: LiveBrokerAccounts | null = null;
@@ -81,4 +81,19 @@ test("reloads accounts on connection changes and explicit refreshes, not on stat
   await act(async () => setStatus({ state: "connected", message: "Connected" }));
   await settle();
   expect(loads).toBe(3);
+});
+
+test("only a broker that could be connected and is not counts as offline", () => {
+  const portfolio = { id: "broker:rh:A1", name: "A1", currency: "USD", brokerInstanceId: "rh", lastSyncedAt: 5 };
+  const broker: BrokerAdapter = { id: "robinhood", name: "Robinhood", configSchema: [], validate: async () => true, importPositions: async () => [] };
+  const status = (state: BrokerConnectionStatus["state"], extra: Partial<BrokerConnectionStatus> = {}): BrokerConnectionStatus => ({ state, updatedAt: 0, ...extra });
+
+  expect(resolveOfflineBroker(portfolio, instance, broker, status("disconnected"))).toMatchObject({ syncedAt: 5, reason: "Robinhood disconnected", reconnectable: true });
+  expect(resolveOfflineBroker(portfolio, instance, broker, status("error", { message: "Sign in again." }))?.reason).toBe("Sign in again.");
+  // No plugin connects it: still dated, but no key could bring it back.
+  expect(resolveOfflineBroker(portfolio, { ...instance, brokerType: "ibkr" }, null, null)).toMatchObject({ reason: "IBKR unavailable", reconnectable: false });
+  for (const quiet of [status("connected"), status("connecting"), status("disconnected", { mode: "flex" }), null]) {
+    expect(resolveOfflineBroker(portfolio, instance, broker, quiet)).toBeNull();
+  }
+  expect(resolveOfflineBroker(portfolio, { ...instance, enabled: false }, broker, status("disconnected"))).toBeNull();
 });

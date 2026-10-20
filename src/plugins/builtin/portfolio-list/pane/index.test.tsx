@@ -14,6 +14,7 @@ import {
   type AppConfig,
   type BrokerInstanceConfig,
 } from "../../../../types/config";
+import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
@@ -677,6 +678,62 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(ticker?.metadata.portfolios).toEqual(["other"]);
     expect(ticker?.metadata.positions).toEqual([kept]);
     expect(ticker?.metadata.watchlists).toEqual(["watchlist"]);
+  });
+
+  test("a disconnected broker keeps its positions, dated, and b reconnects and syncs it", async () => {
+    const portfolioId = "broker:ibkr-live:DU12345";
+    const config = createPortfolioConfig(portfolioId, [createBrokerInstance("gateway", "ibkr-live")]);
+    const syncedAt = new Date(2025, 9, 17, 14, 2).getTime();
+    config.portfolios = config.portfolios.map((portfolio) => portfolio.id === portfolioId ? { ...portfolio, lastSyncedAt: syncedAt } : portfolio);
+    let status: BrokerConnectionStatus = { state: "disconnected", mode: "gateway", updatedAt: 0 };
+    const listeners = new Set<() => void>();
+    const setStatus = (next: BrokerConnectionStatus) => {
+      status = next;
+      for (const listener of listeners) listener();
+    };
+    const broker: BrokerAdapter = {
+      id: "ibkr",
+      name: "IBKR",
+      configSchema: [],
+      validate: async () => true,
+      importPositions: async () => [],
+      getStatus: () => status,
+      subscribeStatus(_instance, listener) {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+    };
+    const calls: string[] = [];
+    const runtime = createTestPluginRuntime({
+      getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? broker : null,
+      connectBrokerInstance: async (instanceId) => {
+        calls.push(`connect ${instanceId}`);
+        setStatus({ state: "connected", mode: "gateway", updatedAt: 1 });
+      },
+      syncBrokerInstance: async (instanceId) => { calls.push(`sync ${instanceId}`); },
+    });
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness config={config} collectionId={portfolioId} runtime={runtime} paneHeight={11} />
+      <PaneFooterBar footer={footer} focused width={100} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 24 });
+    await flushFrame();
+
+    const frame = await tui.waitForFrameToContain("[b] reconnect");
+    expect(frame).toContain("AAPL");
+    expect(frame).toContain("as of Oct 17 14:02");
+    expect(frame).toContain("IBKR disconnected");
+    expect(frame).not.toContain("Acct missing");
+
+    await act(async () => {
+      tui.setup().mockInput.pressKey("b");
+      await Promise.resolve();
+    });
+    await flushFrame();
+    expect(calls).toEqual(["connect ibkr-live", "sync ibkr-live"]);
+    const connected = await tui.waitForFrameToExclude("[b] reconnect");
+    expect(connected).toContain("AAPL");
+    expect(connected).not.toContain("IBKR disconnected");
   });
 
   const teamConfig = createManualCollectionConfig("team:t1:w1");

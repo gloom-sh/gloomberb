@@ -406,6 +406,7 @@ export function layoutPortfolioSummaryHeader(
 export function buildPortfolioFooterSegments({
   accountState,
   accountStatusText,
+  brokerOffline,
   financialsMap,
   isPortfolioTab,
   refreshingSize,
@@ -414,17 +415,25 @@ export function buildPortfolioFooterSegments({
 }: {
   accountState: PortfolioSummaryAccountState | null;
   accountStatusText?: string;
+  /**
+   * The portfolio's broker is offline. The pane says why, which stands in for
+   * the missing account and the quote time, and when it knows, when the
+   * positions were synced, which also dates the account.
+   */
+  brokerOffline?: { dated: boolean };
   financialsMap: Map<string, TickerFinancials>;
   isPortfolioTab: boolean;
   refreshingSize: number;
   sortedTickers: TickerRecord[];
   totals: PortfolioSummaryTotals;
 }): PaneFooterSegment[] {
+  const source: PaneFooterSegment[] = accountState ? [{ id: "source", parts: [{ text: accountState.sourceLabel, tone: "muted" }] }] : [];
+  if (isPortfolioTab && brokerOffline) return brokerOffline.dated ? [] : source;
   const accountStatus: PaneFooterSegment[] = isPortfolioTab && accountStatusText
     ? [{ id: "account-status", parts: [{ text: accountStatusText, tone: "muted" }] }]
     : [];
   // Cached account numbers stay on screen when a live refresh fails, so the failure sits beside their date.
-  if (accountState) return [{ id: "source", parts: [{ text: accountState.sourceLabel, tone: "muted" }] }, ...accountStatus];
+  if (accountState) return [...source, ...accountStatus];
   if (isPortfolioTab ? !totals.hasPositions && !accountStatusText : totals.watchlistCount === 0) return [];
 
   const lastRefreshTimestamp = getMostRecentQuoteUpdate(

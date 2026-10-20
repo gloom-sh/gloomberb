@@ -838,6 +838,8 @@ Each broker is a plugin with its own repository, installed on first launch and u
 
 Gloomberb saves the connection data on the local device. It does not include this data in Gloom Cloud synchronization. A later position sync updates the managed portfolios and removes positions that the broker no longer reports.
 
+While a broker is disconnected, failing, or missing its plugin, its portfolio in `PF` keeps the positions from its last sync. The footer says when that was and why the broker is offline (`as of Oct 17 14:02  IBKR disconnected`). Press `b` there to reconnect it: Interactive Brokers through Gloom asks you to sign in again, as `c` does in `BR`, any other broker connects, and the portfolio then syncs. A broker whose plugin is missing has no `b`; install the plugin first. A Flex profile only syncs on demand and is never shown as disconnected.
+
 ### Imported bond price basis
 
 A broker can declare bond cost and mark prices as `percent-of-par`: quantity is nominal face in the position currency, and monetary cost/value are nominal × quoted price ÷ 100. For example, 1,000 USD face at 87.742% par has a cost of 877.42 USD. The supplied contract multiplier remains separate metadata and is not applied again. Position cells use `face` and `% par`; bond ETFs continue to use ordinary share prices.

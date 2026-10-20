@@ -53,6 +53,7 @@ import {
   renderSummarySegments,
 } from "../summary";
 import { usePortfolioAccountState } from "../summary/live-accounts";
+import { useOfflineBrokerFooter } from "../../shared/broker-reconnect";
 import {
   getCollectionEntries,
   getPortfolioPaneSettings,
@@ -190,8 +191,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const flashSymbols = useQuoteFlashMap(financialsMap, valueFlashingEnabled);
 
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
-  const { accountState, accountsError, brokerError } = usePortfolioAccountState(currentPortfolio, accountStateInput);
+  const { accountState, accountsError, offline } = usePortfolioAccountState(currentPortfolio, accountStateInput);
   const brokerPortfolio = isPortfolioTab && !!currentPortfolio?.brokerInstanceId;
+  // The positions stay as last synced while the broker is away, dated, with one key to bring it back.
+  const offlineBrokerFooter = useOfflineBrokerFooter(brokerPortfolio ? offline : null);
   const portfolioTargets = currentPortfolio?.targetWeights;
   const columns = useMemo(
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio) }),
@@ -548,7 +551,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     accountState: summaryAccountState,
     accountStatusText: accountsError
       ? `Accounts unavailable: ${accountsError}`
-      : brokerPortfolio ? brokerError ?? (accountState ? undefined : "Acct missing") : undefined,
+      : brokerPortfolio && !accountState ? "Acct missing" : undefined,
+    brokerOffline: brokerPortfolio && offline ? { dated: offline.syncedAt != null } : undefined,
     financialsMap,
     isPortfolioTab,
     refreshingSize,
@@ -557,9 +561,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }), [financialsMap, sortedTickers], [
     accountState,
     accountsError,
-    brokerError,
     brokerPortfolio,
     isPortfolioTab,
+    offline,
     portfolioSummaryTotals,
     refreshingSize,
     summaryAccountState,
@@ -637,11 +641,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   usePaneFooter("portfolio-list", () => ({
     info: [
+      ...offlineBrokerFooter.asOf,
       ...summaryFooterInfo,
+      ...offlineBrokerFooter.status,
       ...(fxStatusText && !fxWarning ? [{ id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }] : []),
       ...(showsPerpetuals && perpetuals.stale ? [{ id: "perpetuals", parts: [{ text: "perpetuals stale", tone: "warning" as const }] }] : []),
     ],
     hints: [
+      ...offlineBrokerFooter.hints,
       ...(removalCollection
         ? [{
             id: "delete",
@@ -676,6 +683,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     fxStatusText,
     fxWarning,
     isPortfolioTab,
+    offlineBrokerFooter,
     perpetuals.stale,
     removalCollection,
     removeSelectedTicker,
