@@ -120,3 +120,20 @@ test("qualified saved ranking keeps literal crypto and share-class punctuation",
     expect(mergePlainRootTickerResults(lookalike!, rootRows, [])[0]?.label).toBe(lookalike);
   }
 });
+
+test("a choice of listings says which one no longer trades, and when (GLO-1062)", async () => {
+  // A bare FRC: Mexico's stale cross-listing, and First Republic's US run, which has no name on record.
+  const results: InstrumentSearchResult[] = [
+    { providerId: "gloomberb-cloud", symbol: "FRC", name: "First Republic Bank", exchange: "BMV", primaryExchange: "BMV",
+      type: "Common Stock", currency: "MXN" },
+    { providerId: "gloomberb-cloud", symbol: "FRC", name: "FRC", exchange: "", type: "Common Stock", currency: "USD",
+      delisting: { status: "inactive", lastTradeDate: "2023-04-28", historyStart: "2016-01-04" } },
+  ];
+  const error = await resolveTickerSearch({ query: "FRC", activeTicker: null, tickers: new Map(),
+    dataProvider: createTestDataProvider({ search: async () => results, getQuote: async () => null }),
+  }).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(AmbiguousTickerError);
+  const names = (error as AmbiguousTickerError).listingNames;
+  expect(names.FRC).toBe("Last traded Apr 28, 2023");
+  expect(Object.values(names)).toContain("First Republic Bank");
+});
