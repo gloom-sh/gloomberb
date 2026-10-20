@@ -360,7 +360,7 @@
           {
             "code": "PDLR",
             "name": "Primary Dealer Positions",
-            "description": "Weekly net positions and settlement fails in Treasuries and mortgage-backed securities."
+            "description": "Weekly net positions with history, by sector and Treasury tenor, and settlement fails."
           },
           {
             "code": "CRDOC",

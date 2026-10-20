@@ -971,7 +971,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PDLR: {
-    summary: "Weekly primary dealer net positions and settlement fails across Treasuries and mortgage-backed securities.",
+    summary: "Weekly primary dealer net positions with history, by sector and Treasury tenor (bills, coupons, TIPS, FRN), and settlement fails.",
     usage: ["PDLR"],
     keys: [TABS],
     data: same("Weekly, as published"),
