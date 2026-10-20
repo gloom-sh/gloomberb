@@ -48,7 +48,7 @@ describe("missed notice log", () => {
     expect(log.at(-1)).toMatchObject({ id: first.id, body: "NVDA above 7 triggered at 7.40", at: 9_000, read: false });
   });
 
-  test("the status bar counts missed alert, catalyst and team notices, never plain toasts", () => {
+  test("the status bar counts missed alert, catalyst, economic release and team notices, never plain toasts", () => {
     const shown: AppNotificationRequest[] = [];
     const { notify } = notifier(shown);
     notify({ body: "Could not save alerts.json", type: "error" });
@@ -62,12 +62,13 @@ describe("missed notice log", () => {
     notify({ body: "AAPL above 230.00 triggered at 230.12", type: "success", refId: "price:alert-1", action: { label: "Open", onClick: () => { opened += 1; } } });
     notify({ body: "FDA decision on XYZ · Decided", type: "info", refId: "catalyst:ev-1" });
     notify({ title: "MD Macro Desk", body: "@carol invited you to Macro Desk. Run TEAM to accept.", type: "info", refId: "team:card-1" });
-    expect(unreadNotificationLogCount()).toBe(3);
+    notify({ title: "US", body: "CPI m/m 0.3% vs 0.3%", type: "info", refId: "econ:cpi" });
+    expect(unreadNotificationLogCount()).toBe(4);
 
     // Pressing the toast's own button means it was not missed.
     shown.find((notification) => notification.refId === "price:alert-1")?.action?.onClick();
     expect(opened).toBe(1);
-    expect(unreadNotificationLogCount()).toBe(2);
+    expect(unreadNotificationLogCount()).toBe(3);
   });
 
   test("lives in this device's state store, outside config and synced settings", () => {

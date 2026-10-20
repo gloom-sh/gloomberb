@@ -49,7 +49,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
   const [username, setUsername] = useState<string | null>(initialSnapshot.user?.username ?? null);
   const [hasSavedSession, setHasSavedSession] = useState(initialSnapshot.hasSavedSession);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  // What the Unread list shows as unread: chat, then missed price, catalyst and team notices.
+  // What the Unread list shows as unread: chat, then missed price, catalyst, economic release and team notices.
   const notices = useSyncExternalStore(subscribeNotificationLog, getNotificationLog, getNotificationLog);
   const unreadCount = unreadTotal(snapshot, notices);
 

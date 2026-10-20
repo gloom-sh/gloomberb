@@ -10,6 +10,8 @@ Atom feeds use the publisher's stable entry ID, and the feed timestamp reflects 
 
 A failed or malformed RSS/Atom response leaves the last successfully cached stories available and reports the feed failure in the existing status bar. Other available feeds continue to contribute stories; successful recovery clears the failure. An empty, valid feed differs from an invalid document. The reader does not resolve external DTDs or expand custom entity declarations; documents requiring internal DTD subsets are unsupported. The parser cache version changes with this correction, so old cached article links and IDs are refetched rather than reused. The legacy array-only `fetchNews` capability preserves available articles; use `fetchNewsPage` for its source-failure status.
 
+If saved news feed settings contain unreadable JSON, the News Feed status reports that the settings could not be read. RSS loading and feed edits pause, including automatic migration; the saved values stay untouched. Repair the affected `feeds` or `disabledDefaultFeedIds` value in the `news` plugin configuration and refresh to resume. To discard a damaged value deliberately, back up the configuration first, then replace that value with `[]`: this removes custom feeds for `feeds`, or restores bundled feeds for `disabledDefaultFeedIds`. Readable settings keep their existing normalization and migration behavior.
+
 `gloomberb rss fetch <url>` exits with a non-zero status when the feed cannot be fetched or parsed. A valid feed with no items still succeeds; text output says "The feed has no items."
 
 ## Sources, times, tickers and topics

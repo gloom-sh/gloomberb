@@ -20,6 +20,7 @@ import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import type { EconEvent } from "./types";
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
+import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
@@ -35,6 +36,7 @@ import {
   formatCountdown,
   formatStaleness,
   getCalendarCache,
+  subscribeCalendar,
   impactIndicator,
   loadCalendar,
   matchesCountry,
@@ -75,10 +77,16 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // loadCalendar serves a fresh cache without a request, so the pane can always
   // ask and still follow the global cadence once the cache goes stale.
   const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
+  // A load made elsewhere, such as the print watch asking while a release is
+  // due, reaches the open pane through the cache; the newer of the two wins.
+  const [cacheVersion, setCacheVersion] = useState(0);
+  useEffect(() => subscribeCalendar(() => setCacheVersion((version) => version + 1)), []);
+  const cached = useMemo(() => getCalendarCache(), [cacheVersion]);
+  const shown = cached && (!calendar.data || cached.fetchedAt > calendar.data.fetchedAt) ? cached : calendar.data;
   const { loading } = calendar;
-  const events = calendar.data?.data ?? NO_EVENTS;
-  const stale = calendar.data?.stale ?? false;
-  const fetchedAt = calendar.data?.fetchedAt ?? null;
+  const events = shown?.data ?? NO_EVENTS;
+  const stale = shown?.stale ?? false;
+  const fetchedAt = shown?.fetchedAt ?? null;
   // A cache that could not be refreshed arrives as a result, not a failure.
   const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
   // The selected row and the open event are remembered by event id, so a
@@ -437,6 +445,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   );
 }
 
+let stopPrintWatch: (() => void) | null = null;
+
 export const economicCalendarModule: PluginModule = {
   series: FRED_CATALOG_SERIES,
   panes: [{
@@ -449,6 +459,16 @@ export const economicCalendarModule: PluginModule = {
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 30 },
     tableExport: true,
+    settings: {
+      title: "Economic Calendar Settings",
+      fields: [{
+        key: ECON_PRINT_NOTIFICATIONS_ENABLED_KEY,
+        label: "Notifications",
+        description: "Notify when a high-impact release prints, even while this pane is closed.",
+        type: "toggle",
+        storage: "plugin",
+      }],
+    },
   }],
   paneTemplates: [{
     id: "econ-calendar-pane",
@@ -461,8 +481,12 @@ export const economicCalendarModule: PluginModule = {
   }],
   setup(ctx) {
     attachEconCalendarPersistence(ctx.persistence);
+    stopPrintWatch?.();
+    stopPrintWatch = setupHighImpactPrintNotifications(ctx);
   },
   dispose() {
+    stopPrintWatch?.();
+    stopPrintWatch = null;
     resetEconCalendarPersistence();
   },
 };

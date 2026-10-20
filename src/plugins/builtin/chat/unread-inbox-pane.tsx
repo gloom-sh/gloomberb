@@ -55,6 +55,7 @@ const COLUMNS: DataTableColumn[] = [
 const NOTICE_LABELS: Record<MissedNoticeKind, string> = {
   price: "Price alert",
   catalyst: "Catalyst",
+  econ: "Economic release",
   team: "Team",
 };
 
@@ -193,7 +194,7 @@ export function UnreadInboxPane({
     });
   }, [createPaneFromTemplate, dispatch, inboxInstanceId, stateRef]);
 
-  // A notice opens where its toast did: the price rule on ALRT Prices, the catalyst, the team card's place.
+  // A notice opens where its toast did: the price rule on ALRT Prices, the catalyst, ECO, the team card's place.
   const openNotice = useCallback((notice: NotificationLogEntry) => {
     const ref = parseNoticeRef(notice.refId);
     if (!ref) return;
@@ -205,6 +206,10 @@ export function UnreadInboxPane({
     }
     if (ref.kind === "catalyst") {
       createPaneFromTemplate("catalysts-pane", { values: { event: ref.id } });
+      return;
+    }
+    if (ref.kind === "econ") {
+      showPane("econ-calendar");
       return;
     }
     const card = teamStore.getSnapshot().notifications.find((entry) => entry.id === ref.id) ?? null;

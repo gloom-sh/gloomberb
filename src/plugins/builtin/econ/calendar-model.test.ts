@@ -4,6 +4,8 @@ import type { EconEvent } from "./types";
 import {
   attachEconCalendarPersistence,
   calendarDisplayRows,
+  hasPendingHighImpactPrint,
+  landedHighImpactPrints,
   loadCalendar,
   matchesCountry,
   matchesImpact,
@@ -79,6 +81,30 @@ describe("econ calendar filters", () => {
       expect(matchesCountry({ ...makeEvent(country), country }, "G7")).toBe(true);
     }
     expect(matchesCountry({ ...makeEvent("cn"), country: "CN" }, "G7")).toBe(false);
+  });
+});
+
+describe("high-impact prints", () => {
+  const release = new Date("2026-10-14T12:30:00.000Z").getTime();
+
+  test("a blank high-impact row is pending only after it is due", () => {
+    const cpi = { ...makeEvent("cpi"), date: new Date(release) };
+    expect(hasPendingHighImpactPrint([cpi], release - 1)).toBe(false);
+    expect(hasPendingHighImpactPrint([cpi], release + 60_000)).toBe(true);
+    expect(hasPendingHighImpactPrint([cpi], release + 21 * 60_000)).toBe(false);
+    expect(hasPendingHighImpactPrint([{ ...cpi, impact: "low" }], release + 60_000)).toBe(false);
+    expect(hasPendingHighImpactPrint([{ ...cpi, actual: "0.3%" }], release + 60_000)).toBe(false);
+  });
+
+  test("a print lands when a blank high-impact actual gets a number", () => {
+    const prior = new Map<string, string | null>([["cpi", null], ["claims", "197K"]]);
+    const next = [
+      { ...makeEvent("cpi"), actual: "0.3%" },
+      { ...makeEvent("claims"), actual: "190K", impact: "medium" as const },
+      { ...makeEvent("pce"), actual: "0.2%" },
+      { ...makeEvent("gdp"), actual: "2.1%" },
+    ];
+    expect(landedHighImpactPrints(prior, next).map((event) => event.id)).toEqual(["cpi"]);
   });
 });
 

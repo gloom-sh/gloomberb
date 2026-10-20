@@ -136,7 +136,7 @@ export const chatModule: PluginModule = {
     id: UNREAD_INBOX_TEMPLATE_ID,
     paneId: UNREAD_INBOX_PANE_ID,
     label: "Unread",
-    description: "Unread chat, then price alerts, catalysts and team notices you missed",
+    description: "Unread chat, then price alerts, catalysts, economic releases and team notices you missed",
     keywords: ["unread", "chat", "inbox", "mentions", "missed", "notifications", "alerts"],
     createInstance: () => ({
       placement: "floating",

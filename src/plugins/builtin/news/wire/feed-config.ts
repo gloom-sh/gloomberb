@@ -9,11 +9,13 @@ const USER_FEEDS_KEY = "feeds";
 const DISABLED_DEFAULT_FEED_IDS_KEY = "disabledDefaultFeedIds";
 
 const DEFAULT_FEED_IDS = new Set(DEFAULT_FEEDS.map((feed) => feed.id));
+const UNREADABLE_SETTINGS = "News feed settings could not be read. Saved settings were kept.";
 
 export interface NewsFeedSettings {
   userFeeds: RssFeedConfig[];
   disabledDefaultFeedIds: string[];
   needsMigration: boolean;
+  error?: string;
 }
 
 export interface UserNewsFeedInput {
@@ -25,15 +27,15 @@ export interface UserNewsFeedInput {
   enabled?: boolean;
 }
 
-function parseJsonArray(value: unknown): unknown[] {
+function parseJsonArray(value: unknown): unknown[] | null {
   if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
+  if (typeof value !== "string") return [];
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
     logFailure("news.feed-config", "Read stored news feed settings failed")(error);
-    return [];
+    return null;
   }
 }
 
@@ -134,14 +136,20 @@ function sameIdList(raw: unknown, normalized: string[]): boolean {
 }
 
 export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSettings {
-  const rawUserFeeds = configState.get<unknown>(USER_FEEDS_KEY);
+  return parseNewsFeedSettings(configState.get(USER_FEEDS_KEY), configState.get(DISABLED_DEFAULT_FEED_IDS_KEY));
+}
+
+export function parseNewsFeedSettings(rawUserFeeds: unknown, rawDisabledIds: unknown): NewsFeedSettings {
   const userFeedValues = parseJsonArray(rawUserFeeds);
-  const userFeeds = userFeedValues
+  const userFeeds = (userFeedValues ?? [])
     .map(normalizeUserFeed)
     .filter((feed): feed is RssFeedConfig => !!feed);
 
-  const rawDisabledIds = configState.get<unknown>(DISABLED_DEFAULT_FEED_IDS_KEY);
-  const disabledDefaultFeedIds = normalizeDisabledDefaultFeedIds(parseJsonArray(rawDisabledIds));
+  const disabledIdValues = parseJsonArray(rawDisabledIds);
+  const disabledDefaultFeedIds = normalizeDisabledDefaultFeedIds(disabledIdValues ?? []);
+  if (userFeedValues === null || disabledIdValues === null) {
+    return { userFeeds, disabledDefaultFeedIds, needsMigration: false, error: UNREADABLE_SETTINGS };
+  }
 
   const needsMigration = (rawUserFeeds !== null && !sameUserFeeds(rawUserFeeds, userFeeds))
     || (rawDisabledIds !== null && !sameIdList(rawDisabledIds, disabledDefaultFeedIds));
@@ -149,15 +157,24 @@ export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSe
   return { userFeeds, disabledDefaultFeedIds, needsMigration };
 }
 
+function requireReadableSettings(configState: PluginConfigState): NewsFeedSettings {
+  const settings = loadNewsFeedSettings(configState);
+  if (settings.error) throw new Error(settings.error);
+  return settings;
+}
+
 export async function saveNewsFeedSettings(
   configState: PluginConfigState,
   settings: Pick<NewsFeedSettings, "userFeeds" | "disabledDefaultFeedIds">,
 ): Promise<void> {
+  requireReadableSettings(configState);
   await configState.set(USER_FEEDS_KEY, settings.userFeeds);
+  requireReadableSettings(configState);
   await configState.set(DISABLED_DEFAULT_FEED_IDS_KEY, settings.disabledDefaultFeedIds);
 }
 
-export function getEnabledNewsFeeds(settings: Pick<NewsFeedSettings, "userFeeds" | "disabledDefaultFeedIds">): RssFeedConfig[] {
+export function getEnabledNewsFeeds(settings: Pick<NewsFeedSettings, "userFeeds" | "disabledDefaultFeedIds" | "error">): RssFeedConfig[] {
+  if (settings.error) return [];
   const disabled = new Set(settings.disabledDefaultFeedIds);
   return [
     ...DEFAULT_FEEDS.filter((feed) => feed.enabled && !disabled.has(feed.id)),
@@ -169,7 +186,7 @@ export async function addUserNewsFeed(
   configState: PluginConfigState,
   input: UserNewsFeedInput,
 ): Promise<RssFeedConfig> {
-  const settings = loadNewsFeedSettings(configState);
+  const settings = requireReadableSettings(configState);
   const feed = createUserFeed(input);
   const nextUserFeeds = [
     ...settings.userFeeds.filter((entry) => entry.id !== feed.id),
@@ -187,7 +204,7 @@ export async function updateUserNewsFeed(
   feedId: string,
   patch: Partial<UserNewsFeedInput>,
 ): Promise<RssFeedConfig | null> {
-  const settings = loadNewsFeedSettings(configState);
+  const settings = requireReadableSettings(configState);
   const existing = settings.userFeeds.find((feed) => feed.id === feedId);
   if (!existing) return null;
   const nextFeed = createUserFeed({
@@ -206,7 +223,7 @@ export async function removeUserNewsFeed(
   configState: PluginConfigState,
   feedId: string,
 ): Promise<boolean> {
-  const settings = loadNewsFeedSettings(configState);
+  const settings = requireReadableSettings(configState);
   const nextUserFeeds = settings.userFeeds.filter((feed) => feed.id !== feedId);
   if (nextUserFeeds.length === settings.userFeeds.length) return false;
   await saveNewsFeedSettings(configState, {
@@ -222,7 +239,7 @@ export async function setDefaultNewsFeedEnabled(
   enabled: boolean,
 ): Promise<boolean> {
   if (!DEFAULT_FEED_IDS.has(feedId)) return false;
-  const settings = loadNewsFeedSettings(configState);
+  const settings = requireReadableSettings(configState);
   const disabled = new Set(settings.disabledDefaultFeedIds);
   if (enabled) disabled.delete(feedId);
   else disabled.add(feedId);

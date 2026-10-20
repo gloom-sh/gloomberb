@@ -129,11 +129,14 @@ function writeFeedCache(
 }
 
 export function createRssNewsCapability(
-  feedsOrGetter: RssFeedConfig[] | (() => RssFeedConfig[]),
+  feedsOrGetter: RssFeedConfig[] | (() => RssFeedConfig[] | { feeds: RssFeedConfig[]; error?: string }),
   options: RssNewsCapabilityOptions = {},
 ): NewsCapability {
   const fetchText = options.fetchText ?? ((url: string) => rssClient.fetch(url));
-  const getFeeds = () => Array.isArray(feedsOrGetter) ? feedsOrGetter : feedsOrGetter();
+  const getFeeds = () => {
+    const selection = Array.isArray(feedsOrGetter) ? feedsOrGetter : feedsOrGetter();
+    return Array.isArray(selection) ? { feeds: selection } : selection;
+  };
 
   async function fetchFeed(feed: RssFeedConfig): Promise<{ articles: MarketNewsItem[]; failed: boolean }> {
     const freshCache = readFeedCache(options.persistence, feed);
@@ -153,7 +156,9 @@ export function createRssNewsCapability(
 
   async function fetchPage(query: NewsQuery) {
     if (!supportsQuery(query)) return { articles: [] };
-    const feeds = getFeeds().filter((feed) => feed.enabled);
+    const selection = getFeeds();
+    if (selection.error) return { articles: [], error: selection.error };
+    const feeds = selection.feeds.filter((feed) => feed.enabled);
     const results = await Promise.all(feeds.map(fetchFeed));
     const failed = results.filter((result) => result.failed).length;
     return {
@@ -170,11 +175,15 @@ export function createRssNewsCapability(
       supports: supportsQuery,
       getCachedNews(query: NewsQuery): MarketNewsItem[] {
         if (!supportsQuery(query)) return [];
-        const enabledFeeds = getFeeds().filter((feed) => feed.enabled);
+        const selection = getFeeds();
+        if (selection.error) return [];
+        const enabledFeeds = selection.feeds.filter((feed) => feed.enabled);
         return enabledFeeds.flatMap((feed) => readFeedCache(options.persistence, feed, { allowExpired: true }) ?? []);
       },
       fetchNewsPage: fetchPage,
       async fetchNews(query: NewsQuery): Promise<MarketNewsItem[]> {
+        const error = supportsQuery(query) ? getFeeds().error : undefined;
+        if (error) throw new Error(error);
         return (await fetchPage(query)).articles;
       },
     },

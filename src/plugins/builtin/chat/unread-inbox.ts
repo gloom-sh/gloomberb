@@ -93,7 +93,7 @@ export function listUnreadInboxItems(options: {
 
 /**
  * A row of the Unread list: a channel with unread chat, or a missed price,
- * catalyst or team notice from the device's log, read or not.
+ * catalyst, economic release or team notice from the device's log, read or not.
  */
 export type UnreadListRow =
   | { kind: "chat"; key: string; item: UnreadInboxItem }

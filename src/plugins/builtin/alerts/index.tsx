@@ -60,7 +60,7 @@ export const alertsPlugin: GloomPlugin = {
   id: "alerts",
   name: "Alerts",
   version: "1.0.0",
-  description: "Price, market and filing event alerts",
+  description: "Price, earnings, filing, news and flow alerts",
   toggleable: true,
   cliCommands: [alertsCliCommand],
 
@@ -189,7 +189,11 @@ export const alertsPlugin: GloomPlugin = {
       id: "set-event-alert",
       label: "Add Event Alert",
       description: "Create an alert before earnings, CPI or FOMC, or for filings, news and market moves",
-      keywords: ["alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before"],
+      keywords: [
+        "alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before",
+        "filing", "filings", "sec", "8-k", "news", "keyword", "analyst", "52-week", "unusual volume", "volume",
+        "short interest", "insider", "catalyst", "implied volatility", "iv spike", "options flow", "perps", "funding",
+      ],
       category: "data",
       wizardLayout: "form",
       wizard: [
@@ -348,8 +352,13 @@ export const alertsPlugin: GloomPlugin = {
       id: "alerts-pane",
       paneId: "alerts",
       label: "Alerts",
-      description: "Price, market and filing event alerts",
-      keywords: ["alerts", "price", "trigger", "alarm", "watch", "notify"],
+      description: "Price, earnings, filing, news and flow alerts",
+      keywords: [
+        "alerts", "alert", "price", "trigger", "alarm", "watch", "notify", "notification",
+        "earnings", "cpi", "fomc", "filing", "filings", "sec", "8-k", "13f", "news", "keyword",
+        "analyst", "upgrade", "downgrade", "52-week", "unusual volume", "volume", "short interest",
+        "insider", "congress", "catalyst", "implied volatility", "iv spike", "options flow", "perps", "funding",
+      ],
       shortcut: { prefix: "ALRT" },
       headless: alertsHeadless,
     });

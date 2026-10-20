@@ -4,8 +4,8 @@
     {
       "id": "alerts",
       "name": "Alerts",
-      "description": "Price, market and filing event alerts",
-      "tagline": "Price, market and filing alerts.",
+      "description": "Price, earnings, filing, news and flow alerts",
+      "tagline": "Price, earnings, filing, news and flow alerts.",
       "categories": [
         "alerts"
       ],

@@ -245,8 +245,8 @@ export function createAppNotifier({
 }: CreateAppNotifierOptions): AppNotifier {
   return {
     notify(request) {
-      // A missed price, catalyst or team notice waits in the Unread list; using
-      // its toast action means it was seen.
+      // A missed price, catalyst, economic release or team notice waits in the
+      // Unread list; using its toast action means it was seen.
       const logged = appendNotificationLog(request);
       const notification: AppNotificationRequest = logged && request.action
         ? {
