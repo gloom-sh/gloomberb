@@ -18,7 +18,7 @@ export const socialMentionsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const range = (["1y", "5y", "max"].includes(String(args.options.range)) ? args.options.range : "1y") as SocialMentionsRange;
     const symbol = String(args.symbols[0]).toUpperCase();
     const data = await fetchSocialMentions(symbol, range, ctx.apiClient)
-      .catch((error: unknown) => { throw explainRefusal(error, socialMentionsLockNote, { symbol }); });
+      .catch(async (error: unknown) => { throw await explainRefusal(error, socialMentionsLockNote, { symbol, context: ctx }); });
     return { complete: !data.pending.length, errors: data.warnings,
       sections: [{ title: "Daily posts on X", columns: [
         { key: "day", header: "Date" },

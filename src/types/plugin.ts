@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
-import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
+import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
 
 export type {
   HeadlessArgumentExpansion,
@@ -123,6 +123,12 @@ export interface PaneLock {
   token?: string;
   /** The session is signed in and its email is not verified yet. */
   verifyEmail?: boolean;
+  /**
+   * Reads data as the report does, so a note can check that a free route it
+   * would name has data for the symbol before naming it. Absent where nothing
+   * can be read.
+   */
+  context?: HeadlessPaneContext;
 }
 
 export interface PaneDef {
@@ -195,9 +201,10 @@ export interface PaneDef {
    * read without it and where, and how to unlock it. A `headless` pane's report
    * prints it when the server refuses the read (401, 402 or 403). Without it
    * the report prints the wall's own words, or the refusal. Either way it cites
-   * no source, since nothing was read.
+   * no source, since nothing was read. A free route it names must have data
+   * for the symbol (`lock.context` reads it), so the note may resolve later.
    */
-  reportLockNote?(lock: PaneLock): string;
+  reportLockNote?(lock: PaneLock): string | Promise<string>;
   /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloomberb catalog` lists it under Requires, as it does a

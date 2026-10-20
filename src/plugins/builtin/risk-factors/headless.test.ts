@@ -40,7 +40,8 @@ function run(year = "latest", refresh = false) {
       capability: { id: "risk-factors" },
       pane: riskFactorsModule.panes![0],
     } as never,
-    { dataProvider: createTestDataProvider(), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
+    // ACME files 10-Ks, so the lock names them as the free route.
+    { dataProvider: createTestDataProvider({ getSecFilings: async () => [{ form: "10-K" }] as never }), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
     "ACME",
   );
 }

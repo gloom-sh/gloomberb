@@ -139,7 +139,7 @@ async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResu
       offset = history.hasMore ? history.nextOffset : null;
     }
   } catch (error) {
-    throw explainRefusal(error, alertHistoryLockNote, { symbol: null, token: "ALRT" });
+    throw await explainRefusal(error, alertHistoryLockNote, { symbol: null, token: "ALRT" });
   }
   const unavailable = first?.status === "unavailable";
   return {

@@ -2,6 +2,7 @@ import { refusedLock } from "../../plugins/builtin/shared/cloud-denied";
 import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { reportFooterLines } from "../report-tables";
+import type { HeadlessPaneContext } from "../../types/headless";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 
@@ -22,19 +23,21 @@ export function lockNoteLines(note: string): string[] {
  * `reportLockNote`, no source line and `locked` in JSON. The refusal may be
  * the error itself or the cause of the one a headless read wrote for it
  * (`explainRefusal`). Null when the error is no such refusal or the pane has
- * no note, and the error stands.
+ * no note, and the error stands. The context lets the note check the free
+ * route it names.
  */
-export function lockedHeadlessReport(
+export async function lockedHeadlessReport(
   resolved: ResolvedPaneFunction,
   error: unknown,
   /** The symbols the report was asked for, read once the error is known to be a refusal. */
   symbolsOf: () => string[],
-): PaneFunctionReport | null {
+  context?: HeadlessPaneContext,
+): Promise<PaneFunctionReport | null> {
   const refused = refusedLock(error);
   if (!refused || !resolved.pane.reportLockNote) return null;
   const gate = refused.gate;
   const symbols = symbolsOf();
-  const note = resolved.pane.reportLockNote({ ...refused, symbol: symbols[0] ?? null, token: resolved.token });
+  const note = await resolved.pane.reportLockNote({ ...refused, symbol: symbols[0] ?? null, token: resolved.token, ...context ? { context } : {} });
   const reason = lockNoteReason(note);
   return {
     data: {

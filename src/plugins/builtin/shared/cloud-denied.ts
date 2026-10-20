@@ -34,13 +34,14 @@ export function refusedLock(error: unknown): Pick<PaneLock, "gate" | "verifyEmai
  * What a headless read throws when the server refused it behind a wall: the
  * pane's lock note on one line, so every consumer of the read says what is
  * locked and how to unlock it, with the refusal as its cause for `fn`, which
- * prints the whole note. Any other failure is returned as it is.
+ * prints the whole note. Any other failure is returned as it is. The read's
+ * context lets the note check the free route it names.
  */
-export function explainRefusal(
+export async function explainRefusal(
   error: unknown,
-  note: (lock: PaneLock) => string,
-  lock: Pick<PaneLock, "symbol" | "token">,
-): unknown {
+  note: (lock: PaneLock) => string | Promise<string>,
+  lock: Pick<PaneLock, "symbol" | "token" | "context">,
+): Promise<unknown> {
   const refused = refusedLock(error);
-  return refused ? new Error(lockNoteReason(note({ ...refused, ...lock })), { cause: error }) : error;
+  return refused ? new Error(lockNoteReason(await note({ ...refused, ...lock })), { cause: error }) : error;
 }

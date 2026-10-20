@@ -173,7 +173,7 @@ type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh">
 };
 
 /** What a headless loader reads the market, the account and the saved collections through. */
-function createHeadlessPaneContext(
+export function createHeadlessPaneContext(
   resolved: ResolvedPaneFunction,
   context: HeadlessMarketContext,
   signal: AbortSignal,
@@ -939,9 +939,9 @@ export async function buildHeadlessFunctionReport(
     loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
   } catch (error) {
     // A Pro pane the server refused reports what its wall covers, as its rendered view does.
-    const locked = lockedHeadlessReport(resolved, error, () => (
+    const locked = await lockedHeadlessReport(resolved, error, () => (
       buildHeadlessPaneLoadArgs(resolved.headless!, resolved.token, rawArgument, resolved.options).symbols
-    ));
+    ), createHeadlessPaneContext(resolved, context, new AbortController().signal));
     if (locked) return locked;
     throw error;
   }

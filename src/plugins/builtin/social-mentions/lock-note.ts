@@ -5,7 +5,7 @@ import { proLockNote } from "../shared/pro-lock-note";
  * BUZZ needs a signed-in account, not a plan. No command reads the posts it
  * counts without one, so the note names no free route.
  */
-export function socialMentionsLockNote(lock: PaneLock): string {
+export function socialMentionsLockNote(lock: PaneLock): Promise<string> {
   return proLockNote(lock, {
     token: "BUZZ",
     needs: "sign-in",

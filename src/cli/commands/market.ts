@@ -113,9 +113,10 @@ import {
 } from "../history-rows";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
-import { bareFuturesCode } from "../../market-data/futures-board";
+import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
+import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { commonWordCandidate, newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, quotedSearchCommand, searchNewsStories, wordMeansMore } from "./news-search";
+import { commodityNewsRoute, commonWordCandidate, newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, noStoriesMessage, quotedSearchCommand, searchNewsStories, wordMeansMore } from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
@@ -1359,22 +1360,29 @@ const NEWS_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-/** Stories matching text, printed as a symbol's news is, under a line saying what they match. */
+/**
+ * Stories matching text, printed as a symbol's news is, under a line saying
+ * what they match. A text naming a commodity that matched nothing says so and
+ * offers its future's news when that has stories; `commodity: false` for the
+ * future's own news, which is that route.
+ */
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty }: { reason?: string; empty?: string },
+  { reason, empty, commodity = true }: { reason?: string; empty?: string; commodity?: boolean },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
+  const named = commodity && articles.length === 0 && commodityNamedIn(text) !== null;
+  const route = named ? await commodityNewsRoute(text) : null;
   ctx.printResult({
     data: articles,
-    metadata: { ticker: null, search: text, feed: null },
+    metadata: { ticker: null, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: newsSearchHeading(text, reason),
     rows: newsRows,
     columns: NEWS_COLUMNS,
-    empty: empty ?? `No stories match "${text}".`,
+    empty: named ? noStoriesMessage(text, route) : empty ?? noStoriesMessage(text, null),
   });
 }
 
@@ -1409,18 +1417,25 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ]);
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
+    const unfiled = !!listing && !listing.exchange && !feed && articles.length === 0;
+    // A future's news is its commodity's: news is filed under company tickers, so KC=F (or a bare code
+    // no security keeps, CT) searches the stories of coffee, which the service matches to KC=F's links too.
+    const future = unfiled && isFuturesInstrument(listing!.symbol, quote?.instrumentType)
+      ? futuresBoardContract(listing!.symbol) ?? bareFuturesCode(args[0]) : null;
+    const commodity = future ? commoditySearchName(future) : null;
     // A bare word no listing answers to is text, and so is a futures board code (TTF), which resolves
-    // to its future: news is filed under company tickers, so the stories that mention the word are the news.
-    const word = listing && !listing.exchange && !feed && articles.length === 0 ? newsFallbackText(args[0]!) : null;
+    // to its future: the stories that mention the word are the news.
+    const word = commodity ?? (unfiled ? newsFallbackText(args[0]!) : null);
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
-    const reason = !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker" : null;
+    const reason = commodity ? `the commodity ${future!.symbol} trades`
+      : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker" : null;
     const emptyMessage = (searched: boolean) => listing && identity
       ? newsEmptyMessage(searched && word ? word : listing.symbol, listingTitle(identity), quote, resolved, searched)
       : undefined;
     if (word && reason) {
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
       const found = await searchNewsStories(word, limit).catch(logFailure("cli.commands-market", "Search news stories failed", []));
-      await printNewsSearch(word, found, { reason, empty: emptyMessage(true) }, ctx);
+      await printNewsSearch(word, found, { reason, empty: emptyMessage(!commodity), commodity: !commodity }, ctx);
       return;
     }
     const empty = emptyMessage(false);

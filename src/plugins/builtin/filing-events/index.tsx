@@ -1,4 +1,6 @@
 import type { PluginModule } from "../plugin-module";
+import type { PaneLock } from "../../../types/plugin";
+import { filesForm } from "../shared/free-routes";
 import { proLockNote } from "../shared/pro-lock-note";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { FILING_EVENTS_PANE_ID, FilingEventsPane } from "./pane";
@@ -11,14 +13,18 @@ const description =
  * EK is Pro whole (`useProFeatureWall`): signed out it shows the sign-in wall
  * and on a free account the Pro wall, never a partial feed. The 8-Ks themselves
  * are in SEC, which needs no account: its rows carry each 8-K's filing date,
- * acceptance time and items, by number and in words.
+ * acceptance time and items, by number and in words. A company filing no 8-Ks
+ * (ASML files 6-Ks) gets no route.
  */
-function filingEventsLockNote(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string {
+function filingEventsLockNote(lock: PaneLock): Promise<string> {
   return proLockNote(lock, {
     token: "EK",
     does: "it reads each 8-K and sums up what it said and who it names",
     shows: "them",
-    free: (ticker, company) => `gloomberb fn SEC ${ticker} lists ${company}'s recent filings, 8-Ks among them, each with its filing date and its items by number and name.`,
+    free: [{
+      text: (ticker, company) => `gloomberb fn SEC ${ticker} lists ${company}'s recent filings, 8-Ks among them, each with its filing date and its items by number and name.`,
+      answers: (symbol, context) => filesForm(symbol, "8-K", context),
+    }],
   });
 }
 

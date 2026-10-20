@@ -236,7 +236,7 @@ function createFlowHeadless(
     describe: "Options Flow",
     async load(args, ctx) {
       const payload = await dependencies.load(args, ctx.apiClient, ctx.signal)
-        .catch((error: unknown) => { throw explainRefusal(error, flowLockNote, { symbol: null }); });
+        .catch(async (error: unknown) => { throw await explainRefusal(error, flowLockNote, { symbol: null }); });
       return projectFlowSnapshot(payload, {
         ...DEFAULT_FLOW_FILTERS,
         ...(args.options as Partial<FlowFilters>),

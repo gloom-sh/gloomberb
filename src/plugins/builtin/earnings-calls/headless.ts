@@ -70,8 +70,8 @@ const defaultDependencies: EarningsCallsHeadlessDependencies = {
 };
 
 /** A refused read says what the lock note says (CALLS is Pro whole), so a free account meets the same words as a signed-out one. */
-function explainDenied(ticker: string | null) {
-  return (error: unknown): never => { throw explainRefusal(error, callsLockNote, { symbol: ticker }); };
+function explainDenied(ticker: string | null, context: HeadlessPaneContext) {
+  return async (error: unknown): Promise<never> => { throw await explainRefusal(error, callsLockNote, { symbol: ticker, context }); };
 }
 
 function callRow(call: CloudEarningsCallPayload) {
@@ -285,7 +285,7 @@ export function createEarningsCallsHeadless(
     },
     async load(args, context) {
       const ticker = typeof args.argument === "string" ? args.argument : null;
-      const calls = await dependencies.loadCalls(ticker, 200, context).catch(explainDenied(ticker));
+      const calls = await dependencies.loadCalls(ticker, 200, context).catch(explainDenied(ticker, context));
       if (!ticker || !readsTranscript(args)) {
         return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } });
       }
@@ -299,7 +299,7 @@ export function createEarningsCallsHeadless(
         }
         throw new Error(`No ${quarter} earnings call found for ${ticker}.`);
       }
-      const transcript = await dependencies.loadTranscript(selected.id, context).catch(explainDenied(ticker));
+      const transcript = await dependencies.loadTranscript(selected.id, context).catch(explainDenied(ticker, context));
       if (isPendingTranscript(transcript)) {
         throw new Error(`Transcript for ${ticker} ${quarter} is still being produced.`);
       }

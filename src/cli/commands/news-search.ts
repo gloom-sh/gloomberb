@@ -2,6 +2,9 @@ import { apiClient } from "../../api-client";
 import type { NewsArticle } from "../../news/types";
 import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { cliStyles } from "../../utils/cli-output";
+import { logFailure } from "../../utils/log-failure";
+import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
+import type { FuturesContract } from "../../market-data/futures-board";
 
 /** What the service accepts of a search: two characters to two hundred, with a letter or a number in them. */
 const MIN_TEXT_LENGTH = 2;
@@ -60,8 +63,8 @@ export function newsSearchTextProblem(text: string): string | null {
 
 /**
  * The word a symbol lookup found no stories for, as text to search stories for.
- * Null under three characters, where the fuzzy match finds names that merely
- * contain it (ZN, Telomir-Zn) and the lookup's own answer is the better one.
+ * Null under three characters, where the word is mostly a piece of other
+ * names (ZN in Telomir-Zn) and the lookup's own answer is the better one.
  */
 export function newsFallbackText(symbol: string): string | null {
   const text = symbol.trim().replace(/^\$/, "");
@@ -69,15 +72,39 @@ export function newsFallbackText(symbol: string): string | null {
 }
 
 /**
- * The stories matching the text, newest first. The service answers best match
- * first and holds stories back from an account without real-time access, as
- * every other news request.
+ * The stories matching the text, in the service's order: stories with every
+ * word in the headline first, then the ones with some only in the summary,
+ * newest first within each. The service holds stories back from an account
+ * without real-time access, as every other news request.
  */
 export async function searchNewsStories(text: string, limit: number): Promise<NewsArticle[]> {
   const response = await apiClient.searchCloudNews(text, limit);
-  return response.items
-    .map((item) => mapCloudNewsArticle(item))
-    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+  return response.items.map((item) => mapCloudNewsArticle(item));
+}
+
+/** The futures news route a search offers when no story matches it: `gloomberb news KC=F` for "arabica". */
+export interface CommodityNewsRoute {
+  contract: FuturesContract;
+  command: string;
+}
+
+/**
+ * The future of the commodity a search names, offered when no story matched:
+ * `news KC=F` searches the stories of coffee, so it is offered only when
+ * those are not what just found nothing and they have a story to show.
+ */
+export async function commodityNewsRoute(text: string): Promise<CommodityNewsRoute | null> {
+  const contract = commodityNamedIn(text);
+  const name = contract ? commoditySearchName(contract) : null;
+  if (!contract || !name || name === text.trim().toLowerCase()) return null;
+  const stories = await searchNewsStories(name, 1).catch(logFailure("cli.news-search", "Search a commodity's stories failed", []));
+  return stories.length > 0 ? { contract, command: `gloomberb news ${contract.symbol}` } : null;
+}
+
+/** What a search that matched no story says: never a near miss, and the commodity's futures news where it has some. */
+export function noStoriesMessage(text: string, route: CommodityNewsRoute | null): string {
+  const none = `No stories match "${text}".`;
+  return route ? `${none} For the ${route.contract.name} future, try: ${route.command}` : none;
 }
 
 /** The line above the stories: "Stories matching "european gas"", with why a word typed as a symbol is searched. */
