@@ -70,6 +70,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="desktop-button"]:is([data-gloom-variant="plain"], [data-gloom-variant="ghost"], [data-gloom-variant="secondary"]):not(:disabled):not([aria-pressed="true"]):hover {
   background-color: var(--gloom-hover-fill);
 }
+/* Quiet quick actions take the same wash, over a chosen one's fill too. */
+[data-gloom-role="desktop-button"][data-gloom-variant="quiet"]:not(:disabled):hover {
+  background-color: var(--gloom-hover-fill) !important;
+}
 [data-gloom-hover-bg="true"]:hover {
   background-color: var(--gloom-box-hover-bg) !important;
 }

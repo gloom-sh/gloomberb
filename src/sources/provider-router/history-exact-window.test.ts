@@ -145,3 +145,41 @@ test("broker instance and contract identities stay separate while their intraday
     expect(calls).toEqual(["ibkr-A|11", "ibkr-A|11", "ibkr-B|11", "ibkr-A|12"]);
   } finally { store.close(); }
 });
+
+// Regression: a broker-linked chart never received the extended session, so
+// Ext hours showed the regular day for Aries and IBKR contracts.
+test("the extended session reaches only a broker that serves it; otherwise the chart's own data answers first", async () => {
+  const store = new AppPersistence(createTempDbPath("exact-history-broker-session"));
+  const asked: Array<string | undefined> = [];
+  let providerServes = true;
+  // The chart's own data path holds the extended session, as Gloom Cloud does for a US listing.
+  const provider: DataProvider = { ...fallbackProvider, id: "cloud", async getDetailedPriceHistoryWithMetadata(_ticker, _exchange, from, to, _bar, context) {
+    asked.push(`cloud:${context?.historySession ?? "regular"}`);
+    return providerServes ? { points: rows(from, to), resolution: "15m", extendedHours: context?.historySession === "extended" || undefined } : null;
+  } };
+  try {
+    const router = new AssetDataRouter(provider, [], store.resources);
+    const broker = (id: string, extendedHoursHistory: boolean) => ({ id, name: id, configSchema: [], validate: async () => true, importPositions: async () => [], extendedHoursHistory,
+      async getDetailedPriceHistory(_ticker: string, _instance: unknown, _exchange: string, from: Date, to: Date, _bar: string, _instrument: unknown, options?: { session?: "extended" }) {
+        asked.push(`${id}:${options?.session ?? "regular"}`);
+        return rows(from, to);
+      } });
+    attachTestRegistry(router, { brokers: [["aries", broker("aries", true)], ["ibkr", broker("ibkr", false)]] });
+    setBrokerInstances(router, [brokerInstance({ id: "aries-sim", brokerType: "aries" }), brokerInstance({ id: "ibkr-A", brokerType: "ibkr" })]);
+    const context = (brokerId: string, instance: string, historySession?: "extended"): MarketDataRequestContext => ({ brokerId, brokerInstanceId: instance,
+      instrument: { brokerId, brokerInstanceId: instance, symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }, ...(historySession ? { historySession } : {}) });
+    const history = (brokerId: string, instance: string, historySession?: "extended") =>
+      router.getDetailedPriceHistoryWithMetadata("AAPL", "SMART", start, end, "15m", context(brokerId, instance, historySession));
+    const extended = await history("aries", "aries-sim", "extended");
+    const regular = await history("aries", "aries-sim");
+    const fromProvider = await history("ibkr", "ibkr-A", "extended");
+    expect(asked).toEqual(["aries:extended", "aries:regular", "cloud:extended"]);
+    expect([extended.extendedHours, regular.extendedHours, fromProvider.extendedHours]).toEqual([true, undefined, true]);
+    // With nothing else to answer, the broker's regular session still beats an empty chart.
+    providerServes = false;
+    asked.length = 0;
+    const lastResort = await router.getDetailedPriceHistoryWithMetadata("AAPL", "SMART", laterStart, laterEnd, "15m", context("ibkr", "ibkr-A", "extended"));
+    expect(asked).toEqual(["cloud:extended", "ibkr:regular"]);
+    expect([lastResort.points.length > 0, lastResort.extendedHours]).toEqual([true, undefined]);
+  } finally { store.close(); }
+});

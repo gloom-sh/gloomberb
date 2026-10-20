@@ -1,6 +1,6 @@
 import type { TimeRange } from "../time-series/range";
 import type { ManualChartResolution } from "../time-series/resolution";
-import type { BrokerAdapter, BrokerConnectionStatus } from "../types/broker";
+import type { BrokerAdapter, BrokerConnectionStatus, BrokerHistoryOptions } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { BrokerContractRef } from "../types/instrument";
@@ -73,7 +73,8 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
       bufferRange: TimeRange,
       resolution: ManualChartResolution,
       instrument?: BrokerContractRef | null,
-    ) => invoke(instance, "getPriceHistoryForResolution", [ticker, exchange, bufferRange, resolution, instrument]),
+      options?: BrokerHistoryOptions,
+    ) => invoke(instance, "getPriceHistoryForResolution", [ticker, exchange, bufferRange, resolution, instrument, ...(options ? [options] : [])]),
     getDetailedPriceHistory: (
       ticker,
       instance,
@@ -82,7 +83,8 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
       endDate: Date,
       barSize: string,
       instrument?: BrokerContractRef | null,
-    ) => invoke(instance, "getDetailedPriceHistory", [ticker, exchange, startDate, endDate, barSize, instrument]),
+      options?: BrokerHistoryOptions,
+    ) => invoke(instance, "getDetailedPriceHistory", [ticker, exchange, startDate, endDate, barSize, instrument, ...(options ? [options] : [])]),
     getChartResolutionSupport: (ticker, instance, exchange?: string, instrument?: BrokerContractRef | null) =>
       invoke(instance, "getChartResolutionSupport", [ticker, exchange, instrument]),
     getChartResolutionCapabilities: (ticker, instance, exchange?: string, instrument?: BrokerContractRef | null) =>

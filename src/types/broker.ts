@@ -11,6 +11,7 @@ import type {
   BrokerOrderPreview,
   BrokerOrderRequest,
   BrokerPortfolioPerformance,
+  BrokerTradingCapabilities,
 } from "./trading";
 import type { CachePolicy, CachePolicyMap } from "./persistence";
 
@@ -85,10 +86,22 @@ export interface BrokerProfileAction {
   disabledReason?: string;
 }
 
+/** How a chart asks a broker for history beyond the regular session. */
+export interface BrokerHistoryOptions {
+  /** Include pre-market and after-hours bars. Only a broker that sets `extendedHoursHistory` is asked. */
+  session?: "extended";
+}
+
 export interface BrokerAdapter {
   readonly id: string;
   readonly name: string;
   readonly cachePolicy?: CachePolicyMap;
+  /**
+   * Intraday history includes pre-market and after-hours bars when its
+   * `BrokerHistoryOptions` ask for the extended session. The chart then
+   * starts the day at the pre-market open; without it, the regular session.
+   */
+  readonly extendedHoursHistory?: boolean;
   validate(instance: BrokerInstanceConfig): Promise<boolean>;
   importPositions(instance: BrokerInstanceConfig): Promise<BrokerPosition[]>;
   importPortfolioSnapshot?(instance: BrokerInstanceConfig): Promise<{ accounts: BrokerAccount[]; positions: BrokerPosition[] }>;
@@ -116,9 +129,10 @@ export interface BrokerAdapter {
     bufferRange: TimeRange,
     resolution: ManualChartResolution,
     instrument?: BrokerContractRef | null,
+    options?: BrokerHistoryOptions,
   ): Promise<PricePoint[]>;
   /** Fetch higher-resolution price data for a specific date window (e.g. when zoomed in). */
-  getDetailedPriceHistory?(ticker: string, instance: BrokerInstanceConfig, exchange: string, startDate: Date, endDate: Date, barSize: string, instrument?: BrokerContractRef | null): Promise<PricePoint[]>;
+  getDetailedPriceHistory?(ticker: string, instance: BrokerInstanceConfig, exchange: string, startDate: Date, endDate: Date, barSize: string, instrument?: BrokerContractRef | null, options?: BrokerHistoryOptions): Promise<PricePoint[]>;
   getChartResolutionSupport?(
     ticker: string,
     instance: BrokerInstanceConfig,
@@ -144,7 +158,13 @@ export interface BrokerAdapter {
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void;
   listOpenOrders?(instance: BrokerInstanceConfig): Promise<BrokerOrder[]>;
+  /** Explicit status, including terminal orders. Null means unconfirmed, never cancelled by absence. */
+  getOrderStatus?(instance: BrokerInstanceConfig, orderId: number): Promise<BrokerOrder | null>;
   listExecutions?(instance: BrokerInstanceConfig): Promise<BrokerExecution[]>;
+  /** Opt into the shared ticket with supported combinations and current trading permission. */
+  getTradingCapabilities?(instance: BrokerInstanceConfig, contract?: BrokerContractRef, orderType?: BrokerOrderRequest["orderType"]): BrokerTradingCapabilities;
+  /** Config patch for the host's explicit enable/disable trading confirmation. Must not perform I/O. */
+  getTradingConfigUpdate?(instance: BrokerInstanceConfig, enabled: boolean): Record<string, unknown>;
   previewOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrderPreview>;
   placeOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder>;
   modifyOrder?(instance: BrokerInstanceConfig, orderId: number, request: BrokerOrderRequest): Promise<BrokerOrder>;

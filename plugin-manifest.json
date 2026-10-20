@@ -194,7 +194,7 @@
     {
       "id": "broker",
       "name": "Broker",
-      "description": "Broker profiles, account sync, and connection status.",
+      "description": "Broker profiles, account sync, order review, and trading status.",
       "tagline": "Broker accounts, sync and connections.",
       "categories": [
         "broker"
@@ -207,6 +207,7 @@
       ],
       "contributes": {
         "panes": [
+          "broker-orders",
           "brokers"
         ],
         "capabilities": [],
@@ -216,11 +217,17 @@
             "code": "BR",
             "name": "Brokers",
             "description": "Open broker profiles and connection status"
+          },
+          {
+            "code": "ORD",
+            "name": "Orders",
+            "description": "Open orders and recent activity for a broker account"
           }
         ]
       },
       "highlights": [
-        "BR"
+        "BR",
+        "ORD"
       ]
     },
     {

@@ -394,16 +394,13 @@ describe("shared UI kit", () => {
     expect(resolvedChoice).toBe("gamma");
   });
 
-  test("preselects the current choice in choice dialogs", async () => {
+  test("choice dialogs select the latest cursor when navigation and Enter arrive before a render", async () => {
     await tui.render(<ChoiceDialogHarness selectedChoiceId="beta" />, { width: 44, height: 10 });
-
-    await act(async () => {
-      await tui.setup().renderOnce();
-    });
-
-    const frame = tui.frame();
-    expect(frame).toContain("Beta account");
-    expect(frame).not.toContain("Alpha account");
+    await tui.waitForFrameToContain("Beta account");
+    await tui.emitKeypress([
+      { name: "up" }, { name: "down" }, { name: "down" }, { name: "enter", sequence: "\r" },
+    ], { trackPropagation: true });
+    expect(resolvedChoice).toBe("gamma");
   });
 
   test("keeps long choice catalogs bounded and scrolls to the keyboard selection", async () => {

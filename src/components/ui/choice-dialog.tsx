@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiHost } from "../../ui";
 import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
@@ -61,6 +61,9 @@ export function ChoiceDialog({
   );
   const selectedIndex = clampIndex(index, choices.length, -1);
   const selectedChoice = selectedIndex >= 0 ? choices[selectedIndex] : undefined;
+  // Terminal input can deliver navigation and Enter before React renders.
+  const cursor = useRef(selectedIndex);
+  const selectIndex = (next: number) => { cursor.current = next; setIndex(next); };
   const items = useMemo<ListViewItem[]>(() => choices.map((choice) => ({
     id: choice.id,
     label: choice.label,
@@ -72,7 +75,7 @@ export function ChoiceDialog({
   const width = useMemo(() => choiceDialogWidth(title, choices), [choices, title]);
 
   useEffect(() => {
-    setIndex((current) => clampIndex(current, choices.length, -1));
+    selectIndex(clampIndex(cursor.current, choices.length, -1));
   }, [choices.length]);
 
   const activateChoice = (choice: ChoiceDialogChoice | undefined) => {
@@ -84,9 +87,9 @@ export function ChoiceDialog({
     event.stopPropagation();
     const move = listCursorMove(event, MAX_VISIBLE_CHOICE_ROWS - 1);
     if (move) {
-      setIndex((current) => move(choices, current));
+      selectIndex(move(choices, cursor.current));
     } else if (event.name === "enter" || event.name === "return") {
-      activateChoice(selectedChoice);
+      activateChoice(choices[clampIndex(cursor.current, choices.length, -1)]);
     } else if (event.name === "escape") {
       resolve("");
     }
@@ -106,7 +109,7 @@ export function ChoiceDialog({
           height={Math.min(Math.max(items.length, 1), MAX_VISIBLE_CHOICE_ROWS)}
           scrollable={items.length > MAX_VISIBLE_CHOICE_ROWS}
           selectOnHover
-          onSelect={setIndex}
+          onSelect={selectIndex}
           onActivate={(_, nextIndex) => activateChoice(choices[nextIndex])}
         />
         <Box height={1} />

@@ -245,6 +245,15 @@ test("zoomed price axes spend the digits their ticks need and stay compact when 
   }
 });
 
+// Regression: an Aries chart whose quote had not arrived had no currency, and
+// zooming in printed 346, 345, 344 with a cursor of 345 between them.
+test("a zoomed axis with no currency still spends the digits its ticks need", () => {
+  const domain = { side: "left" as const, seriesIds: ["price"], min: 343.8, max: 346.2, scale: "linear" as const, unit: "currency", unitGroup: "price" };
+  expect(compositeAxisTicks(domain).map((tick) => tick.label)).toEqual(["346.0", "345.5", "345.0", "344.5", "344.0"]);
+  expect(formatCompositeCursorValue(345.03, domain)).toBe("345.0");
+  expect(compositeAxisTicks({ ...domain, min: 120_000, max: 120_900 }).map((tick) => tick.label)).toEqual(["120.8K", "120.6K", "120.4K", "120.2K", "120.0K"]);
+});
+
 // Regression: truncating before PriceAxisLabels bypassed its full-value guard.
 test("constrained axis ticks never become plausible numeric prefixes", () => {
   const domain = { side: "right" as const, seriesIds: ["tiny"], min: 3.88e-6, max: 6.12e-6, scale: "linear" as const, unit: "USD", unitGroup: "price", maxTicks: 3 };

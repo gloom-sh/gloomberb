@@ -158,6 +158,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M6 3.4V6l1.9 1.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
+  // A pencil, for changing something in place.
+  edit: (
+    <>
+      <path d="M2.2 9.8l.5-2.3 5.4-5.4a1.1 1.1 0 0 1 1.6 0l.2.2a1.1 1.1 0 0 1 0 1.6L4.5 9.3l-2.3.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M7.3 2.9l1.8 1.8" stroke="currentColor" strokeWidth="1.1" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

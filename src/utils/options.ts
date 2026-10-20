@@ -27,6 +27,51 @@ export function parseOptionSymbol(symbol: string): { underlying: string; expTs: 
   return { underlying: underlying!, expTs, strike, side: side as "C" | "P" };
 }
 
+/** An option ticker's contract as a broker writes it ("UBER 260821C00090000") or as OCC does ("AAPL261218C00300000"). */
+export function parseOptionTicker(symbol: string): ReturnType<typeof parseOptionSymbol> {
+  const contract = parseOptionContract(symbol);
+  if (!contract) return null;
+  return { underlying: contract.underlying, expTs: Math.floor(Date.UTC(contract.year, contract.month - 1, contract.day) / 1000),
+    strike: contract.strike, side: contract.side };
+}
+
+/**
+ * One contract of a chain, on the broker that served it: the underlying's
+ * broker and profile, with the expiry, side, strike and 100-share deliverable
+ * the symbol carries. Null when the underlying is not a broker's or the
+ * symbol is not a contract, and the contract then opens by its symbol alone.
+ */
+export function chainOptionContract(contractSymbol: string, underlying: BrokerContractRef | null | undefined, currency: string): BrokerContractRef | null {
+  const contract = parseOptionContract(contractSymbol);
+  if (!contract || !underlying?.brokerId) return null;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return {
+    brokerId: underlying.brokerId,
+    ...(underlying.brokerInstanceId ? { brokerInstanceId: underlying.brokerInstanceId } : {}),
+    symbol: contract.underlying,
+    localSymbol: contractSymbol.trim().toUpperCase(),
+    secType: "OPT",
+    currency: currency || underlying.currency || "USD",
+    lastTradeDateOrContractMonth: `${contract.year}${pad(contract.month)}${pad(contract.day)}`,
+    right: contract.side,
+    strike: contract.strike,
+    multiplier: "100",
+  };
+}
+
+/**
+ * The OCC identity of an option contract, from its symbol or its fields,
+ * however a broker writes the date or routes it; null for anything else.
+ */
+export function optionContractIdentity(contract: BrokerContractRef): string | null {
+  if (contract.secType?.toUpperCase() !== "OPT" && contract.secType?.toUpperCase() !== "OPTION") return null;
+  const parsed = parseOptionContract(contract.localSymbol ?? "") ?? parseOptionContract(contract.symbol);
+  if (parsed) return `${parsed.underlying}|${parsed.year}${String(parsed.month).padStart(2, "0")}${String(parsed.day).padStart(2, "0")}|${parsed.side}|${parsed.strike}`;
+  const date = contract.lastTradeDateOrContractMonth?.replace(/\D/g, "");
+  if (!date || date.length !== 8 || !contract.right || contract.strike === undefined) return null;
+  return `${contract.symbol.trim().toUpperCase()}|${date}|${contract.right}|${contract.strike}`;
+}
+
 export interface ResolvedOptionsTarget {
   isOptionTicker: boolean;
   parsedOption: ReturnType<typeof parseOptionSymbol>;
@@ -53,7 +98,7 @@ export function resolveOptionsTarget(ticker: TickerRecord | null | undefined): R
   if (!ticker) return null;
 
   const isOptionTicker = ticker.metadata.assetCategory === "OPT";
-  const parsedOption = isOptionTicker ? parseOptionSymbol(ticker.metadata.ticker) : null;
+  const parsedOption = isOptionTicker ? parseOptionTicker(ticker.metadata.ticker) : null;
   const effectiveTicker = parsedOption?.underlying ?? ticker.metadata.ticker;
 
   if (!effectiveTicker) return null;

@@ -1,3 +1,4 @@
+import type { BrokerContractRef } from "../types/instrument";
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
@@ -913,6 +914,45 @@ describe("resolveChartSpecData", () => {
     expect(result.resolution).toBe("1mo");
     expect(result.resolutionSupport).toContainEqual({ resolution: "1wk", maxRange: "5Y" });
     expect(result.warnings).toContain("1WK data is unavailable for this range. Auto resolution was used instead.");
+  });
+
+  test("a routing exchange such as SMART takes its session clock from the quote's listing", async () => {
+    const source = {
+      kind: "security" as const,
+      instrument: { symbol: "NVDA", exchange: "SMART" },
+      fieldId: "market.ohlcv",
+    };
+    const provider = createTestDataProvider({
+      getPriceHistoryForResolution: async () => [
+        { date: new Date("2026-10-15T19:45:00Z"), open: 215, high: 216, low: 214, close: 215 },
+        { date: new Date("2026-10-16T13:30:00Z"), open: 214, high: 215, low: 213, close: 214 },
+      ],
+    });
+    const spec: ChartSpec = chartSpec({
+      viewport: { range: "1W", resolution: "15m" },
+      series: [{ id: "price", source, style: "candles", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date("2026-10-16T20:00:00Z"),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+        symbol: "NVDA", price: 214, currency: "USD", change: 1, changePercent: 0.5, lastUpdated: Date.parse("2026-10-16T19:55:00Z"), exchangeName: "NASDAQ",
+      }]]),
+      loadFredSeries: async () => fredLoad(),
+    });
+    expect(result.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York", exchange: "NASDAQ" });
+    // Without a quote naming the venue, a SMART-routed dollar listing still trades on the US session.
+    const unquoted = await resolveChartSpecData(spec, { dataProvider: provider, now: new Date("2026-10-16T20:00:00Z"), loadFredSeries: async () => fredLoad() });
+    expect(unquoted.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York" });
+    // Its sessions are the venue's too, so the day view and VWAP know when the day opened.
+    expect(result.series[0]?.listing).toEqual({ symbol: "NVDA", exchange: "NASDAQ" });
+    expect(unquoted.series[0]?.listing).toEqual({ symbol: "NVDA", exchange: "NYSE" });
+    // A dollar option names no venue; it trades on the US session too.
+    const optionSource = { kind: "security" as const, fieldId: "market.ohlcv", instrument: { symbol: "NVDA261218C00200000", exchange: "",
+      instrument: { brokerId: "aries", symbol: "NVDA", localSymbol: "NVDA261218C00200000", secType: "OPT", currency: "USD", right: "C" as const, strike: 200, lastTradeDateOrContractMonth: "20261218", multiplier: "100" } } };
+    const option = await resolveChartSpecData({ ...spec, series: [{ ...spec.series[0]!, source: optionSource }] }, { dataProvider: provider, now: new Date("2026-10-16T20:00:00Z"), loadFredSeries: async () => fredLoad() });
+    expect(option.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York" });
+    expect(option.series[0]?.listing).toEqual({ symbol: "NVDA261218C00200000", exchange: "NYSE" });
   });
 
   test("keeps the snapshot exchange when a newer quote omits it", async () => {
@@ -2707,9 +2747,9 @@ describe("one-day charts show the latest session", () => {
   test("asks US listings for extended hours and falls back to the regular session when they are not served", async () => {
     const requests: Array<string | undefined> = [];
     const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333)];
-    const resolveExtended = (symbol: string, exchange: string, served: boolean) => resolveChartSpecData(chartSpec({
+    const resolveExtended = (symbol: string, exchange: string, served: boolean, contract?: BrokerContractRef) => resolveChartSpecData(chartSpec({
       viewport: { range: "1D", resolution: "1h", extendedHours: true },
-      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol, exchange }, fieldId: "market.ohlcv" } })],
+      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol, exchange, ...(contract ? { instrument: contract } : {}) }, fieldId: "market.ohlcv" } })],
     }), {
       dataProvider: createTestDataProvider({
         getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution, context) => {
@@ -2731,6 +2771,12 @@ describe("one-day charts show the latest session", () => {
     expect(unserved.warnings).toContain("AAPL:XNAS: pre-market and after-hours bars are unavailable; the chart shows the regular session.");
     await resolveExtended("7203.T", "JPX", true);
     expect(requests).toEqual(["extended", "extended", undefined]);
+    // A broker's dollar contract routed through SMART asks too; its options do not.
+    requests.length = 0;
+    const routed = { brokerId: "aries", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" };
+    expect((await resolveExtended("AAPL", "SMART", true, routed)).viewport?.start).toEqual(new Date("2026-10-02T08:00:00Z"));
+    await resolveExtended("AAPL261218C00300000", "", true, { ...routed, localSymbol: "AAPL261218C00300000", secType: "OPT", right: "C", strike: 300, lastTradeDateOrContractMonth: "20261218", multiplier: "100" });
+    expect(requests).toEqual(["extended", undefined]);
   });
 
   test("keeps a rolling day for crypto", async () => {

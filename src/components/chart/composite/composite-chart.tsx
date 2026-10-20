@@ -336,6 +336,7 @@ function ThemedCompositeChart({
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
+      ...(levels?.items ?? []).map((level) => level.axisLabel?.length ?? 0),
       ...(layoutPanels ?? []).flatMap((panel) => (["left", "right"] as const).map((side) => {
         const width = compositeAxisLabelWidth(panel.axes[side], formatAxisValue, includeCursorLabels);
         if (!includeSeriesTags || !width) return includeCursorLabels ? width : Math.min(width, maximumAxisWidth);
@@ -346,7 +347,7 @@ function ThemedCompositeChart({
         return (width + 1) * lanes;
       })),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, includeSeriesTags, layoutPanels, maximumAxisWidth]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, includeSeriesTags, layoutPanels, maximumAxisWidth, levels?.items]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;

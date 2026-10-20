@@ -15,6 +15,7 @@ export type ConfigContext = {
 
 export type MarketContext = ConfigContext & {
   dataProvider: AssetDataRouter;
+  resolveBroker?: (brokerType: string) => import("../types/broker").BrokerAdapter | null;
   /** Charts catalog series in a report run without the plugin runtime. */
   seriesCapabilities?: CapabilityInvoker;
   /** `--refresh`: prefetched data bypasses the local cache. */

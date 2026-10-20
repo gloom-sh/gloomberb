@@ -1,6 +1,6 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { t } from "../../../../i18n";
-import { displayWidth } from "../../../../utils/format";
+import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
 
 export interface PaneFooterRegistration {
@@ -192,7 +192,7 @@ function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
  * The info segments as they fit `width`: segments with `variants` step down
  * together, one variant at a time, until the row fits or none is left.
  */
-export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number): PaneFooterSegment[] {
+export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
   const stages = Math.max(0, ...info.map((segment) => segment.variants?.length ?? 0));
   let fitted = info;
   for (let stage = 0; stage < stages && infoTextWidth(fitted) > width; stage += 1) {
@@ -205,7 +205,37 @@ export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number): Pan
       } : segment;
     });
   }
+  // A trailing status cut mid-word reads as part of the hints beside it ("quote 12h t[x] put"): one that does not
+  // fit ends in an ellipsis a column short of them, or is left out when less than half of it would show. A
+  // warning, an icon or a pressable segment stays as it is, clipped by the row if it must be. With no hints beside it
+  // (a pane picture's footer), the row clips it, so a frame that fits its own status line sees it overflow.
+  while (besideHints && fitted.length > 1 && infoTextWidth(fitted) > width) {
+    const last = fitted.at(-1)!;
+    if (last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
+    const room = width - infoTextWidth(fitted.slice(0, -1)) - 2;
+    if (room * 2 >= infoTextWidth([last])) return [...fitted.slice(0, -1), clipSegment(last, room)];
+    fitted = fitted.slice(0, -1);
+  }
   return fitted;
+}
+
+/** A segment cut to `width` behind an ellipsis, each part keeping its tone; the full text stays as its title. */
+function clipSegment(segment: PaneFooterSegment, width: number): PaneFooterSegment {
+  const full = segment.parts.map((part) => part.text).join(" ");
+  const clipped = clipToDisplayWidth(full, width);
+  if (clipped === full) return segment;
+  const body = clipped.slice(0, -1);
+  const parts: PaneFooterPart[] = [];
+  let offset = 0;
+  for (const part of segment.parts) {
+    if (offset >= body.length) break;
+    parts.push({ ...part, text: body.slice(offset, offset + part.text.length) });
+    offset += part.text.length + 1;
+  }
+  const last = parts.at(-1);
+  if (!last) return { ...segment, title: segment.title ?? full, parts: [{ ...segment.parts[0]!, text: clipped }] };
+  parts[parts.length - 1] = { ...last, text: `${last.text}…` };
+  return { ...segment, title: segment.title ?? full, parts };
 }
 
 function moreControl(budget: number): { label: string; width: number } {

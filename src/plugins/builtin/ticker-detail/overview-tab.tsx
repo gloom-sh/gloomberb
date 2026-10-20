@@ -3,6 +3,8 @@ import { fundFactOverviewFields } from "../sec/fund-facts";
 import { useFundFacts } from "../sec/fund-facts-view";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
+import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
+import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useMemo, type ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
@@ -50,6 +52,8 @@ import {
 } from "./overview/components";
 import { useFuturesContractTerms } from "./overview/futures-contract";
 import type { OverviewDividendState } from "./overview/dividend";
+import { optionContractFields, useOptionContractRow } from "./overview/option-contract";
+import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
@@ -102,6 +106,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
+  const trade = useResearchTrading();
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const portfolios = useAppSelector((state) => state.config.portfolios);
   const brokerInstances = useAppSelector((state) => state.config.brokerInstances);
@@ -124,6 +129,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // A futures symbol's settlement and contract terms load beside the quote, never in its way.
   const futuresSymbol = quote?.symbol || ticker.metadata.ticker;
   const contractTerms = useFuturesContractTerms(isFuturesInstrument(futuresSymbol, instrumentType) ? futuresSymbol : null);
+  const optionRow = useOptionContractRow(ticker);
   const exchangeRates = useFxRatesMap([
     baseCurrency,
     ticker.metadata.currency,
@@ -267,7 +273,12 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const contractLines = contractTerms ? futuresContractLines(contractTerms, futuresSymbol) : [];
   // Columns that keep every term whole; a narrow pane stacks them in one.
   const contractColumns = textGridColumns(contractLines.map(contractField), contentWidth);
-  const contractFields = fitFuturesContractLines(contractLines, contractColumns * contractRowBudget(height)).map(contractField);
+  const futuresFields = fitFuturesContractLines(contractLines, contractColumns * contractRowBudget(height)).map(contractField);
+  // An option contract states its own terms, and the chain's open interest and IV, where a stock has a profile.
+  const optionTarget = resolveOptionsTarget(ticker);
+  const optionFields = optionTarget?.isOptionTicker ? optionContractFields(optionTarget, optionRow, quoteCurrency) : [];
+  const contractFields = futuresFields.length > 0 ? futuresFields : optionFields;
+  const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const stats = buildOverviewStats({
     quote,
     fundamentals,
@@ -284,7 +295,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     bond: fundFacts?.bond ?? null,
   });
   const profileFields = buildProfileFields({
-    instrumentType: instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),
+    // The contract section names an option's type.
+    instrumentType: optionFields.length > 0 ? undefined : instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),
     sector,
     industry,
     profile,
@@ -443,10 +455,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
         {contractFields.length > 0 && (
           <Box flexDirection="column">
             <SectionHeading title={t("Contract")} />
-            <FundamentalsGrid fields={contractFields} width={contentWidth} columns={contractColumns} />
+            <FundamentalsGrid fields={contractFields} width={contentWidth} columns={contractGridColumns} />
           </Box>
         )}
 
+        <ResearchTradeActions focused={focused} />
         {hasHistory && (
           <Box
             onMouseDown={onOpenChart
@@ -466,6 +479,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               interactive={false}
               series={[priceSeries]}
               panels={[{ id: "price" }]}
+              levels={trade && researchTradeMatches(trade, instrumentFromTicker(ticker)) ? { seriesId: priceSeries.id, items: trade.levels } : undefined}
               axisWidth={8}
               showLegend={false}
             />
@@ -503,6 +517,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <PositionTable rows={positionRows} width={contentWidth} />
           </Box>
         )}
+
+        {trade?.orders?.(contentWidth)}
 
         {profileFields.length > 0 && (
           <Box flexDirection="column">

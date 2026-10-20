@@ -93,6 +93,12 @@ export function useBrokerManagerActions({
     try {
       setBusy(t("Saving…"));
       const nextConfig = buildBrokerProfileConfig(selectedRow.adapter, editDraft.values, selectedRow.instance);
+      const wasEnabled = selectedRow.adapter.getTradingCapabilities?.(selectedRow.instance).enabled === true;
+      const willEnable = selectedRow.adapter.getTradingCapabilities?.({ ...selectedRow.instance, config: nextConfig }).enabled === true;
+      if (!wasEnabled && willEnable && !await confirmDialog(dialog, {
+        title: "Enable trading?", body: "Orders can commit real money. Start with a simulation account. Every order needs review and confirmation; LIVE orders also need a typed confirmation. You can turn trading off in this profile at any time.",
+        confirmLabel: "Enable trading", confirmVariant: "danger",
+      })) return;
       await updateBrokerInstance(selectedRow.id, nextConfig, {
         label,
         enabled: editDraft.enabled,
@@ -105,7 +111,7 @@ export function useBrokerManagerActions({
     } finally {
       setBusy(null);
     }
-  }, [editDraft, selectedRow, setEditDraft, updateBrokerInstance]);
+  }, [dialog, editDraft, selectedRow, setEditDraft, updateBrokerInstance]);
 
   const connectSelected = useCallback(async () => {
     if (!selectedRow) return;

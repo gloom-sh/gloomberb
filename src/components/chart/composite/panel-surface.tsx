@@ -12,7 +12,8 @@ import { colors as themeColors } from "../../../theme/colors";
 import { consumeChartMouseEvent, getGlobalMouseX, getLocalPlotPointer, type ChartMouseEvent } from "../core/pointer";
 import { useStaticChartBitmapSize } from "./bitmap";
 import { useMeasuredCells } from "../../../ui/measured-cells";
-import { PriceAxisLabels } from "./price-axis-labels";
+import { PriceAxisLabels, placeAxisTicks } from "./price-axis-labels";
+import { layoutLevelLabels, levelLabelStyle, levelLabelText } from "./level-labels";
 import { formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
 import {
   compositeViewportPositions,
@@ -480,14 +481,16 @@ export function CompositePanelSurface({
     .sort((left, right) => Number(right.level.id === selectedLevelId) - Number(left.level.id === selectedLevelId)
       || Number(left.level.editable) - Number(right.level.editable))
     .map(({ level, yRatio }) => ({
+      id: level.id,
       side: levelDomain.side,
       yRatio,
-      label: formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain),
+      label: level.axisLabel ?? (formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain)),
       color: level.color,
     })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);
   const buildAxisMarkers = (side: "left" | "right") => {
     if (!panel.axes[side]) return undefined;
-    const toAxisMarker = (marker: { yRatio: number; label: string; color: string }) => ({
+    const toAxisMarker = (marker: { id?: string; yRatio: number; label: string; color: string }) => ({
+      id: marker.id,
       row: Math.round(marker.yRatio * Math.max(panel.height - 1, 0)),
       pixelY: marker.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
       label: marker.label,
@@ -502,8 +505,14 @@ export function CompositePanelSurface({
     // A label is a row tall, so close levels would stack into an unreadable
     // pile and hide the last price: each keeps its line, and only the labels
     // with a row to themselves show. Desktop badges sit between rows.
+    const grid = fractionalViewport
+      ? placeAxisTicks({ ticks: side === "left" ? leftAxisTicks : rightAxisTicks, height: panel.height, cellHeightPx }).map((tick) => ({
+        ...toAxisMarker({ yRatio: tick.ratio, label: tick.label, color: colors.textDim }),
+        pixelY: tick.topPercent / 100 * Math.max(panel.height * cellHeightPx - 1, 1),
+      }))
+      : [...(side === "left" ? leftAxisLabels : rightAxisLabels)].map(([row, label]) => ({ id: undefined, row, pixelY: row * cellHeightPx, label, color: colors.textDim }));
     const markers = [
-      ...fitAxisLabels(levelLabels, fixed, (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
+      ...fitAxisLabels(levelLabels, [...fixed, ...grid], (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
       ...fixed,
     ];
     return markers.length > 0 ? markers : undefined;
@@ -910,6 +919,27 @@ export function CompositePanelSurface({
       >
         {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}
       </ChartSurface>
+      {(isDesktopWeb
+        ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
+        : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1))
+      ).map((entry) => {
+        const { level, yRatio } = entry;
+        const axisWidth = levelDomain?.side === "left" ? leftAxisWidth : rightAxisWidth;
+        const axisMarkers = levelDomain?.side === "left" ? leftAxisMarkers : rightAxisMarkers;
+        const cursorCovers = activeCursorYRatio !== null && Math.abs(activeCursorYRatio - yRatio) * panel.height < 1;
+        const axisVisible = !cursorCovers && (level.axisLabel?.length ?? 0) <= axisWidth && !!axisMarkers?.some((marker) => marker.id === level.id);
+        const label = levelLabelText(level, axisVisible);
+        const labelStyle = isDesktopWeb ? {
+          ...levelLabelStyle(entry, colors.background), left: "auto", right: (rightAxisWidth + (rightAxisWidth ? axisGap : 0) + 1) * cellWidthPx,
+          maxWidth: Math.max(1, plotWidth - 2) * cellWidthPx,
+        } : undefined;
+        const labelWidth = Math.min(plotWidth - 2, label.length + 2);
+        return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + plotWidth - labelWidth - 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
+          width={labelWidth} flexDirection="row" justifyContent="flex-end" backgroundColor={colors.background} zIndex={20}
+          style={labelStyle} data-gloom-role="chart-level-label">
+          <Text fg={labelStyle?.color ?? level.color} wrapMode="none" style={isDesktopWeb ? { lineHeight: 1 } : undefined}>{label}</Text>
+        </Box>;
+      })}
       {rightAxisWidth > 0 ? (
         <>
           <Box width={axisGap} />

@@ -37,6 +37,7 @@ export function WebButton({
   expanded,
   onPress,
   variant = "secondary",
+  tone,
   disabled = false,
   pending = false,
   active = false,
@@ -49,7 +50,7 @@ export function WebButton({
   title,
 }: ButtonProps) {
   const colors = useThemeColors();
-  const palette = buttonPalette({ variant, active, disabled }, colors);
+  const palette = buttonPalette({ variant, active, disabled, tone }, colors);
   const filled = active || variant === "primary" || variant === "danger";
 
   return (
@@ -261,10 +262,12 @@ const COMFORTABLE_FIELD_HEIGHT = 26;
 
 export function WebTextField({
   label,
+  accessibleLabel,
   value,
   placeholder,
   maxLength,
   focused,
+  disabled = false,
   width,
   inputRef,
   onChange,
@@ -290,6 +293,7 @@ export function WebTextField({
   const renderer = useRendererHost();
   const { nativeContextMenu } = useUiCapabilities();
   const plain = variant === "plain";
+  const well = variant === "well";
   const comfortable = size === "comfortable";
 
   return (
@@ -311,6 +315,7 @@ export function WebTextField({
         alignItems="center"
         backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
         onMouseDown={() => {
+          if (disabled) return;
           onMouseDown?.();
           resolvedInputRef.current?.focus?.();
         }}
@@ -324,12 +329,16 @@ export function WebTextField({
         data-gloom-role="desktop-text-field"
         style={{
           height: comfortable ? COMFORTABLE_FIELD_HEIGHT : undefined,
-          border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
-          borderRadius: plain ? 0 : CONTROL_RADIUS,
+          border: plain || well ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
+          borderRadius: plain ? 0 : well ? "var(--gloom-radius-sm)" : CONTROL_RADIUS,
+          // A well has no border: focus is the accent along its foot.
+          boxShadow: well && focused ? "inset 0 -2px var(--gloom-accent)" : undefined,
           overflow: "hidden",
         }}
       >
         <Input
+          aria-label={accessibleLabel ?? label}
+          disabled={disabled}
           ref={resolvedInputRef as RefObject<InputRenderable | null>}
           width="100%"
           value={value}
@@ -459,15 +468,18 @@ export function WebMessageComposer({
 }
 
 export function WebSegmentedControl({
+  accessibleLabel,
   options,
   value,
   onChange,
   focused,
   width,
   wrap = false,
+  size = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
+  const large = size === "large";
   const selectAdjacent = (direction: -1 | 1) => {
     const index = enabled.findIndex((option) => option.value === value);
     const next = enabled[index < 0 ? 0 : (index + direction + enabled.length) % enabled.length];
@@ -476,26 +488,37 @@ export function WebSegmentedControl({
 
   // A segmented choice is a tab strip (the tab rule in styles.css): text, the
   // chosen one bright and bold on the accent underline. One row tall, so it
-  // never bleeds over the pane title or the table header around it.
+  // never bleeds over the pane title or the table header around it. A large
+  // one, such as an order's side, is two rows of blocks that share the width,
+  // the chosen one filled in its tone.
   return (
     <Box
       flexDirection="row"
       flexWrap={wrap ? "wrap" : "nowrap"}
       width={width}
-      height={wrap ? undefined : 1}
+      height={wrap ? undefined : large ? 2 : 1}
       alignItems="stretch"
       role="radiogroup"
+      aria-label={accessibleLabel}
       data-gloom-role="segmented-control"
+      data-size={large ? "large" : undefined}
       data-focused={focused ? "true" : undefined}
+      style={large ? {
+        borderRadius: "var(--gloom-radius-md)",
+        overflow: "hidden",
+        boxShadow: focused ? "0 0 0 2px var(--gloom-accent)" : undefined,
+      } : undefined}
     >
       {options.map((option) => {
         const active = option.value === value;
+        const tone = option.tone ? colors[option.tone] : undefined;
         return (
           <Box
             key={option.value}
             flexDirection="row"
             alignItems="center"
             justifyContent="center"
+            flexGrow={large ? 1 : undefined}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}
@@ -503,7 +526,7 @@ export function WebSegmentedControl({
             // after the keyboard has moved on to another pane.
             onClick={(event: { currentTarget: unknown; detail: number }) => releasePointerFocus(event.currentTarget, event.detail)}
             data-gloom-interactive={option.disabled ? undefined : "true"}
-            data-gloom-role="tab-button"
+            data-gloom-role={large ? "segment-block" : "tab-button"}
             data-active={active ? "true" : undefined}
             role="radio"
             aria-checked={active}
@@ -521,9 +544,18 @@ export function WebSegmentedControl({
                 onChange?.(option.value);
               }
             }}
-            style={{
+            style={large ? {
+              height: "100%",
+              cursor: option.disabled ? "default" : "pointer",
+              outline: "none",
+              fontSize: "var(--gloom-type-heading)",
+              fontWeight: "var(--gloom-weight-bold)",
+              background: option.disabled ? "var(--gloom-panel)" : active ? tone ?? colors.selected : "var(--gloom-panel)",
+              color: option.disabled ? colors.textMuted : active ? tone ? colors.bg : colors.selectedText : tone ?? colors.textDim,
+            } : {
               height: wrap ? undefined : "100%",
               cursor: option.disabled ? "default" : "pointer",
+              ...(tone ? { "--tab-fg": tone, "--tab-active-fg": tone } as CSSProperties : {}),
               ...(option.disabled ? { color: colors.textMuted } : {}),
             }}
           >
