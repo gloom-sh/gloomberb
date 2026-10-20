@@ -497,7 +497,12 @@ async function resolveTickerSymbol(
       });
       const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
       const currency = resolveCurrencyUnit(quote.currency).currency;
-      if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
+      const ended = quote.delisting;
+      if (ended) {
+        // The symbol's own quote is a US listing that no longer trades (a bare FRC, whose
+        // venue is not on record): it is the run search offers with the same last session.
+        verified = matches.filter((item) => item.result?.delisting?.lastTradeDate === ended.lastTradeDate);
+      } else if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
         && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0) {
         const sameSecurity = matches.filter((item) => {
           const result = item.result!;

@@ -137,3 +137,20 @@ test("a choice of listings says which one no longer trades, and when (GLO-1062)"
   expect(names.FRC).toBe("Last traded Apr 28, 2023");
   expect(Object.values(names)).toContain("First Republic Bank");
 });
+
+test("a bare symbol whose own quote is a delisted US run is that run, not a choice (GLO-1062)", async () => {
+  const delisting = { status: "inactive" as const, lastTradeDate: "2023-04-28", historyStart: "2016-01-04" };
+  const results: InstrumentSearchResult[] = [
+    { providerId: "gloomberb-cloud", symbol: "FRC", name: "First Republic Bank", exchange: "BMV", primaryExchange: "BMV",
+      type: "Common Stock", currency: "MXN" },
+    { providerId: "gloomberb-cloud", symbol: "FRC", name: "FRC", exchange: "", type: "Common Stock", currency: "USD", delisting },
+  ];
+  const resolved = await resolveTickerSearch({ query: "FRC", activeTicker: null, tickers: new Map(),
+    dataProvider: createTestDataProvider({
+      search: async () => results,
+      getQuote: async () => ({ symbol: "FRC", price: 3.51, currency: "USD", change: Number.NaN, changePercent: Number.NaN,
+        lastUpdated: Date.parse("2023-04-28T20:00:00Z"), marketState: "CLOSED", stale: true, delisting }),
+    }),
+  });
+  expect(resolved).toMatchObject({ kind: "provider", symbol: "FRC", result: { delisting } });
+});
