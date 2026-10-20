@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { estimateRevisionsLockNote } from "../estimate-revisions/lock-note";
@@ -40,43 +40,96 @@ test("the command that reads with a session repeats the ticker only where the fu
   expect(await proLockNote({ gate: "sign-in", symbol: "KO", token: "GUID" }, { ...base, token: "EM" })).toContain("GUID is part of Gloom Cloud Pro");
 });
 
+/** A data context whose GUIDE covers the guided symbols and whose SEC list holds the filers' 8-Ks; every read is kept. */
+function routeData({ guided = [] as string[], eightKs = [] as string[], guidance }: {
+  guided?: string[];
+  eightKs?: string[];
+  /** Answers GUIDE's read in place of the guided list: a stall, a failure. */
+  guidance?: (symbol: string, signal?: AbortSignal) => Promise<unknown>;
+}) {
+  const reads: string[] = [];
+  const context = {
+    apiClient: {
+      getCloudCompanyGuidance: async (symbol: string, _options: unknown, _listing: unknown, request?: { signal?: AbortSignal }) => {
+        reads.push(`GUIDE ${symbol}`);
+        return guidance ? guidance(symbol, request?.signal) : guidancePayload(symbol, guided.includes(symbol) ? 1 : 0);
+      },
+      getCloudSecFilings: async ({ ticker, forms, limit }: { ticker: string; forms: string[]; limit: number }) => {
+        reads.push(`${forms.join(",")} ${ticker} limit ${limit}`);
+        return { filings: eightKs.includes(ticker) && forms.includes("8-K") ? [{ form: "8-K" }] : [], hasMore: false };
+      },
+    },
+    marketData: { getQuote: async () => { throw new Error("no quote"); } },
+  } as unknown as HeadlessPaneContext;
+  const note = (symbol: string) => estimateRevisionsLockNote({ gate: "sign-in", symbol, token: "GUID", context });
+  return { reads, note };
+}
+
 /**
  * GLO-1054: GUID offered `fn GUIDE AAPL`, which answers "No data for AAPL:
  * not covered by GUIDE". A route is named only when it has data for the
  * symbol; otherwise the next one that does, or none.
  */
 test("GUID names GUIDE only where GUIDE has guidance, else the company's 8-Ks, else no route", async () => {
-  const guided = new Set(["NVDA"]);
-  const eightKs = new Set(["NVDA", "AAPL"]);
-  const reads: string[] = [];
-  const context = {
-    apiClient: {
-      getCloudCompanyGuidance: async (symbol: string) => {
-        reads.push(`GUIDE ${symbol}`);
-        return guidancePayload(symbol, guided.has(symbol) ? 1 : 0);
-      },
-    },
-    marketData: {
-      getQuote: async () => { throw new Error("no quote"); },
-      getSecFilings: async (symbol: string) => {
-        reads.push(`filings ${symbol}`);
-        return eightKs.has(symbol) ? [{ form: "10-Q" }, { form: "8-K" }] : [{ form: "6-K" }];
-      },
-    },
-  } as unknown as HeadlessPaneContext;
-  const note = (symbol: string) => estimateRevisionsLockNote({ gate: "sign-in", symbol, token: "GUID", context });
+  const { reads, note } = routeData({ guided: ["NVDA"], eightKs: ["NVDA", "AAPL"] });
 
   expect(await note("NVDA")).toContain("Free, with no sign-in: gloomberb fn GUIDE NVDA lists NVDA's latest guidance ranges");
   const apple = await note("AAPL");
   expect(apple).not.toContain("fn GUIDE");
   expect(apple).toContain("Free, with no sign-in: gloomberb filings AAPL --form 8-K lists AAPL's 8-Ks");
   expect(await note("ASML")).not.toContain("Free, with no sign-in");
-  // A note asked for twice in a row (the error a read throws, then the report) checks once.
+  // A note asked for twice in a row (the error a read throws, then the report) checks once,
+  // and whether a company files a form is one filtered filing, not its whole list.
   await note("AAPL");
-  expect(reads).toEqual(["GUIDE NVDA", "GUIDE AAPL", "filings AAPL", "GUIDE ASML", "filings ASML"]);
+  expect(reads).toEqual(["GUIDE NVDA", "8-K NVDA limit 1", "GUIDE AAPL", "8-K AAPL limit 1", "GUIDE ASML", "8-K ASML limit 1"]);
   // Without a ticker the route reads a placeholder, with nothing to check.
   expect(await estimateRevisionsLockNote({ gate: "sign-in", symbol: null, token: "GUID" })).toContain("gloomberb fn GUIDE <ticker>");
 });
+
+/**
+ * A check against a service that never answers held `fn GUID AAPL` open for
+ * good. The checks share one deadline; one still out then is no data for
+ * that note only, as is one that failed.
+ */
+test("a route check that stalls past the deadline or fails is no data for that note, and is checked again for the next", async () => {
+  jest.useFakeTimers();
+  try {
+    let guidance: "stall" | "fail" | "answer" = "stall";
+    let stalledRead: AbortSignal | undefined;
+    const { reads, note } = routeData({
+      eightKs: ["MSFT"],
+      guidance: async (symbol, signal) => {
+        if (guidance === "stall") { stalledRead = signal; return new Promise(() => {}); }
+        return guidance === "fail" ? Promise.reject(new Error("Service unavailable")) : guidancePayload(symbol, 1);
+      },
+    });
+    let stalled = null as string | null;
+    void note("MSFT").then((text) => { stalled = text; });
+    await flushMicrotasks();
+    jest.advanceTimersByTime(2_999);
+    await flushMicrotasks();
+    expect(stalled).toBeNull();
+    jest.advanceTimersByTime(1);
+    await flushMicrotasks();
+    // GUIDE ran out of time, so the next route with data is named, and its read is called off
+    // rather than left to hold the command's process open.
+    expect(stalled).toContain("Free, with no sign-in: gloomberb filings MSFT --form 8-K");
+    expect(stalledRead?.aborted).toBe(true);
+
+    guidance = "fail";
+    expect(await note("MSFT")).toContain("gloomberb filings MSFT --form 8-K");
+    guidance = "answer";
+    expect(await note("MSFT")).toContain("Free, with no sign-in: gloomberb fn GUIDE MSFT");
+    // Neither the stall nor the failure was kept; the 8-K answer was.
+    expect(reads).toEqual(["GUIDE MSFT", "8-K MSFT limit 1", "GUIDE MSFT", "GUIDE MSFT"]);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+async function flushMicrotasks() {
+  for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+}
 
 function guidancePayload(symbol: string, rows: number) {
   const evidence = {

@@ -610,12 +610,12 @@ export class CloudDataApi {
   }
 
   /** `listing` names a listing abroad's venue and company; a US listing needs neither. */
-  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}): Promise<KpisPayload> {
-    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options, listing));
+  async getCloudCompanyKpis(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}, request?: { signal?: AbortSignal }): Promise<KpisPayload> {
+    return this.request<KpisPayload>(companyDisclosurePath("kpis", symbol, options, listing), request);
   }
 
-  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}): Promise<GuidancePayload> {
-    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options, listing));
+  async getCloudCompanyGuidance(symbol: string, options: KpiQueryOptions = {}, listing: IssuerListingParams = {}, request?: { signal?: AbortSignal }): Promise<GuidancePayload> {
+    return this.request<GuidancePayload>(companyDisclosurePath("guidance", symbol, options, listing), request);
   }
   async getCloudPerpsBoard(query: PerpBoardQuery = {}): Promise<PerpBoardPayload> {
     return this.request(`/cloud/perps/board?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
@@ -1040,8 +1040,9 @@ export class CloudDataApi {
 
   async getCloudSecFilings(
     params: CloudSecFilingsParams,
+    options?: { signal?: AbortSignal },
   ): Promise<CloudSecFilingsResponse> {
-    return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params));
+    return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params), options);
   }
 
   /** Schedule 13D/13G reports about an issuer. Unknown tickers answer 404; no reports is an empty `owners`. */

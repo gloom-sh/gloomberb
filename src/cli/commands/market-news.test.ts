@@ -129,21 +129,44 @@ test("a search no story matches says so, never a near miss, and offers the commo
   await news.execute(["arabica"], cli.context);
   await news.execute(["sugar", "beet", "pulp"], cli.context);
   await news.execute(["european gas"], cli.context);
+  await news.execute(["palm oil"], cli.context);
   expect(render(cli.printed[0]!)).toContain('No stories match "sugar prices". For the Sugar #11 future, try: gloomberb news SB=F');
   expect(cli.printed[0]!.result.metadata).toMatchObject({ futuresNews: "gloomberb news SB=F" });
   expect(render(cli.printed[1]!)).toContain('No stories match "arabica". For the Coffee future, try: gloomberb news KC=F');
   expect(render(cli.printed[2]!)).toContain('No stories match "sugar beet pulp". For the Sugar #11 future');
   expect(render(cli.printed[3]!)).toContain('No stories match "european gas".');
   expect(render(cli.printed[3]!)).not.toContain("try:");
-  expect(requests).toEqual(["sugar prices", "sugar", "arabica", "coffee", "sugar beet pulp", "sugar", "european gas"]);
+  // Palm oil is no crude: its search offers no WTI route.
+  expect(render(cli.printed[4]!)).toContain('No stories match "palm oil".');
+  expect(render(cli.printed[4]!)).not.toContain("try:");
+  expect(requests).toEqual(["sugar prices", "sugar", "arabica", "coffee", "sugar beet pulp", "sugar", "european gas", "palm oil"]);
 
   // A route that would search what just found nothing, or that has no story either, is not offered.
-  serveSearch([]);
+  const quiet = serveSearch([]);
   await news.execute(['"sugar"'], cli.context);
   await news.execute(["cocoa prices"], cli.context);
-  expect(render(cli.printed[4]!)).toContain('No stories match "sugar".');
-  expect(render(cli.printed[5]!)).toContain('No stories match "cocoa prices".');
-  expect(render(cli.printed[5]!)).not.toContain("news CC=F");
+  await news.execute(['"soybeans"'], cli.context);
+  expect(render(cli.printed[5]!)).toContain('No stories match "sugar".');
+  expect(render(cli.printed[6]!)).toContain('No stories match "cocoa prices".');
+  expect(render(cli.printed[6]!)).not.toContain("news CC=F");
+  expect(quiet.map((url) => url.searchParams.get("query"))).toEqual(["sugar", "cocoa prices", "cocoa", "soybeans"]);
+});
+
+test("a word whose story search fails says the search failed, with the lookup's answer, never that no story matches", async () => {
+  const requests = serveSearch([]);
+  setCloudApiFetchTransport(async (url) => {
+    requests.push(new URL(url));
+    return new Response("Search is down", { status: 503 });
+  });
+  const cli = unknownSymbol();
+  await news.execute(["arabica"], cli.context);
+  const text = render(cli.printed[0]!);
+  expect(text).not.toContain("No stories match");
+  expect(text).toContain("No listing answers to ARABICA. news takes a company ticker");
+  expect(cli.printed[0]!.result.warnings).toEqual(['Searching stories for "arabica" failed: Search is down']);
+  // No futures route is offered off a search that never answered.
+  expect(requests).toHaveLength(1);
+  expect(cli.printed[0]!.result.metadata).not.toHaveProperty("futuresNews");
 });
 
 test("a word nothing answers to and no story mentions keeps the not-a-ticker answer", async () => {
@@ -155,7 +178,7 @@ test("a word nothing answers to and no story mentions keeps the not-a-ticker ans
   // A search that cannot be made leaves the lookup's own answer rather than failing the command.
   setCloudApiFetchTransport(async () => new Response("{}", { status: 503 }));
   await news.execute(["ZZQXV"], cli.context);
-  expect(render(cli.printed[1]!)).toContain("No listing answers to ZZQXV and no stories match it.");
+  expect(render(cli.printed[1]!)).toContain("No listing answers to ZZQXV. news takes a company ticker");
 });
 
 test("a real listing, with or without stories, never falls back to a text search", async () => {

@@ -8,7 +8,7 @@ import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 const GUIDE_ROUTE: FreeRoute = {
   text: (ticker, company) => `gloomberb fn GUIDE ${ticker} lists ${company}'s latest guidance ranges, with the date each was issued.`,
   answers: async (symbol, context) => {
-    const data = await fetchCompanyData("guidance", symbol, {}, context.apiClient, await resolveHeadlessIssuerListing(context, symbol));
+    const data = await fetchCompanyData("guidance", symbol, {}, context.apiClient, await resolveHeadlessIssuerListing(context, symbol), context.signal);
     return "guidance" in data && data.guidance.length + data.history.length > 0;
   },
 };

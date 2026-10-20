@@ -3,7 +3,7 @@ import type { NewsArticle } from "../../news/types";
 import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { cliStyles } from "../../utils/cli-output";
 import { logFailure } from "../../utils/log-failure";
-import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
+import { commodityNamedIn, commoditySearchName, isCommodityName } from "../../market-data/commodity-names";
 import type { FuturesContract } from "../../market-data/futures-board";
 
 /** What the service accepts of a search: two characters to two hundred, with a letter or a number in them. */
@@ -96,7 +96,7 @@ export interface CommodityNewsRoute {
 export async function commodityNewsRoute(text: string): Promise<CommodityNewsRoute | null> {
   const contract = commodityNamedIn(text);
   const name = contract ? commoditySearchName(contract) : null;
-  if (!contract || !name || name === text.trim().toLowerCase()) return null;
+  if (!contract || !name || isCommodityName(text, name)) return null;
   const stories = await searchNewsStories(name, 1).catch(logFailure("cli.news-search", "Search a commodity's stories failed", []));
   return stories.length > 0 ? { contract, command: `gloomberb news ${contract.symbol}` } : null;
 }

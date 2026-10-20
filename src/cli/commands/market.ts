@@ -1364,25 +1364,29 @@ const NEWS_COLUMNS = [
  * Stories matching text, printed as a symbol's news is, under a line saying
  * what they match. A text naming a commodity that matched nothing says so and
  * offers its future's news when that has stories; `commodity: false` for the
- * future's own news, which is that route.
+ * future's own news, which is that route. A search that failed (`failure`,
+ * its message) says so, with `empty`, the lookup's own answer, rather than
+ * that no story matches.
  */
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty, commodity = true }: { reason?: string; empty?: string; commodity?: boolean },
+  { reason, empty, commodity = true, failure }: { reason?: string; empty?: string; commodity?: boolean; failure?: string },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
-  const named = commodity && articles.length === 0 && commodityNamedIn(text) !== null;
+  const searched = failure === undefined;
+  const named = searched && commodity && articles.length === 0 && commodityNamedIn(text) !== null;
   const route = named ? await commodityNewsRoute(text) : null;
   ctx.printResult({
     data: articles,
+    ...(searched ? {} : { warnings: [`Searching stories for "${text}" failed: ${failure}`] }),
     metadata: { ticker: null, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: newsSearchHeading(text, reason),
     rows: newsRows,
     columns: NEWS_COLUMNS,
-    empty: named ? noStoriesMessage(text, route) : empty ?? noStoriesMessage(text, null),
+    empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
   });
 }
 
@@ -1434,8 +1438,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       : undefined;
     if (word && reason) {
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
-      const found = await searchNewsStories(word, limit).catch(logFailure("cli.commands-market", "Search news stories failed", []));
-      await printNewsSearch(word, found, { reason, empty: emptyMessage(!commodity), commodity: !commodity }, ctx);
+      const search = await searchNewsStories(word, limit).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+        logFailure("cli.commands-market", "Search news stories failed")(error);
+        return { found: [], failure: errorMessage(error) ?? "no answer" };
+      });
+      const searched = search.failure === undefined;
+      await printNewsSearch(word, search.found, { reason, empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
       return;
     }
     const empty = emptyMessage(false);

@@ -84,9 +84,10 @@ function answersFor(answered: string, symbol: string, abroad: ListingAbroad | nu
   const parsed = parsePublicTickerKey(answered);
   return parsed.symbol === abroad.symbol && (!parsed.exchange || parsed.exchange === abroad.exchange);
 }
-export async function fetchCompanyData(mode: CompanyMode, symbol: string, options: KpiQueryOptions = {}, client: CompanyClient = apiClient, listing: IssuerListingParams = {}) {
+export async function fetchCompanyData(mode: CompanyMode, symbol: string, options: KpiQueryOptions = {}, client: CompanyClient = apiClient, listing: IssuerListingParams = {}, signal?: AbortSignal) {
   try {
-    const data = validateCompanyData(await (mode === "kpis" ? client.getCloudCompanyKpis(symbol, options, listing) : client.getCloudCompanyGuidance(symbol, options, listing)));
+    const request = signal ? { signal } : undefined;
+    const data = validateCompanyData(await (mode === "kpis" ? client.getCloudCompanyKpis(symbol, options, listing, request) : client.getCloudCompanyGuidance(symbol, options, listing, request)));
     if (("series" in data) !== (mode === "kpis") || !answersFor(data.symbol, symbol, listingAbroad(symbol, listing.exchange, listing.name))) throw new Error("Company disclosures do not match the requested company");
     return data;
   }

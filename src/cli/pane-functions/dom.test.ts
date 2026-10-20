@@ -261,7 +261,11 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   // The SEC lists 8-Ks for NEM; ASML files 6-Ks, so its route would answer "No filings".
   const filings = { NEM: ["10-Q", "8-K"], ASML: ["6-K", "20-F"] } as Record<string, string[]>;
   const context = {
-    marketData: { getSecFilings: async (symbol: string) => (filings[symbol] ?? []).map((form) => ({ form })) },
+    marketData: {},
+    apiClient: {
+      getCloudSecFilings: async ({ ticker, forms }: { ticker: string; forms: string[] }) =>
+        ({ filings: (filings[ticker] ?? []).filter((form) => forms.includes(form)).map((form) => ({ form })) }),
+    },
   } as unknown as HeadlessPaneContext;
   const walled = (gate: "sign-in" | "pro", visibleText: string, symbol = "NEM") => buildDomPaneReportFromRender(resolved, {
     symbols: [symbol],

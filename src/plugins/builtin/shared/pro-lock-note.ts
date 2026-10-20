@@ -1,5 +1,6 @@
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { PaneLock } from "../../../types/plugin";
+import { settleWithin, signalWithTimeout } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
 
 /** A lock note on one line, as JSON and CSV say why a locked report is empty and as an error carries it. */
@@ -18,38 +19,68 @@ export interface FreeRoute {
   /**
    * Whether the route has data for the symbol, read as the route reads it.
    * Leave it out only for a route that answers for every symbol the function
-   * takes. A read that fails counts as no data.
+   * takes. A read that fails, or is still out after a few seconds, counts as
+   * no data; pass `context.signal` on to reads that take one.
    */
   answers?(symbol: string, context: HeadlessPaneContext): Promise<boolean>;
 }
 
 /** A refused read asks for its note twice (the error it throws, then the report), so an answer is kept a while. */
 const ANSWER_TTL_MS = 5 * 60_000;
-const answers = new WeakMap<FreeRoute, Map<string, { at: number; answer: Promise<boolean> }>>();
 
-function routeAnswers(route: FreeRoute, symbol: string, context: HeadlessPaneContext): Promise<boolean> {
-  if (!route.answers) return Promise.resolve(true);
-  const bySymbol = answers.get(route) ?? new Map<string, { at: number; answer: Promise<boolean> }>();
+/**
+ * How long a note waits on its routes' data checks, all of them together: a
+ * check still out then counts as no data, so a stalled service costs the note
+ * its route, never the reader's command.
+ */
+const ROUTE_CHECK_WAIT_MS = 3_000;
+
+interface KeptAnswer { at: number; answer: Promise<boolean> }
+const answers = new WeakMap<FreeRoute, Map<string, KeptAnswer>>();
+
+/**
+ * Whether the route has data for the symbol, null when its check failed or was
+ * still out at the deadline. A check that answered is kept for the TTL; one
+ * that failed or ran out of time is dropped, so the next note checks again
+ * rather than hiding the route for minutes over one slow read.
+ */
+async function routeAnswers(route: FreeRoute, check: NonNullable<FreeRoute["answers"]>, symbol: string, context: HeadlessPaneContext, deadline: number): Promise<boolean | null> {
+  const bySymbol = answers.get(route) ?? new Map<string, KeptAnswer>();
   answers.set(route, bySymbol);
   const key = symbol.trim().toUpperCase();
-  const kept = bySymbol.get(key);
-  if (kept && Date.now() - kept.at < ANSWER_TTL_MS) return kept.answer;
-  const answer = route.answers(symbol, context).catch(logFailure("plugins.pro-lock-note", "Check a free route's data failed", false));
-  bySymbol.set(key, { at: Date.now(), answer });
+  let kept = bySymbol.get(key);
+  if (!kept || Date.now() - kept.at >= ANSWER_TTL_MS) {
+    // The check's own reads stop at the deadline where they take a signal.
+    const signal = signalWithTimeout(context.signal, Math.max(0, deadline - Date.now()));
+    const entry: KeptAnswer = { at: Date.now(), answer: check(symbol, { ...context, signal }) };
+    entry.answer.catch(logFailure("plugins.pro-lock-note", "Check a free route's data failed"));
+    bySymbol.set(key, entry);
+    kept = entry;
+  }
+  const answer = await settleWithin(kept.answer, Math.max(0, deadline - Date.now()));
+  if (answer === null && bySymbol.get(key) === kept) bySymbol.delete(key);
   return answer;
 }
 
 /**
  * The first of the routes, best first, that has data for the lock's symbol:
- * GUIDE's guidance ranges where it covers the company, else its 8-Ks. Without
- * a symbol the routes read `<ticker>` and the first is named; without a way to
+ * GUIDE's guidance ranges where it covers the company, else its 8-Ks. The
+ * checks run together under one deadline, so a stalled first route neither
+ * holds the note past it nor keeps the next route from being named. Without a
+ * symbol the routes read `<ticker>` and the first is named; without a way to
  * read data, only a route that answers for every symbol is.
  */
 async function answeringFreeRoute(lock: PaneLock, routes: readonly FreeRoute[]): Promise<FreeRoute | null> {
-  if (!lock.symbol) return routes[0] ?? null;
-  for (const route of routes) {
-    if (!route.answers) return route;
-    if (lock.context && await routeAnswers(route, lock.symbol, lock.context)) return route;
+  const { symbol, context } = lock;
+  if (!symbol) return routes[0] ?? null;
+  // Routes past the first that needs no check are never named, so they are not checked.
+  const unchecked = routes.findIndex((route) => !route.answers);
+  const candidates = unchecked < 0 ? routes : routes.slice(0, unchecked + 1);
+  const deadline = Date.now() + ROUTE_CHECK_WAIT_MS;
+  const checks = candidates.map((route) => !route.answers ? Promise.resolve(true)
+    : context ? routeAnswers(route, route.answers, symbol, context, deadline) : Promise.resolve(false));
+  for (const [index, check] of checks.entries()) {
+    if (await check) return candidates[index]!;
   }
   return null;
 }

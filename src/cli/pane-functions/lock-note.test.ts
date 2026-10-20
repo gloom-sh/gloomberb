@@ -59,12 +59,16 @@ function refuse(fn: LockedFunction, status: 401 | 402 | 403) {
     restores.push(() => spy.mockRestore());
     return;
   }
-  setCloudApiFetchTransport((async () => new Response("Refused", { status })) as typeof fetch);
+  setCloudApiFetchTransport((async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    // The SEC's filing list is free, so a route to ACME's 8-Ks reads it signed out.
+    if (url.pathname === "/cloud/sec/filings") return Response.json({ filings: url.searchParams.get("ticker") === "ACME" ? [{ form: "8-K" }] : [], hasMore: false });
+    return new Response("Refused", { status });
+  }) as typeof fetch);
 }
 
-/** What the free routes read: ACME files 8-Ks, has a report date and earnings on file; QUIET has none of them. */
+/** What the free routes read besides the SEC's filings: ACME has a report date and earnings on file; QUIET has neither. */
 const ACME_DATA = createTestDataProvider({
-  getSecFilings: async (symbol) => (symbol === "ACME" ? [{ form: "8-K" }] : []) as never,
   getEarningsCalendar: async (symbols) => (symbols.some((symbol) => symbol.startsWith("ACME")) ? [{ symbol: "ACME" }] : []) as never,
   getCorporateActions: async (symbol) => ({ symbol, dividends: [], splits: [], earnings: symbol === "ACME" ? [{}] : [] }) as never,
 });

@@ -40,8 +40,7 @@ function run(year = "latest", refresh = false) {
       capability: { id: "risk-factors" },
       pane: riskFactorsModule.panes![0],
     } as never,
-    // ACME files 10-Ks, so the lock names them as the free route.
-    { dataProvider: createTestDataProvider({ getSecFilings: async () => [{ form: "10-K" }] as never }), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
+    { dataProvider: createTestDataProvider(), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
     "ACME",
   );
 }
@@ -123,7 +122,8 @@ test("a RISK read the server refuses behind a wall reports what is locked and th
     [403, "Email verification required", "sign-in", "Until the email is verified"],
     [402, "Pro plan required", "pro", "On a free account"],
   ] as const) {
-    transport(() => new Response(message, { status }));
+    // The SEC's filing list is free, and ACME files 10-Ks, so the lock names them as the free route.
+    transport((path) => path === "/cloud/sec/filings" ? Response.json({ filings: [{ form: "10-K" }], hasMore: false }) : new Response(message, { status }));
     const locked = await run("latest", true);
     expect(locked.data).toMatchObject({ locked: gate, empty: true, complete: false, unavailableSymbols: ["ACME"] });
     expect(locked.data.freshness).toBeUndefined();
