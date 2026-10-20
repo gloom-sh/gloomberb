@@ -111,6 +111,8 @@ interface CompositePanelSurfaceProps {
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
   onToolSpanChange: (span: ChartToolSpan | null) => void;
+  /** A press on the plot started (true) or stopped (false) dragging: a pan, a tool, a drawing or a level. */
+  onDragActiveChange?: (dragging: boolean) => void;
   /** The tool being placed from the keyboard, when it lives in this panel. */
   keyboardToolDrag: KeyboardToolDrag | null;
   /** A press on the plot: the pointer takes over from a keyboard placement. */
@@ -154,6 +156,7 @@ export function CompositePanelSurface({
   onZoomViewport,
   onSetViewport,
   onToolSpanChange,
+  onDragActiveChange,
   keyboardToolDrag,
   onPointerPress,
   showTextFallback,
@@ -736,12 +739,29 @@ export function CompositePanelSurface({
     }
     finishToolDrag();
   }, [finishToolDrag]);
+  // Said once per change, so a pointer move costs the chart nothing.
+  const reportedDragRef = useRef(false);
+  const reportDrag = useCallback((dragging: boolean) => {
+    if (reportedDragRef.current === dragging) return;
+    reportedDragRef.current = dragging;
+    onDragActiveChange?.(dragging);
+  }, [onDragActiveChange]);
+  const pressPlot = useCallback((event: ChartMouseEvent) => {
+    const before = dragRef.current;
+    startDrag(event);
+    if (dragRef.current !== null && dragRef.current !== before) reportDrag(true);
+  }, [reportDrag, startDrag]);
+  const releasePlot = useCallback(() => {
+    resetDrag();
+    reportDrag(false);
+  }, [reportDrag, resetDrag]);
   const handleMouseMove = useCallback((event: ChartMouseEvent) => {
     // A release over a neighbouring pane never reaches this surface, so treat a
     // plain move, which only fires with no button held, as the missing release.
     finishToolDrag();
+    reportDrag(false);
     updateCursor(event);
-  }, [finishToolDrag, updateCursor]);
+  }, [finishToolDrag, reportDrag, updateCursor]);
   // Trackpads fire wheel events faster than the plot can paint, so one frame
   // absorbs every event that arrived since the last one.
   const pendingWheelRef = useRef<PendingWheel | null>(null);
@@ -876,10 +896,10 @@ export function CompositePanelSurface({
         crosshair={crosshair}
         vectors={vectors}
         onMouseMove={interactive ? handleMouseMove : undefined}
-        onMouseDown={interactive ? navigable ? startDrag : pressCursor : undefined}
+        onMouseDown={interactive ? navigable ? pressPlot : pressCursor : undefined}
         onMouseDrag={interactive && navigable ? dragViewport : undefined}
-        onMouseUp={interactive && navigable ? resetDrag : undefined}
-        onMouseDragEnd={interactive && navigable ? resetDrag : undefined}
+        onMouseUp={interactive && navigable ? releasePlot : undefined}
+        onMouseDragEnd={interactive && navigable ? releasePlot : undefined}
         onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
         cursor={interactive ? toolDrag || !navigable || onPickTime ? "crosshair" : "grab" : undefined}

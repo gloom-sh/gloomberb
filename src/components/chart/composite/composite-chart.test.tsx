@@ -30,6 +30,7 @@ import { createDefaultConfig } from "../../../types/config";
 import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { useTabCursorLink } from "../../../state/app/tab-cursor";
+import { PaneFocusedProvider } from "../../../state/app/activity";
 import { createTestResolvedSeries, createTestSeriesPoint as point } from "../../../test-support/time-series";
 import {
   buildCompositeNavigationFrame,
@@ -1801,6 +1802,63 @@ describe("CompositeChart", () => {
     });
     await act(async () => tui.setup().renderOnce());
     expect(tui.frame()).not.toContain("Δ");
+  });
+
+  test("shows its tools on the focused pane only, and keeps them while one is in hand or a press drags", async () => {
+    let setFocused: (focused: boolean) => void = () => {};
+    function FocusablePane({ children }: { children: ReactNode }) {
+      const [focused, set] = useState(false);
+      setFocused = set;
+      return <PaneFocusedProvider value={focused}>{children}</PaneFocusedProvider>;
+    }
+    await tui.render(
+      <CaptureChartSurfaceProvider>
+        <FocusablePane>
+          <CompositeChart
+            width={60}
+            height={12}
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </FocusablePane>
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    const RULER = "\u2194";
+    const HAND = "\u2725";
+    const frame = async () => {
+      await act(async () => tui.setup().renderOnce());
+      return tui.frame();
+    };
+    const focus = async (focused: boolean) => {
+      await act(async () => setFocused(focused));
+      return frame();
+    };
+    const press = async (glyph: string) => {
+      const lines = tui.frame().split("\n");
+      const row = lines.findIndex((line) => line.includes(glyph));
+      await act(async () => tui.setup().mockMouse.click(lines[row]!.indexOf(glyph), row));
+      return frame();
+    };
+
+    expect(await frame()).not.toContain(RULER);
+    expect(await focus(true)).toContain(RULER);
+
+    // A tool in hand stays in view after focus moves on, until it is put down.
+    await press(RULER);
+    expect(await focus(false)).toContain(RULER);
+    expect(await press(HAND)).not.toContain(RULER);
+
+    // So does a drag that started on the focused pane, until its release.
+    await focus(true);
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(30, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(24, 6));
+    });
+    expect(await focus(false)).toContain(RULER);
+    await act(async () => capturedSurfaceProps!.onMouseUp(pointerEvent(24, 6)));
+    expect(await frame()).not.toContain(RULER);
   });
 
   test("draws a line, then grabs its end to reshape it", async () => {

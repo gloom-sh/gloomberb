@@ -191,6 +191,19 @@ export function usePaneInView(): boolean {
 }
 
 /**
+ * Whether the pane around the caller is the focused one, as its frame draws
+ * it (a pane under the open command bar is not). Null outside a pane.
+ */
+const PaneFocusedContext = createContext<boolean | null>(null);
+
+export const PaneFocusedProvider = PaneFocusedContext.Provider;
+
+/** For chrome a pane shows only while focused (a chart's drawing tools); null outside a pane. */
+export function usePaneFocused(): boolean | null {
+  return useContext(PaneFocusedContext);
+}
+
+/**
  * Gate a pane's market data (stream priority, polls, refresh clocks) on this:
  * the app can be seen and the pane is on screen. A covered pane should keep
  * its subscriptions at a lower priority rather than drop them, so totals stay

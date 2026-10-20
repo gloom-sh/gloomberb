@@ -456,8 +456,13 @@ async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   return day ?? fail(`${paneId} reads out no observation under the pointer`, at);
 }
 
-/** Presses a tool in the chart's toolbar by the start of its label. */
+/** Presses a tool in the chart's toolbar by the start of its label, focusing the pane first: only the focused pane shows its tools. */
 async function armTool(cdp: Cdp, paneId: string, label: string): Promise<void> {
+  const toolbar = `!!__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-toolbar]")`;
+  if (!await evaluate<boolean>(cdp, toolbar)) {
+    await click(cdp, await pointOf(cdp, paneId, "title"));
+    if (!await waitFor(cdp, toolbar)) fail(`${paneId} shows no chart tools once focused`);
+  }
   const at = await evaluate<Point | null>(cdp, `(() => {
     const tool = [...(__check.pane(${JSON.stringify(paneId)})?.querySelectorAll("[data-gloom-role=composite-chart-tool]") ?? [])]
       .find((element) => (element.getAttribute("data-gloom-label") ?? "").startsWith(${JSON.stringify(label)}));
@@ -651,6 +656,21 @@ nestedChartSteps.push({
     if (!await waitFor(cdp, `(() => { const l = ${lines}; return l && !l.level && Math.abs(l.x - ${rest.x}) <= 1; })()`)) {
       fail("the band did not go back to its latest close when the pointer left", { rest, now: await evaluate(cdp, lines) });
     }
+  },
+});
+
+nestedChartSteps.push({
+  name: "chart tools: only the focused pane shows them, and a press on another pane's plot moves them there",
+  scenario: "nested",
+  async run(cdp: Cdp) {
+    const tools = `Object.fromEntries(${JSON.stringify(NESTED_CHARTS)}.map((id) => [id, !!__check.pane(id)?.querySelector("[data-gloom-role=composite-chart-toolbar]")]))`;
+    const showing = (id: string) => `(() => { const t = ${tools}; return Object.entries(t).every(([pane, shown]) => shown === (pane === ${JSON.stringify(id)})) ? t : null; })()`;
+    await click(cdp, await pointOf(cdp, "chart-bar:dock", "title"));
+    if (!await waitFor(cdp, showing("chart-bar:dock"))) fail("the focused chart is not the only one showing its tools", await evaluate(cdp, tools));
+    // The press on a plot that focuses its pane brings the tools there.
+    const plot = await plotRect(cdp, "beside:dock");
+    await click(cdp, { x: plot.x + plot.width * 0.6, y: plot.y + plot.height * 0.6 });
+    if (!await waitFor(cdp, showing("beside:dock"))) fail("a press on another chart did not move the tools there", await evaluate(cdp, tools));
   },
 });
 

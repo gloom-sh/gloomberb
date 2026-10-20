@@ -1,7 +1,7 @@
 import { memo, Profiler, useCallback, useMemo, type ReactNode } from "react";
 import { useAppLanguage } from "../../../i18n/react";
 import { isPerfTraceEnabled, recordPerfSample } from "../../../utils/perf-marks";
-import { PaneInViewProvider } from "../../../state/app/activity";
+import { PaneFocusedProvider, PaneInViewProvider } from "../../../state/app/activity";
 import { PaneInstanceProvider } from "../../../state/app/context";
 import { RemoteUiPaneScope } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -91,19 +91,21 @@ export const PaneContent = memo(function PaneContent({
     <PaneInstanceProvider paneId={paneId}>
       <RemoteUiPaneScope paneId={paneId}>
         <PaneInViewProvider value={inView}>
-          <PaneKeyboardScrollController paneId={paneId} focused={focused} />
-          <Box
-            flexDirection="column"
-            flexGrow={1}
-            flexShrink={1}
-            flexBasis={0}
-            minWidth={0}
-            minHeight={0}
-            overflow="hidden"
-            data-gloom-role="pane-content"
-          >
-            {body}
-          </Box>
+          <PaneFocusedProvider value={focused}>
+            <PaneKeyboardScrollController paneId={paneId} focused={focused} />
+            <Box
+              flexDirection="column"
+              flexGrow={1}
+              flexShrink={1}
+              flexBasis={0}
+              minWidth={0}
+              minHeight={0}
+              overflow="hidden"
+              data-gloom-role="pane-content"
+            >
+              {body}
+            </Box>
+          </PaneFocusedProvider>
         </PaneInViewProvider>
       </RemoteUiPaneScope>
     </PaneInstanceProvider>
