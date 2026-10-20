@@ -481,8 +481,14 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
   let answer = first;
   let issuer: BondIssuer | null = null;
   if (first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.companyName) {
-    const company = await options.companyName(query.ticker)
-      .catch(logFailure("trace-bonds.client", "Resolve bond issuer company failed", null));
+    const company = await options.companyName(query.ticker).catch((error: unknown) => {
+      options.signal?.throwIfAborted();
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      logFailure("trace-bonds.client", "Resolve bond issuer company failed")(error);
+      answer = { ...first, failures: [...first.failures, "Issuer-name lookup failed."] };
+      return null;
+    });
+    options.signal?.throwIfAborted();
     const name = company ? tapeIssuerName(company) : null;
     if (company && name && name !== query.name) {
       issuer = { company, name };

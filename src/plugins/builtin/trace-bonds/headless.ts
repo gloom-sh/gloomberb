@@ -89,7 +89,7 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
         rows: bonds.map(reportRow),
         ...(query ? { empty: noPrintsText(query, tradeDate, issuer) } : {}),
       }],
-      complete: true,
+      complete: failures.length === 0,
       ...(failures.length > 0 ? { errors: failures } : {}),
       ...(truncated ? { notes: [TRUNCATED_TEXT] } : {}),
       ...(shown ? { warnings: [issuerFallbackText(query!, issuer)] } : {}),

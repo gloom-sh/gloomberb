@@ -141,6 +141,7 @@ test("one request failing leaves the others' rows, and a 204 with no body is no 
   expect(tape.failures).toEqual(["Bond tape request failed (502): upstream down"]);
   const { result } = await report("whr");
   expect(result.errors).toEqual(["Bond tape request failed (502): upstream down"]);
+  expect(result.complete).toBe(false);
 
   // Only when nothing answers does the load fail.
   fakeTape(() => new Response("upstream down", { status: 502 }));
@@ -164,14 +165,44 @@ test("a ticker with no bonds of its own is asked once by its company's name, and
 
   // With no company to ask, or none on the tape, the market's latest day dates the empty answer.
   posted.length = 0;
-  const empty = await report("CMLSQ");
+  const empty = await report("CMLSQ", createTestDataProvider({
+    getQuote: async (symbol) => createTestQuote({ symbol, name: symbol }),
+  }));
   expect(posted.map((request) => request.limit)).toEqual([100, 100, 100, 100, 1]);
   // The message stands alone under the report's title, with no heading over nothing.
   expect(empty.text.split("\n").slice(0, 3)).toEqual(["Latest corporate and agency bond sales", "", "No prints for CMLSQ on 2026-10-16."]);
   expect(empty.text).not.toContain("Last sales");
+  expect(empty.result.complete).toBe(true);
+  expect(empty.result.errors).toBeUndefined();
   const tape = await fetchBondTape("ZZZQ", { today: TODAY, companyName: async () => "Nobody Holdings Inc." });
   expect(noPrintsText(tape.query!, tape.tradeDate, tape.issuer)).toBe("No prints for ZZZQ or NOBODY on 2026-10-16.");
   expect(noPrintsText(tape.query!, null)).toBe("No prints for ZZZQ.");
+});
+
+test("a failed issuer-name lookup leaves an empty report incomplete and names the failed check", async () => {
+  fakeTape((request) => request.limit === 1
+    ? [bond("65334HAE2", "NXY3816446", "NEXEN INC", "2026-10-16")]
+    : []);
+  const unavailable = createTestDataProvider({ getQuote: async () => { throw new Error("quote unavailable"); } });
+  const { result, text } = await report("CMLSQ", unavailable);
+  expect(result.complete).toBe(false);
+  expect(result.errors).toEqual(["Issuer-name lookup failed."]);
+  expect(result.metadata).toMatchObject({ matched: 0, tradeDate: "2026-10-16" });
+  expect(text).toContain("Issuer-name lookup failed.");
+});
+
+test.each(["abort error", "caller signal", "resolved after cancellation"])("a cancelled issuer lookup stops without a failure report: %s", async (cancellation) => {
+  const posted = fakeTape(() => []);
+  const controller = new AbortController();
+  const reason = new DOMException("Lookup cancelled", "AbortError");
+  const companyName = async () => {
+    if (cancellation !== "abort error") controller.abort(reason);
+    if (cancellation === "resolved after cancellation") return "Example Industries Inc.";
+    throw cancellation === "caller signal" ? new Error("request interrupted") : reason;
+  };
+  await expect(fetchBondTape("CMLSQ", { today: TODAY, signal: controller.signal, companyName })).rejects.toBe(reason);
+  // Cancellation must not start a fallback issuer request or a market-date request.
+  expect(posted).toHaveLength(4);
 });
 
 test("a narrow tape keeps coupon and maturity, and the trade date outlasts the CUSIP and yield", async () => {
