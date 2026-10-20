@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import type { ThemeMember, ThemePeriod, ThemeSummary } from "../../../api-client/themes";
-import { DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
+import { splitDelayedStatus, DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerActions, useUpdatedAgo } from "../../../public/react";
@@ -24,7 +24,7 @@ function useSnapshotFooter(id: string, resource: { loading: boolean; error: stri
   const payload = data?.payload;
   // Outside the regular session the figures are a close, so the footer names it, not the snapshot's time.
   const text = age && payload ? snapshotFooterText(payload, age) : null;
-  const info = useMemo(() => text ? [{ id: "snapshot", parts: [{ text, tone: "muted" as const }] }] : [], [text]);
+  const info = useMemo(() => text ? splitDelayedStatus({ id: "snapshot", parts: [{ text, tone: "muted" }] }) : [], [text]);
   // The server flag includes retained historical returns; it does not mean the daily board is old.
   const snapshotStale = !!data && Date.now() - Date.parse(data.payload.asOf) > SNAPSHOT_STALE_MS;
   usePaneStatusFooter({ registrationId: id, enabled, loading: resource.loading && !!data,

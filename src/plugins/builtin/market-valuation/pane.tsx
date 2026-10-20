@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  DELAYED_SEGMENT,
   PaneStatusBody, type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment
@@ -140,7 +141,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     if (!selectedView) return [];
     const info: PaneFooterSegment[] = [
       { id: "as-of", parts: [{ text: `as of ${selectedView.asOf}`, tone: "muted" }] },
-      ...(width >= 80 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
+      ...(width >= 80 ? [DELAYED_SEGMENT] : []),
     ];
     if (selectedView.observationStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });

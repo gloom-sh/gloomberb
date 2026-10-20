@@ -5,7 +5,7 @@ import { t } from "../../../../i18n";
 import { ShortcutHint } from "../../../ui/shortcut-hint";
 import { Button } from "../../../ui/button";
 import { ChoiceDialog } from "../../../ui/choice-dialog";
-import { IconButton } from "../../../ui/icon";
+import { Icon, IconButton } from "../../../ui/icon";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { nativePaneFooterRows } from "../sizing";
@@ -23,7 +23,10 @@ import {
 
 export {
   datesPaneData,
+  DELAYED_SEGMENT,
+  delayedFooterSegment,
   hasPaneFooterContent,
+  splitDelayedStatus,
   type CombinedPaneFooter,
   type PaneFooterPressEvent,
   type PaneFooterSegment,
@@ -104,6 +107,21 @@ function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused
     if (startedOnTrigger) segment.onPress?.();
     else stopMouseEvent(event);
   };
+
+  if (nativePaneChrome && segment.icon && !segment.onPress) {
+    // A status, not a control: the icon button's box, with its detail on hover.
+    return (
+      <Box
+        role="img"
+        aria-label={label}
+        title={segment.title ?? label}
+        data-gloom-role="pane-footer-icon"
+        data-icon={segment.icon}
+      >
+        <Icon name={segment.icon} size={14} color={segment.disabled ? colors.textMuted : footerToneColor(segment.parts[0] ?? { text: "" })} />
+      </Box>
+    );
+  }
 
   if (nativePaneChrome && segment.icon) {
     return (
@@ -273,7 +291,8 @@ function FooterContent({
           {...(infoWidth != null ? { width: infoWidth } : {})}
         >
           {info.map((segment, index) => (
-            <Box key={segment.id} flexDirection="row" marginRight={index === info.length - 1 ? 0 : 1}>
+            // An icon is a few cells that mean nothing cut: the text beside it gives way first.
+            <Box key={segment.id} flexDirection="row" flexShrink={segment.icon ? 0 : undefined} marginRight={index === info.length - 1 ? 0 : 1}>
               <SegmentView segment={segment} focused={focused} />
             </Box>
           ))}

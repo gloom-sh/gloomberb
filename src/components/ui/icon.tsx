@@ -36,7 +36,8 @@ export type IconName =
   | "ask"
   | "bot"
   | "team"
-  | "pro";
+  | "pro"
+  | "clock";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -79,6 +80,8 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   bot: "⍠",
   team: "◉",
   pro: "◊",
+  // Time, for data that arrives late (a delayed quote).
+  clock: "◷",
 };
 
 export interface IconProps {

@@ -678,7 +678,7 @@ export const zhTW: Record<string, string> = {
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "在 gloom.sh/cloud 升級 Pro 取得即時資料，免費試用 7 天。",
   "real-time options": "即時選擇權",
   "mixed real-time and delayed options": "即時與延遲選擇權混合",
-  "options delayed fallback": "選擇權延遲備援資料",
+  "Delayed options quotes, real-time stream unavailable": "選擇權報價延遲，即時資料流無法使用",
   "crossed quote": "交叉報價",
   "one-sided quote": "單邊報價",
   "no bid/ask": "無買賣報價",

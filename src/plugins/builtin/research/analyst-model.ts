@@ -5,6 +5,7 @@ import { formatRelativeTime } from "../../../utils/datetime-format";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 
 function compactPeriod(period: string): string {
@@ -369,14 +370,17 @@ export function buildAnalystStatusSegments(
 
   // The upside is only as good as the price it was measured against.
   if (reference.price != null) {
+    // A delayed price is the footer's clock beside it; a real-time one says so in words.
+    const delay = reference.freshness?.endsWith(" delayed") ? reference.freshness.slice(0, -" delayed".length) : null;
     segments.push({
       id: "analyst-reference-price",
       parts: [
         { text: "upside vs", tone: "label" },
         { text: price(reference.price) },
-        ...(reference.freshness ? [{ text: reference.freshness, tone: "muted" as const }] : []),
+        ...(reference.freshness && !delay ? [{ text: reference.freshness, tone: "muted" as const }] : []),
       ],
     });
+    if (delay) segments.push(delayedFooterSegment({ id: "analyst-reference-delay", detail: `Price ${reference.freshness}`, delay }));
   }
 
   if (!data.stale && data.fetchedAt) {

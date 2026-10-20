@@ -151,6 +151,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M1.5 5.3h9M4.8 2.5 4.3 5.3 6 10.1l1.7-4.8-.5-2.8" stroke="currentColor" strokeWidth=".9" strokeLinejoin="round" />
     </>
   ),
+  // A clock face at ten past: data that arrives late.
+  clock: (
+    <>
+      <circle cx="6" cy="6" r="4.4" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M6 3.4V6l1.9 1.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

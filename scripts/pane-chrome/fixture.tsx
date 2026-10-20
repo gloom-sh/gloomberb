@@ -65,6 +65,7 @@ import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
 import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
 import { usePaneFooter } from "../../src/components/layout/pane/footer/registration";
+import { delayedFooterSegment } from "../../src/components/layout/pane/footer/model";
 import { Shell } from "../../src/components/layout/shell";
 import { Header } from "../../src/components/layout/header";
 import { StatusBar } from "../../src/components/layout/status-bar";
@@ -776,7 +777,10 @@ const DES_FOOTER = params.get("footer") === "1";
 function DesPane({ width, height, focused }: PaneProps) {
   // The status and the one hint the pane's real footer carries for a delayed quote.
   usePaneFooter("des-fixture", () => DES_FOOTER ? {
-    info: [{ id: "quote", parts: [{ text: "Stale quote 2026-01-02", tone: "muted" }, { text: "15m delayed", tone: "warning" }] }],
+    info: [
+      { id: "quote", parts: [{ text: "Stale quote 2026-01-02", tone: "muted" }] },
+      delayedFooterSegment({ id: "access", detail: "15m delayed", delay: "15m", onPress: () => {} }),
+    ],
     hints: [{ id: "upgrade", key: "$", label: "upgrade", onPress: () => {} }],
   } : null, []);
   return <OverviewTab ticker={DES_TICKER} financials={DES_FINANCIALS} width={width} height={height} focused={focused} />;

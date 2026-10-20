@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import {
+  DELAYED_SEGMENT,
   ChartTableHeader,
   CompositeChart,
   formatBpAxis,
@@ -112,7 +113,7 @@ export function SovrPane({ focused, width, height }: PaneProps) {
   const asOf = formatAsOf(payload?.asOf ?? null);
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
-    ...(payload ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
+    ...(payload ? [DELAYED_SEGMENT] : []),
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
   ], [asOf, payload, resource.data?.stale]);
   usePaneStatusFooter({

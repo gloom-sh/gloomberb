@@ -1,4 +1,4 @@
-import { PaneStatusBody, type PaneFooterSegment } from "../../../../components";
+import { delayedFooterSegment, splitDelayedStatus, PaneStatusBody, type PaneFooterSegment } from "../../../../components";
 import type {
   BuildoutList,
   BuildoutLoadState,
@@ -44,10 +44,10 @@ export function updateBuildoutFooterInfo(
 
   const info: PaneFooterSegment[] = [];
   if (messages.quoteFreshness) {
-    info.push({ id: "quote", parts: [{ text: messages.quoteFreshness, tone: "muted" }] });
+    info.push(...splitDelayedStatus({ id: "quote", parts: [{ text: messages.quoteFreshness, tone: "muted" }] }));
   }
   if (state.access !== "pro" && activeTab === "intel") {
-    info.push({ id: "access", onPress: messages.onUpgrade, parts: [{ text: "72h delayed", tone: "warning" }] });
+    info.push(delayedFooterSegment({ id: "access", detail: "72h delayed", delay: "72h", onPress: messages.onUpgrade }));
   }
   if (messages.partialList) {
     info.push({ id: "partial", onPress: messages.onUpgrade, parts: [{ text: "partial list", tone: "warning" }] });

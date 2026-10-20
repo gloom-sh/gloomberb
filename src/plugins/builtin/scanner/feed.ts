@@ -12,6 +12,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import { useAppVisible } from "../../../state/app/activity";
 import { ScannerClientContext } from "../shared/scanner-capture";
+import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 
 export interface ScannerFeedState<T extends ScannerPayload> {
   payload: T | null;
@@ -102,7 +103,11 @@ export function useScannerStatusFooter(
   const info = useMemo<PaneFooterSegment[]>(
     () => {
       const base = segment ? [segment, ...status]
-        : delayMinutes != null ? [{ id: "scanner-delay", parts: [{ text: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }), tone: "muted" as const }] }, ...status]
+        : delayMinutes != null ? [delayedFooterSegment({
+          id: "scanner-delay",
+          detail: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }),
+          delay: tf("{count}m", { count: delayMinutes }),
+        }), ...status]
           : status;
       return extra ? [...base, extra] : base;
     },

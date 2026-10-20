@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { PaneFooterSegment, PaneHint } from "../../../components";
+import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 import { t, tf } from "../../../i18n";
 import type { OptionsChain } from "../../../types/financials";
 import { formatRelativeTime } from "../../../utils/datetime-format";
@@ -9,18 +10,18 @@ import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
 import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./market-reference";
 
-interface OptionsCoverageState {
-  text: string;
-  tone: "muted" | "positive" | "warning";
-}
-
-/** Stream coverage the pane reports once the account is entitled to real-time options. */
-function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState | null {
-  if (status === "live") return { text: t("real-time options"), tone: "positive" };
-  if (status === "mixed") return { text: t("mixed real-time and delayed options"), tone: "warning" };
+/**
+ * Stream coverage the pane reports once the account is entitled to real-time
+ * options. Delayed quotes, all or some, are the footer's clock, its detail on
+ * hover.
+ */
+export function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayLabel: string): PaneFooterSegment | null {
+  const id = "options-access";
+  if (status === "live") return { id, parts: [{ text: t("real-time options"), tone: "positive" }] };
+  if (status === "mixed") return delayedFooterSegment({ id, detail: t("mixed real-time and delayed options") });
   // The stream connects in the background; nothing to report until it answers.
   if (status === "connecting") return null;
-  return { text: t("options delayed fallback"), tone: "warning" };
+  return delayedFooterSegment({ id, detail: t("Delayed options quotes, real-time stream unavailable"), delay: delayLabel });
 }
 
 /**
@@ -102,24 +103,21 @@ export function useOptionsAccessFooter({
   /** Set while the chain prints a SPRD column, so the status bar stops repeating it. */
   spreadColumnVisible?: boolean;
 }): void {
+  const delayLabel = resolveOptionsDelayLabel(chain);
   const { access, hint: upgradeHint, segment } = useCloudAccessFooter({
-    delayLabel: resolveOptionsDelayLabel(chain),
+    delayLabel,
     focused,
     segmentId: "options-access",
     placement: "omon-footer",
     shortcutScope: "options:upgrade",
   });
   // Trial accounts stream real-time too, but the countdown is the status worth the row.
-  const coverage = access.hasProAccess && !access.isTrialActive
-    ? resolveOptionsCoverageState(quoteCoverage.status)
-    : null;
-
+  const proCoverage = access.hasProAccess && !access.isTrialActive;
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {
-    if (coverage) {
-      return [{ id: "options-access", parts: [{ text: coverage.text, tone: coverage.tone }] }];
-    }
+    const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, delayLabel) : null;
+    if (coverage) return [coverage];
     return segment ? [segment] : [];
-  }, [coverage?.text, coverage?.tone, segment]);
+  }, [delayLabel, proCoverage, quoteCoverage.status, segment]);
 
   // Rebuilt every render so the quote and trade ages keep counting with the
   // stream; the registration compares by value, so only a changed label

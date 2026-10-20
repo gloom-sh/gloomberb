@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { optionContractFooterSegments, resolveOptionsDelayLabel } from "./footer";
+import { optionContractFooterSegments, optionsCoverageSegment, resolveOptionsDelayLabel } from "./footer";
 
 describe("options delay label", () => {
   test("prefers the chain delay and falls back to the cloud default", () => {
@@ -56,5 +56,18 @@ describe("selected contract status", () => {
       expect(parts).toContain("trade 1h");
     }
     expect(optionContractFooterSegments(undefined, false, NOW)).toEqual([]);
+  });
+});
+
+describe("stream coverage on a real-time account", () => {
+  test("a fallback to delayed quotes is the footer's clock, never a phrase in the row", () => {
+    const delayed = optionsCoverageSegment("delayed", "15m")!;
+    expect(delayed).toMatchObject({ icon: "clock", title: "Delayed options quotes, real-time stream unavailable" });
+    // The terminal has no tooltip: the clock and the delay, a few cells.
+    expect(delayed.parts).toEqual([{ text: "◷15m", tone: "warning" }]);
+    expect(optionsCoverageSegment("mixed", "15m")).toMatchObject({ icon: "clock", parts: [{ text: "◷" }] });
+    expect(optionsCoverageSegment("live", "15m")).toMatchObject({ parts: [{ text: "real-time options" }] });
+    expect(optionsCoverageSegment("live", "15m")?.icon).toBeUndefined();
+    expect(optionsCoverageSegment("connecting", "15m")).toBeNull();
   });
 });

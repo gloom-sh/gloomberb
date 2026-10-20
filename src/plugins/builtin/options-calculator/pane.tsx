@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
+import { delayedFooterSegment, FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { CompositeChart } from "../../../components/chart/composite/composite-chart";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useInputCapture } from "../../../public/react";
@@ -279,7 +279,9 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       ...(surfaceSource && surfaceResource.loading ? [{ id: "loading", parts: [{ text: "loading surface", tone: "muted" as const }] }] : []),
       ...(surfaceSource && surface?.asOf ? [{ id: "surface-asof", parts: [{ text: `surface · ${surface.asOf}`, tone: "muted" as const }] }] : []),
       ...(effectiveSteps && effectiveSteps !== (draft.steps ?? 400) ? [{ id: "refined", parts: [{ text: `tree refined to ${effectiveSteps} steps`, tone: "muted" as const }] }] : []),
-      ...(liveInputs ? [{ id: "market", parts: [{ text: liveInputs.delayed ? "delayed market" : "real-time market", tone: "muted" as const }] }] : []),
+      ...(liveInputs ? [liveInputs.delayed
+        ? delayedFooterSegment({ id: "market", detail: "Delayed market inputs" })
+        : { id: "market", parts: [{ text: "real-time market", tone: "muted" as const }] }] : []),
     ],
     hints: activeFieldId ? [] : [
       // Names the cell Enter or `e` edits, which the grid does not mark.

@@ -3,6 +3,7 @@ import { apiClient } from "../../../api-client";
 import { recordResearchActivity, researchUpgradeUrl } from "../../../api-client/research-activity";
 import { getCurrentPluginTarget } from "../../current-target";
 import type { PaneFooterSegment, PaneHint } from "../../../components";
+import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useRendererHost } from "../../../ui";
@@ -303,19 +304,17 @@ export function useCloudAccessFooter({
       };
     }
     if (!showUpgrade) return null;
-    return {
+    // The footer's clock, pressed for the upgrade. With a key the pitch is the
+    // upgrade hint, so the clock says only what is true of the data; without
+    // one its tooltip carries the pitch too.
+    return delayedFooterSegment({
       id: segmentId,
+      detail: shortcutScope
+        ? tf("{delay} delayed", { delay: delayLabel })
+        : tf("{delay} delayed · try Pro live", { delay: delayLabel }),
+      delay: delayLabel,
       onPress: openUpgrade,
-      parts: [{
-        // With a key the pitch is the upgrade hint, so the status says only
-        // what is true of the data. Without one there is nowhere else for it
-        // to go.
-        text: shortcutScope
-          ? tf("{delay} delayed", { delay: delayLabel })
-          : tf("{delay} delayed · try Pro live", { delay: delayLabel }),
-        tone: "warning",
-      }],
-    };
+    });
   }, [
     access.trialDaysLeft,
     delayLabel,

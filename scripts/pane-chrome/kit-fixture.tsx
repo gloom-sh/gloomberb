@@ -37,7 +37,7 @@ import { DetailReader } from "../../src/components/reader/detail-reader";
 import type { DocsBlock } from "../../src/docs/content";
 import { DocsBlocks, DocsReadingColumn } from "../../src/plugins/builtin/docs/blocks";
 import { PaneHeader } from "../../src/components/layout/pane/header";
-import { PaneFooterBar } from "../../src/components/layout/pane/footer";
+import { DELAYED_SEGMENT, delayedFooterSegment, PaneFooterBar } from "../../src/components/layout/pane/footer";
 import { PageStackView } from "../../src/components/ui/page-stack-view";
 import { UpgradeLabel } from "../../src/plugins/builtin/shared/locked-rows";
 import { useThemeColors } from "../../src/theme/theme-context";
@@ -416,7 +416,11 @@ function ContentFamily() {
 function ChromeFamily() {
   const tabs = { tabs: [{ label: "Overview", value: "o" }, { label: "Financials", value: "f" }, { label: "Holders", value: "h" }], activeValue: "o", onSelect: noop, focused: true };
   const footer = {
-    info: [{ id: "status", parts: [{ text: "15m delayed", tone: "warning" as const }] }],
+    info: [
+      delayedFooterSegment({ id: "status", detail: "15m delayed", delay: "15m", onPress: noop }),
+      { id: "as-of", parts: [{ text: "as of 14:47 UTC", tone: "muted" as const }] },
+      DELAYED_SEGMENT,
+    ],
     hints: [{ id: "a", key: "a", label: "dd" }, { id: "o", key: "o", label: "pen" }],
     menu: [],
     keys: [],

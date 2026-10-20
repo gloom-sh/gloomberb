@@ -101,6 +101,8 @@ export { usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/stat
 export { usePaneNoticeFooter, type UsePaneNoticeFooterOptions } from "./use-pane-notice-footer";
 export { loadingErrorFooterInfo } from "./data-table/table-pane";
 export type { PaneFooterPressEvent, PaneFooterSegment, PaneHint } from "./layout/pane/footer";
+// Data a source delivers late: the footer's yellow clock, its detail on hover.
+export { DELAYED_SEGMENT, delayedFooterSegment, splitDelayedStatus } from "./layout/pane/footer";
 export {
   getPaneSidebarWidth,
   getPaneSidebarWidthRange,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { combinePaneFooterRegistrations, fitPaneFooterInfo, layoutPaneFooterHintRow, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -72,5 +72,20 @@ describe("combining footer registrations", () => {
     const bound = combine({ keys: [{ id: "window", key: "p", label: "eriod" }] });
     expect(bound.hints).toEqual([]);
     expect(bound.menu.map((item) => item.type === "divider" ? null : [item.label, item.accelerator ?? null])).toEqual([["Pin Crosshair", null]]);
+  });
+});
+
+describe("a delayed status", () => {
+  test("its lead becomes the clock, the delay in the terminal's cells and the words in its tooltip, and the rest stays text", () => {
+    const [clock, rest, ...more] = splitDelayedStatus({ id: "feed", quoteStatus: true, parts: [{ text: "15m delayed · 14:47 UTC", tone: "muted" }, { text: "tape", tone: "label" }] });
+    expect(more).toEqual([]);
+    expect(clock).toMatchObject({ id: "feed-delay", icon: "clock", title: "15m delayed", quoteStatus: true, parts: [{ text: "◷15m", tone: "warning" }] });
+    expect(rest).toEqual({ id: "feed", quoteStatus: true, parts: [{ text: "14:47 UTC", tone: "muted" }, { text: "tape", tone: "label" }] });
+    // A delay with no figure is the clock alone; a status that only mentions a delay later is left as it is.
+    expect(splitDelayedStatus({ id: "s", parts: [{ text: "mixed real-time and delayed · as of 15:00:00 UTC" }] })[0]).toMatchObject({ title: "mixed real-time and delayed", parts: [{ text: "◷" }] });
+    expect(splitDelayedStatus({ id: "s", parts: [{ text: "delayed" }] })).toHaveLength(1);
+    const plain = { id: "s", parts: [{ text: "real-time · 14:47 UTC" }] };
+    expect(splitDelayedStatus(plain)).toEqual([plain]);
+    expect(splitDelayedStatus({ id: "s", parts: [{ text: "settlement · 15m delayed" }] })[0]?.icon).toBeUndefined();
   });
 });

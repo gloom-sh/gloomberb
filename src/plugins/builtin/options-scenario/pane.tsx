@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
+import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
@@ -270,8 +270,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ...(hedge.error ? [{ id: "hedge-error", parts: [{ text: hedge.error, tone: "warning" as const }] }] : []),
-    ...(live ? [{ id: "asof", parts: [{ text: `${live.basis} · ${spotText} · ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" as const }],
-      variants: [[{ text: shortSpotText, tone: "muted" as const }]] }]
+    ...(live ? splitDelayedStatus({ id: "asof", parts: [{ text: `${live.basis} · ${spotText} · ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" }],
+      variants: [[{ text: shortSpotText, tone: "muted" }]] })
       : position ? [{ id: "asof", parts: [{ text: `${spotText} · ${formatSpotTime(position.asOf)} · ${market?.source ? "market" : "input assumptions"}${midVolatility}`, tone: "muted" as const }],
         variants: [[{ text: shortSpotText, tone: "muted" as const }]] }] : []),
   ], hints }), [hints, position, market?.source, resource.loading, error, hedge.error, live?.basis, live?.observedAt, midVolatility, spotText, shortSpotText]);

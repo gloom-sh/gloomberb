@@ -23,8 +23,11 @@ export interface PaneFooterRegistration {
 export interface PaneFooterSegment {
   id: string;
   parts: PaneFooterPart[];
-  /** Desktop affordance; parts retain the terminal representation. */
-  icon?: "warning";
+  /**
+   * Desktop affordance; parts retain the terminal representation. `clock` is
+   * data a source delivers late: build it with {@link delayedFooterSegment}.
+   */
+  icon?: "warning" | "clock";
   /**
    * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
    * shot` whose status line already dates that data leaves it out, so the
@@ -50,6 +53,68 @@ export interface PaneFooterSegment {
   shortcut?: string;
   onPress?: () => void;
   disabled?: boolean;
+}
+
+/** The terminal's mark for data that arrives late, as quote ages carry it (`◷15s`). */
+const DELAYED_FOOTER_GLYPH = "◷";
+
+/**
+ * The footer's one form for data a source delivers late: a yellow clock with
+ * `detail` in its tooltip on the desktop, and the clock with the delay
+ * (`◷15m`) in the terminal, which has no tooltip, so it takes a few cells
+ * rather than a phrase. `onPress` makes it a button, such as an upgrade.
+ */
+export function delayedFooterSegment({
+  id,
+  detail,
+  delay,
+  onPress,
+  quoteStatus,
+}: {
+  id: string;
+  /** What is late and by how much, in words: the tooltip and the accessible name. */
+  detail: string;
+  /** How late, when known (`15m`, `12h`); the terminal draws it after the clock. */
+  delay?: string;
+  onPress?: () => void;
+  quoteStatus?: boolean;
+}): PaneFooterSegment {
+  return {
+    id,
+    icon: "clock",
+    label: detail,
+    title: detail,
+    parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
+    ...(onPress ? { onPress } : {}),
+    ...(quoteStatus ? { quoteStatus } : {}),
+  };
+}
+
+/** A pane whose market data is all delayed, by no one figure: the clock alone, its tooltip saying so. */
+export const DELAYED_SEGMENT: PaneFooterSegment = delayedFooterSegment({ id: "delayed", detail: "Delayed market data" });
+
+/** A status that opens with how late its data is: `15m delayed`, `mixed real-time and delayed`, `delayed`. */
+const DELAYED_LEAD = /^(\d+[smhd] delayed|mixed real-time and delayed|delayed)(?: · |$)/;
+
+/**
+ * A status segment whose text opens with how late its data is (`15m delayed ·
+ * as of 14:47 UTC`) as the footer's clock (see {@link delayedFooterSegment})
+ * and the rest of its text; any other segment as it is.
+ */
+export function splitDelayedStatus(segment: PaneFooterSegment): PaneFooterSegment[] {
+  const [first, ...more] = segment.parts;
+  const match = first ? DELAYED_LEAD.exec(first.text) : null;
+  if (!first || !match) return [segment];
+  const lead = match[1]!;
+  const clock = delayedFooterSegment({
+    id: `${segment.id}-delay`,
+    detail: lead,
+    delay: /^\d/.test(lead) ? lead.slice(0, lead.indexOf(" ")) : undefined,
+    quoteStatus: segment.quoteStatus,
+  });
+  const rest = first.text.slice(match[0].length);
+  const parts = rest ? [{ ...first, text: rest }, ...more] : more;
+  return parts.length ? [clock, { ...segment, parts }] : [clock];
 }
 
 /** Whether the segment only dates the pane's data: marked `asOf`, or reading `as of <date>`. */

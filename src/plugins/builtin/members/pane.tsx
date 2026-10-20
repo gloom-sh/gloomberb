@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FundChange, FundMember } from "../../../api-client/members";
-import { DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
+import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
   isSectionedItemRow, renderSectionedRowHeader, useExternalLinkFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch,
   type DataTableCell, type DataTableColumn, type PaneFooterSegment, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -49,8 +49,13 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     return [
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
-      { id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`, quoteStatus: !data.quotesUnavailable,
-        parts: [{ text: data.quotesUnavailable ? "returns unavailable" : width < 60 && dates.length === 1 ? `${date!.slice(5)} delayed` : `${date ? `${date} · ` : ""}15m delayed`, tone: "muted" }] },
+      ...(data.quotesUnavailable
+        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
+        : [
+          delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
+          ...(date ? [{ id: "quote-date", title: `${date} · 15m delayed · holdings ${data.asOf}`, quoteStatus: true,
+            parts: [{ text: width < 60 && dates.length === 1 ? date.slice(5) : date, tone: "muted" as const }] }] : []),
+        ]),
       ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
     ];
   }, [data, width]);

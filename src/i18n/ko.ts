@@ -676,7 +676,7 @@ export const ko: Record<string, string> = {
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "gloom.sh/cloud에서 Pro로 업그레이드하면 실시간 데이터를 7일간 무료로 사용할 수 있습니다.",
   "real-time options": "실시간 옵션",
   "mixed real-time and delayed options": "실시간 및 지연 옵션 혼합",
-  "options delayed fallback": "옵션 지연 대체 데이터",
+  "Delayed options quotes, real-time stream unavailable": "옵션 시세 지연, 실시간 스트림 사용 불가",
   "crossed quote": "교차 호가",
   "one-sided quote": "일방 호가",
   "no bid/ask": "호가 없음",

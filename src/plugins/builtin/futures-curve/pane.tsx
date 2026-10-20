@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type PaneFooterSegment, type StatItem } from "../../../components";
+import { splitDelayedStatus, chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type PaneFooterSegment, type StatItem } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -225,7 +225,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
       ...requestedDate ? [{ id: "latest", key: "c", label: "urrent", title: "Current Curve", onPress: () => selectDate("") }] : [],
     ],
     info: data ? [
-      { id: "source", parts: [{ text: `${requestedDate ? "daily archive" : data.source === "cboe" ? "settlement" : delay > 0 ? `${delay}m delayed` : "dated quotes"} · ${unit ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
+      ...splitDelayedStatus({ id: "source", parts: [{ text: `${requestedDate ? "daily archive" : data.source === "cboe" ? "settlement" : delay > 0 ? `${delay}m delayed` : "dated quotes"} · ${unit ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] }),
       ...(staleCount ? [{ id: "stale", parts: [{ text: `${staleCount} of ${data.contracts.length} stale`, tone: "warning" as const }] }] : []),
       ...(spot ? [spot.status === "ok" ? spotSegment(spot, root, clock)
         : { id: "spot", parts: [{ text: `Basis blank: ${spot.reason}`, tone: "warning" as const }] }] : []),

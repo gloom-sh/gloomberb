@@ -83,7 +83,9 @@ test("a short curve tab lists the contracts once, and a tall one ends on the las
   const lines = await render(96, 29);
   expect(lines.join("\n")).toContain("Latest");
   expect(lines[27]).toContain("ESU28.CME");
-  expect(lines[28]).toContain("10m delayed");
+  // The delay is the footer's clock: its glyph and the delay, the detail on the desktop's hover.
+  expect(lines[28]).toContain("◷10m");
+  expect(lines[28]).not.toContain("delayed");
 });
 
 test("the curve names what it plots, and its rows add the moves the chart only shows as ghosts", async () => {
@@ -152,7 +154,7 @@ test("Dutch TTF gas reads in euros per MWh on the chart caption, the footer and 
     currency: "EUR", quoteUnit: "EUR", spec: null, settlementDate: "2026-09-22" }));
   const curve = (await render(120, 30, "curve", { root: "TTF" })).join("\n");
   expect(curve).toContain("EUR / MWh by contract month");
-  expect(curve).toContain("10m delayed · EUR / MWh");
+  expect(curve).toContain("◷10m EUR / MWh");
   expect(curve).toContain("TTFX26.NYM");
   expect(curve).toMatch(/81\.434\s+81\.434/);
   expect(curve).not.toMatch(/USD|\$/);
@@ -214,7 +216,7 @@ describe("crypto basis against spot", () => {
     // A narrower footer gives the listing up before the price and its time.
     spy.mockRestore(); futuresCurveCache.reset();
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload(BTC_CONTRACTS.slice(0, 2)));
-    lines = await render(98, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
+    lines = await render(90, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · \d{2}:\d{2} UTC/);
     expect(lines.join("\n")).not.toContain("(CCC");
   });

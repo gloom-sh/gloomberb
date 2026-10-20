@@ -1354,8 +1354,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   white-space: nowrap;
 }
 
-/* Icon-only button: pane header, footer, dialog close, window controls. */
-.gloom-icon-button {
+/* Icon-only button: pane header, footer, dialog close, window controls. A
+   footer status icon (a delayed source's clock) takes the same box. */
+.gloom-icon-button, [data-gloom-role="pane-footer-icon"] {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1372,7 +1373,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
-.gloom-icon-button:disabled { cursor: default; }
+.gloom-icon-button:disabled, [data-gloom-role="pane-footer-icon"] { cursor: default; }
 .gloom-icon-button:not(:disabled):hover { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
 .gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
 .gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }

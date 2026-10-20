@@ -678,7 +678,7 @@ export const zhCN: Record<string, string> = {
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "在 gloom.sh/cloud 升级 Pro 获取实时数据，免费试用 7 天。",
   "real-time options": "实时期权",
   "mixed real-time and delayed options": "实时与延迟期权混合",
-  "options delayed fallback": "期权延迟备用数据",
+  "Delayed options quotes, real-time stream unavailable": "期权报价延迟，实时数据流不可用",
   "crossed quote": "交叉报价",
   "one-sided quote": "单边报价",
   "no bid/ask": "无买卖报价",

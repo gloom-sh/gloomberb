@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import {
+  DELAYED_SEGMENT,
   ChartTableHeader,
   CompositeChart,
   formatBpAxis,
@@ -115,7 +116,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     notices: mixedDates ? ["The indexes carry different observation dates, so the spreads are not one session."] : [],
   });
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
-    ...(rows.length > 0 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
+    ...(rows.length > 0 ? [DELAYED_SEGMENT] : []),
     ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${series.length}`, tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...loadingErrorFooterInfo(loading, error),

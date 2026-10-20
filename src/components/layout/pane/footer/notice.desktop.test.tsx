@@ -3,7 +3,7 @@ import { act, useMemo, useState, type ReactNode } from "react";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
 import { createDomTestHarness } from "../../../../renderers/dom/test-utils";
 import { WebIcon, WebIconButton } from "../../../../renderers/dom/desktop/icons";
-import { PaneFooterBar, PaneFooterProvider, usePaneFooter, type PaneFooterSegment } from "./index";
+import { delayedFooterSegment, PaneFooterBar, PaneFooterProvider, usePaneFooter, type PaneFooterSegment } from "./index";
 
 const { render } = createDomTestHarness();
 
@@ -54,4 +54,31 @@ test("footer warning has accessible SVG/button activation and updates its disclo
   await act(async () => { update({ icon: undefined }); });
   expect(container.querySelector("button")).toBeNull();
   expect(container.textContent).toContain("⚠");
+});
+
+test("a delayed source is a yellow clock whose detail is its tooltip, and a button only when pressing it does something", async () => {
+  const pressed: string[] = [];
+  function Registration() {
+    usePaneFooter("delay", () => ({
+      info: [
+        delayedFooterSegment({ id: "source", detail: "Delayed options quotes, real-time stream unavailable" }),
+        delayedFooterSegment({ id: "access", detail: "15m delayed", delay: "15m", onPress: () => pressed.push("upgrade") }),
+      ],
+    }), []);
+    return null;
+  }
+  const container = await render(<DesktopChrome>
+    <PaneFooterProvider>{(footer) => <><Registration /><PaneFooterBar footer={footer} focused width={60} /></>}</PaneFooterProvider>
+  </DesktopChrome>);
+  const status = container.querySelector("[data-gloom-role=pane-footer-icon]")!;
+  expect(status.getAttribute("title")).toBe("Delayed options quotes, real-time stream unavailable");
+  expect(status.getAttribute("aria-label")).toBe("Delayed options quotes, real-time stream unavailable");
+  expect(status.querySelector("svg")?.getAttribute("data-gloom-icon")).toBe("clock");
+  // No phrase and no terminal glyph beside the icons: the footer keeps the room.
+  expect(container.textContent).not.toContain("delayed");
+  expect(container.textContent).not.toContain("◷");
+  const button = container.querySelector("button")!;
+  expect(button.getAttribute("title")).toBe("15m delayed");
+  await act(async () => { button.click(); });
+  expect(pressed).toEqual(["upgrade"]);
 });
