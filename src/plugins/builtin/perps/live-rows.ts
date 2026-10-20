@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PerpBoardRow } from "../../../api-client/perps";
+import { getServerClockOffsetMs } from "../../../market-data/quotes/clock";
 import { buildQuoteKey, instrumentFromQuoteTarget } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { perpetualListingOfMarket } from "../../../tickers/perpetual-listing";
@@ -30,12 +31,22 @@ export function withLiveReading(row: PerpBoardRow, quote: Quote | null | undefin
   return Date.parse(live.observedAt) > Date.parse(row.observedAt) ? { ...row, ...live, marketId: row.marketId } : row;
 }
 
-/** Whether a quote of a market is fed by its venue's socket now, not the minute's read. */
-const isLive = (quote: Quote | null | undefined) => quote?.dataSource === "live" && quote.stale !== true;
+/** As Gloom Cloud rules it: a market with no mark from its venue for a minute is no longer live. */
+const LIVE_FOR_MS = 60_000;
+
+/**
+ * Whether a quote of a market is fed by its venue's socket now, not the minute's read: streamed live, not stale, and
+ * marked within the last minute by the server's clock. The server says so too, but a socket that went quiet says
+ * nothing, so the app keeps its own count.
+ */
+export function isLivePerpQuote(quote: Quote | null | undefined, now = Date.now() + (getServerClockOffsetMs() ?? 0)): boolean {
+  return quote?.dataSource === "live" && quote.stale !== true && Number.isFinite(quote.lastUpdated)
+    && now - quote.lastUpdated <= LIVE_FOR_MS;
+}
 
 export interface LivePerpRows {
   rows: readonly PerpBoardRow[];
-  /** Some row shown is fed by its venue's socket. */
+  /** Every row followed is fed by its venue's socket now: the view may call itself live. */
   live: boolean;
   /** The markets fed by their venue's socket; the others are the minute's read. */
   liveMarkets: ReadonlySet<string>;
@@ -57,22 +68,40 @@ export function useLivePerpRows(
     return target ? [target] : [];
   }) : [], [marketKey, surface, visible]);
   const { entries } = useLiveQuoteEntries(targets);
-  return useMemo(() => {
-    if (!targets.length) return { rows, live: false, liveMarkets: NONE };
+  // Ticks when a live row's minute runs out, so a feed that went quiet stops calling itself live.
+  const [expired, setExpired] = useState(0);
+  const result = useMemo(() => {
+    if (!targets.length) return { rows, live: false, liveMarkets: NONE, expiresAt: null };
+    const now = Date.now() + (getServerClockOffsetMs() ?? 0);
+    const followed = new Set(targets.map((target) => buildQuoteKey(instrumentFromQuoteTarget(target))));
+    const followedMarkets = new Set(marketKey.split("\u001f").filter((marketId) => perpQuoteTarget(marketId, surface, visible)));
     const quoteOf = (marketId: string) => {
       const target = perpQuoteTarget(marketId, surface, visible);
       if (!target) return null;
-      const entry = entries.get(buildQuoteKey(instrumentFromQuoteTarget(target)));
+      const key = buildQuoteKey(instrumentFromQuoteTarget(target));
+      const entry = followed.has(key) ? entries.get(key) : undefined;
       return entry?.data ?? entry?.lastGoodData ?? null;
     };
     const liveMarkets = new Set<string>();
+    let expiresAt: number | null = null;
     const next = rows.map((row) => {
       const quote = quoteOf(row.marketId);
-      if (isLive(quote)) liveMarkets.add(row.marketId);
+      if (quote && isLivePerpQuote(quote, now)) {
+        liveMarkets.add(row.marketId);
+        expiresAt = Math.min(expiresAt ?? Number.POSITIVE_INFINITY, quote.lastUpdated + LIVE_FOR_MS - now);
+      }
       return withLiveReading(row, quote);
     });
-    return { rows: next, live: liveMarkets.size > 0, liveMarkets };
-  }, [entries, rows, surface, targets.length, visible]);
+    const live = [...followedMarkets].every((marketId) => liveMarkets.has(marketId));
+    return { rows: next, live, liveMarkets, expiresAt };
+    // `expired` is the clock that ends a quiet row's minute.
+  }, [entries, expired, marketKey, rows, surface, targets, visible]);
+  useEffect(() => {
+    if (result.expiresAt == null) return;
+    const timer = setTimeout(() => setExpired((count) => count + 1), Math.max(0, result.expiresAt) + 250);
+    return () => clearTimeout(timer);
+  }, [result]);
+  return result;
 }
 
 interface Range { start: number; end: number }

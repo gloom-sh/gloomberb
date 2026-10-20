@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
-import { withLiveReading } from "./live-rows";
+import { isLivePerpQuote, withLiveReading } from "./live-rows";
 import { perpRow } from "./test-fixture";
 
 const quote = (perpetual: Quote["perpetual"]): Quote => ({ symbol: "BTC", price: 1, currency: "USDC", change: 0, changePercent: 0, lastUpdated: 0, perpetual });
@@ -16,4 +16,14 @@ test("a fetched row takes a streamed reading of its market only when the reading
   // Another market's quote, or a quote with no row, changes nothing.
   expect(withLiveReading(fetched, quote({ ...newer, marketId: "bybit:BTCUSDT" }))).toBe(fetched);
   expect(withLiveReading(fetched, quote(undefined))).toBe(fetched);
+});
+
+test("a streamed quote reads live only while its venue has priced it within the last minute", () => {
+  const now = Date.parse("2026-10-20T02:01:00.000Z");
+  const streamed = { ...quote(undefined), dataSource: "live" as const, stale: false, lastUpdated: now - 30_000 };
+  expect(isLivePerpQuote(streamed, now)).toBe(true);
+  // The socket went quiet: no word from the server, yet the row is no longer live.
+  expect(isLivePerpQuote({ ...streamed, lastUpdated: now - 61_000 }, now)).toBe(false);
+  expect(isLivePerpQuote({ ...streamed, stale: true }, now)).toBe(false);
+  expect(isLivePerpQuote({ ...streamed, dataSource: "delayed" }, now)).toBe(false);
 });

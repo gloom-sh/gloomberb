@@ -48,13 +48,14 @@ export function fundingNote(rows: readonly Funded[], now = Date.now()): string |
 }
 
 /**
- * How current a view of perpetual markets is: each venue's own newest observation, read once a minute (live while a
- * venue's socket feeds a row shown) and stale after an hour without a read, and what the funding figures it shows
- * (`funding`) are. The report, the capture and the pane footer all read this, so they end with the same line.
+ * How current a view of perpetual markets is: each venue's own newest observation, read once a minute (live while
+ * every row followed has a price from its venue's socket within the minute) and stale after an hour without a read, and
+ * what the funding figures it shows (`funding`) are. The report, the capture and the pane footer all read this, so they
+ * end with the same line.
  */
 export function perpFreshness(rows: readonly Dated[], { funding = [], venue = "all", now = Date.now(), live = false }: {
   funding?: readonly Funded[]; venue?: string; now?: number;
-  /** Some row shown moves with its venue's socket: the view is a live feed, not the minute's read. */
+  /** Every row followed moves with its venue's socket: the view is a live feed, not the minute's read. */
   live?: boolean;
 } = {}): HeadlessPaneFreshness {
   const sources = venuesOf(rows).map((id) => ({ source: venueName(id), asOf: new Date(Math.max(...rows.filter((row) => row.venue === id)
