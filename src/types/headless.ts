@@ -229,9 +229,11 @@ export interface HeadlessPaneFreshness {
   /**
    * How often the data is published, when its dates mark the start of a period
    * (a monthly statistic is dated the 1st). The report then names the month,
-   * quarter or year, not a day it was never observed on.
+   * quarter or year, not a day it was never observed on. A semiannual estimate
+   * is dated by the month it was made in (USDA's coffee and sugar balances),
+   * so it names that month.
    */
-  periodicity?: "monthly" | "quarterly" | "annual";
+  periodicity?: "monthly" | "quarterly" | "semiannual" | "annual";
   /**
    * The newest row is a weekly or monthly bar whose period had not ended when
    * it was served (October's bar on 16 Oct), and the last day it covers so

@@ -2,11 +2,11 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCommodityBalances } from "./client";
 import { cropEstimateMonth, formatBalanceValue, formatForecast, PSD_CROPS, psdCrop, unknownCropMessage } from "./model";
 
-/** USDA sets coffee and sugar twice a year, in its own reports rather than the monthly WASDE. */
-const SEMIANNUAL_BASIS: Partial<Record<string, string>> = {
-  Coffee: "semiannual estimates, June and December",
-  Sugar: "semiannual estimates, May and November",
-};
+/**
+ * USDA sets coffee and sugar twice a year, in its own reports rather than the
+ * monthly WASDE, and forecasts no season-average price for either.
+ */
+const SEMIANNUAL_CROPS = new Set(["Coffee", "Sugar"]);
 
 const amount = (value: unknown) => typeof value === "number" ? formatBalanceValue(value) : "--";
 const forecast = (value: unknown) => typeof value === "number" ? formatForecast(value) : "--";
@@ -28,7 +28,7 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Latest market year only",
       "Largest producers, and the world total when the file has one",
       "Cotton is in 480 lb bales and coffee in thousand 60 kg bags; grains, soybeans and sugar are in thousand metric tons",
-      "Coffee and sugar are USDA's semiannual estimates (coffee June and December, sugar May and November); price forecasts cover grains, soybeans and cotton",
+      "Coffee and sugar are USDA's semiannual estimates; price forecasts cover grains, soybeans and cotton",
     ],
   },
   describe: "Wheat, corn, soybean, cotton, coffee and sugar balances",
@@ -45,16 +45,18 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
     // One crop is dated by its own estimates: coffee's are not the month's WASDE.
     const month = (crop ? cropEstimateMonth(rows) : null) ?? board.month;
     const marketYear = crop ? [...new Set(rows.map((row) => row.year))].join(" ") : board.marketYear;
-    // Another crop's gap ("Soybean balances are unavailable.") is not this one's; one naming no crop stays.
+    const semiannual = crop != null && SEMIANNUAL_CROPS.has(crop);
+    // Another crop's gap ("Soybean balances are unavailable.") is not this one's; one naming no crop stays,
+    // but for a crop without price forecasts, not theirs.
     const names = (name: string, gap: string) => new RegExp(`\\b${name.replace(/s$/, "")}`, "i").test(gap);
     const gaps = crop
-      ? board.gaps.filter((gap) => names(crop, gap) || !PSD_CROPS.some((name) => names(name, gap)))
+      ? board.gaps.filter((gap) => names(crop, gap)
+        || (!PSD_CROPS.some((name) => names(name, gap)) && !(semiannual && /\bprice forecasts?\b/i.test(gap))))
       : board.gaps;
     const data = { ...board, rows, prices, month, marketYear, gaps };
-    const basis = crop ? SEMIANNUAL_BASIS[crop] : undefined;
     return {
-      // Coffee and sugar are not the month's supply and demand estimates.
-      ...(basis ? { freshness: { basis } } : {}),
+      // Coffee and sugar are not the month's supply and demand estimates: `Jul 2026 (semiannual)`.
+      ...(semiannual ? { freshness: { basis: "supply and distribution estimates", periodicity: "semiannual" as const } } : {}),
       complete: data.rows.length > 0,
       sections: [
         {

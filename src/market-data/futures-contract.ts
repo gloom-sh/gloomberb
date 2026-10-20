@@ -6,6 +6,7 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
+import { getRegularSessionDisplay, regularSessionDisplayDate } from "./market/status";
 import { minorUnitSign } from "../utils/currency-units";
 import { contractPriceUnit } from "../time-series/price-units";
 
@@ -144,17 +145,34 @@ const DAY_MS = 86_400_000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The weekday before a session date, Saturday and Sunday skipped: a futures session's previous one, holidays aside. */
-function previousWeekday(date: string): string {
-  let at = Date.parse(`${date}T00:00:00Z`) - DAY_MS;
+/**
+ * The weekday on or before a date (`back` 0) or before it (`back` 1), Saturday
+ * and Sunday skipped. Futures venues' holidays are not in the app's calendars,
+ * so a holiday reads as a session.
+ */
+function weekdayBefore(date: string, back: 0 | 1): string {
+  let at = Date.parse(`${date}T00:00:00Z`) - back * DAY_MS;
   while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
   return new Date(at).toISOString().slice(0, 10);
 }
 
 /**
+ * How far apart two prices can be and still be the same settlement: half the
+ * contract's tick, so a move the source rounded still meets the settlement it
+ * was measured from, and a price a tick away does not. Without a tick, half a
+ * basis point of the price.
+ */
+function settlementTolerance(tick: number | null | undefined, price: number): number {
+  const half = typeof tick === "number" && Number.isFinite(tick) && tick > 0 ? tick / 2 : Math.abs(price) * 5e-5;
+  // Floating point never splits a price exactly half a tick away from the settlement.
+  return half * (1 + 1e-9);
+}
+
+/**
  * What a futures move is measured from: a session's settlement, the last
- * trade of a session that settled elsewhere, or a close the server could not
- * yet check against a settlement. `session` is the date of that reference.
+ * trade of a session that settled elsewhere, or a session's close that the
+ * settlement in the contract terms cannot confirm either way. `session` is
+ * the date of that reference.
  */
 export interface FuturesChangeBasis {
   kind: "settle" | "last trade" | "close";
@@ -163,31 +181,49 @@ export interface FuturesChangeBasis {
 
 /**
  * What the move a futures quote headlines is measured from, for the words
- * after it ("vs Fri settle"). Its reference (the price less the move) is the
- * previous settlement when it is the one the contract terms carry, from an
- * earlier session than the move's. Once the move's own session has settled,
- * the server measures it from the settlement before (the curve's rule), so
- * that is its basis too. A reference other than the previous session's
- * settlement is that session's last trade. Without that settlement to compare
- * (the exchange has not confirmed it yet), it is the previous session's close,
- * left unnamed. Null without a session date, a move or terms.
+ * after it ("vs Fri settle"). `sessionDate` is the session the move belongs
+ * to (regularSessionDisplayDate); a Saturday or Sunday is Friday's, as no
+ * session is dated on one. The basis is only what the numbers show, against
+ * the one settlement the contract terms carry: a reference (the price less
+ * the move) within half a tick of it is that settlement, of whichever session
+ * it is. A reference that is not the settlement of the session just before
+ * the move's is that session's last trade. Otherwise, when the terms carry no
+ * settlement that old or one the reference can be checked against (the move's
+ * own session has settled, and the one before is not in the terms), it is the
+ * session before's close, left unnamed. Null without a session date, a move
+ * or terms.
  */
 export function futuresChangeBasis(
-  terms: Pick<FuturesContractTermsPayload, "settlement"> | null | undefined,
+  terms: Pick<FuturesContractTermsPayload, "settlement"> & { spec?: Pick<FuturesContractSpec, "tick"> | null } | null | undefined,
   move: { price: number; change?: number | null; sessionDate?: string | null } | null | undefined,
 ): FuturesChangeBasis | null {
-  const session = move?.sessionDate;
-  if (!terms || !move || !session || !isoDate.test(session) || move.change == null) return null;
+  const dated = move?.sessionDate;
+  if (!terms || !move || !dated || !isoDate.test(dated) || move.change == null) return null;
   const reference = move.price - move.change;
   if (!Number.isFinite(reference)) return null;
-  const previous = previousWeekday(session);
+  const session = weekdayBefore(dated, 0);
+  const previous = weekdayBefore(session, 1);
   const settled = terms.settlement;
-  if (settled && settled.date === session) return { kind: "settle", session: previous };
-  if (settled && settled.date < session) {
-    if (Math.abs(reference - settled.price) <= Math.abs(settled.price) * 1e-7) return { kind: "settle", session: settled.date };
-    if (settled.date >= previous) return { kind: "last trade", session: settled.date };
+  if (settled && settled.date <= session) {
+    if (Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
+      return { kind: "settle", session: settled.date };
+    }
+    if (settled.date < session && settled.date >= previous) return { kind: "last trade", session: settled.date };
   }
   return { kind: "close", session: previous };
+}
+
+/**
+ * futuresChangeBasis for the move a quote headlines (getRegularSessionDisplay),
+ * dated by the session that move is from: in the pre-market the last close's,
+ * not the day ahead's.
+ */
+export function futuresQuoteChangeBasis(
+  terms: Parameters<typeof futuresChangeBasis>[0],
+  quote: Quote | null | undefined,
+): FuturesChangeBasis | null {
+  const display = getRegularSessionDisplay(quote);
+  return display ? futuresChangeBasis(terms, { ...display, sessionDate: regularSessionDisplayDate(quote) }) : null;
 }
 
 /** The words a futures move ends with: "vs Fri settle", "vs Mon last trade", "vs Mon close". */

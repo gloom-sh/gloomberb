@@ -40,6 +40,7 @@ import { currentListingName } from "../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../components/price-sparkline/model";
 import {
+  analystTargetDisplayCurrency,
   listingDividendYield,
   liveDividendYield,
   liveFiftyTwoWeekRange,
@@ -604,7 +605,8 @@ export function getColumnValue(
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
       if (analyst.pending) return { text: "…" };
       const value = targetValue(analyst.data);
-      const currency = analyst.data?.priceTarget?.currency ?? analyst.data?.currency ?? quoteCurrency;
+      // The target's own currency: one in pounds under a quote in pence reads £, not p.
+      const currency = analystTargetDisplayCurrency(analyst.data, quoteCurrency, displayQuote?.price);
       return {
         text: value == null
           ? "—"

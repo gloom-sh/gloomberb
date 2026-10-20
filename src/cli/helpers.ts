@@ -5,7 +5,7 @@ import {
   formatPercentRaw,
 } from "../utils/format";
 import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
-import { futuresChangeBasis, futuresChangeBasisText } from "../market-data/futures-contract";
+import { futuresChangeBasisText, futuresQuoteChangeBasis } from "../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import type { ActiveQuoteDisplay } from "../market-data/market/status";
 import type { Quote } from "../types/financials";
@@ -26,16 +26,16 @@ export function formatSignedCurrency(value: number, currency: string): string {
  * move is measured from, "-$22.00 (-0.39%) vs Mon close".
  */
 export function quoteChangeText(
-  quote: Pick<Quote, "currency" | "changeSessionDate">,
+  quote: Quote,
   session: Pick<ActiveQuoteDisplay, "price" | "change" | "changePercent">,
   options: MarketFormatOptions,
-  terms?: Pick<FuturesContractTermsPayload, "settlement"> | null,
+  terms?: Pick<FuturesContractTermsPayload, "settlement" | "spec"> | null,
 ): string {
   const move = colorBySign(
     `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
     session.change,
   );
-  const basis = terms ? futuresChangeBasis(terms, { ...session, sessionDate: quote.changeSessionDate }) : null;
+  const basis = terms ? futuresQuoteChangeBasis(terms, quote) : null;
   return basis ? `${move} ${cliStyles.muted(futuresChangeBasisText(basis))}` : move;
 }
 

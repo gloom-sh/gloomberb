@@ -43,7 +43,7 @@ export interface ReportFreshness {
   feed?: "live" | "delayed";
   basis?: string;
   /** Set when the dates are the start of a period: the status line then reads `Sep 2026 (monthly)`. */
-  periodicity?: "monthly" | "quarterly" | "annual";
+  periodicity?: "monthly" | "quarterly" | "semiannual" | "annual";
   /**
    * The newest bar's week or month had not ended, and the last day it covers
    * so far (`asOf`, when known): the status line reads `month to date, through
@@ -335,7 +335,7 @@ function datasetLagDays(observed: ReportTime, periodicity: ReportFreshness["peri
   const month = day.getUTCMonth();
   const through = !periodicity ? Date.UTC(year, month, day.getUTCDate())
     // Day 0 of the month after the period is its last day.
-    : periodicity === "monthly" ? Date.UTC(year, month + 1, 0)
+    : periodicity === "monthly" || periodicity === "semiannual" ? Date.UTC(year, month + 1, 0)
       : periodicity === "quarterly" ? Date.UTC(year, month - (month % 3) + 3, 0)
         : Date.UTC(year, 12, 0);
   const today = new Date(now);
@@ -589,13 +589,13 @@ function tradingDayText(date: string, market: string | undefined): string {
   return market ? `${market} trading day ${dayText(date)}` : dayText(date);
 }
 
-/** `Sep 2026`, `Q2 2026` or `2026` for the period a date starts. */
+/** `Sep 2026`, `Q2 2026` or `2026` for the period a date starts; a semiannual estimate's month. */
 function periodText(date: string, periodicity: NonNullable<ReportFreshness["periodicity"]>): string {
   const day = new Date(`${date.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(day.getTime())) return date;
   const year = day.getUTCFullYear();
   const month = day.getUTCMonth();
-  return periodicity === "monthly" ? `${MONTHS[month]} ${year}`
+  return periodicity === "monthly" || periodicity === "semiannual" ? `${MONTHS[month]} ${year}`
     : periodicity === "quarterly" ? `Q${Math.floor(month / 3) + 1} ${year}`
       : `${year}`;
 }

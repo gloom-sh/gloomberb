@@ -391,6 +391,17 @@ export function getRegularSessionDisplay(quote: Quote | null | undefined): Activ
 }
 
 /**
+ * The exchange-local session getRegularSessionDisplay's move belongs to: the
+ * completed session's while the headline still shows its close (a pre-market
+ * quote before anything trades, whose own session is the day ahead), the
+ * quote's declared session otherwise. Null when the quote names neither.
+ */
+export function regularSessionDisplayDate(quote: Quote | null | undefined): string | null {
+  if (!quote) return null;
+  return completedRegularSession(quote)?.date ?? quote.changeSessionDate ?? null;
+}
+
+/**
  * getRegularSessionDisplay once the regular session is over (and in the
  * pre-market, while the quote carries the last session's close and move), null
  * while it is open. A table row headlines this when it has a column for the

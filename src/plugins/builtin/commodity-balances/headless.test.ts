@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PsdBalanceRow, PsdBoardPayload } from "../../../api-client/commodity-balances";
 import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/plugin";
+import { deriveCaptureReport, formatStatusLine } from "../../../cli/pane-functions/freshness";
 import { commodityBalancesHeadless } from "./headless";
 import { psdCrop } from "./model";
 
@@ -41,9 +42,16 @@ describe("PSD report", () => {
     expect(coffee.sections[0]!.rows).toEqual([
       { crop: "Coffee", country: "Brazil", attribute: "Production", value: 71900, unit: "1000 60 kg bags", year: "2026/27" },
     ]);
-    // July's coffee estimates are not October's WASDE.
+    // July's coffee estimates are not October's WASDE, and coffee has no price forecast to miss.
     expect(coffee.metadata).toMatchObject({ asOf: "2026-07-01", month: "2026-07", priced: false });
-    expect(coffee.notes).toEqual(["Price forecasts have not refreshed since 1 Oct 2026."]);
+    expect(coffee.notes).toBeUndefined();
+    const report = deriveCaptureReport(commodityBalancesHeadless, coffee, Date.parse("2026-10-20T12:00:00Z"));
+    expect(formatStatusLine(report.freshness)).toBe("Jul 2026 (semiannual) · not a live feed (supply and distribution estimates)");
+
+    const wheat = await load("wheat");
+    expect(wheat.notes).toEqual(["Price forecasts have not refreshed since 1 Oct 2026."]);
+    expect(formatStatusLine(deriveCaptureReport(commodityBalancesHeadless, wheat, Date.parse("2026-10-20T12:00:00Z")).freshness))
+      .toBe("Oct 2026 (monthly) · not a live feed (monthly supply and demand estimates)");
 
     const all = await load(null);
     expect(all.sections.map((section) => section.title)).toEqual(["Balances 2026/27", "Prices"]);

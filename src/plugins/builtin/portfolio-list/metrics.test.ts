@@ -527,6 +527,22 @@ describe("portfolio-metrics", () => {
     expect(getColumnValue({ id: "next_earn", label: "ERN", width: 7, align: "right" }, ticker, financials, context).text).toBe("Jan 29");
     expect(getSortValue({ id: "target_pct", label: "TARGET%", width: 8, align: "right" }, ticker, financials, context)).toBe(25);
   });
+
+  test("a target in pounds under a quote in pence reads in pounds", () => {
+    const ticker = createTestTicker("VOD.L", "Vodafone", { exchange: "LSE", currency: "GBp" });
+    const financials = createFinancials({ quote: { symbol: "VOD.L", currency: "GBp", price: 120.6, previousClose: 120 } });
+    const target = (research: { currency?: string; priceTarget: Record<string, number | string> }) => getColumnValue(
+      { id: "target", label: "TARGET", width: 10, align: "right" }, ticker, financials,
+      { ...defaultColumnContext, analystResearch: new Map([["VOD.L", {
+        symbol: "VOD.L", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [], ...research,
+      }]]) },
+    ).text;
+    expect(target({ priceTarget: { average: 1.2145, current: 1.206, currency: "GBP" } })).toBe("£1.21");
+    expect(target({ currency: "GBP", priceTarget: { average: 1.2145, current: 1.206, currency: "" } })).toBe("£1.21");
+    // A target naming no currency is the quote's, in pounds when it reads a hundred times under the pence price.
+    expect(target({ priceTarget: { average: 1.2145, current: 1.206 } })).toBe("£1.21");
+    expect(target({ priceTarget: { average: 121.45, current: 120.6 } })).toBe("121.45p");
+  });
 });
 
 

@@ -190,6 +190,29 @@ export function liveFiftyTwoWeekRange(
 }
 
 /**
+ * The currency an analyst's targets are written in: the one the target or its
+ * research names, whatever the quote's (a target in pounds under a quote in
+ * pence stays in pounds). When neither names one, the quote's, but its major
+ * unit when the quote is in a minor one (GBp, USX) and the target's reference
+ * price, or the target itself, is a hundred times under the quote's price.
+ */
+export function analystTargetDisplayCurrency(
+  analyst: AnalystResearchData | null | undefined,
+  quoteCurrency: string,
+  currentPrice: number | null | undefined,
+): string {
+  const named = analyst?.priceTarget?.currency?.trim() || analyst?.currency?.trim();
+  if (named) return named;
+  const unit = resolveCurrencyUnit(quoteCurrency);
+  if (unit.divisor === 1 || !positive(currentPrice)) return quoteCurrency;
+  const target = analyst?.priceTarget;
+  const sample = [target?.current, target?.average, target?.median].find(positive);
+  return sample != null && sample < currentPrice
+    && hasLikelyQuoteUnitMismatch({ currency: quoteCurrency, price: sample }, { currency: quoteCurrency, price: currentPrice })
+    ? unit.currency : quoteCurrency;
+}
+
+/**
  * The price an analyst target is compared with. The current price when the
  * target is quoted in the listing's currency; otherwise the research snapshot's
  * own price, which is on the target's basis.

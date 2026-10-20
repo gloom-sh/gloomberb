@@ -23,7 +23,7 @@ import {
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
 import {
-  fitFuturesContractLines, futuresChangeBasis, futuresChangeBasisText, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
+  fitFuturesContractLines, futuresChangeBasisText, futuresQuoteChangeBasis, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
   type FuturesContractLine,
 } from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
@@ -196,7 +196,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${minorUnitPricePer(contractTerms, quote?.currency)}` : "";
   const quoteChangeText = sessionQuote ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
-  const changeBasis = sessionQuote ? futuresChangeBasis(contractTerms, { ...sessionQuote, sessionDate: quote?.changeSessionDate }) : null;
+  const changeBasis = futuresQuoteChangeBasis(contractTerms, quote);
   const changeBasisText = changeBasis ? futuresChangeBasisText(changeBasis) : "";
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
