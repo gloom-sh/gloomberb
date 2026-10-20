@@ -1466,6 +1466,8 @@ Methodology and recurring usage explanations belong in user documentation. Keep 
 
 For non-blocking data limitations, use `usePaneNoticeFooter({ registrationId, notices, focused })` from `gloomberb/components`. It registers one conditional warning indicator in the existing footer; mouse activation or `!` opens the full details. Pass only notices for the current data and disable the registration when its view is inactive. Empty notices remove the indicator. Preserve units and source dates beside the affected values, and keep blocking empty/error states in the body. Do not use this control for permanent methodology or generic usage instructions.
 
+For data a source delivers late, put `delayedFooterSegment({ id, detail, delay })` from `gloomberb/components` in the footer info instead of words such as "15m delayed". The desktop shows a yellow clock with `detail` as its tooltip, and the terminal shows `◷15m`. Use `DELAYED_SEGMENT` when the data is delayed by no single figure. `splitDelayedStatus(segment)` turns a status that starts with `15m delayed · ` into the clock and the rest of the text.
+
 ### Plugin runtime hooks
 
 These hooks are available inside pane and tab components rendered by a plugin. They provide app actions, asset data access, and reactive access to the plugin's storage layers:
