@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import {
+  currencyCodeLabel,
+  currencyUnitLabel,
   hasLikelyQuoteUnitMismatch,
+  minorUnitSign,
   resolveCurrencyUnit,
   resolveExchangeSubUnitCurrencyUnit,
   resolvePriceHistoryCurrencyUnit,
 } from "./currency-units";
 
 describe("currency unit helpers", () => {
+  test("names a minor unit's sign and shows US cents as US¢, a major currency as its code", () => {
+    expect([minorUnitSign("USX"), minorUnitSign("GBp"), minorUnitSign("GBX"), minorUnitSign("ZAc")]).toEqual(["¢", "p", "p", "c"]);
+    // GBP is pounds, not pence; agorot have no sign in common use.
+    expect([minorUnitSign("GBP"), minorUnitSign("USD"), minorUnitSign("ILA"), minorUnitSign(null)]).toEqual([null, null, null, null]);
+    expect([currencyCodeLabel("USX"), currencyCodeLabel("GBp"), currencyCodeLabel("USD")]).toEqual(["US¢", "GBp", "USD"]);
+    expect(currencyUnitLabel("USX", { ofMajor: true })).toBe("US¢ (US cents, 1/100 USD)");
+  });
+
   test("normalizes known sub-unit currencies to their main currency", () => {
     expect(resolveCurrencyUnit("GBp")).toEqual({ currency: "GBP", divisor: 100 });
     expect(resolveCurrencyUnit("GBP")).toEqual({ currency: "GBP", divisor: 1 });

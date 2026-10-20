@@ -15,10 +15,13 @@ const SUB_UNIT_NAMES: Record<string, string> = {
 
 /**
  * A currency code as a reader should see it; a sub-unit says which one,
- * "GBp (pence)", and with `ofMajor` what it divides: "ILA (agorot, 1/100 ILS)".
+ * "GBp (pence)", "US¢ (US cents)", and with `ofMajor` what it divides:
+ * "ILA (agorot, 1/100 ILS)".
  */
 export function currencyUnitLabel(code?: string | null, { ofMajor = false }: { ofMajor?: boolean } = {}): string {
   const raw = (code ?? "").trim();
+  // US cents have no standard code; the one quotes carry (USX) is shown as US¢.
+  if (raw.toUpperCase() === US_CENTS) return ofMajor ? "US¢ (US cents, 1/100 USD)" : "US¢ (US cents)";
   const unit = SUB_UNIT_NAMES[raw];
   const major = SUB_UNIT_CURRENCIES[raw];
   if (!unit) return raw;
@@ -49,6 +52,34 @@ const SUB_UNIT_EXCHANGE_RULES = [
  * in cents converts, at its fixed hundredth of a dollar.
  */
 export const US_CENTS = "USX";
+
+/**
+ * Minor units with a sign of their own, by upper-cased code; GBp is read in
+ * its own case, as GBP is pounds. Agorot (ILA) have none in common use and
+ * keep their code.
+ */
+const MINOR_UNIT_SIGNS: Readonly<Record<string, string>> = { USX: "¢", GBX: "p", ZAC: "c" };
+
+/**
+ * The sign a price in a minor unit is written with, after the amount, where
+ * a major currency's symbol goes before it: US cents 314.95¢ (grains and
+ * softs), pence 412.50p, South African cents 1,250.00c. Null for a major
+ * currency, or a minor unit without one.
+ */
+export function minorUnitSign(code: string | null | undefined): string | null {
+  const raw = (code ?? "").trim();
+  if (raw === "GBp") return "p";
+  return MINOR_UNIT_SIGNS[raw.toUpperCase()] ?? null;
+}
+
+/**
+ * A quote currency's code as a column of codes shows it: US cents, a code no
+ * standard has, as US¢; every other code as it is (USD, GBp).
+ */
+export function currencyCodeLabel(code: string | null | undefined): string {
+  const raw = (code ?? "").trim();
+  return raw.toUpperCase() === US_CENTS ? "US¢" : raw;
+}
 
 /**
  * A currency's rate to USD where it is fixed rather than quoted: the dollar

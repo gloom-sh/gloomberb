@@ -62,8 +62,8 @@ describe("futures price formatting", () => {
   });
 
   test("marks cent-quoted grains so they are not read as dollars", () => {
-    expect(cellText("price", { price: 483.25, currency: "USX" }, "agriculture")).toBe("483.25c");
-    expect(cellText("change", { price: 483.25, change: -2.5, currency: "USX" }, "agriculture")).toBe("-2.50c");
+    expect(cellText("price", { price: 483.25, currency: "USX" }, "agriculture")).toBe("483.25¢");
+    expect(cellText("change", { price: 483.25, change: -2.5, currency: "USX" }, "agriculture")).toBe("-2.50¢");
     expect(cellText("price", { price: 483.25, currency: "USD" }, "agriculture")).toBe("483.25");
   });
 

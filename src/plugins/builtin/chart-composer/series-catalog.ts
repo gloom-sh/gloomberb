@@ -15,6 +15,7 @@ import {
 } from "../../../utils/exchanges";
 import { parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
 import { parseFormulaExpression } from "./formula";
+import { currencyCodeLabel } from "../../../utils/currency-units";
 
 export interface SeriesCatalogInstrument {
   symbol: string;
@@ -351,11 +352,12 @@ function registeredSeriesSuggestions(
   }
   hits.sort((left, right) => left.rank - right.rank || left.entry.name.length - right.entry.name.length);
   return hits.map(({ entry, expression, lines, formula, symbol }): SeriesCatalogSuggestion => {
-    const description = [entry.group, entry.unit, entry.frequency].filter(Boolean).join(" · ");
+    const unit = currencyCodeLabel(entry.unit);
+    const description = [entry.group, unit, entry.frequency].filter(Boolean).join(" · ");
     const detail = entry.group ?? "Series";
     if (formula !== undefined) {
       // A formula runs long: its name leads, and the formula is in the description.
-      const formulaDescription = [formula, entry.unit, entry.frequency].filter(Boolean).join(" · ");
+      const formulaDescription = [formula, unit, entry.frequency].filter(Boolean).join(" · ");
       return { id: `formula:${formula}`, label: entry.name, description: formulaDescription, detail, formula };
     }
     const placed = {

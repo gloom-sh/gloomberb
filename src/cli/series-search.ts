@@ -1,6 +1,7 @@
 import { seriesExpression } from "../series/registry";
 import type { SeriesDefinition } from "../series/types";
 import { cliStyles, renderSection, renderTable, wrapText } from "../utils/cli-output";
+import { currencyCodeLabel } from "../utils/currency-units";
 
 /** A data catalog series a query names, as the CLI lists it. */
 export interface SeriesMatch {
@@ -108,7 +109,7 @@ export function renderSeriesMatches(
     renderTable(
       [{ header: "Series" }, { header: "Unit" }, { header: "Frequency", optional: true }, { header: "Publisher", optional: true },
         { header: "Chart", shrink: false }],
-      shown.map((match) => [match.name, match.unit, match.frequency, match.publisher ?? "", cliStyles.command(shellArgument(match.expression))]),
+      shown.map((match) => [match.name, currencyCodeLabel(match.unit), match.frequency, match.publisher ?? "", cliStyles.command(shellArgument(match.expression))]),
     ),
     "",
     ...wrapText(hint, width).map((line) => cliStyles.muted(line)),

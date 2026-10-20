@@ -22,7 +22,10 @@ import {
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, type FuturesContractLine } from "../../../market-data/futures-contract";
+import {
+  fitFuturesContractLines, futuresChangeBasis, futuresChangeBasisText, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
+  type FuturesContractLine,
+} from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
 import { useAppSelector } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
@@ -188,9 +191,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The headline is the regular session, which stops at the close; extended trading is the line below it.
   const sessionQuote = getRegularSessionDisplay(quote);
   const extendedQuote = getExtendedSessionDisplay(quote);
-  const quotePriceText = sessionQuote ? formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions) : "";
+  // A price in cents says what it is per (314.95¢/lb), and a future's move what it is measured from (vs Fri settle).
+  const quotePriceText = sessionQuote
+    ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${minorUnitPricePer(contractTerms, quote?.currency)}` : "";
   const quoteChangeText = sessionQuote ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
+  const changeBasis = sessionQuote ? futuresChangeBasis(contractTerms, { ...sessionQuote, sessionDate: quote?.changeSessionDate }) : null;
+  const changeBasisText = changeBasis ? futuresChangeBasisText(changeBasis) : "";
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
@@ -217,7 +224,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
     : "";
-  const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
+  const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub")
+    + (changeBasisText ? 1 + displayWidth(changeBasisText) : 0);
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
   const companyNameWidth = Math.max(8, quoteTextWidth
@@ -334,9 +342,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 alignItems={stackQuoteSummary ? undefined : "baseline"}
               >
                 <FigureText>{quotePriceText}</FigureText>
-                <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}>
+                <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}
+                  alignItems={changeBasisText && !stackQuoteChange ? "baseline" : undefined}>
                   <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
                   <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
+                  {changeBasisText ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
                 </Box>
               </Box>
             )}

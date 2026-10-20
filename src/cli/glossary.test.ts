@@ -207,3 +207,25 @@ test("the bond fund and muni words are found by plain names, and DVD explains th
   expect(reportGlossary("DVD", "Dividend Yield | KO\nTrailing yield  2.24%")).toEqual([]);
   expect(terms(reportGlossary("ETF", "Distribution Yield  3.27%\n30-Day SEC Yield  4.04% (as of 2026-10-15)"))).toEqual(["SEC yield"]);
 });
+
+test("COT's words are found by plain names and explained from the classes and columns its report heads", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["COT", "commitments of traders", "noncommercial", "large speculators", "commercials", "nonreportable", "net position", "% of open interest", "1-year percentile"].map(exact))
+    .toEqual([["Commitments of Traders"], ["Commitments of Traders"], ["Noncommercial"], ["Noncommercial"], ["Commercial"], ["Nonreportable"], ["Net position"],
+      ["Net % of open interest"], ["Pctl 1Y"]]);
+  const report = [
+    "CFTC positioning", "", "COFFEE C",
+    "Class            Long   Short      Net    1W Δ  Net % OI  Pctl 1Y  Pctl 3Y",
+    "Noncommercial  45,600  32,064  +13,536  -2,677     +8.3%       16        6",
+    "Commercial     73,156  87,408  -14,252  +3,260     -8.7%       86       95",
+    "Nonreportable   7,309   6,593     +716    -583     +0.4%       41       18", "",
+    "Report date  Open interest  Noncommercial net  Commercial net  Nonreportable net", "",
+    "Source: CFTC · Tue 13 Oct 2026 · not a live feed (weekly report)",
+  ].join("\n");
+  expect(terms(reportGlossary("COT", report))).toEqual([
+    "Pctl 1Y", "Open interest", "Commitments of Traders", "Noncommercial", "Commercial", "Nonreportable", "Net position", "Net % of open interest", "Weekly change", "Pctl 3Y",
+  ]);
+  // The disaggregated report's classes are its own.
+  expect(terms(reportGlossary("COT", "Class  Net\nManaged Money  +1\nProducer/Merchant  -1\nSwap Dealers  +2\nOther Reportables  0")))
+    .toEqual(["Net position", "Managed money", "Producer/merchant", "Swap dealers", "Other reportables"]);
+});

@@ -44,6 +44,12 @@ export interface PsdBalanceRow {
   unit: string;
   /** Market year, 2026/27. */
   year: string;
+  /**
+   * YYYY-MM of the crop's newest estimate: the WASDE for grains, oilseeds and
+   * cotton, USDA's semiannual report for coffee and sugar. Absent from boards
+   * served before it was sent.
+   */
+  month?: string | null;
   cropOrder: number;
   countryOrder: number;
   attributeOrder: number;

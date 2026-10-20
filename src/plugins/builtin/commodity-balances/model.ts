@@ -12,6 +12,28 @@ export type PriceColumnId = "crop" | "forecast" | "unit" | "season";
 export const BALANCE_SORT: SortPreference<BalanceColumnId> = { columnId: null, direction: "asc" };
 export const PRICE_SORT: SortPreference<PriceColumnId> = { columnId: null, direction: "asc" };
 
+/** The crops the board carries, in its order; the server names them so. */
+export const PSD_CROPS = ["Wheat", "Corn", "Soybeans", "Cotton", "Coffee", "Sugar"] as const;
+export type PsdCrop = typeof PSD_CROPS[number];
+
+/** A typed crop as the board names it: "coffee", "Soybean" and "soy" read as Coffee and Soybeans. Null for anything else. */
+export function psdCrop(input: string): PsdCrop | null {
+  const typed = input.trim().toLowerCase().replace(/s$/, "");
+  if (typed.length < 3) return null;
+  return PSD_CROPS.find((crop) => crop.toLowerCase().replace(/s$/, "").startsWith(typed)) ?? null;
+}
+
+/** What the CLI answers a crop the board does not carry. */
+export function unknownCropMessage(input: string): string {
+  const names = PSD_CROPS.map((crop) => crop.toLowerCase());
+  return `No crop "${input.trim()}". PSD covers ${names.slice(0, -1).join(", ")} and ${names.at(-1)}.`;
+}
+
+/** The month a crop's balances were estimated, from its rows; null when the board does not date them. */
+export function cropEstimateMonth(rows: readonly BalanceRow[]): string | null {
+  return rows.reduce<string | null>((latest, row) => row.month && (!latest || row.month > latest) ? row.month : latest, null);
+}
+
 export function formatBalanceValue(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   const shown = Math.abs(rounded - Math.round(rounded)) < 0.001 ? Math.round(rounded) : rounded;

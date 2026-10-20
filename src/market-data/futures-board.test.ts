@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { bareFuturesCode, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker } from "./futures-board";
+import { bareFuturesCode, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByName } from "./futures-board";
 
 test("every board row is its future as a typed argument, and under the cursor only where no security keeps its code", () => {
   for (const row of FUTURES_CONTRACTS) {
@@ -16,4 +16,12 @@ test("every board row is its future as a typed argument, and under the cursor on
   expect(["SXO", "xae", "XAU", "SXT", "RX", "MES"].map((code) => bareFuturesCode(code)?.symbol ?? null))
     .toEqual(["SXO=F", "XAE=F", null, null, null, null]);
   expect([bareFuturesCode("TTF=F"), futuresBoardContract("AAPL"), futuresBoardContractForTicker(null)]).toEqual([null, null, null]);
+});
+
+test("a commodity's name finds its board row: the plainest match first, then board order", () => {
+  const named = (name: string) => futuresContractByName(name)?.code ?? null;
+  expect(["cocoa", "sugar", "orange juice", "soybean", "crude", "oil", "gas", "yen", "wheat", "natural gas"].map(named))
+    .toEqual(["CC", "SB", "OJ", "ZS", "CL", "CL", "NG", "6J", "ZW", "NG"]);
+  // Two letters are a slip of a code, not a name; a word no row holds is nothing.
+  expect(["co", "", "pork bellies", null].map(named)).toEqual([null, null, null, null]);
 });

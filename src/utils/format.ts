@@ -1,4 +1,4 @@
-import { fixedUsdRate } from "./currency-units";
+import { fixedUsdRate, minorUnitSign } from "./currency-units";
 
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
@@ -47,6 +47,15 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
  * as a price in it does: USDT101.70.
  */
 function formatMoney(value: number, currency: string, maximumFractionDigits: number): string {
+  // A minor unit is written after the amount: 314.95¢ in US cents, 412.50p in pence.
+  const minor = minorUnitSign(currency);
+  if (minor) {
+    const body = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: Math.min(2, maximumFractionDigits),
+      maximumFractionDigits,
+    }).format(Math.abs(value));
+    return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body}${minor}`;
+  }
   try {
     return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
   } catch {

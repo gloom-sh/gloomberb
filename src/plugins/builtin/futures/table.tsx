@@ -3,6 +3,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { minorUnitSign } from "../../../utils/currency-units";
 import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
 import { FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
@@ -164,13 +165,15 @@ const currencySymbols = new Map<string, string>();
 /**
  * The board prints dollar prices bare. Anything else carries its unit on the
  * price and on the change, so Dutch TTF gas at 72.071 euros is not read as
- * dollars beside Henry Hub: US cents (`USX`) as a `c` suffix, other
- * currencies as their symbol.
+ * dollars beside Henry Hub: a minor unit as its sign after the amount (US
+ * cents 312.35¢, as every price in cents reads), other currencies as their
+ * symbol.
  */
 function currencyMarks(currency: string | undefined): { prefix: string; suffix: string } {
   const code = currency?.trim().toUpperCase() ?? "";
   if (!code || code === "USD") return { prefix: "", suffix: "" };
-  if (code === "USX") return { prefix: "", suffix: "c" };
+  const minor = minorUnitSign(currency);
+  if (minor) return { prefix: "", suffix: minor };
   let symbol = currencySymbols.get(code);
   if (symbol === undefined) {
     try {

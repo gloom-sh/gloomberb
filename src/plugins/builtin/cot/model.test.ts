@@ -149,3 +149,20 @@ test("the class's net leads the chart series, ahead of the front price", () => {
     ["net", "Commercial net", "net"], ["price", "Front price", "price"],
   ]);
 });
+
+test("commodity names open their market as FUT finds them, before a six-letter word is read as a CFTC code", async () => {
+  const names = ["cocoa", "Coffee", "SUGAR", "cotton", "OJ", "orange juice", "gold", "silver", "copper", "crude", "oil", "natural gas", "brent", "soybean", "bitcoin", "fed funds"];
+  expect(names.map(cotContractCode)).toEqual([
+    "073732", "083731", "080732", "033661", "040701", "040701", "088691", "084691", "085692", "067651", "067651", "023651", "06765T", "005602", "133741", "045601",
+  ]);
+  // COFFEE and COPPER are six letters, as a CFTC code is; the name wins.
+  expect(["COFFEE", "COPPER"].map(cotContractCode)).toEqual(["083731", "085692"]);
+  // A named market the CFTC does not report says so; a name nothing matches gets codes and names that work.
+  expect(cotContractCode("aluminum")).toBeNull();
+  expect(cotUnknownMarketMessage("aluminum")).toBe("ALI (Aluminum) is not reported in the CFTC COT.");
+  expect(cotContractCode("pork bellies")).toBeNull();
+  expect(cotUnknownMarketMessage("pork bellies")).toContain("CC cocoa, KC coffee, SB sugar");
+  expect(cotUnknownMarketMessage("pork bellies")).toContain("HG copper");
+  const template = cotModule.paneTemplates![0]!;
+  expect(await template.createInstance!({ activeTicker: null } as never, { arg: "cocoa" } as never)).toMatchObject({ title: "COT CC", params: { code: "073732" } });
+});

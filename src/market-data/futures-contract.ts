@@ -6,6 +6,8 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
+import { minorUnitSign } from "../utils/currency-units";
+import { contractPriceUnit } from "../time-series/price-units";
 
 /**
  * What a futures symbol trades, as `ticker`, `quote` and the Overview tab read
@@ -119,6 +121,79 @@ export function futuresSettleText(
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The quantities a cents price is per, as traders abbreviate them: 467.25¢/bu for corn. */
+const PER_ABBREVIATIONS: Readonly<Record<string, string>> = { bushel: "bu", bushels: "bu", pound: "lb", pounds: "lb" };
+
+/**
+ * What a price in a minor unit is per, to follow its sign: "/lb" for coffee at
+ * 314.95¢/lb, "/bu" for corn, from the contract's unit ("US cents / lb").
+ * Empty for a price in a major currency, which reads as it always has, and
+ * when the terms name no unit in the quote's own currency.
+ */
+export function minorUnitPricePer(
+  terms: Pick<FuturesContractTermsPayload, "spec"> | null | undefined,
+  currency: string | null | undefined,
+): string {
+  if (!minorUnitSign(currency)) return "";
+  const per = contractPriceUnit(terms?.spec?.unit, currency)?.split("/")[1]?.trim();
+  return per ? `/${PER_ABBREVIATIONS[per.toLowerCase()] ?? per}` : "";
+}
+
+const DAY_MS = 86_400_000;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The weekday before a session date, Saturday and Sunday skipped: a futures session's previous one, holidays aside. */
+function previousWeekday(date: string): string {
+  let at = Date.parse(`${date}T00:00:00Z`) - DAY_MS;
+  while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
+  return new Date(at).toISOString().slice(0, 10);
+}
+
+/**
+ * What a futures move is measured from: a session's settlement, the last
+ * trade of a session that settled elsewhere, or a close the server could not
+ * yet check against a settlement. `session` is the date of that reference.
+ */
+export interface FuturesChangeBasis {
+  kind: "settle" | "last trade" | "close";
+  session: string;
+}
+
+/**
+ * What the move a futures quote headlines is measured from, for the words
+ * after it ("vs Fri settle"). Its reference (the price less the move) is the
+ * previous settlement when it is the one the contract terms carry, from an
+ * earlier session than the move's. Once the move's own session has settled,
+ * the server measures it from the settlement before (the curve's rule), so
+ * that is its basis too. A reference other than the previous session's
+ * settlement is that session's last trade. Without that settlement to compare
+ * (the exchange has not confirmed it yet), it is the previous session's close,
+ * left unnamed. Null without a session date, a move or terms.
+ */
+export function futuresChangeBasis(
+  terms: Pick<FuturesContractTermsPayload, "settlement"> | null | undefined,
+  move: { price: number; change?: number | null; sessionDate?: string | null } | null | undefined,
+): FuturesChangeBasis | null {
+  const session = move?.sessionDate;
+  if (!terms || !move || !session || !isoDate.test(session) || move.change == null) return null;
+  const reference = move.price - move.change;
+  if (!Number.isFinite(reference)) return null;
+  const previous = previousWeekday(session);
+  const settled = terms.settlement;
+  if (settled && settled.date === session) return { kind: "settle", session: previous };
+  if (settled && settled.date < session) {
+    if (Math.abs(reference - settled.price) <= Math.abs(settled.price) * 1e-7) return { kind: "settle", session: settled.date };
+    if (settled.date >= previous) return { kind: "last trade", session: settled.date };
+  }
+  return { kind: "close", session: previous };
+}
+
+/** The words a futures move ends with: "vs Fri settle", "vs Mon last trade", "vs Mon close". */
+export function futuresChangeBasisText(basis: FuturesChangeBasis): string {
+  return `vs ${WEEKDAYS[new Date(`${basis.session}T00:00:00Z`).getUTCDay()]} ${basis.kind}`;
+}
 
 /** A listed contract as code and month: "NGX26 (Nov 26)". */
 function contractWithMonth(contract: { contract: string; deliveryMonth: string }): string {

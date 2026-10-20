@@ -21,8 +21,10 @@ export interface CommodityBalances {
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const text = (value: unknown): value is string => typeof value === "string";
 
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const validRow = (row: BalanceRow) => [row.id, row.crop, row.country, row.attribute, row.unit, row.year].every(text)
-  && [row.value, row.cropOrder, row.countryOrder, row.attributeOrder].every(finite);
+  && [row.value, row.cropOrder, row.countryOrder, row.attributeOrder].every(finite)
+  && (row.month == null || (text(row.month) && MONTH.test(row.month)));
 const validPrice = (row: PriceForecast) => [row.id, row.crop, row.unit, row.season].every(text)
   && [row.forecast, row.cropOrder, row.seasonYear].every(finite);
 
@@ -31,7 +33,7 @@ function readBoard(payload: PsdBoardPayload): CommodityBalances {
   if (!payload || payload.source !== "USDA" || !Array.isArray(payload.rows) || !Array.isArray(payload.prices)
     || !Array.isArray(payload.gaps) || !payload.gaps.every(text)
     || !payload.rows.every(validRow) || !payload.prices.every(validPrice)
-    || (payload.month != null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(payload.month))
+    || (payload.month != null && !MONTH.test(payload.month))
     || (payload.marketYear != null && !text(payload.marketYear))) {
     throw new Error("The server returned an invalid crop balance board");
   }
@@ -47,8 +49,8 @@ function readBoard(payload: PsdBoardPayload): CommodityBalances {
 }
 
 /**
- * USDA's world wheat, corn, soybean and cotton balances for the latest market
- * year, and the season-average price forecasts. Gloom Cloud reads USDA's
+ * USDA's world wheat, corn, soybean, cotton, coffee and sugar balances for the
+ * latest market year, and the season-average price forecasts. Gloom Cloud reads USDA's
  * files; a route the server does not serve yet (404) or cannot read (503) is
  * the not-available message.
  */

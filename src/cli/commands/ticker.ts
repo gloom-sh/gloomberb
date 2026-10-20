@@ -32,7 +32,8 @@ import {
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
+import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
+import { currencyCodeLabel } from "../../utils/currency-units";
 import type { AppConfig } from "../../types/config";
 import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
@@ -58,6 +59,7 @@ import {
   formatSignedCurrency,
   formatTimestamp,
   formatWatchlistNames,
+  quoteChangeText,
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isKnownNonUsListing, secFilingItemCodes } from "../../utils/sec";
@@ -956,7 +958,7 @@ export async function buildTickerReport({
   const indexLevel = isIndexLevel(quote?.instrumentType?.trim() || financials.quoteMetadata?.instrumentType?.trim() || tickerFile?.metadata.assetCategory);
   const summaryParts = [
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
-    indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${quoteCurrency}` : undefined,
+    indexLevel ? INDEX_POINTS_LABEL : quoteCurrency ? `Currency ${currencyCodeLabel(quoteCurrency)}` : undefined,
     quoteMarketStateLabel(quote) ?? undefined,
     quote?.dataSource ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
   ].filter((part): part is string => !!part);
@@ -1023,11 +1025,13 @@ export async function buildTickerReport({
     const volume = reportedQuoteVolume(quote);
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
-      ["Last", colorBySign(formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions), session.change)],
+      // A price in cents says what it is per: 314.95¢/lb.
+      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${minorUnitPricePer(futuresContract, quote.currency)}`, session.change)],
       ...futuresContract
         ? [["Settle", futuresSettleText(futuresContract, quote)] as [string, string]]
         : [],
-      ["Change", colorBySign(`${formatMarketChangeWithCurrency(session.change, quote.currency, quoteOptions, session.price)} (${formatPercentRaw(session.changePercent)})`, session.change)],
+      // A future's move says what it is measured from: "vs Fri settle".
+      ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
         ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)

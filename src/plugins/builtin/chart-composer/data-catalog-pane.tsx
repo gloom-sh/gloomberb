@@ -42,6 +42,7 @@ import {
 } from "./catalog-inventory";
 import { useCatalogUniverse, useRegisteredSeries } from "./use-series-catalog";
 import { buildRegisteredSeriesChart } from "./presets";
+import { currencyCodeLabel } from "../../../utils/currency-units";
 
 type CatalogColumnId = "series" | "group" | "unit" | "frequency" | "publisher" | "expression";
 type CatalogColumn = DataTableColumn & { id: CatalogColumnId };
@@ -228,7 +229,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       case "group":
         return { text: row.group, color: colors.textDim };
       case "unit":
-        return { text: row.unit, color: colors.textDim };
+        return { text: currencyCodeLabel(row.unit), color: colors.textDim };
       case "frequency":
         return { text: FREQUENCY_LABELS[row.frequency], color: colors.textDim };
       case "publisher":

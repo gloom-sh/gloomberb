@@ -5,7 +5,7 @@ import type { PricePoint } from "../../../types/financials";
 import { formatPriceObservation } from "../../../market-data/market/format";
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
-import { FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, type FuturesContract } from "../../../market-data/futures-board";
+import { bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByName, type FuturesContract } from "../../../market-data/futures-board";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
@@ -124,25 +124,48 @@ export function cotScope(value: unknown): CotScope { return value === "all" ? "a
 const rootAlias = (input: string) => ROOTS[input === "VIX" ? "VX" : input]?.code ?? null;
 const marketCode = (input: string) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null;
 /**
- * A CFTC code or root typed as an argument or stored in a pane: every alias,
- * crypto included, and every FUT board root the CFTC reports. A typed root is
- * always the future, so ZM here is soybean meal, never Zoom.
+ * The FUT board row a typed argument names, by code, symbol or commodity name
+ * as FUT reads them (CC, CC=F, cocoa), or a verified root named the same way
+ * (bitcoin, VIX, SOFR, fed funds).
+ */
+function typedMarket(value: string): { board: FuturesContract } | { root: string } | null {
+  const board = futuresBoardContract(value) ?? futuresContractByName(value);
+  if (board) return { board };
+  const root = bestNameMatch(Object.keys(ROOTS), (key) => [ROOTS[key]!.name], value);
+  return root ? { root } : null;
+}
+/**
+ * A CFTC code, root or commodity name typed as an argument or stored in a
+ * pane: every alias, crypto included, every FUT board root the CFTC reports,
+ * and the names FUT finds them by (cocoa, coffee, sugar, gold, crude). A typed
+ * root is always the future, so ZM here is soybean meal, never Zoom. A CFTC
+ * code is tried after the names, as one could be spelled with six letters
+ * (COFFEE, COPPER).
  */
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
-  const board = futuresBoardContract(value);
-  return rootAlias(input) ?? (board ? boardMarketCode(board) : null) ?? marketCode(input);
+  const alias = rootAlias(input);
+  if (alias) return alias;
+  const market = typedMarket(value);
+  if (market && "root" in market) return ROOTS[market.root]!.code;
+  return (market ? boardMarketCode(market.board) : null) ?? (market ? null : marketCode(input));
 }
+/** The markets the unknown-market hint names, by the code and the word a newcomer knows them by. */
+const SUGGESTED_MARKETS: ReadonlyArray<readonly [string, string]> = [
+  ["ES", "S&P 500"], ["CL", "crude oil"], ["NG", "natural gas"], ["GC", "gold"], ["HG", "copper"],
+  ["ZC", "corn"], ["CC", "cocoa"], ["KC", "coffee"], ["SB", "sugar"], ["ZN", "10-year note"],
+];
 /**
- * What a market `cotContractCode` does not know is told: a FUT board root the
- * CFTC does not report says so; anything else gets roots and a code that work.
+ * What a market `cotContractCode` does not know is told: a FUT board row the
+ * CFTC does not report says so; anything else gets codes and names that work,
+ * softs and metals among them, and a CFTC code.
  */
 export function cotUnknownMarketMessage(value: unknown): string {
-  const board = futuresBoardContract(value);
-  if (board) return `${board.code} (${board.name}) is not reported in the CFTC COT.`;
-  const roots = ["ES", "CL", "GC", "ZN"].filter((root) => ROOTS[root]);
-  return `Unknown market "${String(value)}". Try ${roots.join(", ")} or a CFTC market code such as ${ROOTS.GC!.code}.`;
+  const market = typeof value === "string" ? typedMarket(value) : null;
+  if (market && "board" in market) return `${market.board.code} (${market.board.name}) is not reported in the CFTC COT.`;
+  const known = SUGGESTED_MARKETS.map(([code, name]) => `${code} ${name}`).join(", ");
+  return `Unknown market "${String(value)}". Try a code or name such as ${known}, or a CFTC market code such as ${ROOTS.GC!.code}.`;
 }
 /**
  * The code for the ticker under the cursor, when COT is opened without an

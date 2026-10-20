@@ -67,6 +67,7 @@ import {
 } from "./valuation-basis";
 import { futuresQuantityText, futuresSettlementDisplay, type PortfolioFuturesTerms } from "./futures-positions";
 import { isFiniteNumber } from "../utils/guards";
+import { currencyCodeLabel } from "../utils/currency-units";
 import {
   allocationFigures,
   formatAllocationDrift,
@@ -453,7 +454,7 @@ export function getColumnValue(
         ),
       };
     case "currency":
-      return { text: compactText(listedCurrency(positionCurrency, quoteCurrency, ticker, quote)) };
+      return { text: compactText(currencyCodeLabel(listedCurrency(positionCurrency, quoteCurrency, ticker, quote))) };
     case "sector":
       return { text: compactText(ticker.metadata.sector || financials?.profile?.sector) };
     case "industry":

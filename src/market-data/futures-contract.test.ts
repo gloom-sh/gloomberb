@@ -2,12 +2,15 @@ import { expect, setSystemTime, test } from "bun:test";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import {
   fitFuturesContractLines,
+  futuresChangeBasis,
+  futuresChangeBasisText,
   futuresContractLines,
   futuresRollLines,
   futuresSettleText,
   futuresTickText,
   isFuturesInstrument,
   loadFuturesPriceUnit,
+  minorUnitPricePer,
   resetFuturesPriceUnits,
   validateFuturesContractTerms,
 } from "./futures-contract";
@@ -47,9 +50,38 @@ test("Settle is the confirmed settlement dated by its session, -- without one, a
   const quote = { currency: "USD", instrumentType: "FUTURE" };
   expect(futuresSettleText(gold, quote)).toBe("$4,216.30 (2026-10-09)");
   expect(futuresSettleText({ settlement: null }, quote)).toBe("--");
-  expect(futuresSettleText({ settlement: { price: 479.75, date: "2026-10-09" } }, { ...quote, currency: "USX" })).toBe("USX479.75 (2026-10-09)");
+  expect(futuresSettleText({ settlement: { price: 479.75, date: "2026-10-09" } }, { ...quote, currency: "USX" })).toBe("479.75¢ (2026-10-09)");
   // No quote yet: the tick's decimals survive and no currency is guessed.
   expect(futuresSettleText({ settlement: { price: 3.2952, date: "2026-10-09" } }, undefined)).toBe("3.2952 (2026-10-09)");
+});
+
+test("a price in cents says what it is per, and a dollar price reads as before", () => {
+  const coffee = { spec: { ...gold.spec!, unit: "US cents / lb" } };
+  expect(minorUnitPricePer(coffee, "USX")).toBe("/lb");
+  expect(minorUnitPricePer({ spec: { ...gold.spec!, unit: "US cents / bushel" } }, "USX")).toBe("/bu");
+  expect(minorUnitPricePer(gold, "USD")).toBe("");
+  // Terms in another currency than the quote's, or none, add nothing rather than a wrong unit.
+  expect(minorUnitPricePer(gold, "USX")).toBe("");
+  expect(minorUnitPricePer(null, "USX")).toBe("");
+});
+
+test("a futures move names what it is measured from", () => {
+  const basis = (settlement: { price: number; date: string } | null, price: number, change: number, sessionDate = "2026-10-19") =>
+    futuresChangeBasis({ settlement }, { price, change, sessionDate });
+  // Monday's move from Friday's settlement, which the terms still carry.
+  expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19)).toEqual({ kind: "settle", session: "2026-10-16" });
+  expect(futuresChangeBasisText(basis({ price: 5645, date: "2026-10-16" }, 5626, -19)!)).toBe("vs Fri settle");
+  // Once Monday settles, the server measures from the settlement before it.
+  expect(basis({ price: 5630, date: "2026-10-19" }, 5626, -19)).toEqual({ kind: "settle", session: "2026-10-16" });
+  // From Friday's last trade, not its settlement.
+  expect(futuresChangeBasisText(basis({ price: 5645, date: "2026-10-16" }, 5626, -22)!)).toBe("vs Fri last trade");
+  // Friday has not settled yet: Friday's close, without claiming a settlement.
+  expect(futuresChangeBasisText(basis({ price: 5600, date: "2026-10-15" }, 5626, -22)!)).toBe("vs Fri close");
+  expect(futuresChangeBasisText(basis(null, 5626, -22, "2026-10-21")!)).toBe("vs Tue close");
+  // Floating point does not turn a settlement into a last trade: 311.9 - 6.3 is 305.59999999999997.
+  expect(basis({ price: 305.6, date: "2026-10-16" }, 311.9, 6.3)?.kind).toBe("settle");
+  expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19, "")).toBeNull();
+  expect(futuresChangeBasis({ settlement: null }, { price: 5626, change: null, sessionDate: "2026-10-19" })).toBeNull();
 });
 
 test("only futures symbols are looked up, and a malformed answer is refused", () => {

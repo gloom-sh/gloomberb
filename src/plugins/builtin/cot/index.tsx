@@ -13,7 +13,7 @@ export const cotModule: PluginModule = {
   paneTemplates: [{ id: "cot-cot", paneId: "cot", label: "CFTC Positioning",
     description: "Weekly futures positioning, changes, historical percentiles and cross-market extremes.",
     keywords: ["cot", "cftc", "positioning", "commitments", "managed money", "net spec", "crude oil", "natural gas"],
-    shortcut: { prefix: "COT", aliases: ["CFTC"], argKind: "text" as const, argPlaceholder: "code or root", argOptional: true,
+    shortcut: { prefix: "COT", aliases: ["CFTC"], argKind: "text" as const, argPlaceholder: "code or name", argOptional: true,
       argOptions: () => COT_ROOT_OPTIONS }, headless: cotHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();

@@ -4,7 +4,11 @@ import {
   formatNumber,
   formatPercentRaw,
 } from "../utils/format";
-import { formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
+import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
+import { futuresChangeBasis, futuresChangeBasisText } from "../market-data/futures-contract";
+import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
+import type { ActiveQuoteDisplay } from "../market-data/market/status";
+import type { Quote } from "../types/financials";
 import { cliStyles, colorBySign } from "../utils/cli-output";
 import type { AppConfig } from "../types/config";
 import type { Watchlist, TickerRecord } from "../types/ticker";
@@ -14,6 +18,25 @@ import { findNamedCollection } from "../portfolio/collection-name";
 
 export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
+}
+
+/**
+ * The Change line of `ticker` and of `quote`'s futures block: the regular
+ * session's move and its percent, colored by sign, and for a future what the
+ * move is measured from, "-$22.00 (-0.39%) vs Mon close".
+ */
+export function quoteChangeText(
+  quote: Pick<Quote, "currency" | "changeSessionDate">,
+  session: Pick<ActiveQuoteDisplay, "price" | "change" | "changePercent">,
+  options: MarketFormatOptions,
+  terms?: Pick<FuturesContractTermsPayload, "settlement"> | null,
+): string {
+  const move = colorBySign(
+    `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
+    session.change,
+  );
+  const basis = terms ? futuresChangeBasis(terms, { ...session, sessionDate: quote.changeSessionDate }) : null;
+  return basis ? `${move} ${cliStyles.muted(futuresChangeBasisText(basis))}` : move;
 }
 
 // Text-table cell formats. They leave missing values blank; CSV and JSON keep the raw numbers.

@@ -210,13 +210,29 @@ test("contract price precision does not change units, signed/zero/missing semant
     expect(formatMarketChangeWithCurrency(undefined, "USD", options)).toBe("—");
     expect(formatMarketChangeWithCurrency(NaN, "USD", options)).toBe("—");
     expect(formatMarketPriceWithCurrency(-37.63, "USD", options)).toBe("-$37.63");
-    expect(formatMarketChangeWithCurrency(.25, "USX", options)).toContain("USX");
+    expect(formatMarketChangeWithCurrency(.25, "USX", options)).toBe("+0.25¢");
     expect(formatMarketQuantity(1.123456, options)).toBe("1.1235");
     expect(formatMarketCost(1.123456, options)).toBe("1.1235");
   }
   expect(formatMarketPriceWithCurrency(259.7499, "USD", { assetCategory: "STK" })).toBe("$259.75");
   expect(formatMarketChangeWithCurrency(1, "USD", { assetCategory: "STK" })).toBe("+$1.00");
   expect(formatMarketChangeWithCurrency(.001, "USD", { assetCategory: "BOND" })).toBe("—");
+});
+
+test("a minor unit is written after the amount, its case kept: GBp is pence and GBP pounds", () => {
+  const future = { assetCategory: "FUT" };
+  expect(formatMarketPriceWithCurrency(314.95, "USX", future)).toBe("314.95¢");
+  expect(formatMarketPriceWithCurrency(-2.25, "USX", future)).toBe("-2.25¢");
+  // Before, GBp printed as pounds (£412.5) and GBX and ZAc as codes.
+  expect(formatMarketPriceWithCurrency(412.5, "GBp", { assetCategory: "STK" })).toBe("412.5p");
+  expect(formatMarketPriceWithCurrency(412.5, "GBX", { assetCategory: "STK" })).toBe("412.5p");
+  expect(formatMarketPriceWithCurrency(412.5, "GBP", { assetCategory: "STK" })).toBe("£412.5");
+  expect(formatMarketPriceWithCurrency(1250, "ZAc", { assetCategory: "STK" })).toBe("1,250c");
+  expect(formatMarketPriceWithCurrency(412.5, "ILA", { assetCategory: "STK" })).toBe("ILA412.5");
+  // The sign counts against a fitted width as a symbol does.
+  expect(formatMarketPriceWithCurrency(31495.25, "USX", { ...future, maxWidth: 7 })).toHaveLength(7);
+  expect(formatMarketCostWithCurrency(412.5, "GBp", { assetCategory: "STK" })).toBe("412.50p");
+  expect(formatCompactMarketPriceWithCurrency(1_250_000, "USX", future)).toMatch(/^1\.\d*M¢$|^1M¢$/);
 });
 
 test("a negative zero reads as zero, and only it: a move a cell rounded to nothing is never signed", () => {

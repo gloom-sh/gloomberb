@@ -11,7 +11,7 @@ import type {
   Quote,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind } from "../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import {
   EXTENDED_SESSION_LABELS,
@@ -34,6 +34,7 @@ import {
   formatCountCell,
   formatFractionPercentCell,
   formatPriceRange,
+  quoteChangeText,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { statementHistoryNotes } from "../../utils/financial-statements";
@@ -57,7 +58,8 @@ import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { futuresContractLines, futuresRollLines, futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
+import { currencyCodeLabel } from "../../utils/currency-units";
+import { futuresContractLines, futuresRollLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   formatExpiryList,
@@ -398,10 +400,15 @@ function roundedPercent(value: number | undefined): number | null {
   return value == null ? null : Number(value.toFixed(2));
 }
 
+/** The quote's currency code, US cents as US¢; an export keeps the code (USX). */
+function currencyCell(value: unknown): string {
+  return currencyCodeLabel(typeof value === "string" ? value : "");
+}
+
 function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1 },
+    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1, format: currencyCell },
     // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
     // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
     {
@@ -424,7 +431,7 @@ function compareColumns() {
     // A narrow terminal drops these before it cuts the names short.
     { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3 },
+    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
   ];
 }
 
@@ -477,10 +484,12 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
         ? indexPoints ? formatMarketPrice(value, options) : formatMarketPriceWithCurrency(value, quote.currency, options)
         : ""
     );
+    // A price in cents says what it is per, as the contract terms word it: 314.95¢/lb.
+    const per = display?.price != null ? minorUnitPricePer(result.futuresContract, quote?.currency) : "";
     return {
       symbol: result.target.symbol,
       name: quote?.name || result.listing?.name || "",
-      price: price(display?.price),
+      price: `${price(display?.price)}${per}`,
       rawPrice: display?.price ?? null,
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
@@ -903,12 +912,17 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     const terms = row.futuresContract;
     if (!terms || !row.quote) return [];
     const settle: [string, string] = ["Settle", futuresSettleText(terms, row.quote)];
+    // The move Chg% gives, in the quote's money and with what it is measured from: "vs Fri settle".
+    const session = getRegularSessionDisplay(row.quote);
+    const change: Array<[string, string]> = session?.change != null && Number.isFinite(session.change)
+      ? [["Change", quoteChangeText(row.quote, session, withCurrencyMinorDigits(quoteFormatOptions(row.quote, "FUTURE"), row.quote.currency), terms)]]
+      : [];
     const metrics = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
     const rolls = futuresRollLines(terms, row.futuresFront).map((line): [string, string] => [line.label, line.value]);
     const at = futuresContractLines(terms, row.quote.symbol || row.target.symbol)[0]?.key === "contract" ? 1 : 0;
     const contract = [...metrics.slice(0, at), ...rolls, ...metrics.slice(at)];
-    if (data.length > 1) return [`${renderSection(`${row.target.symbol} Contract`)}\n${renderStats([settle, ...contract])}`];
-    return [[renderStats([settle]), ...contract.length ? ["", renderSection("Contract"), renderStats(contract)] : []].join("\n")];
+    if (data.length > 1) return [`${renderSection(`${row.target.symbol} Contract`)}\n${renderStats([settle, ...change, ...contract])}`];
+    return [[renderStats([settle, ...change]), ...contract.length ? ["", renderSection("Contract"), renderStats(contract)] : []].join("\n")];
   }).join("\n\n");
 }
 

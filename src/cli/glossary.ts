@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
- * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX) and economic-calendar terms the functions
+ * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -242,7 +242,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The first date the new rate level appears in the data, not necessarily the announcement or effective date.",
   },
   {
-    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR"],
+    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT"],
     definition: "Where today's value ranks against the past year of the same series: 100 is the highest, 0 the lowest.",
   },
   {
@@ -360,8 +360,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "a simple annualisation of the rate now, not funding actually paid.",
   },
   {
-    term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP"],
-    definition: "The total value of contracts that are open and not yet closed, counting each buyer and seller pair once, usually in dollars. "
+    term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP", "COT"],
+    definition: "The contracts that are open and not yet closed, counting each buyer and seller pair once: COT counts them, PERP gives their value, usually in dollars. "
       + "It rises as new positions open and falls as they close.",
   },
   {
@@ -630,6 +630,59 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     functions: ["FUT", "CTM"], shown: ["Settle", "PREV"],
     definition: "A futures contract's official price for the day, set by its exchange from trading near the close. "
       + "The day's change and margin are measured from it, and it can differ from the last trade. FUT's PREV is the previous one.",
+  },
+  // CFTC positioning (COT): the legacy report's trader classes, then the disaggregated report's.
+  {
+    term: "Commitments of Traders", short: "COT", aliases: ["cot report", "commitment of traders", "cftc", "cftc report", "cftc positioning", "positioning"],
+    functions: ["COT"], shown: ["CFTC", "COT"],
+    definition: "The CFTC's weekly count of who holds each US futures market: open contracts split by type of trader, as of Tuesday and published that Friday. "
+      + "It shows whether speculators or hedgers are net long or short, and how that moved since the week before.",
+  },
+  {
+    term: "Noncommercial", aliases: ["non-commercial", "noncommercials", "large speculators", "speculators", "large specs"], functions: ["COT"],
+    definition: "Large traders who do not hedge a business with the contract, such as funds and other speculators. "
+      + "Their net position is the one most often read as the market's bet.",
+  },
+  {
+    term: "Commercial", aliases: ["commercials", "hedgers", "commercial hedgers"], functions: ["COT"],
+    definition: "Large traders who use the contract to hedge a business: producers, processors, merchants and dealers. "
+      + "In a commodity they are usually net short, selling ahead what they will grow, mine or deliver.",
+  },
+  {
+    term: "Nonreportable", aliases: ["non-reportable", "nonreportables", "small traders", "small speculators"], functions: ["COT"],
+    definition: "Traders too small to report their positions to the CFTC, counted as open interest less every reported position. Mostly smaller speculators.",
+  },
+  {
+    term: "Net position", short: "Net", aliases: ["net long", "net short", "net positioning", "net spec"], functions: ["COT"], shown: ["Net"],
+    definition: "A group's long contracts less its short ones: positive is net long, negative net short.",
+  },
+  {
+    term: "Net % of open interest", short: "Net % OI", aliases: ["% of open interest", "percent of open interest", "net percent of open interest"], functions: ["COT"],
+    definition: "A group's net position as a share of all open contracts, so markets of different sizes compare: +8.3% means its longs exceed its shorts by 8.3% of open interest.",
+  },
+  {
+    term: "Weekly change", short: "1W Δ", aliases: ["1w change", "week change", "weekly net change"], functions: ["COT"],
+    definition: "How far a group's net position moved since the previous weekly report, in contracts.",
+  },
+  {
+    term: "Pctl 3Y", aliases: ["3y percentile", "3-year percentile", "three-year percentile"], functions: ["COT"],
+    definition: "Where this week's net position ranks against the past three years of weekly reports: 100 is the most net long it has been, 0 the most net short.",
+  },
+  {
+    term: "Managed money", aliases: ["money managers", "managed money traders", "hedge funds", "ctas"], functions: ["COT"], shown: ["Managed Money"],
+    definition: "The disaggregated report's funds that trade futures for clients, such as hedge funds and CTAs: the speculators most often watched.",
+  },
+  {
+    term: "Producer/merchant", aliases: ["producers", "merchants", "producer merchant", "processors"], functions: ["COT"], shown: ["Producer/Merchant"],
+    definition: "The disaggregated report's growers, miners, processors and merchants that hedge the physical commodity they produce or handle.",
+  },
+  {
+    term: "Swap dealers", aliases: ["swap dealer", "swaps dealers"], functions: ["COT"], shown: ["Swap Dealers"],
+    definition: "The disaggregated report's banks and dealers that hedge the commodity swaps they sell to clients, often index investors.",
+  },
+  {
+    term: "Other reportables", aliases: ["other reportable", "other reportable traders"], functions: ["COT"], shown: ["Other Reportables"],
+    definition: "The disaggregated report's large traders that fit none of its other classes, such as proprietary traders and family offices.",
   },
   // Futures basis and curve shape (CTM, FUT, PERP).
   {

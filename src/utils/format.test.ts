@@ -43,6 +43,14 @@ describe("formatCurrency", () => {
     expect(formatCurrency(1.366, "USD", 6)).toBe("$1.366");
     expect(formatCurrency(1.366, "IQD")).toBe("IQD\u00a01.37");
   });
+
+  test("writes a minor unit after the amount rather than as its major currency", () => {
+    // Intl reads GBp as GBP, which would print pence as pounds.
+    expect(formatCurrency(412.5, "GBp")).toBe("412.50p");
+    expect(formatCurrency(412.5, "GBP")).toBe("£412.50");
+    expect(formatCurrency(-314.95, "USX")).toBe("-314.95¢");
+    expect(formatCurrency(-0.001, "USX")).toBe("0.00¢");
+  });
 });
 
 describe("normalizeTimestamp", () => {
