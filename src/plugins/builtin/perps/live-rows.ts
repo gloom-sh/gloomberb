@@ -37,7 +37,11 @@ export interface LivePerpRows {
   rows: readonly PerpBoardRow[];
   /** Some row shown is fed by its venue's socket. */
   live: boolean;
+  /** The markets fed by their venue's socket; the others are the minute's read. */
+  liveMarkets: ReadonlySet<string>;
 }
+
+const NONE: ReadonlySet<string> = new Set();
 
 /**
  * Fetched rows with the quote stream's newer readings laid over them. Only the
@@ -54,20 +58,20 @@ export function useLivePerpRows(
   }) : [], [marketKey, surface, visible]);
   const { entries } = useLiveQuoteEntries(targets);
   return useMemo(() => {
-    if (!targets.length) return { rows, live: false };
+    if (!targets.length) return { rows, live: false, liveMarkets: NONE };
     const quoteOf = (marketId: string) => {
       const target = perpQuoteTarget(marketId, surface, visible);
       if (!target) return null;
       const entry = entries.get(buildQuoteKey(instrumentFromQuoteTarget(target)));
       return entry?.data ?? entry?.lastGoodData ?? null;
     };
-    let live = false;
+    const liveMarkets = new Set<string>();
     const next = rows.map((row) => {
       const quote = quoteOf(row.marketId);
-      if (isLive(quote)) live = true;
+      if (isLive(quote)) liveMarkets.add(row.marketId);
       return withLiveReading(row, quote);
     });
-    return { rows: next, live };
+    return { rows: next, live: liveMarkets.size > 0, liveMarkets };
   }, [entries, rows, surface, targets.length, visible]);
 }
 

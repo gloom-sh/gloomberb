@@ -9,6 +9,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { Box, Text } from "../../../ui";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
+import { displayWidth } from "../../../utils/format";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPerpsCompare, loadPerpsEquity } from "./client";
@@ -34,18 +35,34 @@ function perpAsset(symbol: string, exchange: string | undefined, instrumentType:
   return identity && STOCK_TYPES.has(instrumentType?.toUpperCase() ?? "") ? { kind: "stock", ...identity } : null;
 }
 
-interface Column { id: "venue" | "contract" | "mark" | "premium" | "funding" | "oi" | "volume"; label: string; width: number; align?: "right"; minWidth?: number }
-// Reading order; a narrow overview gives up the volume, then the contract, then the premium.
+const VENUE_MIN_WIDTH = 11;
+/** Coinbase International, in full. */
+const VENUE_MAX_WIDTH = 22;
+
+interface Column { id: "venue" | "contract" | "mark" | "premium" | "funding" | "oi" | "volume"; label: string; width: number; align?: "right" }
+// Reading order.
 const COLUMNS: readonly Column[] = [
-  { id: "venue", label: "Venue", width: 11 },
-  { id: "contract", label: "Contract", width: 11, minWidth: 68 },
+  { id: "venue", label: "Venue", width: VENUE_MIN_WIDTH },
+  { id: "contract", label: "Contract", width: 11 },
   { id: "mark", label: "Mark", width: 11, align: "right" },
-  { id: "premium", label: "Premium", width: 8, align: "right", minWidth: 50 },
+  { id: "premium", label: "Premium", width: 8, align: "right" },
   { id: "funding", label: "Fund 8h", width: 9, align: "right" },
   { id: "oi", label: "OI USD", width: 7, align: "right" },
-  { id: "volume", label: "Vol 24h", width: 7, align: "right", minWidth: 76 },
+  { id: "volume", label: "Vol 24h", width: 7, align: "right" },
 ];
+/** What a narrow overview gives up first: the volume, then the contract, then the premium. */
+const DROP_ORDER: readonly Column["id"][] = ["volume", "contract", "premium"];
 const GAP = 2;
+const span = (columns: readonly Column[]) => columns.reduce((sum, column) => sum + column.width, 0) + GAP * (columns.length - 1);
+
+function fitColumns(width: number, venueWidth: number): Column[] {
+  let columns = COLUMNS.map((column) => column.id === "venue" ? { ...column, width: venueWidth } : column);
+  for (const id of DROP_ORDER) {
+    if (span(columns) <= width) break;
+    columns = columns.filter((column) => column.id !== id);
+  }
+  return columns;
+}
 
 /**
  * DES's perpetual markets on a stock or a coin: one row per venue (its contracts merged, `venue-markets.ts`), the
@@ -77,8 +94,10 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, width }: 
   if (!assetKey || !markets.length) return null;
   const rows = visible.map((market, index) => ({ market, row: live.rows[index] ?? market.primary }));
   const premiumLabel = asset?.kind === "stock" ? "vs last" : "Premium";
-  const columns = COLUMNS.filter((column) => width >= (column.minWidth ?? 0));
-  const fixed = columns.reduce((sum, column) => sum + column.width, 0) + GAP * (columns.length - 1);
+  // The venue column fits the longest venue name shown.
+  const venueWidth = Math.min(VENUE_MAX_WIDTH, Math.max(VENUE_MIN_WIDTH, ...visible.map((market) => displayWidth(venueName(market.venue)))));
+  const columns = fitColumns(width, venueWidth);
+  const fixed = span(columns);
   // The last text column takes what the figures leave, on the desktop too, so a venue keeps its contract beside it.
   const growing = columns.some((column) => column.id === "contract") ? "contract" : "venue";
   const gridColumns: ColumnGridColumn[] = columns.map((column, index) => ({
@@ -107,9 +126,10 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, width }: 
     return { text: compact(column.id === "oi" ? market.openInterestUsd : market.volume24hUsd), color: colors.text };
   };
   const body = rows.map(({ market, row }) => columns.map((column) => cell(column, market, row)));
-  // Streaming figures date themselves; a read says when.
-  const read = live.live ? null : readingTime(rows.reduce<string | null>((latest, { row }) => !latest || row.observedAt > latest ? row.observedAt : latest, null));
-  const stale = !live.live && (!!resource.data?.stale || rows.some(({ row }) => row.stale));
+  // Streaming figures date themselves; the rows from the minute's read say when it was.
+  const read = rows.filter(({ row }) => !live.liveMarkets.has(row.marketId));
+  const readAt = read.length ? readingTime(read.reduce<string | null>((latest, { row }) => !latest || row.observedAt > latest ? row.observedAt : latest, null)) : null;
+  const stale = read.length > 0 && (!!resource.data?.stale || read.some(({ row }) => row.stale));
   return (
     <Box flexDirection="column" data-gloom-role="perp-markets">
       <SectionHeading title={t("Perpetuals")} />
@@ -119,7 +139,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, width }: 
           label={expanded ? t("Fewer markets") : folded.length === 1 ? t("1 smaller market") : tf("{count} smaller markets", { count: String(folded.length) })}
           onPress={() => setExpanded((value) => !value)} />
       )}
-      {read && <Text fg={stale ? colors.warning : colors.textDim}>{`${t("as of")} ${read}${stale ? ` · ${t("stale")}` : ""}`}</Text>}
+      {readAt && <Text fg={stale ? colors.warning : colors.textDim}>{`${read.length < rows.length ? `${[...new Set(read.map(({ market }) => venueName(market.venue)))].join(", ")} ` : ""}${t("as of")} ${readAt}${stale ? ` · ${t("stale")}` : ""}`}</Text>}
     </Box>
   );
 }
