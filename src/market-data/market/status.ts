@@ -66,6 +66,30 @@ export function marketStateLabel(state: MarketState): string {
 const STALE_SESSION_LABEL = "STALE";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** The books an extended session's bid and ask belong to, as `ticker` and the overview's quote book name them. */
+const EXTENDED_BOOK_LABELS: Partial<Record<MarketState, string>> = { PRE: "pre-market book", POST: "after-hours book" };
+
+/**
+ * What a quote's bid and ask are when the regular session is not on: the
+ * pre-market or after-hours book, or a closed market's last quote with the
+ * day it is from (ITA's $202.00 against $208.74 around a $206.65 close is no
+ * open book). Null in the regular session or without a known state, when the
+ * book is the live one. `ticker` prints it after Bid / Ask, the overview
+ * under its quote book.
+ */
+export function quoteBookSessionLabel(quote: Quote): string | null {
+  const state = quote.marketState;
+  if (!state || state === "REGULAR") return null;
+  const extended = EXTENDED_BOOK_LABELS[state];
+  if (extended) return extended;
+  const day = quoteTradingDay(quote);
+  const date = day ? new Date(`${day}T00:00:00Z`) : null;
+  return date && Number.isFinite(date.getTime())
+    ? `last quote, ${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
+    : "last quote";
+}
 
 /** `Thu close`: the weekday of the session whose close a quote still stands at. */
 function closeLabel(date: string): string {

@@ -1048,9 +1048,19 @@ describe("ticker-search utilities", () => {
         "ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA", "LMT:NYSE", "DEFN:TSXV", "DTII:OTC",
       ]);
       expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
-      // A word no row is tagged with is a name: no second search.
+      // "defense etf" asks for the funds by name: the name search alone holds only the tagged PPA, so the ETF search's
+      // funds lead in its order, ITA first.
+      calls.length = 0;
+      const etfs = await searchTickerCandidates({ query: "defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
+      expect(etfs.slice(0, 5).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual(["ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA"]);
+      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
+      // So does a phrase no symbol is; a word no row is tagged with is a name or a symbol: no second search.
+      calls.length = 0;
+      await searchTickerCandidates({ query: "aerospace defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
+      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["aerospace defense ETF"]);
       calls.length = 0;
       await searchTickerCandidates({ query: "kratos", tickers: new Map(), dataProvider, totalLimit: 10 });
+      await searchTickerCandidates({ query: "kratos etf", tickers: new Map(), dataProvider, totalLimit: 10 });
       expect(calls.some((call) => call.endsWith(" ETF"))).toBe(false);
     });
 

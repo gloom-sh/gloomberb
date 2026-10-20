@@ -4,7 +4,8 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition 
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode } from "./client";
-import { allGuidance, allObservations, companyCellText, companyColumns, companyPreviewNote, QUIET_COLUMNS, type CompanyRow } from "./model";
+import { allGuidance, allObservations, companyCellText, companyColumns, companyPreviewNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
+  type CompanyRow } from "./model";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 
 /** What the server takes as a metric; anything else is not a metric id and is not sent. */
@@ -57,11 +58,8 @@ function metricFilter(requested: string, data: CompanyDataset, mode: CompanyMode
   const keep = (row: CompanyRow) => row.metricId === requested;
   if (rows.some(keep)) return { keep };
   if (data.access === "preview" && data.lockedRows > 0) {
-    const shown = Math.max(0, data.totalRows - data.lockedRows);
-    const noun = (count: number) => `${mode === "kpis" ? "KPI value" : "guidance figure"}${count === 1 ? "" : "s"}`;
-    const all = `Gloom Pro shows all ${data.totalRows.toLocaleString("en-US")}`;
-    return { keep, empty: shown === 0 ? `The free preview shows no ${noun(0)}; ${all}.`
-      : `${known.name} is not ${shown === 1 ? "the" : "among the"} ${shown.toLocaleString("en-US")} free ${noun(shown)}; ${all}.` };
+    return { keep, empty: kpiFreeLimitNote({ metric: known.name, shown: Math.max(0, data.totalRows - data.lockedRows), total: data.totalRows,
+      guidance: mode === "guidance" }) };
   }
   return { keep, empty: `${data.symbol} has no ${known.name} (${known.id}) ${mode === "kpis" ? "disclosures" : "guidance"}${offered ? `; it has ${offered}` : ""}.` };
 }
@@ -83,7 +81,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
     freshness: { source: "Company filings and calls", status: "not-a-feed", basis: "reported data" },
     argument: { kind: "ticker", description: "Listed company ticker, including exchange-qualified global symbols.", placeholder: "ticker" },
     discovery: { aliases: [mode === "kpis" ? "KPIS" : "GUIDE"], dataRequirements: ["Gloom Cloud company disclosures"],
-      limitations: ["Pro dataset with a fixed latest preview on Free.", "Coverage follows available company disclosures; missing data is not zero.", "Compare matching definition, period, currency, basis and scope.", "Fiscal labels without explicit calendar dates are retained without inferred dates."] },
+      limitations: ["Pro dataset with a fixed latest preview on Free.", KPI_COVERAGE_NOTE, "Compare matching definition, period, currency, basis and scope.", "Fiscal labels without explicit calendar dates are retained without inferred dates."] },
     options: [
       { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: [{ value: "table" }, { value: "chart" }, ...(mode === "guidance" ? [{ value: "history" }] : []), { value: "evidence" }], description: "The pane section to render." },
       { key: "metric", type: "string", settingKey: "metric", description: "Canonical metric ID, such as arr or subscribers.", normalize: (value) => value.trim().toLowerCase() },

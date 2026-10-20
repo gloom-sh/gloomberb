@@ -110,6 +110,8 @@ export interface ScreenMetric {
   scope: "reported" | "derived" | "observed-subset";
   reason: string | null;
   sourceUrl: string | null;
+  /** Set by the client on a Pro field the server left out for a caller without Gloom Pro; never sent. */
+  access?: "pro";
   percentile: {
     value: number | null;
     sampleCount: number;

@@ -15,6 +15,7 @@ import {
   filterHalts,
   formatEtResumption,
   formatHaltAge,
+  formatHaltDuration,
   resolveHaltStatus,
   sortHalts,
 } from "./model";
@@ -174,11 +175,19 @@ describe("halt status", () => {
     expect(filterHalts([quote], "all", boundary + 1)).toEqual([quote]);
   });
 
-  test("age advances until trading resumes, not when quotes resume", () => {
-    expect(formatHaltAge(summer!, summer!.haltedAt - 1)).toBe("0m");
-    expect(formatHaltAge(overnight!, overnight!.quoteResumeAt!)).toBe("17h");
-    expect(formatHaltAge(summer!, summer!.tradeResumeAt! + 86_400_000)).toBe("4m");
-    expect(formatHaltAge(winter!, winter!.haltedAt + 30 * 86_400_000)).toBe("30d");
+  test("halted for runs until trading resumes, not when quotes resume; age keeps counting from the halt", () => {
+    expect(formatHaltDuration(summer!, summer!.haltedAt - 1)).toBe("0m");
+    expect(formatHaltDuration(overnight!, overnight!.quoteResumeAt!)).toBe("17h");
+    expect(formatHaltDuration(summer!, summer!.tradeResumeAt! + 86_400_000)).toBe("4m");
+    expect(formatHaltDuration(winter!, winter!.haltedAt + 30 * 86_400_000)).toBe("30d");
+    // RAIL halted 16:40, resumed 17:15, read at 17:45 ET: halted for 35m, an hour old.
+    const rail = { ...summer!, haltedAt: Date.parse("2026-10-16T20:40:00Z"), quoteResumeAt: Date.parse("2026-10-16T21:15:00Z"),
+      tradeResumeAt: Date.parse("2026-10-16T21:15:00Z") };
+    const read = Date.parse("2026-10-16T21:45:00Z");
+    expect(formatHaltDuration(rail, read)).toBe("35m");
+    expect(formatHaltAge(rail, read)).toBe("1h");
+    expect(formatHaltAge(summer!, summer!.tradeResumeAt! + 86_400_000)).toBe("1d");
+    expect(sortHalts([rail, summer!], { columnId: "duration", direction: "desc" }, read)[0]).toBe(rail);
   });
 });
 
@@ -204,7 +213,7 @@ describe("halt table", () => {
       expect(columns.at(-1)?.id).toBe("status");
     }
     expect(buildHaltColumns(88).map((column) => column.id)).not.toContain("market");
-    expect(buildHaltColumns(68).map((column) => column.id)).toContain("age");
+    expect(buildHaltColumns(68).map((column) => column.id)).toContain("duration");
   });
 
   test("dates a resumption that lands on another session", () => {

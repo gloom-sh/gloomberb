@@ -28,6 +28,7 @@ import {
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
+  quoteBookSessionLabel,
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
@@ -36,7 +37,6 @@ import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFutur
 import { currencyCodeLabel } from "../../utils/currency-units";
 import type { AppConfig } from "../../types/config";
 import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
-import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
@@ -108,10 +108,6 @@ async function loadRecentSecFilings(
 // Prose such as a company description stays readable on wide terminals.
 const MAX_PROSE_WIDTH = 100;
 const METADATA_SEPARATOR = "  ·  ";
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-/** The states the header reads as CLOSED: the venue is between sessions, so nobody is quoting. */
-const CLOSED_MARKET_STATES = new Set<string>(["CLOSED", "PREPRE", "POSTPOST"]);
 
 interface TickerCommandDependencies {
   /** `--exchange`: the listing, for a symbol that trades in several places. */
@@ -151,17 +147,14 @@ function appendMetricSection(lines: string[], title: string, metrics: Array<[str
 }
 
 /**
- * A closed market's bid and ask are the last quote of its session, not an open book (ITA's $202.00 against
- * $208.74 around a $206.65 close): say so, with the day the quote is from.
+ * Out of the regular session the bid and ask say whose book they are: the pre-market or after-hours book beside
+ * Last and the extended print, or a closed market's last quote with its day (ITA's $202.00 against $208.74
+ * around a $206.65 close is no open book).
  */
 function bidAskText(quote: Quote, options: MarketFormatOptions): string {
   const text = formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, options);
-  if (text === "—" || !quote.marketState || !CLOSED_MARKET_STATES.has(quote.marketState)) return text;
-  const day = quoteTradingDay(quote);
-  const date = day ? new Date(`${day}T00:00:00Z`) : null;
-  const label = date && Number.isFinite(date.getTime())
-    ? `, ${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}` : "";
-  return `${text}  ${cliStyles.muted(`(last quote${label})`)}`;
+  const label = text === "—" ? null : quoteBookSessionLabel(quote);
+  return label ? `${text}  ${cliStyles.muted(`(${label})`)}` : text;
 }
 
 function wrapProse(text: string): string {

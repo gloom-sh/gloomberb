@@ -195,6 +195,31 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
 }
 
+/** What a missing KPI means, as KPIS states it among its limitations and EQS beside a KPI column with gaps. */
+export const KPI_COVERAGE_NOTE = "Coverage follows available company disclosures; missing data is not zero.";
+
+/**
+ * Why Free shows no value of a metric, in the same words in `fn KPIS`, `fn GUIDE` and EQS: "Order backlog is not
+ * among the 3 free KPI values; Gloom Pro shows all 63." With no free value at all, `where` says which free view
+ * shows none; without a total (EQS counts no company's disclosures), Pro shows each company's metric.
+ */
+export function kpiFreeLimitNote({ metric, shown, total, guidance = false, where = "The free preview" }: {
+  /** The metric's name: "Order backlog", "Backlog". */
+  metric: string;
+  /** How many values Free shows. */
+  shown: number;
+  /** How many Gloom Pro shows, when the response says. */
+  total: number | null;
+  guidance?: boolean;
+  where?: string;
+}): string {
+  const count = (value: number) => value.toLocaleString("en-US");
+  const noun = (value: number) => `${guidance ? "guidance figure" : "KPI value"}${value === 1 ? "" : "s"}`;
+  const pro = total == null ? `Gloom Pro shows each company's ${metric}` : `Gloom Pro shows all ${count(total)}`;
+  return shown === 0 ? `${where} shows no ${noun(0)}; ${pro}.`
+    : `${metric} is not ${shown === 1 ? "the" : "among the"} ${count(shown)} free ${noun(shown)}; ${pro}.`;
+}
+
 /** The lock line of a free preview, in the same words in the pane and `fn KPIS` / `fn GUIDE`. */
 export function companyPreviewNote(data: Pick<KpisPayload, "lockedRows" | "totalRows" | "coverage">, guidance: boolean): string {
   const count = (value: number) => value.toLocaleString("en-US");

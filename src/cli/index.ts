@@ -47,6 +47,7 @@ import {
   runPaneScreenshot,
 } from "./pane-functions";
 import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
+import { exportCommandPointer } from "./known-gaps";
 import { catalogFredSeriesIds } from "./series-search";
 import { primeBoardCoins } from "./board-coins";
 
@@ -382,7 +383,9 @@ function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: 
       [`Run: ${pointers.nearFn.command}`, ticker].filter(Boolean).join("\n"),
     );
   }
-  const catalog = suggestion ? null : catalogPointer(token, pointers.hits, pointers.args);
+  // Exporting is a flag, not a command: `export LMT` says how, rather than listing functions that mention exports.
+  const exported = suggestion ? null : exportCommandPointer(token, pointers.args);
+  const catalog = suggestion ? null : exported ?? catalogPointer(token, pointers.hits, pointers.args);
   const help = suggestion
     ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
     : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.";

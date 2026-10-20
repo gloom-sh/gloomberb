@@ -36,7 +36,7 @@ import {
 import { isNotATickerMessage } from "../not-a-ticker";
 import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
-import { knownGapMessage, commandPointer, topicPointer } from "../known-gaps";
+import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -486,6 +486,7 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
         // "drip" names `portfolio show --drip` beside DVD.
         const setting = commandPointer(parsed.query);
+        const settingLeads = commandPointerLeads(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer
@@ -496,7 +497,7 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
           ...series.length ? { metadata: { series } } : {},
           ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
         }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series, setting),
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series, setting, settingLeads),
         });
       } finally {
         registry.destroy();

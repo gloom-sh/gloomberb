@@ -694,13 +694,15 @@ export function renderPaneCatalogReport(
   series: readonly SeriesMatch[] = [],
   /** The `config` command a query names a setting of ("light theme"), printed last, beside the functions. */
   setting: string | null = null,
+  /** The setting answers the query ahead of the functions its words find (`csv` is the flag, not CDS): printed first. */
+  settingFirst = false,
 ): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
     ? entries.find((entry) => entry.token.toLowerCase() === query)
       ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
-  const withSetting = (text: string) => [text, setting ?? ""].filter(Boolean).join("\n\n");
+  const withSetting = (text: string) => (settingFirst ? [setting ?? "", text] : [text, setting ?? ""]).filter(Boolean).join("\n\n");
   if (exact) return withSetting([renderCatalogEntry(exact), renderAlsoMatches(exact, entries, query)].filter(Boolean).join("\n\n"));
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);

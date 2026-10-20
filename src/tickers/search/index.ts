@@ -663,7 +663,11 @@ async function searchProviderResults(
 
   // A sector word ("defense", which the server answers with rows tagged with it) lists its small companies by
   // name; the server orders "defense ETF" by size, which a name search does not. Those funds lead the list.
-  const theme = withThemeFunds && !assetClass ? themeQueryWord([...byKey.values()], query) : null;
+  // So do they when the funds are asked for by name: "defense etf" searches "defense", whose answer holds
+  // only the few funds tagged with it (not ITA), and "gold miners etf" a phrase no symbol is.
+  const fundsAsked = assetClass?.code === "ETF" || assetClass?.code === "FUND";
+  const theme = withThemeFunds && (!assetClass || fundsAsked)
+    && (themeQueryWord([...byKey.values()], query) || (fundsAsked && /\s/.test(query.trim())));
   if (theme) {
     try {
       const { onPartial: _ignored, ...context } = searchContext ?? {};

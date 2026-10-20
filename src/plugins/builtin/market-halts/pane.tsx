@@ -29,6 +29,7 @@ import {
   formatEtResumption,
   formatEtTime,
   formatHaltAge,
+  formatHaltDuration,
   haltStatusColor,
   haltStatusLabel,
   nextHaltFilter,
@@ -179,6 +180,8 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
           text: formatEtResumption(row.tradeResumeAt, row.haltedAt),
           color: selectedColor ?? colors.textDim,
         };
+      case "duration":
+        return { text: formatHaltDuration(row, now), color: selectedColor ?? colors.textMuted };
       case "status": {
         const rowStatus = resolveHaltStatus(row, now);
         return {

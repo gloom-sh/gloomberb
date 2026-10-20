@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
-import { commandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
+import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
@@ -155,6 +155,30 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["usdt"]), lookupGlossary("usdt"), null, series, commandPointer("usdt"));
   expect(catalog.indexOf(line)).toBe(0);
   expect(catalog).toContain("Taiwan dollar");
+});
+
+test("export, csv and json name the --csv and --json flags with one example, ahead of what the words find; trade exports do not", async () => {
+  const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history LMT --csv > lmt.csv";
+  for (const query of ["export", "csv", "JSON", "export data", "export to excel", "save as csv"]) {
+    expect(commandPointer(query), query).toBe(line);
+    expect(commandPointerLeads(query), query).toBe(true);
+  }
+  for (const query of ["exports", "crude exports", "export prices", "light theme"]) expect(commandPointerLeads(query), query).toBe(false);
+  expect(commandPointer("crude exports")).toBeNull();
+  // `gloomberb export LMT` runs the example on the symbol typed; another unknown word gets no export line.
+  expect(exportCommandPointer("export", ["LMT"])).toBe(line);
+  expect(exportCommandPointer("export", ["BRK.B", "--json"])).toContain("gloomberb history BRK.B --csv > brk-b.csv");
+  expect(exportCommandPointer("comps", ["LMT"])).toBeNull();
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    // CDS mentions --csv in its description; the flag is what `catalog csv` asks about, so it comes first.
+    const entries = filterPaneCatalogEntries(await buildPaneCatalogEntries(registry, context), "csv");
+    const report = renderPaneCatalogReport(entries, parsePaneCatalogArgs(["csv"]), lookupGlossary("csv"), null, [], commandPointer("csv"), commandPointerLeads("csv"));
+    expect(report.indexOf(line)).toBe(0);
+  } finally {
+    registry.destroy();
+  }
 });
 
 test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say plainly there is no AAA muni curve", async () => {

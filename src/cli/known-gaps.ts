@@ -109,6 +109,23 @@ const BANK_FIGURES_TOPIC = {
   closest: [["EQS", "NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent"]],
 } as const;
 
+/**
+ * How to export: a flag on every command, which `export LMT`, `catalog export` and `catalog csv` look for as a
+ * command or a function. One example, writing a file.
+ */
+function exportLine(symbol = "LMT"): string {
+  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history ${symbol} --csv > ${
+    symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
+}
+
+const EXPORT_POINTER = {
+  names: ["export", "exporting", "csv", "json", "excel", "spreadsheet", "xlsx"],
+  words: ["data", "to", "as", "a", "an", "the", "in", "into", "file", "files", "table", "tables", "result", "results", "output",
+    "format", "save", "how", "can", "i", "my", "report", "reports", "command", "commands"],
+  line: exportLine(),
+  leads: true,
+} as const;
+
 /** "bank", "bank figures": beside the functions a bank's name finds (CBR), where its figures are. */
 const BANK_FIGURES_POINTER = {
   names: ["bank", "banks", "banking"],
@@ -193,8 +210,9 @@ export function topicPointer(query: string): { message: string; codes: string[] 
  * "dark pool"; "drip", "dividend income", but not "income statement" or "net income"; "tether", "depeg",
  * "usdc peg", but not "peg ratio".
  */
-const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string }> = [
+const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string; leads?: true }> = [
   BANK_FIGURES_POINTER,
+  EXPORT_POINTER,
   {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
     words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
@@ -216,6 +234,24 @@ const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonl
 /** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */
 export function commandPointer(query: string): string | null {
   return findCommandPointer(query)?.line ?? null;
+}
+
+/**
+ * Whether the query's command line answers it ahead of the functions its words find: "csv" is the flag, not
+ * CDS, whose description happens to mention it.
+ */
+export function commandPointerLeads(query: string): boolean {
+  return findCommandPointer(query)?.leads === true;
+}
+
+/**
+ * The line for a command word typed as `gloomberb export LMT`: exporting is a flag every command takes, not a
+ * command, so the example runs on the symbol typed. Null for any other word.
+ */
+export function exportCommandPointer(token: string, args: readonly string[]): string | null {
+  if (findCommandPointer(token) !== EXPORT_POINTER) return null;
+  const symbol = args.find((arg) => /^\^?[A-Z0-9][A-Z0-9.=-]{0,11}(?::[A-Z0-9]{1,8})?$/.test(arg) && /[A-Z]/.test(arg));
+  return exportLine(symbol);
 }
 
 function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {

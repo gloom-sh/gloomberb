@@ -11,9 +11,12 @@ weekend carryovers. On October 4, 2026 the live feed contained seven unresolved
 halts aged 1–11 days and eleven aged 114–2,780 days. The cutoff sits within that
 gap; it is a display rule, not a trading-status classification.
 
-Age is elapsed time since the halt, in completed minutes, hours or days. It
-stops at the trading resumption time. Halt and resumption dates and clocks are
-Eastern Time. A quotation resumption does not mean trading has resumed.
+HALTED FOR is how long trading stayed halted, in completed minutes, hours or
+days: from the halt to the trading resumption, or to now while the halt lasts.
+AGE is the time since the halt began, resumed or not: RAIL halted at 16:40 and
+resumed at 17:15 reads HALTED FOR 35m and AGE 1h at 17:45. Halt and resumption
+dates and clocks are Eastern Time. A quotation resumption does not mean trading
+has resumed.
 
 For a screenshot of a specific view, pass `--initialTab active` or
 `--initialTab long-term` to `gloomberb shot HALT`.

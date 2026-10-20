@@ -180,12 +180,31 @@ const DAY_MS = 86_400_000;
 /** Unresolved halts move out of the recent views at 30 elapsed days. */
 const LONG_TERM_MS = 30 * DAY_MS;
 
-export function formatHaltAge(record: HaltRecord, now: number): string {
+/** How long a halt has kept trading stopped: to the trade resumption, or to now while it lasts. Quotes resuming do not end it. */
+function haltDurationMs(record: HaltRecord, now: number): number {
   const end = record.tradeResumeAt == null ? now : Math.min(now, record.tradeResumeAt);
-  const elapsed = Math.max(0, end - record.haltedAt);
+  return Math.max(0, end - record.haltedAt);
+}
+
+/** How long since the halt began, whether or not trading has resumed. */
+function haltAgeMs(record: HaltRecord, now: number): number {
+  return Math.max(0, now - record.haltedAt);
+}
+
+function formatElapsed(elapsed: number): string {
   if (elapsed >= DAY_MS) return `${Math.floor(elapsed / DAY_MS)}d`;
   if (elapsed >= 3_600_000) return `${Math.floor(elapsed / 3_600_000)}h`;
   return `${Math.floor(elapsed / 60_000)}m`;
+}
+
+/** HALTED FOR: RAIL halted 16:40 and resumed 17:15 was halted for 35m, read at any later time. */
+export function formatHaltDuration(record: HaltRecord, now: number): string {
+  return formatElapsed(haltDurationMs(record, now));
+}
+
+/** AGE: RAIL's 16:40 halt is 1h old at 17:45, though it lasted 35m. */
+export function formatHaltAge(record: HaltRecord, now: number): string {
+  return formatElapsed(haltAgeMs(record, now));
 }
 
 export const HALT_FILTERS: ReadonlyArray<{ label: string; value: HaltFilter }> = [
@@ -221,6 +240,7 @@ export type HaltColumnId =
   | "halted"
   | "quote"
   | "trade"
+  | "duration"
   | "status";
 
 export type HaltColumn = DataTableColumn & { id: HaltColumnId };
@@ -235,6 +255,7 @@ export const HALT_SORT_COLUMN_IDS: readonly HaltColumnId[] = [
   "halted",
   "quote",
   "trade",
+  "duration",
   "status",
 ];
 
@@ -262,16 +283,18 @@ const HALT_COLUMNS: readonly HaltColumn[] = [
   { id: "halted", label: "HALT ET", width: 9, align: "left" },
   { id: "quote", label: "QUOTE ET", width: 11, align: "left" },
   { id: "trade", label: "TRADE ET", width: 11, align: "left" },
+  { id: "duration", label: "HALTED FOR", width: 12, align: "right" },
   { id: "status", label: "STATUS", width: 8, align: "left" },
 ];
 
 /**
  * What a narrow pane gives up first, so STATUS never scrolls out of view. MKT
  * is only the venue, STATUS already reads QUOTE once quoting resumes, and
- * REASON spells out CODE. Trade resumption and halt time give way only in
- * the narrowest panes; symbol, reason, halt date, age and status always stay.
+ * REASON spells out CODE. Trade resumption, halt time and then the age, which
+ * the date and halt time also give, go only in the narrowest panes; symbol,
+ * reason, halt date, how long it was halted for and status always stay.
  */
-const NARROW_DROP_ORDER: readonly HaltColumnId[] = ["market", "quote", "code", "company", "trade", "halted"];
+const NARROW_DROP_ORDER: readonly HaltColumnId[] = ["market", "quote", "code", "company", "trade", "halted", "age"];
 
 export function buildHaltColumns(width: number): HaltColumn[] {
   const columns = fitChartTableColumns(HALT_COLUMNS, width, NARROW_DROP_ORDER);
@@ -304,7 +327,9 @@ function haltSortValue(columnId: HaltColumnId, record: HaltRecord, now: number):
     case "halted":
       return record.haltedAt;
     case "age":
-      return Math.max(0, Math.min(now, record.tradeResumeAt ?? now) - record.haltedAt);
+      return haltAgeMs(record, now);
+    case "duration":
+      return haltDurationMs(record, now);
     case "quote":
       return record.quoteResumeAt;
     case "trade":

@@ -544,7 +544,7 @@ News panes refresh every two minutes while the app is visible. A hidden browser 
 
 Running `gloomberb` with no arguments launches the terminal UI. Normal commands run through a headless CLI path; use `gloomberb launch-ui` when a script should explicitly open the UI.
 
-Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text output keeps every cell whole. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
+Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text output keeps every cell whole. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`; that is how to export anything (`gloomberb history LMT --csv > lmt.csv`), and `export`, `catalog export` and `catalog csv` say so. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
 
 Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) are yields, so `quote` and `compare` print their level in percent (`5.24%`) and their change in basis points from the previous close (`+1.3bp`), under a `Chg` header; `--json` adds `unit` and `changeBasisPoints` to their rows and keeps the percent change.
 
@@ -608,8 +608,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb help <command>` / `<command> --help` | Show a command's usage, options, and examples |
 | `gloomberb api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
 | `gloomberb quote <symbols>` | Fetch current quotes |
-| `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols (a sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it) |
-| `gloomberb ticker <symbol>` | Show quote, ownership, and financials (with the market closed, Bid / Ask is the session's last quote and says so, with its day) |
+| `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols (a sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it; `defense etf` or `gold miners etf` lists the funds alone, largest first) |
+| `gloomberb ticker <symbol>` | Show quote, ownership, and financials (Bid / Ask out of the regular session says whose book it is: `(pre-market book)`, `(after-hours book)`, or with the market closed `(last quote, Fri 9 Oct)`; the overview's quote book says the same under it) |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`news` also takes text: `news "european gas"`, a single word no listing answers to, or a futures board code such as `news TTF`, lists the stories that have every word of it as a whole word (`price` and `prices` alike, never a look-alike such as Arabia for arabica), those with every word in the headline first, newest first within each, while a real ticker such as `news AAPL` lists its own news; a commodity name (`coffee`, `arabica`, `sugar`, `wheat`, `gold`, `crude oil`, `natural gas`) also lists the stories filed under its future, a commodity's future (`news KC=F`) lists the stories of its commodity, and text that matches no story says `No stories match "<text>"`, with the commodity's future (`gloomberb news SB=F`) when the text names one whose news has stories (`hog` and `hogs` alike; palm, olive or cooking oil name no future); a word whose search fails keeps the not-a-ticker answer and warns that the search failed; `13f` is the holders list without insiders; `fn 13F` has 13F filings; `holders --form 13d\|13g\|all` lists 13D/13G beneficial owners; `filings --form <form>` keeps one form, and its Items column names each 8-K's items, such as `2.02 Results of operations`; `--json` and `--csv` keep the codes in `items` (`Items`) and add the names as `itemsLabel` (`Item names`), after the columns they had) |
 | `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
@@ -1172,6 +1172,11 @@ Expired snapshots ask for a refresh before continuing or exporting.
 
 `gloomberb fn EQS --metric trailingPE --json` returns the first 100 matches with the
 snapshot, match and coverage counts, and the chosen metric's date and state per row.
+Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app
+attention are Pro: on Free their rows read `locked` and the report says so once, in
+the words `fn KPIS` uses (`The free screener shows no KPI values; Gloom Pro shows
+each company's Backlog`). With Pro, a KPI column with gaps says how many rows have
+none, and that missing data is not zero.
 Each row's Last and Chg% are read from its quote as `quote` reads them, and a
 pre-market, after-hours or overnight print has its own column (`extendedPrice`,
 `extendedChangePercent` in JSON).

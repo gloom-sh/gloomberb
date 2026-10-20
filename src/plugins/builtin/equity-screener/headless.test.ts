@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { KPI_FIELDS } from "../../../api-client/equity-screener";
+import { isProLock } from "../../../cli/pane-functions/access-gate";
 import { MAX_TOOL_RESULT_BYTES } from "../cloud/askg/protocol";
 import { equityScreenerHeadless } from "./headless";
 import { parseScreenDefinition } from "./model";
@@ -46,4 +48,22 @@ test("the catalog's example definition passes the real validator, and a bad one 
   expect(() => option.normalize!(JSON.stringify({ ...definition, criteria: [{ field: "industry", op: "eq", value: "Gold" }] })))
     .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloomberb catalog EQS/);
   expect(() => option.normalize!('{"version":1}')).toThrow(/criteria is missing.*sort is missing.*currency is missing/);
+});
+
+test("a KPI the server holds back from Free says why once, in KPIS's words; a Pro KPI with gaps says what a gap is", async () => {
+  // The server leaves KPI and guidance fields out of every row for a caller without Gloom Pro.
+  const free = screenFixture();
+  for (const row of free.rows) for (const field of KPI_FIELDS) delete (row.metrics as Partial<typeof row.metrics>)[field];
+  const load = (data: typeof free) => equityScreenerHeadless.load({ argument: undefined, options: { metric: "kpiBacklog" } } as never,
+    { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+  const locked = await load(free);
+  expect(locked.errors).toEqual(["The free screener shows no KPI values; Gloom Pro shows each company's Backlog."]);
+  expect(isProLock(locked.errors![0]!)).toBe(true);
+  expect(locked.sections![0]!.rows![0]).toMatchObject({ value: "--", state: "locked" });
+  expect(locked.notes).toBeUndefined();
+
+  const pro = await load(screenFixture());
+  expect(pro.errors).toEqual([]);
+  expect(pro.sections![0]!.rows![0]).toMatchObject({ state: "unavailable" });
+  expect(pro.notes).toEqual(["1 of 1 row has no Backlog. Coverage follows available company disclosures; missing data is not zero."]);
 });

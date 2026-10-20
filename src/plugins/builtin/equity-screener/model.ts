@@ -21,6 +21,7 @@ import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { kpiFreeLimitNote } from "../company-kpis/model";
 
 /**
  * Column headers. Currency sits in the footer; percentage fields carry %.
@@ -503,6 +504,20 @@ const unavailableMetric = (): ScreenMetric => ({
   state: "unavailable", scope: "reported", reason: "Not provided by this server", sourceUrl: null,
   percentile: { value: null, sampleCount: 0, scope: "covered-universe" },
 });
+/** Company KPIs, guidance, hiring and app attention: the server leaves them out of a screen for a caller without Gloom Pro. */
+const PRO_FIELDS: ReadonlySet<string> = new Set([...KPI_FIELDS, ...HIRING_APP_FIELDS]);
+const withheldMetric = (): ScreenMetric => ({ ...unavailableMetric(), reason: "Needs Gloom Pro", access: "pro" });
+
+/**
+ * What a screen says once of a metric the server held back from Free, a
+ * KPI's in the words `fn KPIS` uses ("The free screener shows no KPI values;
+ * Gloom Pro shows each company's Backlog.").
+ */
+export function withheldMetricNote(field: NumericField): string {
+  return (KPI_FIELDS as readonly string[]).includes(field)
+    ? kpiFreeLimitNote({ metric: screenLabel(field), shown: 0, total: null, guidance: field.startsWith("guide"), where: "The free screener" })
+    : `${screenLabel(field)} needs Gloom Pro.`;
+}
 export function validateScreenPayload(value: unknown): ScreenPayload {
   const data = value as ScreenPayload;
   if (
@@ -545,8 +560,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
       // A server from before social, research, volatility or dividend fields omits them; they read as unavailable.
+      // A Pro field it left out was held back from this caller.
       if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
-        row.metrics[field] = unavailableMetric();
+        row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (
         !metric ||
