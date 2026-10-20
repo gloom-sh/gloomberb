@@ -360,7 +360,7 @@ export function BrokerOrdersView({
       <SectionHeading title={view === "open" ? `Open orders (${rows.length})` : summaries ? "Order summaries" : "Activity"} />
       <Box flexDirection="row" alignItems="center" gap={native ? 0.5 : 0}>
         <Button label={view === "open" ? "Show activity" : "Show open orders"} displayLabel={view === "open" ? "Activity" : "Open"} variant="plain" compact disabled={busy} onPress={() => setView(view === "open" ? "activity" : "open")} />
-        {onHide ? <IconButton icon="close" label="Hide open orders" shortcut="Shift+O" onPress={onHide} /> : null}
+        {onHide ? <IconButton icon="close" label="Hide open orders" shortcut="o" onPress={onHide} /> : null}
       </Box>
     </Box>
     {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={native ? 0.5 : 0}>

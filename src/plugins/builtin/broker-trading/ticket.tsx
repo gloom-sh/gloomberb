@@ -12,7 +12,7 @@ import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRender
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
 import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
-import { ticketEditingPriceStep } from "./orders-data";
+import { brokerOrderDone, ticketEditingPriceStep } from "./orders-data";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
 export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders";
@@ -42,7 +42,10 @@ export interface BrokerTicketViewProps {
   onAccountChange(accountId: string): void;
   onCapture?(capturing: boolean): void;
   docked?: boolean;
+  /** The open orders are busy: the ticket waits. */
   blocked?: boolean;
+  /** They are asking a question (cancel this order?), so nothing is pending yet and the ticket says nothing. */
+  asking?: boolean;
   onClose?(): void;
   /** Terminal content measurement; the DOM uses intrinsic flex layout. */
   onContentHeight?(height: number): void;
@@ -145,7 +148,7 @@ function DockedQuote({ quote, delayed, source, updated, price, change, width }: 
 }
 
 /** One ticket presentation, with the same review and focus gates on every renderer. */
-export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange, onCapture, docked = false, blocked = false, onClose, onContentHeight }: BrokerTicketViewProps) {
+export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange, onCapture, docked = false, blocked = false, asking = false, onClose, onContentHeight }: BrokerTicketViewProps) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -192,6 +195,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const tifControl = useRef<SelectControl>(null);
   const orderTypeControl = useRef<SelectControl>(null);
   const resultStatus = m.result?.status.toUpperCase() ?? "UNKNOWN";
+  // Filled, cancelled, rejected or expired: nothing is left to refresh, and the next step leads.
+  const finished = brokerOrderDone(resultStatus);
   // Tab order of the focusable controls in each phase.
   const keys = useMemo((): string[] => {
     if (m.phase === "enable") return ["enable", "back"];
@@ -206,11 +211,11 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     ];
     if (review) return ["back", ...(live ? ["typedConfirmation"] : []), "confirm"];
     if (m.phase === "cancel-review") return ["back", "cancel"];
-    if (resultStatus === "REJECTED") return ["back", "refresh", "orders"];
-    if (resultStatus === "FILLED") return ["new", "refresh", "orders"];
+    if (resultStatus === "REJECTED") return ["back", "orders"];
+    if (finished) return ["new", "orders"];
     if (resultStatus === "UNKNOWN") return ["refresh", "orders"];
     return ["refresh", "orders", "new"];
-  }, [m.phase, editing, review, live, showLimit, showStop, extendedHours, resultStatus, m.tradingEnabled, mode, m.modifying]);
+  }, [m.phase, editing, review, live, showLimit, showStop, extendedHours, resultStatus, finished, m.tradingEnabled, mode, m.modifying]);
   const previousFocus = useRef<{ phase: TicketViewModel["phase"]; revision?: number } | undefined>(undefined);
   useEffect(() => {
     if (previousFocus.current?.phase !== m.phase || previousFocus.current?.revision !== m.focusRevision) {
@@ -278,7 +283,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     : m.phase === "cancel-review" ? [actionShortcut("e", "dit", "back")]
     : m.phase === "result" ? [
       ...(resultStatus === "REJECTED" ? [actionShortcut("e", "dit", "back")] : []),
-      actionShortcut("r", "efresh", "refresh"), actionShortcut("o", "rders", "orders"),
+      ...(finished ? [] : [actionShortcut("r", "efresh", "refresh")]), actionShortcut("o", "rders", "orders"),
       ...(!["UNKNOWN", "REJECTED"].includes(resultStatus) ? [actionShortcut("n", "ew", "new")] : []),
     ] : [];
   useShortcut((event) => {
@@ -306,9 +311,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   // The full keyboard map remains available without filling the status bar.
   const footerKeys = editing ? ["r", "o"] : m.phase === "result" ? ["r", "o", resultStatus === "REJECTED" ? "e" : "n"] : ["e"];
   usePaneFooter(scope, () => ({
-    info: busy ? [{ id: "progress", parts: [{ text: blocked ? "Order action pending..." : m.phase === "previewing" ? "Requesting broker preview..." : m.phase === "cancelling" ? "Cancelling..." : "Submitting..." }] }] : undefined,
+    info: busy && !(blocked && asking) ? [{ id: "progress", parts: [{ text: blocked ? "Order action pending..." : m.phase === "previewing" ? "Requesting broker preview..." : m.phase === "cancelling" ? "Cancelling..." : "Submitting..." }] }] : undefined,
     hints: busy || textActive ? [] : shortcuts.filter((hint) => footerKeys.includes(hint.key)),
-  }), [m, busy, textActive]);
+  }), [m, busy, blocked, asking, textActive]);
   usePaneMenuItems(scope + ":keys", () => [
     ...shortcuts.filter((hint) => !footerKeys.includes(hint.key)).map((hint) => ({
       id: hint.id, label: hint.key.length === 1 && /^[a-z]/.test(hint.label) ? hint.key + hint.label : hint.label,
@@ -488,7 +493,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 <TicketReceiptRow label="Buying power" value={money(account?.buyingPower, currency)} width={formWidth} />
               </Box> : null}
               <Box marginTop={native && !docked ? 0.5 : 0}>{m.tradingEnabled
-                ? action("review", busy ? blocked ? "Order action pending..." : m.phase === "submitting" ? "Submitting..." : "Requesting preview..." : m.modifying ? "Review change" : `${sell ? "Sell" : "Buy"} ${number(draft.quantity)} ${m.symbol}`, !canReview, true)
+                ? action("review", busy && !(blocked && asking) ? blocked ? "Order action pending..." : m.phase === "submitting" ? "Submitting..." : "Requesting preview..." : m.modifying ? "Review change" : `${sell ? "Sell" : "Buy"} ${number(draft.quantity)} ${m.symbol}`, !canReview, true)
                 : action("enable", "Enable trading", !m.connected, true, "neutral")}</Box>
             </Box>
           </TicketSection>
@@ -547,19 +552,15 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
           {m.preview?.buyingPowerAfter !== undefined ? <TicketReceiptRow label="Buying power after" value={money(m.preview.buyingPowerAfter, currency)} width={formWidth} /> : null}
           {m.error && !["UNKNOWN", "REJECTED"].includes(resultStatus) ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
-          {["NEW", "WORKING", "SUBMITTED", "PENDING_NEW", "PENDING_REPLACE", "REPLACED", "PARTIALLY_FILLED"].includes(resultStatus) ? <Box flexDirection="row" alignItems="center" gap={1}>
+          {!finished && resultStatus !== "UNKNOWN" ? <Box flexDirection="row" alignItems="center" gap={1}>
             {action("refresh", "Refresh status", false, false, "neutral", true)}<Text fg={c.textDim}>·</Text>
             {action("orders", "Open orders", false, false, "neutral", true)}<Text fg={c.textDim}>·</Text>
             {action("new", "New order", false, false, "neutral", true)}
           </Box> : <Box flexDirection="column" gap={native ? 0.5 : 0}>
             {resultStatus === "REJECTED" ? action("back", "Edit order", false, true, "neutral")
-              : resultStatus === "FILLED" ? action("new", "New order", false, true)
-              : action("refresh", "Refresh status", false, true, resultStatus === "UNKNOWN" ? "warning" : "neutral")}
-            <Box flexDirection="row" flexWrap="wrap" gap={1}>
-              {["REJECTED", "FILLED"].includes(resultStatus) ? action("refresh", "Refresh status") : null}
-              {action("orders", "Open orders")}
-              {!["UNKNOWN", "REJECTED", "FILLED"].includes(resultStatus) ? action("new", "New order") : null}
-            </Box>
+              : finished ? action("new", "New order", false, true)
+              : action("refresh", "Refresh status", false, true, "warning")}
+            <Box flexDirection="row" flexWrap="wrap" gap={1}>{action("orders", "Open orders")}</Box>
           </Box>}
         </TicketSection>{wide ? <TicketOrderSummary model={m} width={summaryWidth} /> : null}</Box> : null}
       </Box>

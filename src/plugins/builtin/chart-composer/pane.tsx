@@ -129,6 +129,7 @@ import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { isPlainKey } from "../../../utils/keyboard";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -906,8 +907,9 @@ function ChartComposerSurface({
   );
   useShortcut((event) => {
     if (interactionCaptureRef.current || dialogOpen) return;
-    if (trade && event.name === "s" && !event.shift) return;
-    const shortcut = trade && event.name === "s" && event.shift && !event.targetEditable && !event.ctrl && !event.meta && !event.alt
+    // With a broker that trades the symbol, s sells (ResearchTradeActions) and the series take [a]dd series.
+    if (trade && isPlainKey(event, "s")) return;
+    const shortcut = trade && isPlainKey(event, "a") && !event.targetEditable && !event.defaultPrevented && !event.propagationStopped
       ? "series" : resolveChartComposerShortcut(event, RANGES.length);
     if (!shortcut) return;
     event.preventDefault();
@@ -1026,8 +1028,11 @@ function ChartComposerSurface({
             : []),
     ],
     hints: [
-      ...(trade?.available ? [{ id: "trade", key: "b", label: "uy/sell", title: "Open the trade panel", onPress: () => trade.open("BUY"), disabled: trade.busy }] : []),
-      { id: "series", key: trade ? "S" : "s", label: "eries", onPress: footerSeries },
+      ...(trade?.available ? [
+        { id: "buy", key: "b", label: "uy", title: "Open the trade panel to buy", onPress: () => trade.open("BUY"), disabled: trade.busy },
+        { id: "sell", key: "s", label: "ell", title: "Open the trade panel to sell", onPress: () => trade.open("SELL"), disabled: trade.busy },
+      ] : []),
+      { id: "series", ...(trade ? { key: "a", label: "dd series" } : { key: "s", label: "eries" }), onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },

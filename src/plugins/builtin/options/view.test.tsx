@@ -202,7 +202,7 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
-test("Enter opens the cursor's contract on its broker, and with trading b and s open its Trade while Shift+S keeps the surface", async () => {
+test("Enter opens the cursor's contract on its broker, and with trading b and s open its Trade while v opens the surface", async () => {
   const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101, 102], 101) });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
@@ -229,6 +229,8 @@ test("Enter opens the cursor's contract on its broker, and with trading b and s 
   expect(pinned[1]).toMatchObject({ symbol: "AAPL260619C00100000", options: { instrument: contract, tabId: "broker-trade" } });
   expect(takeTradeIntent(pinned[1]!.options!.tabState!.brokerTradeIntent as string)).toEqual({ action: "SELL" });
   await act(async () => { await tui.emitKeypress({ name: "S", shift: true }); });
+  expect(templates).toEqual([]);
+  await act(async () => { await tui.emitKeypress({ name: "v" }); });
   expect(templates).toEqual(["vol-surface-pane"]);
   expect(pinned).toHaveLength(2);
 });
