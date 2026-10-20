@@ -44,6 +44,24 @@ export function createPluginCache<T, Stored = T>(options: {
       source: options.source,
     };
   };
+  /**
+   * Listeners by key, kept apart from the queries so they outlive a reset:
+   * a pane that subscribed before the plugin attached its store still hears
+   * the loads made after.
+   */
+  const listeners = new Map<string, Set<() => void>>();
+  const emit = (key: string) => {
+    for (const listener of [...listeners.get(key) ?? []]) listener();
+  };
+  const queryFor = (key: string): CachedQuery<T> => {
+    let query = queries.get(key);
+    if (!query) {
+      query = new CachedQuery({ read: (allowExpired) => read(key, allowExpired) });
+      query.subscribe(() => emit(key));
+      queries.set(key, query);
+    }
+    return query;
+  };
   const reset = () => {
     generation += 1;
     persistence = null;
@@ -53,17 +71,21 @@ export function createPluginCache<T, Stored = T>(options: {
   };
   return {
     attach(next: PluginPersistence) {
-      if (persistence !== next) reset();
+      if (persistence === next) return;
+      reset();
       persistence = next;
+      // What a listener reads now comes from another store.
+      for (const key of [...listeners.keys()]) emit(key);
     },
     reset,
     subscribe(key: string, listener: () => void): () => void {
-      let query = queries.get(key);
-      if (!query) {
-        query = new CachedQuery({ read: (allowExpired) => read(key, allowExpired) });
-        queries.set(key, query);
-      }
-      return query.subscribe(listener);
+      const keyed = listeners.get(key) ?? new Set<() => void>();
+      listeners.set(key, keyed);
+      keyed.add(listener);
+      return () => {
+        keyed.delete(listener);
+        if (keyed.size === 0 && listeners.get(key) === keyed) listeners.delete(key);
+      };
     },
     get(key: string, { allowExpired = false } = {}): PluginCacheResult<T> | null {
       const cached = read(key, allowExpired) ?? queries.get(key)?.getSnapshot().result;
@@ -71,11 +93,7 @@ export function createPluginCache<T, Stored = T>(options: {
       return { data: cached.value, fetchedAt: cached.fetchedAt, stale: cached.staleAt <= Date.now(), source: "cache" };
     },
     async load(key: string, loader: () => Promise<T>, { force = false, replace = false } = {}): Promise<PluginCacheResult<T>> {
-      let query = queries.get(key);
-      if (!query) {
-        query = new CachedQuery({ read: (allowExpired) => read(key, allowExpired) });
-        queries.set(key, query);
-      }
+      const query = queryFor(key);
       const owner = generation;
       const before = query.getSnapshot().result;
       const result = await query.load({ force, replace, fetch: async () => {

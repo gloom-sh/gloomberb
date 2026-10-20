@@ -198,25 +198,82 @@ function printNotificationsEnabled(ctx: Pick<GloomPluginContext, "configState">)
   return ctx.configState.get<boolean>(ECON_PRINT_NOTIFICATIONS_ENABLED_KEY) === true;
 }
 
-/** Runs the print watch only while its setting is on; off, the calendar is not asked for. */
-export function setupHighImpactPrintNotifications(
-  ctx: PrintNotificationContext,
+/**
+ * The one print watch, run while anything wants it: the Notifications
+ * setting, or an ECO pane in view, which fills a print in as it lands. Every
+ * reason shares its timing and its requests; only the setting toasts.
+ */
+export interface PrintRefresh {
+  /** The plugin's context, for toasts and their Open; null once it is disposed. */
+  attach(ctx: PrintWatchContext | null): void;
+  setNotifying(on: boolean): void;
+  /** An ECO pane can be seen; the returned release says it no longer can. */
+  retainVisiblePane(): () => void;
+}
+
+export function createPrintRefresh(
   start: (ctx: PrintWatchContext) => () => void = startHighImpactPrintWatch,
-): () => void {
+): PrintRefresh {
+  let host: PrintWatchContext | null = null;
+  let notifying = false;
+  let visiblePanes = 0;
   let stopWatch: (() => void) | null = null;
+  // A print that lands while only a pane wants the watch is recorded, not toasted.
+  const watchContext: PrintWatchContext = {
+    notify: (notice) => {
+      if (notifying) host?.notify(notice);
+    },
+    showPane: (paneId) => host?.showPane(paneId),
+  };
   const sync = () => {
-    const enabled = printNotificationsEnabled(ctx);
-    if (enabled && !stopWatch) stopWatch = start(ctx);
-    if (!enabled && stopWatch) {
+    const wanted = notifying || visiblePanes > 0;
+    if (wanted && !stopWatch) stopWatch = start(watchContext);
+    if (!wanted && stopWatch) {
       stopWatch();
       stopWatch = null;
     }
   };
+  return {
+    attach(ctx) {
+      host = ctx;
+    },
+    setNotifying(on) {
+      notifying = on;
+      sync();
+    },
+    retainVisiblePane() {
+      visiblePanes += 1;
+      sync();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        visiblePanes -= 1;
+        sync();
+      };
+    },
+  };
+}
+
+const printRefresh = createPrintRefresh();
+
+/** For the ECO pane: while it can be seen, a due high-impact print is asked for on the watch's timing. */
+export function retainVisiblePrintRefresh(): () => void {
+  return printRefresh.retainVisiblePane();
+}
+
+/** Toasts prints while the Notifications setting is on; off, only a pane in view keeps the watch asking. */
+export function setupHighImpactPrintNotifications(
+  ctx: PrintNotificationContext,
+  refresh: PrintRefresh = printRefresh,
+): () => void {
+  refresh.attach(ctx);
+  const sync = () => refresh.setNotifying(printNotificationsEnabled(ctx));
   const disposeConfigListener = ctx.on("config:changed", sync);
   sync();
   return () => {
     disposeConfigListener();
-    stopWatch?.();
-    stopWatch = null;
+    refresh.setNotifying(false);
+    refresh.attach(null);
   };
 }

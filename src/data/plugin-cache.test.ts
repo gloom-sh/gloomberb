@@ -39,3 +39,22 @@ test("forced replacement cannot be overwritten or cleared by an older request", 
   expect(cache.get("key")?.data).toBe(2);
   expect(store.getResource<number>("test", "key", { sourceKey: "provider" })?.value).toBe(2);
 });
+
+// A pane can subscribe before its plugin attaches the store; it must still hear the loads after.
+test("a listener outlives the store being attached again", async () => {
+  const cache = makeCache();
+  let heard = 0;
+  const unsubscribe = cache.subscribe("key", () => { heard += 1; });
+  const store = new MemoryPluginPersistence();
+  cache.attach(store);
+  expect(heard).toBe(1);
+  heard = 0;
+  await cache.load("key", async () => 3);
+  expect(heard).toBeGreaterThan(0);
+  expect(cache.get("key")?.data).toBe(3);
+
+  unsubscribe();
+  heard = 0;
+  await cache.load("key", async () => 4, { force: true });
+  expect(heard).toBe(0);
+});

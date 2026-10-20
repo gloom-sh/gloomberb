@@ -20,7 +20,7 @@ import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import type { EconEvent } from "./types";
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
-import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, setupHighImpactPrintNotifications } from "./print-watch";
+import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, retainVisiblePrintRefresh, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
@@ -102,8 +102,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   useAutoRefresh(stale ? null : fetchedAt, calendar.load);
 
-  // Tick every 30s to update staleness + countdown, only while the pane can be seen.
   const paneVisible = usePaneVisible();
+  // In view, a due high-impact print is asked for on the print watch's timing
+  // and lands here through the cache; a covered or hidden pane asks nothing.
+  useEffect(() => (paneVisible ? retainVisiblePrintRefresh() : undefined), [paneVisible]);
+  // Tick every 30s to update staleness + countdown, only while the pane can be seen.
   useEffect(() => {
     if (!paneVisible) return;
     setNow(Date.now());

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AppNotificationRequest, GloomPluginContext } from "../../../types/plugin";
-import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, setupHighImpactPrintNotifications, startHighImpactPrintWatch } from "./print-watch";
+import {
+  createPrintRefresh,
+  ECON_PRINT_NOTIFICATIONS_ENABLED_KEY,
+  setupHighImpactPrintNotifications,
+  startHighImpactPrintWatch,
+  type PrintWatchDeps,
+} from "./print-watch";
 import type { EconEvent } from "./types";
 
 const release = new Date("2026-10-14T12:30:00.000Z").getTime();
@@ -25,47 +31,43 @@ function retailSales(actual: string | null): EconEvent {
 }
 
 /**
- * A watch on a hand-moved clock. `calendar` is what Gloom Cloud answers at a
- * time, `cached` what a pane last loaded into the cache.
+ * The watch's clock, timers, cache and Gloom Cloud, moved by hand. `calendar`
+ * is what Gloom Cloud answers at a time, `cached` what a pane last loaded.
  */
-function watchHarness(start: number, calendar: (now: number) => EconEvent[], random = () => 0.5) {
+function fakeWatchDeps(start: number, calendar: (now: number) => EconEvent[], random = () => 0.5) {
   let clock = start;
   const asks: Array<{ at: number; force: boolean }> = [];
-  const notices: AppNotificationRequest[] = [];
   const delays: number[] = [];
   const queued: Array<{ run: () => Promise<void> | void; delay: number }> = [];
   const listeners = new Set<() => void>();
   let cached: { data: EconEvent[]; fetchedAt: number } | null = null;
-  const stop = startHighImpactPrintWatch(
-    { notify: (notice) => { notices.push(notice); }, showPane() {} },
-    {
-      now: () => clock,
-      load: async (force) => {
-        asks.push({ at: clock, force });
-        return { data: calendar(clock), fetchedAt: clock };
-      },
-      read: () => cached,
-      subscribe: (listener) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      schedule: (run, delay) => {
-        const item = { run, delay };
-        queued.push(item);
-        delays.push(delay);
-        return () => {
-          const index = queued.indexOf(item);
-          if (index >= 0) queued.splice(index, 1);
-        };
-      },
-      random,
+  const deps: Partial<PrintWatchDeps> = {
+    now: () => clock,
+    load: async (force) => {
+      asks.push({ at: clock, force });
+      return { data: calendar(clock), fetchedAt: clock };
     },
-  );
+    read: () => cached,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    schedule: (run, delay) => {
+      const item = { run, delay };
+      queued.push(item);
+      delays.push(delay);
+      return () => {
+        const index = queued.indexOf(item);
+        if (index >= 0) queued.splice(index, 1);
+      };
+    },
+    random,
+  };
   return {
+    deps,
     asks,
-    notices,
     delays,
-    stop,
+    queued,
     get now() {
       return clock;
     },
@@ -89,6 +91,13 @@ function watchHarness(start: number, calendar: (now: number) => EconEvent[], ran
       cached = { data, fetchedAt: clock };
     },
   };
+}
+
+function watchHarness(start: number, calendar: (now: number) => EconEvent[], random = () => 0.5) {
+  const fake = fakeWatchDeps(start, calendar, random);
+  const notices: AppNotificationRequest[] = [];
+  const stop = startHighImpactPrintWatch({ notify: (notice) => { notices.push(notice); }, showPane() {} }, fake.deps);
+  return Object.assign(fake, { notices, stop });
 }
 
 async function settle() {
@@ -272,10 +281,10 @@ describe("high-impact print notifications setting", () => {
     const { ctx, change, listeners } = settingContext();
     let started = 0;
     let stopped = 0;
-    const dispose = setupHighImpactPrintNotifications(ctx, () => {
+    const dispose = setupHighImpactPrintNotifications(ctx, createPrintRefresh(() => {
       started += 1;
       return () => { stopped += 1; };
-    });
+    }));
     expect(started).toBe(0);
 
     change(true);
@@ -291,3 +300,59 @@ describe("high-impact print notifications setting", () => {
     expect(listeners.size).toBe(0);
   });
 });
+
+describe("print refresh for a pane in view", () => {
+  const host = (notices: AppNotificationRequest[]) => ({ notify: (notice: AppNotificationRequest) => { notices.push(notice); }, showPane() {} });
+
+  test("a pane in view keeps a due print asked for on the watch's timing with the setting off, toasting nothing", async () => {
+    let printed = false;
+    const fake = fakeWatchDeps(release + MINUTE, () => [event("cpi", printed ? "0.3%" : null)]);
+    const notices: AppNotificationRequest[] = [];
+    const refresh = createPrintRefresh((ctx) => startHighImpactPrintWatch(ctx, fake.deps));
+    refresh.attach(host(notices));
+    refresh.setNotifying(false);
+    // Nothing in view and the setting off: no watch, no asks.
+    expect(fake.asks).toEqual([]);
+
+    const leaveView = refresh.retainVisiblePane();
+    await settle();
+    await fake.tick();
+    printed = true;
+    await fake.tick();
+    expect(fake.asks.map((ask) => ask.at - fake.asks[0]!.at)).toEqual([0, 15_000, 45_000]);
+    expect(notices).toEqual([]);
+
+    // Covered or hidden, the pane lets go and nothing is left to ask.
+    leaveView();
+    expect(fake.queued).toEqual([]);
+  });
+
+  test("the setting and every pane in view share one watch, and only the setting toasts", async () => {
+    let printed = false;
+    const fake = fakeWatchDeps(release + MINUTE, () => [event("cpi", null), event("core", printed ? "0.2%" : null)]);
+    const notices: AppNotificationRequest[] = [];
+    let started = 0;
+    const refresh = createPrintRefresh((ctx) => {
+      started += 1;
+      return startHighImpactPrintWatch(ctx, fake.deps);
+    });
+    refresh.attach(host(notices));
+    const first = refresh.retainVisiblePane();
+    const second = refresh.retainVisiblePane();
+    refresh.setNotifying(true);
+    await settle();
+    expect(started).toBe(1);
+    expect(fake.queued).toHaveLength(1);
+
+    first();
+    second();
+    printed = true;
+    await fake.tick();
+    expect(notices.map((notice) => notice.body)).toEqual(["Core CPI m/m 0.2% vs 0.3%"]);
+
+    refresh.setNotifying(false);
+    expect(fake.queued).toEqual([]);
+    expect(started).toBe(1);
+  });
+});
+
