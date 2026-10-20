@@ -120,6 +120,9 @@ for (const width of [36, 48, 120]) {
     const delisted = await replaceQuote({ ...quote(), delisting });
     const header = delisted.split("\n").find((line) => line.includes("Delisted")) ?? "";
     expect(header).toContain("Delisted Sep 10, 2026");
+    // The footer gives the date in place of a stale-quote warning.
+    expect(footer.info.find((segment) => segment.id === "ticker-research-stale")?.parts.map((part) => part.text))
+      .toEqual(["Delisted Sep 10, 2026"]);
     // The venue, then the name, give way on a narrow pane; a wide one keeps both.
     if (width === 120) expect(header).toContain("Alibaba Group (HKEX) Delisted Sep 10, 2026");
     // A listing still trading is laid out as before.

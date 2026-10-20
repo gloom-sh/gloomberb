@@ -2,6 +2,7 @@ import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { t } from "../../../i18n";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { formatQuoteNavAsOf } from "../../../market-data/quotes/time";
+import { delistingLabel } from "../../../market-data/quotes/delisting";
 import type { Quote } from "../../../types/financials";
 import { displayWidth } from "../../../utils/format";
 
@@ -12,7 +13,10 @@ export function tickerQuoteFooterInfo(
 ): PaneFooterSegment[] {
   const info: PaneFooterSegment[] = [];
   const navAsOf = formatQuoteNavAsOf(quote);
-  if (isQuoteStaleForCurrentSession(quote)) {
+  if (quote?.delisting) {
+    // A listing that no longer trades: its quote is its last trade, said once with its date.
+    info.push({ id: "ticker-research-stale", parts: [{ text: delistingLabel(quote.delisting), tone: "warning" }] });
+  } else if (isQuoteStaleForCurrentSession(quote)) {
     const status: PaneFooterSegment = { id: "ticker-research-stale", parts: [{ text: t("Stale quote"), tone: "warning" }] };
     const timestamp = new Date(quote!.lastUpdated);
     if (navAsOf) {
