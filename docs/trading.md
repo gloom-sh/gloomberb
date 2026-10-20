@@ -20,7 +20,7 @@ The ticket lists each leg with its side, ratio times the spread quantity, contra
 
 1. Choose the account and check its SIM or LIVE mode.
 2. Check the broker quote, its age, and any delayed or stale warning.
-3. Enter the side, quantity, type, price, and time in force.
+3. Enter the side, quantity, type, price, and time in force. A new limit starts at the side of the quote it takes (the ask to buy, the bid to sell) until you change it. A stop starts empty: at the touch it would trigger at once, and review warns about a buy stop at or below the ask or a sell stop at or above the bid. A market order's estimate uses the same side of the quote.
 4. Press the primary **Buy** or **Sell** action to review the exact order and the broker's preview, fees, account impact, and warnings. The side buttons only select a side.
 5. On simulation review, press **Tab** to focus the confirmation button, then **Enter** to submit.
 6. On LIVE review, focus the symbol field, type the required symbol, then press **Enter** to focus confirmation and **Enter** again to submit.

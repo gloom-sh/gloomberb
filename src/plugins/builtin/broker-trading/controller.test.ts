@@ -317,6 +317,20 @@ describe("shared broker review and confirmation gate", () => {
     expect(warnings).toContain("25%");
   });
 
+  test("review says a stop already through the market triggers at once, and not one beyond it", async () => {
+    const { demo, controller } = setup({ quoteAgeMs: 0 });
+    const stopWarning = async (action: "BUY" | "SELL", stopPrice: number) => {
+      controller.setDraft({ ...demo.draft, action, orderType: "STP", limitPrice: undefined, stopPrice, quantity: 1 });
+      await controller.review();
+      return controller.getSnapshot().review!.warnings.join(" ").includes("triggers at once");
+    };
+    // The demo quote is 336.40 bid, 336.50 ask.
+    expect(await stopWarning("BUY", 336.5)).toBe(true);
+    expect(await stopWarning("BUY", 340)).toBe(false);
+    expect(await stopWarning("SELL", 336.4)).toBe(true);
+    expect(await stopWarning("SELL", 330)).toBe(false);
+  });
+
   test("expired reviews and newly stale quotes need a new preview", async () => {
     const { controller, advance, count } = setup({ quoteAgeMs: 0 });
     await controller.review();

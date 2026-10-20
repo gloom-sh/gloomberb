@@ -3,6 +3,7 @@ import { getThemeColors } from "../../../theme/colors";
 import { ticketChartLevels, ticketOrderMatches } from "./chart-levels";
 import { createDemoBroker } from "./test-fixture";
 import { researchTradeMatches } from "../shared/research-trading";
+import { orderEstimatePrice } from "./orders-data";
 
 const colors = getThemeColors("white");
 test("chart overlays require the same listing or exact broker instrument", () => {
@@ -102,4 +103,13 @@ test("a replacement in flight stands for the listed original, which takes over a
   expect(prices([original])).toEqual([701]);
   // Refused, the original is listed working again.
   expect(prices([{ ...original, status: "NEW", updatedAt: 3 }])).toEqual([700]);
+});
+
+test("a market order is estimated at the side of the book it takes, a limit or stop at its own price", () => {
+  const quote = { price: 100, bid: 99.5, ask: 100.5 };
+  expect(orderEstimatePrice({ orderType: "MKT", action: "BUY", limitPrice: 90 }, quote)).toBe(100.5);
+  expect(orderEstimatePrice({ orderType: "MKT", action: "SELL" }, quote)).toBe(99.5);
+  expect(orderEstimatePrice({ orderType: "MKT", action: "BUY" }, { price: 100, bid: 99.5, ask: 0 })).toBe(100);
+  expect(orderEstimatePrice({ orderType: "LMT", action: "BUY", limitPrice: 98 }, quote)).toBe(98);
+  expect(orderEstimatePrice({ orderType: "STP", action: "SELL", stopPrice: 95, limitPrice: 90 }, quote)).toBe(95);
 });

@@ -5,7 +5,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { optionContractIdentity } from "../../../utils/options";
 import { isStrategyOrder, strategyQuote } from "./strategy";
-import { brokerOrderDone, brokerOrderStatus, ticketEditingPriceStep } from "./orders-data";
+import { brokerOrderDone, brokerOrderStatus, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export interface BrokerTradingContext {
   adapter: BrokerAdapter;
@@ -466,11 +466,17 @@ export class BrokerTradingController {
       if (quote.delayed) warnings.push("The broker quote is delayed.");
       if (quote.stale) warnings.push("The broker quote is stale. Prices may have changed.");
       if (request.orderType === "MKT" && (quote.delayed || quote.stale)) warnings.push("A market order can fill far from the displayed price.");
+      // A buy stop at or under the ask, or a sell stop at or over the bid, is already triggered: it trades now.
+      const touch = request.action === "SELL" ? quote.quote.bid : quote.quote.ask;
+      if ((request.orderType === "STP" || request.orderType === "STP LMT") && positive(request.stopPrice) && positive(touch)
+        && (request.action === "SELL" ? request.stopPrice >= touch : request.stopPrice <= touch)) {
+        warnings.push(request.action === "SELL" ? "This sell stop is at or above the bid, so it triggers at once." : "This buy stop is at or below the ask, so it triggers at once.");
+      }
       if (quote.quote.marketState === "CLOSED") warnings.push("The broker reports the market is closed. The order may wait for another session.");
       // Legs whose quotes net the other way: a debit order that would be paid, or a credit order that would pay.
       if (request.legs?.length && Number.isFinite(quote.quote.price) && quote.quote.price <= 0) warnings.push(request.action === "BUY"
         ? "At current quotes this spread receives a credit. Choose Sell to be paid for it." : "At current quotes this spread costs a debit. Choose Buy to pay for it.");
-      const estimate = preview.estimatedCost ?? (request.limitPrice ?? quote.quote.price) * request.quantity * Number(request.contract.multiplier ?? "1");
+      const estimate = preview.estimatedCost ?? (orderEstimatePrice(request, quote.quote) ?? NaN) * request.quantity * Number(request.contract.multiplier ?? "1");
       if (positive(account.buyingPower) && Number.isFinite(estimate) && Math.abs(estimate) > account.buyingPower * 0.25) warnings.push("This order exceeds 25% of the account's buying power.");
       const result: BrokerOrderReview = { request, preview: copy(preview), warnings: [...new Set(warnings)], account: copy(account), brokerName: context.adapter.name,
         createdAt: this.now(), mode: this.modifyOrder ? "modify" : "place", requiresTypedConfirmation: account.tradingMode !== "simulation", confirmationText: request.contract.symbol.toUpperCase() };

@@ -174,8 +174,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     const timer = setInterval(refresh, 30_000);
     return () => { active = false; clearInterval(timer); if (refreshResources.current === refresh) refreshResources.current = () => {}; };
   }, [broker, instance, connected, visible, selectAccount, allowAutoAccount, statusVersion]);
-  // A new ticket's limit (and stop) default to its side of the quote, from the first quote that has a price,
-  // asked for or streamed, until the trader sets one.
+  // A new ticket's limit defaults to its side of the quote, from the first quote that has a price, asked for
+  // or streamed, until the trader sets one. A stop is the trader's: at the touch it would trigger at once.
   const pricePending = useRef(false);
   const prefillPrice = useCallback(() => {
     const latest = controller.getSnapshot();
@@ -187,7 +187,6 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
         controller.applyPriceDefault(source);
         setDefaultPriceLabel(`Broker ${source}. Editable.`);
       }
-      if ((currentDraft.orderType === "STP" || currentDraft.orderType === "STP LMT") && currentDraft.stopPrice === undefined) controller.applyPriceDefault(source, "stopPrice");
       pricePending.current = false;
     } catch { /* No usable price in this quote yet: the next one may have it. */ }
   }, [controller]);

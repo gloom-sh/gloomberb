@@ -5,6 +5,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import type { TicketViewModel } from "./ticket";
 import { strategyLegLabel } from "./strategy";
+import { orderEstimatePrice } from "./orders-data";
 
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
@@ -52,7 +53,7 @@ export function TicketLegs({ model: m, width, inset = false }: { model: TicketVi
 export function TicketOrderSummary({ model: m, width, compact = false, receipt = false }: { model: TicketViewModel; width: number; compact?: boolean; receipt?: boolean }) {
   const c = useThemeColors(); const draft = m.draft; const account = m.accounts.find((a) => a.accountId === m.accountId);
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
-  const px = draft?.limitPrice ?? draft?.stopPrice ?? m.quote?.price;
+  const px = draft ? orderEstimatePrice(draft, m.quote) : undefined;
   const total = m.phase === "result" ? m.preview?.estimatedCost === undefined ? undefined : Math.abs(m.preview.estimatedCost) : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
   const strategy = !!draft?.legs?.length;
   const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";

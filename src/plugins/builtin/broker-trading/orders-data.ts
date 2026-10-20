@@ -1,6 +1,7 @@
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
-import type { BrokerExecution, BrokerOrder } from "../../../types/trading";
+import type { BrokerExecution, BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
+import type { Quote } from "../../../types/financials";
 import { formatNumber } from "../../../utils/format";
 
 export interface BrokerOrdersSnapshot {
@@ -113,6 +114,18 @@ export async function loadBrokerOrdersSnapshot(
  * decimals the broker accepts. Five accepted decimals are not a $0.00001 tick,
  * and stepping by one moved a $343 limit by nothing anyone could see.
  */
+/**
+ * The price an order's value is estimated at: its limit, or its stop for a stop order, else
+ * the side of the book a market order takes, the ask to buy and the bid to sell.
+ */
+export function orderEstimatePrice(request: Pick<BrokerOrderRequest, "orderType" | "action" | "limitPrice" | "stopPrice">,
+  quote: Pick<Quote, "price" | "bid" | "ask"> | undefined): number | undefined {
+  if (["LMT", "STP LMT"].includes(request.orderType) && request.limitPrice !== undefined) return request.limitPrice;
+  if (request.orderType === "STP" && request.stopPrice !== undefined) return request.stopPrice;
+  const side = request.action === "SELL" ? quote?.bid : quote?.ask;
+  return side !== undefined && Number.isFinite(side) && side > 0 ? side : quote?.price;
+}
+
 export function ticketEditingPriceStep(price: number | undefined, decimals?: number): number {
   const step = price !== undefined && Number.isFinite(price) && price > 0 && price < 1 ? 0.0001 : 0.01;
   const finest = decimals !== undefined && Number.isInteger(decimals) && decimals >= 0 && decimals <= 18 ? 10 ** -decimals : 0;
