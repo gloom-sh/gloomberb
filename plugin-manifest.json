@@ -690,7 +690,7 @@
           {
             "code": "PSD",
             "name": "Crop Balances",
-            "description": "World balances for wheat, corn, soybeans and cotton, with season-average price forecasts when a table is published."
+            "description": "World balances for wheat, corn, soybeans, cotton, coffee and sugar, with season-average price forecasts when a table is published."
           },
           {
             "code": "JODI",
