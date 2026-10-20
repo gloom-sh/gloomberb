@@ -1,0 +1,74 @@
+{
+  "head": "9ce4b9c571981e857fa2ea9daafa393edaf33a67",
+  "base": "022bfb9c0b6a73d3e660b14f94f53990381f4b77",
+  "attempt2ArtifactId": 12307003363,
+  "attempt2ZipSha256": "2b46bbf0a4a9a2adf3502b101a7c79be56ba02b0c0240e0a455d2f7913f81b13",
+  "excludedTuple": {
+    "shard": 4,
+    "side": "before",
+    "id": "OVDV--detail",
+    "width": 1280,
+    "theme": "white"
+  },
+  "reason": "The audit uses any pane text change after Enter as a detail. The before root is still loading; the extra capture is the settled 3D root. There is no actual detail route/state: all measurements have the same pane instance/title/binding and detailOpen=false; selected 3D surface remains visible. The unchanged VolSurfacePane handleKey has no Enter action.",
+  "sourceLocations": {
+    "audit": "scripts/pane-chrome/ui-audit.ts:406-413",
+    "keyboard": "src/plugins/builtin/vol-surface/pane.tsx:303-328",
+    "surfaceTab": "src/plugins/builtin/vol-surface/pane.tsx:66"
+  },
+  "rawNoMissingOrOneSidedViews": false,
+  "rawCount": {
+    "beforeMeasurements": 1045,
+    "afterMeasurements": 1044,
+    "capturedViewIds": 523
+  },
+  "derivedExpectedCount": {
+    "beforeMeasurements": 1044,
+    "afterMeasurements": 1044,
+    "capturedViewIds": 522
+  },
+  "changedFiles": [
+    {
+      "path": "ui-benchmark-shard-4/before/results.jsonl",
+      "rawSha256": "ab89aacfaa9f43ea12eb7ef77df87cca83b897e938b885f0f749692d51d06c43",
+      "derivedSha256": "32fe180de085924c5aa09232f6ea0db3c6671185da9045aed8455e9fe8274728"
+    },
+    {
+      "path": "ui-benchmark-shard-4/before/shots/white/1280/OVDV--detail.jpg",
+      "rawSha256": "9906c697cf7ec0e615b7e91b61d72eeb161ccac0b10366539e8618e0e7d7d7c5",
+      "derivedSha256": null
+    },
+    {
+      "path": "ui-benchmark-shard-4/before/views.jsonl",
+      "rawSha256": "249e9f2e06bea0e0d09d9ac910666b982f4f63d7dfdcc39ca4f1b42f5fca79ca",
+      "derivedSha256": "71ce54d5cd53b919725341134ee2d94d1c202d23f5b3c346ac6aebbba71b9dd3"
+    },
+    {
+      "path": "ui-benchmark-shard-4/unsteady.json",
+      "rawSha256": "dd8dab50cdccf0999b6ab746752cdf3577d1f712aa29d98f002611a3055838bc",
+      "derivedSha256": "6d6173fcd611fb69539b9e547830e3e8bb1e6be97dcd4fc656af9c7f1cfa1818"
+    }
+  ],
+  "hashManifests": {
+    "raw": "ui-raw-shards-sha256.json",
+    "derived": "ui-derived-shards-sha256.json"
+  },
+  "repositorySourceChanged": false,
+  "rawArtifactsPreserved": true,
+  "correctionScope": "Only the erroneous OVDV--detail capture, declaration and unsteady alias metadata are excluded; every genuine root/tab capture remains unchanged.",
+  "rowBytePreservation": "Every retained original JSONL line is byte-preserved; exactly one measurement line and one declaration line were removed.",
+  "independentReview": {
+    "reviewer": "fix_trace",
+    "conclusion": "Extra mislabeled root; unchanged source and same pane identity, no detail state. Raw discrepancy preserved.",
+    "imageAE": {
+      "attempt1": 7672,
+      "attempt2": 6682
+    },
+    "sourceTrees": {
+      "vol-surface": "fd6159a3a678ddc74c8f13e805c89a34b746ad5b",
+      "chart/surface3d": "59455a90a8197fe9780fe37c551f5cfbe37f5d82"
+    },
+    "auditBlob": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+    "measureBlob": "83df88d9fe1cfe9bcb543f015c011a78e7a60010"
+  }
+}

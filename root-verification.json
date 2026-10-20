@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-10-20T23:36:30.429122+00:00",
+  "rawFilesVerified": 2113,
+  "derivedFilesVerified": 2112,
+  "changedFiles": [
+    "ui-benchmark-shard-4/before/results.jsonl",
+    "ui-benchmark-shard-4/before/shots/white/1280/OVDV--detail.jpg",
+    "ui-benchmark-shard-4/before/views.jsonl",
+    "ui-benchmark-shard-4/unsteady.json"
+  ],
+  "allRetainedJSONLinesByteIdentical": true,
+  "exactlyOneMeasurementAndDeclarationRemoved": true,
+  "realRootAndTabCapturesUnchanged": true,
+  "rawNoMissingOrOneSidedViews": false,
+  "rawDiscrepancyExplicitlyPreserved": true
+}
