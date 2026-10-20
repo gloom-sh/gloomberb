@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-16",
+ "updatedAt": "2026-10-17",
  "categories": [
   {
    "id": "research",
@@ -159,7 +159,7 @@
    "code": "DDIS",
    "name": "Debt maturities",
    "description": "Principal due by year",
-   "detail": "Principal due in the next 12 months, in each of years two to five, and after, from the latest annual filing, with the near-term share ranked against 10 years. History tracks principal and interest expense.",
+   "detail": "Principal due in the next 12 months, in each of years two to five, and after, from the latest annual filing, with the near-term share ranked against 10 years. A newer 10-Q adds its current and non-current debt. History tracks principal and interest expense.",
    "category": "research",
    "arg": "ORCL",
    "shot": "https://gloom.sh/screenshots/fn/DDIS.png",
@@ -759,7 +759,7 @@
    "code": "CRYP",
    "name": "Crypto board",
    "description": "Top coins by market cap",
-   "detail": "The top 100 coins by market cap, stablecoins on their own tab, with returns from a day to a year, a 30-day sparkline, volume, and market cap. Prices stream live on every plan where the market allows.",
+   "detail": "The top 100 coins by market cap, with returns from a day to a year, a 30-day sparkline, volume, and market cap. Stablecoins have their own tab: total supply over time stacked by coin, and each coin's supply, 7- and 30-day supply growth and share of the total. Prices stream live on every plan where the market allows.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/CRYP.png",
    "lesson": "/academy/crypto-and-prediction-markets/crypto-from-zero"
@@ -777,8 +777,8 @@
   {
    "code": "FUT",
    "name": "Futures board",
-   "description": "Most active futures",
-   "detail": "Each root's most active contract across equity index, rates, energy, metals, agriculture, and FX with last price, unit and session change, grouped by sector, naming the nearer month while it still trades.",
+   "description": "Front-month futures",
+   "detail": "Each root's front contract until its stated roll date across equity index, rates, energy, metals, agriculture, and FX with last price, unit and session change, grouped by sector, naming the day's most active month by volume when it is another one.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/FUT.png",
    "lesson": "/academy/futures-commodities-energy/futures-from-zero"
@@ -1186,7 +1186,7 @@
    "code": "CDS",
    "name": "Single-name CDS",
    "description": "Corporate 5Y CDS and trades",
-   "detail": "Single-name corporate CDS. CDS alone lists the issuers traded in the last 5 days with trade count, last trade and 5Y spread, to rank them by; with a ticker or issuer, its 5Y spread (level, date, 1M change, range) and its trades.",
+   "detail": "Single-name corporate CDS. CDS alone lists the issuers traded in the last 5 days with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll while the level is current (points upfront past 2,000 bp), ranked with --sort spread, 1w or 1m; with a ticker or issuer, its 5Y spread (level, date, 1W and 1M change, range), its trades and its daily 5Y levels (--csv --section daily exports them).",
    "category": "macro",
    "arg": "F",
    "shot": "https://gloom.sh/screenshots/fn/CDS.png",
@@ -1229,8 +1229,8 @@
   {
    "code": "TRACE",
    "name": "Corporate bond tape",
-   "description": "Latest corporate and agency sales",
-   "detail": "Latest corporate and agency bond sales: issuer, coupon, price, yield, and grade. TRACE alone lists the tape; TRACE with an issuer filters to that name. It opens the Bonds section of Fixed Income.",
+   "description": "Corporate and agency sales by issuer or CUSIP",
+   "detail": "Latest corporate and agency bond sales: issuer, CUSIP, coupon, maturity, price, yield, and grade. TRACE alone lists the tape; TRACE with an issuer name, a bond symbol root, a stock ticker, or a CUSIP finds that issuer's outstanding bonds. It opens the Bonds section of Fixed Income.",
    "category": "macro",
    "arg": "issuer"
   },
@@ -1299,8 +1299,8 @@
   {
    "code": "INS",
    "name": "Insider transactions",
-   "description": "Form 4 activity and insider buying",
-   "detail": "Insider buys, sells, awards, and gifts from Form 4 filings with insider name, size, and price. Alone it ranks the companies whose insiders are buying in the market, with why: clusters, repeat buys, size against their usual. US equities only.",
+   "description": "Form 4 activity, insider buying and selling",
+   "detail": "Insider buys, sells, awards, and gifts from Form 4 filings with insider name, size, and price. Alone it ranks the companies whose insiders are buying, or selling, in the market, with why: clusters, repeat trades, size against their usual, the stake added or sold. Filters by role, size, cluster, new or exited positions and market cap. US equities only.",
    "category": "ownership",
    "arg": "NVDA",
    "shot": "https://gloom.sh/screenshots/fn/INS.png",
@@ -2407,9 +2407,14 @@
     "drift",
     "rebalance",
     "weights",
-    "glossary"
+    "glossary",
+    "dividend income",
+    "yield",
+    "DRIP",
+    "reinvest",
+    "DVD"
    ],
-   "updatedAt": "2026-10-12",
+   "updatedAt": "2026-10-17",
    "blocks": [
     {
      "type": "heading",
@@ -2494,6 +2499,31 @@
      ]
     },
     {
+     "type": "heading",
+     "level": 2,
+     "text": "Dividend income"
+    },
+    {
+     "type": "paragraph",
+     "text": "`gloomberb portfolio show Core` also lists what each share or fund pays a year: its trailing twelve months of dividends per share times the shares you hold, in the portfolio's currency, and that as a yield on the holding's value. The TOTAL row gives the portfolio's income and its yield on the whole portfolio, cash included. A holding whose dividends could not be read shows `—`, and so does the total, never $0."
+    },
+    {
+     "type": "paragraph",
+     "text": "To see what reinvesting them adds, ask for a DRIP projection:"
+    },
+    {
+     "type": "code",
+     "code": "gloomberb portfolio show Core --drip --years 3 --withholding 15"
+    },
+    {
+     "type": "paragraph",
+     "text": "Each year the shares you hold pay today's dividend, the withholding comes off, and the rest buys shares at today's price. The table gives each holding's shares now and after the last year, and the income each year, net of withholding. `--years` takes 1 to 5."
+    },
+    {
+     "type": "paragraph",
+     "text": "To compare payers before you buy, rank them by yield with payout and growth: `gloomberb fn DVD KO PEP JNJ`."
+    },
+    {
      "type": "details",
      "summary": "Fine print",
      "blocks": [
@@ -2501,6 +2531,7 @@
        "type": "list",
        "items": [
         "Targets need not add up to 100%; the report says what is unallocated.",
+        "Income uses trailing dividends, not announced ones. DRIP holds dividends, prices and exchange rates where they are today and reinvests once a year; it is an illustration, not a forecast.",
         "Trades use the current price and leave out fees, taxes and lot sizes.",
         "A broker portfolio uses the cash its account reports.",
         "In the PF pane the columns read `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE`."
@@ -2510,7 +2541,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Related: [PF](/docs/functions#pf), [CLI](/docs/cli-functions#portfolios-and-notes)."
+     "text": "Related: [PF](/docs/functions#pf), [CLI](/docs/cli-functions#portfolios-and-notes). Methodology: [dividend income and DRIP](https://github.com/gloom-sh/gloomberb/blob/main/docs/research-data.md#portfolio-income-and-drip)."
     }
    ]
   },
@@ -5274,6 +5305,10 @@
        "Revenue and EPS, profile, multiples, dividends and splits, ratings and targets"
       ],
       [
+       "`fn DVD <symbols>`",
+       "Dividend yield and history; several symbols rank in one table by yield, with payout, growth, last ex-date and pay date"
+      ],
+      [
        "`holders`, `insider`, `13f`, `filings` `<symbol>`",
        "Holders, insiders, institutions and funds, SEC filings"
       ],
@@ -5335,7 +5370,7 @@
      "rows": [
       [
        "`portfolio list|show|create|delete <name>`",
-       "Manual portfolios; `show` lists value, weight, target, drift and the trade to rebalance, and `show --explain` adds what those terms mean"
+       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, and `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends"
       ],
       [
        "`portfolio add|remove <portfolio> <symbols...> [--file <csv|txt>]`",
@@ -5453,7 +5488,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb catalog <function>` lists a function's options. `shot` also takes `--tab <id>`."
+     "text": "`gloomberb catalog <function>` lists a function's options. `shot` also takes `--tab <id>`. `shot` draws a function's options as its pane does: `gloomberb shot 13F 0001067983 --compare SPY` opens the fund's overlap with SPY. An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it, instead of saving the pane without it."
     },
     {
      "type": "paragraph",
@@ -7546,7 +7581,7 @@
   {
    "url": "/academy/futures-commodities-energy/futures-from-zero",
    "title": "Futures from zero (FUT)",
-   "summary": "A futures contract is a standard, exchange-traded promise to buy or sell a set quantity on a set month at a price agreed today, settled with daily margin, and FUT shows the most active months across markets.",
+   "summary": "A futures contract is a standard, exchange-traded promise to buy or sell a set quantity on a set month at a price agreed today, settled with daily margin, and FUT shows each market's front month.",
    "chapter": "Futures, commodities and energy",
    "minutes": 5
   },
@@ -7646,7 +7681,7 @@
    "title": "Credit default swaps (CDS, CDX, SOVR)",
    "summary": "A credit default swap is insurance on a borrower's default, and CDS, CDX and SOVR show reported trades on companies, the main indices and 5-year country spreads.",
    "chapter": "Rates, bonds and credit",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/rates-bonds-credit/credit/debt-and-covenants",
