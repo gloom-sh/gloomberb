@@ -367,9 +367,14 @@ registered the broker and falls back to Gloom's own mark for a broker it
 connects for you, then to the broker's initial on a tile. It goes in a table
 cell's `leading`, a `ListView` item's `leading`, or a tab's or menu item's
 `leading`; the terminal draws none of them and keeps its rows as they were. A
-row tile is one line tall; a choice whose row is two lines (`rowDescriptions`:
-its name, then one muted line under it on how it connects) takes the larger
-`lead` tile.
+row tile is one line tall. A choice whose row is two lines (`rowDescriptions`:
+its name, then one muted line under it on how it connects) is drawn by
+`ListRowLines` (`components/ui/list-row-lines.tsx`), and so is any other
+two-line row with a logo (the first-run guide's): each line's box runs from its
+capitals to its baseline, the lines are `--gloom-space-sm` apart, and the
+`lead` tile is a square exactly as tall as the two, so the name's capitals
+start at the logo's top edge and the second line sits on its bottom edge. A
+row does not set its own line gap or tile size.
 
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
 

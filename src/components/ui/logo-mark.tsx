@@ -4,14 +4,15 @@ import { useThemeColors } from "../../theme/theme-context";
 
 /**
  * `row`: beside a label in one row (a table cell's `leading`, a list row).
- * `lead`: the art of a two-line list row, as tall as a cell and a half.
+ * `lead`: the art of a two-line list row; it fills the square `ListRowLines`
+ * sizes to the two lines beside it.
  */
 type LogoMarkSize = "row" | "lead";
 
 const TILE: Record<LogoMarkSize, { side: string; radius: string; type: string }> = {
   // A pixel above and below in its row, as a chip.
   row: { side: "calc(var(--cell-h) - 2px)", radius: "var(--gloom-radius-sm)", type: "var(--gloom-type-caption)" },
-  lead: { side: "calc(var(--cell-h) * 1.5)", radius: "var(--gloom-radius-md)", type: "var(--gloom-type-ui)" },
+  lead: { side: "100%", radius: "var(--gloom-radius-md)", type: "var(--gloom-type-ui)" },
 };
 
 // Sized by its capital and baseline, so flex centring puts the letter in the

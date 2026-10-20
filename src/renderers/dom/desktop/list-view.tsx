@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../components/ui/list-view";
+import { ListRowLines } from "../../../components/ui/list-row-lines";
 import { hoverBg, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
@@ -26,24 +27,6 @@ function DefaultDesktopRow({
   stacked: boolean;
 }) {
   const colors = useThemeColors();
-  const label = (
-    <Text
-      fg={item.color ?? (selected || stacked ? colors.text : colors.textDim)}
-      attributes={selected ? TextAttributes.BOLD : 0}
-      style={{
-        // The base text style pins flexShrink to 0, which lets a long
-        // label run under the detail instead of shrinking to an ellipsis.
-        flexShrink: 1,
-        minWidth: 0,
-        maxWidth: "100%",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {item.label}
-    </Text>
-  );
   return (
     <Box
       flexDirection="row"
@@ -55,33 +38,46 @@ function DefaultDesktopRow({
       alignItems="center"
       style={{ boxSizing: "border-box" }}
     >
-      <Box
-        flexDirection="row"
-        alignItems="center"
-        minWidth={0}
-        flexShrink={1}
-        overflow="hidden"
-        style={item.leading !== undefined ? { gap: "var(--gloom-space-sm)" } : undefined}
-      >
-        {item.leading !== undefined && (
-          <Box flexShrink={0} alignItems="center" aria-hidden="true" data-gloom-role="list-row-leading">
-            {item.leading}
-          </Box>
-        )}
-        {stacked ? (
-          <Box flexDirection="column" minWidth={0} flexShrink={1} overflow="hidden">
-            {label}
-            {item.description && (
-              <Text
-                fg={colors.textMuted}
-                style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {item.description}
-              </Text>
-            )}
-          </Box>
-        ) : label}
-      </Box>
+      {stacked ? (
+        <ListRowLines
+          label={item.label}
+          description={item.description}
+          leading={item.leading}
+          labelColor={item.color}
+          labelBold={selected}
+        />
+      ) : (
+        <Box
+          flexDirection="row"
+          alignItems="center"
+          minWidth={0}
+          flexShrink={1}
+          overflow="hidden"
+          style={item.leading !== undefined ? { gap: "var(--gloom-space-sm)" } : undefined}
+        >
+          {item.leading !== undefined && (
+            <Box flexShrink={0} alignItems="center" aria-hidden="true" data-gloom-role="list-row-leading">
+              {item.leading}
+            </Box>
+          )}
+          <Text
+            fg={item.color ?? (selected ? colors.text : colors.textDim)}
+            attributes={selected ? TextAttributes.BOLD : 0}
+            style={{
+              // The base text style pins flexShrink to 0, which lets a long
+              // label run under the detail instead of shrinking to an ellipsis.
+              flexShrink: 1,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </Text>
+        </Box>
+      )}
       {item.detail && (
         <Text fg={colors.textMuted} style={{ flexShrink: 0, marginLeft: 12 }}>
           {item.detail}
