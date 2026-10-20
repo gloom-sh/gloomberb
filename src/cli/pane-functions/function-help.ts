@@ -445,8 +445,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Named executive officers and what they were paid, read from the proxy statement and checked against the filing.",
     usage: ["EXEC NVDA"],
     keys: [key("y", "ear"), key("o", "pen filing")],
-    data: pro(AS_FILED.pro),
-    access: "pro",
+    data: { free: "As filed; each executive's total pay from the latest proxy", pro: "As filed; the pay breakdown and every year" },
+    access: "preview",
     bloomberg: ["MGMT"],
   },
   EK: {
@@ -681,10 +681,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
 
   // Watch markets
   MOST: {
-    summary: "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap. On Pro, pre-market and after-hours movers and the gaps at the open.",
+    summary: "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap, and the pre-market and after-hours movers. On Pro, the gaps at the open.",
     usage: ["MOST"],
     keys: [TABS, OPEN],
-    data: { free: DELAYED, pro: "Real-time, pre-market and after-hours" },
+    data: { free: DELAYED, pro: REAL_TIME },
     bloomberg: ["MOST"],
   },
   WEI: {

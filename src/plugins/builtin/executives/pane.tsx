@@ -27,11 +27,14 @@ import {
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
+import { usePlanAccess } from "../../../api-client/plan-access";
+import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useFilingYearReader } from "../shared/filing-year-reader";
+import { UpgradeLabel } from "../shared/locked-rows";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
 import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
 import { SplitBar } from "../../../components/ui/split-bar";
-import { loadProxyStatement, loadProxyStatements } from "./data";
+import { loadProxyStatement, loadProxyStatements, type ProxyTier } from "./data";
 import {
   equityShare,
   formatChange,
@@ -127,9 +130,12 @@ function renderOfficerCell(row: CloudExecutiveRowPayload, column: OfficerColumn)
 function ExecutiveRows({
   rows,
   width,
+  breakdown,
 }: {
   rows: CloudExecutiveRowPayload[];
   width: number;
+  /** False on the free preview, whose rows carry the total alone: no EQ% column. */
+  breakdown: boolean;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   if (width < 52) {
@@ -146,7 +152,9 @@ function ExecutiveRows({
   }
   // The name column fits the longest name so the title starts after a kit gutter.
   const nameWidth = Math.min(24, Math.max(10, ...rows.map((row) => row.name.length)));
-  const columns = OFFICER_COLUMNS.map((column) => column.id === "name" ? { ...column, width: nameWidth } : column);
+  const columns = OFFICER_COLUMNS
+    .filter((column) => breakdown || column.id !== "equity")
+    .map((column) => column.id === "name" ? { ...column, width: nameWidth } : column);
   const height = rows.length + 1;
   return (
     <Box flexDirection="column" height={isDesktopWeb ? undefined : height} flexShrink={0}>
@@ -251,22 +259,26 @@ export function ExecutivesPane({
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
-  const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height });
+  // Every plan reads EXEC: without Pro the server serves each executive's
+  // total pay, so only its refusal (an older server, an expired session) walls it.
+  const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height }, { preview: true });
+  const tier: ProxyTier = usePlanAccess().hasProAccess ? "full" : "preview";
   const { symbol, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   const listing = useIssuerListing(boundTicker);
   if (wall) return wall;
   if (!ticker) return <EmptyState title="Select a ticker." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} listing={listing} focused={focused} width={width} nested={nested} guard={guard} />;
+  return <ExecutiveResearch key={ticker} ticker={ticker} listing={listing} tier={tier} focused={focused} width={width} nested={nested} guard={guard} />;
 }
 
 export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
   return <ExecutivesPane {...props} nested />;
 }
 
-function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
+function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guard }: {
   ticker: string;
   listing: IssuerListingParams;
+  tier: ProxyTier;
   focused: boolean;
   width: number;
   nested: boolean;
@@ -274,15 +286,20 @@ function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
 }) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
+  const openUpgrade = useCloudUpgradeAction("exec");
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
-  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force, listing })), [guard, listing, ticker]);
+  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force, listing, tier })), [guard, listing, ticker, tier]);
   const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
-  const year = selectedYear !== null && years.includes(selectedYear)
+  // Without Pro only the latest proxy is served: an earlier pick from a Pro
+  // session waits for Pro again rather than asking for a year that is refused.
+  const year = tier === "full" && selectedYear !== null && years.includes(selectedYear)
     ? selectedYear : years[0] ?? null;
-  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force, listing })), [guard, listing, ticker, year]);
+  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force, listing, tier })), [guard, listing, ticker, year, tier]);
   const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
+  // The free preview: each executive's total pay; the breakdown and earlier years are Pro.
+  const preview = statement?.access === "preview" || list.data?.data?.access === "preview";
   const loading = list.loading || detail.loading;
   const listError = list.error ?? list.data?.refreshError;
   const statementError = detail.error ?? detail.data?.refreshError;
@@ -332,8 +349,9 @@ function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
     // `r` refreshes every pane, so it gets no hint here.
     const hints: PaneHint[] = statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : [];
     if (yearHint) hints.push(yearHint);
+    if (preview) hints.push({ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade });
     return { info, hints };
-  }, [loading, statement, openFiling, yearHint]);
+  }, [loading, statement, openFiling, yearHint, preview, openUpgrade]);
 
   const figures = useMemo(
     () => (statement ? figuresOf(statement) : []),
@@ -390,7 +408,7 @@ function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
                 <FigureList figures={figures} width={proseWidth} minValueWidth={4} maxValueWidth={14} />
               </Box>
             )}
-            {statement.ceo && (
+            {statement.ceo && !preview && (
               <Box flexDirection="column">
                 <SectionHeading marginTop={figures.length > 0 ? 1 : 0}
                   title={`How ${statement.ceo.name.trim().split(/\s+/).pop() || "the CEO"} Was Paid`}
@@ -404,7 +422,13 @@ function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
                 <ExecutiveRows
                   rows={statement.namedExecutives}
                   width={proseWidth}
+                  breakdown={!preview}
                 />
+              </Box>
+            )}
+            {preview && (
+              <Box marginTop={1}>
+                <UpgradeLabel text="Upgrade for the pay breakdown and earlier years" onPress={openUpgrade} role="exec-upgrade" />
               </Box>
             )}
             {statement.highlights && (

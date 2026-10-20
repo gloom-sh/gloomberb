@@ -50,6 +50,13 @@ export interface CloudSessionMoversPayload {
   phase: CloudSessionPhase;
   asOf: string;
   stale?: boolean;
+  /**
+   * `delayed` for an account without Pro: the list as it was built at least
+   * `delayMinutes` before it was served, as old as that account's quotes,
+   * and `asOf` that time. Absent on Pro's live list.
+   */
+  access?: "delayed";
+  delayMinutes?: number;
   items: CloudSessionMoverItem[];
 }
 

@@ -763,6 +763,8 @@ Financial tables abbreviate large growth percentages (for example, `+163k%`) so 
 
 `EXEC` reads compensation from covered annual DEF 14A proxy statements. The year selector identifies the proxy filing year; the statement separately identifies the fiscal year of compensation. Stock and option awards use the filing’s grant-date valuation, which is not the amount eventually realized. Open the source filing through the existing footer action (`o`). No covered proxy means this view has no compensation data for that company; it does not establish that the company pays no executives.
 
+Every plan sees each named executive's total pay from the latest proxy. Gloom Cloud Pro adds the breakdown (salary, bonus, stock and option awards, non-equity incentive, pension and other pay), the CEO's pay mix and change from the year before, the pay ratio, say-on-pay support, the filing's key figures and highlights, and earlier proxies.
+
 Refresh (`r`) reloads the covered years and selected statement. A temporary failure retains available data; the footer warning gives the failed request and original retrieval time. Missing or denied statements are cleared. A successful refresh removes the warning without changing the filing’s reported dates.
 
 13F research rechecks stale source responses when opened. If both hosted and public reads fail, retained cached rows carry the original retrieval time in the existing warning disclosure; filing and reporting dates are unchanged. A failed refresh is retried on reopening, even inside the normal cache lifetime. Filing reports preserve these warnings in their structured output.

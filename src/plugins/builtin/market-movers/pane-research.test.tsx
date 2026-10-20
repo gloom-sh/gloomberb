@@ -133,9 +133,32 @@ test("routed major-unit and unknown-unit quotes keep range context honest", asyn
   expect(unknown).not.toContain("$");
 });
 
-test("signed out during the pre-market, the pane stays on the day's lists instead of a sign-in wall", async () => {
+test("signed out during the pre-market, the pane opens the pre-market list as it was a delay before, dated, and gaps stay Pro", async () => {
+  const realNow = Date.now;
   Date.now = () => Date.parse("2026-09-29T12:00:00Z"); // 08:00 New York, a Tuesday
-  await mount(() => payload([raw("GAINER")]));
-  expect(tui.frame()).not.toContain("Sign in");
-  expect(await csv()).toContain("GAINER");
+  try {
+    const lists: string[] = [];
+    await mount(url => {
+      if (!url.pathname.endsWith("/market/screener")) return payload([raw("GAINER")]);
+      lists.push(url.searchParams.get("category")!);
+      return { status: "success", data: {
+        view: url.searchParams.get("category"), side: "up", session: "2026-09-29", phase: "pre",
+        asOf: "2026-09-29T11:45:00.000Z", access: "delayed", delayMinutes: 15,
+        items: [{ rank: 1, symbol: "EARLY", name: "Early Riser", exchange: "NASDAQ", currency: "USD", price: 12, change: 2, changePercent: 20,
+          referenceClose: 10, volume: 50_000, relativeVolume: 3, gapPercent: null, open: null, vwap: null, vwapPercent: null,
+          floatShares: null, catalysts: [], lastUpdated: Date.parse("2026-09-29T11:30:00Z") }],
+      } };
+    });
+    expect(tui.frame()).not.toContain("Sign in");
+    expect(tui.frame()).toContain("EARLY");
+    expect(lists).toEqual(["premarket"]);
+    // Dated by when the list was built, never called real-time.
+    expect(JSON.stringify(footer)).toContain("as of 07:45 ET");
+    expect(JSON.stringify(footer)).not.toContain("live");
+    await clickLabel("Gaps");
+    expect(tui.frame()).toContain("Sign in");
+    expect(lists).toEqual(["premarket"]);
+  } finally {
+    Date.now = realNow;
+  }
 });

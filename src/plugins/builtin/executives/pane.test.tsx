@@ -22,7 +22,23 @@ function statement(ticker: string, year: number): CloudProxyStatementPayload {
     highlights: `${ticker} compensation ${year}`, keyFigures: [], otherYears: [],
   };
 }
-const proUser = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
+/** What `/cloud/proxies/:ticker/:year` serves an account without Pro: each total, nothing else. */
+function preview(ticker: string, year: number): CloudProxyStatementPayload {
+  const totalOnly = (name: string, title: string, total: number) => ({
+    name, title, total, priorYearTotal: null, salary: null, bonus: null, stockAwards: null,
+    optionAwards: null, nonEquityIncentive: null, pensionAndDeferred: null, allOther: null,
+  });
+  return {
+    ...statement(ticker, year), access: "preview", highlights: null, ceoName: "Jane Chief", ceoTotal: 31_400_000,
+    ceo: totalOnly("Jane Chief", "Chief Executive Officer", 31_400_000),
+    namedExecutives: [
+      totalOnly("Jane Chief", "Chief Executive Officer", 31_400_000),
+      totalOnly("Sam Ledger", "Chief Financial Officer", 9_200_000),
+    ],
+  };
+}
+const PRO_USER = { id: "pro", emailVerified: true, plan: "pro" };
+const proUser = spyOn(apiClient, "getCurrentUser").mockReturnValue(PRO_USER as never);
 afterAll(() => proUser.mockRestore());
 const tui = createOpenTuiTestHarness();
 const restore: Array<() => void> = [];
@@ -312,6 +328,43 @@ test("failed rediscovery after an explicit 404 reports the failure instead of re
   expect(tui.frame()).not.toContain("⚠");
 });
 
+
+for (const [who, user] of [["signed out", null], ["a free account", { id: "free", emailVerified: true, plan: "free" }]] as const) {
+  test(`${who} reads each executive's total pay, with the breakdown locked`, async () => {
+    proUser.mockReturnValue(user as never);
+    restore.push(() => proUser.mockReturnValue(PRO_USER as never));
+    const report = preview("ALPHA", 2026);
+    const list = spyOn(apiClient, "getProxyStatements").mockResolvedValue({ company: report.company, proxies: [report], access: "preview" });
+    const detail = spyOn(apiClient, "getProxyStatement").mockResolvedValue(report);
+    restore.push(() => list.mockRestore(), () => detail.mockRestore());
+    await mount();
+    const frame = tui.frame();
+    expect(frame).toMatch(/\$31\.4M\s+Jane Chief total pay/);
+    expect(frame).toContain("Sam Ledger");
+    expect(frame).toContain("$9.2M");
+    expect(frame).toContain("Upgrade for the pay breakdown and earlier years");
+    expect(frame).not.toContain("Was Paid");
+    expect(frame).not.toContain("EQ%");
+    expect(frame).not.toContain("Sign in");
+    expect(frame).not.toContain("part of Gloom Cloud Pro");
+  });
+}
+
+test("a kept statement is reused only for the plan it was served to", async () => {
+  const { report } = seedCache(false);
+  const free = preview("ALPHA", 2026);
+  const detail = spyOn(apiClient, "getProxyStatement").mockResolvedValue(free);
+  restore.push(() => detail.mockRestore());
+  // Pro's kept breakdown is never shown to an account without Pro, even when the read fails.
+  detail.mockRejectedValueOnce(new Error("Statement outage"));
+  await expect(loadProxyStatement("ALPHA", 2026, { tier: "preview" })).rejects.toThrow("Statement outage");
+  expect((await loadProxyStatement("ALPHA", 2026, { tier: "preview" })).data?.access).toBe("preview");
+  // A new Pro account does not keep its old preview.
+  detail.mockResolvedValue(report);
+  expect((await loadProxyStatement("ALPHA", 2026)).data?.access).toBeUndefined();
+  expect((await loadProxyStatement("ALPHA", 2026)).data?.highlights).toBe(report.highlights);
+  expect(detail).toHaveBeenCalledTimes(3);
+});
 
 test("a narrow compensation pane keeps each executive total, full name, title and equity share accessible", async () => {
   const report = statement("ALPHA", 2026);

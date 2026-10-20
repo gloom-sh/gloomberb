@@ -1005,6 +1005,13 @@ interface CloudProxyStatementSummaryPayload {
 }
 
 export interface CloudProxyStatementPayload extends CloudProxyStatementSummaryPayload {
+  /**
+   * `preview` for an account without Pro: each executive's total pay from
+   * the latest proxy, with the breakdown, the year before, the pay ratio,
+   * say-on-pay, highlights, key figures and other years null or empty.
+   * Absent on Pro's full statement.
+   */
+  access?: "preview";
   docUrl: string;
   ceo: (CloudExecutiveRowPayload & { priorYearTotal: number | null }) | null;
   namedExecutives: CloudExecutiveRowPayload[];
@@ -1126,6 +1133,8 @@ export interface CloudProxyStatementListPayload {
     shortName: string;
   };
   proxies: CloudProxyStatementSummaryPayload[];
+  /** `preview` for an account without Pro: the latest proxy alone, without the year before or the pay ratio. */
+  access?: "preview";
 }
 
 export interface CloudTranscriptTurnPayload {

@@ -110,10 +110,10 @@ export async function loadMarketMoverTab(
   return { ...result, quotes: quotes.slice(0, LIST_ROWS), rankedBy, tab };
 }
 
-/** The server refused the list for the account's plan. */
+/** The server refused the list for the account's plan (gaps, without Pro). */
 export class SessionMoversAccessError extends Error {
   constructor() {
-    super("Pre-market, after-hours and gap lists need Pro");
+    super("Gap lists need Pro");
     this.name = "SessionMoversAccessError";
   }
 }

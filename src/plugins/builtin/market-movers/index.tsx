@@ -8,7 +8,6 @@ import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -87,7 +86,6 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const [savedTab, setSavedTab] = usePluginPaneState<TabId>("activeTab", tabs[0]!.id);
   const [pickedIn, setPickedIn] = usePluginPaneState<string | null>("activeTabSession", null);
   const [requestedTab, setRequestedTab] = usePluginPaneState<TabId | null>("requestedTab", null);
-  const access = usePlanAccess();
   const session = useUsSession();
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const activeTab = resolveActiveTab({
@@ -96,7 +94,6 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     pickedIn,
     session,
     requested: requestedTab,
-    sessionListsOpen: access.signedIn && access.emailVerified && access.hasProAccess,
   });
 
   // The index summary is a quote board like any other, so it runs on the shared

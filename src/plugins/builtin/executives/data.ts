@@ -13,7 +13,19 @@ import { secListingKey } from "../../../utils/sec";
  * reads. A proxy is filed once a year and the extraction does not change
  * after it is verified, so a statement is kept for a long time; the list
  * of years is refreshed more often, since a new filing adds one.
+ *
+ * An account without Pro is served the preview (`access: "preview"`): each
+ * executive's total pay from the latest proxy. A kept answer is reused only
+ * for the plan it was served to, so a new Pro account never sees its old
+ * preview and an account that lost Pro never sees a kept breakdown.
  */
+
+/** Pro's full statements, or the free preview. */
+export type ProxyTier = "full" | "preview";
+
+function tierOf(value: unknown): ProxyTier {
+  return (value as { access?: unknown } | null)?.access === "preview" ? "preview" : "full";
+}
 
 const LIST_KIND = "proxies";
 const STATEMENT_KIND = "proxy";
@@ -57,6 +69,7 @@ export function resetExecutivesPersistence(): void {
 function loadCached<T>(
   kind: string,
   key: string,
+  tier: ProxyTier,
   active: Map<string, ActiveRequest<T>>,
   policy: { staleMs: number; expireMs: number },
   force: boolean,
@@ -65,14 +78,15 @@ function loadCached<T>(
   const store = persistence;
   const options = { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION };
   const failedKey = `${kind}:${key}`;
+  const activeKey = `${key}|${tier}`;
   const hit = store?.getResource<T>(kind, key, options);
-  if (!force && !failedRefreshes.has(failedKey) && hit && !hit.stale) {
+  if (!force && !failedRefreshes.has(failedKey) && hit && !hit.stale && tierOf(hit.value) === tier) {
     return Promise.resolve({ data: hit.value, fetchedAt: hit.fetchedAt });
   }
-  const existing = active.get(key);
+  const existing = active.get(activeKey);
   if (!force && existing?.store === store) return existing.promise;
   const request: ActiveRequest<T> = { store, promise: null! };
-  const current = () => persistence === store && active.get(key) === request;
+  const current = () => persistence === store && active.get(activeKey) === request;
   request.promise = Promise.resolve().then(fetch).then((data) => {
     const fetchedAt = Date.now();
     if (current()) {
@@ -92,14 +106,14 @@ function loadCached<T>(
       throw error;
     }
     const fallback = store?.getResource<T>(kind, key, { ...options, allowExpired: true });
-    if (!fallback) throw error;
+    if (!fallback || tierOf(fallback.value) !== tier) throw error;
     return {
       data: fallback.value,
       fetchedAt: fallback.fetchedAt,
       refreshError: (error instanceof Error ? error.message : String(error)).trim() || "Request failed",
     };
-  }).finally(() => { if (active.get(key) === request) active.delete(key); });
-  active.set(key, request);
+  }).finally(() => { if (active.get(activeKey) === request) active.delete(activeKey); });
+  active.set(activeKey, request);
   return request.promise;
 }
 
@@ -107,6 +121,8 @@ interface ProxyLoadOptions {
   force?: boolean;
   /** The listing's venue and company, for a listing outside the US. */
   listing?: IssuerListingParams;
+  /** What the account's plan is served: `full` unless it has no Pro. */
+  tier?: ProxyTier;
 }
 
 export async function loadProxyStatements(
@@ -116,7 +132,7 @@ export async function loadProxyStatements(
   const symbol = ticker.toUpperCase();
   // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
   const key = secListingKey(symbol, options?.listing?.exchange);
-  return loadCached(LIST_KIND, key, activeListFetches, LIST_CACHE_POLICY, options?.force ?? false,
+  return loadCached(LIST_KIND, key, options?.tier ?? "full", activeListFetches, LIST_CACHE_POLICY, options?.force ?? false,
     () => apiClient.getProxyStatements(symbol, options?.listing));
 }
 
@@ -127,6 +143,6 @@ export async function loadProxyStatement(
 ): Promise<ProxyResult<CloudProxyStatementPayload>> {
   const symbol = ticker.toUpperCase();
   const key = `${secListingKey(symbol, options?.listing?.exchange)}:${year}`;
-  return loadCached(STATEMENT_KIND, key, activeStatementFetches, STATEMENT_CACHE_POLICY, options?.force ?? false,
+  return loadCached(STATEMENT_KIND, key, options?.tier ?? "full", activeStatementFetches, STATEMENT_CACHE_POLICY, options?.force ?? false,
     () => apiClient.getProxyStatement(symbol, year, options?.listing));
 }

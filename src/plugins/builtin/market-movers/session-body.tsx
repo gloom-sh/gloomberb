@@ -24,6 +24,7 @@ import { summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
 import {
   earlierSessionLabel,
+  listAsOfLabel,
   overlaySessionMovers,
   resolveSide,
   sessionListIsLive,
@@ -46,7 +47,13 @@ interface LoadedList {
   payload: CloudSessionMoversPayload;
 }
 
-/** Pre-market, after-hours and gap lists: Pro only, like the ranked lists they sit beside. */
+/**
+ * Pre-market, after-hours and gap lists. Pre-market and after hours open on
+ * every plan: without Pro the server answers with the list as it was built a
+ * delay before (`access: "delayed"`), as old as the account's quotes, and the
+ * footer gives that time. Gaps are Pro only, like the ranked lists they sit
+ * beside.
+ */
 export function SessionMoversBody(props: {
   view: CloudSessionMoversCategory;
   session: UsSession;
@@ -57,29 +64,31 @@ export function SessionMoversBody(props: {
   liveStreaming: boolean;
 }) {
   const access = usePlanAccess();
+  const proOnly = props.view === "gaps";
   const [denied, setDenied] = useState(false);
   const deny = useCallback(() => setDenied(true), []);
   // A refusal is about the plan the account had then; a new plan asks again.
   useEffect(() => setDenied(false), [access.signedIn, access.emailVerified, access.hasProAccess]);
-  const entitled = access.emailVerified && access.hasProAccess && !denied;
+  const entitled = !proOnly || (access.emailVerified && access.hasProAccess && !denied);
   // Behind a wall the footer still carries the index summary; the list registers its own.
   usePaneFooter("market-movers-wall", () => (
     entitled ? null : { info: summaryFooterSegments(props.summaryQuotes) }
   ), [entitled, props.summaryQuotes]);
 
-  if (!access.signedIn) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" />;
-  if (!access.emailVerified) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see pre-market, after-hours and gap movers" needsVerification />;
+  if (proOnly && !access.signedIn) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see gap movers" />;
+  if (proOnly && !access.emailVerified) return <SignInWall placement="most-signin" width={props.width} height={props.height} action="see gap movers" needsVerification />;
   if (!entitled) {
     return (
       <ProWall
         placement="most-wall"
         width={props.width} height={props.height}
-        title="Pre-market, after-hours and gap movers are part of Gloom Cloud Pro."
-        message="The whole listed US market from 04:00 to 20:00, with relative volume, VWAP, float and catalysts."
+        title="Gap movers are part of Gloom Cloud Pro."
+        message="Every listed US stock that opened away from its prior close, with relative volume, VWAP, float and catalysts."
       />
     );
   }
-  return <SessionMoversTable {...props} onDenied={deny} />;
+  // A new plan reads the list again: live with Pro, a delay before without.
+  return <SessionMoversTable key={access.hasProAccess ? "pro" : "free"} {...props} onDenied={proOnly ? deny : undefined} />;
 }
 
 function SessionMoversTable({ view, session, focused, width, summaryQuotes, liveStreaming, onDenied }: {
@@ -89,7 +98,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   width: number;
   summaryQuotes: MarketSummaryQuote[];
   liveStreaming: boolean;
-  onDenied: () => void;
+  /** Gaps: the server refused the list for the account's plan. */
+  onDenied?: () => void;
 }) {
   const { pinTicker } = usePluginTickerActions();
   const [savedSide, setSavedSide] = usePluginPaneState<CloudSessionMoversSide>("sessionSide", "up");
@@ -106,7 +116,9 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
 
   const payload = loaded?.key === listKey ? loaded.payload : null;
   const listRows = payload?.items ?? NO_ROWS;
-  const live = !!payload && sessionListIsLive(view, payload.session, session);
+  // A free account's list is the one built a delay before: no live prices on its rows.
+  const delayed = payload?.access === "delayed";
+  const live = !!payload && !delayed && sessionListIsLive(view, payload.session, session);
   // While the list's session trades it is rebuilt every minute, and a failed or
   // stale answer is asked for again as often; a finished list does not change,
   // so it follows the refresh interval the user set.
@@ -126,7 +138,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       setLastLoadedAt(Date.now());
     } catch (error) {
       if (fetchGenRef.current !== gen) return;
-      if (error instanceof SessionMoversAccessError) {
+      if (error instanceof SessionMoversAccessError && onDenied) {
         onDenied();
         return;
       }
@@ -172,11 +184,13 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   }, [rows, selectedId]);
 
   const sessionLabel = payload ? earlierSessionLabel(payload.session, session) : null;
+  const asOfLabel = payload && delayed ? listAsOfLabel(payload.asOf, payload.session, session) : null;
   usePaneFooter("market-movers", () => ({
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
       ...summaryFooterSegments(summaryQuotes),
       ...(sessionLabel ? [{ id: "session", parts: [{ text: sessionLabel, tone: "muted" as const }] }] : []),
+      ...(asOfLabel ? [{ id: "as-of", asOf: true, parts: [{ text: asOfLabel, tone: "muted" as const }] }] : []),
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(feedStatus ? [{
         id: "feed",
@@ -184,7 +198,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       }] : []),
       ...(payload?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "muted" as const }] }] : []),
     ],
-  }), [feedStatus, loadError, loading, payload?.stale, sessionLabel, summaryQuotes]);
+  }), [asOfLabel, feedStatus, loadError, loading, payload?.stale, sessionLabel, summaryQuotes]);
 
   const openRow = useCallback((row: SessionMoverRow) => {
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });

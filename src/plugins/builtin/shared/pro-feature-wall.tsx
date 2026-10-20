@@ -23,8 +23,11 @@ export type ReadGuard = <T>(read: Promise<T>) => Promise<T>;
  * then upgrade. The session's plan decides before anything loads. Reads go
  * through `guard`, so a refusal from the server (a plan that ended while the
  * app was open, an expired session) shows the same wall, not an error.
+ *
+ * `preview`: the pane opens on every plan, the server serving a preview
+ * without Pro (EXEC), so only a refusal puts up the wall.
  */
-export function useProFeatureWall(copy: ProFeatureWallCopy, size: { width: number; height: number }): {
+export function useProFeatureWall(copy: ProFeatureWallCopy, size: { width: number; height: number }, options: { preview?: boolean } = {}): {
   wall: ReactNode;
   guard: ReadGuard;
 } {
@@ -39,12 +42,14 @@ export function useProFeatureWall(copy: ProFeatureWallCopy, size: { width: numbe
     throw error;
   }), []);
 
+  // A preview pane is walled by the server's answer alone, never by the plan up front.
+  const gated = !options.preview;
   let wall: ReactNode = null;
-  if (!access.signedIn || refused === 401) {
+  if ((gated && !access.signedIn) || refused === 401) {
     wall = <SignInWall placement={`${copy.placement.replace(/-wall$/, "")}-signin`} {...size} symbol={symbol} exchange={exchange} action={copy.action} />;
-  } else if (!access.emailVerified || refused === 403) {
+  } else if ((gated && !access.emailVerified) || refused === 403) {
     wall = <SignInWall placement={`${copy.placement.replace(/-wall$/, "")}-signin`} {...size} symbol={symbol} exchange={exchange} action={copy.action} needsVerification />;
-  } else if (!access.hasProAccess || refused === 402) {
+  } else if ((gated && !access.hasProAccess) || refused === 402) {
     wall = <ProWall placement={copy.placement} title={copy.title} message={copy.message} {...size} symbol={symbol} exchange={exchange} />;
   }
   return { wall, guard };
