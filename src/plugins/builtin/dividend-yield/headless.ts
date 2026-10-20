@@ -51,6 +51,9 @@ export interface DividendYieldHeadlessDependencies {
   loadTreasury?(context: HeadlessPaneContext): Promise<TreasuryTenor[] | null>;
 }
 
+/** Already logged at the quote boundary; keep it distinct from absent bond facts. */
+class BondClassificationError extends Error {}
+
 const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadData(symbol, context) {
     let currentPrice: number | null = null;
@@ -78,7 +81,10 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
     const instrument = await context.resolveInstrument?.(symbol);
     const exchange = instrument?.exchange ?? "";
     const quote = await context.marketData.getQuote(symbol, exchange)
-      .catch(logFailure("dividend-yield.headless", "Read bond fund classification quote failed"));
+      .catch((error) => {
+        logFailure("dividend-yield.headless", "Read bond fund classification quote failed")(error);
+        throw new BondClassificationError("Bond fund quote check failed");
+      });
     const venue = exchange || quote?.exchangeName || "";
     if (resolveTickerInstrumentKind(null, { quote }) !== "fund" || (venue && !isUsListingExchange(venue))) return null;
     return fetchFundBondFacts(instrument?.symbol ?? symbol, context.apiClient);
@@ -128,7 +134,7 @@ export function projectDividendYieldHeadless(
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
-  const errors = [data.historyError, data.summaryError].filter((error): error is string => !!error);
+  const errors = [data.historyError, data.summaryError, tax?.checkError].filter((error): error is string => !!error);
 
   return {
     ...(errors.length > 0 ? { complete: false, errors } : {}),
@@ -252,17 +258,26 @@ export function createDividendYieldHeadless(
       // One symbol is its full report; several are one table ranked by yield.
       if (args.symbols.length <= 1) {
         const symbol = args.symbols[0] ?? String(args.argument);
+        let bondCheckError: string | undefined;
         const [data, bond, treasury] = await Promise.all([
           dependencies.loadData(symbol, context),
-          // A fund's bond facts never fail the report: without them its yields read as before.
+          // Optional enrichment without a tax rate; a requested tax check must distinguish failure from absence.
           dependencies.loadBond?.(symbol, context)
-            .catch(logFailure("dividend-yield.headless", "Read bond fund facts for report failed", null)) ?? null,
+            .catch((error) => {
+              if (error instanceof BondClassificationError) {
+                bondCheckError = error.message;
+              } else {
+                logFailure("dividend-yield.headless", "Read bond fund facts for report failed")(error);
+                bondCheckError = "Bond fund facts check failed";
+              }
+              return null;
+            }) ?? null,
           rates ? dependencies.loadTreasury?.(context)
             .catch(logFailure("dividend-yield.headless", "Read Treasury curve for tax comparison failed", null)) ?? null : null,
         ]);
         const forward = data.metrics.lapse ? null : distributionBasis(data.metrics.forwardYield, "forward", data.metrics.forwardRateAsOf ?? null);
         const tax = rates ? analyzeTaxEquivalent({
-          symbol: symbol.toUpperCase(), bond, rates, treasury,
+          symbol: symbol.toUpperCase(), bond, rates, treasury, checkError: bondCheckError,
           distribution: forward ?? distributionBasis(data.metrics.trailingYield, "trailing"),
         }) : null;
         return projectDividendYieldHeadless(data, args, { bond, tax });
@@ -281,7 +296,8 @@ export function createDividendYieldHeadless(
       const entries = await mapWithConcurrency(args.symbols, RANKING_CONCURRENCY, async (symbol): Promise<DividendRankingEntry> => {
         // A fund's bond facts never fail its row: without them it ranks as before.
         const bond = dependencies.loadBond?.(symbol, context)
-          .catch(logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)) ?? null;
+          .catch((error) => error instanceof BondClassificationError ? null
+            : logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)(error)) ?? null;
         try {
           return { symbol, data: await dependencies.loadData(symbol, context), bond: await bond };
         } catch (error) {

@@ -506,6 +506,7 @@ muni/Treasury ratio  = yield / Treasury par yield at the GC tenor nearest the fu
 - The rates add up without netting a federal deduction for state tax, which the SALT cap mostly removes. This is how iShares computes the tax-equivalent yields it publishes: MUB's 4.04% at 40.8% is 6.83%, and CMF's 3.87% at 40.8% + 13.3% is 8.43%.
 - The ratio compares pre-tax yields, as muni/Treasury ratios do. Its Treasury is GC's US par curve at its latest session, at the tenor nearest the fund's duration (MUB's 7.13 years: the 7Y); the line names the tenor and the curve's date.
 - A taxable bond fund gets `no tax-equivalent yield: AGG is a taxable bond fund, its income is taxed`, and a listing with no bond figures says so. `--tax-rate` takes one fund: a ranking of several refuses it, and `shot DVD` refuses it as a report-only option.
+- In `fn DVD --tax-rate`, a failed quote or fund-facts lookup is a failed bond-fund check, not confirmation that the listing has no bond figures. The tax section names the failed check and the report is incomplete; available cash history remains. Without `--tax-rate`, bond facts remain optional enrichment and a failed lookup leaves the report unchanged.
 
 `--json` adds `taxEquivalent`: `federalRate`, `stateRate` (`rate`, `code`, `applied`), `combinedRate`, `basis` (`kind`: `sec` or `distribution`, `value`, `asOf`), `taxEquivalentYield`, `muniTreasuryRatio` (`value`, `tenor`, `treasuryYield`, `treasuryAsOf`, `durationYears`), `notes` and both formulas.
 

@@ -161,6 +161,8 @@ export function taxEquivalentYield(yieldPercent: number, combinedRatePercent: nu
 export interface TaxEquivalentAnalysis {
   symbol: string;
   rates: TaxRates;
+  /** A failed prerequisite check, distinct from a confirmed inapplicable fund. */
+  checkError?: string;
   /** Why there is no tax-equivalent yield: the fund is not a muni fund, or nothing classes it. */
   notApplicable?: string;
   /** The rate the yield is grossed up by: federal, plus the state's for one of its own funds. */
@@ -187,16 +189,18 @@ function formatRate(value: number): string {
  * fund its sponsor classes as municipal has one; any other says why not.
  */
 export function analyzeTaxEquivalent({
-  symbol, bond, rates, distribution, treasury,
+  symbol, bond, rates, distribution, treasury, checkError,
 }: {
   symbol: string;
   bond: FundBondFacts | null | undefined;
   rates: TaxRates;
+  checkError?: string;
   /** The distribution yield in percent and its label, for a fund without a SEC yield. */
   distribution?: YieldBasis | null;
   /** The Treasury curve's points, or null when it could not be read. */
   treasury?: readonly TreasuryTenor[] | null;
 }): TaxEquivalentAnalysis {
+  if (checkError) return { symbol, rates, checkError };
   if (!bond) {
     return { symbol, rates, notApplicable: `no tax-equivalent yield: ${symbol} is not a bond fund with sponsor figures (iShares, Vanguard and SPDR bond ETFs have them)` };
   }
@@ -257,6 +261,9 @@ export interface TaxEquivalentLine {
  *   Muni/Treasury ratio   81.0% (SEC yield 4.04% / 7Y Treasury 4.99% on 2026-10-16, the tenor nearest its 7.13-year duration)
  */
 export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivalentLine[] {
+  if (analysis.checkError) {
+    return [{ key: "taxEquivalentYield", label: "Tax-equivalent yield", text: analysis.checkError, value: null }];
+  }
   const { rates } = analysis;
   const stateText = !rates.state ? (analysis.notApplicable ? "federal" : "federal; no state rate given")
     : analysis.stateApplied ? `federal ${formatRate(rates.federal)} + ${rates.state.code} ${formatRate(rates.state.rate)}`
@@ -302,7 +309,8 @@ export function taxEquivalentJson(tax: TaxEquivalentAnalysis) {
       value: tax.ratio.value, tenor: tax.ratio.treasury.tenor, treasuryYield: tax.ratio.treasury.yield,
       treasuryAsOf: tax.ratio.treasury.asOf, durationYears: tax.ratio.durationYears,
     } : null,
-    notes: [tax.notApplicable, tax.stateNote, tax.ratioNote].filter((note): note is string => !!note),
+    ...(tax.checkError ? { checkError: tax.checkError } : {}),
+    notes: [tax.checkError, tax.notApplicable, tax.stateNote, tax.ratioNote].filter((note): note is string => !!note),
     formula: TAX_EQUIVALENT_FORMULA,
     ratioFormula: MUNI_TREASURY_RATIO_FORMULA,
   };
