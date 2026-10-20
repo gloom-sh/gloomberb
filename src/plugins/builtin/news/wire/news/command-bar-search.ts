@@ -8,6 +8,7 @@ import type {
   GloomPluginContext,
 } from "../../../../../types/plugin";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
+import { logFailure } from "../../../../../utils/log-failure";
 import { openNewsStoryPane } from "./pop-out";
 import { NEWS_QUERY_PRESETS } from "./query-presets";
 
@@ -75,9 +76,11 @@ let warming: Promise<unknown> | null = null;
  */
 async function warmLatestStories(service: NewsService): Promise<void> {
   if (service.getQueryState(NEWS_QUERY_PRESETS.feed).articles.length > 0) return;
-  warming ??= service.load(NEWS_QUERY_PRESETS.feed).catch(() => null).finally(() => {
-    warming = null;
-  });
+  warming ??= service.load(NEWS_QUERY_PRESETS.feed)
+    .catch(logFailure("news.command-bar-search", "Load news for command bar search failed", null))
+    .finally(() => {
+      warming = null;
+    });
   await warming;
 }
 

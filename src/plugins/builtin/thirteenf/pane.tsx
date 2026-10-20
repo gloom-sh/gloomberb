@@ -17,6 +17,7 @@ import {
 } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -118,7 +119,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     let alive = true;
     void Promise.all(browser.pages.map((page) => page.reportsLoaded ?? Promise.resolve())).then(() => {
       if (alive) setReportPaint((value) => value + 1);
-    }, () => {});
+    }, logFailure("thirteenf.pane", "Load filing metadata for fund rows failed"));
     return () => { alive = false; };
   }, [browser.pages]);
   const error = browser.error?.message ?? null;
@@ -193,7 +194,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   // Every request behind a fund detail is cached per path, so warming it
   // while the cursor rests on the row makes Enter read from cache.
   const prefetchDetail = useCallback((row: FundBrowserRow) => {
-    void loadFundDetail(row.cik, row.name).catch(() => {});
+    void loadFundDetail(row.cik, row.name).catch(() => {
+      // Intentional ignore: speculative prefetch is retried and failures are shown when the fund opens.
+    });
   }, []);
 
   const browserStatusInfo = useMemo<PaneFooterSegment[]>(() => [
@@ -376,7 +379,9 @@ export function FundDetailView({
           : Promise.resolve(new Map<string, number | null>())
         ).then((factors) => {
           if (abortRef.current === controller) setSplitFactors(factors);
-        }, () => {});
+        }, () => {
+          // Intentional ignore: split lookups reject only on cancellation; individual failures remain unconfirmed.
+        });
       })
       .catch((loadError) => {
         if (abortRef.current !== controller) return;

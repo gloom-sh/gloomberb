@@ -1,4 +1,5 @@
 import type { PluginConfigState } from "../../../../types/plugin";
+import { logFailure } from "../../../../utils/log-failure";
 import { DEFAULT_FEEDS } from "./default-feeds";
 import { hashString } from "./hash";
 import type { RssFeedConfig } from "./rss/parser";
@@ -30,7 +31,8 @@ function parseJsonArray(value: unknown): unknown[] {
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
+  } catch (error) {
+    logFailure("news.feed-config", "Read stored news feed settings failed")(error);
     return [];
   }
 }
@@ -93,6 +95,7 @@ function normalizeUserFeed(value: unknown): RssFeedConfig | null {
       enabled: record.enabled !== false,
     });
   } catch {
+    // Intentional ignore: invalid stored feed entries are omitted during normalization.
     return null;
   }
 }

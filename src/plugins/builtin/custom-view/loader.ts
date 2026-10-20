@@ -141,8 +141,9 @@ export async function trialLoadViewSource(
   });
   try {
     const loading = loadViewSource(spec, config, controller.signal, registry);
-    // A load that outlives the wait has nobody left to tell.
-    loading.catch(() => {});
+    loading.catch(() => {
+      // Intentional ignore: the race reports load failures; after timeout its result already explains the unchecked source.
+    });
     const outcome = await Promise.race([loading, timedOut]);
     if (outcome === "timeout") {
       return [`The source had not answered after ${Math.max(1, Math.round(timeoutMs / 1_000))} s, so it was not checked. The view opens and keeps loading.`];

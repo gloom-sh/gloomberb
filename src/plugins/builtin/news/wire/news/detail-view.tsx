@@ -14,6 +14,7 @@ import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate } from "../../../../../utils/datetime-format";
+import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle } from "../../../../../news/news-model";
 import { usePluginPaneState } from "../../../../runtime";
 import { formatNewsCategory } from "../categories";
@@ -277,7 +278,7 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
     }).then((choice) => {
       const url = choice ? coverage[Number(choice)]?.url : undefined;
       if (url) void rendererHost.openExternal(url);
-    }).catch(() => {});
+    }).catch(logFailure("news.detail-view", "Choose news coverage failed"));
   }, [coverage, dialog, rendererHost]);
   usePaneFooter("news-detail:story", () => ({
     order: -1,

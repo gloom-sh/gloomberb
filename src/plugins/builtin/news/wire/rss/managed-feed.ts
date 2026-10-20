@@ -14,6 +14,7 @@ export function isManagedNewsFeedUrl(value: string): boolean {
     const url = new URL(value);
     return url.origin === "https://api.gloom.sh" && url.pathname.replace(/\/$/, "") === "/news/rss";
   } catch {
+    // Intentional ignore: malformed URLs cannot identify the managed news feed.
     return false;
   }
 }

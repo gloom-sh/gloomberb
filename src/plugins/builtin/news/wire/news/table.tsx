@@ -15,6 +15,7 @@ import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
+import { logFailure } from "../../../../../utils/log-failure";
 import { nextHeaderSort } from "../../../../../utils/sort-values";
 import { formatNewsCategory } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
@@ -270,7 +271,7 @@ export function NewsArticleStackView({
   const loadNewsStory = useLoadNewsStory();
   const prefetchStory = useCallback((article: MarketNewsItem) => {
     if ((article.items?.length ?? 0) > 0) return;
-    void loadNewsStory(article.id).catch(() => {});
+    void loadNewsStory(article.id).catch(logFailure("news.table", "Prefetch news story failed"));
   }, [loadNewsStory]);
 
   // A crosshair pinned in the tab picks the newest story out by then, and

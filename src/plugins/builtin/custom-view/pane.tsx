@@ -14,6 +14,7 @@ import { PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../compon
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -241,7 +242,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
               footer="Shift+Enter newline · Esc cancel"
             />
           ),
-        }).catch(() => undefined);
+        }).catch(logFailure("custom-view.pane", "The view revision prompt failed"));
         const edited = specText ? parseViewSpecOr(specText) : null;
         if (!edited) return;
         if ("error" in edited) throw new Error(edited.error);
@@ -268,7 +269,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
                 selectedChoiceId="reload"
               />
             ),
-          }).catch(() => undefined);
+          }).catch(logFailure("custom-view.pane", "The view conflict prompt failed"));
           if (choice === "overwrite") {
             const published = await apiClient.publishTeamViewRevision(current.id, {
               spec: edited.spec as unknown as Record<string, unknown>,
@@ -295,7 +296,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
               selectedChoiceId={defaultTeam ?? undefined}
             />
           ),
-        }).catch(() => undefined);
+        }).catch(logFailure("custom-view.pane", "The view team prompt failed"));
       if (!teamId) return;
       const name = await dialog.prompt<string>({
         content: (context: PromptContext<string>) => (
@@ -308,7 +309,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
             width={40}
           />
         ),
-      }).catch(() => undefined);
+      }).catch(logFailure("custom-view.pane", "The view name prompt failed"));
       if (!name) return;
       const created = await apiClient.createTeamView(teamId, {
         name,

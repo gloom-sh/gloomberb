@@ -31,6 +31,7 @@ const isWebUrl = (value: unknown): value is string => {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
   } catch {
+    // Intentional ignore: malformed links fail letter validation like other invalid fields.
     return false;
   }
 };

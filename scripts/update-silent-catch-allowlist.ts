@@ -12,6 +12,9 @@ const EXCLUDED = [
 const INCLUDED = [
   "src/plugins/builtin/cloud/",
   "src/plugins/builtin/notes/",
+  "src/plugins/builtin/news/",
+  "src/plugins/builtin/custom-view/",
+  "src/plugins/builtin/thirteenf/",
 ];
 
 type SilentCatch = {

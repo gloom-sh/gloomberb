@@ -270,6 +270,7 @@ export function parseViewSpec(value: unknown): ViewSpec | null {
     try {
       decoded = JSON.parse(value);
     } catch {
+      // Intentional ignore: malformed input is represented by a null spec.
       return null;
     }
   }

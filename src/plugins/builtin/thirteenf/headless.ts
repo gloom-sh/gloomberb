@@ -647,7 +647,9 @@ export function createThirteenFHeadless(
             if (ctx.signal?.aborted) throw error;
             return [];
           });
-          shadowed.catch(() => {});
+          shadowed.catch(() => {
+            // Intentional ignore: only cancellation reaches this guard; the awaited promise still rejects.
+          });
         }
         try {
           holdings = await loadTickerHoldings(ticker, Number(args.options.offset ?? 0), ctx.signal);

@@ -14,7 +14,12 @@ export interface FeedElement {
 
 export function resolveFeedUrl(value: string, base: string): string {
   if (!value.trim()) return "";
-  try { return new URL(value.trim(), base).href; } catch { return ""; }
+  try {
+    return new URL(value.trim(), base).href;
+  } catch {
+    // Intentional ignore: malformed optional feed links are treated as absent.
+    return "";
+  }
 }
 
 // Read the structure of a syndication document without executing declarations or

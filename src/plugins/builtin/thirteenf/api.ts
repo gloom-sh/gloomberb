@@ -13,6 +13,7 @@ import { apiClient } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
 import { asRecord, finiteOrNull } from "../../../utils/guards";
+import { logFailure } from "../../../utils/log-failure";
 
 const FORMS_13F_BASE_URL = "https://forms13f.com/api/v1";
 const FORM_PAGE_LIMIT = 100;
@@ -169,7 +170,9 @@ async function fetchForms13F<T>(
   slot.promise = promise;
   activeRequests.set(key, promise);
   if (cached != null && !options.forceRefresh) {
-    void promise.catch(() => {});
+    void promise.catch((error: unknown) => {
+      if (!options.signal?.aborted) logFailure("thirteenf.api", "Refresh cached filing data failed")(error);
+    });
     return cached.value;
   }
   return promise;

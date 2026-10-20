@@ -165,6 +165,10 @@ test("built-in plugins stay excluded except the folders brought into scope", () 
   const scope = (file: string) => scanSilentCatches(file, "job.catch(() => {});").sites[0]!.scope;
   expect(scope("src/plugins/builtin/cloud/askg/pane.tsx")).toBe("in");
   expect(scope("src/plugins/builtin/notes/files.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/news/wire/feed-config.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/custom-view/loader.ts")).toBe("in");
+  expect(scope("src/plugins/builtin/thirteenf/data.ts")).toBe("in");
   expect(scope("src/plugins/builtin/chat/controller/index.ts")).toBe("out");
   expect(scope("src/plugins/builtin/cloudflare/index.ts")).toBe("out");
+  expect(scope("src/plugins/builtin/newsletter/index.ts")).toBe("out");
 });

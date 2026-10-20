@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import { abortable, withDeadline } from "../../../utils/async-deadline";
+import { logFailure } from "../../../utils/log-failure";
 import {
   buildBrowserRows,
   filingGapFor,
@@ -239,7 +240,10 @@ async function loadBrowserPage(
   }
   const found = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
   const funds = oneFundPerCik(found);
-  const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch((): ThirteenFTopFund[] => []);
+  const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch((error: unknown): ThirteenFTopFund[] => {
+    if (!signal?.aborted) logFailure("thirteenf.data", "Load performance ranks for fund search failed")(error);
+    return [];
+  });
   const topByCik = new Map(topFunds.map((fund) => [fund.cik, fund]));
   const matchedTopFunds = funds
     .map((fund) => topByCik.get(fund.cik))
