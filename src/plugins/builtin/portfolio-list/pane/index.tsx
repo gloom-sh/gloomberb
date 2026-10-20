@@ -78,6 +78,7 @@ import {
   tickerRemovalSummary,
 } from "./remove-ticker";
 import { QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
+import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
   getCollectionTickersFromConfig,
@@ -716,9 +717,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     ? `${cursorSymbol} market cap: ${describeFundamentalMarketCap(selectedCap.provenance)}.` : undefined;
   const multiplierNotice = isPortfolioTab && selectedTicker && hasUnknownOptionMultiplier(selectedTicker, activeCollectionId)
     ? `${cursorSymbol} has no contract multiplier; its value assumes 1x.` : undefined;
+  // The row's change cells say DELISTED; the notice gives its last session.
+  const selectedDelisting = selectedFinancials?.quote?.delisting;
+  const delistedNotice = selectedDelisting ? `${cursorSymbol}: ${delistingLabel(selectedDelisting)}.` : undefined;
   usePaneNoticeFooter({
     registrationId: "portfolio-list-notices",
-    notices: [...summaryNotices, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
+    notices: [...summaryNotices, delistedNotice, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
     focused: focused && !quickAddFocused,
   });
   const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight);

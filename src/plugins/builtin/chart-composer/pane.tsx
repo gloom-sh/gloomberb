@@ -949,8 +949,15 @@ function ChartComposerSurface({
     ? resolution.legendSeries?.filter((entry) => resolution.priceComparison?.seriesIds.includes(entry.id))
       .map((entry) => `${entry.label}: no observations in the selected date range.`)
     : []);
+  // A charted listing that no longer trades is said in the footer itself: "Delisted Oct 27, 2022" when it
+  // is the chart's one listing, which the title names, else "TWTR: Delisted Oct 27, 2022" for each.
+  const delistings = resolution.delistings;
+  const chartedListings = new Set(spec.series.flatMap((entry) => entry.source.kind === "security" ? [entry.source.instrument.symbol] : []));
+  const delistingKey = delistings?.length === 1 && chartedListings.size === 1 ? delistings[0]!.label
+    : delistings?.map((delisting) => delisting.notice).join(" · ") ?? "";
   const statusWarnings = resolution.warnings.filter((warning) => (
     warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice
+    && !delistings?.some((delisting) => delisting.notice === warning)
     && !FORWARD_VALUATION_BASIS_NOTICES.has(warning)
     && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
     && !spec.studies.some((study) => (
@@ -1002,13 +1009,16 @@ function ChartComposerSurface({
     return newest > end ? formatCompositeDatasetDate(new Date(newest), end) : null;
   }, [activeRuntimeViewport, plottedSeries, spec, viewport]);
   usePaneFooter(footerId, () => ({
-    info: loading
-      ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
-      : pickingAnchor
-        ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
-        : newestBeyondView
-          ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
-          : [],
+    info: [
+      ...(delistingKey ? [{ id: "delisted", parts: [{ text: delistingKey, tone: "warning" as const }] }] : []),
+      ...(loading
+        ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
+        : pickingAnchor
+          ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
+          : newestBeyondView
+            ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
+            : []),
+    ],
     hints: [
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
@@ -1016,7 +1026,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
+  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {

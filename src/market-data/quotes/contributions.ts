@@ -212,6 +212,8 @@ export function mergeQuoteContribution(
     overnightPriceKind: next.overnightPriceKind,
     // The board this observation was read on; one read on the listing's own line names none.
     tradingExchangeName: next.tradingExchangeName,
+    // Whether the listing no longer trades is said with each observation: a symbol that trades again drops it.
+    delisting: next.delisting,
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,

@@ -1,3 +1,5 @@
+import type { ListingDelisting } from "./financials";
+
 /**
  * What a ticker is, at the grain that decides which research has data for it:
  * filings, executives and analyst coverage exist for a company's stock,
@@ -77,4 +79,6 @@ export interface InstrumentSearchResult {
    * carries that name. A leftover listing of the merged company (GOGLC on
    * BYMA) is linked to it by search, naming the `successor`. */
   formerIssuer?: { symbol: string; name: string; until: string; successor?: { symbol: string; name: string | null } };
+  /** A US listing that no longer trades, found by its exact symbol (TWTR). Untrusted until parsed. */
+  delisting?: ListingDelisting;
 }

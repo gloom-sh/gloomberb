@@ -23,6 +23,16 @@ describe("quote-resolution", () => {
     delete contributions.ibkr!.lastTradePrice;
     expect(resolveCanonicalQuote(contributions, now).quote?.lastTradePrice).toBeUndefined();
   });
+  test("a listing that no longer trades stays so through merging and resolution, and drops it when it trades again", () => {
+    const now = Date.parse("2026-10-20T15:00:00Z");
+    const delisting = { status: "delisted" as const, lastTradeDate: "2022-10-27", historyStart: "2016-01-04" };
+    const last = { symbol: "TWTR", providerId: "gloomberb-cloud", dataSource: "delayed" as const, price: 53.86,
+      currency: "USD", change: 0.51, changePercent: 0.96, lastUpdated: Date.parse("2022-10-28T12:00:00Z") };
+    const merged = mergeQuoteContribution(normalizeQuoteContribution({ ...last, delisting })!, { ...last, delisting });
+    expect(resolveCanonicalQuote({ "gloomberb-cloud": merged }, now).quote?.delisting).toEqual(delisting);
+    const tradingAgain = mergeQuoteContribution(merged, { ...last, price: 12, lastUpdated: now });
+    expect(resolveCanonicalQuote({ "gloomberb-cloud": tradingAgain }, now).quote?.delisting).toBeUndefined();
+  });
   test("resolves price, session, listing venue, and route from separate providers", () => {
     const now = Date.parse("2026-04-08T11:00:00Z");
     const contributions: QuoteContributionMap = {

@@ -238,6 +238,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const companyNameWidth = Math.max(8, quoteTextWidth
     - displayWidth(venueText)
     - (marketStateText ? displayWidth(marketStateText) + 1 : 0));
+  // A listing that no longer trades keeps its delisting date whole on a narrow pane: the venue gives way, then the name.
+  const delistedRoom = quote?.delisting && marketStateText ? quoteTextWidth - displayWidth(marketStateText) - 1 : null;
+  const identityVenue = delistedRoom !== null && delistedRoom - displayWidth(venueText) < 8 ? "" : venueText;
+  const identityNameWidth = delistedRoom !== null ? delistedRoom - displayWidth(identityVenue) : companyNameWidth;
+  const identityName = identityNameWidth >= 4 ? companyName : "";
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
   const dayRangeLabel = t("Day Range");
@@ -331,13 +336,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             {hasIdentityLine && (
               <Box flexDirection="row" minWidth={0} overflow="hidden">
-                {companyName && (
-                  <ClippedText fg={colors.textDim} text={companyName} width={companyNameWidth} />
+                {identityName && (
+                  <ClippedText fg={colors.textDim} text={identityName} width={identityNameWidth} />
                 )}
-                {venueText && <Text flexShrink={0} fg={colors.textDim}>{venueText}</Text>}
-                {quote?.marketState && (
+                {identityVenue && <Text flexShrink={0} fg={colors.textDim}>{identityVenue}</Text>}
+                {marketStateText && (
                   <Text flexShrink={0} fg={quoteSessionColor(quote)}>
-                    {companyName || venueText ? " " : ""}{marketStateText}
+                    {identityName || identityVenue ? " " : ""}{marketStateText}
                   </Text>
                 )}
               </Box>

@@ -56,6 +56,7 @@ import { loadPerpetualMarket } from "../../../../sources/gloomberb-cloud/perpetu
 import { listedMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
 import { chunked, mapWithConcurrency } from "../../../../utils/concurrency";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
+import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
 import { cliFreshnessFooter } from "../../../../cli/result";
@@ -1136,13 +1137,15 @@ async function showCollectionWithMarketData(
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
-      const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
+      // A listing that no longer trades has no day's move: its last session's is years old.
+      const changeText = quote?.delisting ? "—" : headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
+      const staleText = quote?.delisting ? delistingLabel(quote.delisting) : lastTrade ? `STALE ${lastTrade}` : "STALE";
       return [
         listingLabel(ticker),
         venue ?? "—",
         priceText,
         changeText,
-        ...stale.length > 0 ? [rowStale ? cliStyles.warning(lastTrade ? `STALE ${lastTrade}` : "STALE") : ""] : [],
+        ...stale.length > 0 ? [rowStale ? cliStyles.warning(staleText) : ""] : [],
         ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
         ...showFunding ? [funding == null ? "—" : colorBySign(formatPerpetualRate(funding, 4), funding)] : [],
         marketCap == null ? "—" : `${formatCompact(marketCap)} ${currency}`,
@@ -1168,7 +1171,8 @@ async function showCollectionWithMarketData(
     if (notes.length > 0) console.log(["", ...notes.map((note) => cliStyles.muted(note))].join("\n"));
     // The closing line counts the stale rows; the line under it names them.
     if (stale.length > 0) {
-      staleNote = `Stale: ${namedList(stale.map(({ ticker, lastTrade }) => `${listingLabel(ticker)}${lastTrade ? ` (last trade ${lastTrade})` : ""}`))}.`;
+      staleNote = `Stale: ${namedList(stale.map(({ ticker, quote, lastTrade }) => `${listingLabel(ticker)}${quote?.delisting ? ` (${delistingLabel(quote.delisting)})`
+        : lastTrade ? ` (last trade ${lastTrade})` : ""}`))}.`;
     }
   }
   if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}${staleNote ? `\n${cliStyles.muted(staleNote)}` : ""}`);
@@ -1304,6 +1308,8 @@ async function valueWatchlistRows({
         // A stale quote (as the source line counts it) and the exchange-local date it last traded.
         stale,
         lastTradeDate: lastTrade,
+        // A listing that no longer trades: its status and last session.
+        ...quote?.delisting ? { delisting: quote.delisting } : {},
       },
     });
   }

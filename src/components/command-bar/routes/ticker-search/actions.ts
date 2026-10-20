@@ -17,6 +17,7 @@ import {
   type TickerSearchInstrumentClass,
 } from "../../../../tickers/search";
 import type { ResultItem } from "../../list/model";
+import { delistingLabel, parseListingDelisting } from "../../../../market-data/quotes/delisting";
 import {
   buildTickerSearchCacheKey,
   createQuickLookTickerCandidates,
@@ -74,6 +75,9 @@ export function useCommandBarTickerSearchActions({
     // The candidate's detail leads with the name; the rest repeats the badge or venue.
     const leadingName = candidate.detail.split(" | ")[0]?.trim();
     const name = leadingName && leadingName.toUpperCase() !== candidate.label.toUpperCase() ? leadingName : undefined;
+    // A listing that no longer trades says so under its row, with its last session.
+    const delisting = parseListingDelisting(candidate.result?.delisting);
+    const lines = delisting ? [{ segments: [{ text: delistingLabel(delisting), emphasis: "muted" as const }] }] : undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
       return {
@@ -86,6 +90,7 @@ export function useCommandBarTickerSearchActions({
         badge,
         name,
         right,
+        ...(lines ? { lines } : {}),
         category: candidate.category,
         kind: "ticker",
         resolveTicker: async () => candidate.ticker!,
@@ -112,6 +117,7 @@ export function useCommandBarTickerSearchActions({
       badge,
       name,
       right,
+      ...(lines ? { lines } : {}),
       category: candidate.category,
       kind: "search",
       resolveTicker: () => resolveSearchTicker(candidate.result!, publicTickerKey(

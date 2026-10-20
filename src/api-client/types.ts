@@ -1563,6 +1563,11 @@ export interface CloudMarketResponse<T> {
   omittedSessions?: unknown;
   /** Untrusted until the history adapter validates its boundary dates. */
   coverage?: CloudHistoryCoverage;
+  /**
+   * Untrusted: a US listing that no longer trades, `{ status, lastTradeDate,
+   * historyStart }`. Its history ends on `lastTradeDate`. Read by parseListingDelisting.
+   */
+  delisting?: unknown;
   providerMeta?: {
     provider?: string;
     upstream?: string;

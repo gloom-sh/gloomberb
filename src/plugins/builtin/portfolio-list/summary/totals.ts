@@ -150,8 +150,8 @@ export function calculatePortfolioSummaryTotals(
     const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
     if (!isPortfolio) {
-      // The CHG% column's value, so Avg Day is the mean of that column.
-      const changePercent = headlineQuoteDisplay(activeQuote, quote)?.changePercent;
+      // The CHG% column's value, so Avg Day is the mean of that column; a listing that no longer trades has none.
+      const changePercent = quote?.delisting ? undefined : headlineQuoteDisplay(activeQuote, quote)?.changePercent;
       if (changePercent != null) {
         watchlistChangeSum += changePercent;
         watchlistCount++;
@@ -220,7 +220,9 @@ export function calculatePortfolioSummaryTotals(
       totalMktValue += marketValue.gross;
       netMktValue += marketValue.net;
       if (activeQuote && Number.isFinite(grossPriceUnits)) {
-        const previousClose = activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
+        // A listing that no longer trades does not move: its last session's change is not today's.
+        const previousClose = quote?.delisting ? activeQuote.price
+          : activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
         totalPrevValue += toBaseQuote(grossPriceUnits * previousClose);
         signedDailyPnl += toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
       } else {

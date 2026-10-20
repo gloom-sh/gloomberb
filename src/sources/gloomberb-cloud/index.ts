@@ -45,6 +45,7 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
 import { createProviderMiss, ProviderBusyError, providerMissReason } from "../provider-errors";
+import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { isRetryableApiError } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
 import { nonUsSecListingVenue } from "../../utils/sec";
@@ -251,15 +252,39 @@ function mapCloudPriceHistory(
   }
   // Sessions of daily bars the answer left out for a close at or below zero.
   const nonPositiveCloseDates = resolution === "1d" ? cloudNonPositiveCloseDates(response.omittedSessions) : undefined;
+  const delisting = parseListingDelisting(response.delisting);
   return {
     points,
     resolution,
+    ...(delisting ? { delisting } : {}),
     ...(session && matchingSource && matchingIdentity ? { session } : {}),
     ...(nonPositiveCloseDates ? { nonPositiveCloseDates } : {}),
     ...(coverageStart ? { coverageStart } : {}),
     ...(coverageNote ? { coverageNote } : {}),
     ...(extendedHours ? { extendedHours: true } : {}),
   };
+}
+
+const DAY_MS = 86_400_000;
+/** Listings Gloom Cloud said no longer trade, by listing key: the day after each one's last session. */
+const delistedHistoryEnds = new Map<string, Date>();
+
+/**
+ * Where a trailing window ends for a listing that no longer trades: the day
+ * after its last session, as a window ending now ends the day after today's.
+ * A window ending now would hold none of its bars, or only the last few.
+ */
+function delistedHistoryEnd(response: CloudMarketResponse<unknown>, key: string): Date | null {
+  const delisting = parseListingDelisting(response.delisting);
+  if (!delisting) {
+    // The symbol trades again (another issuer took it): its windows end now.
+    delistedHistoryEnds.delete(key);
+    return null;
+  }
+  const end = new Date(Date.parse(`${delisting.lastTradeDate}T00:00:00Z`) + DAY_MS);
+  if (delistedHistoryEnds.size >= 1024) delistedHistoryEnds.clear();
+  delistedHistoryEnds.set(key, end);
+  return end;
 }
 
 function cloudHistoryResolution(interval: string): ManualChartResolution | null {
@@ -549,14 +574,14 @@ export class GloomberbCloudProvider implements AssetDataProvider {
         // A successful batch can contain an expired cache fallback for only
         // one listing. Match the single-quote freshness boundary and let the
         // normal router retry that item without discarding its healthy peers.
-        if (item.stale === true) {
+        // A listing that no longer trades has only that last quote: kept, flagged stale.
+        const delisted = !!parseListingDelisting(item.data?.delisting);
+        if (item.stale === true && !delisted) {
           return { target, quote: null, error: createProviderMiss(`Cloud quotes are stale for ${target.symbol}`) };
         }
         if ((item.status === "success" || item.status === "partial") && item.data) {
-          return {
-            target,
-            quote: retainRequestedQuoteSymbol(mapQuote(item.data), target.symbol),
-          };
+          const quote = retainRequestedQuoteSymbol(mapQuote(item.data), target.symbol);
+          return { target, quote: item.stale === true ? { ...quote, stale: true } : quote };
         }
         return {
           target,
@@ -778,19 +803,27 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(resolution);
-    const endDate = new Date();
-    const startDate = subtractTimeRange(endDate, bufferRange);
     const includeTime = /^\d+(min|h)$/i.test(interval);
-    const { response, extendedHours } = await withCloudFallback(
-      () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
-        interval,
-        startDate: formatCloudDateTime(startDate, includeTime, exchange),
-        endDate: formatCloudHistoryEnd(endDate, includeTime, exchange),
-        ...(session ? { session } : {}),
-      }), _context),
-      `Cloud chart data is unavailable for ${ticker}`,
-    );
-    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate, extendedHours);
+    const listingKey = canonicalTickerKey(target.symbol, exchange);
+    const load = (endDate: Date) => {
+      const startDate = subtractTimeRange(endDate, bufferRange);
+      return withCloudFallback(
+        () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
+          interval,
+          startDate: formatCloudDateTime(startDate, includeTime, exchange),
+          endDate: formatCloudHistoryEnd(endDate, includeTime, exchange),
+          ...(session ? { session } : {}),
+        }), _context),
+        `Cloud chart data is unavailable for ${ticker}`,
+      ).then((answer) => ({ ...answer, startDate, endDate }));
+    };
+    // A listing that no longer trades is read up to its last session, not up to now.
+    const knownEnd = delistedHistoryEnds.get(listingKey);
+    const now = new Date();
+    let answer = await load(knownEnd ?? now);
+    const delistedEnd = delistedHistoryEnd(answer.response, listingKey);
+    if (delistedEnd ? delistedEnd.getTime() < answer.endDate.getTime() : knownEnd) answer = await load(delistedEnd ?? now);
+    return mapCloudPriceHistory(answer.response, target.symbol, exchange, interval, answer.startDate, answer.endDate, answer.extendedHours);
   }
 
   async getDetailedPriceHistory(

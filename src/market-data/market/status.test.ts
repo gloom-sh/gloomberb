@@ -15,7 +15,9 @@ import {
   quoteMarketStateLabel,
   quoteSessionColor,
   quoteSessionLabel,
+  quoteSessionStateLabel,
 } from "./status";
+import { parseListingDelisting } from "../quotes/delisting";
 import { colors } from "../../theme/colors";
 
 describe("marketStateCountdown", () => {
@@ -224,6 +226,31 @@ describe("a quote older than its venue's latest completed session", () => {
     // A delisted line years old, with no venue named, is stale whatever its source says.
     const delisted = { ...behind, listingExchangeName: undefined, lastUpdated: Date.parse("2022-03-14T23:00:00Z"), stale: true };
     expect(quoteSessionLabel({ ...delisted, marketState: "POST" }, regular)).toBe("STALE");
+  });
+
+  test("a listing Gloom Cloud says no longer trades reads as delisted, dated by its last session, wherever its status shows", () => {
+    // TWTR's last quote says REGULAR; NYSE removed it the day after its last session.
+    const twitter: Quote = { ...nyse("REGULAR", "2022-10-27T23:59:59Z"), symbol: "TWTR", stale: true,
+      delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } };
+    expect(quoteSessionLabel(twitter, regular)).toBe("Delisted Oct 27, 2022");
+    expect(quoteMarketStateLabel(twitter, regular)).toBe("Delisted Oct 27, 2022");
+    expect(quoteSessionStateLabel(twitter, regular)).toBe("DELISTED");
+    expect(quoteSessionColor(twitter, colors, regular)).toBe(colors.warning);
+    expect(quoteDotMarketState(twitter, regular)).toBeUndefined();
+    // Only its last trade known (First Republic, a bank, files no exchange removal with SEC).
+    const firstRepublic = { ...twitter, symbol: "FRC", delisting: { status: "inactive" as const, lastTradeDate: "2023-04-28", historyStart: "2016-01-04" } };
+    expect(quoteSessionLabel(firstRepublic, regular)).toBe("Last traded Apr 28, 2023");
+    expect(quoteSessionStateLabel(firstRepublic, regular)).toBe("INACTIVE");
+  });
+
+  test("a delisting the service sends malformed marks nothing", () => {
+    expect(parseListingDelisting({ status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04", removal: {} }))
+      .toEqual({ status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" });
+    for (const value of [null, "delisted", { status: "halted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" },
+      { status: "delisted", lastTradeDate: "Oct 27, 2022", historyStart: "2016-01-04" },
+      { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2023-01-03" }]) {
+      expect(parseListingDelisting(value)).toBeUndefined();
+    }
   });
 
   test("the last session's close or after-hours print keeps its state before the open and through the next session", () => {

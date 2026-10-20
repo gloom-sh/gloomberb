@@ -13,6 +13,12 @@ test("what became of a symbol is one line from quote's sources: a listing that s
   // Said where nothing was served; data that was served speaks for itself.
   expect(listingFateNotes(ended, { served: false })).toEqual(["TWTR stopped trading 2022-10-27; no history or options served"]);
   expect(listingFateNotes(ended, { served: true })).toEqual([]);
+  // Once the service says it no longer trades, its history is served, ending on that session, and says so.
+  const delisted = describeListingFate({ symbol: "TWTR" }, { ...twitter,
+    delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } }, null, now);
+  expect(delisted.endedOn).toBe("2022-10-27");
+  expect(listingFateNotes(delisted, { served: true })).toEqual(["TWTR: Delisted Oct 27, 2022"]);
+  expect(listingFateNotes(delisted, { served: false })).toEqual(["TWTR: Delisted Oct 27, 2022"]);
 
   const hop = { from: "FB", to: "META", date: "2022-06-09" };
   const fb: TickerChanges = { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] };

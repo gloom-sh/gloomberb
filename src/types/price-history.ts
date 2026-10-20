@@ -1,5 +1,5 @@
 import type { ManualChartResolution } from "../time-series/resolution";
-import type { PricePoint } from "./financials";
+import type { ListingDelisting, PricePoint } from "./financials";
 
 /** Declared by the actual history source, independently of quote session state. */
 export interface HistorySession {
@@ -42,4 +42,9 @@ export interface PriceHistoryResult {
    * current copy, whatever its last bar, and for a source's own answer.
    */
   savedCopyBehind?: true;
+  /**
+   * The listing no longer trades: its bars end on `lastTradeDate` and no later
+   * session will add one, so a copy ending there is complete.
+   */
+  delisting?: ListingDelisting;
 }

@@ -1625,4 +1625,6 @@ export const es: Record<string, string> = {
   "It is kept once it has been read with a connection.": "Se guarda al leerla una vez con conexión.",
   "Academy: {title}": "Academia: {title}",
   "{minutes} min": "{minutes} min",
+  "Delisted {date}": "Excluida de bolsa el {date}",
+  "Last traded {date}": "Última negociación el {date}",
 };

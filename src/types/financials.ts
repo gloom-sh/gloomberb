@@ -34,6 +34,20 @@ export interface QuoteProvenance {
   rejectedPriceProviders?: string[];
 }
 
+/**
+ * A US listing that no longer trades, as Gloom Cloud states it: TWTR, last
+ * traded 2022-10-27 and removed from NYSE the next day. Its daily history is
+ * still served, ending on that session. Dates are New York trading dates.
+ */
+export interface ListingDelisting {
+  /** "delisted": the exchange's removal of the listing is on record; "inactive": only its last trade is known. */
+  status: "delisted" | "inactive";
+  /** The last session with a trade (YYYY-MM-DD). */
+  lastTradeDate: string;
+  /** The first session served (YYYY-MM-DD). */
+  historyStart: string;
+}
+
 /** Static listing facts from a quote observation, without an investable price. */
 export interface QuoteMetadataSource {
   providerId?: string;
@@ -100,6 +114,8 @@ export interface Quote extends DepositaryReceiptFacts {
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
   delivery?: QuoteDelivery;
   stale?: boolean;
+  /** The listing no longer trades: the price is its last trade (ListingDelisting). */
+  delisting?: ListingDelisting;
   exchangeName?: string;
   fullExchangeName?: string;
   listingExchangeName?: string;

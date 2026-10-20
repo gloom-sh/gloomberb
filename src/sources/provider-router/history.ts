@@ -254,8 +254,12 @@ function normalizeRequestResult(value: PriceHistoryResult, request: HistoryReque
   };
 }
 
-/** A copy fetched at `fetchedAt`, now for a source's answer. */
+/**
+ * A copy fetched at `fetchedAt`, now for a source's answer. A listing that no
+ * longer trades is never behind: its bars end on its last session for good.
+ */
 function resultIsStale(value: PriceHistoryResult, symbol: string, exchange: string, fetchedAt: number, intervalMs?: number | null): boolean {
+  if (value.delisting) return false;
   return isPriceHistoryStaleForCurrentWindow(value.points, Date.now(), {
     symbol, exchange, intervalMs: intervalMs ?? (value.resolution ? priceHistoryIntervalMs(value.resolution) : undefined), session: value.session,
     fetchedAt,
@@ -584,6 +588,7 @@ export class ProviderRouterHistoryRoutes {
     const currentWindow = request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd));
     const now = Date.now();
     const fetchState = (record: { fetchedAt: number; value: PriceHistoryResult }, checkedAt?: number): CalendarHistoryFetchState => currentWindow
+      && !record.value.delisting
       ? calendarHistoryFetchState(record.value.points, record.fetchedAt, now, {
         symbol: target.symbol,
         exchange: target.exchange || request.target.exchange,

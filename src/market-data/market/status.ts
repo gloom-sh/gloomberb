@@ -4,6 +4,7 @@ import { isFiniteNumber } from "../../utils/guards";
 import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 import { isQuoteBeforeLatestSession } from "../quotes/freshness";
+import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn } from "./freshness";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
@@ -75,9 +76,12 @@ function closeLabel(date: string): string {
 /**
  * A quote's market state as a status cell names it (marketStateLabel), STALE
  * for a print older than its venue's latest session, and the close it stands
- * at (`Thu close`) in a pre-market nothing has traded in yet.
+ * at (`Thu close`) in a pre-market nothing has traded in yet. A listing that
+ * no longer trades says so with its last session ("Delisted Oct 27, 2022"),
+ * whatever state its last print carries.
  */
 export function quoteMarketStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
+  if (quote?.delisting) return delistingLabel(quote.delisting);
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   const awaiting = preMarketCloseAwaitingPrint(quote);
@@ -160,8 +164,9 @@ function overnightSessionDisplay(quote: Quote): ExtendedSessionDisplay | null {
 }
 
 /**
- * A quote's session as a status cell names it: STALE when its last print is
- * older than its venue's latest completed session (isQuoteBeforeLatestSession),
+ * A quote's session as a status cell names it: "Delisted Oct 27, 2022" (or
+ * "Last traded ...") for a listing that no longer trades, STALE when its last
+ * print is older than its venue's latest completed session (isQuoteBeforeLatestSession),
  * the overnight session while the quote is priced by it, the close it stands
  * at (`Thu close`) in a pre-market nothing has traded in yet, else its market
  * state (marketStateLabel). The exchange stays closed overnight, so the state
@@ -174,13 +179,15 @@ export function quoteSessionLabel(quote: Quote | null | undefined, now = Date.no
 /**
  * quoteSessionLabel as an export keeps it, one of a fixed set: the market
  * state (`PRE-MKT`) in a pre-market nothing has traded in yet, where the
- * status cell names the close (`Thu close`).
+ * status cell names the close (`Thu close`), and DELISTED or INACTIVE for a
+ * listing that no longer trades, its date being the export's own field.
  */
 export function quoteSessionStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
   return sessionLabel(quote, now, false);
 }
 
 function sessionLabel(quote: Quote | null | undefined, now: number, standingClose: boolean): string | null {
+  if (quote?.delisting) return standingClose ? delistingLabel(quote.delisting) : delistingStateLabel(quote.delisting);
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   if (overnightSessionDisplay(quote)) return "OVERNIGHT";
@@ -189,11 +196,13 @@ function sessionLabel(quote: Quote | null | undefined, now: number, standingClos
 }
 
 /**
- * The color of quoteSessionLabel: STALE in the warning color every stale
- * mark uses, an extended session's while the overnight session prices the
- * quote, a closed session's for the close a pre-market still stands at.
+ * The color of quoteSessionLabel: STALE, and a listing that no longer trades,
+ * in the warning color every stale mark uses, an extended session's while the
+ * overnight session prices the quote, a closed session's for the close a
+ * pre-market still stands at.
  */
 export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors, now = Date.now()): string {
+  if (quote?.delisting) return palette.warning;
   if (!quote?.marketState) return palette.textDim;
   if (isQuoteBeforeLatestSession(quote, now)) return palette.warning;
   if (overnightSessionDisplay(quote)) return marketStateColor("POST", palette);
@@ -206,7 +215,7 @@ export function quoteSessionColor(quote: Quote | null | undefined, palette: Them
  * with no known session rather than an open market.
  */
 export function quoteDotMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
-  return quote && !isQuoteBeforeLatestSession(quote, now) ? quote.marketState : undefined;
+  return quote && !quote.delisting && !isQuoteBeforeLatestSession(quote, now) ? quote.marketState : undefined;
 }
 
 /** Closed prices are final snapshots, so they should not look live or directional. */

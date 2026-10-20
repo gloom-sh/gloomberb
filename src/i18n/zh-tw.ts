@@ -1621,4 +1621,6 @@ export const zhTW: Record<string, string> = {
   "It is kept once it has been read with a connection.": "連線閱讀過一次後就會儲存。",
   "Academy: {title}": "學院：{title}",
   "{minutes} min": "{minutes} 分鐘",
+  "Delisted {date}": "已下市 {date}",
+  "Last traded {date}": "最後交易 {date}",
 };

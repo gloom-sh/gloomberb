@@ -1621,4 +1621,6 @@ export const zhCN: Record<string, string> = {
   "It is kept once it has been read with a connection.": "联网阅读过一次后即会保存。",
   "Academy: {title}": "学院：{title}",
   "{minutes} min": "{minutes} 分钟",
+  "Delisted {date}": "已退市 {date}",
+  "Last traded {date}": "最后交易 {date}",
 };

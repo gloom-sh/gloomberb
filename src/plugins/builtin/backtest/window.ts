@@ -2,6 +2,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { futuresGenericCaption, futuresGenericListing } from "../../../utils/futures-generic";
 import type { BacktestHistory } from "./client";
 import { runBacktest, type BacktestOptions, type BacktestResult } from "./engine";
+import { delistingLabel } from "../../../market-data/quotes/delisting";
 import type { BacktestBar, Rule } from "./rules";
 
 /** Which served sessions a run tests. */
@@ -39,10 +40,12 @@ export interface HistoryBacktestResult extends BacktestResult {
  * and a session still forming, which is left out unless asked for so the
  * newest complete session ends the run and a repeat gives the same answer.
  * An end after the newest complete session is warned too: sessions still to
- * come up to it change the run until it has passed.
+ * come up to it change the run until it has passed. A listing that no longer
+ * trades has none to come: a run that reaches its last session ends there,
+ * says so, and is repeatable.
  */
 export function backtestWindow(
-  history: Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped">,
+  history: Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped" | "delisting"> & { symbol?: string },
   options: BacktestWindowOptions = {},
 ): { bars: BacktestBar[]; warnings: string[]; repeatable: boolean } {
   const end = options.end?.trim() || null;
@@ -70,6 +73,16 @@ export function backtestWindow(
         + `${through ? `: the test runs through ${through}, the last complete session` : ""}.`);
   }
   const newestComplete = history.bars.findLast((bar) => !bar.partial)?.date;
+  const delisting = history.delisting;
+  if (delisting) {
+    const listing = `${history.symbol ? `${parsePublicTickerKey(history.symbol).symbol}: ` : ""}${delistingLabel(delisting)}`;
+    if (through && through >= delisting.lastTradeDate) {
+      warnings.push(`${listing}. The run ends on its last session, ${through}, and a position still held`
+        + " is valued at that close, not at anything holders received after it.");
+      return { bars, warnings, repeatable: true };
+    }
+    warnings.push(`${listing}.`);
+  }
   const repeatable = !!end && !!newestComplete && end <= newestComplete;
   if (end && !repeatable && through) {
     warnings.push(`The end date ${end} is after the newest complete session, so the run ends at ${through}`
@@ -80,7 +93,7 @@ export function backtestWindow(
 
 /** The run over a loaded history: its window's bars, then the engine, every left-out session warned first. */
 export function runHistoryBacktest(
-  history: Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped">,
+  history: Pick<BacktestHistory, "bars" | "skippedDates" | "undatedSkipped" | "delisting"> & { symbol?: string },
   entry: Rule,
   exit: Rule,
   options: BacktestOptions & BacktestWindowOptions,

@@ -534,6 +534,8 @@ export function resolveCanonicalQuote(
     overnightPriceKind: priceProvider?.overnightPriceKind,
     // An index's regular sessions come with the print they date.
     indexSession: priceProvider?.indexSession,
+    // A listing that no longer trades: the price is its last trade.
+    delisting: priceProvider?.delisting,
     bid: resolved.bid as Quote["bid"],
     ask: resolved.ask as Quote["ask"],
     bidSize: resolved.bidSize as Quote["bidSize"],

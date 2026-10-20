@@ -1,6 +1,7 @@
 import { logFailure } from "../utils/log-failure";
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
+import { delistingLabel } from "../market-data/quotes/delisting";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
@@ -1612,6 +1613,7 @@ async function resolveChartSpecPass(
     && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId))
     ? [FINANCIAL_VINTAGE_NOTICE] : [];
   const priorityWarnings: string[] = [];
+  const delistings = new Map<string, { symbol: string; label: string; notice: string }>();
   const baseSeriesIds = new Set(spec.series.map((entry) => entry.id));
   const visibleSeriesIds = new Set(spec.series
     .filter((entry) => entry.visible !== false)
@@ -1952,6 +1954,14 @@ async function resolveChartSpecPass(
     const history = loaded.points;
     const coverageNotice = historyCoverageNotice(loaded.coverageStart, request.visibleBounds.start);
     if (coverageNotice) priorityWarnings.push(coverageNotice);
+    // A listing that no longer trades is named so beside its bars, which end on its last session.
+    if (loaded.delisting) {
+      const symbol = parsePublicTickerKey(source.instrument.symbol).symbol;
+      const label = delistingLabel(loaded.delisting);
+      const notice = `${symbol}: ${label}`;
+      priorityWarnings.push(notice);
+      if (!delistings.has(notice)) delistings.set(notice, { symbol, label, notice });
+    }
     // Read per request: one recovered window answers every visible window that shares its acquisition.
     if (loaded.recovery && request.visibleBounds.start !== null && request.visibleBounds.start < loaded.recovery.start) {
       priorityWarnings.push(historyRetentionNotice(loaded.recovery.retention, loaded.resolution ?? request.resolution,
@@ -2388,6 +2398,7 @@ async function resolveChartSpecPass(
     loading: false,
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],
+    ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
     viewport,
     resolution,
   };

@@ -8,6 +8,7 @@ import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import { colors, priceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
+import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
 import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
 import {
@@ -466,6 +467,8 @@ export function getColumnValue(
       return resolvePortfolioPriceValue(headlineQuote, brokerMarkPrice, headlineQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
     case "change":
       if (!headlineQuote) return { text: "—" };
+      // A listing that no longer trades has no day's move: its last session's is years old.
+      if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       return {
         text: formatSignedMarketPrice(headlineQuote.change, { ...currentQuoteOptions, maxWidth: col.width }),
         color: marketChangeColor(headlineQuote.change, quote?.marketState),
@@ -491,6 +494,7 @@ export function getColumnValue(
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
     case "change_pct": {
+      if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       const changePercent = headlineChangePercent(headlineQuote, quote);
       return quote
         ? { text: formatPercentRaw(changePercent), color: marketChangeColor(changePercent, quote.marketState) }
@@ -575,6 +579,7 @@ export function getColumnValue(
       return { text, color: /[1-9]/.test(text) ? priceColor(allocation.tradeValue!) : undefined };
     }
     case "day_pnl":
+      if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
         return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
@@ -733,9 +738,9 @@ export function getSortValue(
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
     case "change":
-      return headlineQuote?.change ?? null;
+      return quote?.delisting ? null : headlineQuote?.change ?? null;
     case "change_pct":
-      return headlineChangePercent(headlineQuote, quote) ?? null;
+      return quote?.delisting ? null : headlineChangePercent(headlineQuote, quote) ?? null;
     case "volume":
       return reportedQuoteVolume(quote);
     case "dollar_volume": {
@@ -777,6 +782,7 @@ export function getSortValue(
     case "trade_value":
       return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).tradeValue;
     case "day_pnl":
+      if (quote?.delisting) return null;
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         return toBaseQuote(totalPriceUnits * activeQuote.change);
       }

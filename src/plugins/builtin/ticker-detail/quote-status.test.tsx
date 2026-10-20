@@ -112,3 +112,17 @@ test("unknown source timestamps do not become fabricated dates and nonquote tabs
   expect(financial).not.toContain("Stale quote");
   expect(footer.info.some((segment) => segment.id === "ticker-research-stale")).toBe(false);
 });
+
+for (const width of [36, 48, 120]) {
+  test(`a listing that no longer trades keeps its delisting date whole in the header: ${width}`, async () => {
+    await render("pro", width);
+    const delisting = { status: "delisted" as const, lastTradeDate: "2026-09-10", historyStart: "2016-01-04" };
+    const delisted = await replaceQuote({ ...quote(), delisting });
+    const header = delisted.split("\n").find((line) => line.includes("Delisted")) ?? "";
+    expect(header).toContain("Delisted Sep 10, 2026");
+    // The venue, then the name, give way on a narrow pane; a wide one keeps both.
+    if (width === 120) expect(header).toContain("Alibaba Group (HKEX) Delisted Sep 10, 2026");
+    // A listing still trading is laid out as before.
+    expect(await replaceQuote(quote())).not.toContain("Delisted");
+  });
+}

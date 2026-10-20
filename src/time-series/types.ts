@@ -281,6 +281,11 @@ export interface ChartResolutionResult {
   loading: boolean;
   errors: string[];
   warnings: string[];
+  /**
+   * Each charted listing that no longer trades: its symbol and label
+   * ("Delisted Oct 27, 2022"), which `warnings` carries as "TWTR: Delisted Oct 27, 2022".
+   */
+  delistings?: { symbol: string; label: string; notice: string }[];
   /** Effective inclusive bounds used to clip the resolved chart data. */
   viewport?: { start: Date; end: Date };
   /** Bar resolution the loaded market history was fetched at. */

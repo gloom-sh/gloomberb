@@ -27,6 +27,7 @@ import { createProviderMiss } from "../provider-errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
+import { parseListingDelisting } from "../../market-data/quotes/delisting";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -94,6 +95,7 @@ export function mapQuote(
     : futuresBasis ?? quote.priceBasis;
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
+    delisting: parseListingDelisting(quote.delisting),
     priceBasis,
     priceObservation,
     currency: currency || quote.currency,

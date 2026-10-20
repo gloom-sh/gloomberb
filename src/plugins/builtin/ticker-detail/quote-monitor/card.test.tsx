@@ -75,3 +75,23 @@ test("a dense NAV card keeps the published date beside its monetary price and da
     clock.mockRestore();
   }
 });
+
+test("a card of a listing that no longer trades says when, not that its quote is stale", async () => {
+  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-20T15:00:00Z"));
+  const quote: Quote = {
+    symbol: "TWTR", currency: "USD", listingExchangeName: "NYSE", price: 53.86, change: 0.51, changePercent: 0.96,
+    lastUpdated: Date.parse("2022-10-28T12:00:00Z"), dataSource: "delayed", stale: true,
+    delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" },
+  };
+  try {
+    const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote };
+    const card = await renderCard(entry, 40, 4);
+    expect(card).toContain("Delisted Oct 27, 2022");
+    expect(card).not.toContain("Stale quote");
+    // A narrow card too short for a status row says it beside the price.
+    const compact = await renderCard(entry, 30, 3);
+    expect(compact).toContain("$53.86 · DELISTED");
+  } finally {
+    clock.mockRestore();
+  }
+});

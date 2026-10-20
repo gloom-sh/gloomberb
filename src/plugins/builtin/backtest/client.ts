@@ -2,7 +2,7 @@ import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValu
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
-import type { PricePoint } from "../../../types/financials";
+import type { ListingDelisting, PricePoint } from "../../../types/financials";
 import type { BacktestBar } from "./rules";
 import { isFiniteNumber } from "../../../utils/guards";
 
@@ -27,6 +27,8 @@ export interface BacktestHistory {
   skippedDates: string[];
   undatedSkipped: number;
   fetchedAt: number;
+  /** The listing no longer trades: its last bar is its last session, and no later one will come. */
+  delisting?: ListingDelisting;
 }
 
 /**
@@ -85,5 +87,6 @@ export async function loadBacktestHistory(
   options.signal?.throwIfAborted();
   const history = toBacktestBars(resolveEntryValue(entry) ?? [], entry.history?.nonPositiveCloseDates);
   if (!history.bars.length) throw new Error(entry.error?.message ?? "Daily price history unavailable");
-  return { symbol, ...history, fetchedAt: entry.fetchedAt ?? Date.now() };
+  const delisting = entry.history?.delisting;
+  return { symbol, ...history, fetchedAt: entry.fetchedAt ?? Date.now(), ...(delisting ? { delisting } : {}) };
 }

@@ -1621,4 +1621,6 @@ export const ja: Record<string, string> = {
   "It is kept once it has been read with a connection.": "一度オンラインで読むと保存されます。",
   "Academy: {title}": "アカデミー: {title}",
   "{minutes} min": "{minutes} 分",
+  "Delisted {date}": "上場廃止 {date}",
+  "Last traded {date}": "最終取引 {date}",
 };

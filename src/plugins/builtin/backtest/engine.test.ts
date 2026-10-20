@@ -127,6 +127,28 @@ test("a forming session is left out unless asked for, and an end date repeats a 
   expect(() => backtestWindow(history, { end: "2019-01-01" })).toThrow("No daily sessions on or before 2019-01-01");
 });
 
+test("a run over a listing that no longer trades ends on its last session and says so", () => {
+  // SVB Financial: sessions from 2021 to its last, 2023-03-09; Nasdaq removed it 2023-05-02.
+  const sessions: BacktestBar[] = [];
+  for (let time = Date.UTC(2021, 0, 4); time <= Date.UTC(2023, 2, 9); time += 86_400_000) {
+    const date = new Date(time);
+    if (date.getUTCDay() % 6 !== 0) sessions.push({ date: date.toISOString().slice(0, 10), open: 300, high: 300, low: 300, close: 300 + sessions.length % 40 });
+  }
+  const history = { symbol: "SIVB", bars: sessions, skippedDates: [], undatedSkipped: 0,
+    delisting: { status: "delisted" as const, lastTradeDate: "2023-03-09", historyStart: "2021-01-04" } };
+  const rules = [parseRule("close > sma(20)"), parseRule("close < sma(20)")] as const;
+  const ended = "SIVB: Delisted Mar 9, 2023. The run ends on its last session, 2023-03-09, and a position still held"
+    + " is valued at that close, not at anything holders received after it.";
+  // Through the newest session, or to an end after it: no later session will come, so the run is repeatable now.
+  for (const end of [null, "2023-12-31"]) {
+    const run = runHistoryBacktest(history, ...rules, { lookbackYears: null, costBps: 5, end });
+    expect([run.end, run.repeatable, run.warnings]).toEqual(["2023-03-09", true, [ended]]);
+  }
+  // 2021 to 2022 ends before the last session: an ordinary run, still naming the listing as delisted.
+  const year = runHistoryBacktest(history, ...rules, { lookbackYears: null, costBps: 5, end: "2022-12-31" });
+  expect([year.end, year.repeatable, year.warnings]).toEqual(["2022-12-30", true, ["SIVB: Delisted Mar 9, 2023."]]);
+});
+
 test("sessions served without a positive close are warned by date, a long list shortened", () => {
   const point = (index: number, close: number) => ({ date: new Date(`${day(index)}T00:00:00Z`), open: close, high: close, low: close, close });
   const served = toBacktestBars([

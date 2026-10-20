@@ -61,8 +61,10 @@ export function normalizeFreshChartData(
     : request.granularity === "detail" ? request.barSize : undefined;
   const session = parseHistorySession(history?.session, { symbol: target.symbol, exchange: target.exchange ?? "",
     interval: interval ?? undefined }) ?? undefined;
+  // A listing that no longer trades ends on its last session for good.
   if (
-    isIntradayChartRequest(request, history)
+    !history?.delisting
+    && isIntradayChartRequest(request, history)
     && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { symbol: target.symbol, exchange: target.exchange,
       intervalMs: interval ? priceHistoryIntervalMs(interval) : undefined, session, fetchedAt: fetchedAt ?? undefined })
   ) {

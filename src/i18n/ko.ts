@@ -1619,4 +1619,6 @@ export const ko: Record<string, string> = {
   "It is kept once it has been read with a connection.": "연결된 상태에서 한 번 읽으면 저장됩니다.",
   "Academy: {title}": "아카데미: {title}",
   "{minutes} min": "{minutes}분",
+  "Delisted {date}": "상장폐지 {date}",
+  "Last traded {date}": "최종 거래 {date}",
 };
