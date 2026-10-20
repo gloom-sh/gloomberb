@@ -1,7 +1,7 @@
 import type { CloudMarketResponse, CloudPricePointPayload } from "../api-client/types";
 import type { CloudHistoryParams } from "../api-client/paths";
 import { fxLegForCurrency } from "../market-data/coordinator/fx-legs";
-import { resolveCurrencyUnit } from "../utils/currency-units";
+import { heldCurrencyUnit } from "../utils/currency-units";
 
 /** Reads a pair's daily bars; `apiClient` in the app, a fake in tests. */
 export interface CostFxHistoryClient {
@@ -56,7 +56,7 @@ async function usdPerUnitOn(code: string, date: string, client: CostFxHistoryCli
 }
 
 /**
- * What one unit of `from` (a lot's currency, GBp counting pence) cost in
+ * What one unit of `from` (a lot's currency, GBp counting pence and USX cents) cost in
  * `into` (the portfolio's) at the daily FX closes of `date`, each pair's last
  * close on or before it, crossed through USD as every converted value is.
  * Throws `CostFxError` when a pair is not served or has no close in the week
@@ -69,8 +69,8 @@ export async function loadCostFxRate(
   client: CostFxHistoryClient,
   now = new Date(),
 ): Promise<CostFxReading> {
-  const fromUnit = resolveCurrencyUnit(from);
-  const intoUnit = resolveCurrencyUnit(into);
+  const fromUnit = heldCurrencyUnit(from);
+  const intoUnit = heldCurrencyUnit(into);
   const [fromUsd, intoUsd] = await Promise.all([
     usdPerUnitOn(fromUnit.currency, date, client, now),
     usdPerUnitOn(intoUnit.currency, date, client, now),

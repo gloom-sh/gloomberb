@@ -44,7 +44,7 @@ import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
 import { isFuturesTicker } from "../../portfolio/futures-positions";
 import { createBaseConverter } from "../base-converter";
 import { initMarketData, withMarketData } from "../context";
@@ -318,10 +318,13 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       const positionCurrency = metrics.positionCurrency;
       const currentPrice = getPortfolioQuoteDisplay(metrics, quote)?.price ?? null;
       const currentPriceBase = currentPrice != null && quoteCurrency ? await toBase(currentPrice, quoteCurrency) : null;
-      const costBasisBase = positionCurrency ? await toBase(metrics.signedCost, positionCurrency) : Number.NaN;
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
       const baseMetrics = getPortfolioPositionMetrics({ ...tickerFile, metadata: { ...tickerFile.metadata, positions: [position] } }, undefined, quoteCurrency,
         { currency: config.baseCurrency, convert: value => value * positionRate }, quote);
+      // A cost bought at an entered rate into the base currency converts at it, as its P&L does; any other at today's.
+      const costBasisBase = !positionCurrency ? Number.NaN
+        : lotCostFxRate(position, positionCurrency, config.baseCurrency) !== null ? baseMetrics.signedCost
+        : await toBase(metrics.signedCost, positionCurrency);
       const marketValueBase = resolvePortfolioMarketValue(baseMetrics, currentPriceBase)?.net ?? Number.NaN;
       const selectedPnl = resolvePortfolioPositionPnl(baseMetrics, currentPriceBase);
       const pnl = selectedPnl.value;

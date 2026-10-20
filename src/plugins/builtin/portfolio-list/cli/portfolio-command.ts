@@ -51,6 +51,8 @@ import { wholeUnitQuantityProblem } from "../../../../portfolio/position-quantit
 import { CostFxError, loadCostFxRate, type CostFxHistoryClient } from "../../../../portfolio/cost-fx";
 import { lotCostFxRate, sameCurrency } from "../../../../portfolio/position-metrics";
 import { formatFxRate } from "../../../../cli/fx-pair";
+import { createBaseConverter } from "../../../../cli/base-converter";
+import { currencyUnitLabel, heldCurrencyUnit } from "../../../../utils/currency-units";
 import { parseTypedNumber, readCurrencyAmount, readTypedNumber } from "../../../../utils/decimal-comma";
 import { DATE_OPTION_EXAMPLES, dateOptionError, readCalendarDate } from "../../../../utils/calendar-date";
 import {
@@ -314,11 +316,20 @@ async function setPositionCommand(
       const future = isFuturesTicker(ticker);
       const size = await loadFuturesEntrySize(ticker, futuresTerms);
       const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency, size?.currency);
-      // The first position of an empty manual portfolio sets its currency; the cost converts into the currency it ends up in.
+      // The first position of an empty manual portfolio sets its currency; the cost converts into the currency
+      // `portfolio show` values the portfolio in once it is set, which is the base currency when that is not USD.
       const firstPosition = !hasOpenPortfolioPositions(portfolio.id, await store.loadAllTickers());
       const adopted = firstPosition ? adoptFirstPositionCurrency(config, portfolio.id, currency) : null;
-      const portfolioCurrency = adopted?.portfolios.find((entry) => entry.id === portfolio.id)?.currency ?? portfolio.currency;
-      const costFx = await positionCostFx({ ...cost, currency, portfolioCurrency, listing: savedListingName(ticker).key });
+      const valued = adopted ?? config;
+      const portfolioCurrency = resolvePortfolioTotalsCurrency(
+        valued.portfolios.find((entry) => entry.id === portfolio.id) ?? portfolio, valued.baseCurrency);
+      const toPortfolio = createBaseConverter(dataProvider, heldCurrencyUnit(portfolioCurrency).currency);
+      const costFx = await positionCostFx({
+        ...cost, currency, portfolioCurrency, listing: savedListingName(ticker).key,
+        // Today's rate, in the units the lot is held in: what a typed rate is checked against.
+        todaysRate: async () => (await toPortfolio(1, heldCurrencyUnit(currency).currency))
+          / heldCurrencyUnit(currency).divisor * heldCurrencyUnit(portfolioCurrency).divisor,
+      });
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
         avgCost,
@@ -339,11 +350,13 @@ async function setPositionCommand(
       // A cost in another currency converts at the rate it was bought at when the lot has one, else at today's, and says so.
       const foreign = !sameCurrency(currency, portfolioCurrency);
       const boughtRate = lot ? lotCostFxRate(lot, currency, portfolioCurrency) : null;
+      // The purchase date shows where it was given or sets the rate; a lot in the portfolio's currency otherwise prints as it did.
+      const purchaseDate = lot?.dateAcquired && (cost.date || foreign) ? lot.dateAcquired : null;
       ctx.printResult({
         data: {
           changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency,
           ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
-          ...(lot?.dateAcquired ? { dateAcquired: lot.dateAcquired } : {}),
+          ...(purchaseDate ? { dateAcquired: purchaseDate } : {}),
           ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: costFx?.date ?? null } : {}),
         },
         warnings: notes.length > 0 ? notes : undefined,
@@ -356,7 +369,7 @@ async function setPositionCommand(
               : ["Shares", quantity],
             ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
             ["Currency", currency],
-            ...(lot?.dateAcquired ? [["Purchase Date", lot.dateAcquired] as [string, string]] : []),
+            ...(purchaseDate ? [["Purchase Date", purchaseDate] as [string, string]] : []),
             ...(boughtRate !== null
               ? [["Cost FX", `${formatFxRate(boughtRate)} ${portfolioCurrency} per ${currency}${costFx?.date ? ` (${costFx.date} close)` : ""}`] as [string, string]]
               : []),
@@ -377,17 +390,24 @@ async function setPositionCommand(
  * the FX closes of its `--date`, for a position held in another currency
  * than the portfolio's; undefined when neither was given or the position is
  * in the portfolio's currency (a date alone then only dates the lot).
- * `--cost-fx` on a position in the portfolio's own currency, and a date with
- * no FX close, fail saying what to give instead.
+ * `--cost-fx` on a position in the portfolio's own currency, a typed rate
+ * that reads as a mistake against today's, and a date with no FX close fail
+ * saying what to give instead.
  */
-async function positionCostFx({ date, costFx, history, currency, portfolioCurrency, listing }: {
+async function positionCostFx({ date, costFx, history, currency, portfolioCurrency, listing, todaysRate }: {
   date?: string; costFx?: number; history?: CostFxHistoryClient; currency: string; portfolioCurrency: string; listing: string;
+  /** Today's rate, one unit of `currency` in `portfolioCurrency`; NaN when it cannot be read. */
+  todaysRate: () => Promise<number>;
 }): Promise<{ costFx: { rate: number; currency: string }; date: string | null } | undefined> {
   const foreign = !sameCurrency(currency, portfolioCurrency);
+  const insteadHint = `Give the rate it was bought at instead: --cost-fx <${portfolioCurrency} per ${currency}>.`;
   if (costFx != null) {
     if (!foreign) {
-      throw new PortfolioCliError(`--cost-fx converts a cost in another currency; ${listing} is held in ${currency}, the portfolio's currency.`);
+      const held = currency === portfolioCurrency ? currency : `${currency}, a unit of ${portfolioCurrency}`;
+      throw new PortfolioCliError(`--cost-fx converts a cost in another currency; ${listing} is held in ${held}, the portfolio's currency.`);
     }
+    const problem = implausibleCostFx(costFx, await todaysRate().catch(() => Number.NaN), { currency, portfolioCurrency, listing });
+    if (problem) throw new PortfolioCliError(problem, "Or give the purchase --date, and its daily FX close is used.");
     return { costFx: { rate: costFx, currency: portfolioCurrency }, date: null };
   }
   if (!date || !foreign) return undefined;
@@ -395,12 +415,48 @@ async function positionCostFx({ date, costFx, history, currency, portfolioCurren
     const reading = await loadCostFxRate(currency, portfolioCurrency, date, history ?? apiClient);
     return { costFx: { rate: reading.rate, currency: portfolioCurrency }, date: reading.date };
   } catch (error) {
-    if (!(error instanceof CostFxError)) throw error;
-    throw new PortfolioCliError(
-      `${error.message}, so the ${currency} cost cannot be converted at the rate of ${date}.`,
-      `Give the rate it was bought at instead: --cost-fx <${portfolioCurrency} per ${currency}>.`,
-    );
+    if (error instanceof CostFxError) {
+      throw new PortfolioCliError(`${error.message}, so the ${currency} cost cannot be converted at the rate of ${date}.`, insteadHint);
+    }
+    // Offline, signed out or a server error: say what was being read, and the way that needs no network.
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new PortfolioCliError(`Could not read the ${currency} and ${portfolioCurrency} FX closes of ${date}: ${reason}.`, insteadHint);
   }
+}
+
+/** How far from today's rate a typed one may be: a currency that lost 99% since purchase still fits. */
+const COST_FX_MAX_RATIO = 100;
+
+/**
+ * Why a typed `--cost-fx` reads as a mistake against today's rate, else null:
+ * a rate per pound for a lot held in pence, the inverse of the pair (0.0319
+ * for 31.37 TRY per USD), or more than a hundred times off either way. A
+ * rate is only called inverted when today's is far from 1 and the typed one
+ * lies on the other side of it, so EUR per USD near parity is never refused.
+ * Null when today's rate is not known.
+ */
+function implausibleCostFx(
+  rate: number,
+  today: number,
+  { currency, portfolioCurrency, listing }: { currency: string; portfolioCurrency: string; listing: string },
+): string | null {
+  if (!Number.isFinite(today) || today <= 0) return null;
+  const pair = `${portfolioCurrency} per ${currency}`;
+  const typed = formatFxRate(rate);
+  const todays = `today's is ${formatFxRate(today)} ${pair}`;
+  const unit = heldCurrencyUnit(currency);
+  if (unit.divisor !== 1 && rate / today >= unit.divisor / 5 && rate / today <= unit.divisor * 5) {
+    const name = currency.toUpperCase() === "USX" ? "US cents" : currencyUnitLabel(currency).replace(/^\S+ \((.+)\)$/, "$1");
+    return `--cost-fx ${typed} looks like ${portfolioCurrency} per ${unit.currency}; ${listing} is held in ${currency} (${name}), `
+      + `so the rate is ${pair}, 1/${unit.divisor} of that: ${todays}.`;
+  }
+  if ((today >= 3 && rate < 1) || (today <= 1 / 3 && rate > 1)) {
+    return `--cost-fx ${typed} looks inverted: it is the ${portfolioCurrency} paid for one ${currency}, and ${todays}.`;
+  }
+  if (rate / today > COST_FX_MAX_RATIO || today / rate > COST_FX_MAX_RATIO) {
+    return `--cost-fx ${typed} is more than ${COST_FX_MAX_RATIO} times off today's rate (${formatFxRate(today)} ${pair}); check the rate.`;
+  }
+  return null;
 }
 
 /** `--date`: the day the position was bought, as an ISO day, no later than today (UTC). */

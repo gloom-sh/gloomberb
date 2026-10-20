@@ -3,7 +3,7 @@ import type { Quote } from "../types/financials";
 import type { PriceBasis } from "../types/instrument";
 import { resolvePriceBasis } from "../market-data/market/price-basis";
 import { getActiveQuoteDisplay, type ActiveQuoteDisplay } from "../market-data/market/status";
-import { resolveCurrencyUnit } from "../utils/currency-units";
+import { heldCurrencyUnit, resolveCurrencyUnit } from "../utils/currency-units";
 import { isFuturesTicker } from "./futures-positions";
 
 export interface PortfolioPositionMetrics {
@@ -122,7 +122,7 @@ export function lotCostFxRate(
 
 /** Two currency codes in one currency, its minor units included: GBp is GBP, USX is USD. */
 export function sameCurrency(left: string, right: string): boolean {
-  return resolveCurrencyUnit(left).currency === resolveCurrencyUnit(right).currency;
+  return heldCurrencyUnit(left).currency === heldCurrencyUnit(right).currency;
 }
 
 /**

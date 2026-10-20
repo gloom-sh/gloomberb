@@ -431,9 +431,11 @@ export async function valuePortfolioPositions({
       // The cost converts at the rate the lot was bought at when one was entered, else at today's, as its value does.
       const baseMetrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency,
         { currency, convert: value => value * positionRate }, quote);
-      const costBasisBase = positionCurrency ? baseMetrics.totalCost : Number.NaN;
       const boughtRate = positionCurrency ? lotCostFxRate(position, positionCurrency, currency) : null;
-      const atTodaysRate = !!positionCurrency && lotCostAtTodaysRate(position, positionCurrency, currency);
+      const costBasisBase = !positionCurrency ? Number.NaN
+        : boughtRate !== null ? baseMetrics.totalCost : await toBase(metrics.totalCost, positionCurrency);
+      // Only a lot entered by hand can be given the rate it was bought at; a broker's lot reads as it always has.
+      const atTodaysRate = position.broker === "manual" && !!positionCurrency && lotCostAtTodaysRate(position, positionCurrency, currency);
       if (atTodaysRate && metrics.hasCostBasis) costAtTodaysRate.add(ticker.metadata.ticker);
       const costFx = boughtRate !== null ? { rate: boughtRate, currency } : atTodaysRate ? null : undefined;
       const currentValueBase = resolvePortfolioMarketValue(baseMetrics,

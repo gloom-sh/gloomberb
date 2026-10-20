@@ -64,6 +64,15 @@ export interface CurrencyUnitInfo {
   divisor: number;
 }
 
+/**
+ * The currency money held in a code is counted in, and how many of the code
+ * make one of it: resolveCurrencyUnit's, and US cents as a hundredth of a
+ * dollar, which a lot's cost in USX is.
+ */
+export function heldCurrencyUnit(currency?: string | null): CurrencyUnitInfo {
+  return currency?.trim().toUpperCase() === US_CENTS ? { currency: "USD", divisor: 100 } : resolveCurrencyUnit(currency);
+}
+
 interface ExchangeSubUnitOptions {
   allowDefaultCurrency?: boolean;
   allowMissingCurrency?: boolean;

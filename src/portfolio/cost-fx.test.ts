@@ -32,6 +32,8 @@ test("a purchase date reads each pair's last close on or before it, crossed thro
   expect(euroLira.rate).toBeCloseTo(1.0842 * 31.3694, 9);
   // Into USD is the inverse leg alone.
   expect((await loadCostFxRate("TRY", "USD", "2024-02-29", client, now)).rate).toBeCloseTo(1 / 31.2337, 12);
+  // A corn lot's cost in US cents converts per cent, with no USX pair to read.
+  expect((await loadCostFxRate("USX", "TRY", "2024-03-01", client, now)).rate).toBeCloseTo(0.313694, 9);
 });
 
 test("a gap longer than a week, a pair that is not served, and today's unfinished bar never give a rate", async () => {
