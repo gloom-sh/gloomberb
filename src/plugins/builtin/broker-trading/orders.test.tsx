@@ -41,7 +41,9 @@ test("docked rows step a selected order into review and keep cancel confirmation
   }
   await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
   await tui.waitForFrameToContain("Open Orders (2)");
-  await tui.emitKeypress([{ name: "j" }, { name: "up" }, { name: "enter" }], { trackPropagation: true });
+  // Nothing is chosen until j: the first j takes the first order, the second the next.
+  await tui.emitKeypress([{ name: "j" }, { name: "j" }], { trackPropagation: true });
+  await tui.emitKeypress([{ name: "up" }, { name: "enter" }], { trackPropagation: true });
   expect(modifications).toHaveLength(1);
   expect(modifications[0]!.order.action).toBe("SELL");
   expect(modifications[0]!.edit).toEqual({ review: true, price: Number((modifications[0]!.order.limitPrice! + 0.01).toFixed(2)) });
@@ -80,6 +82,7 @@ test("the dock reflects a placement immediately and disables other mutations dur
   expect(modifications).toEqual([]);
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toEqual([]);
   await act(async () => update(false));
+  await tui.emitKeypress({ name: "j" });
   await tui.emitKeypress({ name: "m" });
   expect(modifications).toEqual([order]);
   demo.adapter.listOpenOrders = async () => [{ ...order, status: "CANCELED", updatedAt: order.updatedAt + 1 }];
@@ -119,6 +122,7 @@ test("multiple accounts require an explicit choice before loading or offering a 
 test("90x30 orders open modify in review and require one cancel confirmation before mutation", async () => {
   const f = await mount();
   expect(tui.frame()).toContain("SIMULATION");
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
   await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
   expect(f.modifications).toHaveLength(1);
   expect(f.mutations()).toEqual([]);
@@ -143,6 +147,7 @@ test("trading off hides mutations and an uncertain cancel cannot be repeated wit
   expect(tui.frame()).not.toContain("Cancel AAPL order?");
   await tui.destroy();
   const uncertain = await mount({ outcome: "unknown" });
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
   await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Cancel AAPL order?");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
@@ -161,7 +166,7 @@ test("an inline cancel targets its own row and does not activate modify through 
     await tui.setup().mockMouse.click(column + 1, row);
     await tui.setup().renderOnce();
   });
-  await tui.waitForFrameToContain("SELL 10 AAPL. 6 remaining.");
+  await tui.waitForFrameToContain("SELL 10 AAPL, Limit 340.00 · DAY. 6 remaining.");
   expect(f.modifications).toEqual([]);
   expect(f.mutations()).toEqual([]);
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
@@ -171,7 +176,8 @@ test("an inline cancel targets its own row and does not activate modify through 
 
 test("Orders keys navigate rows, switch activity, choose accounts and step back without a mouse", async () => {
   const f = await mount();
-  await tui.emitKeypress([{ name: "j", sequence: "j" }, { name: "m", sequence: "m" }], { trackPropagation: true });
+  await tui.emitKeypress([{ name: "j", sequence: "j" }, { name: "j", sequence: "j" }], { trackPropagation: true });
+  await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
   expect(f.modifications[0]?.action).toBe("SELL");
   await tui.emitKeypress({ name: "v", sequence: "v" }, { trackPropagation: true });
   await tui.waitForFrameToContain("FEES");
@@ -184,8 +190,23 @@ test("Orders keys navigate rows, switch activity, choose accounts and step back 
   expect(f.mutations()).toEqual([]);
 });
 
+test("a chosen order that leaves on a refresh takes its selection with it: c and m never fall to another row", async () => {
+  const f = await mount();
+  await tui.emitKeypress([{ name: "j", sequence: "j" }, { name: "j", sequence: "j" }], { trackPropagation: true });
+  const remaining = (await f.demo.adapter.listOpenOrders!(f.demo.instance)).filter((order) => order.action === "BUY");
+  f.demo.adapter.listOpenOrders = async () => remaining;
+  await tui.emitKeypress({ name: "r", sequence: "r" }, { trackPropagation: true });
+  await tui.waitForFrameToExclude("Partial fill");
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
+  expect(tui.frame()).not.toContain("Cancel AAPL order?");
+  expect(f.modifications).toEqual([]);
+  expect(f.mutations()).toEqual([]);
+});
+
 test("a cancel reports broker-confirmed cancellation from explicit status reconciliation", async () => {
   const f = await mount({}, undefined, true);
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
   await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Cancel AAPL order?");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
@@ -198,6 +219,7 @@ test("a broker-confirmed terminal state suppresses stale open-row mutation contr
   const f = await mount({}, undefined, true);
   const staleOrders = await f.demo.adapter.listOpenOrders!(f.demo.instance);
   f.demo.adapter.listOpenOrders = async () => staleOrders;
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
   await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Cancel AAPL order?");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });

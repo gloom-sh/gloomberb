@@ -18,6 +18,7 @@ import type { BrokerContractRef } from "../../../types/instrument";
 import { ticketOrderMatches } from "./chart-levels";
 import { stepNumber } from "../../../components/ui/number-step";
 import { ticketEditingPriceStep } from "./ticket";
+import { ticketTypeName } from "./ticket-parts";
 
 export interface BrokerOrdersViewProps {
   broker: BrokerAdapter;
@@ -57,6 +58,11 @@ const activityColumns: DataTableColumn[] = [
 ];
 const quantity = (value: number) => Number.isFinite(value) ? formatNumber(value, Number.isInteger(value) ? 0 : 4) : "--";
 const price = (value: number | undefined) => value != null && Number.isFinite(value) ? formatNumber(value, 2) : "--";
+/** An order's type, prices and time in force, as a cancellation names them: "Limit 336.50 · DAY". */
+function orderTerms(order: BrokerOrder): string {
+  const prices = order.orderType === "MKT" ? "" : order.orderType === "STP LMT" ? ` ${price(order.stopPrice)}, limit ${price(order.limitPrice)}` : ` ${price(order.limitPrice ?? order.stopPrice)}`;
+  return `${ticketTypeName[order.orderType] ?? order.orderType}${prices} · ${order.tif ?? "DAY"}`;
+}
 const accountMode = (account: BrokerAccount | undefined) => account?.tradingMode === "simulation" ? "SIMULATION" : account?.tradingMode === "live" ? "LIVE" : "UNKNOWN";
 const terminalStatuses = new Set(["Cancelled", "Filled", "Rejected", "Expired"]);
 
@@ -172,7 +178,13 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
   // Keep terminal acknowledgements in the projection even after hiding their rows.
   const rows = useMemo(() => compact ? reconciledRows.filter((order) => !terminalStatuses.has(brokerOrderStatus(order.status))) : reconciledRows, [compact, reconciledRows]);
   useEffect(() => { onOrders?.(reconciledRows); }, [reconciledRows, onOrders]);
-  const selected = rows.find((order) => brokerOrderKey(order) === selectedKey) ?? rows[0];
+  // Only an order the trader chose is selected: c, m and Enter never fall back to another row.
+  const selected = rows.find((order) => brokerOrderKey(order) === selectedKey);
+  // A selected order that leaves the list (filled, cancelled, gone on a refresh) clears the selection.
+  useEffect(() => {
+    if (selectedKeyRef.current === null || rows.some((order) => brokerOrderKey(order) === selectedKeyRef.current)) return;
+    selectedKeyRef.current = null; setSelectedKey(null); setPriceEdit(undefined);
+  }, [rows]);
   const capabilities = broker.getTradingCapabilities?.(instance, selected?.contract);
   const ownBusy = trading.phase === "cancelling" || trading.phase === "cancel-review";
   useEffect(() => { onBusy?.(ownBusy); }, [ownBusy, onBusy]);
@@ -184,7 +196,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
     const capability = broker.getTradingCapabilities?.(instance, order.contract);
     if (canRead && !busy && broker.modifyOrder && capability?.enabled && capability.modify && canChangeBrokerOrder(order)) onModify(order);
   }, [broker, instance, canRead, busy, onModify]);
-  const modify = useCallback(() => { const order = rows.find((row) => brokerOrderKey(row) === selectedKeyRef.current) ?? rows[0]; if (order) modifyOrder(order); }, [rows, modifyOrder]);
+  const modify = useCallback(() => { const order = rows.find((row) => brokerOrderKey(row) === selectedKeyRef.current); if (order) modifyOrder(order); }, [rows, modifyOrder]);
   const cancelOrder = useCallback(async (order: BrokerOrder) => {
     const capability = broker.getTradingCapabilities?.(instance, order.contract);
     if (!account || !canRead || busy || !broker.cancelOrder || !capability?.enabled || !capability.cancel || !canChangeBrokerOrder(order)) return;
@@ -194,7 +206,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       if (compact) { setInlineCancel(true); setKeepOrder(false); return; }
       const confirmed = await confirmDialog(dialog, {
         title: `Cancel ${order.contract.localSymbol || order.contract.symbol} order?`,
-        body: [`${order.action} ${quantity(order.quantity)} ${order.contract.localSymbol || order.contract.symbol}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountMode(account)} · ${account.name}`],
+        body: [`${order.action} ${quantity(order.quantity)} ${order.contract.localSymbol || order.contract.symbol}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountMode(account)} · ${account.name}`],
         confirmLabel: "Cancel order", cancelLabel: "Keep order", confirmVariant: "danger",
       });
       await controller.confirmCancel(confirmed);
@@ -208,7 +220,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       setMessage(error instanceof Error ? error.message : "Cancellation could not be confirmed.");
     }
   }, [account, canRead, busy, broker, instance, controller, dialog, resource.reload, reconcile, compact]);
-  const cancel = useCallback(() => { const order = rows.find((row) => brokerOrderKey(row) === selectedKeyRef.current) ?? rows[0]; return order ? cancelOrder(order) : Promise.resolve(); }, [rows, cancelOrder]);
+  const cancel = useCallback(() => { const order = rows.find((row) => brokerOrderKey(row) === selectedKeyRef.current); return order ? cancelOrder(order) : Promise.resolve(); }, [rows, cancelOrder]);
   const confirmInline = async (confirmed: boolean) => {
     if (controller.getSnapshot().phase !== "cancel-review") return;
     try { await controller.confirmCancel(confirmed); setInlineCancel(false); if (confirmed) void resource.reload(); }
@@ -225,13 +237,23 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       return;
     }
     if (event.shift || busy) return;
+    // With nothing chosen, j starts at the first order and k at the last (the arrows too, in the table).
+    const starts = event.name === "j" || event.name === "k" || !compact && (event.name === "down" || event.name === "up");
+    if (view === "open" && rows.length && starts && !rows.some((row) => brokerOrderKey(row) === selectedKeyRef.current)) {
+      event.preventDefault(); event.stopPropagation();
+      selectedKeyRef.current = brokerOrderKey(rows[event.name === "j" || event.name === "down" ? 0 : rows.length - 1]!);
+      setSelectedKey(selectedKeyRef.current); setPriceEdit(undefined);
+      return;
+    }
     if (compact && view === "open" && rows.length && ["j", "k", "up", "down", "return", "enter"].includes(event.name ?? "")) {
       event.preventDefault(); event.stopPropagation();
-      const index = Math.max(0, rows.findIndex((row) => brokerOrderKey(row) === selectedKeyRef.current));
-      const order = rows[index]!;
+      const index = rows.findIndex((row) => brokerOrderKey(row) === selectedKeyRef.current);
+      const order = rows[index];
       if (event.name === "j" || event.name === "k") {
         const next = rows[(index + (event.name === "j" ? 1 : rows.length - 1)) % rows.length]!;
         selectedKeyRef.current = brokerOrderKey(next); setSelectedKey(selectedKeyRef.current); setPriceEdit(undefined);
+      } else if (!order) {
+        // The arrows and Enter act on a chosen order only.
       } else if ((event.name === "up" || event.name === "down") && canModify && order.orderType !== "MKT") {
         const key = brokerOrderKey(order);
         const current = priceEditRef.current?.key === key ? priceEditRef.current.value : String(order.limitPrice ?? order.stopPrice ?? "");
@@ -294,6 +316,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
     </Box>
     {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={0.5}>
       <Text fg={colors.textBright}>Cancel {trading.cancelOrder?.action} {trading.cancelOrder?.quantity} {trading.cancelOrder?.contract.symbol}?</Text>
+      {trading.cancelOrder ? <Text fg={colors.text}>{orderTerms(trading.cancelOrder)}</Text> : null}
       <Text fg={colors.textDim} wrapText>The order can still fill before cancellation is confirmed.</Text>
       <Box flexDirection="row" gap={1}>
         <Button label="Cancel order" variant="primary" tone="negative" active={!keepOrder} onPress={() => { void confirmInline(true); }} />
