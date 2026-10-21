@@ -84,3 +84,18 @@ test("pushed changes win over an older read, and an order the ticket announced i
   expect(f.toasts).toHaveLength(1);
   release();
 });
+
+test("an order the broker cannot confirm stays, unconfirmed, until its status answers", async () => {
+  const f = setup();
+  const release = f.feed.hold(f.broker, instance);
+  await settle();
+  f.setOpen([]);
+  f.feed.refresh(instance.id);
+  await settle();
+  expect(f.feed.snapshot(instance.id).orders.map((value) => value.status)).toEqual(["UNKNOWN"]);
+  f.setStatus(order({ status: "FILLED", filled: 10, remaining: 0, updatedAt: Date.now() }));
+  f.feed.refresh(instance.id);
+  await settle();
+  expect(f.feed.snapshot(instance.id).orders.map((value) => value.status)).toEqual(["FILLED"]);
+  release();
+});
