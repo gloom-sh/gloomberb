@@ -321,8 +321,9 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       const currentPrice = getPortfolioQuoteDisplay(metrics, quote)?.price ?? null;
       const currentPriceBase = currentPrice != null && quoteCurrency ? await toBase(currentPrice, quoteCurrency) : null;
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
-      if (positionCurrency) converted.add(positionCurrency.toUpperCase());
-      if (quoteCurrency && currentPrice != null) converted.add(quoteCurrency.toUpperCase());
+      // By the major currency the converter states its rate in: pence (GBp, GBX) at GBP's.
+      if (positionCurrency) converted.add(heldCurrencyUnit(positionCurrency).currency);
+      if (quoteCurrency && currentPrice != null) converted.add(heldCurrencyUnit(quoteCurrency).currency);
       const baseMetrics = getPortfolioPositionMetrics({ ...tickerFile, metadata: { ...tickerFile.metadata, positions: [position] } }, undefined, quoteCurrency,
         { currency: config.baseCurrency, convert: value => value * positionRate }, quote);
       // A cost bought at an entered rate into the base currency converts at it, as its P&L does, and says so; any other at today's.
@@ -386,11 +387,11 @@ interface ReportRateNotes {
   boughtAt: ReadonlySet<string>;
 }
 
-/** The currencies of the shown lots whose cost converts into the base currency at the rate they were bought at. */
+/** The currencies of the shown lots whose cost converts into the base currency at the rate they were bought at, pence as GBP. */
 function boughtRateCurrencies(tickerFile: TickerRecord | null, quoteCurrency: string, baseCurrency: string): Set<string> {
   return new Set((tickerFile?.metadata.positions ?? []).flatMap((position) => {
     const currency = (position.currency || quoteCurrency).trim();
-    return position.shares !== 0 && currency && lotCostFxRate(position, currency, baseCurrency) !== null ? [currency.toUpperCase()] : [];
+    return position.shares !== 0 && currency && lotCostFxRate(position, currency, baseCurrency) !== null ? [heldCurrencyUnit(currency).currency] : [];
   }));
 }
 
