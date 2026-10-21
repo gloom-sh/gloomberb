@@ -14,7 +14,9 @@
  * Scenario options (query string, after `scenario=layout`): `pane=<id>`
  * (trials, changelog, calls, reader, markdown, prose, inline, list, or a pane of the main
  * fixture such as table or chart-bar), `audio=<url>` (the recording the call
- * plays, `none` for a call without one) and `mode=dock` or
+ * plays, `none` for a call without one), `calls=calendar` or `calls=META`
+ * (the Calls pane alone or on one company, over a production-like day of
+ * calls) and `mode=dock` or
  * `mode=float`; a floating pane takes most of the window at a size that is not
  * a whole number of cells.
  */
@@ -200,11 +202,160 @@ const CALL_TRANSCRIPT: CloudEarningsTranscriptPayload = {
 };
 
 /**
+ * Every company's calls on three New York days, as production listed them on
+ * Wednesday Oct 21, 2026 (GLO-1139), for `calls=calendar` and `calls=META`:
+ * the day from today in New York, the start on New York's clock (null for a
+ * call known by its day alone), ticker, company, fiscal year and quarter,
+ * status, then length, words and tone for a transcribed one. Each start is
+ * put on today's date when the page loads, so a picture shows the day's calls
+ * gone and to come around the time it is taken.
+ */
+type DayCall = [day: number, clock: string | null, ticker: string, company: string, year: number | null, quarter: number | null,
+  status: string, seconds: number | null, words: number | null, tone: number | null];
+const DAY_CALLS: DayCall[] = [
+  [0, "07:00", "TMO", "THERMO FISHER SCIENTIFIC INC.", 2026, 3, "published", 3433, 8409, 0.83],
+  [0, "08:30", "CB", "Chubb Limited", 2026, 3, "published", 3440, 6860, 0.72],
+  [0, "08:30", "CME", "CME Group", 2026, 3, "published", 900, 94, 0],
+  [0, "08:30", "ELV", "Elevance Health", 2026, 3, "published", 3517, 9099, 0.68],
+  [0, "08:30", "HCSG", "HEALTHCARE SERVICES GROUP INC", 2026, 3, "published", 2496, 6087, 0.72],
+  [0, "08:30", "IART", "INTEGRA LIFESCIENCES HOLDINGS CORP", 2026, 3, "published", 900, 67, 0],
+  [0, "08:30", "WAB", "Wabtec", 2026, 3, "published", 3300, 7950, 0.76],
+  [0, "09:00", "ADC", "AGREE REALTY CORP", 2026, 3, "published", 2983, 7527, 0.65],
+  [0, "09:00", "BKU", "BankUnited, Inc.", 2026, 3, "published", 3459, 8810, 0.68],
+  [0, "09:00", "BWB", "Bridgewater Bancshares Inc", 2026, 3, "published", 2431, 6597, 0.78],
+  [0, "09:00", "MCO", "Moody's Corporation", 2026, 3, "published", 3688, 9020, 0.7],
+  [0, "09:00", "NEE", "NextEra Energy", 2026, 3, "published", 3654, 8672, 0.78],
+  [0, "09:00", "ORRF", "ORRSTOWN FINANCIAL SERVICES INC", 2026, 4, "published", 2098, 4721, 0.74],
+  [0, "09:00", "SSB", "SouthState Bank Corp", null, null, "capturing", null, null, null],
+  [0, "10:30", "MHO", "M/I HOMES, INC.", 2026, 3, "published", 2015, 4962, -0.25],
+  [0, "10:30", "UAL", "United Airlines Holdings", 2026, 3, "published", 3752, 10909, 0.55],
+  [0, "10:44", "TDY", "Teledyne Technologies", null, 3, "published", 2956, 6201, 0.82],
+  [0, "11:00", "AMX", "AMERICA MOVIL SAB DE CV/", 2026, 3, "published", 2699, 5631, 0.55],
+  [0, "11:30", "ALK", "ALASKA AIR GROUP, INC.", 2026, 3, "published", 3181, 8576, -0.25],
+  [0, "16:30", "CSX", "CSX Corporation", 2026, 3, "discovered", null, null, null],
+  [0, "16:30", "KMI", "Kinder Morgan", 2026, 3, "discovered", null, null, null],
+  [0, "16:30", "LVS", "Las Vegas Sands", 2026, 3, "discovered", null, null, null],
+  [0, "16:30", "META", "Meta Platforms, Inc.", 2026, 3, "discovered", null, null, null],
+  [0, "16:30", "TXN", "Texas Instruments", 2026, 3, "discovered", null, null, null],
+  [0, "16:45", "CCI", "Crown Castle", 2026, 3, "discovered", null, null, null],
+  [0, "17:00", "IBM", "IBM", 2026, 3, "discovered", null, null, null],
+  [0, "17:00", "QS", "QuantumScape Corp", 2026, 3, "discovered", null, null, null],
+  [0, "17:00", "SEIC", "SEI INVESTMENTS CO", null, null, "discovered", null, null, null],
+  [0, "17:00", "WDFC", "WD 40 CO", 2026, 4, "discovered", null, null, null],
+  [0, "17:30", "KNX", "Knight-Swift Transportation Holdings Inc.", 2026, 3, "discovered", null, null, null],
+  [0, null, "DHR", "Danaher Corporation", 2026, 2, "discovered", null, null, null],
+  [0, null, "NTRS", "Northern Trust", 2026, 3, "discovered", null, null, null],
+  [0, null, "ONB", "OLD NATIONAL BANCORP /IN/", 2026, 3, "discovered", null, null, null],
+  [0, null, "PM", "Philip Morris International", 2026, 3, "failed", null, null, null],
+  [1, "08:00", "CURB", "Curbline Properties Corp.", 2026, 3, "discovered", null, null, null],
+  [1, "08:00", "DOW", "Dow Inc.", 2026, 3, "discovered", null, null, null],
+  [1, "08:00", "MOH", "MOLINA HEALTHCARE, INC.", 2026, 3, "discovered", null, null, null],
+  [1, "08:00", "NDAQ", "Nasdaq, Inc.", 2026, 3, "discovered", null, null, null],
+  [1, "08:00", "ROP", "Roper Technologies", 2026, 3, "discovered", null, null, null],
+  [1, "08:00", "SPOT", "Spotify Technology S.A.", null, 3, "discovered", null, null, null],
+  [1, "08:00", "THRM", "Gentherm Inc", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "BFH", "BREAD FINANCIAL HOLDINGS, INC.", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "CCZ", "COMCAST CORP", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "DGX", "Quest Diagnostics", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "HON", "Honeywell Technologies", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "LMT", "Lockheed Martin", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "PG", "PROCTER & GAMBLE Co", 2027, 1, "discovered", null, null, null],
+  [1, "08:30", "PHM", "PulteGroup", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "STC", "STEWART INFORMATION SERVICES CORP", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "URI", "United Rentals", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "WCN", "Waste Connections, Inc.", 2026, 3, "discovered", null, null, null],
+  [1, "08:30", "WH", "WYNDHAM HOTELS & RESORTS, INC.", 2026, 3, "discovered", null, null, null],
+  [1, "09:00", "BX", "Blackstone Inc.", 2026, 3, "discovered", null, null, null],
+  [1, "09:00", "FRMEP", "FIRST MERCHANTS CORP", 2026, 3, "discovered", null, null, null],
+  [1, "09:00", "LOB", "Live Oak Bancshares, Inc.", 2026, 3, "discovered", null, null, null],
+  [1, "09:00", "MEDP", "Medpace Holdings, Inc.", 2026, 3, "discovered", null, null, null],
+  [2, "08:00", "BAH", "Booz Allen Hamilton Holding Corp", 2027, 2, "discovered", null, null, null],
+  [2, "08:00", "RITM", "Rithm Capital Corp.", 2026, 3, "discovered", null, null, null],
+  [2, "08:30", "AXP", "AMERICAN EXPRESS CO", 2026, 3, "discovered", null, null, null],
+  [2, "09:00", "EBC", "Eastern Bankshares, Inc.", 2026, 3, "discovered", null, null, null],
+  [2, "09:00", "FCNCA", "FIRST CITIZENS BANCSHARES INC /DE/", 2026, 3, "discovered", null, null, null],
+  [2, "09:00", "HTH", "Hilltop Holdings Inc.", null, 3, "discovered", null, null, null],
+  [2, "09:00", "PINE", "Alpine Income Property Trust, Inc.", 2026, 3, "discovered", null, null, null],
+  [2, "09:30", "FIBK", "FIRST INTERSTATE BANCSYSTEM INC", 2026, 3, "discovered", null, null, null],
+  [2, "09:30", "GNTX", "GENTEX CORP", 2026, 3, "discovered", null, null, null],
+  [2, "10:00", "EAF", "GRAFTECH INTERNATIONAL LTD", 2026, 3, "discovered", null, null, null],
+  [2, "10:00", "ORC", "Orchid Island Capital, Inc.", 2026, 3, "discovered", null, null, null],
+  [2, "11:00", "FIX", "Comfort Systems USA", 2026, 3, "discovered", null, null, null],
+];
+
+/** META's calls before today's, newest first, as production lists them. */
+const META_PAST: Array<[callAt: string, year: number | null, quarter: number, seconds: number | null, words: number, tone: number]> = [
+  ["2026-07-29T20:30:00Z", null, 2, 3792, 10431, 0.82],
+  ["2026-04-29T21:30:00Z", 2026, 1, null, 9991, 0.82],
+  ["2026-01-28T21:30:00Z", 2025, 4, null, 9830, 0.82],
+  ["2025-10-29T20:30:00Z", 2025, 3, null, 9480, 0.82],
+  ["2025-07-30T21:00:00Z", 2025, 2, null, 9424, 0.82],
+  ["2025-04-30T21:00:00Z", 2025, 1, null, 9164, 0.72],
+  ["2025-01-29T22:00:00Z", 2024, 4, null, 9346, 0.85],
+  ["2024-10-30T21:00:00Z", 2024, 3, null, 8935, 0.78],
+];
+
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+const NEW_YORK_CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+function shiftDay(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The instant of `clock` on New York's `date`, or its day alone at 00:00 UTC. */
+function newYorkInstant(date: string, clock: string | null): string {
+  if (!clock) return `${date}T00:00:00.000Z`;
+  const [hour, minute] = clock.split(":").map(Number) as [number, number];
+  // New York is four or five hours behind UTC; take the guess its clock reads back.
+  for (const offset of [4, 5]) {
+    const at = new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)), hour + offset, minute));
+    if (NEW_YORK_CLOCK.format(at) === clock && NEW_YORK_DAY.format(at) === date) return at.toISOString();
+  }
+  return `${date}T${clock}:00.000Z`;
+}
+
+function dayCalls(): Array<CloudEarningsCallPayload & { day: string }> {
+  const today = NEW_YORK_DAY.format(new Date());
+  return DAY_CALLS.map(([day, clock, ticker, companyName, fiscalYear, fiscalQuarter, status, seconds, words, tone]) => {
+    const date = shiftDay(today, day);
+    const published = status === "published";
+    return {
+      id: `${ticker}-${date}`, ticker, companyName, fiscalYear, fiscalQuarter, callAt: newYorkInstant(date, clock), status,
+      durationSeconds: seconds, wordCount: words, hasTranscript: published, sentiment: published ? tone : null,
+      webcastUrl: `https://example.invalid/${ticker.toLowerCase()}/webcast`, callTimeKnown: clock !== null, day: date,
+    };
+  });
+}
+
+/** What the calls list answers: the days asked for, a company's calls, or the shelf of transcripts. */
+function callList(search: URLSearchParams): CloudEarningsCallPayload[] {
+  const calls = dayCalls();
+  const strip = ({ day: _day, ...call }: CloudEarningsCallPayload & { day: string }) => call;
+  if (search.get("upcoming") === "true") {
+    const from = search.get("from") ?? "";
+    const to = search.get("to") ?? "9999-12-31";
+    return calls.filter((call) => call.day >= from && call.day <= to).map(strip);
+  }
+  const ticker = search.get("ticker")?.toUpperCase();
+  if (ticker) {
+    const past = ticker === "META" ? META_PAST.map(([callAt, fiscalYear, fiscalQuarter, durationSeconds, wordCount, sentiment], index) => ({
+      id: `META-past-${index}`, ticker: "META", companyName: "Meta Platforms, Inc.", fiscalYear, fiscalQuarter, callAt, status: "published",
+      durationSeconds, wordCount, hasTranscript: true, sentiment, webcastUrl: "https://example.invalid/meta/webcast",
+    })) : [];
+    return [...calls.filter((call) => call.ticker === ticker).map(strip), ...past];
+  }
+  // The shelf: transcribed calls, newest first.
+  return calls.filter((call) => call.hasTranscript).map(strip).reverse();
+}
+
+/**
  * Gloom Cloud for the Calls pane: signed in on Pro, the invented shelf and
  * transcript, and the recording at `audio` (a call without one with `none`).
+ * With `calls`, the production-like day of calls above instead.
  */
 function installCallFetches(params: URLSearchParams): void {
   const audio = params.get("audio") ?? "none";
+  const production = params.has("calls");
   apiClient.setSessionToken("fixture-session");
   apiClient.restoreCachedUser({
     id: "fixture-user", name: "Fixture", email: "fixture@example.invalid", emailVerified: true, plan: "pro", effectivePlan: "pro",
@@ -217,7 +368,7 @@ function installCallFetches(params: URLSearchParams): void {
         : Response.json({ kind: "recording", url: audio, expiresAt: new Date(Date.now() + 3_600_000).toISOString(), durationSeconds: 240 });
     }
     if (path.includes("/transcripts/")) return Response.json(CALL_TRANSCRIPT);
-    if (path.endsWith("/transcripts")) return Response.json({ calls: CALLS });
+    if (path.endsWith("/transcripts")) return Response.json({ calls: production ? callList(new URL(String(url)).searchParams) : CALLS });
     return Response.json({ message: "Not in the fixture" }, { status: 404 });
   });
 }
@@ -407,9 +558,12 @@ export const LAYOUT_PANES = {
 export function layoutLayout(params: URLSearchParams): LayoutConfig {
   const paneId = params.get("pane") ?? "trials";
   const instanceId = `${paneId}:layout`;
-  // The Calls pane opens on the newest call's transcript, as a layout can ask it to.
-  const settings = paneId === "calls" ? { quarter: "latest", reader: params.get("reader") ?? "transcript" } : undefined;
-  const instance = { instanceId, paneId, binding: { kind: "none" as const }, ...(settings ? { settings } : {}) };
+  // The Calls pane opens on the newest call's transcript, as a layout can ask it to;
+  // `calls=calendar` opens it alone, and `calls=<ticker>` on that company's calls.
+  const production = paneId === "calls" ? params.get("calls") : null;
+  const settings = paneId === "calls" && !production ? { quarter: "latest", reader: params.get("reader") ?? "transcript" } : undefined;
+  const binding = production && production !== "calendar" ? { kind: "fixed" as const, symbol: production } : { kind: "none" as const };
+  const instance = { instanceId, paneId, binding, ...(settings ? { settings } : {}) };
   if (params.get("mode") !== "float") return { dockRoot: { kind: "pane", instanceId }, instances: [instance], floating: [], detached: [] };
   const columns = window.innerWidth / WEB_CELL_WIDTH;
   const rows = window.innerHeight / WEB_CELL_HEIGHT;

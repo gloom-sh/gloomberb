@@ -11,12 +11,31 @@ import type {
 import { explainRefusal } from "../shared/cloud-denied";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import {
+  calendarAway,
   callStatusLabel,
   isPendingTranscript,
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
+  loadUpcomingCallsWithClient,
   type EarningsCallsResult,
+  type UpcomingCallsResult,
+  type UpcomingDays,
 } from "./data";
+import { formatPeriod } from "./format";
+import type { MarketDay } from "../earnings/board-model";
+import {
+  calendarDays,
+  calendarSections,
+  callAway,
+  callCountdown,
+  callLocalClock,
+  callNewYorkClock,
+  callStartText,
+  callTimeKnown,
+  clockIsNewYork,
+  isUpcomingCall,
+  nextCall,
+} from "./upcoming";
 import { callsLockNote } from "./lock-note";
 import {
   buildTranscriptSegments,
@@ -38,6 +57,22 @@ const CALL_COLUMNS = [
   { key: "sentiment", header: "Tone", align: "right" as const },
 ];
 
+/** CALLS alone: the calendar's calls, by day, with their starts here and in New York. */
+const CALENDAR_COLUMNS = [
+  { key: "day", header: "Day" },
+  { key: "ticker", header: "Ticker" },
+  { key: "company", header: "Company" },
+  { key: "callAt", header: "Call at" },
+  { key: "timeKnown", header: "Time known" },
+  { key: "local", header: "Local" },
+  { key: "newYork", header: "ET" },
+  { key: "period", header: "Period" },
+  { key: "in", header: "In" },
+  { key: "status", header: "Status" },
+];
+/** The text report leaves out the instant and its flag, which the two clocks say, and the status the In column says. */
+const CALENDAR_TEXT_COLUMNS = CALENDAR_COLUMNS.filter((column) => !["callAt", "timeKnown", "status"].includes(column.key));
+
 const TRANSCRIPT_COLUMNS = [
   { key: "index", header: "#", align: "right" as const },
   { key: "section", header: "Section" },
@@ -54,6 +89,9 @@ export interface EarningsCallsHeadlessDependencies {
     limit: number,
     context: HeadlessPaneContext,
   ): Promise<EarningsCallsResult>;
+  loadUpcoming(days: UpcomingDays, context: HeadlessPaneContext): Promise<UpcomingCallsResult>;
+  /** When the report is read; the countdowns and the calendar's days are against it. */
+  now?(): number;
   loadTranscript(
     callId: string,
     context: HeadlessPaneContext,
@@ -66,6 +104,7 @@ const defaultDependencies: EarningsCallsHeadlessDependencies = {
     ticker,
     { limit, ...(ticker ? await resolveHeadlessIssuerListing(context, ticker) : {}) },
   ),
+  loadUpcoming: (days, context) => loadUpcomingCallsWithClient(context.apiClient, days),
   loadTranscript: (callId, context) => loadTranscriptWithClient(context.apiClient, callId),
 };
 
@@ -74,7 +113,8 @@ function explainDenied(ticker: string | null, context: HeadlessPaneContext) {
   return async (error: unknown): Promise<never> => { throw await explainRefusal(error, callsLockNote, { symbol: ticker, context }); };
 }
 
-function callRow(call: CloudEarningsCallPayload) {
+function callRow(call: CloudEarningsCallPayload, now: number) {
+  const upcoming = isUpcomingCall(call, now);
   return {
     id: call.id,
     ticker: call.ticker,
@@ -82,7 +122,9 @@ function callRow(call: CloudEarningsCallPayload) {
     callAt: call.callAt,
     fiscalYear: call.fiscalYear,
     fiscalQuarter: call.fiscalQuarter,
-    status: call.hasTranscript ? "transcribed" : callStatusLabel(call) || call.status,
+    status: call.hasTranscript ? "transcribed" : callStatusLabel(call, now) || call.status,
+    upcoming,
+    in: upcoming ? callCountdown(call, now) : null,
     durationSeconds: call.durationSeconds,
     wordCount: call.wordCount,
     hasTranscript: call.hasTranscript,
@@ -96,24 +138,37 @@ function availabilityMatches(call: CloudEarningsCallPayload, availability: strin
   return availability === "transcribed" ? call.hasTranscript : !call.hasTranscript;
 }
 
+/** The next call as its own line above a company's calls: "Next call Thu Oct 22 22:30 (16:30 ET), in 3h." */
+export function nextCallNotice(call: CloudEarningsCallPayload, now: number): string {
+  const { start, newYork } = callStartText(call, now);
+  const away = callAway(call, now);
+  return `Next call ${start}${newYork ? ` (${newYork})` : ""}${away ? `, ${away}` : ""}.`;
+}
+
 function projectEarningsCallsHeadless(
   result: EarningsCallsResult,
   args: HeadlessPaneLoadArgs,
+  now: number,
 ): HeadlessRowsResult {
   const availability = String(args.options.availability ?? "all");
   const limit = Number(args.options.limit ?? 50);
   const matching = sortCallsNewest(result.calls)
     .filter((call) => availabilityMatches(call, availability));
-  const rows = matching.slice(0, limit).map(callRow);
+  // A company's next call leads, on its own line above the table as in the pane.
+  const next = typeof args.argument === "string" ? nextCall(matching, now) : null;
+  const ordered = next ? [next, ...matching.filter((call) => call !== next)] : matching;
+  const rows = ordered.slice(0, limit).map((call) => callRow(call, now));
   const sourceLimit = result.sourceLimit ?? 200;
   const sourceLimitReached = result.sourceLimitReached ?? result.calls.length >= sourceLimit;
 
   return {
     columns: CALL_COLUMNS,
     rows,
+    ...(next ? { textRows: rows.filter((row) => row.id !== next.id) } : {}),
     errors: result.refreshError ? [result.refreshError] : undefined,
     ...(sourceLimitReached || result.pending ? { complete: false } : {}),
     metadata: {
+      ...(next ? { notices: [nextCallNotice(next, now)], nextCall: { id: next.id, callAt: next.callAt, timeKnown: callTimeKnown(next), in: callCountdown(next, now) } } : {}),
       fetchedAt: result.fetchedAt,
       stale: result.stale,
       pending: result.pending ?? false,
@@ -181,9 +236,64 @@ function transcriptResult(
   };
 }
 
+/** The calendar's rows: each day's calls in start order, with how far away each is. */
+function projectCalendar(
+  result: UpcomingCallsResult,
+  days: readonly MarketDay[],
+  args: HeadlessPaneLoadArgs,
+  now: number,
+): HeadlessRowsResult {
+  const availability = String(args.options.availability ?? "all");
+  const limit = Number(args.options.limit ?? 200);
+  const sections = calendarSections(result.calls.filter((call) => availabilityMatches(call, availability)), days);
+  const all = sections.flatMap((section) => section.items.map((call) => ({ day: section.label, call })));
+  const rows = all.slice(0, limit).map(({ day, call }) => ({
+    id: call.id,
+    day,
+    ticker: call.ticker,
+    company: call.companyName,
+    callAt: call.callAt,
+    timeKnown: callTimeKnown(call),
+    local: callLocalClock(call),
+    newYork: callNewYorkClock(call),
+    period: formatPeriod(call.fiscalYear, call.fiscalQuarter),
+    fiscalYear: call.fiscalYear,
+    fiscalQuarter: call.fiscalQuarter,
+    in: calendarAway(call, now),
+    status: call.hasTranscript ? "transcribed" : callStatusLabel(call, now) || call.status,
+    hasTranscript: call.hasTranscript,
+    webcastUrl: call.webcastUrl ?? null,
+  }));
+  // On New York's clock one time says both, as in the pane.
+  const sameClock = clockIsNewYork(all.map(({ call }) => call), now);
+  return {
+    columns: CALENDAR_COLUMNS,
+    textColumns: sameClock ? CALENDAR_TEXT_COLUMNS.filter((column) => column.key !== "local") : CALENDAR_TEXT_COLUMNS,
+    rows,
+    errors: result.refreshError ? [result.refreshError] : undefined,
+    ...(result.stale ? { complete: false } : {}),
+    empty: "No calls on the calendar these days.",
+    metadata: {
+      view: "upcoming",
+      fetchedAt: result.fetchedAt,
+      stale: result.stale,
+      from: days[0]?.from ?? null,
+      to: days.at(-1)?.to ?? null,
+      days: days.map((day) => ({ label: day.label, from: day.from, to: day.to })),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      availability,
+      total: all.length,
+      returned: rows.length,
+      truncated: rows.length < all.length,
+    },
+  };
+}
+
 /**
- * `fn CALLS` lists calls; `fn CALLS NVDA` lists the company's calls. Naming a
- * quarter or a section reads one transcript instead, with paging.
+ * `fn CALLS` is the calendar of every company's calls this week (`--view
+ * transcripts` lists the latest transcripts instead); `fn CALLS NVDA` lists
+ * the company's calls, its next one first. Naming a quarter or a section
+ * reads one transcript instead, with paging.
  */
 function readsTranscript(args: HeadlessPaneLoadArgs): boolean {
   return typeof args.argument === "string"
@@ -199,10 +309,22 @@ export function createEarningsCallsHeadless(
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: "Optional company symbol. Omit it to browse all calls.",
+      description: "Optional company symbol. Omit it for the calendar of every company's calls.",
       optional: true,
     },
     options: [
+      {
+        key: "view",
+        description: "Without a ticker: the calendar of every company's calls today and this week, or the latest transcripts.",
+        type: "enum",
+        values: [
+          { value: "upcoming", aliases: ["calendar"] },
+          { value: "transcripts", aliases: ["transcribed", "shelf"] },
+        ],
+        defaultValue: "upcoming",
+        example: "--view transcripts",
+        exampleWithoutArgument: true,
+      },
       {
         key: "availability",
         shot: REPORT_FILTER,
@@ -281,13 +403,22 @@ export function createEarningsCallsHeadless(
       if (readsTranscript(args)) {
         return `Earnings Call Transcript | ${String(args.argument)} | ${String(args.options.quarter || "latest")}`;
       }
-      return args.argument ? `Earnings Calls | ${String(args.argument)}` : "Earnings Calls";
+      if (args.argument) return `Earnings Calls | ${String(args.argument)}`;
+      return String(args.options.view ?? "upcoming") === "transcripts" ? "Earnings Calls | Transcripts" : "Earnings Calls | Calendar";
     },
     async load(args, context) {
       const ticker = typeof args.argument === "string" ? args.argument : null;
+      const now = dependencies.now?.() ?? Date.now();
+      if (!ticker && String(args.options.view ?? "upcoming") !== "transcripts") {
+        const days = calendarDays(now);
+        const upcoming = await dependencies
+          .loadUpcoming({ from: days[0]!.from, to: days.at(-1)!.to }, context)
+          .catch(explainDenied(null, context));
+        return projectCalendar(upcoming, days, args, now);
+      }
       const calls = await dependencies.loadCalls(ticker, 200, context).catch(explainDenied(ticker, context));
       if (!ticker || !readsTranscript(args)) {
-        return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } });
+        return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } }, now);
       }
       const quarter = String(args.options.quarter || "latest");
       const selected = findCallForQuarter(calls.calls, quarter);

@@ -458,8 +458,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   CALLS: {
-    summary: "Earnings call transcripts with speakers, the analyst Q&A, and extracted guidance and quotes. Alone it lists every transcribed call as it lands.",
-    usage: ["CALLS", "CALLS NVDA"],
+    summary: "Earnings call transcripts with speakers, the analyst Q&A, and extracted guidance and quotes. With a ticker, the company's calls, its next one first with its start and how far away it is. Alone, the calendar of every company's calls this week; --view transcripts lists the latest transcripts.",
+    usage: ["CALLS", "CALLS NVDA", "CALLS --view transcripts"],
     keys: [OPEN, key("/", "find"), OPEN_SOURCE],
     data: pro("Within hours of the call"),
     access: "pro",

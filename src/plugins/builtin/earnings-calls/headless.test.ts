@@ -111,6 +111,7 @@ function dependencies(): EarningsCallsHeadlessDependencies {
       fetchedAt: 123,
       stale: false,
     }),
+    loadUpcoming: async () => ({ calls: [], fetchedAt: 123, stale: false }),
     loadTranscript: async () => transcript,
   };
 }
@@ -122,7 +123,7 @@ describe("earnings calls headless", () => {
     const definition = createEarningsCallsHeadless(dependencies());
 
     const result = await definition.load(
-      callArgs({ availability: "pending", limit: 1 }),
+      callArgs({ view: "transcripts", availability: "pending", limit: 1 }),
       context,
     );
 
@@ -224,7 +225,7 @@ describe("bounded call discovery", () => {
   test("a full source page remains bounded even when every returned row fits the export", async () => {
     const deps = dependencies();
     deps.loadCalls = async () => ({ calls: capped, fetchedAt: 123, stale: false, sourceLimit: 200, sourceLimitReached: true });
-    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ view: "transcripts", limit: 200 }), context);
     expect(result.rows).toHaveLength(200);
     expect(result.complete).toBe(false);
     expect(result.metadata).toMatchObject({ total: 200, returned: 200, truncated: true, sourceLimitReached: true, totalIsExact: false });
@@ -234,7 +235,7 @@ describe("bounded call discovery", () => {
     const deps = dependencies();
     // Existing injected/snapshot loaders can omit new metadata; the known 200-row request still bounds this path.
     deps.loadCalls = async () => ({ calls: capped, fetchedAt: 123, stale: false });
-    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200, availability: "pending" }), context);
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ view: "transcripts", limit: 200, availability: "pending" }), context);
     expect(result.rows).toEqual([]);
     expect(result.complete).toBe(false);
     expect(result.metadata).toMatchObject({ total: 0, truncated: true, totalIsExact: false });
@@ -244,7 +245,7 @@ describe("bounded call discovery", () => {
 
   test("an uncapped response keeps exact loaded totals and ordinary missing-quarter behavior", async () => {
     const deps = dependencies();
-    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ view: "transcripts", limit: 200 }), context);
     expect(result.complete).not.toBe(false);
     expect(result.metadata).toMatchObject({ total: 2, truncated: false, sourceLimitReached: false, totalIsExact: true });
     await expect(createEarningsCallsHeadless(deps).load(transcriptArgs({ quarter: "FQ1-1990" }), context))
@@ -255,7 +256,7 @@ describe("bounded call discovery", () => {
 test("pending discovery is not reported as a complete empty export", async () => {
   const deps = dependencies();
   deps.loadCalls = async () => ({ calls: [], fetchedAt: 123, stale: false, pending: true });
-  const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+  const result = await createEarningsCallsHeadless(deps).load(callArgs({ view: "transcripts", limit: 200 }), context);
   expect(result.complete).toBe(false);
   expect(result.metadata).toMatchObject({ total: 0, pending: true, totalIsExact: false, sourceLimitReached: false });
 });
@@ -264,7 +265,7 @@ test("a refused account reads as CALLS's lock note on one line, for the list and
   const refused = (status: number) => Promise.reject(new ApiRequestError(status === 401 ? "Unauthorized" : "Refused", status));
   const load = (status: number, args: HeadlessPaneLoadArgs, transcriptOnly = false) => createEarningsCallsHeadless({
     ...dependencies(),
-    ...(transcriptOnly ? { loadTranscript: () => refused(status) } : { loadCalls: () => refused(status) }),
+    ...(transcriptOnly ? { loadTranscript: () => refused(status) } : { loadCalls: () => refused(status), loadUpcoming: () => refused(status) }),
   }).load(args, context);
   await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: .* Signed out it shows none of it\. Free, with no sign-in: gloomberb events <ticker> .*log in or sign up .*then upgrade.*; gloomberb fn CALLS then reads/);
   await expect(load(403, transcriptArgs({}))).rejects.toThrow(/Until the email is verified it shows none of it\..*verify your email \(Ctrl\+P, Resend Verification Email\)/);
@@ -274,4 +275,69 @@ test("a refused account reads as CALLS's lock note on one line, for the list and
   expect((failure as Error).cause).toBeInstanceOf(ApiRequestError);
   // Anything else keeps its own message.
   await expect(load(500, callArgs({}))).rejects.toThrow("Refused");
+});
+
+describe("upcoming calls", () => {
+  // Wednesday Oct 21 2026, 14:00 in New York.
+  const now = Date.parse("2026-10-21T18:00:00Z");
+  const upcoming = (id: string, ticker: string, callAt: string, extra: Partial<CloudEarningsCallPayload> = {}): CloudEarningsCallPayload => ({
+    ...calls[1]!, id, ticker, companyName: `${ticker} Inc`, fiscalYear: 2026, fiscalQuarter: 3, callAt, ...extra,
+  });
+
+  test("fn CALLS TICKER puts the next call first, upcoming with its countdown, and on its own line in the text", async () => {
+    const deps = dependencies();
+    deps.now = () => now;
+    deps.loadCalls = async () => ({
+      calls: [...calls, upcoming("amd-fq3-2026", "AMD", "2026-11-04T21:00:00Z"), upcoming("amd-fq4-2026", "AMD", "2027-02-03T22:00:00Z")],
+      fetchedAt: 123, stale: false,
+    });
+    const result = await createEarningsCallsHeadless(deps).load(transcriptArgs({}), context);
+    expect(result.rows.slice(0, 2)).toEqual([
+      expect.objectContaining({ id: "amd-fq3-2026", status: "upcoming", upcoming: true, in: "Nov 4" }),
+      expect.objectContaining({ id: "amd-fq4-2026", status: "upcoming" }),
+    ]);
+    expect((result as { textRows?: unknown[] }).textRows?.map((row) => (row as { id: string }).id)).not.toContain("amd-fq3-2026");
+    expect(result.metadata).toMatchObject({
+      notices: [expect.stringMatching(/^Next call Wed Nov 4 .*16:00.*\.$/)],
+      nextCall: { id: "amd-fq3-2026", timeKnown: true, in: "Nov 4" },
+    });
+  });
+
+  test("fn CALLS alone is the week's calendar by day in start order, and --view transcripts the shelf", async () => {
+    const deps = dependencies();
+    deps.now = () => now;
+    const asked: unknown[] = [];
+    deps.loadUpcoming = async (days) => {
+      asked.push(days);
+      return {
+        calls: [
+          upcoming("ibm", "IBM", "2026-10-22T00:00:00Z"),
+          upcoming("tsla", "TSLA", "2026-10-21T21:30:00Z"),
+          upcoming("ko", "KO", "2026-10-21T12:30:00Z", { status: "published", hasTranscript: true }),
+          upcoming("meta", "META", "2026-10-21T20:30:00Z"),
+          upcoming("aal", "AAL", "2026-10-22T12:30:00Z"),
+        ],
+        fetchedAt: 123,
+        stale: false,
+      };
+    };
+    const definition = createEarningsCallsHeadless(deps);
+    const result = await definition.load(callArgs({}), context);
+    expect(asked).toEqual([{ from: "2026-10-21", to: "2026-10-23" }]);
+    expect(result.rows.map((row) => [row.day, row.ticker, row.newYork, row.in])).toEqual([
+      ["Today", "KO", "08:30", "transcribed"],
+      ["Today", "META", "16:30", "in 2h 30m"],
+      ["Today", "TSLA", "17:30", "in 3h 30m"],
+      ["Tomorrow", "AAL", "08:30", "in 18h 30m"],
+      ["Tomorrow", "IBM", null, "tomorrow"],
+    ]);
+    expect(result.metadata).toMatchObject({ view: "upcoming", from: "2026-10-21", to: "2026-10-23", total: 5 });
+    const title = definition.describe;
+    if (typeof title !== "function") throw new Error("The report title depends on the arguments");
+    expect(title(callArgs({}))).toBe("Earnings Calls | Calendar");
+
+    const shelf = await definition.load(callArgs({ view: "transcripts" }), context);
+    expect(shelf.rows.map((row) => row.id)).toEqual(["amd-fq2-2026", "amd-fq1-2026"]);
+    expect(asked).toHaveLength(1);
+  });
 });

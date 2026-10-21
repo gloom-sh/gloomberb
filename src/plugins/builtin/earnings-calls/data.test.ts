@@ -9,6 +9,7 @@ import {
   loadCallAudioWithClient,
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
+  loadUpcomingCallsWithClient,
   resetEarningsCallsPersistence,
 } from "./data";
 import { createEarningsCallsHeadless } from "./headless";
@@ -316,4 +317,39 @@ test("a refused recording is no recording and is asked for again next time, a fa
   expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 30_000).toISOString() }, now)).toBe(true);
   expect(callAudioExpired({ ...audio, expiresAt: new Date(now + 600_000).toISOString() }, now)).toBe(false);
   expect(callAudioExpired({ ...audio, expiresAt: "not a date" }, now)).toBe(false);
+});
+
+test("the calendar asks for its days, keeps only calls on them from a server without it, and a failed refresh keeps the cached days", async () => {
+  attachEarningsCallsPersistence(new MemoryPluginPersistence());
+  const days = { from: "2026-10-21", to: "2026-10-23" };
+  const on = (id: string, callAt: string, extra: Partial<CloudEarningsCallPayload> = {}): CloudEarningsCallPayload => ({
+    ...calls[0]!, id, callAt, status: "discovered", hasTranscript: false, ...extra,
+  });
+  const requests: unknown[] = [];
+  let answer: () => Promise<CloudEarningsCallListPayload> = async () => ({
+    // An older server answers the shelf: a published call from July and one past the week ride along.
+    calls: [
+      on("meta", "2026-10-21T20:30:00Z"),
+      on("ibm", "2026-10-23T00:00:00Z"),
+      on("late", "2026-10-24T01:30:00Z"),
+      on("july", "2026-07-30T21:00:00Z", { status: "published", hasTranscript: true }),
+      on("next-week", "2026-10-26T20:30:00Z"),
+    ],
+  });
+  const client = clientWith(async (params) => { requests.push(params); return answer(); });
+
+  const first = await loadUpcomingCallsWithClient(client, days);
+  expect(requests).toEqual([{ upcoming: days, limit: 500 }]);
+  // 21:30 New York on Friday is still Friday's.
+  expect(first.calls.map((call) => call.id)).toEqual(["meta", "ibm", "late"]);
+  await loadUpcomingCallsWithClient(client, days);
+  expect(requests).toHaveLength(1);
+
+  answer = async () => { throw new ApiRequestError("Controlled outage", 503); };
+  const stale = await loadUpcomingCallsWithClient(client, days, { force: true });
+  expect(stale).toMatchObject({ stale: true, refreshError: "Controlled outage" });
+  expect(stale.calls.map((call) => call.id)).toEqual(["meta", "ibm", "late"]);
+  // Losing Pro gates the calendar rather than showing the cached days.
+  answer = async () => { throw new ApiRequestError("Upgrade", 402); };
+  await expect(loadUpcomingCallsWithClient(client, days, { force: true })).rejects.toThrow("Upgrade");
 });

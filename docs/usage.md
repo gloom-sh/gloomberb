@@ -143,7 +143,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
-| `CALLS [ticker]` | Earnings call transcripts; alone, every transcribed call |
+| `CALLS [ticker]` | Earnings calls and their transcripts. With a ticker, the company's calls, its next one on its own line with its start here and in New York and how far away it is. Alone, the calendar of every company's calls today, the next session and the rest of the week, each day's in start order (Enter opens the company's calls); `--view transcripts` (the bar's Transcripts) lists the latest transcribed calls instead |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
 | `QQ <tickers>` | Ticker quote monitor |
 | `CMP <tickers>` | Normalized price comparison; `fn CMP LMT RTX --range YTD` starts at the prior year's last close, the one YTD returns are measured from |

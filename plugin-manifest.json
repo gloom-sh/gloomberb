@@ -544,7 +544,7 @@
           {
             "code": "CALLS",
             "name": "Earnings Calls",
-            "description": "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.",
+            "description": "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, the calendar of upcoming calls this week; with a ticker, that company's calls, its next one first.",
             "access": "pro"
           },
           {

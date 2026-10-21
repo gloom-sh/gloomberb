@@ -296,15 +296,6 @@ export function landedHighImpactPrints(
   });
 }
 
-export function formatCountdown(ms: number): string {
-  if (ms <= 60_000) return "in <1m";
-  const totalMin = Math.floor(ms / 60_000);
-  if (totalMin < 60) return `in ${totalMin}m`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m > 0 ? `in ${h}h ${m}m` : `in ${h}h`;
-}
-
 export function formatStaleness(fetchedAt: number, now: number): string {
   const elapsed = now - fetchedAt;
   if (elapsed < 60_000) return "updated just now";
