@@ -61,21 +61,47 @@ test("fn SIW exits 1 when no name resolved and 0 when some did, naming the ones 
   });
 });
 
-test("fn fails a report with no data for what was asked, and JSON says ok: false with why beside the data", () => {
-  const report = { empty: false, rowCount: 6, symbols: ["SCHD"], unavailableSymbols: ["SCHD"], errors: ["Coverage for new underlyings is full; try again later."] };
-  // A report of six empty statistics for SCHD has nothing for SCHD.
-  const failure = reportFailure(report, "fn HIVG SCHD");
-  expect(failure).toEqual({ code: "no_data", message: "fn HIVG SCHD: Coverage for new underlyings is full; try again later." });
-  expect(reportFailure({ empty: true, rowCount: 0, symbols: ["TWTR"], unavailableSymbols: ["TWTR"], errors: ["A current underlying price is required"] }, "fn OVDV TWTR"))
-    .toEqual({ code: "no_data", message: "fn OVDV TWTR: A current underlying price is required." });
-  // An empty board asked about no symbol fails too; a listing key is its symbol.
-  expect(reportFailure({ empty: true, rowCount: 0, symbols: [], unavailableSymbols: [] }, "fn HALT")?.message).toBe("fn HALT: no data.");
-  expect(reportFailure({ empty: false, rowCount: 1, symbols: ["SAN:EPA"], unavailableSymbols: ["SAN"] }, "fn DVD SAN:EPA")).not.toBeNull();
-  // Data for some of what was asked, errors and all, is a result.
-  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SPY", "QQQ"], unavailableSymbols: ["QQQ"], errors: ["QQQ: timed out"] }, "fn G SPY,QQQ")).toBeNull();
-  expect(reportFailure({ empty: false, rowCount: 18, symbols: ["SPY"], unavailableSymbols: [], errors: ["2027-01-15: no quotes"] }, "fn OVDV SPY")).toBeNull();
+/** A report's export: one table, its first column a label or date. */
+const tables = (columns: string[], ...rows: Array<Array<string | number>>) => ({ tables: [{ title: "Report", columns, rows }], footer: [] });
 
-  const json = JSON.parse(serializeCliResult({ data: report, failure: failure! }, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
-  expect(json).toMatchObject({ ok: false, error: { code: "no_data" }, data: { symbols: ["SCHD"] } });
-  expect(JSON.parse(serializeCliResult({ data: report }, { ...DEFAULT_CLI_OPTIONS, format: "json" })).ok).toBe(true);
+test("fn fails a report with no data for what was asked, and JSON says ok: false with why beside the data", () => {
+  const twtr = { empty: true, rowCount: 0, symbols: ["TWTR"], unavailableSymbols: ["TWTR"], errors: ["A current underlying price is required"] };
+  const failure = reportFailure(twtr, "fn OVDV TWTR", { tables: { tables: [], footer: [] } });
+  expect(failure).toEqual({ code: "no_data", message: "fn OVDV TWTR: A current underlying price is required." });
+  // An empty board asked about no symbol fails too.
+  expect(reportFailure({ empty: true, rowCount: 0, symbols: [], unavailableSymbols: [] }, "fn HALT")?.message).toBe("fn HALT: no data.");
+  // Rows of labels with no value in them, for a symbol with nothing, are no data.
+  const blank = tables(["Measure", "Current", "status"], ["IV 30d ATM (%)", "", "Current: no history"], ["IV 90d ATM (%)", "", ""]);
+  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["ZZZQ"], unavailableSymbols: ["ZZZQ"] }, "fn HIVG ZZZQ", { tables: blank })).not.toBeNull();
+
+  const json = JSON.parse(serializeCliResult({ data: twtr, failure: failure! }, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  expect(json).toMatchObject({ ok: false, error: { code: "no_data" }, data: { symbols: ["TWTR"] } });
+  expect(JSON.parse(serializeCliResult({ data: twtr }, { ...DEFAULT_CLI_OPTIONS, format: "json" })).ok).toBe(true);
+});
+
+test("partial data exits 0: a symbol without its headline figure whose tables have rows, or one listing of several", () => {
+  // A loss-maker's P/E band has no P/E, so the report names the symbol, but its EPS history is data.
+  const band = tables(["Period end", "EPS", "P/E"], ["2026-06-30", -0.42, "N/M"], ["2026-03-31", -0.38, "N/M"]);
+  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["RIVN"], unavailableSymbols: ["RIVN"], errors: ["No positive trailing EPS."] },
+    "fn PEB RIVN", { tables: band })).toBeNull();
+  // IV history with only realized volatility.
+  const hv = tables(["Measure", "Current", "status"], ["IV 30d ATM (%)", "", ""], ["HV 20 (%)", 12.5, ""]);
+  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SCHD"], unavailableSymbols: ["SCHD"] }, "fn HIVG SCHD", { tables: hv })).toBeNull();
+  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SPY", "QQQ"], unavailableSymbols: ["QQQ"], errors: ["QQQ: timed out"] }, "fn G SPY,QQQ",
+    { tables: tables(["Date"]) })).toBeNull();
+});
+
+test("a listing unavailable is that listing: another listing of the symbol, or another series, keeps its data", () => {
+  const none = tables(["Date", "Value"]);
+  const failed = (symbols: string[], unavailableSymbols: string[]) => reportFailure(
+    { empty: false, rowCount: 1, symbols, unavailableSymbols }, `fn G ${symbols.join(",")}`, { tables: none }) !== null;
+  // BHP in Sydney has nothing; BHP as asked, its US listing, does.
+  expect(failed(["BHP:XASX", "BHP"], ["BHP:XASX"])).toBe(false);
+  expect(failed(["fred:DGS10", "fred:DGS2"], ["fred:DGS10"])).toBe(false);
+  expect(failed(["BHP:XASX", "BHP"], ["BHP:XASX", "BHP"])).toBe(true);
+  // A report that names the listing by its bare symbol, or a bare symbol by the listing it resolved to, still means it.
+  expect(failed(["SAN:EPA"], ["SAN"])).toBe(true);
+  expect(failed(["sxr8"], ["SXR8:XETRA"])).toBe(true);
+  // A bare name that could be either of two listings asked is neither.
+  expect(failed(["SAN:EPA", "SAN:MCE"], ["SAN"])).toBe(false);
 });

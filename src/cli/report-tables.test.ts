@@ -155,6 +155,29 @@ describe("report tables", () => {
     expect(exportRowsTable("Warnings", [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }], [], { status: true }).columns)
       .toEqual(["Expiry", "Warning"]);
   });
+
+  test("text a format draws from the rest of the row stays, and the header is the same without rows whatever the format reads", () => {
+    // A range, N/M and ATM come from the row, not from a missing figure: no column draws a number in their place.
+    const range = { key: "range", header: "Range", format: (_: unknown, row: Record<string, unknown>) => `${row.low}-${row.high}` };
+    const pe = { key: "pe", header: "P/E", format: (value: unknown, row: Record<string, unknown>) => row.loss ? "N/M" : `${Number(value).toFixed(1)}x` };
+    const strike = { key: "moneyness", header: "Moneyness", format: (value: unknown, row: Record<string, unknown>) => row.atm ? "ATM" : `${Number(value).toFixed(2)}%` };
+    const kept = exportRowsTable("Kept", [range, pe, strike], [{ low: "2.0", high: "3.0", loss: true, atm: true }], { status: true });
+    expect(kept.rows).toEqual([["2.0-3.0", "N/M", "ATM", ""]]);
+
+    // A format that reads a field an empty row lacks names its unit with no rows as with them, status column and all.
+    const change = { key: "change", header: "Chg", format: (value: unknown, row: Record<string, unknown>) => (
+      typeof value === "number" ? `${(value * 100).toFixed((row.precision as { places: number }).places)} bp` : "no close") };
+    const loaded = exportRowsTable("Moves", [change], [{ change: 0.05, precision: { places: 1 } }, { change: null, precision: { places: 1 } }], { status: true });
+    const none = exportRowsTable("Moves", [change], [], { status: true });
+    expect(loaded.columns).toEqual(["Chg (bp)", "status"]);
+    expect(none.columns).toEqual(loaded.columns);
+    expect(loaded.rows).toEqual([[5, ""], ["", "Chg: no close"]]);
+
+    // A table of text drawn through String() is no table of figures: no status column, with rows or without.
+    const names = [{ key: "name", header: "Name", format: (value: unknown) => String(value ?? "--") }];
+    expect(exportRowsTable("Names", names, [], { status: true }).columns).toEqual(["Name"]);
+    expect(exportRowsTable("Names", names, [{ name: "Apple" }, { name: 42 }], { status: true }).columns).toEqual(["Name"]);
+  });
 });
 
 const freshness: ReportFreshness = {

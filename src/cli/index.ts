@@ -196,7 +196,7 @@ export function createCoreCliCommands(
         sections: [{
           title: "Exit status",
           lines: [
-            "0 when the report has data for what was asked, warnings about the rest included; 1 when it has none (an empty report, or every symbol asked unavailable) or the input is bad. --json ok is false exactly when the exit status is 1.",
+            "0 when the report has data for what was asked, partial data with warnings about the rest included; 1 when it has none (an empty report, or rows with no value for a listing that has nothing) or the input is bad. --json ok is false exactly when the exit status is 1.",
             "CSV headers are the same for every symbol: a reason a figure is missing goes to the status column, never into a number cell.",
           ],
         }],

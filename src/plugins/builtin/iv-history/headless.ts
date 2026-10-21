@@ -7,7 +7,13 @@ import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHi
 import { vcaUniverse } from "./universe";
 import { offsetText, releaseOffsetRows } from "./events";
 import { loadMacroReleases } from "../macro-day/client";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, type MacroEventKind } from "../macro-day/releases";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, type MacroEventKind, type MacroRelease,
+  type MacroReleaseList } from "../macro-day/releases";
+import { lookupScheduledDates } from "../alerts/scheduled";
+import { fetchCpiBoard } from "../cpi/client";
+import { fetchRatePath } from "../rate-path/client";
+import type { HeadlessPaneContext } from "../../../types/headless";
+import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { listingFateNotes, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
 import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
 
@@ -28,10 +34,10 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
     { key: "event", type: "enum", aliases: ["release"], values: MACRO_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
-      description: "One row per past release of this kind, the readings on the session --offset from it, in place of the daily history",
+      description: "One row per release of this kind whose session at --offset has closed (the next scheduled FOMC or CPI included), in place of the daily history",
       example: "--event fomc --offset -6", shot: { reportOnly: "lists the readings around past release days" } },
     { key: "offset", type: "integer", minimum: -60, maximum: 60, defaultValue: 0,
-      description: "Sessions from each release day with --event: -6 is the sixth session before it, 0 the release day",
+      description: "Sessions from each release with --event: 0 is the first session on or after the release day, -6 the sixth session before that",
       example: "--event cpi --offset -1", shot: { reportOnly: "picks the session read around each release" } },
   ],
   async load(args, ctx) {
@@ -46,8 +52,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const [payload, prices, releases] = await Promise.all([
       loadIvHistory(instrument.symbol, { signal: ctx.signal }, ctx.apiClient),
       loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)),
-      // The release days MDAY studies: the list the app ships with, extended by Gloom Cloud's.
-      event ? loadMacroReleases({}, () => ctx.apiClient.getCloudMacroReleaseDays()) : null,
+      event ? eventReleases(event, ctx) : null,
     ]);
     const fate = await loadListingFate(instrument, ctx.marketData, { quote, changes });
     if (fate.moved) throw new MovedSymbolError(fate.moved);
@@ -79,12 +84,19 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (event && releases) {
       const lookback = String(args.options.lookback) as IvLookback;
       const label = MACRO_EVENT_LABELS[event];
-      const offsets = releaseOffsetRows(model, releases.releases, event, offset);
+      const offsets = releaseOffsetRows(model, releases.list.releases, event, offset, {
+        lookback, readThrough: payload.coverage?.backfilledThrough ?? null });
+      const plural = (count: number, one: string, many: string) => count === 1 ? one : many;
       const eventNotes = [
-        offsets.beforeLookback > 0 && lookback !== "ALL"
-          ? `${offsets.beforeLookback} earlier ${label} release${offsets.beforeLookback === 1 ? " is" : "s are"} outside the ${lookback} lookback; --lookback ALL adds ${offsets.beforeLookback === 1 ? "it" : "them"}.` : null,
-        offsets.pending.length > 0 ? `Left out ${label} ${offsets.pending.join(", ")}, whose session${offsets.pending.length === 1 ? "" : "s"} at --offset ${offset} ${offsets.pending.length === 1 ? "has" : "have"} not closed yet.` : null,
-        staleMacroReleasesNotice(releases),
+        offsets.beforeLookback > 0
+          ? `${offsets.beforeLookback} earlier ${label} ${plural(offsets.beforeLookback, "release is", "releases are")} outside the ${lookback} lookback; --lookback ALL adds ${plural(offsets.beforeLookback, "it", "them")}.` : null,
+        // Said once the lookback says nothing: the history's own start is then where the rows stop.
+        offsets.beforeHistory > 0 && offsets.beforeLookback === 0
+          ? `${offsets.beforeHistory} earlier ${label} ${plural(offsets.beforeHistory, "release predates", "releases predate")} the IV history, which starts ${offsets.historyStart}.` : null,
+        offsets.pending.length > 0
+          ? `Left out ${label} ${offsets.pending.join(", ")}: no closing reading yet for ${plural(offsets.pending.length, "its session", "their sessions")} at --offset ${offset}.` : null,
+        releases.upcomingNote,
+        staleMacroReleasesNotice(releases.list),
       ].filter((note): note is string => !!note);
       const eventColumns = [{ key: "releaseDate", header: "Release date" }, { key: "session", header: "Session" },
         ...historyColumns.slice(1), ...skewColumns];
@@ -101,7 +113,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(notes.length + eventNotes.length > 0 ? { notes: [...notes, ...eventNotes] } : {}),
         // Dated by the history read, not by the newest release's session: an old release is no stale reading.
         ...(model.asOf ? { freshness: { asOf: model.asOf } } : {}),
-        metadata: { status: payload.status, coverage: payload.coverage, event, offset, releasesThrough: releases.coveredThrough,
+        metadata: { status: payload.status, coverage: payload.coverage, event, offset, releasesThrough: releases.list.coveredThrough,
+          nextRelease: releases.upcoming,
           releaseSource: MACRO_RELEASE_SOURCES[event], unit: "decimal annualized volatility", methodology: METHODOLOGY },
       };
     }
@@ -196,3 +209,32 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     };
   },
 };
+
+/**
+ * The releases of `event` HIVG reads around: the days MDAY studies (the list
+ * the app ships with, extended by Gloom Cloud's), and the next one scheduled,
+ * from the CPI board's release calendar or the FOMC meetings WIRP prices, as
+ * scheduled alerts read them. Payrolls have no schedule to read.
+ */
+async function eventReleases(event: MacroEventKind, ctx: HeadlessPaneContext): Promise<{
+  list: MacroReleaseList; upcoming: string | null; upcomingNote: string | null;
+}> {
+  const label = MACRO_EVENT_LABELS[event];
+  const [published, next] = await Promise.all([
+    loadMacroReleases({}, () => ctx.apiClient.getCloudMacroReleaseDays()),
+    event === "jobs" ? null : lookupScheduledDates([{ kind: "macro", event }], {
+      earnings: async () => [],
+      cpi: () => fetchCpiBoard(ctx.apiClient),
+      fomc: async () => (await fetchRatePath(ctx.apiClient)).meetings,
+    }, zonedDateKey(Date.now(), "America/New_York")).then((dates) => dates.get(`macro:${event}`) ?? { date: null }),
+  ]);
+  const upcoming = next && "date" in next ? next.date : null;
+  const listed = upcoming != null && published.releases.some((release) => release.kind === event && release.date === upcoming);
+  const releases: MacroRelease[] = upcoming && !listed ? [...published.releases, { kind: event, date: upcoming }] : published.releases;
+  return {
+    list: { ...published, releases },
+    upcoming,
+    upcomingNote: next == null ? `The next ${label} release is not scheduled here, so it has no row yet.`
+      : "error" in next ? `The next ${label} date could not be loaded (${next.error}), so it has no row.` : null,
+  };
+}

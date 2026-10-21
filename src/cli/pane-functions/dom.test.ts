@@ -9,6 +9,7 @@ import { researchModule } from "../../plugins/builtin/research";
 import { filingEventsModule } from "../../plugins/builtin/filing-events";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
+import { reportFailure } from ".";
 
 // The status line names the year only when it is not the current one.
 beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
@@ -319,4 +320,23 @@ test("a pane that is prose reads as the lines it draws, wrapped, without its own
   expect(domReportNote(5, "whole")).toBe("Rendered view: the pane grown to fit the whole page. Render time: 5 ms.");
   // A page still cut once the pane has grown is not whole.
   expect(domReportView((await report(true)).data)).toBe("clipped");
+});
+
+test("a rendered pane with rows beside an error marker has data for its symbol and exits 0; one with none fails", async () => {
+  const resolved = { token: "DES", label: "Description", pane: { id: "ticker-detail" }, capability: { id: "ticker-detail-pane" }, options: {} } as unknown as ResolvedPaneFunction;
+  const render = (rows: unknown[]) => ({
+    symbols: ["AAPL"],
+    render: {
+      visibleText: rows.length ? "Sector Technology Quote unavailable." : "Quote unavailable.", rows, truncated: false, truncationReasons: [],
+      loadingStateDetected: false, errorStateDetected: true, errorStateMarkers: ["Quote unavailable."], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  }) as unknown as PaneScreenshotResult;
+  const drawn = await buildDomPaneReportFromRender(resolved, render([{ tableIndex: 0, rowIndex: 0, selected: false,
+    cells: [{ columnLabel: "Field", text: "Sector" }, { columnLabel: "Value", text: "Technology" }] }]));
+  expect(drawn.data).toMatchObject({ unavailableSymbols: [], complete: false, reason: "The rendered pane reported: Quote unavailable." });
+  expect(reportFailure(drawn.data, "fn DES AAPL", { tables: drawn.tables })).toBeNull();
+
+  const bare = await buildDomPaneReportFromRender(resolved, render([]));
+  expect(bare.data.unavailableSymbols).toEqual(["AAPL"]);
+  expect(reportFailure(bare.data, "fn DES AAPL", { tables: bare.tables })?.code).toBe("no_data");
 });
