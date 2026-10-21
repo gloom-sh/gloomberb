@@ -160,7 +160,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
 
   const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]): string | null => {
     let error: string | null = null;
-    setAlertsJson((currentJson) => {
+    setAlertsJson((currentJson: unknown) => {
       error = readAlertsStoreError(currentJson);
       // The config hook skips persistence when the updater returns the unchanged value.
       if (error) return currentJson;
