@@ -40,6 +40,8 @@ export const zhCN: Record<string, string> = {
   "Name": "名称",
   "Title": "标题",
   "Source": "来源",
+  "Issuer page": "发行人页面",
+  "Description from": "描述来源",
   "Headline": "标题",
   "Symbol": "代码",
   "Price": "价格",

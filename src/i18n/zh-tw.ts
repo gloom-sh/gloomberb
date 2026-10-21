@@ -40,6 +40,8 @@ export const zhTW: Record<string, string> = {
   "Name": "名稱",
   "Title": "標題",
   "Source": "來源",
+  "Issuer page": "發行人頁面",
+  "Description from": "描述來源",
   "Headline": "標題",
   "Symbol": "代號",
   "Price": "價格",

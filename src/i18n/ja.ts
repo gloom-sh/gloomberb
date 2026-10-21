@@ -40,6 +40,8 @@ export const ja: Record<string, string> = {
   "Name": "名前",
   "Title": "タイトル",
   "Source": "ソース",
+  "Issuer page": "発行体のページ",
+  "Description from": "説明の出典",
   "Headline": "見出し",
   "Symbol": "銘柄コード",
   "Price": "価格",

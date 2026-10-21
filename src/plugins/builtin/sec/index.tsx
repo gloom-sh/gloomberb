@@ -8,10 +8,10 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { t, tf } from "../../../i18n";
-import { EmptyState, FeedDataTableStackView, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
+import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
 import { displayWidth } from "../../../utils/format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
@@ -19,7 +19,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
-import { fundAbroadProfile, venueAbroad } from "./fund-abroad";
+import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -278,7 +278,6 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const abroadFinancials = useTickerFinancials(abroadVenue ? ticker?.metadata.ticker : null, abroadVenue ? ticker : null);
   const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
   const abroadPage = abroad?.page ?? null;
-  const abroadName = abroad?.name;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
   const fundFacts = useFundFacts(forms && eligibleTicker ? ticker?.metadata.ticker : null);
   const facts = fundFacts.data?.payload ?? null;
@@ -514,10 +513,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
-  if (abroadVenue) {
-    // The issuer's page is the footer's link, which `o` opens.
-    return <EmptyState title={US_FUND_FACTS_ONLY} message={abroadName} />;
-  }
+  if (abroadVenue) return <FundAbroadNotice profile={abroad} />;
   if (!eligibleTicker) {
     return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");
   }
@@ -653,3 +649,35 @@ export const secModule: PluginModule = {
     resetSecFilingFocusRequests();
   },
 };
+
+/** A link under its label, as the CLI prints it ("Issuer page: ..."). */
+function LabelledLink({ label, url, text }: { label: string; url: string; text: string }) {
+  const colors = useThemeColors();
+  return (
+    <Box flexDirection="row">
+      <Text flexShrink={0} fg={colors.textDim}>{`${t(label)}: `}</Text>
+      <ExternalLinkText url={url} label={text} />
+    </Box>
+  );
+}
+
+/**
+ * ETF for a fund listed abroad (3042.HK): what `fn ETF` prints of it, its
+ * name, its page at its issuer and where its description is from, the last
+ * two as links the pane menu lists too. The footer's `o` opens the issuer page.
+ */
+function FundAbroadNotice({ profile }: { profile: FundAbroadProfile | null }) {
+  const page = profile?.page;
+  const source = profile?.descriptionSource;
+  const links = page || source
+    ? (
+      <PaneLinkMenu>
+        <Box flexDirection="column">
+          {page && <LabelledLink label="Issuer page" url={page} text={new URL(page).hostname.replace(/^www\./, "")} />}
+          {source && <LabelledLink label="Description from" url={source.url} text={source.publisher} />}
+        </Box>
+      </PaneLinkMenu>
+    )
+    : undefined;
+  return <EmptyState title={US_FUND_FACTS_ONLY} message={profile?.name} actions={links} />;
+}

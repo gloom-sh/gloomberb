@@ -549,6 +549,8 @@ describe("ticker-search utilities", () => {
     });
     expect(asked[0]).toBe("spot bitcoin ETF");
     expect(asked).toContain("spot bitcoin");
+    // The funds of the words before ETF are the whole query's answer: asked once, not again as a theme.
+    expect(asked.filter((query) => query.toLowerCase() === "spot bitcoin etf")).toHaveLength(1);
     expect(candidates.map((item) => item.symbol)).toEqual(["IBIT", "FBTC", "3042", "BTCK"]);
 
     // A symbol before ETF still finds itself first; a code with no words before it asks nothing whole.
@@ -1073,7 +1075,8 @@ describe("ticker-search utilities", () => {
       const calls: string[] = [];
       const dataProvider = createTestDataProvider({
         id: "test",
-        search: async (query) => { calls.push(query); return query === "defense" ? names : query === "defense ETF" ? funds : []; },
+        // The server's search ignores case: "defense etf" is "defense ETF".
+        search: async (query) => { calls.push(query); return query === "defense" ? names : query.toLowerCase() === "defense etf" ? funds : []; },
       });
       const listed = await searchTickerCandidates({ query: "defense", tickers: new Map(), dataProvider, totalLimit: 10 });
       // Five US-listed funds in the server's order lead, then the companies sent with the word; the sixth fund and other
@@ -1083,15 +1086,15 @@ describe("ticker-search utilities", () => {
       ]);
       expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
       // "defense etf" asks for the funds by name: the name search alone holds only the tagged PPA, so the ETF search's
-      // funds lead in its order, ITA first.
+      // funds lead in its order, ITA first. The query asked whole is that search: asked once.
       calls.length = 0;
       const etfs = await searchTickerCandidates({ query: "defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
       expect(etfs.slice(0, 5).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual(["ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA"]);
-      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
+      expect(calls.filter((call) => / etf$/i.test(call))).toEqual(["defense etf"]);
       // So does a phrase no symbol is; a word no row is tagged with is a name or a symbol: no second search.
       calls.length = 0;
       await searchTickerCandidates({ query: "aerospace defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
-      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["aerospace defense ETF"]);
+      expect(calls.filter((call) => / etf$/i.test(call))).toEqual(["aerospace defense etf"]);
       calls.length = 0;
       await searchTickerCandidates({ query: "kratos", tickers: new Map(), dataProvider, totalLimit: 10 });
       await searchTickerCandidates({ query: "kratos etf", tickers: new Map(), dataProvider, totalLimit: 10 });

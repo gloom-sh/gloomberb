@@ -704,8 +704,11 @@ async function searchProviderResults(
     && (themeQueryWord([...byKey.values()], query) || (fundsAsked && /\s/.test(query.trim())));
   if (theme) {
     try {
+      // "spot bitcoin ETF" was asked whole above, and its answer is these funds: not asked twice.
+      const themeQuery = `${query.trim()} ETF`;
+      const askedAt = searchQueries.findIndex((asked) => sameSearchText(asked, themeQuery));
       const { onPartial: _ignored, ...context } = searchContext ?? {};
-      leading = await dataProvider.search(`${query.trim()} ETF`, context);
+      leading = askedAt >= 0 ? answers[askedAt]! : await dataProvider.search(themeQuery, context);
       merge();
     } catch (error) {
       logFailure("tickers-search", "Could not search theme funds")(error);
@@ -713,6 +716,12 @@ async function searchProviderResults(
   }
 
   return { results: [...byKey.values()], busy };
+}
+
+/** Two search texts the server answers alike: its search ignores case and runs of spaces. */
+function sameSearchText(left: string, right: string): boolean {
+  const key = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+  return key(left) === key(right);
 }
 
 /**
