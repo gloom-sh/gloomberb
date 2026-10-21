@@ -93,6 +93,33 @@ describe("CommandBar", () => {
     expect(checks).toBe(1);
   });
 
+  test("a failed update's row still answers to its name, says why in a few words, and retries when chosen", async () => {
+    let checks = 0;
+    await tui.render(<CommandBarHarness
+      query="check for updates"
+      onCheckForUpdates={() => { checks += 1; }}
+      configureState={(state) => ({
+        ...state,
+        updateProgress: {
+          phase: "error",
+          error: "Socket closed.",
+          failure: { phase: "download", code: "interrupted" },
+        },
+      })}
+    />, { width: 140, height: 24 });
+
+    // The reason on the row, the whole error under it.
+    await tui.waitForFrameToContain("Socket closed.");
+    const rows = tui.frame().split("\n").slice(1);
+    expect(rows.some((line) => line.includes("Update failed: download interrupted"))).toBe(true);
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(checks).toBe(1);
+  });
+
   // "Release Channel" also matches "update": Enter on a half-typed word must
   // check for updates, not open the channel switch.
   test.each(["update", "upd"])("%s lands on Check for Updates before Release Channel", async (query) => {

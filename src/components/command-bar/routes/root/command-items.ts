@@ -216,8 +216,11 @@ export function createRootCommandItemBuilder({
       // "update" is a whole word here so it lands on this command before Set
       // Portfolio Position (whose keywords say "update position") and Release
       // Channel, which keeps the word further back.
+      // Ready and failed rename the row; its own name still finds it.
       case "check-for-updates":
-        return state.updateProgress?.phase === "ready" ? "update check for updates restart relaunch" : "update";
+        if (state.updateProgress?.phase === "ready") return "update check for updates restart relaunch";
+        if (state.updateProgress?.phase === "error") return "update check for updates retry";
+        return "update";
       case "release-channel":
         return "nightly stable beta prerelease update updates channel";
       default:

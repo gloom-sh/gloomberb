@@ -396,6 +396,8 @@ export function createElectrobunDesktopUpdater(
     downloadInProgress = true;
     /** The last error Electrobun emitted on the way, which may or may not have ended the download. */
     let lastErrorStatus: UpdateStatusEntry | null = null;
+    /** The release the download is for, once the check has found it. */
+    let target: ReleaseInfo | null = null;
     updater.clearStatusHistory();
     updater.onStatusChange((entry) => {
       if (entry.status === "error") {
@@ -420,6 +422,7 @@ export function createElectrobunDesktopUpdater(
         });
         return;
       }
+      target = result.release;
 
       await updater.downloadUpdate();
       const updateInfo = updater.updateInfo();
@@ -442,7 +445,7 @@ export function createElectrobunDesktopUpdater(
       onProgress(failed(
         { phase: "download", code: code === "unknown" ? "interrupted" : code },
         error instanceof Error ? error.message : "Desktop update failed",
-        { channel: updateChannel },
+        { version: target?.version, channel: updateChannel },
       ));
     } finally {
       downloadInProgress = false;

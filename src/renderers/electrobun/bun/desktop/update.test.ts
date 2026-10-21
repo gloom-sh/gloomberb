@@ -30,6 +30,8 @@ function createFakeUpdater(options: {
   manifestVersion?: string;
   /** A failed manifest fetch: the status Electrobun emits, and the error it returns. */
   checkFailure?: { status: UpdateStatusEntry | null; error: string };
+  /** What the download throws partway, as Bun's fetch does when the connection drops. */
+  downloadThrows?: Error;
 } = {}) {
   const calls: string[] = [];
   /** Every `setUpdateSource`, in order; the last one is where Electrobun fetches from. */
@@ -63,6 +65,7 @@ function createFakeUpdater(options: {
       calls.push("download");
       for (const entry of options.downloadStatuses ?? []) callback?.(entry);
       callback?.(status({ status: "download-progress", details: { progress: 40 } }));
+      if (options.downloadThrows) throw options.downloadThrows;
       callback?.(status({ status: "download-complete" }));
       info.updateReady = options.downloadReady ?? true;
     },
@@ -184,6 +187,18 @@ describe("desktop update flow", () => {
       failure: { phase: "apply", code: "staged_missing" },
     });
     expect(calls).not.toContain("apply");
+  });
+
+  test("a download cut off partway is interrupted, reported with the version it was for", async () => {
+    const { reports } = collectReports();
+    const { updater } = createFakeUpdater({ downloadThrows: new Error("The socket connection was closed unexpectedly.") });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    const { progress, onProgress } = collect();
+
+    await desktop.download(STABLE, onProgress);
+
+    expect(progress.at(-1)).toMatchObject({ phase: "error", failure: { phase: "download", code: "interrupted" } });
+    expect(reports).toMatchObject([{ phase: "download", code: "interrupted", targetVersion: "0.18.0", channel: "stable" }]);
   });
 
   test("an apply Electrobun silently gives up on is an error, and a retry downloads again", async () => {
