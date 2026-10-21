@@ -1,7 +1,7 @@
-# GLO-1166 review images
+# GLO-1166 focused UI evidence
 
-Source head: `e14de12b095c4e953bda3b1becee9acf6b8b042c`. Frozen main: `0568f95db049dccad254c672c2c8d284bbe6a586`.
+Freshly captured baseline `0568f95db049dccad254c672c2c8d284bbe6a586` on the left; submitted head `815c846bce07d1c961e194826533953291d8ef2f` on the right.
 
-Baseline on the left, fix on the right. Each shows the actual Marketplace pane beside the unchanged Themes board. Healthy, rejected, incomplete and recovered checks use invented manager/registry replies. Real keyboard events drive toggle and refresh.
+All 16 sheets cover healthy, failed, incomplete and recovered checks in white/paper at 640/1280. All 16 neighboring pane crops are pixel-identical. All four healthy full screenshots are pixel-identical. Failed white at 1280 shows Apply pack in the visible footer and no per-pane refresh hint. Existing `r` keyboard retry remains.
 
-White and paper themes at 640 and 1280. All sixteen neighboring pane crops are pixel-identical. Offline synthetic fixtures; no credentials or production requests. Marketplace is excluded from the standard browser catalog, so these focused pictures and separate terminal checks supplement the all-pane UI benchmark.
+The scenes use invented plugin state, the actual pane/shared footer, and a neighboring Themes board. Network access is stubbed. These focused fixtures cover Marketplace, which is excluded from the standard browser catalog.
