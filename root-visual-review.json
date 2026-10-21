@@ -1,0 +1,22 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "inspectedAt": "2026-10-21T14:42:28.431511+00:00",
+  "method": "Root visual inspection of saved actual screenshots through view_image",
+  "files": [
+    {
+      "path": "footer-copy/screenshots/head/native-white-640.png",
+      "sha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11"
+    },
+    {
+      "path": "footer-copy/screenshots/head/remove-paper-640.png",
+      "sha256": "0624108c2e496635bdcdb32c2237dfea329d2aa788cf0c458fbe99a7f7a00d10"
+    }
+  ],
+  "findings": [
+    "The complete stop failed, restart to remove warning is visible beside More at640.",
+    "The complete removal failed, restart to retry warning is visible beside More at640.",
+    "Both frames include the neighboring Thematic baskets pane in its saved-data error state.",
+    "No app name appears in either visible removal warning."
+  ],
+  "limit": "Visual inspection of these two representative frames; the capture manifest supplies remaining widths/themes and neighboring-pane pixel comparisons."
+}

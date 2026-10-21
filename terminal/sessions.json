@@ -1,0 +1,108 @@
+[
+  {
+    "theme": "white",
+    "scenario": "view",
+    "session": "glo-1165-footer-white-view-965563",
+    "failedWarning": "stop failed, restart to remove",
+    "state": {
+      "calls": [
+        "view.stop"
+      ],
+      "notes": [
+        {
+          "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+          "type": "error"
+        }
+      ],
+      "view": true,
+      "files": true,
+      "fail": true,
+      "traffic": [],
+      "captures": 2,
+      "rss": 200384512
+    },
+    "profile": "/home/vince/.cache/gloom-smoke/glo-1165-footer-c181/view-white",
+    "sessionRemoved": true,
+    "profileRemoved": true
+  },
+  {
+    "theme": "white",
+    "scenario": "remove",
+    "session": "glo-1165-footer-white-remove-965563",
+    "failedWarning": "removal failed, restart to retry",
+    "state": {
+      "calls": [
+        "view.stop",
+        "files.remove"
+      ],
+      "notes": [
+        {
+          "body": "Could not remove Fixture Tools. Removal failed. Restart and try again.",
+          "type": "error"
+        }
+      ],
+      "view": false,
+      "files": true,
+      "fail": true,
+      "traffic": [],
+      "captures": 2,
+      "rss": 210862080
+    },
+    "profile": "/home/vince/.cache/gloom-smoke/glo-1165-footer-c181/remove-white",
+    "sessionRemoved": true,
+    "profileRemoved": true
+  },
+  {
+    "theme": "paper",
+    "scenario": "view",
+    "session": "glo-1165-footer-paper-view-965563",
+    "failedWarning": "stop failed, restart to remove",
+    "state": {
+      "calls": [
+        "view.stop"
+      ],
+      "notes": [
+        {
+          "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+          "type": "error"
+        }
+      ],
+      "view": true,
+      "files": true,
+      "fail": true,
+      "traffic": [],
+      "captures": 2,
+      "rss": 193323008
+    },
+    "profile": "/home/vince/.cache/gloom-smoke/glo-1165-footer-c181/view-paper",
+    "sessionRemoved": true,
+    "profileRemoved": true
+  },
+  {
+    "theme": "paper",
+    "scenario": "remove",
+    "session": "glo-1165-footer-paper-remove-965563",
+    "failedWarning": "removal failed, restart to retry",
+    "state": {
+      "calls": [
+        "view.stop",
+        "files.remove"
+      ],
+      "notes": [
+        {
+          "body": "Could not remove Fixture Tools. Removal failed. Restart and try again.",
+          "type": "error"
+        }
+      ],
+      "view": false,
+      "files": true,
+      "fail": true,
+      "traffic": [],
+      "captures": 2,
+      "rss": 188104704
+    },
+    "profile": "/home/vince/.cache/gloom-smoke/glo-1165-footer-c181/remove-paper",
+    "sessionRemoved": true,
+    "profileRemoved": true
+  }
+]

@@ -1,0 +1,25 @@
+bun test v1.3.11 (af24e281)
+
+src/app/pane-runtime/plugin-bindings.test.ts:
+(pass) portable pane runtime > creates a fresh floating pane and restores its complete state [36.15ms]
+(pass) portable pane runtime > rejects panes owned by a disabled plugin [0.87ms]
+(pass) form launches > open the form modal without the command bar, and Add Broker in the Brokers pane [2.80ms]
+(pass) form launches > say where to go from a detached window [0.39ms]
+(pass) switching plugins > switches two plugins in one change, leaves the layout alone, and moves focus off a pane that went hidden [7.95ms]
+(pass) switching plugins > off, other panes closed and moved, then on: hidden panes come back where they were with their state [3.64ms]
+(pass) activating an installed plugin > a broker plugin's logo is there while it registers, on install and on update [1.07ms]
+(pass) activating an installed plugin > failed view cleanup retains the installed entry as needing restart and refuses a no-op retry [1.32ms]
+
+src/renderers/electrobun/bun/external-plugins.test.ts:
+(pass) native cleanup failure is rejected on retries after unregister dropped the registration; a fresh runtime can stop it [5.40ms]
+
+src/plugins/builtin/plugin-marketplace/removal.test.tsx:
+(pass) a view stop rejection retains files, refreshes the row and allows a later successful stop [953.80ms]
+(pass) a native stop rejection retains files, refreshes the row and allows a later successful stop [409.19ms]
+(pass) a thrown file-removal request clears the busy state and reports failure [448.94ms]
+(pass) terminal removal works without a separate native host [671.36ms]
+
+ 13 pass
+ 0 fail
+ 66 expect() calls
+Ran 13 tests across 3 files. [5.28s]

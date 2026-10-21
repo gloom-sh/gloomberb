@@ -1,0 +1,17 @@
+{
+  "calls": [
+    "view.stop"
+  ],
+  "notes": [
+    {
+      "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+      "type": "error"
+    }
+  ],
+  "view": true,
+  "files": true,
+  "fail": true,
+  "traffic": [],
+  "captures": 2,
+  "rss": 193323008
+}

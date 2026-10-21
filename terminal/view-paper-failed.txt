@@ -1,0 +1,40 @@
+Plugins                                                                         Thematic baskets
+ / name                     [✓] Built in
+ PLUGIN          DESCRIPTION                                 PANES  STATUS       thematic baskets unavailable.
+ Installed (1)                                                                   Cannot read the saved thematic baskets.
+ Fixture Tools   Installed outside the registry                     on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+└stop failed, restart to remove just now   [e]disable [x] remove [a]pply pack┘  └Cannot read the saved thematic baskets.                                     ┘
+
+
+
+

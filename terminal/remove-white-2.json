@@ -1,0 +1,18 @@
+{
+  "calls": [
+    "view.stop",
+    "files.remove"
+  ],
+  "notes": [
+    {
+      "body": "Could not remove Fixture Tools. Removal failed. Restart and try again.",
+      "type": "error"
+    }
+  ],
+  "view": false,
+  "files": true,
+  "fail": true,
+  "traffic": [],
+  "captures": 2,
+  "rss": 210862080
+}

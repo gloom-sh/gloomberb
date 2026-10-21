@@ -1,0 +1,40 @@
+Plugins                                                                         Thematic baskets
+ / name                     [✓] Built in
+ PLUGIN          DESCRIPTION                                 PANES  STATUS       thematic baskets unavailable.
+                                                                                 Cannot read the saved thematic baskets.
+ Nothing installed yet.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+└removal failed, restart to retry just now                       [a]pply pack┘  └Cannot read the saved thematic baskets.                                     ┘
+
+
+
+

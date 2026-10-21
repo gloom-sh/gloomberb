@@ -1,0 +1,1328 @@
+{
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "baselineCaptureReused": true,
+  "baselineCaptureNote": "Original frozen-main captures retained; the healthy/native/view fixture behaviors and rendering are unchanged; added remove scenario is excluded from the reused-main comparison.",
+  "pairs": 12,
+  "changed": 8,
+  "unchangedNeighbours": 12,
+  "noNetworkRequests": true,
+  "results": [
+    {
+      "file": "healthy-paper-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/healthy-paper-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/healthy-paper-1280.png",
+      "beforeSha256": "2d77cf7fe25c0c221b455691aacf47e2c925d303d67bd08e09efc1d2db8cfcf7",
+      "headSha256": "2d77cf7fe25c0c221b455691aacf47e2c925d303d67bd08e09efc1d2db8cfcf7",
+      "sheetSha256": "aa35eed2fa5436770801b82329c9b02745637a4f6d4afb7373a3acb7c2ea843b",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "footer": {
+        "text": "just now\n[a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": null,
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "healthy-paper-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/healthy-paper-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/healthy-paper-640.png",
+      "beforeSha256": "187a9e275c1d79c576df269c0d23e29824665eca92c91094410fb7bb3f139034",
+      "headSha256": "187a9e275c1d79c576df269c0d23e29824665eca92c91094410fb7bb3f139034",
+      "sheetSha256": "461236796dcc59858d6f9d599541f78b092d999da2751228200dbe3bc72c3e3d",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "footer": {
+        "text": "just now\n[a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": null,
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "healthy-white-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/healthy-white-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/healthy-white-1280.png",
+      "beforeSha256": "90db466c6c5e6f49465a24b67eba06b9e2f89b0ad562d9d97446f634d22a2de7",
+      "headSha256": "90db466c6c5e6f49465a24b67eba06b9e2f89b0ad562d9d97446f634d22a2de7",
+      "sheetSha256": "4f577c71c01c96b53126123467e27524cc5ced343c3fdb5bf4f8c31dec6e72c9",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "footer": {
+        "text": "just now\n[a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": null,
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "healthy-white-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/healthy-white-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/healthy-white-640.png",
+      "beforeSha256": "749f0e3b9f9d5fe8742b5ad3559cbaf5dbf692abc3425c4766e7ede104fb407e",
+      "headSha256": "749f0e3b9f9d5fe8742b5ad3559cbaf5dbf692abc3425c4766e7ede104fb407e",
+      "sheetSha256": "66e973f871a8f42b47b0b001d4bf320faf827b4a2c2fec0ad34b1690121f12f8",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "footer": {
+        "text": "just now\n[a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": null,
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "native-paper-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/native-paper-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/native-paper-1280.png",
+      "beforeSha256": "2d77cf7fe25c0c221b455691aacf47e2c925d303d67bd08e09efc1d2db8cfcf7",
+      "headSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01",
+      "sheetSha256": "045424b26a40d54a417f7e8ceca753bda6f51684df05d3b68fc9e9e09f903c76",
+      "changedPixels": 14006,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 328,
+              "scrollWidth": 328,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 328,
+                "height": 18,
+                "top": 624.5,
+                "right": 345,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 600,
+              "scrollWidth": 600,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 600,
+                "height": 18,
+                "top": 624.5,
+                "right": 617,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 616,
+              "scrollWidth": 616,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 616,
+                "height": 20,
+                "top": 623,
+                "right": 625,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "native-paper-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/native-paper-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/native-paper-640.png",
+      "beforeSha256": "187a9e275c1d79c576df269c0d23e29824665eca92c91094410fb7bb3f139034",
+      "headSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010",
+      "sheetSha256": "fc897bb1d4ff207a911329db58c824228ab67af344fe0213773f96b03867b923",
+      "changedPixels": 7066,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\nMore",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 232,
+              "scrollWidth": 232,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 232,
+                "height": 18,
+                "top": 624.5,
+                "right": 249,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 280,
+              "scrollWidth": 280,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 280,
+                "height": 18,
+                "top": 624.5,
+                "right": 297,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 296,
+              "scrollWidth": 296,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 296,
+                "height": 20,
+                "top": 623,
+                "right": 305,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [
+          {
+            "text": "More",
+            "rect": {
+              "x": 249,
+              "y": 624.5,
+              "width": 48,
+              "height": 18,
+              "top": 624.5,
+              "right": 297,
+              "bottom": 642.5,
+              "left": 249
+            }
+          }
+        ],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "native-white-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/native-white-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/native-white-1280.png",
+      "beforeSha256": "90db466c6c5e6f49465a24b67eba06b9e2f89b0ad562d9d97446f634d22a2de7",
+      "headSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47",
+      "sheetSha256": "4bb20e0e0156ea8468790e6633498625716a9d367e623bfd51d7a28abffbd916",
+      "changedPixels": 13983,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 328,
+              "scrollWidth": 328,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 328,
+                "height": 18,
+                "top": 624.5,
+                "right": 345,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 600,
+              "scrollWidth": 600,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 600,
+                "height": 18,
+                "top": 624.5,
+                "right": 617,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 616,
+              "scrollWidth": 616,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 616,
+                "height": 20,
+                "top": 623,
+                "right": 625,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "native-white-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/native-white-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/native-white-640.png",
+      "beforeSha256": "749f0e3b9f9d5fe8742b5ad3559cbaf5dbf692abc3425c4766e7ede104fb407e",
+      "headSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11",
+      "sheetSha256": "e92439c39a22a58bfe92d9afe74ec379b556ee085c10d0768d9bf5ec3f1b3119",
+      "changedPixels": 7055,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\nMore",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 232,
+              "scrollWidth": 232,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 232,
+                "height": 18,
+                "top": 624.5,
+                "right": 249,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 280,
+              "scrollWidth": 280,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 280,
+                "height": 18,
+                "top": 624.5,
+                "right": 297,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 296,
+              "scrollWidth": 296,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 296,
+                "height": 20,
+                "top": 623,
+                "right": 305,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [
+          {
+            "text": "More",
+            "rect": {
+              "x": 249,
+              "y": 624.5,
+              "width": 48,
+              "height": 18,
+              "top": 624.5,
+              "right": 297,
+              "bottom": 642.5,
+              "left": 249
+            }
+          }
+        ],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "view-paper-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/view-paper-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/view-paper-1280.png",
+      "beforeSha256": "44558221fc12da30ededaad8afd70a646c9f3ff5d9f8972c28263d1ec49b36fa",
+      "headSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01",
+      "sheetSha256": "5ed5d34485b91dd6a05d9ed592710432e201089c83bf2254ad14ae877f11d1f4",
+      "changedPixels": 1140,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 328,
+              "scrollWidth": 328,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 328,
+                "height": 18,
+                "top": 624.5,
+                "right": 345,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 600,
+              "scrollWidth": 600,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 600,
+                "height": 18,
+                "top": 624.5,
+                "right": 617,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 616,
+              "scrollWidth": 616,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 616,
+                "height": 20,
+                "top": 623,
+                "right": 625,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "view-paper-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/view-paper-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/view-paper-640.png",
+      "beforeSha256": "30d423ed8c6254178d0482116dbfa106c5197e598ee9545707edcaeb57b4ce6e",
+      "headSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010",
+      "sheetSha256": "40a7f5bdc440c77fae6b522645a919c0edb807d28472f6efac8de8c682b08ea4",
+      "changedPixels": 1111,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\nMore",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 232,
+              "scrollWidth": 232,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 232,
+                "height": 18,
+                "top": 624.5,
+                "right": 249,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 280,
+              "scrollWidth": 280,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 280,
+                "height": 18,
+                "top": 624.5,
+                "right": 297,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 296,
+              "scrollWidth": 296,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 296,
+                "height": 20,
+                "top": 623,
+                "right": 305,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [
+          {
+            "text": "More",
+            "rect": {
+              "x": 249,
+              "y": 624.5,
+              "width": 48,
+              "height": 18,
+              "top": 624.5,
+              "right": 297,
+              "bottom": 642.5,
+              "left": 249
+            }
+          }
+        ],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "view-white-1280.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/view-white-1280.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/view-white-1280.png",
+      "beforeSha256": "8a00822e3a68e6ed1235b4f26f2ee2b4821a914c605d5651e620bb896024e2a1",
+      "headSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47",
+      "sheetSha256": "e8712622fc9ca4721b200fb7d86212b70ecd21f4c2b8f34bed462a495a3dd57e",
+      "changedPixels": 1134,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 616,
+          "height": 20,
+          "top": 623,
+          "right": 625,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 328,
+              "scrollWidth": 328,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 328,
+                "height": 18,
+                "top": 624.5,
+                "right": 345,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 600,
+              "scrollWidth": 600,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 600,
+                "height": 18,
+                "top": 624.5,
+                "right": 617,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 616,
+              "scrollWidth": 616,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 616,
+                "height": 20,
+                "top": 623,
+                "right": 625,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [],
+        "doesNotOverlapMore": true
+      }
+    },
+    {
+      "file": "view-white-640.png",
+      "beforePath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/screenshots/baseline/view-white-640.png",
+      "headPath": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/screenshots/head/view-white-640.png",
+      "beforeSha256": "499accee5cdc6f78cdbbf81d95e11bdc457eb8e0a7493fab342bb27e6ea28f4e",
+      "headSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11",
+      "sheetSha256": "e95e8b2119054b79c180594ea3829e52b767909db009525dcd46a7e72c15d592",
+      "changedPixels": 1108,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      },
+      "footer": {
+        "text": "stop failed, restart to remove\nMore",
+        "expectedWarning": "stop failed, restart to remove",
+        "rect": {
+          "x": 9,
+          "y": 623,
+          "width": 296,
+          "height": 20,
+          "top": 623,
+          "right": 305,
+          "bottom": 643,
+          "left": 9
+        },
+        "warning": {
+          "text": "stop failed, restart to remove",
+          "rect": {
+            "x": 17,
+            "y": 626.5,
+            "width": 216.046875,
+            "height": 14,
+            "top": 626.5,
+            "right": 233.046875,
+            "bottom": 640.5,
+            "left": 17
+          },
+          "clips": [
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 232,
+              "scrollWidth": 232,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 232,
+                "height": 18,
+                "top": 624.5,
+                "right": 249,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": null,
+              "overflowX": "hidden",
+              "clientWidth": 280,
+              "scrollWidth": 280,
+              "rect": {
+                "x": 17,
+                "y": 624.5,
+                "width": 280,
+                "height": 18,
+                "top": 624.5,
+                "right": 297,
+                "bottom": 642.5,
+                "left": 17
+              },
+              "fits": true
+            },
+            {
+              "tag": "DIV",
+              "role": "pane-footer",
+              "overflowX": "hidden",
+              "clientWidth": 296,
+              "scrollWidth": 296,
+              "rect": {
+                "x": 9,
+                "y": 623,
+                "width": 296,
+                "height": 20,
+                "top": 623,
+                "right": 305,
+                "bottom": 643,
+                "left": 9
+              },
+              "fits": true
+            }
+          ],
+          "fullyVisible": true
+        },
+        "more": [
+          {
+            "text": "More",
+            "rect": {
+              "x": 249,
+              "y": 624.5,
+              "width": 48,
+              "height": 18,
+              "top": 624.5,
+              "right": 297,
+              "bottom": 642.5,
+              "left": 249
+            }
+          }
+        ],
+        "doesNotOverlapMore": true
+      }
+    }
+  ]
+}

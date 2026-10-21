@@ -1,0 +1,24 @@
+{
+  "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "archiveSha256": "b22787583cdd8a07e7e77072e7e0b680b267f9f3697bcd99d9c049c52faae209",
+  "testSnapshots": [
+    {
+      "path": "src/plugins/builtin/plugin-marketplace/removal.test.tsx",
+      "sha256": "9d8ef07724df2b8d5265a2ba7cd6a67b143d21ab0a7496b76bf12a788d59825b"
+    },
+    {
+      "path": "src/app/pane-runtime/plugin-bindings.test.ts",
+      "sha256": "d9c3c36d572d5505bd92cf828df130e173f0ba2e8cb1948001c919856c062a66"
+    },
+    {
+      "path": "src/renderers/electrobun/bun/external-plugins.test.ts",
+      "sha256": "4278ce2053cff30111c78db53f250e4af31cd2496b228b2d200e441dd2316249"
+    }
+  ],
+  "unchangedBaselineFilesVerified": 4634,
+  "exitCode": 1,
+  "logSha256": "4d53388692532e1cdfba95f2aa36f47598814273aa00b5e0442253e08bffde4b",
+  "sourceScratchRemoved": true,
+  "profileRemoved": true
+}

@@ -1,0 +1,138 @@
+{
+  "text": "Plugins\n/\nBuilt in\nPLUGIN\nDESCRIPTION\nPANES\nSTATUS\nInstalled (1)\nFixture Tools\nInstalled outside the registry\non\nstop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack\nThematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+  "fixture": {
+    "calls": [
+      "native.stop"
+    ],
+    "notes": [
+      {
+        "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart before removing it.",
+        "type": "error"
+      }
+    ],
+    "view": true,
+    "native": true,
+    "files": true
+  },
+  "traffic": [],
+  "panes": [
+    {
+      "id": "plugin-marketplace",
+      "text": "Plugins\n/\nBuilt in\nPLUGIN\nDESCRIPTION\nPANES\nSTATUS\nInstalled (1)\nFixture Tools\nInstalled outside the registry\non\nstop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+      "rect": {
+        "x": 8,
+        "y": 8,
+        "width": 628,
+        "height": 704,
+        "top": 8,
+        "right": 636,
+        "bottom": 712,
+        "left": 8
+      }
+    },
+    {
+      "id": "themes",
+      "text": "Thematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+      "rect": {
+        "x": 644,
+        "y": 8,
+        "width": 628,
+        "height": 704,
+        "top": 8,
+        "right": 1272,
+        "bottom": 712,
+        "left": 644
+      }
+    }
+  ],
+  "footer": {
+    "text": "stop failed, restart to remove\njust now\n[e]disable\n [x] remove\n [a]pply pack",
+    "expectedWarning": "stop failed, restart to remove",
+    "rect": {
+      "x": 9,
+      "y": 623,
+      "width": 616,
+      "height": 20,
+      "top": 623,
+      "right": 625,
+      "bottom": 643,
+      "left": 9
+    },
+    "warning": {
+      "text": "stop failed, restart to remove",
+      "rect": {
+        "x": 17,
+        "y": 626.5,
+        "width": 216.046875,
+        "height": 14,
+        "top": 626.5,
+        "right": 233.046875,
+        "bottom": 640.5,
+        "left": 17
+      },
+      "clips": [
+        {
+          "tag": "DIV",
+          "role": null,
+          "overflowX": "hidden",
+          "clientWidth": 328,
+          "scrollWidth": 328,
+          "rect": {
+            "x": 17,
+            "y": 624.5,
+            "width": 328,
+            "height": 18,
+            "top": 624.5,
+            "right": 345,
+            "bottom": 642.5,
+            "left": 17
+          },
+          "fits": true
+        },
+        {
+          "tag": "DIV",
+          "role": null,
+          "overflowX": "hidden",
+          "clientWidth": 600,
+          "scrollWidth": 600,
+          "rect": {
+            "x": 17,
+            "y": 624.5,
+            "width": 600,
+            "height": 18,
+            "top": 624.5,
+            "right": 617,
+            "bottom": 642.5,
+            "left": 17
+          },
+          "fits": true
+        },
+        {
+          "tag": "DIV",
+          "role": "pane-footer",
+          "overflowX": "hidden",
+          "clientWidth": 616,
+          "scrollWidth": 616,
+          "rect": {
+            "x": 9,
+            "y": 623,
+            "width": 616,
+            "height": 20,
+            "top": 623,
+            "right": 625,
+            "bottom": 643,
+            "left": 9
+          },
+          "fits": true
+        }
+      ],
+      "fullyVisible": true
+    },
+    "more": [],
+    "doesNotOverlapMore": true
+  },
+  "interaction": "keyboard",
+  "blocked": [],
+  "errors": [],
+  "nativeTraffic": []
+}

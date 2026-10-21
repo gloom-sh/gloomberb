@@ -1,0 +1,22 @@
+[
+  {
+    "file": "view-white.log",
+    "sha256": "4dc8c4170332b4e94e96e3aa8f469ff9704f629639ae114328efaeca3ddf1f92",
+    "warnings": []
+  },
+  {
+    "file": "view-paper.log",
+    "sha256": "8539c60eb4a2390054a6469469c06196f05f072a542f8d88dba710b0c73910e5",
+    "warnings": []
+  },
+  {
+    "file": "remove-white.log",
+    "sha256": "dcb65249166adcadf1b618493f76338f2669dd79aae8ce7ff9d67f7c62bd403e",
+    "warnings": []
+  },
+  {
+    "file": "remove-paper.log",
+    "sha256": "2715167b9a3645ee0cfb80b1804d766eefd2aad8c914b0ee0559647f9493cfb4",
+    "warnings": []
+  }
+]

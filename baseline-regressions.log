@@ -1,0 +1,172 @@
+bun test v1.3.11 (af24e281)
+
+src/app/pane-runtime/plugin-bindings.test.ts:
+(pass) portable pane runtime > creates a fresh floating pane and restores its complete state [7.03ms]
+(pass) portable pane runtime > rejects panes owned by a disabled plugin [1.08ms]
+(pass) form launches > open the form modal without the command bar, and Add Broker in the Brokers pane [0.98ms]
+(pass) form launches > say where to go from a detached window [2.33ms]
+(pass) switching plugins > switches two plugins in one change, leaves the layout alone, and moves focus off a pane that went hidden [4.31ms]
+(pass) switching plugins > off, other panes closed and moved, then on: hidden panes come back where they were with their state [5.92ms]
+(pass) activating an installed plugin > a broker plugin's logo is there while it registers, on install and on update [1.18ms]
+404 |     expect(updated.iconDuringRegister).toEqual(["data:image/webp;base64,newer"]);
+405 |   });
+406 | 
+407 |   test("failed view cleanup retains the installed entry as needing restart and refuses a no-op retry", async () => {
+408 |     const { host } = bindActivationRuntime([aries("data:image/webp;base64/kept")], true);
+409 |     await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart before removing it.");
+                                                                        ^
+error: expect(received).toThrow(expected)
+
+Expected substring: "Restart before removing it."
+Received message: "Cleanup failed after unregistering"
+
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/app/pane-runtime/plugin-bindings.test.ts:409:67)
+(fail) activating an installed plugin > failed view cleanup retains the installed entry as needing restart and refuses a no-op retry [0.90ms]
+
+src/renderers/electrobun/bun/external-plugins.test.ts:
+13 |   try {
+14 |     await registry.register({ id: "cleanup-fixture", name: "Cleanup fixture", version: "1.0.0", dispose() {
+15 |       cleanupCalls++;
+16 |       throw new Error("Cleanup did not finish");
+17 |     } });
+18 |     expect(() => deactivateExternalPlugin(registry, "cleanup-fixture")).toThrow("Restart before removing it.");
+                                                                             ^
+error: expect(received).toThrow(expected)
+
+Expected substring: "Restart before removing it."
+
+Received function did not throw
+Received value: {
+  capabilityManifests: [
+    {
+      id: "series-catalog",
+      kind: "series-catalog",
+      name: "Series Catalog",
+      priority: undefined,
+      sourceId: undefined,
+      operations: [
+        {
+          id: "list",
+          kind: "query",
+          rendererSafe: true,
+          summary: "List the series the data catalog shows",
+          outputShape: "{ entries: Array<{ id, name, unit, frequency, group, expression, pluginId }> }",
+          formats: [ "json" ],
+          sideEffectLevel: "none",
+        }
+      ],
+    }
+  ],
+}
+
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/renderers/electrobun/bun/external-plugins.test.ts:18:73)
+(fail) native cleanup failure is rejected on retries after unregister dropped the registration; a fresh runtime can stop it [5.30ms]
+
+src/plugins/builtin/plugin-marketplace/removal.test.tsx:
+180 |       if (matches(frame)) {
+181 |         return frame;
+182 |       }
+183 |       await settleFrame(renderer, delayMs);
+184 |     }
+185 |     throw new Error(`Timed out waiting for frame to ${description}.\n${renderer.captureCharFrame()}`);
+                    ^
+error: Timed out waiting for frame to contain "stop failed, restart to remove".
+ / name                               [✓] Built in                                                            
+ PLUGIN                 DESCRIPTION                                       PANES  FUNCTIONS     PRO  STATUS    
+ Installed (1)                                                                                                
+ Fixture Plugin         Installed outside the registry                                              on        
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+└just now                                                                  [e]disable [x] remove [a]pply pack┘
+
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/renderers/opentui/test-utils.tsx:185:15)
+      at async <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:94:29)
+(fail) a view stop rejection retains files, refreshes the row and allows a later successful stop [1291.35ms]
+180 |       if (matches(frame)) {
+181 |         return frame;
+182 |       }
+183 |       await settleFrame(renderer, delayMs);
+184 |     }
+185 |     throw new Error(`Timed out waiting for frame to ${description}.\n${renderer.captureCharFrame()}`);
+                    ^
+error: Timed out waiting for frame to contain "stop failed, restart to remove".
+ / name                               [✓] Built in                                                            
+ PLUGIN                 DESCRIPTION                                       PANES  FUNCTIONS     PRO  STATUS    
+                                                                                                              
+ Nothing installed yet.                                                                                       
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+                                                                                                              
+└just now                                                                                        [a]pply pack┘
+
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/renderers/opentui/test-utils.tsx:185:15)
+      at async <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:94:29)
+(fail) a native stop rejection retains files, refreshes the row and allows a later successful stop [1054.41ms]
+57 |       if (failure === "native") throw new Error("Native stop unavailable");
+58 |       active.native = false;
+59 |     } } : {}),
+60 |     remove: async (directory) => {
+61 |       calls.push("files.remove");
+62 |       if (failure === "remove") throw new Error("Removal request unavailable");
+                                               ^
+error: Removal request unavailable
+      at remove (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:62:43)
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/pane.tsx:644:34)
+
+# Unhandled error between tests
+-------------------------------
+239 | export function createOpenTuiTestHarness(defaults: OpenTuiTestRenderOptions = {}) {
+240 |   let current: OpenTuiTestSetup | undefined;
+241 |   let currentRoot: OpenTuiTestRoot | undefined;
+242 | 
+243 |   const setup = (): OpenTuiTestSetup => {
+244 |     if (!current) throw new Error("No OpenTUI test renderer is mounted. Call render() first.");
+                                  ^
+error: No OpenTUI test renderer is mounted. Call render() first.
+      at setup (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/renderers/opentui/test-utils.tsx:244:29)
+      at <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:79:27)
+      at async <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:84:11)
+      at async <anonymous> (/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/baseline-source/src/plugins/builtin/plugin-marketplace/removal.test.tsx:114:13)
+-------------------------------
+
+(fail) a thrown file-removal request clears the busy state and reports failure [174.64ms]
+(pass) terminal removal works without a separate native host [188.69ms]
+
+ 8 pass
+ 5 fail
+ 1 error
+ 34 expect() calls
+Ran 13 tests across 3 files. [6.13s]

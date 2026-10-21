@@ -1,0 +1,71 @@
+{
+  "text": "Plugins\n/\nBuilt in\nPLUGIN\nDESCRIPTION\nPANES\nSTATUS\nNothing installed yet.\njust now\n[a]pply pack\nThematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+  "fixture": {
+    "calls": [
+      "native.stop",
+      "view.stop",
+      "files.remove"
+    ],
+    "notes": [
+      {
+        "body": "Removed Fixture Tools.",
+        "type": "success"
+      }
+    ],
+    "view": false,
+    "native": false,
+    "files": false
+  },
+  "traffic": [],
+  "panes": [
+    {
+      "id": "plugin-marketplace",
+      "text": "Plugins\n/\nBuilt in\nPLUGIN\nDESCRIPTION\nPANES\nSTATUS\nNothing installed yet.\njust now\n[a]pply pack",
+      "rect": {
+        "x": 8,
+        "y": 8,
+        "width": 308,
+        "height": 704,
+        "top": 8,
+        "right": 316,
+        "bottom": 712,
+        "left": 8
+      }
+    },
+    {
+      "id": "themes",
+      "text": "Thematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+      "rect": {
+        "x": 324,
+        "y": 8,
+        "width": 308,
+        "height": 704,
+        "top": 8,
+        "right": 632,
+        "bottom": 712,
+        "left": 324
+      }
+    }
+  ],
+  "footer": {
+    "text": "just now\n[a]pply pack",
+    "expectedWarning": "stop failed, restart to remove",
+    "rect": {
+      "x": 9,
+      "y": 623,
+      "width": 296,
+      "height": 20,
+      "top": 623,
+      "right": 305,
+      "bottom": 643,
+      "left": 9
+    },
+    "warning": null,
+    "more": [],
+    "doesNotOverlapMore": true
+  },
+  "interaction": "keyboard",
+  "blocked": [],
+  "errors": [],
+  "nativeTraffic": []
+}
