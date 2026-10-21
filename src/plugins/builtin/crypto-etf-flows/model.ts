@@ -1,5 +1,6 @@
 import type { CryptoEtfFlowAsset, CryptoEtfFlowDay, CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
 import type { DataTableColumn } from "../../../components";
+import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { formatCompactAmount, formatNumber } from "../../../utils/format";
 
 export const CRYPTO_ETF_FLOWS_PANE_ID = "crypto-etf-flows";
@@ -29,8 +30,7 @@ const RANGE_MONTHS: Record<Exclude<CryptoEtfFlowRange, "ALL">, number> = { "1M":
 export function daysInRange(days: readonly CryptoEtfFlowDay[], range: CryptoEtfFlowRange): CryptoEtfFlowDay[] {
   const newest = days[0]?.date;
   if (!newest || range === "ALL") return [...days];
-  const start = new Date(`${newest}T00:00:00Z`);
-  start.setUTCMonth(start.getUTCMonth() - RANGE_MONTHS[range]);
+  const start = calendarMonthsBefore(new Date(`${newest}T00:00:00Z`), RANGE_MONTHS[range]);
   const from = start.toISOString().slice(0, 10);
   return days.filter((day) => day.date > from);
 }

@@ -6,7 +6,6 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { logFailure } from "../../../utils/log-failure";
 import { US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
@@ -197,9 +196,16 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       const symbol = args.symbols[0]!;
       const abroad = venueAbroad(symbol);
       if (abroad) {
-        const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx)
-          .catch(logFailure("sec.etf", "Read fund profile failed", null));
-        return fundAbroadResult(symbol, abroad, profile);
+        try {
+          const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx);
+          return fundAbroadResult(symbol, abroad, profile);
+        } catch (error) {
+          return {
+            ...fundAbroadResult(symbol, abroad, null),
+            complete: false,
+            errors: [`Fund profile unavailable: ${errorMessage(error)}`],
+          };
+        }
       }
       const limit = Number(args.options.limit);
       const [factsResult, filingsResult] = await Promise.allSettled([

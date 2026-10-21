@@ -606,10 +606,14 @@ async function searchProviderResults(
   // The variants are independent lookups of the same words, so they run
   // together. Awaited in turn they multiplied every per-source timeout by the
   // number of spellings tried. Their rows list in the order the spellings
-  // are, not as they arrive: "bitcoin ETF" asked whole lists the spot funds
-  // the server leads with ahead of the rows for "bitcoin".
+  // are, not as they arrive. Only keyword-tagged whole-query matches lead
+  // the spelling answers; a loose name match must not displace an exact listing.
   const searchQueries = providerSearchQueries(rawQuery);
   const answers: InstrumentSearchResult[][] = searchQueries.map(() => []);
+  const wholeIndex = assetClass && (assetClass.code === "ETF" || assetClass.code === "FUND")
+    ? searchQueries.findIndex((asked) => sameSearchText(asked, rawQuery)) : -1;
+  const taggedWhole = (result: InstrumentSearchResult) =>
+    searchResultKeywords(result)?.some((keyword) => sameSearchText(keyword, rawQuery)) ?? false;
   // A later source can send back a richer version of a row already recorded;
   // it replaces the row in its place, so an upgrade does not reorder the list.
   const upgrades = new Map<string, InstrumentSearchResult>();
@@ -619,7 +623,14 @@ async function searchProviderResults(
   const byKey = new Map<string, InstrumentSearchResult>();
   const merge = () => {
     const named = new Map<string, InstrumentSearchResult>();
-    for (const result of [...answers.flat(), ...verified]) {
+    const whole = answers[wholeIndex] ?? [];
+    const ordered = [
+      ...whole.filter(taggedWhole),
+      ...answers.flatMap((rows, index) => index === wholeIndex ? [] : rows),
+      ...whole.filter((result) => !taggedWhole(result)),
+      ...verified,
+    ];
+    for (const result of ordered) {
       const key = buildProviderSearchResultKey(result);
       if (!named.has(key)) named.set(key, upgrades.get(key) ?? result);
     }
@@ -738,7 +749,7 @@ export function providerSearchQueries(rawQuery: string): string[] {
   const searchQueries = buildProviderSearchQueries(query);
   if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
   // Words before ETF or FUND name a kind of fund as well as a name ("bitcoin ETF", "spot ether ETF"), which
-  // the server answers whole with the funds of that kind. Asked first, so those rows lead.
+  // the server answers whole with the funds of that kind. merge() promotes its keyword-tagged rows.
   if (assetClass && (assetClass.code === "ETF" || assetClass.code === "FUND") && /\p{L}{2}/u.test(query)) {
     const whole = rawQuery.trim().replace(/\s+/g, " ");
     if (!searchQueries.includes(whole)) searchQueries.unshift(whole);

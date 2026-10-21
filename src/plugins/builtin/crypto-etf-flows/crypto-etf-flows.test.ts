@@ -5,7 +5,7 @@ import type { CryptoEtfFlowDay, CryptoEtfFlowsPayload } from "../../../api-clien
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessRowsResult } from "../../../types/plugin";
-import { fetchCryptoEtfFlows, validateCryptoEtfFlows } from "./client";
+import { validateCryptoEtfFlows } from "./client";
 import { cryptoEtfFlowsHeadless } from "./headless";
 import { cryptoEtfFlowSummary, cumulativeFlows, daysInRange, formatFlow, formatFlowAmount } from "./model";
 
@@ -47,10 +47,6 @@ describe("crypto ETF flows payload", () => {
     for (const [, value] of broken) expect(() => validateCryptoEtfFlows(value, "BTC")).toThrow("invalid crypto ETF flows");
   });
 
-  test("a server still without flows reads as not available yet, not a failure", async () => {
-    const client = { getCloudCryptoEtfFlows: async () => { throw new ApiRequestError("flows_unavailable", 503); } };
-    await expect(fetchCryptoEtfFlows("BTC", client)).rejects.toThrow("Crypto ETF flows are not available yet.");
-  });
 });
 
 describe("crypto ETF flows figures", () => {
@@ -83,6 +79,33 @@ test("the report marks a fund the newest day still waits on as pending", async (
     expect(latest).toMatch(/2026-10-20\s+-6\.7\s+pending\s+\+3\.6\s+-10\.3\s+IBIT/);
     expect(text).toContain("2026-10-20: -$6.70M (IBIT pending)");
     expect(text).toContain("Farside Investors");
+  } finally {
+    stub.mockRestore();
+  }
+});
+
+test.each([
+  ["2026-03-31", "1M", "2026-02-28", "2026-03-01"],
+  ["2024-03-31", "1M", "2024-02-29", "2024-03-01"],
+  ["2026-05-31", "3M", "2026-02-28", "2026-03-01"],
+  ["2024-02-29", "1Y", "2023-02-28", "2023-03-01"],
+] as const)("%s %s clamps its exclusive cutoff to %s", (newest, range, cutoff, included) => {
+  const days = [newest, included, cutoff].map((date) => day(date, {}, 1));
+  expect(daysInRange(days, range).map((entry) => entry.date)).toEqual([newest, included]);
+});
+
+test("the headless report rejects 503 and retains stale rows with incomplete coverage", async () => {
+  const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: { asset: "eth" } };
+  const stub = spyOn(apiClient, "getCloudCryptoEtfFlows").mockRejectedValue(new ApiRequestError("flows_unavailable", 503));
+  try {
+    await expect(cryptoEtfFlowsHeadless.load(args, {} as HeadlessPaneContext)).rejects.toThrow("Crypto ETF flows are not available yet.");
+    stub.mockResolvedValue({ ...payload(), asset: "ETH", stale: true });
+    const result = await cryptoEtfFlowsHeadless.load(args, {} as HeadlessPaneContext);
+    expect(stub).toHaveBeenLastCalledWith("ETH");
+    expect(result.complete).toBe(false);
+    expect(result.rows).toHaveLength(3);
+    expect(result.warnings?.[0]).toContain("2026-10-21");
+    expect(result.metadata).toMatchObject({ asset: "ETH", stale: true });
   } finally {
     stub.mockRestore();
   }

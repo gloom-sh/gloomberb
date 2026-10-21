@@ -320,4 +320,13 @@ test("ETF for a fund listed abroad says what ticker says, with its issuer's page
   const bare = await createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => [], loadAbroadProfile: async () => null })
     .load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
   expect(bare.sections).toHaveLength(1);
+  expect(bare.complete).toBe(true);
+  const failed = await createFundHeadless({
+    loadFacts: async () => { throw new Error("Must not read US facts"); },
+    loadFilings: async () => { throw new Error("Must not read SEC filings"); },
+    loadAbroadProfile: async () => { throw new Error("Profile outage"); },
+  }).load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
+  expect(failed.sections).toEqual(bare.sections);
+  expect(failed.complete).toBe(false);
+  expect(failed.errors).toEqual(["Fund profile unavailable: Profile outage"]);
 });
