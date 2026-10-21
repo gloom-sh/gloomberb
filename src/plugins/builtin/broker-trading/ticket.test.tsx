@@ -266,11 +266,12 @@ test("Tab leaves both ends of the ticket and a command can start on Review witho
   f.controller.dispose();
 });
 
-test("direct review key stays blocked when trading is disabled", async () => {
+test("direct review key stays blocked when trading is disabled, and a held e cannot pass the consent to enable it", async () => {
   const f = await mount("simulation", "", "working", { editing: true, enabled: false });
   await press("r");
   expect(f.demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
   await press("e");
+  await tui.emitKeypress({ name: "e", sequence: "e", repeated: true }, { trackPropagation: true });
   expect(f.actions).toEqual(["enable"]);
   expect(f.mutations()).toHaveLength(0);
   f.controller.dispose();

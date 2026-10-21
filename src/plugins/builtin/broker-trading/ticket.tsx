@@ -244,7 +244,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     const shortcut = shortcuts.find((item) => item.key === event.name);
     if (!shortcut) return;
     event.preventDefault(); event.stopPropagation();
-    if (!shortcut.disabled) shortcut.onPress?.();
+    // The shortcut registry lets plain letters repeat, for typing and stepping. A ticket action acts once per
+    // press, so a held key never steps past a consent, a confirmation or a result.
+    if (!shortcut.disabled && !event.repeat) shortcut.onPress?.();
   }, { enabled: focused && !dialogOpen, phase: "before", scope, allowEditable: true });
   // The full keyboard map remains available without filling the status bar.
   const footerKeys = editing ? ["r", "o"] : m.phase === "result" ? ["r", "o", resultStatus === "REJECTED" ? "e" : "n"] : ["e"];

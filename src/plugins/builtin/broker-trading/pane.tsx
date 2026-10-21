@@ -340,7 +340,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   useShortcut((event) => {
     if (event.ctrl || event.meta || event.alt || event.super || event.targetEditable || event.defaultPrevented) return;
     if (event.name !== "O" && !(event.shift && event.name === "o")) return;
-    event.preventDefault(); event.stopPropagation(); toggleOrders();
+    event.preventDefault(); event.stopPropagation();
+    if (!event.repeat) toggleOrders();
   }, { enabled: focused && !!docked && !busy && !dialogOpen, phase: "before", scope: "broker-ticket:orders-toggle" });
   usePaneMenuItems("broker-ticket:orders-toggle", () => focused && docked ? [{ id: "ticket-orders-toggle", label: ordersShown ? "Hide open orders" : "Show open orders", accelerator: "Shift+O", enabled: !busy, onSelect: toggleOrders }] : null, [focused, docked, ordersShown, busy, toggleOrders]);
   // The drawer is as tall as its rows, up to a third of the panel: one order is three lines, not a quarter of the screen.

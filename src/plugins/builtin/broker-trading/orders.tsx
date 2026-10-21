@@ -253,7 +253,9 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
             : event.name === "r" && account ? refresh
               : event.name === "escape" && onBack ? onBack : undefined;
     if (!invoke) return;
-    event.preventDefault(); event.stopPropagation(); invoke();
+    event.preventDefault(); event.stopPropagation();
+    // A held key acts once, so a repeat never opens a second cancel or change.
+    if (!event.repeat) invoke();
   }, { enabled: focused && active && !dialogOpen, phase: "before", scope: keyboardScope });
 
   const status = connection.state !== "connected" ? "Broker disconnected" : trading.error ?? message ?? resource.error
