@@ -74,7 +74,8 @@ export function orderToastBody(order: BrokerOrder): string {
  * current by the broker's order stream when it has one, with a slow
  * reconcile, or by polling open orders when it has none or the stream is
  * quiet. An order that leaves the open list is asked for by `getOrderStatus`,
- * since absence alone proves neither a fill nor a cancel.
+ * since absence alone proves neither a fill nor a cancel; one the broker
+ * cannot confirm stays, as UNKNOWN.
  */
 class ProfileOrderFeed {
   private orders = new Map<string, BrokerOrder>();
@@ -170,7 +171,8 @@ class ProfileOrderFeed {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
     if (!this.connected || this.holders === 0) return;
-    const working = [...this.orders.values()].some((order) => !brokerOrderDone(order.status));
+    // An unconfirmed order is asked about again at the idle pace, not every few seconds.
+    const working = [...this.orders.values()].some((order) => !brokerOrderDone(order.status) && brokerOrderStatus(order.status) !== "UNKNOWN");
     const delay = this.live ? LIVE_RECONCILE_MS : working ? WORKING_POLL_MS : IDLE_POLL_MS;
     this.timer = setTimeout(() => { this.timer = undefined; void this.read(); }, delay);
   }
@@ -192,10 +194,14 @@ class ProfileOrderFeed {
       // A working order missing from the list ended somehow; only the broker can say how.
       const missing = [...this.orders].filter(([key, order]) => !listed.has(key) && !brokerOrderDone(order.status));
       for (const [key, order] of missing) {
-        const status = this.broker.getOrderStatus ? await this.broker.getOrderStatus(this.instance, order.orderId).catch(() => undefined) : null;
+        // A broker with no status read says nothing beyond its open list.
+        if (!this.broker.getOrderStatus) { this.orders.delete(key); continue; }
+        const status = await this.broker.getOrderStatus(this.instance, order.orderId).catch(() => undefined);
         if (generation !== this.generation) return;
         if (status) this.apply(status, baseline ? "baseline" : "poll", false);
-        else if (status === null) this.orders.delete(key);
+        // Null is the broker unable to confirm it, not an end: keep it, unconfirmed, at its last report's time,
+        // so the next read that lists it or a status that answers replaces it.
+        else if (status === null && brokerOrderStatus(order.status) !== "UNKNOWN") this.apply({ ...order, status: "UNKNOWN" }, baseline ? "baseline" : "poll", false);
       }
       this.baselined = true;
       this.prune();
