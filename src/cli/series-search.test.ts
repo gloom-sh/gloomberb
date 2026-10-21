@@ -87,4 +87,11 @@ test("a search naming a central bank says CBR has its rate, instead of finding n
   expect(report).toContain("Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR.");
   expect(report).toContain("CAP:policy-rate:ch");
   expect(report).not.toContain("No matches found");
+  // A bank named with the rate asked for is the same bank.
+  for (const [query, line] of [
+    ["bank of japan rate", "Bank of Japan (Japan): policy rate on the CBR board"],
+    ["Federal Reserve rate", "Federal Reserve (United States): policy rate on the CBR board"],
+  ] as const) {
+    expect(strip(buildSearchReport({ query, candidates: [], series: findCatalogSeries(rates, query, "names") }))).toContain(line);
+  }
 });

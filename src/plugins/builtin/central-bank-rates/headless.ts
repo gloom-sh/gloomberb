@@ -1,4 +1,5 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
+import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
 import { fetchCentralBankRates } from "./client";
 import { hasNoPolicyRate, policyExportRow, policyNextMeetingText, policyNotices } from "./model";
 
@@ -17,7 +18,8 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
-  discovery: { aliases: ["CBR", "CBRT"], dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
+  // A bank's name or short form typed as a function (`fn ECB`, `fn BOJ`) points here, unless a function owns the word (FOMC is WIRP).
+  discovery: { aliases: ["CBR", "CBRT"], suggestFor: CENTRAL_BANKS.flatMap(centralBankNames), dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
     limitations: ["Published policy observations with individual dates.", "Policy instruments differ.",
       "Next meetings come from each bank's published calendar; SAMA publishes none, and China's date is the monthly LPR fixing."] },
   shape: "bundle",

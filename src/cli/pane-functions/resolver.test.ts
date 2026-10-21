@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
+import { centralBankRatesModule } from "../../plugins/builtin/central-bank-rates";
 import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
 import { ivHistoryModule } from "../../plugins/builtin/iv-history";
 import { volSurfaceModule } from "../../plugins/builtin/vol-surface";
 import { earningsCallsHeadless } from "../../plugins/builtin/earnings-calls/headless";
 import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
+import { ratePathModule } from "../../plugins/builtin/rate-path";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
@@ -166,6 +168,23 @@ test("an implied-vol word that is no code (IVOL, OVOL, IV) names HIVG and OVDV a
   }
   // With no argument, the one each takes.
   expect((await unknown(["IVOL"]))?.details).toBe("Run: gloomberb fn HIVG <ticker>\n     gloomberb fn OVDV <ticker>");
+});
+
+test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {
+  const modules = [centralBankRatesModule, ratePathModule];
+  const banks: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const resolve = (args: string[]) => resolvePaneFunction(banks, context, parsePaneFunctionArgs(args));
+  for (const word of ["ECB", "BOJ", "boe", "RBA", "BoC", "SNB", "Bank of Japan", "Federal Reserve"]) {
+    const error = await resolve([word]).then(() => null, (failure: unknown) => failure as UnknownPaneFunctionError);
+    expect(error?.message).toBe(`Unknown function or pane "${word}". Did you mean CBR (Central Bank Rates)?`);
+    expect(error?.details.split("\n")[0]).toBe("Run: gloomberb fn CBR");
+  }
+  // FOMC is one of WIRP's own words, so it opens the rate path as before.
+  expect((await resolve(["FOMC"])).token).toBe("WIRP");
 });
 
 test("CMP of one ticker says it needs two or more and how to ask, before any chart is built", async () => {

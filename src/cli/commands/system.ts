@@ -507,7 +507,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           ],
           textColumns: [
             { key: "capability", header: "Capability", shrink: false },
-            { key: "id", header: "Source", maxWidth: 20 },
+            { key: "id", header: "Source" },
             { key: "kind", header: "Kind", shrink: false },
             { key: "enabled", header: "Enabled" },
             { key: "operations", header: "Operations", format: (value) => String(value).split(",").join(", ") },

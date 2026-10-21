@@ -141,14 +141,19 @@ export interface HeadlessPaneColumn {
   textHeader?: string;
   align?: "left" | "right" | "center";
   width?: number;
-  /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */
+  /**
+   * A narrow text table never cuts a cell by default: text wraps in its cell
+   * and columns move under their rows. False keeps the column on one line;
+   * true lets the table cut it, for free text that names nothing (a
+   * description), down to `minWidth`.
+   */
   shrink?: boolean;
-  /** The narrowest a text column is cut to in a narrow text table, so it never shrinks to a stub that reads like another row's. */
+  /** The narrowest a text column wraps to, or a `shrink: true` column is cut to, in a narrow text table. */
   minWidth?: number;
   /**
-   * When the text table cannot fit a narrow width even with its text
-   * shortened, columns move to lines under their row: a higher priority moves
-   * sooner, equal ones go rightmost first. The first column stays.
+   * When the text table does not fit a narrow width, columns move to lines
+   * under their row, each value whole: a higher priority moves sooner, then
+   * long text, then rightmost first. The first column stays.
    */
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */

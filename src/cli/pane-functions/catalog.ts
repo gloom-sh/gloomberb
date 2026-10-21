@@ -638,10 +638,11 @@ function renderMatchesTable(shown: readonly PaneCatalogEntry[]): string {
   return renderTable(
     [
       { header: "Function", shrink: false },
-      { header: "Name", maxWidth: 20 },
-      { header: "Argument", maxWidth: 14 },
+      { header: "Name" },
+      { header: "Argument" },
       { header: "Report" },
-      { header: "Description" },
+      // A scan list: the description is cut where it does not fit, and `catalog <function>` prints it whole.
+      { header: "Description", shrink: true, minWidth: 20 },
     ],
     shown.map((entry) => [
       cliStyles.command(entry.token),

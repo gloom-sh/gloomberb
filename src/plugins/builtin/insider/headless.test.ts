@@ -339,7 +339,7 @@ describe("insider report without a ticker", () => {
   });
 });
 
-test("the ranking's text fits 120 columns whole, and on 80 the size against usual, the nth trade and the company move under the row", async () => {
+test("the ranking's text fits 120 columns with the company wrapped, and on 80 the size against usual, the nth trade and the company move under the row", async () => {
   // Invented company and people.
   const rows: InsiderSignalsPayload["rows"] = [{
     ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Incorporated", score: 78, reasons: ["3 insiders, $1.2M in 14 days"],
@@ -368,8 +368,9 @@ test("the ranking's text fits 120 columns whole, and on 80 the size against usua
     };
     const wide = text(120);
     expect(wide).toContain("Ticker  Company                        Score  Role           Nth  Vs Usual   Stake  Buyers  Bought  Last Buy  Filed");
-    // Every column stays; a long company name is cut.
-    expect(wide).toContain("NWBI    Northwind Biologics Incorpor\u2026     78  10% owner +2  12th     100x+     25x       3  $1.15M  10/14/26  2026-10-14");
+    // Every column stays; a long company name wraps in its cell, never cut.
+    expect(wide).toContain("NWBI    Northwind Biologics               78  10% owner +2  12th     100x+     25x       3  $1.15M  10/14/26  2026-10-14");
+    expect(wide).toContain("        Incorporated");
     // Traded both ways: dashes for the nth trade and size, the stake marked.
     expect(wide).toContain("TRNT    Tailspin Toys                     40  CFO             --        --  +12% \u00b1       1   $496k  10/4/26   2026-10-05");
     // Each row's insiders are the opened company's, as in the pane; the exports keep them.

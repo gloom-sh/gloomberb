@@ -1348,9 +1348,9 @@ const NEWS_COLUMNS = [
     header: "Published",
     format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
   },
-  { key: "source", header: "Source", maxWidth: 20 },
+  { key: "source", header: "Source" },
   { key: "title", header: "Title" },
-  { key: "tickers", header: "Tickers", maxWidth: 16 },
+  { key: "tickers", header: "Tickers" },
   { key: "url", header: "URL", optional: true },
 ];
 

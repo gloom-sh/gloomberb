@@ -78,7 +78,7 @@ describe("headless pane printer", () => {
     expect(report.text.split("\n").find((line) => line.startsWith("AAPL P/E"))?.trimEnd()).toMatch(/ 2$/);
   });
 
-  test("--width wraps the notes, errors and source line under a table, and a column marked whole is never cut", () => {
+  test("--width wraps the notes, errors and source line under a table, and never cuts a cell", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [],
       freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
@@ -94,7 +94,9 @@ describe("headless pane printer", () => {
     try {
       const lines = renderHeadlessPaneText(definition, result, args, "Board").split("\n");
       expect(lines.every((line) => line.length <= 40)).toBe(true);
-      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/…\s+2026-10-09 20:15 UTC$/);
+      // The name wraps in its cell rather than lose its end; the time beside it stays whole.
+      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/^A long index name\s+2026-10-09 20:15 UTC$/);
+      expect(lines.join("\n")).not.toContain("…");
       expect(lines.filter((line) => line.startsWith("Notes:") || line.includes("terminal is only"))).toHaveLength(2);
     } finally {
       setCliWidthOverride(null);

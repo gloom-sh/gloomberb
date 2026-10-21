@@ -69,6 +69,48 @@ export function centralBankNamed(query: string): CentralBank | null {
   return CENTRAL_BANKS.find((bank) => centralBankNames(bank).some((name) => nameKey(name) === wanted)) ?? null;
 }
 
+/** Words a query puts beside a bank's name when it asks for its policy rate: "Bank of Japan rate", "ECB rate decision", "Fed funds rate". */
+const POLICY_RATE_WORDS = new Set([
+  "rate", "rates", "policy", "interest", "decision", "decisions", "meeting", "meetings", "target", "funds",
+  "cash", "repo", "key", "base", "deposit", "benchmark", "official", "overnight", "hike", "hikes", "cut", "cuts",
+  "monetary", "current", "latest", "today",
+]);
+
+/** Where `name` sits in `words` as whole words, or -1. */
+function wordsIndex(words: readonly string[], name: readonly string[]): number {
+  for (let start = 0; start + name.length <= words.length; start += 1) {
+    if (name.every((word, offset) => words[start + offset] === word)) return start;
+  }
+  return -1;
+}
+
+/**
+ * The bank a query asks about: named on its own (`centralBankNamed`), or by
+ * a name with words that ask for its policy rate around it ("bank of japan
+ * rate", "Federal Reserve rate", "BOE base rate"), or its jurisdiction with
+ * "policy rate" or "interest rate" ("Japan policy rate"). Null for anything
+ * else, a name inside a longer phrase ("Bank of Japan bonds").
+ */
+export function centralBankAskedAbout(query: string): CentralBank | null {
+  const named = centralBankNamed(query);
+  if (named) return named;
+  const words = nameKey(query).split(" ").filter(Boolean);
+  let found: { bank: CentralBank; length: number } | null = null;
+  for (const bank of CENTRAL_BANKS) {
+    const names = centralBankNames(bank).map((name) => ({ words: nameKey(name).split(" "), place: false }));
+    for (const name of [...names, { words: nameKey(bank.place).split(" "), place: true }]) {
+      const start = wordsIndex(words, name.words);
+      if (start < 0 || (found && found.length >= name.words.length)) continue;
+      const rest = [...words.slice(0, start), ...words.slice(start + name.words.length)];
+      if (rest.length === 0 || !rest.every((word) => POLICY_RATE_WORDS.has(word))) continue;
+      // A country with a rate ("Japan rate") may be its currency or bonds; a policy or interest rate is the bank's.
+      if (name.place && !rest.includes("policy") && !rest.includes("interest")) continue;
+      found = { bank, length: name.words.length };
+    }
+  }
+  return found?.bank ?? null;
+}
+
 /** The bank whose board row reads a FRED series (DFEDTARU is the Fed's), else null. */
 export function centralBankCiting(fredSeriesId: string): CentralBank | null {
   const wanted = fredSeriesId.trim().toUpperCase();

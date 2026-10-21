@@ -6,6 +6,7 @@ import {
   renderSection,
   renderTable,
   wrapText,
+  wrapToTerminal,
 } from "../../utils/cli-output";
 import type { DataProvider } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
@@ -31,7 +32,7 @@ import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany, sameCompany } from "../../tickers/company-name";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
-import { centralBankCiting, centralBankNamed, type CentralBank } from "../../utils/central-banks";
+import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
 
@@ -375,9 +376,13 @@ function indexRootNote(query: string, candidates: TickerSearchCandidate[]): stri
   return indexRootTryLine(root);
 }
 
-/** The bank on the CBR board a query names ("SNB", "Norges Bank"), or whose row reads the FRED series it names (DFEDTARU). */
+/**
+ * The bank on the CBR board a query names ("SNB", "Norges Bank"), asks the
+ * policy rate of ("bank of japan rate"), or whose row reads the FRED series
+ * it names (DFEDTARU).
+ */
 function searchedCentralBank(query: string): CentralBank | null {
-  return centralBankNamed(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
+  return centralBankAskedAbout(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
 }
 
 /** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR." */
@@ -455,7 +460,7 @@ export function buildSearchReport({
   if (indexNote) lines.push("", indexNote);
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
-  if (bank) lines.push("", centralBankLine(bank));
+  if (bank) lines.push("", wrapToTerminal(centralBankLine(bank)));
   const setting = commandPointer(query);
   if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
