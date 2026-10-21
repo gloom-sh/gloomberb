@@ -99,6 +99,17 @@ export function modelSpotStamp(spot: SpotStampInput): string | null {
   return spot.session && dated ? `${spot.session} ${formatSpotTime(spot.observedAt)}` : null;
 }
 
+/**
+ * The stamp's shorter forms, longest first, for a figure with less room
+ * (`StatItem.detailVariants`): `pre-market 09:35 UTC`, then `pre-market`;
+ * `close`. Empty when there is no stamp.
+ */
+export function modelSpotStampVariants(spot: SpotStampInput): string[] {
+  if (!modelSpotStamp(spot)) return [];
+  if (spot.basis === "close") return ["close"];
+  return [`${spot.session} ${new Date(spot.observedAt).toISOString().slice(11, 16)} UTC`, spot.session!];
+}
+
 /** The stamp where a report or footer always dates the spot: `last Wed 21 Oct 14:05 UTC` for the regular session's price. */
 export function modelSpotLabel(spot: SpotStampInput): string {
   return modelSpotStamp(spot) ?? `last ${formatSpotTime(spot.observedAt)}`;

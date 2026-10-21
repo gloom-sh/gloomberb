@@ -26,7 +26,7 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, suppliedScenarioInputs,
+import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, scenarioSpotStampVariants, suppliedScenarioInputs,
   type ScenarioMarketSnapshot } from "./client";
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspStatItems, loadNextEarningsDate } from "./csp";
@@ -342,7 +342,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     // A spot other than the last price says what it is: the one the quote mids imply, or a typed what-if.
     { id: "spot", label: "Spot", value: money(scenario.position.spot),
       detail: spotBasis === "implied by option quotes" ? "per share, implied" : spotBasis === "typed" ? "per share, typed"
-        : spotTimed ? `per share, ${spotStamp}` : "per share" },
+        : spotTimed ? `per share, ${spotStamp}` : "per share",
+      // The band keeps its columns: the stamp's day, its time, then the stamp give way first.
+      ...(spotTimed ? { detailVariants: [...scenarioSpotStampVariants(spotBasis!, scenario.position.asOf)
+        .map((form) => `per share, ${form}`), "per share"] } : {}) },
     { id: "value", label: "Value", value: money(scenario.valuation.price), detail: valueUnit },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
     { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },

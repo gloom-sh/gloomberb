@@ -13,7 +13,7 @@ import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
-import { extendedSession, modelSpotStamp, type OptionModelSpot } from "../options/model-spot";
+import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
 
 export interface ScenarioMarketSnapshot {
@@ -201,6 +201,12 @@ const EXTENDED_BASES: readonly string[] = ["pre-market", "after hours", "overnig
 export function scenarioSpotStamp(basis: string, observedAt: number): string {
   if (!EXTENDED_BASES.includes(basis)) return basis;
   return modelSpotStamp({ basis: "last", session: basis as OptionModelSpot["session"], observedAt }) ?? basis;
+}
+
+/** That stamp's shorter forms, longest first (`modelSpotStampVariants`): `pre-market 09:42 UTC`, `pre-market`. */
+export function scenarioSpotStampVariants(basis: string, observedAt: number): string[] {
+  if (!EXTENDED_BASES.includes(basis)) return [];
+  return modelSpotStampVariants({ basis: "last", session: basis as OptionModelSpot["session"], observedAt });
 }
 
 function supplied(value: unknown): boolean { return value != null && value !== ""; }

@@ -3,7 +3,7 @@ import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
-import { displayWidth, formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { chainOptionContract, formatExpDate, optionContractName, resolveOptionsTarget } from "../../../utils/options";
@@ -78,7 +78,8 @@ import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/l
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { optionCarry, optionCostOfSpot } from "./carry";
 import {
-  formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, optionModelSpot, type OptionModelSpot,
+  formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
+  type OptionModelSpot,
 } from "./model-spot";
 import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -126,7 +127,6 @@ function spotItem(
   underlying: TickerFinancials | null | undefined,
   assetCategory: string | undefined,
   modelSpot: OptionModelSpot | null,
-  withExtendedPrint = false,
 ): StatItem {
   const quote = underlying?.quote;
   if (!quote || !Number.isFinite(quote.price)) return { id: "spot", label: "Spot", value: "--" };
@@ -134,12 +134,15 @@ function spotItem(
   const stamp = modelSpot ? modelSpotStamp(modelSpot) : null;
   if (modelSpot && stamp) {
     const move = modelSpot.basis === "close" ? getRegularSessionDisplay(quote)?.change : quote.change;
-    const extended = withExtendedPrint ? modelSpotExtendedPrint(quote, modelSpot, (price) => formatMarketPrice(price, options)) : null;
+    const extended = modelSpotExtendedPrint(quote, modelSpot, (price) => formatMarketPrice(price, options));
+    // The band keeps its columns: the extended print, then the stamp's day, give way first.
+    const shorter = modelSpotStampVariants(modelSpot);
     return {
       id: "spot",
       label: "Spot",
       value: formatMarketPrice(modelSpot.price, options),
       detail: extended ? `${stamp} · ${extended}` : stamp,
+      detailVariants: extended ? [stamp, ...shorter] : shorter,
       color: quote.stale ? colors.textDim : priceColor(Number.isFinite(move) ? move! : 0),
     };
   }
@@ -925,9 +928,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     : 0;
   // The root insets the terminal body, so the band gets the width inside it.
   const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
-  const spotAssetCategory = isOpt ? undefined : ticker.metadata.assetCategory;
   const figures = optionsSummaryItems({
-    spot: spotItem(underlying, spotAssetCategory, modelSpot),
+    spot: spotItem(underlying, isOpt ? undefined : ticker.metadata.assetCategory, modelSpot),
     summary, enrichment, currency: underlying?.quote?.currency || ticker.metadata.currency || "",
     ivRank: showIvRank ? { stats: ivRank } : null,
   });
@@ -947,19 +949,11 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     + expiryDate.length + 2 + "(9999d)".length;
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
-  // The extended print follows the spot's stamp only where the cell has room
-  // for both: cut short, it would read as a broken figure.
-  const spotWithPrint = spotItem(underlying, spotAssetCategory, modelSpot, true);
-  const statLabelChars = Math.min(18, Math.max(4, expiryItem.label.length, ...figures.map((item) => displayWidth(item.label)))) + 1;
-  const statCellChars = Math.floor((statWidth - 2 * (statColumns - 1)) / statColumns);
-  const shownFigures = spotWithPrint.detail !== figures[0]?.detail && figures[0]?.id === "spot"
-    && statLabelChars + displayWidth(spotWithPrint.value) + 2 + displayWidth(spotWithPrint.detail ?? "") <= statCellChars
-    ? [spotWithPrint, ...figures.slice(1)] : figures;
-  const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...shownFigures];
+  const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];
   const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
   // A short band gives up figures from the end; the expiry stays.
   const shownStatItems = summaryRowCount === 0 ? []
-    : [statItems[0]!, ...shownFigures.slice(0, summaryRowCount * statColumns - (expiryInline ? 1 : statColumns))];
+    : [statItems[0]!, ...figures.slice(0, summaryRowCount * statColumns - (expiryInline ? 1 : statColumns))];
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.

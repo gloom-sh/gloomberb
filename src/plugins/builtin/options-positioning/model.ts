@@ -1,6 +1,6 @@
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatExpDate } from "../../../utils/options";
-import { modelSpotLabel, modelSpotStamp, observedModelSpot } from "../options/model-spot";
+import { modelSpotLabel, modelSpotStamp, modelSpotStampVariants, observedModelSpot } from "../options/model-spot";
 
 export type PositioningTab = "strikes" | "expiries" | "gex";
 export const POSITIONING_TABS: { value: PositioningTab; label: string }[] = [
@@ -69,12 +69,18 @@ export function formatLevel(value: number | null | undefined): string {
 }
 /**
  * The spot Gloom Cloud read the distances and dealer gamma at, stamped as
- * every options pane stamps its spot (`modelSpotStamp`): `pre-market Wed 21
- * Oct 09:35 UTC` for an extended-session print, null for the regular session's.
+ * every options pane stamps its spot (`modelSpotStamp`), as a stat cell
+ * carries it: `pre-market Wed 21 Oct 09:35 UTC`, its shorter forms, then
+ * none, so the band keeps the columns it has in regular hours. Nothing for
+ * the regular session's price.
  */
-export function positioningSpotStamp(spot: number | null | undefined, spotAsOf: string | null | undefined): string | null {
+export function positioningSpotDetail(spot: number | null | undefined, spotAsOf: string | null | undefined):
+  { detail?: string; detailVariants?: string[] } {
   const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
-  return spot == null || !Number.isFinite(at) ? null : modelSpotStamp(observedModelSpot(spot, at));
+  if (spot == null || !Number.isFinite(at)) return {};
+  const observed = observedModelSpot(spot, at);
+  const stamp = modelSpotStamp(observed);
+  return stamp ? { detail: stamp, detailVariants: [...modelSpotStampVariants(observed), ""] } : {};
 }
 
 /** The spot as a report says it: `770.88 pre-market Wed 21 Oct 09:35 UTC`, `770.10 last Wed 21 Oct 14:05 UTC`. */

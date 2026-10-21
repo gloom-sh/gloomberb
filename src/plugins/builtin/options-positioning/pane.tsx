@@ -57,7 +57,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
-  positioningSpotStamp,
+  positioningSpotDetail,
   formatPayout,
   formatRatio,
   formatStrike,
@@ -205,7 +205,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const openInterest = useAsyncResource<OpenInterestPayload>(openInterestLoader, { keepPreviousData: true });
   const data = openInterest.data;
   const spot = data?.spot ?? null;
-  const spotStamp = positioningSpotStamp(spot, data?.spotAsOf);
+  const spotStamp = useMemo(() => positioningSpotDetail(spot, data?.spotAsOf), [spot, data?.spotAsOf]);
   const expiries = data?.expiries ?? [];
   const shownExpiry = data?.expiry ?? requestedExpiry;
   const changes = data?.previousOiDate != null;
@@ -335,7 +335,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const strikeFigures = useMemo<StatItem[]>(() => !callTotal ? [] : [
     { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrike(maxPain), color: colors.warning,
       detail: maxPain == null ? undefined : `${formatDistance(maxPain, spot)} vs spot` },
-    { id: "spot", label: "Spot", value: formatLevel(spot), detail: spotStamp ?? undefined },
+    { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     { id: "pc", label: "P/C OI", value: formatRatio(callTotal.putCallRatio) },
     { id: "calls", label: "Call OI", value: formatCompact(callTotal.callOI), color: colors.positive,
       detail: callTotal.callChange == null ? undefined : formatCountChange(callTotal.callChange) },
@@ -404,7 +404,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         split: [{ id: "calls", value: calls, color: colors.positive }, { id: "puts", value: puts, color: colors.negative }] },
       { id: "pc", label: "P/C OI", value: formatRatio(calls > 0 ? puts / calls : null) },
       { id: "largest", label: "Largest expiry", value: expiryLabel(largest.date), detail: formatCompact(expirySize(largest)) },
-      { id: "spot", label: "Spot", value: formatLevel(spot), detail: spotStamp ?? undefined },
+      { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     ];
   }, [changes, colors.negative, colors.positive, expiries, spot, spotStamp]);
   const selectedExpiryRow = expiries.find((row) => row.date === expirySelectedId) ?? null;
@@ -479,7 +479,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
       detail: `${shares} with dealers${gammaData.boxes?.length ? ", boxes out" : ""}` }] : []),
-    { id: "spot", label: "Spot", value: formatLevel(gammaSpot), detail: positioningSpotStamp(gammaSpot, gammaData.spotAsOf) ?? undefined },
+    { id: "spot", label: "Spot", value: formatLevel(gammaSpot), ...positioningSpotDetail(gammaSpot, gammaData.spotAsOf) },
   ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares, walls]);
   // The assumption rides in the legend, where the numbers it changes are read; the
   // dealer range figure names its own share. It gives way before the series name does.
