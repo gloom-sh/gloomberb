@@ -19,6 +19,12 @@ const INCLUDED = [
   "src/plugins/builtin/dividend-yield/",
   "src/plugins/builtin/exposure/",
   "src/plugins/builtin/trace-bonds/",
+  "src/plugins/builtin/market-movers/",
+  "src/plugins/builtin/plugin-marketplace/",
+  "src/plugins/builtin/alerts/",
+  "src/plugins/builtin/sectors/",
+  "src/plugins/builtin/holders/",
+  "src/plugins/builtin/correlation/",
 ];
 
 type SilentCatch = {

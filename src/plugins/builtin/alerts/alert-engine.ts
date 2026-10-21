@@ -1,4 +1,5 @@
 import type { AlertCondition, AlertRule } from "./types";
+import { logFailure } from "../../../utils/log-failure";
 
 export type { AlertRule };
 
@@ -97,7 +98,8 @@ export function deserializeAlerts(json: string): AlertRule[] {
     return parsed.filter((a: any) =>
       a?.id && a?.symbol && a?.condition && typeof a?.targetPrice === "number"
     );
-  } catch {
+  } catch (error) {
+    logFailure("alerts.alert-engine", "Read saved price alerts failed")(error);
     return [];
   }
 }

@@ -1,6 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatSignificant } from "../../../utils/format";
+import { logFailure } from "../../../utils/log-failure";
 import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeries, pairKey, type CorrelationSeries } from "./matrix/model";
@@ -27,7 +28,7 @@ async function loadListedHistory(ctx: HeadlessPaneContext, key: string, range: T
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   const [points, quote] = await Promise.all([
     loadHistory(ctx, key, range),
-    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(() => null),
+    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(logFailure("correlation", "Listing exchange quote failed", null)),
   ]);
   return { exchange: exchange || quote?.listingExchangeName || quote?.exchangeName || "", points };
 }

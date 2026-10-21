@@ -1,6 +1,7 @@
 import type { ScreenerQuote } from "../../../api-client/market-discovery";
 export type { ScreenerQuote } from "../../../api-client/market-discovery";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { logFailure } from "../../../utils/log-failure";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import type {
@@ -324,7 +325,7 @@ async function bestEffortMarketMetadata(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      request.then((result) => result.data).catch(() => []),
+      request.then((result) => result.data).catch(logFailure("market-movers", "Market metadata failed", [])),
       new Promise<ScreenerQuote[]>((resolve) => {
         timeout = setTimeout(() => resolve([]), waitMs);
       }),
@@ -392,8 +393,8 @@ export async function fetchPreferredMarketMovers(
         stale: response.stale === true || response.data.stale === true,
       };
     }
-  } catch {
-    // The public backend snapshot remains available when live rankings fail.
+  } catch (error) {
+    logFailure("market-movers", "Live rankings failed")(error);
   }
 
   const fallback = await marketMetadata;

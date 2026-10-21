@@ -1,6 +1,7 @@
 import type { DataProvider, MarketDataRequestContext } from "../../../types/data-provider";
 import type { HolderData, TickerFinancials } from "../../../types/financials";
 import { holderStakeMarketCap, holderValueCurrency } from "./format";
+import { logFailure } from "../../../utils/log-failure";
 
 export async function loadHolderData(
   provider: DataProvider,
@@ -34,7 +35,7 @@ export async function loadHolderSnapshot(
 ): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number | null }> {
   const [data, financials] = await Promise.all([
     loadHolderData(provider, symbol, exchange),
-    provider.getTickerFinancials(symbol, exchange).catch(() => null),
+    provider.getTickerFinancials(symbol, exchange).catch(logFailure("holders.client", "Read holder reference financials failed", null)),
   ]);
   const quote = financials?.quote;
   return {

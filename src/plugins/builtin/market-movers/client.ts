@@ -5,6 +5,7 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import type { DataProvider } from "../../../types/data-provider";
+import { logFailure } from "../../../utils/log-failure";
 import {
   CATEGORY_MAP,
   moverRegularSession,
@@ -63,7 +64,7 @@ async function hydrateTrending(
   if (provider.getQuotesBatch) {
     const results = await provider.getQuotesBatch(
       symbols.map((symbol) => ({ symbol, exchange: "" })),
-    ).catch(() => []);
+    ).catch(logFailure("market-movers", "Trending quote batch failed", []));
     for (const result of results) {
       if (result.quote) bySymbol.set(result.target.symbol, screenerQuoteFromQuote(result.target.symbol, result.quote));
     }
@@ -72,8 +73,8 @@ async function hydrateTrending(
       try {
         const quote = await provider.getQuote(symbol, "");
         bySymbol.set(symbol, screenerQuoteFromQuote(symbol, quote));
-      } catch {
-        // Missing quotes are omitted from a ranked list.
+      } catch (error) {
+        logFailure("market-movers", "Trending quote failed")(error);
       }
     }));
   }

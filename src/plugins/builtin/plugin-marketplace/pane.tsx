@@ -31,6 +31,7 @@ import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
 import { requiredGloomberb } from "../../../utils/semver";
+import { logFailure } from "../../../utils/log-failure";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
@@ -483,7 +484,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     void check(unlistedKey.split(","))
       // Offline, or a private repository this machine has no credentials for:
       // the row keeps whatever it knew, without an error in the way.
-      .catch(() => ({}))
+      .catch(logFailure("plugin-marketplace.pane", "Check installed plugin remote heads failed", {}))
       .then((heads) => {
         if (cancelled) return;
         setRemoteHeads(heads);
@@ -638,8 +639,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
     setLastError(null);
-    await host.deactivate(entry.id, entry.directory).catch(() => {});
-    await manager.deactivate?.(entry.id).catch(() => {});
+    await host.deactivate(entry.id, entry.directory).catch(logFailure("plugin-marketplace.pane", "Deactivate plugin view before removal failed"));
+    await manager.deactivate?.(entry.id).catch(logFailure("plugin-marketplace.pane", "Deactivate plugin host before removal failed"));
     const result = await manager.remove(entry.directory!);
     setBusy(null);
     bump();
@@ -735,7 +736,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           }))}
         />
       ),
-    }).catch(() => null);
+    }).catch(logFailure("plugin-marketplace.pane", "Choose starter pack failed", null));
     const pack = STARTER_PACKS.find((candidate) => candidate.id === id);
     if (pack) await applyPack(pack);
   }, [applyPack, currentPack, dialog, disabledPlugins, host]);

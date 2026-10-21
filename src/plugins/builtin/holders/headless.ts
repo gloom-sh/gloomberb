@@ -5,6 +5,7 @@ import type {
 } from "../../../types/plugin";
 import { loadHolderSnapshot } from "./client";
 import { holderValueCurrency } from "./format";
+import { logFailure } from "../../../utils/log-failure";
 import type { HolderData } from "../../../types/financials";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
@@ -157,7 +158,7 @@ export function createHoldersHeadless(
         const [payload, snapshot] = await Promise.all([
           dependencies.loadBeneficialOwners(symbol, { form: beneficialRouteForm(form), history }, ctx),
           // The 13F column is a join; the 13D/13G rows stand without it.
-          dependencies.loadSnapshot(symbol, args, ctx).catch(() => null),
+          dependencies.loadSnapshot(symbol, args, ctx).catch(logFailure("holders.headless", "Load holder snapshot for filing comparison failed", null)),
         ]);
         const sharesOutstanding = snapshot?.sharesOutstanding ?? null;
         const rows = buildBeneficialReportRows(payload, {

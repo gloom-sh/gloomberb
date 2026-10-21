@@ -242,6 +242,7 @@ export function relationshipTemplateSymbols(
   try {
     return normalizeRelationshipSymbols(parseTickerListInput(raw));
   } catch {
+    // Intentional ignore: invalid template input disables creation through canCreate and creates no pane.
     return null;
   }
 }

@@ -1,5 +1,6 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
+import { logFailure } from "../../../utils/log-failure";
 import type { SectorDef } from "./sector-data";
 import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../../../market-data/market/status";
 import {
@@ -26,7 +27,7 @@ export async function loadSectorRows(
   if (provider.getQuotesBatch) {
     const results = await provider.getQuotesBatch(
       sectors.map((sector) => ({ symbol: sector.etf, exchange: "" })),
-    ).catch(() => []);
+    ).catch(logFailure("sectors", "Sector quote batch failed", []));
     for (const result of results) quotes.set(result.target.symbol, result.quote ?? null);
   }
   // A partial batch must not silently replace a live quote with yesterday's
@@ -41,7 +42,7 @@ export async function loadSectorRows(
 
   const histories = new Map(await Promise.all(sectors.map(async (sector) => [
     sector.etf,
-    await provider.getPriceHistory(sector.etf, "", "1Y").catch(() => []),
+    await provider.getPriceHistory(sector.etf, "", "1Y").catch(logFailure("sectors", "Sector price history failed", [])),
   ] as const)));
   // The quotes as sent carry any pre-market or after-hours print, for its own column.
   const sentQuotes = new Map(quotes);
@@ -94,7 +95,7 @@ export async function loadSectorRows(
       start.setUTCDate(start.getUTCDate() - 7);
       const end = new Date(`${asOfDate}T00:00:00Z`);
       end.setUTCDate(end.getUTCDate() + 1);
-      const extended = await provider.getDetailedPriceHistory(sector.etf, "", start, end, "1d").catch(() => []);
+      const extended = await provider.getDetailedPriceHistory(sector.etf, "", start, end, "1d").catch(logFailure("sectors", "Sector extended price history failed", []));
       if (extended.length > 0) {
         history = [...history, ...extended];
         histories.set(sector.etf, history);
