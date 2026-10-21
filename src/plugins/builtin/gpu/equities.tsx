@@ -39,9 +39,11 @@ function equityColumns(width: number): DataTableColumn[] {
 }
 
 /** Related shares by what ties them to GPU rents, each beside the list price that ties it. */
-export function GpuEquities({ board, models, locked, model, setModel, reloadBoard, width, height, focused }: {
+export function GpuEquities({ board, models, locked, model, setModel, reloadBoard, width, height, focused, pending = false }: {
   board: GpuBoardRow[]; models: readonly string[]; locked: boolean; model: string; setModel: (value: string) => void; reloadBoard: () => void;
   width: number; height: number; focused: boolean;
+  /** The picked GPU's free preview is still loading. */
+  pending?: boolean;
 }) {
   const colors = useThemeColors();
   const provider = useAssetData();
@@ -110,6 +112,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   }, [colors, desktop]);
   return <DataTableView<Row> columns={equityColumns(width)} items={items} rootWidth={width} rootHeight={height} focused={focused}
     rootBefore={<GpuModelQuery models={models} model={model || "H100"} setModel={setModel} width={width} allowAll={false} />}
+    status={pending ? { loading: true, subject: "GPU rental prices" } : undefined}
     selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelected(String(id)) }} getItemKey={rowKey}
     isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
     getRowVersion={(row) => isSectionedItemRow(row) ? [quotes.get(row.item.symbol)?.quote?.lastUpdated, quotes.get(row.item.symbol)?.loading,

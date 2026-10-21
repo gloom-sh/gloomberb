@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PowerBoard, PowerFilter, PowerHistory } from "../../../api-client/power";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
-import { Button, ChartTableHeader, DataTableStackView, EmptyState, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableCell, type PaneHint, type QueryBarFilter } from "../../../components";
+import { Button, ChartTableHeader, DataTableStackView, EmptyState, QueryBar, useChartTableSelection, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableCell, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -97,6 +97,10 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   }, [filter, scope, projectTab, snapshot]);
   const pages = usePagedRows(loader, { getId: (row) => row.id });
   const board = isAccessDenied(pages.error) || isAccessDenied(pages.moreError) ? undefined : pages.pages[0]?.payload;
+  // A tab or filter change starts its list over; the filter menus keep the last board's choices until the new one answers.
+  const lastFilters = useRef(board?.filters);
+  if (board) lastFilters.current = board.filters;
+  const filterChoices = board?.filters ?? lastFilters.current;
   const historyLoader = useCallback(async ({ offset, force }: { offset: number; force: boolean }) => {
     const result = snapshot?.history ? { payload: snapshot.history, stale: false, refreshError: null }
       : await loadPowerHistory({ ...filter, offset, limit: 500 }, scope, force);
@@ -157,7 +161,8 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const notices = [pages.moreError?.message, historyPages.moreError?.message, ...pages.pages.map((p) => p.refreshError), historyData?.refreshError,
     board && tab !== "capacity" ? powerCoverageNote(board.coverage) : null].filter((v): v is string => !!v);
   usePaneNoticeFooter({ registrationId: "power:notices", focused, notices: [...new Set(notices)], enabled: !openRow });
-  const { strip, rows: tabRows } = usePaneTabs(board ? { tabs: [...POWER_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  const signInWall = !board && isCloudSessionRequired(error);
+  const { strip, rows: tabRows } = usePaneTabs(!signInWall ? { tabs: [...POWER_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   const baseColumns = tab === "capacity" && context === "generation" ? GENERATION_COLUMNS : tab === "capacity" && context === "utility" ? UTILITY_COLUMNS : projectTab ? PROJECT_COLUMNS : tab === "history" ? HISTORY_COLUMNS : tab === "outcomes" ? RATE_COLUMNS : tab === "utilities" ? EXPOSURE_COLUMNS : COVERAGE_COLUMNS;
   const records = useMemo(() => rows.filter(isRecord), [rows]);
   const columns = useMemo(() => withoutQuietColumns(baseColumns, records, (r, id) => r.cells[id] ?? "", QUIET_COLUMNS), [baseColumns, records]);
@@ -167,10 +172,10 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const filters: QueryBarFilter[] = [
     ...(historical && ["queue", "history", "outcomes"].includes(tab) ? [{ id: "source", label: "History", value: sourceId, defaultValue: "", options: [{ value: "", label: "All benchmarks" }, { value: "us-lbnl-annual", label: "Annual benchmark" }, { value: "us-lbnl", label: "Project benchmark" }], onChange: setSourceId }] : []),
     ...(["loads", "utilities"].includes(tab) ? [{ id: "loadClass", label: "Loads", value: loadClass, defaultValue: "", options: [{ value: "", label: "All loads" }, { value: "datacenter", label: "Datacenters" }], onChange: setLoadClass }] : []),
-    { id: "country", label: "Country", value: country, defaultValue: "", options: choices(board?.filters.countries), onChange: setCountry },
-    { id: "region", label: "Region", value: region, defaultValue: "", options: choices(board?.filters.regions), onChange: setRegion },
-    ...(!["loads", "utilities", "coverage"].includes(tab) ? [{ id: "fuel", label: "Fuel", value: fuel, defaultValue: "", options: choices(board?.filters.fuels), onChange: setFuel }] : []),
-    ...(tab !== "coverage" ? [{ id: "status", label: "Status", value: status, defaultValue: "", options: choices(board?.filters.statuses), onChange: setStatus }] : []),
+    { id: "country", label: "Country", value: country, defaultValue: "", options: choices(filterChoices?.countries), onChange: setCountry },
+    { id: "region", label: "Region", value: region, defaultValue: "", options: choices(filterChoices?.regions), onChange: setRegion },
+    ...(!["loads", "utilities", "coverage"].includes(tab) ? [{ id: "fuel", label: "Fuel", value: fuel, defaultValue: "", options: choices(filterChoices?.fuels), onChange: setFuel }] : []),
+    ...(tab !== "coverage" ? [{ id: "status", label: "Status", value: status, defaultValue: "", options: choices(filterChoices?.statuses), onChange: setStatus }] : []),
     ...(["queue", "history", "outcomes"].includes(tab) ? [{ id: "historical", label: "Benchmark", kind: "toggle" as const, value: historical, defaultValue: false, onChange: setHistorical }] : []),
     ...(tab === "capacity" ? [{ id: "context", label: "Context", value: context, options: [{ value: "capacity", label: "Capacity" }, { value: "generation", label: "Generation" }, { value: "utility", label: "Utilities" }], onChange: setContext }] : []),
   ];
@@ -206,31 +211,31 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
       color: column.id === "name" || column.id === "utility" || column.id === "capacityMw" || column.id === "requestedMw" ? colors.textBright
         : ["location", "asOf", "observedAt", "scope", "proposedDate", "region", "country", "kind", "role", "period"].includes(column.id) ? colors.textDim : colors.text };
   };
-  if (!board && isCloudSessionRequired(error)) return <SignInWall placement="power-signin" action="view power and interconnection data" needsVerification={needsVerification} />;
+  if (signInWall) return <SignInWall placement="power-signin" action="view power and interconnection data" needsVerification={needsVerification} />;
+  // The strip and the query bar stay through every load: a tab or filter change waits in the table's body.
   return <Box width={width} height={height} flexDirection="column">{strip}
-    <PaneStatusBody loading={!board && pages.loading} error={!board ? error : null} subject="power and interconnection data">
-      {board ? <DataTableStackView<PowerRow> columns={columns} items={items} getItemKey={rowId} focused={focused && !searchFocus.active}
-        rootWidth={width} rootHeight={bodyHeight} scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={`${tab}:${queryKey}`}
-        selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelectedId }}
-        onActivate={(row) => row.locked ? upgrade() : setOpenId(row.id)} detailOpen={!!openRow} onBack={() => setOpenId(null)} detailTitle={openRow?.label}
-        detailScrollRef={detailScrollRef} detailContent={openRow ? <PowerDetailView row={openRow} scope={scope} scrollRef={detailScrollRef} snapshot={!!snapshot} focused={focused} width={width} height={bodyHeight - 1} /> : null}
-        renderCell={cell} freezeFirstColumn showHorizontalScrollbar selectedTextOverridesCellColor
-        isNavigable={isRecord} renderSectionHeader={(row) => row.section ? { text: `${row.label} (${row.section.count})` } : null}
-        sortColumnId={projectTab ? sort.column ?? null : null} sortDirection={sort.direction}
-        isColumnSortable={(column) => projectTab && POWER_SORT_COLUMNS.includes(column.id)}
-        onHeaderClick={projectTab ? (column) => { if (POWER_SORT_COLUMNS.includes(column)) setSort((old) => ({ column: column as PowerFilter["sort"], direction: old.column === column && old.direction === "desc" ? "asc" : "desc" })); } : undefined}
-        rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query}
-          figures={projectTab && tab === "queue" && board.access === "full" ? queueFigures : undefined}
-          chart={tab === "history" ? { series, ...chartLink, formatValue: (n) => `${powerNumber(n)} MW`, loading: historyPages.loading || historyPages.hasMore && !historyPages.moreError,
-            empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
-        emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
-        emptyContent={tickerMessage ? <Box paddingX={1} paddingY={1}>
-          <EmptyState title={tickerMessage.title} hint={tickerMessage.hint || undefined}
-            actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
-              onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
-        </Box> : undefined}
-        bodyAfter={locked && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Unlock full power data with Pro" onPress={upgrade} role="power-upgrade" /> : undefined}
-      /> : null}
-    </PaneStatusBody>
+    <DataTableStackView<PowerRow> columns={columns} items={board ? items : []} getItemKey={rowId} focused={focused && !searchFocus.active}
+      status={board ? undefined : { loading: pages.loading, error, subject: "power and interconnection data" }}
+      rootWidth={width} rootHeight={bodyHeight} scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={`${tab}:${queryKey}`}
+      selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelectedId }}
+      onActivate={(row) => row.locked ? upgrade() : setOpenId(row.id)} detailOpen={!!openRow} onBack={() => setOpenId(null)} detailTitle={openRow?.label}
+      detailScrollRef={detailScrollRef} detailContent={openRow ? <PowerDetailView row={openRow} scope={scope} scrollRef={detailScrollRef} snapshot={!!snapshot} focused={focused} width={width} height={bodyHeight - 1} /> : null}
+      renderCell={cell} freezeFirstColumn showHorizontalScrollbar selectedTextOverridesCellColor
+      isNavigable={isRecord} renderSectionHeader={(row) => row.section ? { text: `${row.label} (${row.section.count})` } : null}
+      sortColumnId={projectTab ? sort.column ?? null : null} sortDirection={sort.direction}
+      isColumnSortable={(column) => projectTab && POWER_SORT_COLUMNS.includes(column.id)}
+      onHeaderClick={projectTab ? (column) => { if (POWER_SORT_COLUMNS.includes(column)) setSort((old) => ({ column: column as PowerFilter["sort"], direction: old.column === column && old.direction === "desc" ? "asc" : "desc" })); } : undefined}
+      rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query}
+        figures={projectTab && tab === "queue" && board?.access === "full" ? queueFigures : undefined}
+        chart={board && tab === "history" ? { series, ...chartLink, formatValue: (n) => `${powerNumber(n)} MW`, loading: historyPages.loading || historyPages.hasMore && !historyPages.moreError,
+          empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
+      emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
+      emptyContent={tickerMessage ? <Box paddingX={1} paddingY={1}>
+        <EmptyState title={tickerMessage.title} hint={tickerMessage.hint || undefined}
+          actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
+            onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
+      </Box> : undefined}
+      bodyAfter={locked && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Unlock full power data with Pro" onPress={upgrade} role="power-upgrade" /> : undefined}
+    />
   </Box>;
 }

@@ -92,9 +92,11 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
   </PaneStatusBody>;
 }
 
-export function GpuHistory({ rows, models: boardModels, model, setModel, selectedId, onSelect, reloadBoard, width, height, focused }: {
+export function GpuHistory({ rows, models: boardModels, model, setModel, selectedId, onSelect, reloadBoard, width, height, focused, pending = false }: {
   rows: GpuBoardRow[]; models: readonly string[]; model: string; setModel: (value: string) => void; selectedId: string; onSelect: (id: string) => void;
   reloadBoard: () => void; width: number; height: number; focused: boolean;
+  /** The picked GPU's free preview is still loading. */
+  pending?: boolean;
 }) {
   const colors = useThemeColors();
   const [basis, setBasis] = usePluginPaneState<string>("historyBasis", "all");
@@ -133,7 +135,7 @@ export function GpuHistory({ rows, models: boardModels, model, setModel, selecte
     searchPlaceholder="Provider or variant" columns={listColumns} rows={listRows} getRowId={listRowId}
     filters={[{ id: "gpu", label: "GPU", value: activeModel, options: models.map((value) => ({ value, label: value })), onChange: setModel }]}
     isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
-    renderCell={renderCell} emptyStateTitle="No series match."
+    renderCell={renderCell} emptyStateTitle="No series match." status={pending && !listRows.length ? { loading: true, subject: "GPU rental prices" } : undefined}
     renderDetail={(size) => list.selected ? <HistoryDetail key={list.selected.id} row={list.selected} peers={modelRows} refreshVersion={refreshVersion} {...size} />
       : <PaneStatusBody empty emptyTitle={`No ${gpuBasisLabel(basis === "all" ? "list" : basis as GpuBasis)} series yet.`} />} />;
 }

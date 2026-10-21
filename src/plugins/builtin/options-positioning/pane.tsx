@@ -264,9 +264,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       enabled: expiryIndex < expiryDates.length - 1, onSelect: () => stepExpiry(1) },
   ], [expiryDates.length, expiryIndex, stepExpiry, tab]);
 
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs(data?.expiries.length
-    ? { tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true }
-    : null);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
 
   // Footer: what the data is (delayed or real time, the OI session), and its gaps.
@@ -610,13 +608,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   }
 
   return <Box width={width} height={height} flexDirection="column">
+    {tabStrip}
     <PaneStatusBody loading={openInterest.loading && !data} error={!data ? openInterest.error : null}
       empty={!!data && !data.expiries.length} subject="open interest"
       emptyTitle={`No listed options for ${parsePublicTickerKey(symbol).symbol.replace(/^\^/, "")}.`}>
-      {data?.expiries.length ? <>
-        {tabStrip}
-        {content}
-      </> : null}
+      {data?.expiries.length ? content : null}
     </PaneStatusBody>
   </Box>;
 }

@@ -123,7 +123,8 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
       priceChangePct: null, relativeVolume: null, marketAsOf: null, relativeVolumeAsOf: null, news: [],
     } : undefined);
   useAttentionEvidence((detailMode ? detailData : data) ?? null, tab, selectedSymbol, tab === "history" ? selected?.history.length ?? 0 : rows.length);
-  const { strip, rows: tabRows } = usePaneTabs((data || detailData) && (data?.rows.length || data?.status === "ready" || !!initialSymbol || detailMode && !!selectedSymbol) ? { tabs: [...ATTENTION_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  const signInWall = !data && isCloudSessionRequired(resource.error);
+  const { strip, rows: tabRows } = usePaneTabs(!signInWall ? { tabs: [...ATTENTION_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => { void resource.reload(); if (detailMode) void detail.reload(); }, { focused });
   const hints: PaneHint[] = [
@@ -142,7 +143,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   usePaneNoticeFooter({ registrationId: "attention:notices", focused, notices: [resource.data?.refreshError, detailMode ? detail.data?.refreshError : null,
     data?.status === "ready" && selected?.zScore === null ? "The selected ticker has insufficient qualified history for an abnormal-attention score." : null,
   ].filter((value): value is string => !!value) });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="attention-signin" action="view research attention" needsVerification={session.needsVerification} />;
+  if (signInWall) return <SignInWall placement="attention-signin" action="view research attention" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const queryBar = <QueryBar width={width} filters={[{ id: "window", label: "Period", inline: true, value: window, options: WINDOWS,
     onChange: (value: string) => setWindow(value) }, ...(detailMode && data?.rows.length ? [{ id: "ticker", label: "Ticker", value: selectedSymbol,
@@ -190,24 +191,25 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
     ...(topSector ? [{ id: "sector", label: "Top sector", ...topSector }] : []),
     ...(topCountry ? [{ id: "country", label: "Top country", ...topCountry }] : []),
   ] : [];
+  // The strip and the period filter stay while a new period loads; only the body waits.
   return <Box width={width} height={height} flexDirection="column">{strip}
-    <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} empty={!detailMode && !!data && data.status !== "ready" && !data.rows.length}
-      emptyTitle={emptyAttention(data)} subject="research attention">
-      {data ? detailMode ? <Box flexGrow={1} flexBasis={0} flexDirection="column">{queryBar}
-        <PaneStatusBody loading={!detailData && detail.loading} error={!detailData ? detail.error : null} empty={!!detailData && !selected}
-          emptyTitle={data.entitlement === "preview" ? "This ticker is outside the current preview." : "No privacy-qualified hours for this ticker."} subject="ticker attention">
-          {selected ? tab === "history" ? <History row={selected} width={width} height={bodyHeight - 1} focused={focused} preview={data.entitlement === "preview"} />
-            : <Evidence row={selected} data={detailData ?? data} width={width} height={bodyHeight - 1} /> : null}
-        </PaneStatusBody>
-      </Box> : <DataTableView columns={columns} items={items} rootWidth={width} rootHeight={bodyHeight} focused={focused && !search.active}
-        rootBefore={figures.length ? <ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} figures={figures} /> : queryBar}
+    {detailMode ? <Box flexGrow={1} flexBasis={0} flexDirection="column">{queryBar}
+      <PaneStatusBody loading={!data ? resource.loading : !detailData && detail.loading} error={!data ? resource.error : !detailData ? detail.error : null}
+        empty={!!data && !!detailData && !selected} subject={!data ? "research attention" : "ticker attention"}
+        emptyTitle={data?.entitlement === "preview" ? "This ticker is outside the current preview." : "No privacy-qualified hours for this ticker."}>
+        {data && selected ? tab === "history" ? <History row={selected} width={width} height={bodyHeight - 1} focused={focused} preview={data.entitlement === "preview"} />
+          : <Evidence row={selected} data={detailData ?? data} width={width} height={bodyHeight - 1} /> : null}
+      </PaneStatusBody>
+    </Box> : <DataTableView columns={columns} items={data ? items : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !search.active}
+        status={!data ? { loading: resource.loading, error: resource.error, subject: "research attention" }
+          : data.status !== "ready" && !data.rows.length ? { empty: true, emptyTitle: emptyAttention(data), subject: "research attention" } : undefined}
+        rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} figures={figures} />}
         getItemKey={rowId} selection={{ kind: "id", selectedId: groupMode ? groupSelectedId : selected?.symbol ?? null, getId: rowId, onChange: (id) => { if (groupMode) setGroupSelected(id); else if (!id.startsWith("locked:")) setSelected(id); } }}
         onActivate={(row) => { if (isLocked(row)) openUpgrade(); else if ("symbol" in row) { setSelected(row.symbol); setTab("history"); } else { setGroupFilter({ field: tab === "countries" ? "country" : "sector", value: row.name }); setQuery(""); setSelected(null); setTab("ranking"); } }}
         renderCell={cell} selectedTextOverridesCellColor showHorizontalScrollbar
         sortColumnId={!groupMode ? tab === "abnormal" ? "zScore" : sort.column : null} sortDirection={tab === "abnormal" ? "desc" : sort.direction}
         onHeaderClick={!groupMode && tab !== "abnormal" ? (column) => setSort((current) => ({ column, direction: current.column === column && current.direction === "desc" ? "asc" : "desc" })) : undefined}
         emptyStateTitle={tab === "abnormal" ? "Collecting enough qualified history for abnormal attention." : "No published research matches."}
-        bodyAfter={hidden && desktop ? <LockedOverlay rows={Math.min(3, hidden)} text="Pro unlocks the full attention graph" onPress={openUpgrade} /> : undefined} /> : null}
-    </PaneStatusBody>
+        bodyAfter={hidden && desktop ? <LockedOverlay rows={Math.min(3, hidden)} text="Pro unlocks the full attention graph" onPress={openUpgrade} /> : undefined} />}
   </Box>;
 }

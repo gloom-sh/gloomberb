@@ -889,11 +889,8 @@ function EquityScreenView({
         </PaneStatusBody>
       )
     ) : (
-      <PaneStatusBody
-        loading={results.loading && !data}
-        error={!data ? results.error : null}
-        subject="equity screen"
-      >
+      // The metric stays above the results while a new sort loads.
+      <>
         {!opened ? (
           <QueryBar
             width={width}
@@ -918,101 +915,107 @@ function EquityScreenView({
             }]}
           />
         ) : null}
-        <DataTableStackView
-          columns={columns}
-          items={rows}
-          focused={focused && !saveForm}
-          rootWidth={width}
-          rootHeight={bodyHeight - 1}
-          scrollRef={tableScroll}
-          onBodyScrollActivity={loadMore}
-          resetScrollKey={JSON.stringify(definition)}
-          visibleRangeKey={JSON.stringify(definition)}
-          onVisibleRangeChange={setVisibleRange}
-          getItemKey={screenRowId}
-          selection={{
-            kind: "id",
-            selectedId: selectedId ?? (rows[0] ? screenRowId(rows[0]) : null),
-            getId: screenRowId,
-            onChange: setSelectedId,
-          }}
-          onActivate={(row) => setOpenId(screenRowId(row))}
-          detailOpen={!!opened}
-          onBack={() => setOpenId(null)}
-          detailTitle={opened?.name ?? opened?.symbol}
-          detailContent={
-            opened ? (
-              <ScreenDetail
-                row={opened}
-                width={width}
-                height={bodyHeight - 2}
-              />
-            ) : null
-          }
-          renderCell={(row, column) => {
-            if (column.id.startsWith(EXTENDED_COLUMN_PREFIX)) {
-              // The extended print's move from the close in PRICE and CHG%.
-              const move = screenExtendedMove(row, column.id.slice(EXTENDED_COLUMN_PREFIX.length) as ExtendedSession);
-              return move == null
-                ? { text: "--", color: colors.textDim }
-                : { text: formatPercentRaw(move), color: priceColor(move, colors) };
+        <PaneStatusBody
+          loading={results.loading && !data}
+          error={!data ? results.error : null}
+          subject="equity screen"
+        >
+          <DataTableStackView
+            columns={columns}
+            items={rows}
+            focused={focused && !saveForm}
+            rootWidth={width}
+            rootHeight={bodyHeight - 1}
+            scrollRef={tableScroll}
+            onBodyScrollActivity={loadMore}
+            resetScrollKey={JSON.stringify(definition)}
+            visibleRangeKey={JSON.stringify(definition)}
+            onVisibleRangeChange={setVisibleRange}
+            getItemKey={screenRowId}
+            selection={{
+              kind: "id",
+              selectedId: selectedId ?? (rows[0] ? screenRowId(rows[0]) : null),
+              getId: screenRowId,
+              onChange: setSelectedId,
+            }}
+            onActivate={(row) => setOpenId(screenRowId(row))}
+            detailOpen={!!opened}
+            onBack={() => setOpenId(null)}
+            detailTitle={opened?.name ?? opened?.symbol}
+            detailContent={
+              opened ? (
+                <ScreenDetail
+                  row={opened}
+                  width={width}
+                  height={bodyHeight - 2}
+                />
+              ) : null
             }
-            const field = column.id.startsWith("m:")
-              ? (column.id.slice(2) as NumericField)
-              : null;
-            if (field) {
-              const observation = row.metrics[field];
-              const change = SIGN_COLORED.has(field) && observation.value != null
-                // A move that prints 0.0 stays neutral.
-                ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
-                : undefined;
-              return {
-                text: formatScreenValue(field, observation.value),
-                color: observation.state === "stale" ? colors.warning : change,
-              };
+            renderCell={(row, column) => {
+              if (column.id.startsWith(EXTENDED_COLUMN_PREFIX)) {
+                // The extended print's move from the close in PRICE and CHG%.
+                const move = screenExtendedMove(row, column.id.slice(EXTENDED_COLUMN_PREFIX.length) as ExtendedSession);
+                return move == null
+                  ? { text: "--", color: colors.textDim }
+                  : { text: formatPercentRaw(move), color: priceColor(move, colors) };
+              }
+              const field = column.id.startsWith("m:")
+                ? (column.id.slice(2) as NumericField)
+                : null;
+              if (field) {
+                const observation = row.metrics[field];
+                const change = SIGN_COLORED.has(field) && observation.value != null
+                  // A move that prints 0.0 stays neutral.
+                  ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
+                  : undefined;
+                return {
+                  text: formatScreenValue(field, observation.value),
+                  color: observation.state === "stale" ? colors.warning : change,
+                };
+              }
+              const focus = row.metrics[metric];
+              if (column.id === "percentile")
+                return { text: rank(focus.percentile.value) };
+              if (column.id === "date")
+                return focus.state === "stale"
+                  ? { text: metricDate(focus).text, color: colors.warning }
+                  : { text: "" };
+              if (column.id === "name") return { text: row.name ?? "--" };
+              return { text: String(row[column.id as "symbol"] ?? "--") };
+            }}
+            sortColumnId={
+              (NUMERIC_FIELDS as readonly string[]).includes(definition.sort.field)
+                ? `m:${definition.sort.field}`
+                : definition.sort.field
             }
-            const focus = row.metrics[metric];
-            if (column.id === "percentile")
-              return { text: rank(focus.percentile.value) };
-            if (column.id === "date")
-              return focus.state === "stale"
-                ? { text: metricDate(focus).text, color: colors.warning }
-                : { text: "" };
-            if (column.id === "name") return { text: row.name ?? "--" };
-            return { text: String(row[column.id as "symbol"] ?? "--") };
-          }}
-          sortColumnId={
-            (NUMERIC_FIELDS as readonly string[]).includes(definition.sort.field)
-              ? `m:${definition.sort.field}`
-              : definition.sort.field
-          }
-          sortDirection={definition.sort.direction}
-          onHeaderClick={(id) => {
-            const field = id.startsWith("m:")
-              ? (id.slice(2) as NumericField)
-              : id === "percentile" || id === "date"
-                ? metric
-                : ["symbol", "sector", "exchange"].includes(id)
-                  ? (id as ScreenField)
-                  : null;
-            if (!field) return;
-            if ((NUMERIC_FIELDS as readonly string[]).includes(field))
-              setMetric(field as NumericField);
-            apply({
-              ...definition,
-              sort: {
-                field,
-                direction:
-                  definition.sort.field === field &&
-                  definition.sort.direction === "desc"
-                    ? "asc"
-                    : "desc",
-              },
-            });
-          }}
-          emptyStateTitle="No equities match this screen."
-        />
-      </PaneStatusBody>
+            sortDirection={definition.sort.direction}
+            onHeaderClick={(id) => {
+              const field = id.startsWith("m:")
+                ? (id.slice(2) as NumericField)
+                : id === "percentile" || id === "date"
+                  ? metric
+                  : ["symbol", "sector", "exchange"].includes(id)
+                    ? (id as ScreenField)
+                    : null;
+              if (!field) return;
+              if ((NUMERIC_FIELDS as readonly string[]).includes(field))
+                setMetric(field as NumericField);
+              apply({
+                ...definition,
+                sort: {
+                  field,
+                  direction:
+                    definition.sort.field === field &&
+                    definition.sort.direction === "desc"
+                      ? "asc"
+                      : "desc",
+                },
+              });
+            }}
+            emptyStateTitle="No equities match this screen."
+          />
+        </PaneStatusBody>
+      </>
     );
   return (
     <Box width={width} height={height} flexDirection="column">

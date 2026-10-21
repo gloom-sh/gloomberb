@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { GpuEvent } from "../../../api-client/gpu";
 import {
-  Badge, buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, PaneStatusBody, renderSectionedRowHeader,
+  Badge, buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, renderSectionedRowHeader,
   usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type SectionedRow,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -82,13 +82,13 @@ export function GpuChanges({ models, model, setModel, reloadBoard, width, height
     }
   };
 
-  return <PaneStatusBody loading={resource.loading && !resource.data} error={!resource.data ? resource.error : null} subject="GPU price changes">
-    <DataTableView<ChangeRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
-      rootBefore={<GpuModelQuery models={models} model={model} setModel={setModel} width={width} />}
-      selection={{ kind: "id", selectedId: selected && items.some((item) => item.key === selected) ? selected : firstId, getId: rowKey,
-        onChange: (id) => setSelected(String(id)) }}
-      isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
-      getItemKey={rowKey} onActivate={(row) => setSelected(row.key)} sortColumnId={null} sortDirection="desc"
-      selectedTextOverridesCellColor renderCell={renderCell} emptyStateTitle={resource.data?.payload.access?.locked ? "Full change history is available with Pro." : "No price or availability changes recorded yet."} />
-  </PaneStatusBody>;
+  // A GPU picked from the filter loads under it; the filter stays.
+  return <DataTableView<ChangeRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
+    rootBefore={<GpuModelQuery models={models} model={model} setModel={setModel} width={width} />}
+    status={resource.data ? undefined : { loading: resource.loading, error: resource.error, subject: "GPU price changes" }}
+    selection={{ kind: "id", selectedId: selected && items.some((item) => item.key === selected) ? selected : firstId, getId: rowKey,
+      onChange: (id) => setSelected(String(id)) }}
+    isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
+    getItemKey={rowKey} onActivate={(row) => setSelected(row.key)} sortColumnId={null} sortDirection="desc"
+    selectedTextOverridesCellColor renderCell={renderCell} emptyStateTitle={resource.data?.payload.access?.locked ? "Full change history is available with Pro." : "No price or availability changes recorded yet."} />;
 }

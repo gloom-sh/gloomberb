@@ -229,6 +229,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const nearestRow = (years: number | undefined) => years == null || !denseGrid?.tenors.length ? -1
     : denseGrid.tenors.reduce((best, value, index) => Math.abs(value - years) < Math.abs(denseGrid.tenors[best]! - years) ? index : best, 0);
   const selectedExpiry = snapshot ? selectSurfaceExpiry(snapshot, expiration) : null;
+  // Another date loads under the query bar, which keeps the last surface's expiries until it answers.
+  const lastShown = useRef<{ underlying: string; snapshot: DatedSurfaceSnapshot } | null>(null);
+  if (snapshot) lastShown.current = { underlying, snapshot };
+  const barSnapshot = snapshot ?? (lastShown.current?.underlying === underlying ? lastShown.current.snapshot : null);
+  const barExpiry = barSnapshot ? selectSurfaceExpiry(barSnapshot, expiration) : null;
   const openChain = useCallback(() => {
     if (!snapshot) return;
     const selected = pinned ?? selectedExpiry?.expiration;
@@ -447,24 +452,25 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
   return <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
     {tabStrip}
-    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
-      error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
-      <QueryBar width={width}
+    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <>
+      {barSnapshot ? <QueryBar width={width}
         filters={[
-          { id: "expiry", label: "Expiry", value: String(pinned ?? selectedExpiry?.expiration ?? ""),
-            options: snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? [],
+          { id: "expiry", label: "Expiry", value: String(pinned ?? barExpiry?.expiration ?? ""),
+            options: barSnapshot.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })),
             onChange: (value: string) => setExpiration(Number(value)) },
           ...(storedDates.length ? [{ id: "date", label: "Date", value: shownDate ?? "", defaultValue: "",
             options: [{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))],
             onChange: (value: string) => setHistoryDate(value || null) }] : []),
         ]}
-        meta={snapshot?.stored
+        meta={!snapshot ? undefined : snapshot.stored
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
-          : [`Spot ${formatPrice(snapshot?.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} />
+          : [`Spot ${formatPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
+      <PaneStatusBody loading={active.loading && !snapshot}
+      error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
       <StatGrid items={ivStats} width={width} />
       {/* The terminal sizes the view in the rows under the bar and figures; the desktop fills what is left. */}
       {nativePaneChrome ? <Box flexDirection="column" overflow="hidden" {...FILL_REST}>{content}</Box> : content}
-    </PaneStatusBody>}
+    </PaneStatusBody></>}
   </Box>;
 }
 

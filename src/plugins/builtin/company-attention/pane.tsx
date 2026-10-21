@@ -3,7 +3,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AppAttentionFilter, AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
-import { ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneFooterScope, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, KeyValueRow, PageStackView, PaneFooterScope, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -119,7 +119,8 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const detailOpen = !!openCompany || !!evidence || !!app;
   const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
   const tabs = attentionTabs(kind, symbol).map((value) => ({ value, label: tabLabels[value] }));
-  const { strip, rows: tabRows } = usePaneTabs(model && !openCompany && !app ? { tabs, activeValue: tab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
+  const signInWall = !data && isCloudSessionRequired(resource.error);
+  const { strip, rows: tabRows } = usePaneTabs(!signInWall && !openCompany && !app ? { tabs, activeValue: tab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
   const series = useMemo(() => model ? attentionSeries(model, colors.textBright) : [], [model, colors.textBright]);
   const chartSelection = useChartTableSelection({ rows, getId: rowId, getDate: rowDate, selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !detailOpen, enabled: tab === "chart" });
@@ -142,7 +143,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   usePaneStatusFooter({ registrationId: `${kind}:status`, enabled: !openCompany && !app, loading: resource.loading || paged.loadingMore, error: data ? resource.error ?? paged.moreError?.message ?? paged.error?.message : null, stale: resource.data?.stale,
     info: [...(model?.asOf ? [{ id: "observed", asOf: true, parts: [{ text: `as of ${model.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(model?.preview ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])], hints });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, enabled: !openCompany && !app, focused, notices: [...(model?.notices ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement={kind === "hiring" ? "hiring-momentum-signin" : "app-attention-signin"} action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
+  if (signInWall) return <SignInWall placement={kind === "hiring" ? "hiring-momentum-signin" : "app-attention-signin"} action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
   const countryOptions = data && kind === "apps" ? (data as AppAttentionPayload).coverage.configuredCountries : [];
   const query = kind === "hiring" && tab !== "mix" ? undefined : <QueryBar width={width} filters={kind === "apps" ? [
     { id: "country", label: "Country", value: country, defaultValue: "", options: [{ value: "", label: "All countries" }, ...countryOptions.map((value) => ({ value, label: value }))], onChange: setCountry },
@@ -152,12 +153,14 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   ] : tab === "mix" ? [{ id: "mix", label: "Group", value: mix, options: [{ value: "functions", label: "Role family" }, { value: "seniority", label: "Seniority" }, { value: "countries", label: "Countries" }, { value: "locations", label: "Locations" }, { value: "signals", label: "Signals" }], onChange: setMix }] : []} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject={kind === "hiring" ? "hiring momentum" : "app attention"}>
-      {model && section ? <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
+    <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <PaneFooterScope active><AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : evidence ? <Evidence row={evidence} width={width} height={bodyHeight - 1} focused={focused} /> : null}
-        rootContent={<DataTableView columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={model.figures}
-            chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.unmapped ?? (model.preview ? "Full history requires Pro."
+        rootContent={<DataTableView columns={columns} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
+          // A filter change reloads under the query bar, which stays.
+          status={!data ? { loading: resource.loading, error: resource.error, subject: kind === "hiring" ? "hiring momentum" : "app attention" }
+            : !model || !section ? { empty: true, emptyTitle: "Observations are not available yet." } : undefined}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={model?.figures}
+            chart={model && tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.unmapped ?? (model.preview ? "Full history requires Pro."
               : model.chart.since ? `Collecting history since ${model.chart.since.slice(0, 10)}` : "Collecting history"), remoteKind: `${kind}-history` } : null} />}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }} getItemKey={rowId}
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
@@ -181,8 +184,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}
-          emptyStateTitle={model.unmapped ?? section.empty} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> : undefined} />}
-      /> : <EmptyState title="Observations are not available yet." />}
-    </PaneStatusBody>
+          emptyStateTitle={model?.unmapped ?? section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> : undefined} />}
+      />
   </Box>;
 }

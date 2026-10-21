@@ -70,8 +70,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
   const [balanceId, setBalanceId] = usePluginPaneState<string | null>("selectedBalance", null);
   const [priceId, setPriceId] = usePluginPaneState<string | null>("selectedPrice", null);
   const prices = data?.prices ?? EMPTY_PRICES;
-  const showPrices = prices.length > 0;
-  const activeTab = showPrices && tab === "prices" ? "prices" : "balances";
+  const activeTab = tab === "prices" ? "prices" : "balances";
   const balanceRows = useMemo(
     () => sortBalanceRows(data?.rows ?? EMPTY_ROWS, balanceSort),
     [balanceSort, data?.rows],
@@ -84,7 +83,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
   const [shownRequest, setShownRequest] = usePluginPaneState("cropRequest", "");
   // The row the request scrolls to the top, until the reader sorts or moves on.
   const [cropAnchor, setCropAnchor] = useState<{ id: string; version: number } | null>(null);
-  const { strip, rows: tabRows } = usePaneTabs(showPrices ? {
+  const { strip, rows: tabRows } = usePaneTabs({
     tabs: TABS,
     activeValue: activeTab,
     onSelect: (value) => setTab(value),
@@ -92,7 +91,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
     compact: true,
     variant: "underline",
     queryBarWidth: width,
-  } : null);
+  });
   const updatedAgo = useUpdatedAgo(updatedAt);
   const info = useMemo<PaneFooterSegment[]>(() => {
     const year = data?.marketYear;

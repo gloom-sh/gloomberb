@@ -1,0 +1,65 @@
+{
+  "src/plugins/builtin/account-management/pane.tsx": {
+    "hasSession || apiClient.isSignedIn()": "Signed out, every tab is the same sign-in wall."
+  },
+  "src/plugins/builtin/analytics/index.tsx": {
+    "portfolioTabs.length > 0": "The tabs are the user's portfolios; with none there is nothing to choose between."
+  },
+  "src/plugins/builtin/analytics/risk-pane.tsx": {
+    "portfolio": "No local portfolio yet: the pane says to add holdings instead of offering views of nothing."
+  },
+  "src/plugins/builtin/attention/pane.tsx": {
+    "!signInWall": "Signed out, every tab is the same sign-in wall."
+  },
+  "src/plugins/builtin/awards/pane.tsx": {
+    "!denied": "Access denied draws the sign-in or plan wall for every tab."
+  },
+  "src/plugins/builtin/backtest/pane.tsx": {
+    "symbol": "No ticker yet: the pane asks for one before any view applies."
+  },
+  "src/plugins/builtin/catalysts/pane.tsx": {
+    "!openId": "An open event replaces the list by design and registers its own Evidence and History strip."
+  },
+  "src/plugins/builtin/cloud/team/pane.tsx": {
+    "signedIn": "The tabs are the user's teams; signed out there are none and the pane is a sign-in wall."
+  },
+  "src/plugins/builtin/company-attention/pane.tsx": {
+    "!signInWall && !openCompany && !app": "Signed out it is a sign-in wall; an open company or app replaces the board by design and registers its own strip."
+  },
+  "src/plugins/builtin/company-kpis/pane.tsx": {
+    "symbol && !signInWall": "No ticker yet, or signed out: every tab would be the same prompt or sign-in wall."
+  },
+  "src/plugins/builtin/congress-trades/pane.tsx": {
+    "tickerFilter": "A ticker's own congressional trades are one list; the Trades, Members and Tickers tabs belong to the whole-market view."
+  },
+  "src/plugins/builtin/debt-maturities/pane.tsx": {
+    "symbol && !signInWall": "No ticker yet, or signed out: every tab would be the same prompt or sign-in wall."
+  },
+  "src/plugins/builtin/earnings-ripple/pane.tsx": {
+    "holdings.length": "No holdings to ripple from yet: the pane says how to add them instead of offering views of nothing."
+  },
+  "src/plugins/builtin/estimate-revisions/pane.tsx": {
+    "!symbol || signInWall": "No ticker yet, or signed out: every tab would be the same prompt or sign-in wall."
+  },
+  "src/plugins/builtin/gpu/pane.tsx": {
+    "!signIn": "Signed out or unverified, every tab is the same sign-in wall."
+  },
+  "src/plugins/builtin/portfolio-list/pane/index.tsx": {
+    "showCollectionTabs": "The tabs are the pane's collections; a single collection has nothing to switch to."
+  },
+  "src/plugins/builtin/power/pane.tsx": {
+    "!signInWall": "Signed out, every tab is the same sign-in wall."
+  },
+  "src/plugins/builtin/research-search/pane.tsx": {
+    "signInRequired || verificationRequired": "Signed out or unverified, every mode is the same sign-in wall."
+  },
+  "src/plugins/builtin/shared/filing-year-reader.tsx": {
+    "years.length > 1": "The tabs are the filings on record, known once their list answers; a single filing has no other year to pick."
+  },
+  "src/plugins/builtin/supply-chain/pane.tsx": {
+    "symbol": "No ticker yet: the pane asks for one before any view applies."
+  },
+  "src/plugins/builtin/ticker-detail/pane.tsx": {
+    "!paneSettings.hideTabs && ticker": "The hideTabs setting locks the pane to one view, and with no ticker selected there is nothing to research."
+  }
+}

@@ -82,8 +82,8 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
   // The class, scope and search controls live in the board's query bar, so
-  // their keys only work once the board is on screen.
-  const boardShown = !!data && !open;
+  // their keys work while it is on screen: over the board and while a class loads.
+  const boardShown = !open;
   useShortcut((event) => {
     if (!focused || open || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
     if (event.name === "r") { event.preventDefault(); void resource.reload(); }
@@ -99,8 +99,9 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
     info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
-  if (!data && !open) return <PaneStatusBody loading={resource.loading} error={resource.error} empty={!resource.loading && !resource.error} subject="COT history" />;
+  // A class change reloads under the query bar, which stays.
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
+    status={data ? undefined : { loading: resource.loading, error: resource.error, empty: !resource.loading && !resource.error, subject: "COT history" }}
     rootWidth={width} rootHeight={height} selection={{ kind: "id", selectedId: selected, getId: (row) => row.contractCode, onChange: setSelected }}
     getItemKey={(row) => row.contractCode} onActivate={(row) => setOpen(row.contractCode)} freezeFirstColumn
     sortable sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, { firstDirection: "desc" }))}

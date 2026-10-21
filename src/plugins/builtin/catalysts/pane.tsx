@@ -147,10 +147,11 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={!openId && !data && resource.loading} error={!openId && (!data || denied) ? error?.message : null} subject={litigation ? "company litigation" : "catalysts"}>
-      <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpenId("")} detailTitle={open?.title ?? "Catalyst"}
+    <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpenId("")} detailTitle={open?.title ?? "Catalyst"}
         detailContent={open ? <CatalystEventDetail key={open.id} event={open} accessKey={accessKey} snapshot={detailSnapshots[open.id]} width={width} height={Math.max(3, height - 1)} focused={focused} initialTab={detailTab} openUpgrade={openUpgrade} /> : <PaneStatusBody loading={externalOpen.loading} error={externalOpen.error} subject="catalyst event"><EmptyState title="Event unavailable." /></PaneStatusBody>}
         rootContent={<DataTableView<Row> rootWidth={width} rootHeight={Math.max(3, height - tabRows)} rootBefore={queryBar} focused={focused && !openId && !searchActive && !dateFieldActive}
+          // A tab or filter change loads under the query bar, which stays.
+          status={{ loading: !data && resource.loading, error: !data || denied ? error?.message : null, subject: litigation ? "company litigation" : "catalysts" }}
           items={items} sortColumnId={null} sortDirection="asc" columns={columns} getItemKey={rowKey}
           isNavigable={isSelectable} renderSectionHeader={(row) => row.kind === "locked" ? null : renderSectionedRowHeader(row)}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowKey, onChange: (id) => { if (!id.startsWith("locked:")) setSelectedId(id); } }}
@@ -160,6 +161,5 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
           emptyStateTitle={catalystEmptyTitle(data, query, tab === "changes")}
           bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" /> : undefined} />}
       />
-    </PaneStatusBody>
   </Box>;
 }

@@ -632,7 +632,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   };
   // The view strip takes a row when it is not in the title bar; the portfolio
   // bar, the holdings summary and the chart sit on the root view only.
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolio && model ? {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolio ? {
     tabs,
     activeValue: view,
     onSelect: selectView,
@@ -650,12 +650,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     );
   if (!model)
     return (
-      <PaneStatusBody
-        loading={resource.loading}
-        error={resource.error}
-        loadingLabel="Loading portfolio risk"
-        emptyTitle="Risk data unavailable"
-      />
+      <Box width={width} height={height} flexDirection="column">
+        {tabStrip}
+        <PaneStatusBody
+          loading={resource.loading}
+          error={resource.error}
+          loadingLabel="Loading portfolio risk"
+          emptyTitle="Risk data unavailable"
+        />
+      </Box>
     );
   return (
     <Box width={width} height={height} flexDirection="column">

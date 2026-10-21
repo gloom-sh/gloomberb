@@ -67,6 +67,7 @@ export { usePagedRows } from "./paged-rows";
 export type { PageLoader, PageRequest, PagedRows, PagedRowsOptions, RowPage } from "./paged-rows";
 export { DataTableView } from "./data-table/view";
 export type {
+  DataTableBodyStatus,
   DataTableKeyEvent,
   DataTableRootKeyContext,
   DataTableSelectionChangeReason,

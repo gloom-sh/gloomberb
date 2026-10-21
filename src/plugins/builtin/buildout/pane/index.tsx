@@ -379,12 +379,15 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     variant: "bare",
   });
 
-  if (state.status === "loading") {
-    return <PaneStatusBody loading subject={BUILDOUT_NAME} width={width} height={height} />;
-  }
-
-  if (state.status === "error") {
-    return <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} width={width} height={height} retry={{ onRetry: refresh }} />;
+  // The strip stays over the first load and a failed one, as over every tab's own.
+  if (state.status === "loading" || state.status === "error") {
+    return (
+      <Box flexDirection="column" width={width} height={height} overflow="hidden">
+        {tabStrip && <Box height={1}>{tabStrip}</Box>}
+        {state.status === "loading" ? <PaneStatusBody loading subject={BUILDOUT_NAME} />
+          : <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} retry={{ onRetry: refresh }} />}
+      </Box>
+    );
   }
 
   const listOpen = activeTab === "companies" && !!selectedList;

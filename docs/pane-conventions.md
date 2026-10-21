@@ -242,7 +242,7 @@ never goes there.
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
 | Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer, the detail in its tooltip; the terminal draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
-| Nothing can render yet (first load, hard failure, no data) | Body, replacing content | `PaneStatusBody` |
+| Nothing can render yet (first load, hard failure, no data) | Body, replacing content below the tab strip and query bar, which stay | `PaneStatusBody`, a table's `status` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
 | Refresh failed but last data exists | Keep the data, failure in footer info | `loading={loading && !data}`, `error={!data ? error : null}` |
 | Limitation on content still worth reading | Inline beside that content | `Notice` |
@@ -514,8 +514,19 @@ header, with the detail's height.
   A pane's primary strip is `usePaneTabs` (above any early return): the
   desktop draws it in the pane title bar and `strip` is null; the terminal
   draws `strip` as the first row of the body. Subtract `rows`. Never in the
-  footer. Register `null` while a sign-in wall or any state makes every tab
-  show the same thing.
+  footer. The strip is chrome: registered from the first frame and drawn
+  above every body state, so a tab switch, a filter change, a refresh, a
+  failed load or an empty answer never takes it away. Register `null` only
+  while there is nothing to choose between: a sign-in or plan wall, no
+  ticker or portfolio yet, or a detail that replaces the tabs by design.
+  A conditional strip is listed with its reason in
+  `src/architecture/pane-tabs-allowlist.json`, which a test holds.
+- A tab or filter change that reloads keeps the query bar and figures where
+  they are; only the body below them waits. Pass the state to the table
+  (`DataTableView`/`DataTableStackView` `status`) instead of wrapping the
+  table, and its `rootBefore`, in `PaneStatusBody`. A pane that keeps the
+  last rows while a search refines (`keepPreviousRows`, `keepPreviousData`)
+  keeps doing so.
 - A chart you pan and draw on sits one level below a tab strip: the strip
   keeps Left, Right, `h` and `l`; Down, Enter, a click or a chart tool moves
   into the chart, and Esc or Up hands the keys back, with `[Esc]tabs` in the
