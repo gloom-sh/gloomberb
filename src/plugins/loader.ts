@@ -16,7 +16,7 @@ import {
   settleDependencyInstalls,
 } from "./dependencies";
 import { declaredPeerPlugins, describePeerLink, isLinkedPeerModule, linkHostPackages, relinkPeerPlugin } from "./host-link";
-import { refreshResolverFolders, rekeyedEntry } from "./peer-retry";
+import { refreshResolverFolders, rekeyedEntry, withoutRetryQuery } from "./peer-retry";
 import { pluginDirectoryNames } from "./plugin-names";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -267,7 +267,7 @@ let loadsInFlight = 0;
 /**
  * Whether this process is the first to load plugins since this version was
  * installed, null until the first full load records it. Read from a marker
- * in the plugin cache, which every startup load rewrites.
+ * in the plugin cache, which the first startup load of a new version writes.
  */
 let firstLaunchOfVersion: boolean | null = null;
 
@@ -337,7 +337,7 @@ async function retryPeerImport(pluginDir: string, entryFile: string, peer: strin
   // A `bun install` still running in the plugin or the sibling prunes the
   // link it is about to need.
   const peerDirs = pluginDirectoryNames(peer).map((name) => join(dirname(pluginDir), name));
-  await settleDependencyInstalls([pluginDir, ...peerDirs], 60_000);
+  await settleDependencyInstalls([pluginDir, ...peerDirs], 15_000);
   // Windows refuses a new junction where one is still being deleted until
   // every handle on the old one closes; that passes in moments.
   const attempts = [relinkPeerPlugin(pluginDir, peer)];
@@ -347,6 +347,9 @@ async function retryPeerImport(pluginDir: string, entryFile: string, peer: strin
     attempts.push(relinkPeerPlugin(pluginDir, peer));
   }
   const relinked = attempts.join(",");
+  // An install that finished during the wait pruned `gloomberb` and `react`
+  // as well. After the sibling's own relink, so `relinked` says what that did.
+  linkHostPackages(pluginDir);
   refreshResolverFolders(pluginDir, [peer]);
   const specifier = rekeyedEntry(entryFile, pluginDir);
   if (!specifier) {
@@ -438,8 +441,10 @@ async function loadPluginDirectory(
     const message = errorMessage(err);
     let detail: string | undefined;
     if (retry) {
-      const retryMessage = errorMessage(retry.error);
-      detail = retryMessage === message ? retry.detail : `${retry.detail} retry-error=${JSON.stringify(retryMessage.slice(0, 200))}`;
+      // As plain text: escaping would double a Windows path's backslashes,
+      // and the home folder would no longer be recognized to remove.
+      const retryMessage = withoutRetryQuery(errorMessage(retry.error));
+      detail = retryMessage === message ? retry.detail : `${retry.detail} retry-error=${retryMessage.slice(0, 200)}`;
       // The sibling is installed and linked, and a second import that
       // looked again still failed. A new process imports everything fresh,
       // so the plugin asks for a restart, and the report says why it got here.

@@ -36,6 +36,14 @@ const SOURCE_LOADERS: Readonly<Record<string, "ts" | "tsx" | "js" | "jsx">> = {
 const MISSING_FILE = "./.gloom-resolver-refresh";
 const SKIPPED_FOLDERS = new Set(["node_modules", ".git", "dist"]);
 
+/**
+ * `text` without the retry query Bun puts in the paths of a retried import's
+ * errors, so the retry's error reads like the first import's.
+ */
+export function withoutRetryQuery(text: string): string {
+  return text.replace(new RegExp(`[?&]${RETRY_PARAM}=\\d+`, "g"), "");
+}
+
 /** The plugin folder each retry imports from, by retry number. */
 const retryRoots = new Map<number, string>();
 let retries = 0;

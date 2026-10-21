@@ -240,9 +240,12 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     const unresolved = /Cannot find (?:module 'gloom-fixture-peer\/bridge'|package 'gloom-fixture-peer')/;
     expect(loaded?.needsRestart).toBeUndefined();
     expect(loaded?.error).toMatch(unresolved);
-    expect(sent.flatMap((payload) => payload.errors.map((error) => error.message))).toEqual([
+    const messages = sent.flatMap((payload) => payload.errors.map((error) => error.message));
+    expect(messages).toEqual([
       expect.stringMatching(new RegExp(`${unresolved.source}.*\\[retry=failed peer=gloom-fixture-peer dir=gloom-fixture-peer link=`)),
     ]);
+    // The retry failed the same way, under its own module key: nothing to add.
+    expect(messages[0]).not.toContain("retry-error=");
   });
 
   test("checks the subpath when the message names only the package", () => {

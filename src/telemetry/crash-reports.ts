@@ -113,11 +113,14 @@ function isOptOut(value: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
-/** Replaces the home directory, in native, forward-slash and URL-encoded forms, with `~`. */
+/**
+ * Replaces the home directory, in native, forward-slash, URL-encoded and
+ * escaped (a Windows path in JSON or a string literal) forms, with `~`.
+ */
 export function stripHomeDir(text: string, homeDir: string | null | undefined): string {
   const home = homeDir?.trim().replace(/[\\/]+$/, "");
   if (!home || home.length < 3) return text;
-  const forms = new Set([home, home.replaceAll("\\", "/")]);
+  const forms = new Set([home, home.replaceAll("\\", "/"), home.replaceAll("\\", "\\\\")]);
   for (const form of [...forms]) forms.add(encodeURI(form));
   let result = text;
   for (const form of forms) {

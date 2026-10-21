@@ -85,6 +85,28 @@ describe("reportCrash", () => {
     expect(error!.stack).not.toContain("/home/vince");
   });
 
+  // A plugin load failure carries the state of the plugin's files in
+  // `detail`, which can quote a second error with its Windows path.
+  test("a plugin's detail is sent in the message, without the home folder", async () => {
+    const { host, sent } = fakeHost({ homeDir: "C:\\Users\\bob", os: "win32 10.0.26200 x64" });
+    installCrashReporter(host);
+    const from = "C:\\Users\\bob\\.gloomberb\\plugins\\gloom-ibkr-gateway\\plugin.tsx";
+    reportCrash(new Error(`Cannot find module 'gloom-ibkr/gateway-bridge' from '${from}'`), {
+      kind: "plugin",
+      plugin: "gloom-ibkr-gateway",
+      detail: `retry=failed retry-error=Cannot find module 'gloom-ibkr/x' from '${from}' quoted=${JSON.stringify(from)}`,
+    });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    const message = sent[0]!.errors[0]!.message;
+    expect(message).toBe(
+      "Cannot find module 'gloom-ibkr/gateway-bridge' from '~\\.gloomberb\\plugins\\gloom-ibkr-gateway\\plugin.tsx'"
+        + " [retry=failed retry-error=Cannot find module 'gloom-ibkr/x' from '~\\.gloomberb\\plugins\\gloom-ibkr-gateway\\plugin.tsx'"
+        + " quoted=\"~\\\\.gloomberb\\\\plugins\\\\gloom-ibkr-gateway\\\\plugin.tsx\"]",
+    );
+    expect(message.toLowerCase()).not.toContain("bob");
+  });
+
   test("the same error is sent once per session, a different frame is another error", async () => {
     const { host, sent } = fakeHost();
     installCrashReporter(host);
