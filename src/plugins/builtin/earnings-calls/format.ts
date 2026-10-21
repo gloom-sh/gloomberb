@@ -36,8 +36,37 @@ export function formatTimestamp(seconds: number): string {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+type NamedCall = Pick<
+  CloudEarningsCallPayload,
+  "ticker" | "fiscalYear" | "fiscalQuarter" | "eventKind" | "eventLabel"
+>;
+
+/** An event that is not an earnings call (a deal call, an investor day), shown by its label and never as a quarter. */
+export function eventLabelOf(call: Omit<NamedCall, "ticker">): string | null {
+  return call.eventKind === "other" && call.eventLabel ? call.eventLabel : null;
+}
+
+// Fits the period column; the full label is in the detail title.
+const SHORT_EVENT_LABELS: Record<string, string> = {
+  "M&A call": "M&A",
+  conference: "Conf",
+  "investor day": "Inv day",
+  "business update": "Update",
+  "trial results": "Trial",
+  "shareholder call": "Holders",
+};
+
+/** The period column: "FQ4 26", or a short event label ("M&A", "Inv day"). */
+export function callPeriod(call: Omit<NamedCall, "ticker">): string {
+  const label = eventLabelOf(call);
+  if (label) return SHORT_EVENT_LABELS[label] ?? label;
+  return formatPeriod(call.fiscalYear, call.fiscalQuarter);
+}
+
 /** Title for the detail stack: names the call so the body need not repeat it. */
-export function callTitle(call: CloudEarningsCallPayload): string {
+export function callTitle(call: NamedCall): string {
+  const label = eventLabelOf(call);
+  if (label) return `${call.ticker} ${label}`;
   const period = formatPeriod(call.fiscalYear, call.fiscalQuarter);
   return period === "—" ? call.ticker : `${call.ticker} ${period}`;
 }

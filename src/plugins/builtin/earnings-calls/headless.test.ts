@@ -9,6 +9,7 @@ import {
   createEarningsCallsHeadless,
   type EarningsCallsHeadlessDependencies,
 } from "./headless";
+import { callPeriod, callTitle } from "./format";
 import { buildTranscriptSegments, findCallForQuarter } from "./model";
 
 const calls: CloudEarningsCallPayload[] = [
@@ -152,6 +153,23 @@ describe("earnings transcript headless", () => {
     expect(findCallForQuarter(cost, "FQ4-2025")?.id).toBe("cost-fq4");
     expect(findCallForQuarter(cost, "FY2026")?.id).toBe("cost-fq1");
   });
+  test("an event that is not an earnings call is listed by its label and is not the latest earnings call", () => {
+    const deal: CloudEarningsCallPayload = {
+      ...calls[0]!,
+      id: "amd-deal",
+      fiscalYear: null,
+      fiscalQuarter: null,
+      callAt: "2026-09-06T12:00:00.000Z",
+      eventKind: "other",
+      eventLabel: "M&A call",
+    };
+    expect(findCallForQuarter([deal, ...calls], "latest")?.id).toBe("amd-fq2-2026");
+    expect(findCallForQuarter([deal], "latest")?.id).toBe("amd-deal");
+    expect(callTitle(deal)).toBe("AMD M&A call");
+    expect(callPeriod(deal)).toBe("M&A");
+    expect(callTitle(calls[0]!)).toBe("AMD FQ2 26");
+  });
+
   test("a ticker alone lists the company's calls; a quarter or section reads the transcript", async () => {
     const definition = createEarningsCallsHeadless(dependencies());
     const title = definition.describe;
