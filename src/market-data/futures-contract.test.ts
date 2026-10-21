@@ -52,6 +52,12 @@ test("Settle is the confirmed settlement dated by its session, -- without one, a
   expect(futuresSettleText({ settlement: { price: 479.75, date: "2026-10-09" } }, { ...quote, currency: "USX" })).toBe("479.75¢ (2026-10-09)");
   // No quote yet: the tick's decimals survive and no currency is guessed.
   expect(futuresSettleText({ settlement: { price: 3.2952, date: "2026-10-09" } }, undefined)).toBe("3.2952 (2026-10-09)");
+  // Beside a move from a later session than the settlement's it waits for that session's, never an older one in its place.
+  expect(futuresSettleText(gold, quote, "2026-10-12")).toBe("-- (2026-10-12 not confirmed yet)");
+  expect(futuresSettleText(gold, quote, "2026-10-09")).toBe("$4,216.30 (2026-10-09)");
+  // A settlement of the move's own session, newer than the close it is from, is the latest and stays.
+  expect(futuresSettleText(gold, quote, "2026-10-08")).toBe("$4,216.30 (2026-10-09)");
+  expect(futuresSettleText({ settlement: null }, quote, "2026-10-12")).toBe("--");
 });
 
 test("a price in cents says what it is per, and a dollar price reads as before", () => {

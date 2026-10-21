@@ -1,6 +1,6 @@
 import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import type { PricePoint } from "../types/financials";
-import { marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
+import { formatPriceObservation, marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
 import { subtractTimeRange } from "../time-series/date-window";
 import {
@@ -414,6 +414,32 @@ export function historyPriceDecimals(rows: readonly Pick<HistoryRow, typeof PRIC
   const needed = values.map((value) => neededDecimals(value, cap)).sort((left, right) => left - right);
   const decimals = needed[Math.floor(0.9 * (needed.length - 1))]!;
   return largest >= 1 ? Math.max(2, decimals) : decimals;
+}
+
+/** A bar's prices as a table lists them; a bar without a close adds nothing to the decimals. */
+interface BarPrices {
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+}
+
+/**
+ * The decimals one table of bars prints its prices with (`history`, HP's pane
+ * and `fn HP`): historyPriceDecimals over the float32-cleaned prices, so a
+ * feed's 4013.39990234 reads as the 4013.4 it is and the count follows the
+ * asset's display rules (two for gold, three for silver, cents for a US equity).
+ */
+export function barPriceDecimals(bars: readonly BarPrices[], assetCategory?: string): number {
+  const clean = (value: number | null | undefined) => value == null ? null : cleanFloat32Price(value);
+  return historyPriceDecimals(bars.flatMap((bar) => bar.close == null ? [] : [{
+    date: "", open: clean(bar.open), high: clean(bar.high), low: clean(bar.low), close: clean(bar.close)!, volume: null,
+  }]), assetCategory);
+}
+
+/** A price at the table's decimal count (barPriceDecimals), within `maxWidth` when the pane gives one. */
+export function formatBarPrice(value: number, decimals: number, maxWidth?: number): string {
+  return formatPriceObservation(Number(value.toFixed(Math.min(20, decimals))), { minimumFractionDigits: decimals, maxWidth });
 }
 
 /** How far back ALL reaches, in whole years, from the window a history request for it asks for. */

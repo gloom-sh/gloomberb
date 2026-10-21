@@ -24,9 +24,9 @@ import {
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { changeBasisLabel, changeBasisNote, quoteChangeBasis } from "../../../market-data/market/change-basis";
+import { changeBasisLabel, changeBasisNote, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
 import {
-  fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
+  fitFuturesContractLines, futuresContractLines, isFuturesInstrument, minorUnitPricePer,
   type FuturesContractLine,
 } from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
@@ -248,7 +248,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The exchange settlement, dated by its session: a futures price is its latest trade.
   const settleLabel = t("Settle");
   const settleText = contractTerms
-    ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
+    ? truncateToDisplayWidth(quoteSettleText(quote, contractTerms),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
     : "";
   const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");

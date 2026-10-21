@@ -109,12 +109,22 @@ export function fitFuturesContractLines(lines: readonly FuturesContractLine[], m
  * Without a quote currency the price is a bare number, never a guessed `$`: a
  * grain settles in cents. A contract without a confirmed settlement reads
  * `--`: never an older settlement, and never the last trade.
+ *
+ * `movesFrom` is the session the Change line beside it is measured from
+ * (futuresChangeBasis). The settlement is confirmed overnight, after the
+ * quote has moved on to the next session, so for those hours the terms carry
+ * the session before the one the move is from: that settlement would sit
+ * beside a move from another session's close. It reads `--` and says which
+ * session is not confirmed yet. A settlement of that session or a later one
+ * is shown: the same session, or the one the move itself belongs to.
  */
 export function futuresSettleText(
   terms: Pick<FuturesContractTermsPayload, "settlement">,
   quote: Pick<Quote, "currency" | "instrumentType" | "priceBasis" | "providerPriceDivisor"> | null | undefined,
+  movesFrom?: string | null,
 ): string {
   if (!terms.settlement) return FUTURES_MISSING;
+  if (movesFrom && terms.settlement.date < movesFrom) return `${FUTURES_MISSING} (${movesFrom} not confirmed yet)`;
   const currency = quote?.currency;
   const options = withCurrencyMinorDigits(quoteFormatOptions(quote, "FUTURE"), currency);
   const price = currency ? formatMarketPriceWithCurrency(terms.settlement.price, currency, options) : formatMarketPrice(terms.settlement.price, options);

@@ -14,7 +14,7 @@ import type {
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
-import { changeBasisJson, changeBasisLabel, changeBasisNote, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -61,7 +61,7 @@ import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
-import { futuresContractLines, futuresRollLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer } from "../../market-data/futures-contract";
+import { futuresContractLines, futuresRollLines, isFuturesInstrument, minorUnitPricePer } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   formatExpiryList,
@@ -978,7 +978,7 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     }
     const terms = row.futuresContract;
     if (!terms || !row.quote) return [];
-    const settle: [string, string] = ["Settle", futuresSettleText(terms, row.quote)];
+    const settle: [string, string] = ["Settle", quoteSettleText(row.quote, terms)];
     // The move Chg% gives, in the quote's money and with what it is measured from: "vs Fri settle".
     const session = getRegularSessionDisplay(row.quote);
     const change: Array<[string, string]> = session?.change != null && Number.isFinite(session.change)

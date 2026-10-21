@@ -35,8 +35,8 @@ import {
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
-import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
+import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { futuresContractLines, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
 import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
@@ -1126,7 +1126,7 @@ export async function buildTickerReport({
       // A price in cents says what it is per: 314.95¢/lb.
       ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${minorUnitPricePer(futuresContract, quote.currency)}`, session.change)],
       ...futuresContract
-        ? [["Settle", futuresSettleText(futuresContract, quote)] as [string, string]]
+        ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],
       // The move says what it is measured from: "vs Fri 16 Oct close", a future's "vs Fri 16 Oct settle".
       ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],

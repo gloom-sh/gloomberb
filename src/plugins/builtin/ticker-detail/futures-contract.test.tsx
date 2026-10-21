@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -113,3 +113,53 @@ test("a short Overview keeps the most useful contract terms and the chart below 
     loads.mockRestore();
   }
 });
+
+// Gold on Wed 21 Oct 2026, 02:00 New York: the move is Wednesday's, from Tuesday's close. The settlement is confirmed
+// after 06:00 New York, so overnight the terms still hold Monday's.
+const overnightGold = createTestQuote({
+  symbol: "GC=F", name: "Gold Dec 26", price: 4157.3, change: -1.4, changePercent: -0.03, instrumentType: "FUTURE", currency: "USD",
+  listingExchangeName: "COMEX", exchangeName: "COMEX", marketState: "REGULAR", previousClose: 4158.7, changeSessionDate: "2026-10-21",
+  lastUpdated: Date.parse("2026-10-21T06:00:00Z"),
+});
+
+for (const { name, settlement, settle, change } of [
+  { name: "Monday's, a session behind the move", settlement: { price: 4160.1, date: "2026-10-19" },
+    settle: "-- (2026-10-20 not confirmed yet)", change: "vs Tue 20 Oct close" },
+  { name: "Tuesday's, the one the move is from", settlement: { price: 4158.7, date: "2026-10-20" },
+    settle: "$4,158.70 (2026-10-20)", change: "vs Tue 20 Oct settle" },
+] as const) {
+  test(`overnight gold with ${name} settlement never shows a Settle from another session than its Change`, async () => {
+    setSystemTime(new Date("2026-10-21T06:30:00Z"));
+    const loads = spyOn(apiClient, "getCloudFuturesContract").mockResolvedValue({ ...terms, settlement });
+    try {
+      const cli = createTestCliContext({ config, dataProvider: {
+        getQuotesBatch: async () => [{ target: { symbol: "GC=F", exchange: "" }, quote: overnightGold }],
+      } });
+      await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["GC=F"], cli.context);
+      const [{ result, options }] = cli.printed as [PrintedCliResult];
+      const quoteText = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options).replace(/ +/g, " ");
+      const report = (await buildTickerReport({ symbol: "GC=F", tickerFile: null, financials: createTestFinancials({ quote: overnightGold }),
+        config, toBase: async (value) => value, futuresContract: { ...terms, settlement } })).replace(/ +/g, " ");
+      for (const text of [quoteText, report]) {
+        expect(text).toContain(`\nSettle ${settle}\n`);
+        expect(text).toContain(`$1.40 (-0.03%) ${change}`);
+      }
+      // The JSON keeps the settlement as the terms carry it, dated, beside the dated basis.
+      expect((result.data as Array<{ futuresContract?: FuturesContractTermsPayload }>)[0]!.futuresContract!.settlement).toEqual(settlement);
+      await act(async () => {
+        await tui.render(
+          <AppContext value={createStaticAppStore(createInitialState(config))}>
+            <OverviewTab ticker={createTestTicker("GC=F", "Gold Dec 26", { assetCategory: "FUTURE" })}
+              financials={createTestFinancials({ quote: overnightGold })} width={120} height={40} />
+          </AppContext>,
+          { width: 120, height: 40 },
+        );
+      });
+      const frame = await tui.waitForFrameToContain(`Settle ${settle}`);
+      expect(frame).toContain(change);
+    } finally {
+      loads.mockRestore();
+      setSystemTime();
+    }
+  });
+}

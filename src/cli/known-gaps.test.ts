@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
+import { paneSchemas } from "../plugins/builtin/chart-composer/headless-schema";
 import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
@@ -237,4 +238,32 @@ test("asked for bars finer than a minute, a US listing is pointed at its trades,
     expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`);
   }
   expect(subMinuteDataMessage()).toContain("fn TAS <ticker>");
+});
+
+test("asked for bars finer than a minute, a future is told the bars that exist for it and that trades and quotes are US equities only", () => {
+  // TAS and QR answer "A US equity symbol is required" for a future, so neither is named.
+  const gold = subMinuteDataMessage("GC=F");
+  expect(gold).toStartWith("No second or tick bars; 1-minute bars: fn G GC=F --rangePreset 1D");
+  expect(gold).toContain("history GC=F --range 1D has 5-minute bars");
+  expect(gold).toEndWith("Trades and quotes cover US equities only.");
+  for (const symbol of ["GC=F", "SI=F:CMX", "CL=F"]) {
+    const message = subMinuteDataMessage(symbol);
+    expect(message, symbol).not.toMatch(/fn (TAS|QR|GIP)\b/);
+    expect(message, symbol).toContain(`fn G ${symbol} --rangePreset 1D`);
+  }
+});
+
+test("GIP's --chartResolution says the same of a sub-minute ask as history does, for the symbol it was given", () => {
+  const hint = paneSchemas["graph-intraday-price-pane"].options.find((option) => option.key === "chartResolution")!.invalidValueHint!;
+  for (const symbol of ["GC=F", "^GSPC", "HYG", "RMS.AX"]) expect(hint("1s", symbol), symbol).toBe(subMinuteDataMessage(symbol));
+  expect(hint("2m", "GC=F")).toBeNull();
+});
+
+test("asked for bars finer than a minute, an index, a currency pair or a coin is pointed at its 1-minute bars and no tape", () => {
+  for (const symbol of ["^GSPC", "EURUSD=X", "BTC-USD:CCC"]) {
+    expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`);
+  }
+  // A US listing keeps its trades and quotes, and the explicit kind wins over what the symbol says.
+  expect(subMinuteDataMessage("SPY")).toContain("fn TAS SPY");
+  expect(subMinuteDataMessage("GC=F", "unknown")).toContain("fn TAS GC=F");
 });

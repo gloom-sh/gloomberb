@@ -1,21 +1,48 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
+import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 
 /**
+ * What a listing is to a sub-minute ask: a US listing, which has a tape; one
+ * known to trade abroad, a future, or another class a symbol's own syntax names
+ * (an index, a currency pair, a coin), none of which has trades or quotes.
+ */
+type SubMinuteListing = "unknown" | "abroad" | "future" | "other";
+
+function subMinuteListing(symbol: string): SubMinuteListing {
+  if (listedAbroad(symbol)) return "abroad";
+  const kind = kindFromListingSyntax(symbol, parsePublicTickerKey(symbol).exchange);
+  return kind === "future" ? "future" : kind ? "other" : "unknown";
+}
+
+/**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
  * bars; for a US listing TAS lists each trade (a window of the session with
  * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
- * `--chartResolution 1s` and QR on a listing abroad all say this; a listing
- * known to trade abroad, which has no trades on the tape, is told only the bars.
+ * `--chartResolution 1s` and QR on a listing abroad all say this. The tape
+ * covers US equities only, and TAS and QR answer anything else with an
+ * error or an empty table, so a listing without one is told only the bars
+ * that exist for it. A future's finest are G's 1-minute bars of its session
+ * (`fn G GC=F --rangePreset 1D`) and `history`'s 5-minute bars of 1D, both
+ * checked on GC=F and SI=F on 2026-10-21. GIP is not named for one: its
+ * window is the UTC day, not the session, and it was reported with no points
+ * for a future.
  */
-export function subMinuteDataMessage(symbol = "<ticker>", listing: "abroad" | "unknown" = listedAbroad(symbol) ? "abroad" : "unknown"): string {
-  const bars = `No second or tick bars; 1-minute bars: fn GIP ${symbol}`;
-  return listing === "abroad"
-    ? `${bars}; trades exist for US listings only.`
-    : `${bars}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteListing = subMinuteListing(symbol)): string {
+  const none = "No second or tick bars";
+  switch (listing) {
+    case "abroad":
+      return `${none}; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+    case "future":
+      return `${none}; 1-minute bars: fn G ${symbol} --rangePreset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
+    case "other":
+      return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
+    default:
+      return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+  }
 }
 
 /**

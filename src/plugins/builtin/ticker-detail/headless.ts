@@ -4,7 +4,7 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
 } from "../../../utils/price-history-integrity";
@@ -36,7 +36,7 @@ import {
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 import {
-  cleanFloat32Price, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
+  barPriceDecimals, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
 } from "../../../cli/history-rows";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
@@ -299,14 +299,17 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
 };
 
 /**
- * The price columns of HP, which `fn HP` prints and exports with the date column of the bars' size. A bar without
+ * The price columns of HP, which `fn HP` prints and exports with the date column of the bars' size. Every price has
+ * the table's one decimal count (`decimals`, barPriceDecimals), as `history` and the pane print it; the columns a
+ * report declares before it has bars keep every digit the source sent. A bar without
  * volume in a history that reports it (`volumeMissing`) prints it as missing, never as 0.
  */
-const historyPriceColumns = (volumeMissing: boolean): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
+const historyPriceColumns = (volumeMissing: boolean, decimals?: number): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
   format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : "-"
     : key === "volume" ? formatNumber(Number(value), 0)
-    : formatPriceObservation(Number(value), { minimumFractionDigits: 2 }),
+    : decimals == null ? formatPriceObservation(Number(value), { minimumFractionDigits: 2 })
+    : formatBarPrice(Number(value), decimals),
 }));
 
 /**
@@ -315,7 +318,7 @@ const historyPriceColumns = (volumeMissing: boolean): HeadlessPaneColumn[] => ["
  * whose period runs on (`2026-10 MTD`); the export keeps each bar's own date
  * and adds a `Partial` column when one is.
  */
-function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, volumeMissing = false): HeadlessPaneColumn[] {
+function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, volumeMissing = false, decimals?: number): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
     key: "date",
@@ -327,7 +330,7 @@ function historyColumns(size: HistoryBarSize, partial: boolean, text: boolean, v
   const marked: HeadlessPaneColumn[] = partial && !text
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
-  return [date, ...historyPriceColumns(volumeMissing), ...marked];
+  return [date, ...historyPriceColumns(volumeMissing, decimals), ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -349,11 +352,15 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const venue = exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
     const now = Date.now();
     const points = withSessionBar(loaded, quote, { now, venue });
+    // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does.
+    const clean = (value: number | null) => value == null ? null : cleanFloat32Price(value);
     const rows = points.map((point) => {
       const date = new Date(point.date);
+      const values = pricePointValues(point);
       return {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
-        ...pricePointValues(point),
+        open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close), volume: values.volume,
+        ...(values.integrity ? { integrity: values.integrity } : {}),
         ...(point.partial ? { partial: true } : {}),
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.
         ...(point.filled ? { filled: true } : {}),
@@ -366,6 +373,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // A complete one is dated by the day its last session closed, the day its close is from.
     const closedDay = closedHistoryBarDay(size, rows.at(-1)?.date, venue, now);
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
+    // One decimal count for the table, by the instrument's display rules when the quote names its kind.
+    const decimals = barPriceDecimals(rows, quoteFormatOptions(quote).assetCategory);
     const marked = shown.some((row) => row.partial === true);
     const volumeMissing = missingVolumeCount(shown);
     const volumeNote = missingVolumeNotice(volumeMissing, shown.length);
@@ -385,8 +394,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     };
     return {
       rows: shown,
-      columns: historyColumns(size, marked, false),
-      textColumns: historyColumns(size, marked, true, volumeMissing > 0),
+      columns: historyColumns(size, marked, false, false, decimals),
+      textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),

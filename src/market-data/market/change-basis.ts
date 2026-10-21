@@ -5,7 +5,7 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { isFiniteNumber } from "../../utils/guards";
 import { formatUtcDayTime } from "../../utils/utc-time";
 import { zonedDateKey } from "../../utils/zoned-date-time";
-import { futuresChangeBasis, isFuturesInstrument } from "../futures-contract";
+import { futuresChangeBasis, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
 import { previousPublishedSession } from "./freshness";
 import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
@@ -158,6 +158,20 @@ export function quoteChangeBasis(
   }
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return { kind: "previous close" };
   return previousSession(quote, sessionDate) ?? { kind: "previous close" };
+}
+
+/**
+ * A futures quote's Settle line, paired with its Change line: the settlement
+ * is shown when it is of the session the move is measured from or a later one,
+ * and reads `--` with that session when the terms have not caught up to it
+ * (futuresSettleText), so the two lines never name different sessions.
+ */
+export function quoteSettleText(
+  quote: Quote | null | undefined,
+  terms: NonNullable<QuoteChangeBasisOptions["terms"]> & Parameters<typeof futuresSettleText>[0],
+): string {
+  const basis = quoteChangeBasis(quote, { terms });
+  return futuresSettleText(terms, quote, basis && "date" in basis ? basis.date : null);
 }
 
 /**

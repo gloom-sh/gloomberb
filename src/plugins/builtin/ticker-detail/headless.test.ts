@@ -163,6 +163,32 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
   expect(result.rows[1]).toEqual({ date: "2026-03-09T00:00:00.000Z", open: 20, high: 23, low: 19, close: 22, volume: 100 });
 });
 
+test("historical prices print the prices the source meant, at one decimal count, not the float32 it served", async () => {
+  // Gloom Cloud serves float32 prices: gold's 4013.4 arrives as 4013.39990234375, silver's 57.131 as 57.13000107.
+  const served = (rows: Array<[string, number, number, number, number]>) => createTestHeadlessContext({
+    marketData: createTestDataProvider({
+      getPriceHistory: async () => rows.map(([date, open, high, low, close]) => ({ date: new Date(date), open, high, low, close, volume: 100 })),
+    }),
+  });
+  const gold = served([
+    ["2026-07-21", 4013.39990234375, 4092.5, 4003.300048828125, 4076.39990234375],
+    ["2026-07-22", 4084.699951171875, 4171.39990234375, 4081, 4151.89990234375],
+  ]);
+  const goldArgs = args(["GC=F"]);
+  const goldResult = await historicalPricesHeadless.load(goldArgs, gold);
+  const goldText = renderHeadlessPaneText(historicalPricesHeadless, goldResult, goldArgs, "HP GC=F");
+  for (const price of ["4,013.40", "4,092.50", "4,003.30", "4,076.40", "4,171.40", "4,081.00"]) expect(goldText).toContain(price);
+  expect(goldText).not.toMatch(/\d,\d{3}\.\d{3,}/);
+  // The rows hold the decimal each price is, as `history` does.
+  expect(goldResult.rows[0]).toMatchObject({ open: 4013.4, low: 4003.3, close: 4076.4 });
+  // A price under a hundred keeps the digits its tick needs.
+  const silver = served([["2026-07-21", 56.33499908, 59.02500153, 56.33499908, 58.83499908]]);
+  const silverText = renderHeadlessPaneText(historicalPricesHeadless, await historicalPricesHeadless.load(args(["SI=F"]), silver), args(["SI=F"]), "HP SI=F");
+  expect(silverText).toContain("56.335");
+  expect(silverText).toContain("59.025");
+  expect(silverText).not.toContain("56.33499908");
+});
+
 test("historical prices mark a monthly bar whose month runs on and date it by the last session it covers", async () => {
   // Fri 16 Oct 2026 08:14 UTC: New York has not opened; Thursday's session is the latest close.
   setSystemTime(new Date("2026-10-16T08:14:00Z"));
