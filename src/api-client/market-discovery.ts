@@ -60,6 +60,12 @@ export interface MarketHeatmapResult {
   stale?: boolean;
   universe: MarketHeatmapUniverseId;
   source: MarketHeatmapSource;
+  /**
+   * Whose prices the board carries: `realtime` for a Pro account, priced
+   * from a live read the server takes every 15 seconds; `delayed`, fifteen
+   * minutes behind, otherwise. An older server leaves it out (delayed).
+   */
+  access?: "realtime" | "delayed";
   fetchedAt: number;
   /** The US market session the snapshot describes; null when the server cannot tell. */
   session?: "REGULAR" | "PRE" | "POST" | "CLOSED" | null;

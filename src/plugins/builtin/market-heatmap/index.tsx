@@ -48,6 +48,7 @@ import {
   MARKET_HEATMAP_REQUEST_COUNT,
   MARKET_HEATMAP_UNIVERSES,
   fetchMarketHeatmap,
+  heatmapCheckIntervalMs,
   resetMarketHeatmapCache,
   type MarketHeatmapBoard,
   type MarketHeatmapUniverseId,
@@ -102,7 +103,6 @@ import {
 
 const NO_ASSETS: HeatmapBoardAsset[] = [];
 const NO_TARGETS: QuoteSubscriptionTarget[] = [];
-const SNAPSHOT_REFRESH_MS = 60_000;
 const LAYOUT_THROTTLE_MS = 5_000;
 /** A size change below this share of a tile's area is not worth moving it. */
 const LAYOUT_TOLERANCE = 0.005;
@@ -631,8 +631,8 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // Ages the last check that succeeded, not the snapshot, which the server can
   // hand back unchanged long after it was put together.
   const checked = useUpdatedAgo(shownBoard?.checkedAt ?? null);
-  // The snapshot carries sizes and every name the stream does not; the server caches it for a minute.
-  useAutoRefresh(board?.checkedAt ?? null, autoRefresh, { intervalMs: SNAPSHOT_REFRESH_MS });
+  // The snapshot carries sizes and every name the stream does not: a minute on the server, a quarter of one real-time.
+  useAutoRefresh(board?.checkedAt ?? null, autoRefresh, { intervalMs: heatmapCheckIntervalMs(board) });
 
   usePaneStatusFooter({ registrationId: "market-heatmap-retained", stale: hasBoard && stale && !portfolioTab });
   usePaneNoticeFooter({

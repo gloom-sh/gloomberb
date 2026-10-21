@@ -101,7 +101,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["HM", "heatmap"],
     dataRequirements: ["Gloom Cloud market heatmap snapshot"],
     limitations: [
-      "The snapshot the pane starts from, refreshed about once a minute; the pane's live-streamed colors are not in the report.",
+      "The snapshot the pane starts from: real-time with Pro, fifteen minutes behind otherwise; the pane's live-streamed colors are not in the report.",
       "Sizes, shares and the weighted move use market cap (net assets for ETFs), not the pane's tile area, which follows its Size by setting (the day's move by default).",
     ],
   },
@@ -129,6 +129,8 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: columns(universe, groupBy, flat),
       rows: groups.map((summary) => projectRow(summary, groupBy, flat)),
       complete: !result.stale && covered,
+      // A Pro account's board is priced from a live read.
+      freshness: { status: result.access === "realtime" ? "live" : "delayed", tradingDayMarket: "US" },
       unavailableSymbols: covered ? [] : noMove,
       metadata: {
         universe,
