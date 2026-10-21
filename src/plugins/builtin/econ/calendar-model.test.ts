@@ -7,8 +7,12 @@ import {
   hasPendingHighImpactPrint,
   landedHighImpactPrints,
   loadCalendar,
+  countriesWithoutEvents,
   matchesCountry,
   matchesImpact,
+  noScheduledReleasesMessage,
+  parseCountryFilter,
+  pendingHighImpactPrints,
   resetEconCalendarPersistence,
 } from "./calendar-model";
 
@@ -96,6 +100,22 @@ describe("high-impact prints", () => {
     expect(hasPendingHighImpactPrint([{ ...cpi, actual: "0.3%" }], release + 60_000)).toBe(false);
   });
 
+  // They never get an actual: waiting on one would poll every client for 20 minutes after each,
+  // from midnight UTC for a bank's untimed decision.
+  test("a central bank decision or a statistics office's listed release is never a pending print", () => {
+    const midnight = new Date("2026-10-22T00:00:00.000Z").getTime();
+    const decision = {
+      ...makeEvent("cb-cbrt-2026-10-22"), date: new Date(midnight), time: "All Day", country: "TR",
+      event: "CBRT Interest Rate Decision", kind: "central-bank-decision" as const, timeNote: "The bank's calendar gives the day, not the time",
+    };
+    const release12 = { ...makeEvent("inegi-10506"), date: new Date(release), country: "MX", event: "Mid-Month CPI", kind: "statistics-release" as const };
+    expect(pendingHighImpactPrints([decision], midnight + 60_000)).toEqual([]);
+    expect(pendingHighImpactPrints([release12], release + 60_000)).toEqual([]);
+    // A feed's own row at the same time still is.
+    const feed = { ...makeEvent("cpi"), date: new Date(release) };
+    expect(pendingHighImpactPrints([decision, release12, feed], release + 60_000).map((event) => event.id)).toEqual(["cpi"]);
+  });
+
   test("a print lands when a blank high-impact actual gets a number", () => {
     const prior = new Map<string, string | null>([["cpi", null], ["claims", "197K"]]);
     const next = [
@@ -123,5 +143,45 @@ describe("calendar rows", () => {
   test("puts NOW above the next day's header when nothing is left today", () => {
     const events = [at("mon-9", 28, 9), at("mon-16", 28, 16), at("tue-1", 29, 1)];
     expect(layout(events, utc(28, 20))).toEqual(["TODAY", "mon-9", "mon-16", "NOW", "TOMORROW", "tue-1"]);
+  });
+});
+
+describe("country filters", () => {
+  test("take regions and ISO country codes in any case, comma or space separated, once each", () => {
+    expect(parseCountryFilter("mx")).toEqual({ filter: "MX" });
+    expect(parseCountryFilter("MX,BR,ZA,IN,KR")).toEqual({ filter: "MX,BR,ZA,IN,KR" });
+    expect(parseCountryFilter(" mx, br  za,MX ")).toEqual({ filter: "MX,BR,ZA" });
+    expect(parseCountryFilter("g7,mx")).toEqual({ filter: "G7,MX" });
+    expect(parseCountryFilter("UK")).toEqual({ filter: "GB" });
+    expect(parseCountryFilter("eu")).toEqual({ filter: "EU" });
+    // All of anything is all.
+    expect(parseCountryFilter("MX,all")).toEqual({ filter: "all" });
+  });
+
+  test("refuse what is not a country: three letters, an unassigned code, CLDR's unknown region, nothing", () => {
+    expect(parseCountryFilter("TUR")).toEqual({ error: 'Unknown country "TUR".' });
+    expect(parseCountryFilter("MX,XQ")).toEqual({ error: 'Unknown country "XQ".' });
+    expect(parseCountryFilter("ZZ")).toEqual({ error: 'Unknown country "ZZ".' });
+    expect(parseCountryFilter(" , ")).toEqual({ error: "No country given." });
+  });
+
+  test("a list matches any of its parts, a region its members", () => {
+    const at = (country: string) => ({ country });
+    expect(matchesCountry(at("BR"), "MX,BR")).toBe(true);
+    expect(matchesCountry(at("US"), "MX,BR")).toBe(false);
+    expect(matchesCountry(at("JP"), "G7,MX")).toBe(true);
+    expect(matchesCountry(at("MX"), "G7,MX")).toBe(true);
+    expect(matchesCountry(at("TR"), "G7,MX")).toBe(false);
+    expect(matchesCountry(at("TR"), "all")).toBe(true);
+  });
+
+  test("countries named with nothing listed are said plainly; regions are never among them", () => {
+    const events = [{ country: "MX" }, { country: "US" }];
+    expect(countriesWithoutEvents("MX,BR,ZA", events)).toEqual(["BR", "ZA"]);
+    expect(countriesWithoutEvents("G7,IN", events)).toEqual(["IN"]);
+    expect(countriesWithoutEvents("US", events)).toEqual([]);
+    expect(noScheduledReleasesMessage(["MX"])).toBe("No scheduled releases for MX in this window.");
+    expect(noScheduledReleasesMessage(["ZA", "IN"])).toBe("No scheduled releases for ZA or IN in this window.");
+    expect(noScheduledReleasesMessage(["MX", "BR", "ZA", "IN", "KR"])).toBe("No scheduled releases for MX, BR, ZA, IN or KR in this window.");
   });
 });

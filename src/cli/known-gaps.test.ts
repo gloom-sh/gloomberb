@@ -181,6 +181,19 @@ test("export, csv and json name the --csv and --json flags with one example, ahe
   }
 });
 
+test("an FX forward query names fx --forward; a forward rate, forward guidance, a forward P/E or a forward curve does not", () => {
+  const line = "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d";
+  for (const query of ["forward", "forwards", "fwd", "fx forward", "fx forward rate", "currency forward rates", "USD/MXN forward",
+    "forward points", "currency hedge cost forward", "1m fx fwd", "peso forward", "covered interest parity forward"]) {
+    expect(commandPointer(query), query).toBe(line);
+  }
+  // A forward rate, its tenor or its cost is a yield curve's as much as a currency's.
+  for (const query of ["forward rate", "forward rates", "implied forward rate", "1y forward rate", "forward interest rates", "1m fwd",
+    "forward premium", "forward hedge cost", "forward guidance", "forward P/E", "forward curve", "forward inflation", "forward eps"]) {
+    expect(commandPointer(query), query).toBeNull();
+  }
+});
+
 test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say plainly there is no AAA muni curve", async () => {
   const line = knownGapMessage("muni")!;
   expect(line).toBe(MUNI_LINE);

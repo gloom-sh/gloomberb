@@ -32,6 +32,13 @@ const twoWeeks = [
  * a number another status and "offline" no network for it.
  */
 async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none"): Promise<string> {
+  const { result, options } = await econPrinted(events, args, cliOptions, storedFrom);
+  // Warnings print apart from the table, as `warning: ...` lines.
+  return [serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options),
+    ...(result.warnings ?? []).map((warning) => `warning: ${warning}`)].join("\n");
+}
+
+async function econPrinted(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none") {
   resetEconCalendarPersistence();
   attachEconCalendarPersistence(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async (url) => {
@@ -48,10 +55,7 @@ async function econText(events: unknown[], args: string[], cliOptions: Partial<C
   });
   const cli = createTestCliContext({}, cliOptions);
   await econ.execute(args, cli.context);
-  const { result, options } = cli.printed[0]!;
-  // Warnings print apart from the table, as `warning: ...` lines.
-  return [serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options),
-    ...(result.warnings ?? []).map((warning) => `warning: ${warning}`)].join("\n");
+  return cli.printed[0]!;
 }
 
 beforeEach(() => setSystemTime(new Date("2026-10-10T13:00:00.000Z")));
@@ -107,14 +111,39 @@ test("a calendar two weeks ahead lists from today on a Saturday, with nothing to
   expect(text).not.toContain("No events listed after");
 });
 
-test("--country takes any two-letter code, and a country the calendar does not list says which ones it does", async () => {
+test("--country takes ISO codes, comma lists and regions; a country with nothing scheduled says so plainly", async () => {
   const withTurkey = [...twoWeeks, { ...event("2026-11-03T07:00:00.000Z", "TR", "high", "CPI y/y"), prior: "29.73%" }];
   const turkey = await econText(withTurkey, ["--country", "tr"]);
   expect(turkey).toContain("CPI y/y");
   expect(turkey).toContain("29.73%");
   expect(turkey).not.toContain("Housing Starts");
-  // UK is not GB: an empty list says what the calendar has rather than reading as a quiet fortnight.
-  const typo = await econText(withTurkey, ["--country", "UK"]);
-  expect(typo).toContain("The calendar lists no UK events; it lists CA, EU, TR, US");
+  // A real country with no rows is a quiet window, never an unknown country; UK is GB's common name.
+  expect(await econText(withTurkey, ["--country", "MX"])).toContain("No scheduled releases for MX in this window.");
+  expect(await econText(withTurkey, ["--country", "UK"])).toContain("No scheduled releases for GB in this window.");
+  // A list lists what its countries have, and names the ones with nothing.
+  const list = await econText(withTurkey, ["--country", "MX,tr, us"]);
+  expect(list).toContain("CPI y/y");
+  expect(list).toContain("Housing Starts");
+  expect(list).not.toContain("German ZEW");
+  expect(list).toContain("No scheduled releases for MX in this window.");
   await expect(econText(withTurkey, ["--country", "TUR"])).rejects.toThrow('Unknown country "TUR".');
+  await expect(econText(withTurkey, ["--country", "MX,XQ"])).rejects.toThrow('Unknown country "XQ".');
+});
+
+test("rows a bank or a statistics office times itself show its clock; a bank that states no time leaves the time blank and says why", async () => {
+  const added = [
+    ...twoWeeks,
+    { ...event("2026-10-22T12:00:00.000Z", "MX", "high", "Mid-Month CPI"), kind: "statistics-release", localTime: "06:00",
+      timeZone: "America/Mexico_City", source: { name: "INEGI", url: "https://www.inegi.org.mx/app/saladeprensa/calendario" } },
+    { ...event("2026-10-22T00:00:00.000Z", "TR", "high", "CBRT Interest Rate Decision"), time: "All Day", kind: "central-bank-decision",
+      localTime: null, timeZone: "Europe/Istanbul", timeNote: "The bank's calendar gives the day, not the time", prior: "39.50%", priorAsOf: "2026-10-16" },
+  ];
+  const text = await econText(added, ["--country", "MX,TR"]);
+  expect(text).toMatch(/2026-10-22\s+12:00 UTC\s+06:00 Mexico City\s+MX\s+high\s+Mid-Month CPI/);
+  expect(text).toMatch(/2026-10-22\s+TR\s+high\s+CBRT Interest Rate Decision\s+39\.50%/);
+  expect(text).toContain("No time for CBRT Interest Rate Decision (TR): the bank's calendar gives the day, not the time.");
+  const [row] = (await econPrinted(added, ["--country", "TR"])).result.data as Record<string, unknown>[];
+  expect(row).toMatchObject({ time: "", localTime: null, timeZone: "Europe/Istanbul", priorAsOf: "2026-10-16", prior: "39.50%" });
+  // The feeds' own calendar prints without the publisher's clock column.
+  expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });

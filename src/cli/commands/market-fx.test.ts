@@ -1,4 +1,7 @@
-import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { ApiRequestError } from "../../api-client/errors";
+import type { CloudShortRate } from "../../api-client/types";
 import { createDefaultConfig } from "../../types/config";
 import { marketDataCliCommands } from "./market";
 import { createTestCliContext } from "../../test-support/cli-context";
@@ -213,4 +216,84 @@ test("fx --date refuses today and a day ahead, and a week with no close, before 
   await expect(fx.execute(["USD/CAD", "--date", "2026-08-01"], run.context)).rejects.toThrow("No USD/CAD daily close in the week up to 2026-08-01.");
   await expect(fx.execute(["USD/CAD", "--date", "9/2/2026"], run.context)).rejects.toThrow(/Use a --date date as YYYY-MM-DD/);
   expect(run.rows()).toEqual([]);
+});
+
+function shortRates(overrides: Record<string, Partial<CloudShortRate>> = {}) {
+  const base = (currency: string, name: string, value: number, asOf: string, publisher: string): CloudShortRate => ({
+    currency, name, tenor: currency === "MXN" ? "28 days" : "overnight", tenorDays: currency === "MXN" ? 28 : 1, dayCountBasis: 360,
+    publisher, sourceUrl: "https://example.com", value, asOf, fetchedAt: "2026-10-21T10:00:00.000Z", stale: false, unavailableReason: null,
+    ...overrides[currency],
+  });
+  return {
+    generatedAt: "2026-10-21T10:00:00.000Z",
+    rates: [
+      base("USD", "SOFR", 3.87, "2026-10-19", "Federal Reserve Bank of New York"),
+      base("MXN", "TIIE 28d", 6.776, "2026-10-20", "Banco de México"),
+    ],
+  };
+}
+
+test("fx --forward implies the forward from both short rates, shows them with their dates and says it is no dealer quote", async () => {
+  setSystemTime(new Date("2026-10-21T15:00:00Z"));
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());
+  try {
+    // USD/MXN 18.35: one MXN is 1/18.35 USD.
+    const run = harness("USD", { MXN: 1 / 18.35 });
+    await fx.execute(["USD/MXN", "--forward", "30d"], run.context);
+    const [row] = run.rows()[0] as Record<string, unknown>[];
+    expect(row).toMatchObject({ pair: "USD/MXN", tenor: "30d", days: 30, forwardDate: "2026-11-20", label: "implied by rates, not a dealer quote",
+      baseRate: { currency: "USD", name: "SOFR", value: 3.87, asOf: "2026-10-19" }, quoteRate: { currency: "MXN", name: "TIIE 28d", value: 6.776, asOf: "2026-10-20" } });
+    expect(row!.forward as number).toBeCloseTo(18.35 * (1 + 0.06776 * 30 / 360) / (1 + 0.0387 * 30 / 360), 9);
+    const text = run.output("text")[0]!;
+    expect(text).toContain("USD/MXN 30d forward 18.3943, implied by rates, not a dealer quote");
+    expect(text).toContain("forward points +442.9 (pips of 0.0001)");
+    expect(text).toContain("premium +0.2414% over 30 days to 2026-11-20, +2.90% a year");
+    // In the pair's order, each with its day and publisher.
+    expect(text).toContain("USD rate: SOFR 3.87% (Federal Reserve Bank of New York, 2026-10-19; ACT/360)\nMXN rate: TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)");
+
+    // A rate that could not be read, or a currency with none, is named.
+    spy.mockImplementation(async () => shortRates({ MXN: { value: null, asOf: null, unavailableReason: "Banxico did not answer" } }));
+    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { MXN: 1 / 18.35 }).context))
+      .rejects.toThrow("No 30d forward for USD/MXN. TIIE 28d (MXN) could not be read: Banxico did not answer.");
+    spy.mockImplementation(async () => shortRates());
+    await expect(fx.execute(["USD/ZAR", "--forward", "1m"], harness("USD", { ZAR: 0.055 }).context))
+      .rejects.toThrow("No 1m forward for USD/ZAR. No short rate for ZAR; forwards are implied for MXN, USD.");
+    // A server without short rates says forwards are not there yet.
+    spy.mockImplementation(async () => { throw new ApiRequestError("not found", 404); });
+    await expect(fx.execute(["USD/MXN", "--forward", "30d"], harness("USD", { MXN: 1 / 18.35 }).context))
+      .rejects.toThrow("Forwards are not available from Gloom Cloud yet");
+    // A currency typed as its name says which code it was read as, as the spot answer does.
+    spy.mockImplementation(async () => {
+      const payload = shortRates();
+      return { ...payload, rates: [...payload.rates, { ...payload.rates[0]!, currency: "EUR", name: "€STR", value: 2.441, publisher: "European Central Bank" }] };
+    });
+    const named = harness("USD", { EUR: 1.12 });
+    await fx.execute(["euro/USD", "--forward", "3m"], named.context);
+    expect(named.output("json")[0]).toContain("Read euro as EUR.");
+    // A bad tenor or an amount is refused before anything is read.
+    await expect(fx.execute(["USD/MXN", "--forward", "30"], harness("USD", {}).context)).rejects.toThrow("is not a tenor");
+    await expect(fx.execute(["100", "USD/MXN", "--forward", "30d"], harness("USD", { MXN: 0.05 }).context)).rejects.toThrow("--forward prices a pair, not an amount.");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("fx --forward with --date says the forward is today's only and how to get either, reading nothing", async () => {
+  setSystemTime(new Date("2026-10-21T15:00:00Z"));
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());
+  try {
+    const run = datedHarness("USD", CAD_CLOSES);
+    // The failure's second line says what to run instead.
+    const context = { ...run.context, fail: (message: string, details?: unknown): never => { throw new Error(`${message}\n${String(details)}`); } };
+    for (const args of [["USD/MXN", "--forward", "30d", "--date", "2026-09-02"], ["USD/MXN", "--date", "2026-09-02", "--forward", "30d"]]) {
+      await expect(fx.execute(args, context)).rejects.toThrow(
+        "fx --forward does not take --date: the forward is implied from today's spot and the latest short rates, and past short rates are not served.\n"
+        + "For that day's close: gloomberb fx USD/MXN --date 2026-09-02. For today's forward, drop --date.");
+    }
+    expect(spy).not.toHaveBeenCalled();
+    expect(run.asked).toEqual([]);
+    expect(run.rows()).toEqual([]);
+  } finally {
+    spy.mockRestore();
+  }
 });

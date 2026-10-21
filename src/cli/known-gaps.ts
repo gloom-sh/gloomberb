@@ -208,9 +208,16 @@ export function topicPointer(query: string): { message: string; codes: string[] 
  * and `catalog` print beside whatever else the query finds. A query asks for one when every word is a word of that
  * command and one of them names it: "light theme", "dark", "colour-blind", but not "ai theme" (THEM's basket) or
  * "dark pool"; "drip", "dividend income", but not "income statement" or "net income"; "tether", "depeg",
- * "usdc peg", but not "peg ratio".
+ * "usdc peg", but not "peg ratio". A command with `qualifiers` also needs one of them once the query says more than
+ * its name: "fx forward rate", but not "forward rate".
  */
-const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string; leads?: true }> = [
+const COMMAND_POINTERS: ReadonlyArray<{
+  names: readonly string[];
+  words: readonly string[];
+  qualifiers?: readonly string[];
+  line: string;
+  leads?: true;
+}> = [
   BANK_FIGURES_POINTER,
   EXPORT_POINTER,
   {
@@ -228,6 +235,16 @@ const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonl
     names: ["tether", "usdt", "usdc", "depeg", "depegs", "depegged", "depegging", "peg", "pegs", "pegged", "stablecoin", "stablecoins"],
     words: ["stable", "coin", "coins", "off", "check", "monitor", "watch", "scare", "risk", "dollar", "usd", "status", "price", "prices", "low"],
     line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin",
+  },
+  {
+    // A currency forward, not a forward rate on a yield curve, forward guidance, a forward P/E or the forward
+    // inflation series: a query that says more than "forward" has to name FX.
+    names: ["forward", "forwards", "fwd", "fwds"],
+    words: ["rate", "rates", "implied", "hedge", "hedging", "cost", "costs", "premium", "interest", "1w", "2w", "30d", "1m", "3m",
+      "6m", "1y"],
+    qualifiers: ["fx", "currency", "currencies", "point", "points", "pips", "cip", "covered", "parity", "outright",
+      "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
+    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d",
   },
 ];
 
@@ -257,8 +274,9 @@ export function exportCommandPointer(token: string, args: readonly string[]): st
 function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {
   const asked = words(query);
   if (asked.length === 0) return null;
-  return COMMAND_POINTERS.find(({ names, words: other }) => asked.some((word) => names.includes(word))
-    && asked.every((word) => names.includes(word) || other.includes(word))) ?? null;
+  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => asked.some((word) => names.includes(word))
+    && asked.every((word) => names.includes(word) || other.includes(word) || qualifiers.includes(word))
+    && (qualifiers.length === 0 || asked.every((word) => names.includes(word)) || asked.some((word) => qualifiers.includes(word)))) ?? null;
 }
 
 /**

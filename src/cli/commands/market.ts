@@ -193,7 +193,21 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxRate, formatFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
+import {
+  describeShortRate,
+  formatForwardPoints,
+  formatRatePercent,
+  formatSignedPercent,
+  IMPLIED_FORWARD_LABEL,
+  impliedForward,
+  parseForwardTenor,
+  shortRateFor,
+} from "../fx-forward";
+import { unavailableOnServer } from "../../plugins/builtin/shared/cloud-resource";
+
+/** `fx`'s forward form, for its usage line. */
+const FX_FORWARD_USAGE = "fx <base>/<quote> --forward <tenor>";
 import {
   holderListFacts,
   holderListPeriod,
@@ -2122,15 +2136,35 @@ async function runFxOnDate(
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
+  const forwardOption = takeOption(args, "--forward");
   if (args.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  // A forward is implied from today's spot and the latest short rates, which are all Gloom Cloud serves.
+  if (dateOption != null && forwardOption != null) {
+    ctx.fail(
+      "fx --forward does not take --date: the forward is implied from today's spot and the latest short rates, and past short rates are not served.",
+      `For that day's close: gloomberb fx ${args.join(" ")} --date ${dateOption}. For today's forward, drop --date.`,
+    );
+  }
   const date = dateOption == null ? null : readFxDate(dateOption, ctx);
+  const tenor = forwardOption == null ? null : parseForwardTenor(forwardOption);
+  if (tenor && "error" in tenor) ctx.fail(tenor.error, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
   await withMarketData(ctx, async (market) => {
     const parsed = parseFxArgs(args, market.config.baseCurrency);
-    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${FX_USAGE}`);
+    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${forwardOption == null ? FX_USAGE : FX_FORWARD_USAGE}`);
     if (date) return runFxOnDate(parsed, date, args, market, ctx);
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
+    if (tenor) {
+      if (amount != null) ctx.fail("--forward prices a pair, not an amount.", `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+      if (currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+    }
+    // The short rates are read alongside spot. A failed read is held as a value, not left to reject
+    // unobserved while spot loads, and is raised where the forward needs the rates.
+    const shortRates = tenor && !("error" in tenor) ? apiClient.getCloudShortRates().then(
+      (payload) => ({ payload }),
+      (error: unknown) => ({ error: unavailableOnServer(error, "Forwards are not available from Gloom Cloud yet: it serves no short rates.") }),
+    ) : null;
     const reasons = new Map<string, string>();
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
       .load({ force: ctx.cliOptions.refresh }).catch((error) => {
@@ -2166,6 +2200,55 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         timing: { asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes },
       }] as const] : [];
     })));
+    if (tenor && shortRates && !("error" in tenor)) {
+      const read = await shortRates;
+      if ("error" in read) throw read.error;
+      const { rates } = read.payload;
+      // BASE/QUOTE: the forward needs the rate of each; a missing one is named, never filled in.
+      const base = shortRateFor(currency, rates);
+      const quote = shortRateFor(baseCurrency, rates);
+      const missing = [base, quote].flatMap((lookup) => "error" in lookup ? [lookup.error] : []);
+      if ("error" in base || "error" in quote) {
+        return ctx.fail(`No ${tenor.label} forward for ${pair}. ${missing.join(" ")}`, "The forward is implied from both currencies' short rates by covered interest parity.");
+      }
+      const implied = impliedForward(rate, tenor.days, base.rate, quote.rate);
+      const forwardDate = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 + tenor.days * 86_400_000).toISOString().slice(0, 10);
+      const rateFields = (short: typeof base.rate) => ({
+        currency: short.currency, name: short.name, tenor: short.tenor, value: short.value, asOf: short.asOf,
+        dayCountBasis: short.dayCountBasis, publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
+      });
+      const staleRates = [base.rate, quote.rate].filter((short) => short.stale)
+        .map((short) => `${short.name} (${short.currency}) is the last copy read, dated ${short.asOf ?? "undated"}; its source could not be read since.`);
+      const forwardRow = {
+        pair, tenor: tenor.label, days: tenor.days, forwardDate, spot: rate, spotAsOf: asOf, forward: implied.forward,
+        points: implied.points, pointSize: implied.pointSize, premiumPercent: implied.premiumPercent, annualizedPercent: implied.annualizedPercent,
+        baseRate: rateFields(base.rate), quoteRate: rateFields(quote.rate), method: "covered interest parity", label: IMPLIED_FORWARD_LABEL,
+      };
+      const growth = (short: typeof base.rate) => `(1 + ${formatRatePercent(short.value)} × ${tenor.days}/${short.dayCountBasis})`;
+      // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
+      const forwardWarnings = [...request.readAs ?? [], ...staleRates];
+      return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
+        text: () => [
+          `${pair} ${tenor.label} forward ${formatFxRate(implied.forward)}, ${IMPLIED_FORWARD_LABEL}`,
+          `Spot ${formatFxRate(rate)} · forward points ${formatForwardPoints(implied.points)} (pips of ${implied.pointSize}) · ${implied.premiumPercent >= 0 ? "premium" : "discount"} ${formatSignedPercent(implied.premiumPercent)} over ${tenor.days} days to ${forwardDate}, ${formatSignedPercent(implied.annualizedPercent, 2)} a year (×360/${tenor.days})`,
+          `${currency} rate: ${describeShortRate(base.rate)}`,
+          `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
+          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
+        ].join("\n"),
+        exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: `forward ${tenor.label}` },
+        columns: [
+          { key: "pair", header: "Pair" },
+          { key: "tenor", header: "Tenor" },
+          { key: "days", header: "Days", align: "right" },
+          { key: "forwardDate", header: "Forward date" },
+          { key: "spot", header: "Spot", align: "right" },
+          { key: "forward", header: "Forward", align: "right" },
+          { key: "points", header: "Points", align: "right" },
+          { key: "premiumPercent", header: "Premium %", align: "right" },
+          { key: "annualizedPercent", header: "Annualized %", align: "right" },
+        ],
+      });
+    }
     // An amount with one currency names no target; the answer says it went to USD.
     const warnings = [
       // A currency typed as its name (yen) says which code it was read as.
@@ -2555,9 +2638,10 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Convert a currency into your base currency, quote a pair such as USD/NGN, or convert an amount such as fx 1234.5 EUR/USD",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>", "fx <pair> --date <day>"],
+      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>", "fx <pair> --date <day>", FX_FORWARD_USAGE],
       options: [
         { flags: "--date <day>", description: `The rate at that day's daily FX close, such as a transaction date (${DATE_OPTION_EXAMPLES}); a weekend or holiday reads the trading day before it` },
+        { flags: "--forward <tenor>", description: "The forward implied by both currencies' short rates (covered interest parity), not a dealer quote: 30d, 2w, 3m, up to 1y; today's only, so not with --date" },
       ],
       sections: [{
         title: "Direction",
@@ -2576,8 +2660,14 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           "--date gives the rate at that day's daily FX close instead of the latest: fx USD/CAD --date 2026-09-02, or with an amount, fx 1250 USD/CAD --date 2026-09-02. Each currency's USD pair is read at its close of that day and crossed through USD, as the latest rate is. A weekend or market holiday has no close: the answer then gives the trading day before it and says so. The source line dates the close; --json adds date (the day asked for) and asOf (the close used).",
         ],
+      }, {
+        title: "Forwards",
+        lines: [
+          "--forward <tenor> gives the forward implied by covered interest parity: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis), with the forward points (pips of 0.0001, 0.01 against JPY) and the premium over spot for the period and a year. It is implied by rates, not a dealer quote.",
+          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP) and TIIE 28d (MXN), each with its day and publisher. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
+        ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json"],
+      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json", "fx USD/MXN --forward 30d", "fx EUR/USD --forward 3m"],
     },
     execute: runFx,
   },
