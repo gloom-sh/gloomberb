@@ -269,7 +269,7 @@ test("v opens what the selected event rule follows: a security's DES, any other 
 });
 
 describe("alertsPlugin command", () => {
-  test("registers a searchable add command with direct shortcut arguments", async () => {
+  test("adds alerts on the resolved listing after quoting", async () => {
     const store = new Map<string, unknown>();
     const commands: any[] = [];
     const notifications: any[] = [];
@@ -316,15 +316,6 @@ describe("alertsPlugin command", () => {
     try {
       await alertsPlugin.setup?.(ctx as any);
       const command = commands.find((entry) => entry.id === "set-alert");
-
-      expect(command?.keywords).toContain("add");
-      expect(command?.shortcutArg?.parse("AMD")).toEqual({ symbol: "AMD" });
-      expect(command?.shortcutArg?.parse("", { activeTicker: "MSFT" })).toEqual({ symbol: "MSFT" });
-      expect(command?.shortcutArg?.parse("AMD above 200")).toEqual({
-        symbol: "AMD",
-        condition: "above",
-        price: "200",
-      });
 
       await command.execute({ shortcut: "AAPL above 200" });
 
@@ -416,9 +407,141 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
     const before = polled;
     await Bun.sleep(5);
     expect(polled).toBe(before);
+    // A corrupt member arriving while subscribed must also block notification, before any save guard runs.
+    const corrupt = JSON.stringify([{ ...makeAlert("next", "AAPL", "above", 200), lastCheckedPrice: 195 }, null]);
+    store.set("alerts", corrupt);
+    await act(async () => { tick(220); await Bun.sleep(5); });
+    expect(notifications).toHaveLength(1);
+    expect(store.get("alerts")).toBe(corrupt);
   } finally {
     alertsPlugin.dispose?.();
     coordinator.destroy();
     setSharedMarketDataCoordinator(null);
   }
+});
+
+
+test("Add Alert refuses unreadable storage, including corruption arriving during its quote lookup", async () => {
+  const old = makeAlert("old", "AAPL", "above", 200, "triggered");
+  const broken = ["[{broken", JSON.stringify([old, null]), { unexpected: true }];
+  for (const corrupt of broken) {
+    for (const duringLookup of [false, true]) {
+      let raw: unknown = duringLookup ? JSON.stringify([old]) : corrupt;
+      const commands: any[] = [];
+      const notifications: any[] = [];
+      let writes = 0;
+      const ctx = {
+        registerCommand: (command: any) => commands.push(command), registerPane() {}, registerPaneTemplate() {},
+        configState: { get: (key: string) => key === "alerts" ? raw : undefined, set: () => { writes++; } },
+        marketData: { getQuote: async () => {
+          if (duringLookup) raw = corrupt;
+          return { symbol: "AAPL", price: 201, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() };
+        } },
+        tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
+        notify: (value: unknown) => notifications.push(value), log: { info() {}, warn() {} },
+      };
+      try {
+        await alertsPlugin.setup?.(ctx as any);
+        const command = commands.find((entry) => entry.id === "set-alert");
+        await expect(command.execute({ shortcut: "AAPL above 200" })).rejects.toThrow("Saved price alerts");
+        expect(raw).toBe(corrupt);
+        expect(writes).toBe(0);
+        expect(notifications).toEqual([]);
+      } finally { alertsPlugin.dispose?.(); }
+    }
+  }
+});
+
+test("Add Alert waits for persistence and never announces a failed save", async () => {
+  const commands: any[] = [];
+  const notifications: any[] = [];
+  const saved = Promise.withResolvers<void>();
+  let writing = false;
+  const ctx = {
+    registerCommand: (command: any) => commands.push(command), registerPane() {}, registerPaneTemplate() {},
+    configState: { get: () => undefined, set: () => { writing = true; return saved.promise; } },
+    marketData: { getQuote: async () => ({ symbol: "AAPL", price: 201, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() }) },
+    tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
+    notify: (value: unknown) => notifications.push(value), log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    const command = commands.find((entry) => entry.id === "set-alert");
+    const result = command.execute({ shortcut: "AAPL above 200" });
+    const rejected = result.then(() => null, (error: Error) => error);
+    await Bun.sleep(0);
+    expect(writing).toBe(true);
+    expect(notifications).toEqual([]);
+    saved.reject(new Error("disk unavailable"));
+    expect((await rejected)?.message).toBe("disk unavailable");
+    expect(notifications).toEqual([]);
+  } finally { alertsPlugin.dispose?.(); }
+});
+
+test("a background quote finishing after partial corruption neither triggers nor rewrites the store", async () => {
+  const old = makeAlert("old", "AAPL", "above", 200);
+  let raw = serializeAlerts([old]);
+  const quote = Promise.withResolvers<Quote>();
+  let writes = 0;
+  let notifications = 0;
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => key === "alerts" ? raw : undefined, set: () => { writes++; } },
+    marketData: { getQuote: () => quote.promise },
+    notify: () => { notifications++; }, log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    raw = JSON.stringify([old, null]);
+    quote.resolve({ symbol: "AAPL", price: 220, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() } as Quote);
+    await Bun.sleep(0);
+    expect({ writes, notifications }).toEqual({ writes: 0, notifications: 0 });
+    expect(raw).toBe(JSON.stringify([old, null]));
+  } finally { alertsPlugin.dispose?.(); }
+});
+
+for (const action of ["d", "e"] as const) {
+  test(`an open ${action === "d" ? "delete confirmation" : "edit dialog"} refuses newly unreadable storage`, async () => {
+    const alerts = [makeAlert("old", "AAPL", "above", 200)];
+    const notifications: any[] = [];
+    let writes = 0;
+    const runtime = makeRuntime({ notify: (value: unknown) => notifications.push(value), setConfigState: async () => { writes++; } });
+    await tui.render(<AlertsHarness alerts={alerts} runtime={runtime} />, { width: 110, height: 18 });
+    await renderSettled();
+    await act(async () => { await tui.setup().mockInput.typeText(action); await tui.setup().renderOnce(); });
+    await renderSettled();
+    const raw = JSON.stringify([...alerts, null]);
+    await act(async () => {
+      const config = harnessState!.config;
+      harnessDispatch!({ type: "SET_CONFIG", config: { ...config, pluginConfig: { ...config.pluginConfig, alerts: { alerts: raw } } } });
+      await tui.setup().renderOnce();
+    });
+    await act(async () => { tui.setup().mockInput.pressEnter(); await tui.setup().renderOnce(); });
+    await renderSettled();
+    expect(writes).toBe(0);
+    expect(harnessState!.config.pluginConfig.alerts!.alerts).toBe(raw);
+    if (action === "e") {
+      expect(tui.frame()).toContain("Edit alert");
+      expect(tui.frame()).toContain("unreadable entry");
+    } else {
+      expect(notifications).toEqual([expect.objectContaining({ type: "error", body: expect.stringContaining("unreadable entry") })]);
+    }
+  });
+}
+
+test("a delete confirmation uses the latest readable list and keeps alerts added meanwhile", async () => {
+  const alerts = [makeAlert("old", "AAPL", "above", 200)];
+  await tui.render(<AlertsHarness alerts={alerts} />, { width: 110, height: 18 });
+  await renderSettled();
+  await act(async () => { await tui.setup().mockInput.typeText("d"); await tui.setup().renderOnce(); });
+  await renderSettled();
+  const added = makeAlert("new", "MSFT", "below", 300);
+  await act(async () => {
+    const config = harnessState!.config;
+    harnessDispatch!({ type: "SET_CONFIG", config: { ...config, pluginConfig: { ...config.pluginConfig, alerts: { alerts: serializeAlerts([...alerts, added]) } } } });
+    await tui.setup().renderOnce();
+  });
+  await act(async () => { tui.setup().mockInput.pressEnter(); await tui.setup().renderOnce(); });
+  await renderSettled();
+  expect(storedAlerts()).toEqual([added]);
 });

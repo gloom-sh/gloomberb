@@ -107,8 +107,8 @@ export function AlertsPane(props: PaneProps) {
 }
 
 function PriceAlertsPane({ focused, width, height }: PaneProps) {
-  const [alertsJson, setAlertsJson] = usePluginConfigState<string>(ALERTS_KEY, "[]");
-  const { openPluginCommandWorkflow } = usePluginAppActions();
+  const [alertsJson, setAlertsJson] = usePluginConfigState<unknown>(ALERTS_KEY, "[]");
+  const { openPluginCommandWorkflow, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
@@ -158,12 +158,16 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
   }), [liveEntries, rows]);
 
-  const savePaneAlerts = useCallback((next: AlertRule[] | ((current: AlertRule[]) => AlertRule[])) => {
+  const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]) => {
+    let error: string | null = null;
     setAlertsJson((currentJson) => {
+      error = readAlertsStoreError(currentJson);
+      // The config hook skips persistence when the updater returns the unchanged value.
+      if (error) return currentJson;
       const current = deserializeAlerts(currentJson);
-      const resolved = typeof next === "function" ? next(current) : next;
-      return serializeAlerts(resolved);
+      return serializeAlerts(next(current));
     });
+    return error;
   }, [setAlertsJson]);
 
   const deleteAlert = useCallback(async (id: string) => {
@@ -175,15 +179,20 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
-    savePaneAlerts(alerts.filter((a) => a.id !== id));
+    const error = savePaneAlerts((current) => current.filter((a) => a.id !== id));
+    if (error) {
+      notify({ body: error, type: "error" });
+      return;
+    }
     setSelectedIdx((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
-  }, [alerts, dialog, rows.length, savePaneAlerts]);
+  }, [alerts, dialog, notify, rows.length, savePaneAlerts]);
 
   const rearmAlert = useCallback((id: string) => {
-    savePaneAlerts(
-      alerts.map((a) => (a.id === id ? rebuildAlert(a) : a)),
+    const error = savePaneAlerts(
+      (current) => current.map((a) => (a.id === id ? rebuildAlert(a) : a)),
     );
-  }, [alerts, savePaneAlerts]);
+    if (error) notify({ body: error, type: "error" });
+  }, [notify, savePaneAlerts]);
 
   const startAddAlert = useCallback(() => {
     openPluginCommandWorkflow("set-alert");
@@ -222,11 +231,12 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
           onApply={async (value) => {
             const parsed = parseAlertCommandValues({ shortcut: value });
             if (!parsed) throw new Error("Use SYMBOL above|below|crosses PRICE.");
-            savePaneAlerts((current) => current.map((alert) => (
+            const error = savePaneAlerts((current) => current.map((alert) => (
               alert.id === selected.id
                 ? editAlert(alert, parsed.symbol, parsed.condition, parsed.price)
                 : alert
             )));
+            if (error) throw new Error(error);
           }}
         />
       ),

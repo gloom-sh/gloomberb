@@ -509,6 +509,10 @@ nothing is refused with the nearest listing (`did you mean AAPL`), and a bare
 code kept on a listing abroad names it. Alerts saved earlier are left as they
 are.
 
+If saved price alerts cannot be read, the app and CLI leave their original data
+unchanged. Price checks pause until that data is repaired; the pane and
+`gloomberb alerts list` show the read error. Healthy event alerts remain usable.
+
 ### Alerts before earnings, CPI and FOMC
 
 To watch a position through a scheduled event, alert a number of days before

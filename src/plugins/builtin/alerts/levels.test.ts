@@ -25,7 +25,9 @@ describe("chart levels as price alerts", () => {
   });
 
   test("leaves a store it cannot read untouched", () => {
-    expect(addLevelAlert("{not json", { symbol: "NVDA" }, 230, 228)).toHaveProperty("error");
+    for (const raw of ["{not json", JSON.stringify([createAlert("AAPL", "above", 200), null]), 42]) {
+      expect(addLevelAlert(raw, { symbol: "NVDA" }, 230, 228)).toHaveProperty("error");
+    }
   });
 
   test("a chart draws the active alerts on its listing, and ones set without an exchange", () => {
