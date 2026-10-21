@@ -237,10 +237,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
     : "";
-  const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub")
-    + (changeBasisText ? 1 + displayWidth(changeBasisText) : 0);
+  const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
+  // What the move is from follows it on its line when there is room; otherwise it takes the line
+  // under the headline, so a narrow pane never splits the move itself to fit the words.
+  const changeBasisInline = !!changeBasisText && (stackQuoteSummary ? 0 : figureCells(quotePriceText) + 2)
+    + quoteChangeCells + 1 + displayWidth(changeBasisText) <= quoteTextWidth;
   const companyNameWidth = Math.max(8, quoteTextWidth
     - displayWidth(venueText)
     - (marketStateText ? displayWidth(marketStateText) + 1 : 0));
@@ -364,14 +367,19 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 <FigureText>{quotePriceText}</FigureText>
                 {!delisted && (
                   <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}
-                    alignItems={changeBasisText && !stackQuoteChange ? "baseline" : undefined}>
+                    alignItems={changeBasisInline ? "baseline" : undefined}>
                     <FigureText part="sub" change={sessionQuote.change}>{quoteChangeText}</FigureText>
                     <FigureText part="sub" change={sessionQuote.change}>{quotePercentText}</FigureText>
-                    {changeBasisText ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
+                    {changeBasisInline ? <Text flexShrink={0} fg={colors.textDim}>{changeBasisText}</Text> : null}
                   </Box>
                 )}
               </Box>
             )}
+            {sessionQuote && changeBasisText && !changeBasisInline ? (
+              <Box minWidth={0} overflow="hidden">
+                <ClippedText fg={colors.textDim} text={changeBasisText} width={quoteTextWidth} />
+              </Box>
+            ) : null}
             {sessionQuote && changeBasisNoteText ? (
               <Box minWidth={0} overflow="hidden">
                 <ClippedText fg={colors.textDim} text={changeBasisNoteText} width={quoteTextWidth} />
