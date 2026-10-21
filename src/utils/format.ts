@@ -76,6 +76,27 @@ export function formatCurrency(
   return formatMoney(value, currency, maximumFractionDigits);
 }
 
+/**
+ * An amount with its currency's code after it (259.36 USD, -5.57 CAD), for a
+ * report read by someone whose own currency shares the sign: $ alone is the
+ * US, Canadian and Australian dollar. The same decimals as `formatCurrency`;
+ * a minor unit keeps its sign (314.95¢, 412.50p).
+ */
+export function formatCurrencyCode(
+  value: number | undefined,
+  currency = "USD",
+  maximumFractionDigits: number = currencyPriceDigits(currency),
+): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (minorUnitSign(currency)) return formatMoney(value, currency, maximumFractionDigits);
+  const code = currency.trim().toUpperCase();
+  const body = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Math.min(currencyPriceDigits(code), maximumFractionDigits),
+    maximumFractionDigits,
+  }).format(Math.abs(value));
+  return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body} ${code}`;
+}
+
 /** Preserve fractional per-share distributions, including split-adjusted history. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
   if (value == null || !Number.isFinite(value)) return "—";

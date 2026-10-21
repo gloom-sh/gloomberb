@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { SecFilingItem } from "../../../types/data-provider";
@@ -12,6 +12,7 @@ import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../.
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { setCliWidthOverride } from "../../../utils/cli-output";
+import { createDefaultConfig } from "../../../types/config";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -186,6 +187,44 @@ describe("insider headless model", () => {
     expect(shown.rows.map((row) => [row.insider, row.insiderName, row.role])).toEqual([["SU LISA T", "Lisa T. Su", "CEO"]]);
     expect(requestedLimits).toEqual([2, 2, 2]);
   });
+});
+
+// GLO-1106: `fn INS JNJ` with a CAD base printed $6.19M and $61.99M with no currency in text or JSON.
+test("every value carries its currency, and a CAD base adds each value in CAD at its transaction day's USD/CAD close", async () => {
+  const headless = createInsiderHeadless({
+    loadParsed: async () => ({ parsed, foreignPrivateIssuer: false, noFilings: false }),
+    // USD/CAD closes; 2026-08-23 is a Sunday, so its value reads Friday's close.
+    fxHistory: {
+      getCloudHistory: async (symbol) => ({
+        status: "success",
+        data: symbol === "CAD=X" ? [["2026-08-21", 1.3912], ["2026-08-24", 1.3851], ["2026-08-25", 1.3876], ["2026-10-19", 1.4062]]
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close: close as number })) : [],
+      }),
+    },
+  });
+  const cad = createDefaultConfig("/tmp/gloomberb-headless-test");
+  cad.baseCurrency = "CAD";
+  // The closes run to the day before "today", as a live history does.
+  setSystemTime(new Date("2026-10-20T12:00:00Z"));
+  const result = await Promise.resolve(headless.load(args("", 2), createTestHeadlessContext({ config: cad }))).finally(() => setSystemTime());
+  expect(result.rows.map((row) => [row.currency, row.totalValue, row.baseCurrency, row.fxRate, row.fxDate])).toEqual([
+    ["USD", 3_750_000, "CAD", 1.3876, "2026-08-25"],
+    ["USD", 155_000, "CAD", 1.3912, "2026-08-21"],
+  ]);
+  expect(result.rows[0]!.valueBase).toBeCloseTo(3_750_000 * 1.3876, 4);
+  expect(result.notes).toEqual(["Value (CAD) is each value at the USD/CAD daily close of its transaction day, or of the trading day before it; USD/CAD is that rate."]);
+  setCliWidthOverride(200);
+  try {
+    const text = renderHeadlessPaneText(headless, result, args("", 2), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(text.find((line) => line.startsWith("Form"))).toMatch(/Price \(USD\)\s+Value \(USD\)\s+Value \(CAD\)\s+USD\/CAD$/);
+    expect(text.find((line) => line.includes("SU LISA T") || line.includes("Lisa T. Su"))).toMatch(/150\.00\s+3\.75M\s+5\.2M\s+1\.3876$/);
+  } finally {
+    setCliWidthOverride(null);
+  }
+  // A USD base keeps its columns; the rows still say USD.
+  const usd = await headless.load(args("", 2), createTestHeadlessContext());
+  expect(usd.columns).toBeUndefined();
+  expect(usd.rows.map((row) => [row.currency, row.valueBase])).toEqual([["USD", undefined], ["USD", undefined]]);
 });
 
 describe("insider report without a ticker", () => {

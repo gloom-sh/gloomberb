@@ -2,7 +2,7 @@ import type { PriceBasis } from "../../types/instrument";
 import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "./price-basis";
 import { isIndexLevel } from "./index-level";
-import { currencyPriceDigits, formatCompact, formatCurrency } from "../../utils/format";
+import { currencyPriceDigits, formatCompact, formatCurrency, formatCurrencyCode } from "../../utils/format";
 import { minorUnitSign } from "../../utils/currency-units";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
@@ -26,6 +26,8 @@ export interface MarketFormatOptions extends AssetDisplayContext {
   fixedFractionDigits?: number;
   /** Source units per displayed currency unit; a price quoted in pence keeps its pence decimals in pounds. */
   quotedUnitDivisor?: number;
+  /** Write the currency's code after a money price (259.36 USD) instead of its sign ($259.36): a report for a base currency other than USD. */
+  currencyCode?: boolean;
   /** A price that holds still for the session, such as the previous close. With
    * `fixedFractionDigits`, the kind's decimal ceiling is read at this price
    * instead of at the value, so a live price keeps its decimals as it moves. */
@@ -450,9 +452,10 @@ export function formatMarketChangeWithCurrency(
       return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, options)}`;
     }
   }
+  const money = options.currencyCode ? formatCurrencyCode : formatCurrency;
   // A move that rounds to zero cents is unsigned rather than -$0.00.
-  if (Math.abs(value) < smallestMove) return formatCurrency(0, currency);
-  return `${value > 0 ? "+" : ""}${formatCurrency(value, currency)}`;
+  if (Math.abs(value) < smallestMove) return money(0, currency);
+  return `${value > 0 ? "+" : ""}${money(value, currency)}`;
 }
 
 /** Decimals the currency's minor unit has: two for GBP, none for JPY. */
@@ -619,9 +622,10 @@ export function liveQuoteFormatOptions(
  * 412.50p for pence), as `minorUnitSign` names them. A minor unit is read
  * before upper-casing, as GBp is pence and GBP pounds.
  */
-function currencyMarks(currency: string, normalizedCurrency: string): { prefix: string; suffix: string } {
+function currencyMarks(currency: string, normalizedCurrency: string, code = false): { prefix: string; suffix: string } {
   const minor = minorUnitSign(currency);
-  return minor ? { prefix: "", suffix: minor } : { prefix: getCurrencySymbol(normalizedCurrency), suffix: "" };
+  if (minor) return { prefix: "", suffix: minor };
+  return code ? { prefix: "", suffix: ` ${normalizedCurrency}` } : { prefix: getCurrencySymbol(normalizedCurrency), suffix: "" };
 }
 
 export function formatMarketPriceWithCurrency(
@@ -633,7 +637,7 @@ export function formatMarketPriceWithCurrency(
   if (isIndexLevel(options.assetCategory) || resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketPrice(value, options);
   const normalizedCurrency = currency.trim().toUpperCase() || "USD";
   const sign = value < 0 ? "-" : "";
-  const { prefix, suffix } = currencyMarks(currency, normalizedCurrency);
+  const { prefix, suffix } = currencyMarks(currency, normalizedCurrency, options.currencyCode);
   const numericWidth = options.maxWidth == null
     ? undefined
     : Math.max(1, options.maxWidth - sign.length - prefix.length - suffix.length);
@@ -650,7 +654,7 @@ export function formatMarketCostWithCurrency(
   if (resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatMarketCost(value, options);
   const normalizedCurrency = currency.trim().toUpperCase() || "USD";
   const sign = value < 0 ? "-" : "";
-  const { prefix, suffix } = currencyMarks(currency, normalizedCurrency);
+  const { prefix, suffix } = currencyMarks(currency, normalizedCurrency, options.currencyCode);
   const numericWidth = options.maxWidth == null
     ? undefined
     : Math.max(1, options.maxWidth - sign.length - prefix.length - suffix.length);

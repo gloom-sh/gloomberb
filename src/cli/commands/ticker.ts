@@ -8,6 +8,7 @@ import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapi
 import {
   formatCompact,
   formatCurrency,
+  formatCurrencyCode,
   formatNumber,
   formatPercent,
   formatPercentRaw,
@@ -47,7 +48,8 @@ import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
 import { isFuturesTicker } from "../../portfolio/futures-positions";
-import { createBaseConverter } from "../base-converter";
+import { createBaseConverter, type BaseConversion } from "../base-converter";
+import { formatFxRate } from "../fx-pair";
 import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
@@ -161,8 +163,8 @@ function wrapProse(text: string): string {
   return wrapText(text, Math.min(cliTerminalWidth() ?? MAX_PROSE_WIDTH, MAX_PROSE_WIDTH)).join("\n");
 }
 
-function buildStatementMetrics(statement: FinancialStatement, currency?: string): Array<[string, string]> {
-  const money = (value: number | undefined, perShare = false) => formatReportedMoney(value, currency, perShare);
+function buildStatementMetrics(statement: FinancialStatement, currency?: string, codes = false): Array<[string, string]> {
+  const money = (value: number | undefined, perShare = false) => formatReportedMoney(value, currency, perShare, codes);
   return [
     ["Revenue", money(statement.totalRevenue)],
     ["Gross Profit", money(statement.grossProfit)],
@@ -298,8 +300,11 @@ function shouldFetchSecFilings(
 }
 
 async function appendTickerPositions(lines: string[], tickerFile: TickerRecord | null, quote: TickerFinancials["quote"],
-  config: AppConfig, toBase: (value: number, currency: string) => Promise<number>): Promise<void> {
+  config: AppConfig, toBase: ReportBaseConverter): Promise<void> {
   const quoteCurrency = quote?.currency?.trim() || tickerFile?.metadata.currency?.trim() || "";
+  const codes = writesCurrencyCodes(config);
+  const money = codes ? formatCurrencyCode : formatCurrency;
+  const converted = new Set<string>();
   if (tickerFile && tickerFile.metadata.positions.length > 0) {
     lines.push("");
     lines.push(renderSection("Positions"));
@@ -314,6 +319,8 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       const currentPrice = getPortfolioQuoteDisplay(metrics, quote)?.price ?? null;
       const currentPriceBase = currentPrice != null && quoteCurrency ? await toBase(currentPrice, quoteCurrency) : null;
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
+      if (positionCurrency) converted.add(positionCurrency.toUpperCase());
+      if (quoteCurrency && currentPrice != null) converted.add(quoteCurrency.toUpperCase());
       const baseMetrics = getPortfolioPositionMetrics({ ...tickerFile, metadata: { ...tickerFile.metadata, positions: [position] } }, undefined, quoteCurrency,
         { currency: config.baseCurrency, convert: value => value * positionRate }, quote);
       // A cost bought at an entered rate into the base currency converts at it, as its P&L does; any other at today's.
@@ -329,24 +336,49 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       const stats: CliStatEntry[] = [
         [
           "Position",
-          `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : contracts ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"}`,
+          `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : contracts ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, currencyCode: codes }) : "—"}`,
         ],
-        ["Cost Basis", formatCurrency(costBasisBase, config.baseCurrency)],
-        ["Market Value", formatCurrency(marketValueBase, config.baseCurrency)],
+        ["Cost Basis", money(costBasisBase, config.baseCurrency)],
+        ["Market Value", money(marketValueBase, config.baseCurrency)],
         [
           selectedPnl.basis === "broker-snapshot" ? "Broker P&L" : "P&L",
-          pnl === null ? "—" : colorBySign(formatSignedCurrency(pnl, config.baseCurrency), pnl),
+          pnl === null ? "—" : colorBySign(formatSignedCurrency(pnl, config.baseCurrency, codes), pnl),
         ],
       ];
       if (position.markPrice != null) {
-        stats.push(["Broker Mark", positionCurrency ? formatMarketPriceWithCurrency(position.markPrice, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"]);
+        stats.push(["Broker Mark", positionCurrency ? formatMarketPriceWithCurrency(position.markPrice, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, currencyCode: codes }) : "—"]);
       }
       lines.push(renderStats(stats));
       if (index < positions.length - 1) {
         lines.push("");
       }
     }
+    for (const note of conversionNotes(toBase, converted)) lines.push(cliStyles.muted(note));
   }
+}
+
+/** The ticker report's converter: what `createBaseConverter` makes, whose rates a report states; a plain function in tests. */
+type ReportBaseConverter = ((value: number, fromCurrency: string) => Promise<number>) & { conversions?(): BaseConversion[] };
+
+/**
+ * A base currency other than USD reads every amount with its code (259.36
+ * USD, 878.15B CAD): $ alone is also the Canadian, Australian and other
+ * dollars. A USD base keeps the signs it always had.
+ */
+export function writesCurrencyCodes(config: Pick<AppConfig, "baseCurrency"> | undefined): boolean {
+  const base = config?.baseCurrency?.trim().toUpperCase();
+  return !!base && base !== "USD";
+}
+
+/**
+ * "CAD at USD/CAD 1.40623, as of 2026-10-21 04:46 UTC.": the rate and its
+ * date for each currency in `currencies` the report converted into the base
+ * currency, so a converted figure is never without what it was converted at.
+ */
+function conversionNotes(toBase: ReportBaseConverter, currencies: ReadonlySet<string>): string[] {
+  return (toBase.conversions?.() ?? [])
+    .filter((conversion) => currencies.has(conversion.currency) && conversion.currency !== conversion.baseCurrency)
+    .map(({ currency, baseCurrency, rate, asOf }) => `${baseCurrency} figures at ${currency}/${baseCurrency} ${formatFxRate(rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ""}.`);
 }
 
 /** A source's enterprise value is in the units of the capitalization it reports beside it,
@@ -373,9 +405,9 @@ interface FundamentalsMetric {
 
 type MetricFigure = Omit<FundamentalsMetric, "label">;
 
-/** An amount in the currency the source reported it in; `ccy?` when it named none, as the text says. */
-function reportedMoney(value: number | undefined, currency: string | undefined, perShare = false): MetricFigure {
-  return { text: formatReportedMoney(value, currency, perShare), value, unit: currency?.trim() || "ccy?" };
+/** An amount in the currency the source reported it in; `ccy?` when it named none, as the text says. `codes`: per share too (6.54 USD). */
+function reportedMoney(value: number | undefined, currency: string | undefined, perShare = false, codes = false): MetricFigure {
+  return { text: formatReportedMoney(value, currency, perShare, codes), value, unit: currency?.trim() || "ccy?" };
 }
 
 /** The EV line: labelled "(provider)" when it is more than 5% from market cap + debt - cash, "unavailable" when withdrawn. */
@@ -565,6 +597,7 @@ function fundamentalsMetrics(
   enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
   distributions: DividendDistributions | null = null,
   bond: FundBondFacts | null = null,
+  codes = false,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -576,7 +609,7 @@ function fundamentalsMetrics(
     { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
     { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
     // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
-    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
+    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
     {
       label: dividendYieldLabel(fundamentals?.dividendYieldBasis, bond),
       ...forwardYieldFigure(fundamentals, distributions),
@@ -679,6 +712,8 @@ type FundamentalsReportData = TickerFinancials & {
   bank?: BankFiguresPayload | null;
   /** In place of `bank`, for a bank whose figures could not be read. */
   bankNote?: string | null;
+  /** A base currency other than USD: every amount reads with its code (`writesCurrencyCodes`). */
+  currencyCodes?: boolean;
 };
 
 /** "Latest quarter 2026-06-30, 10-Q filed 2026-08-06." and the newer quarter's results release, for the lines under a report's figures. */
@@ -718,7 +753,10 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
   const quote = financials.quote;
   const session = getRegularSessionDisplay(quote);
   if (!quote || !session) return [];
-  const options = withCurrencyMinorDigits(quoteFormatOptions(quote, undefined, financials.quoteMetadata?.instrumentType), quote.currency);
+  const options = withCurrencyMinorDigits({
+    ...quoteFormatOptions(quote, undefined, financials.quoteMetadata?.instrumentType),
+    ...financials.currencyCodes ? { currencyCode: true } : {},
+  }, quote.currency);
   const price = (value: number) => formatMarketPriceWithCurrency(value, quote.currency, options);
   const extended = getExtendedSessionDisplay(quote);
   const extendedLabel = extended ? EXTENDED_SESSION_LABELS[extended.session] : "";
@@ -762,7 +800,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
   const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
-    undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null);
+    undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true);
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
       .filter((metric) => metric.text !== "—");
@@ -922,7 +960,7 @@ export async function buildTickerReport({
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
-  toBase: (value: number, fromCurrency: string) => Promise<number>;
+  toBase: ReportBaseConverter;
   notes?: string;
   /** Why there is no quote, when a source said; "Quote unavailable." otherwise. */
   quoteNote?: string;
@@ -939,8 +977,10 @@ export async function buildTickerReport({
   const profile = financials.profile;
   const name = quote?.name || tickerFile?.metadata.name || symbol;
   const baseQuoteOptions = quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType);
+  const baseCurrency = config.baseCurrency.trim().toUpperCase();
+  const codes = writesCurrencyCodes(config);
   // Pad money prices to the currency's minor unit so a range reads £35.10 - £35.485, never past it (JPY has none).
-  const quoteOptions = withCurrencyMinorDigits(baseQuoteOptions, quote?.currency);
+  const quoteOptions = withCurrencyMinorDigits(codes ? { ...baseQuoteOptions, currencyCode: true } : baseQuoteOptions, quote?.currency);
   const lines: string[] = [];
 
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);
@@ -990,21 +1030,25 @@ export async function buildTickerReport({
   // Market cap and the multiples are measured at the regular session price the Quote section heads with.
   const priced = atRegularSessionPrice(financials);
   const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
-  const convertedMarketCap = capitalization ? await toBase(capitalization.value, capitalization.currency) : Number.NaN;
+  // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do,
+  // with the base currency's figure after them when it differs: 627.2B USD (878.15B CAD).
+  const convertedCurrencies = new Set<string>();
+  const inBase = async (value: number, currency: string): Promise<string> => {
+    if (currency.trim().toUpperCase() === baseCurrency) return "";
+    const converted = await toBase(value, currency);
+    if (!Number.isFinite(converted)) return "";
+    convertedCurrencies.add(currency.trim().toUpperCase());
+    return ` (${formatCompact(converted)} ${baseCurrency})`;
+  };
   const marketCapText = capitalization
-    ? Number.isFinite(convertedMarketCap)
-      ? `${formatCompact(convertedMarketCap)} ${config.baseCurrency}`
-      : `${formatCompact(capitalization.value)} ${capitalization.currency}`
+    ? `${formatCompact(capitalization.value)} ${capitalization.currency}${await inBase(capitalization.value, capitalization.currency)}`
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
   const enterpriseValue = reportedEnterpriseValue(priced.fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
-  const convertedEnterpriseValue = enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
-    ? await toBase(enterpriseValue, evCurrency) : Number.NaN;
-  const enterpriseValueText = Number.isFinite(convertedEnterpriseValue)
-    ? `${formatCompact(convertedEnterpriseValue)} ${config.baseCurrency}`
-    : formatReportedMoney(enterpriseValue, evCurrency);
+  const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
+    ? await inBase(enterpriseValue, evCurrency) : ""}`;
 
   if (quote) {
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
@@ -1049,10 +1093,11 @@ export async function buildTickerReport({
   }
 
   const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
-    { text: enterpriseValueText }, distributions, bondFund);
+    { text: enterpriseValueText }, distributions, bondFund, codes);
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  if (lines.length > beforeFundamentals) for (const note of conversionNotes(toBase, convertedCurrencies)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
     quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);
@@ -1070,13 +1115,13 @@ export async function buildTickerReport({
   const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date);
   if (latestAnnual) {
     appendMetricSection(lines, `Latest Annual (${statementPeriodText(latestAnnual.date, statementFilings?.latestAnnual ?? null)})`,
-      buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual)));
+      buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual), codes));
   }
 
   const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date);
   if (latestQuarter) {
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
-      buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter)));
+      buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes));
   }
   // The statements stop a quarter short of the results the company has released.
   if (statementFilings?.resultsRelease && (latestAnnual || latestQuarter)) lines.push(cliStyles.muted(resultsReleaseText(statementFilings.resultsRelease)));

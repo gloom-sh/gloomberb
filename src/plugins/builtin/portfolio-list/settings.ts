@@ -195,6 +195,7 @@ function describeColumnOption(column: ColumnConfig): string {
   if (column.id === "perp_premium") return "Premium of the stock's perpetual to its last price.";
   if (column.id === "perp_funding") return "Funding of the stock's perpetual, per 8 hours.";
   if (column.id === "as_of") return "When each row's price is from: its last print, or the regular close.";
+  if (column.id === "currency") return "The currency each row is priced in; shown by default once a row is in another currency than the totals.";
   return PORTFOLIO_ONLY_COLUMN_IDS.has(column.id)
     ? "Visible only when this pane is showing a portfolio."
     : "Visible for watchlists and portfolios.";
@@ -275,12 +276,29 @@ export function resolvePortfolioPaneCollectionId(
   return resolveActiveCollectionId(currentCollectionId, visibleCollections);
 }
 
+/**
+ * A collection holding listings in another currency than its totals shows
+ * CCY after LAST, so RY's 278.08 reads as Canadian dollars beside JNJ's US
+ * ones, unless the pane's columns already place CCY.
+ */
+function withCurrencyColumn(columnIds: string[]): string[] {
+  if (columnIds.includes("currency")) return columnIds;
+  const price = columnIds.indexOf("price");
+  const at = price >= 0 ? price + 1 : Math.min(1, columnIds.length);
+  return [...columnIds.slice(0, at), "currency", ...columnIds.slice(at)];
+}
+
 export function resolveVisibleColumns(
   columnIds: string[],
   isPortfolioTab: boolean,
-  { targetWeights = false }: { targetWeights?: boolean } = {},
+  { targetWeights = false, otherCurrencies = false }: {
+    targetWeights?: boolean;
+    /** A row is in another currency than the totals (`holdsOtherCurrencies`): CCY shows. */
+    otherCurrencies?: boolean;
+  } = {},
 ): ColumnConfig[] {
-  const resolved = (isPortfolioTab && targetWeights ? withTargetColumns(columnIds) : columnIds)
+  const withTargets = isPortfolioTab && targetWeights ? withTargetColumns(columnIds) : columnIds;
+  const resolved = (otherCurrencies ? withCurrencyColumn(withTargets) : withTargets)
     .map((columnId) => PORTFOLIO_COLUMNS_BY_ID.get(columnId))
     .filter((column): column is ColumnConfig => column != null)
     .filter((column) => isPortfolioTab || !PORTFOLIO_ONLY_COLUMN_IDS.has(column.id));

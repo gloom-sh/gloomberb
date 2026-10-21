@@ -81,6 +81,7 @@ import { QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
+  holdsOtherCurrencies,
   getCollectionTickersFromConfig,
   getCollectionTypeFromConfig,
   resolveVisibleWarmupRequirements,
@@ -197,9 +198,16 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   // The positions stay as last synced while the broker is away, dated, with one key to bring it back.
   const offlineBrokerFooter = useOfflineBrokerFooter(brokerPortfolio ? offline : null);
   const portfolioTargets = currentPortfolio?.targetWeights;
+  // Totals, money columns and account values are in the portfolio's currency.
+  const totalsCurrency = useMemo(
+    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
+    [config.baseCurrency, currentPortfolio],
+  );
+  // A boolean, so a quote tick does not rebuild the columns.
+  const otherCurrencies = holdsOtherCurrencies(tickers, financialsMap, totalsCurrency);
   const columns = useMemo(
-    () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio) }),
-    [currentPortfolio, isPortfolioTab, paneSettings.columnIds],
+    () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio), otherCurrencies }),
+    [currentPortfolio, isPortfolioTab, otherCurrencies, paneSettings.columnIds],
   );
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
@@ -211,11 +219,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [columns],
   );
 
-  // Totals, money columns and account values are in the portfolio's currency.
-  const totalsCurrency = useMemo(
-    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
-    [config.baseCurrency, currentPortfolio],
-  );
   // The broker account's cash when it reports one, else the cash entered by hand.
   const cashLine = useMemo(
     () => isPortfolioTab ? resolvePortfolioCash(currentPortfolio, accountState?.account) : null,

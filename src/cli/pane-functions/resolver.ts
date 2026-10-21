@@ -148,7 +148,8 @@ export async function applyListingArgument(
   // A list entry with spaces is a company's name search finds, or the symbols it holds.
   const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
   if (typed.length === 0) return args;
-  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
+  // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
+  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();

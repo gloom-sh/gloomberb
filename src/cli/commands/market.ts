@@ -53,7 +53,7 @@ import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshnes
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
-  renderFundamentalsReport,
+  renderFundamentalsReport, writesCurrencyCodes,
 } from "./ticker";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
@@ -80,7 +80,9 @@ import {
   type OptionsChainBasis,
 } from "./options-chain";
 import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../utils/option-expiry";
-import { DATE_OPTION_EXAMPLES } from "../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
+import { apiClient } from "../../api-client";
+import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
@@ -1211,7 +1213,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         symbol: identity.symbol || listing.key, bond, rates, treasury: await treasury,
         distribution: distributionBasis(priced.fundamentals?.dividendYield, priced.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
       }) : null;
-      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent };
+      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent,
+        // A base currency other than USD reads every amount with its code, as `ticker` does.
+        currencyCodes: writesCurrencyCodes(market.config) };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1959,11 +1963,108 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 /** What an options chain export's `interval` says: one quote snapshot, not bars. */
 const OPTIONS_EXPORT_INTERVAL = "snapshot";
 
+/** `fx --date`: a past day as YYYY-MM-DD; today's close is not in yet, so it is refused, as is a day ahead. */
+function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
+  let date: string;
+  try {
+    date = isoDateOption(value, "date");
+  } catch (error) {
+    return ctx.fail(error instanceof Error ? error.message : String(error));
+  }
+  if (!date) return ctx.fail("--date takes a day, such as --date 2026-09-02.");
+  const today = isoDateToday();
+  if (date >= today) {
+    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today}).`, "Without --date, fx gives the latest rate.");
+  }
+  return date;
+}
+
+/**
+ * `fx <pair> --date <day>`: the rate at that day's daily FX closes, read as
+ * PORT and PEB read them (`fxCloseOnDate`): each currency's USD pair at its
+ * close of the day, or of the last trading day before it, which the answer
+ * then says, crossed through USD as the latest rate is.
+ */
+async function runFxOnDate(
+  parsed: Exclude<ReturnType<typeof parseFxArgs>, { error: string }>,
+  date: string,
+  args: readonly string[],
+  market: MarketContext,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+) {
+  const { request, amount, toUsdByDefault } = parsed;
+  const { currency, baseCurrency } = request;
+  const pair = `${currency}/${baseCurrency}`;
+  const history = market.fxHistory ?? apiClient;
+  const codes = [...new Set([currency, baseCurrency].filter((code) => code !== "USD"))];
+  const legs = new Map<string, FxCloseReading>([["USD", { rate: 1, date }]]);
+  if (currency !== baseCurrency) {
+    for (const code of codes) {
+      const leg = dailyFxLeg(code);
+      if (!leg) return ctx.fail(`${code} has no daily FX closes to read a rate for ${date} from.`);
+      let reading: FxCloseReading | null;
+      try {
+        reading = await fxCloseOnDate(leg, date, history);
+      } catch (error) {
+        return ctx.fail(`The daily ${code} FX closes could not be read.`, error instanceof Error ? error.message : String(error));
+      }
+      if (!reading) {
+        return ctx.fail(`No ${leg.invert ? `USD/${code}` : `${code}/USD`} daily close in the week up to ${date}.`,
+          "Without --date, fx gives the latest rate.");
+      }
+      legs.set(code, reading);
+    }
+  }
+  const from = legs.get(currency), into = legs.get(baseCurrency);
+  const rate = currency === baseCurrency ? 1 : crossRate(from?.rate, into?.rate);
+  // A cross is as old as its older close; a weekend or holiday reads the trading day before it.
+  const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
+  const converted = amount == null ? null : amount * rate;
+  const row = {
+    currency, baseCurrency, rate, asOf: closeDate, stale: false, pair, inverse: 1 / rate, date,
+    ...(amount == null ? {} : { amount, converted }),
+  };
+  const warnings = [
+    ...request.readAs ?? [],
+    ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
+    ...toUsdByDefault && amount != null
+      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --date ${date}.`]
+      : [],
+  ];
+  ctx.printResult({
+    data: [row],
+    // A past close is what was asked for, never stale.
+    freshness: rowsFreshness([], { status: "not-a-feed", basis: "daily FX close", asOf: closeDate }),
+    warnings: warnings.length > 0 ? warnings : undefined,
+  }, {
+    text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
+    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "1day" },
+    columns: [
+      { key: "currency", header: "Currency" },
+      { key: "baseCurrency", header: "Base" },
+      { key: "rate", header: "Rate", align: "right" },
+      { key: "date", header: "Date" },
+      { key: "asOf", header: "Close" },
+      { key: "stale", header: "Stale" },
+      { key: "pair", header: "Pair" },
+      { key: "inverse", header: "Inverse", align: "right" },
+      ...(amount == null ? [] : [
+        { key: "amount", header: "Amount", align: "right" as const },
+        { key: "converted", header: "Converted", align: "right" as const },
+      ]),
+    ],
+  });
+}
+
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  if (rawArgs.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  const args = [...rawArgs];
+  const dateOption = takeOption(args, "--date");
+  if (args.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  const date = dateOption == null ? null : readFxDate(dateOption, ctx);
   await withMarketData(ctx, async (market) => {
-    const parsed = parseFxArgs(rawArgs, market.config.baseCurrency);
+    const parsed = parseFxArgs(args, market.config.baseCurrency);
     if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${FX_USAGE}`);
+    if (date) return runFxOnDate(parsed, date, args, market, ctx);
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
@@ -2007,7 +2108,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       // A currency typed as its name (yen) says which code it was read as.
       ...request.readAs ?? [],
       ...toUsdByDefault && amount != null
-        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${rawArgs[0]!.trim()} ${currency}/<to>.`]
+        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to>.`]
         : [],
     ];
     ctx.printResult({ data: [row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
@@ -2391,7 +2492,10 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Convert a currency into your base currency, quote a pair such as USD/NGN, or convert an amount such as fx 1234.5 EUR/USD",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>"],
+      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>", "fx <pair> --date <day>"],
+      options: [
+        { flags: "--date <day>", description: `The rate at that day's daily FX close, such as a transaction date (${DATE_OPTION_EXAMPLES}); a weekend or holiday reads the trading day before it` },
+      ],
       sections: [{
         title: "Direction",
         lines: [
@@ -2404,8 +2508,13 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1,234 or 1.234 EUR are thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
         ],
+      }, {
+        title: "A past day",
+        lines: [
+          "--date gives the rate at that day's daily FX close instead of the latest: fx USD/CAD --date 2026-09-02, or with an amount, fx 1250 USD/CAD --date 2026-09-02. Each currency's USD pair is read at its close of that day and crossed through USD, as the latest rate is. A weekend or market holiday has no close: the answer then gives the trading day before it and says so. The source line dates the close; --json adds date (the day asked for) and asOf (the close used).",
+        ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx JPY --json"],
+      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json"],
     },
     execute: runFx,
   },

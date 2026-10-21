@@ -42,6 +42,7 @@ import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instru
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
 import { readTerminalListingCode, terminalCodeReadAs } from "../tickers/terminal-codes";
+import { listingAbroadVenue } from "../utils/sec";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -860,11 +861,43 @@ async function builderDexMarket(listing: ListingArg, deps: ListingDeps): Promise
     : null;
 }
 
+/** A symbol written with a venue's suffix, as data vendors write a listing abroad: RY.TO, 7203.T, VOD.L, 0700.HK. */
+const VENUE_SUFFIX = /^([A-Z0-9][A-Z0-9&-]*)\.([A-Z]{1,3})$/;
+
+/**
+ * RY.TO, 7203.T, VOD.L: a listing abroad written with a data vendor's venue
+ * suffix, read as the listing its own quote names (RY:TSX, 7203:JPX,
+ * VOD:LSE), the way `quote` names it, so data that is read by venue (a
+ * company's SEC filings, data that covers US listings only) finds the same
+ * listing the quote is for. A US share class (BRK.B, quoted on NYSE), a
+ * suffix no quote answers and a named venue stay as typed.
+ */
+async function readVenueSuffix(listing: ListingArg, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  const match = listing.exchange ? null : VENUE_SUFFIX.exec(listing.symbol);
+  if (!match) return null;
+  let quote: Quote | null;
+  try {
+    quote = await deps.dataProvider.getQuote(listing.symbol, "");
+  } catch (error) {
+    // The command's own request then says what is wrong with the symbol.
+    if (!isNoProviderError(error)) logFailure("cli.listing-arg", "Quote venue suffix failed")(error);
+    return null;
+  }
+  const venue = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  const key = `${match[1]}:${venue}`;
+  if (!venue || !isKnownExchangeCode(venue) || !listingAbroadVenue(key)) return null;
+  return { symbol: match[1]!, exchange: venue, key, readAs: `Read ${listing.symbol} as ${key}.` };
+}
+
 export async function resolveCliListing(
   raw: string,
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
-  options: { ownExchangeWins?: boolean } = {},
+  options: {
+    ownExchangeWins?: boolean;
+    /** Read a venue suffix (RY.TO) as the listing its quote names (RY:TSX): `fn` and `shot`, whose functions read data by venue. */
+    venueSuffix?: boolean;
+  } = {},
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
   const typed = stripStrayEdges(raw).text || raw;
@@ -879,6 +912,8 @@ export async function resolveCliListing(
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
+  const suffixed = pair || named || !options.venueSuffix ? null : await readVenueSuffix(parsed, deps);
+  if (suffixed) parsed = parsed.readAs ? { ...suffixed, readAs: `${parsed.readAs} ${suffixed.readAs}` } : suffixed;
   try {
     await checkListingExchange(parsed, deps);
   } catch (error) {

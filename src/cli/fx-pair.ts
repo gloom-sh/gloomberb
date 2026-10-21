@@ -1,6 +1,6 @@
 import { currencyMinorDigits } from "../market-data/market/format";
 import { parseTypedNumber, readCurrencyAmount } from "../utils/decimal-comma";
-import { currenciesNamed } from "./currency-names";
+import { currenciesNamed } from "../utils/currency-names";
 
 /**
  * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
@@ -84,7 +84,7 @@ export interface FxArgs {
 }
 
 /** Every form `fx` takes, for its usage line. */
-export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to>";
+export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to> [--date <day>]";
 
 /** A currency's name of several words (`hong kong dollar`, `100 swiss franc`) as the one argument it is. */
 function joinNameWords(args: readonly string[]): readonly string[] {

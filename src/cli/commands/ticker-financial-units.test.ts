@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import { buildTickerReport, fundamentalsReportTables, loadReportBondFacts, renderFundamentalsReport } from "./ticker";
+import { createBaseConverter } from "../base-converter";
 import type { FundBondFacts } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
 
@@ -44,7 +45,7 @@ test("statement units use compatible history, keep explicit overrides and exclud
   expect(await report(financials)).not.toContain("NaN");
 });
 
-test("enterprise value is shown in the market cap's currency, converted or labelled", async () => {
+test("enterprise value is shown in the market cap's currency, with the base currency's figure after both", async () => {
   const financials: TickerFinancials = { quote: { ...quote, currency: "CHF", marketCap: 200e9 }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { marketCap: 200e9, marketCapCurrency: "CHF", enterpriseValue: 255e9 },
   };
@@ -52,8 +53,8 @@ test("enterprise value is shown in the market cap's currency, converted or label
     await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials, config, toBase })
   ).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
   const converted = await render(async (value, currency) => currency === "CHF" ? value * 1.2 : value);
-  expect(converted).toContain("Market Cap 240B USD");
-  expect(converted).toContain("Enterprise Value 306B USD");
+  expect(converted).toContain("Market Cap 200B CHF (240B USD)");
+  expect(converted).toContain("Enterprise Value 255B CHF (306B USD)");
   const unconverted = await render(async () => Number.NaN);
   expect(unconverted).toContain("Market Cap 200B CHF");
   expect(unconverted).toContain("Enterprise Value 255B CHF");
@@ -322,4 +323,41 @@ test("bond facts are read for a US-listed fund only, and a failed read leaves th
   expect(await loadReportBondFacts("VUSA", "LSE", fund, null, load)).toBeNull();
   expect(reads).toEqual(["AGG"]);
   expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
+});
+
+// GLO-1106: with CAD as the base, ticker JNJ printed Market Cap "877.79B CAD" beside Revenue "99.33B USD" and Last "$259.43".
+test("a CAD base writes every amount with its code and dates the rate a converted figure used", async () => {
+  const cad = { ...createDefaultConfig("/tmp/gloom-ticker-units-unused"), baseCurrency: "CAD" };
+  const asOf = Date.parse("2026-10-20T20:59:00Z");
+  // USD per unit, as the cached FX query serves it.
+  const usdPer: Record<string, number> = { USD: 1, CAD: 1 / 1.3854 };
+  const toBase = createBaseConverter({
+    getExchangeRate: async (code) => usdPer[code]!,
+    getCachedQuery: ((_method: string, [code]: [string]) => ({
+      load: async () => ({ value: usdPer[code]!, asOf, fetchedAt: asOf, staleAt: Infinity, expiresAt: Infinity, source: "fx" }),
+    })) as never,
+  }, "CAD");
+  const jnj: TickerFinancials = {
+    quote: { ...quote, symbol: "JNJ", price: 259.43, change: 5.57, changePercent: 2.19, open: 257.48, low: 256.42, high: 260.77, marketCap: 624.6e9 },
+    annualStatements: [{ date: "2025-12-28", totalRevenue: 94.19e9, eps: 11.03, currency: "USD" }], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 624.6e9, marketCapCurrency: "USD", revenue: 99.33e9, eps: 6.54, financialCurrency: "USD" },
+  };
+  const text = (await buildTickerReport({ symbol: "JNJ", tickerFile: null, financials: jnj, config: cad, toBase }))
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  expect(text).toContain("Last 259.43 USD");
+  expect(text).toContain("Change +5.57 USD (+2.19%)");
+  expect(text).toContain("Day Range 256.42 USD - 260.77 USD");
+  expect(text).toContain("Market Cap 624.6B USD (865.32B CAD)");
+  expect(text).toContain("EPS (TTM) 6.54 USD");
+  expect(text).toContain("Revenue (TTM) 99.33B USD");
+  expect(text).toContain("Diluted EPS 11.03 USD");
+  expect(text).toContain("CAD figures at USD/CAD 1.3854, as of 2026-10-20 20:59 UTC.");
+  // No amount is left with a bare dollar sign, which a Canadian reads as their own.
+  expect(text).not.toMatch(/\$\d/);
+  // A USD base keeps its signs and converts nothing.
+  const usd = (await buildTickerReport({ symbol: "JNJ", tickerFile: null, financials: jnj, config, toBase: createBaseConverter({ getExchangeRate: async () => 1 }, "USD") }))
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  expect(usd).toContain("Last $259.43");
+  expect(usd).toContain("Market Cap 624.6B USD\n");
+  expect(usd).not.toContain("figures at");
 });

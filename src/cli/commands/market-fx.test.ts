@@ -160,3 +160,57 @@ test("a currency typed as its name is asked for by its code and says so; a name 
   await expect(fx.execute(["peso"], peso.context)).rejects.toThrow("peso names several currencies: MXN (Mexican), ARS (Argentine), COP (Colombian), CLP (Chilean), PHP (Philippine)");
   expect(peso.requests).toEqual([]);
 });
+
+/** `fx --date` against daily closes by pair symbol; every history request is kept. */
+function datedHarness(baseCurrency: string, closes: Record<string, Record<string, number>>) {
+  const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
+  config.baseCurrency = baseCurrency;
+  const asked: string[] = [];
+  const cli = createTestCliContext({
+    config,
+    dataProvider: { getCachedQuery: () => ({ load: async () => { throw new Error("--date reads no latest rate"); } }) },
+    fxHistory: {
+      getCloudHistory: async (symbol: string, _exchange: string, params: { startDate?: string; endDate?: string }) => {
+        asked.push(symbol);
+        const data = Object.entries(closes[symbol] ?? {})
+          .filter(([day]) => (!params.startDate || day >= params.startDate) && (!params.endDate || day <= params.endDate))
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close }));
+        return { status: "success", data };
+      },
+    },
+  });
+  const output = (format: "text" | "json") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
+  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), printed: cli.printed, output, asked };
+}
+
+// USD/CAD as dealers quote it (CAD per USD), and EUR/USD (USD per EUR).
+const CAD_CLOSES = { "CAD=X": { "2026-08-31": 1.38554, "2026-09-01": 1.3897, "2026-09-02": 1.3845, "2026-09-03": 1.3819, "2026-09-04": 1.38376 } };
+
+// GLO-1106: `fx USD/CAD --date 2026-09-02` answered "fx takes no options".
+test("fx --date gives the rate at that day's daily closes, dated by the source line, and says when it read the trading day before", async () => {
+  setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  const run = datedHarness("CAD", { ...CAD_CLOSES, "EURUSD=X": { "2026-09-01": 1.1593, "2026-09-02": 1.15884 } });
+  await fx.execute(["USD/CAD", "--date", "2026-09-02"], run.context);
+  expect(run.rows()[0]).toEqual([{ currency: "USD", baseCurrency: "CAD", rate: 1.3845, asOf: "2026-09-02", stale: false, pair: "USD/CAD",
+    inverse: 1 / 1.3845, date: "2026-09-02" }]);
+  expect(run.output("text")[0]).toBe("1 USD = 1.3845 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)");
+  expect(run.printed[0]!.result.warnings).toBeUndefined();
+
+  // A Saturday has no close: Friday's, said so. A cross reads both pairs' closes of the day.
+  await fx.execute(["USD/CAD", "--date", "2026-09-05"], run.context);
+  expect(run.rows()[1]).toMatchObject([{ rate: 1.38376, asOf: "2026-09-04", date: "2026-09-05" }]);
+  expect(run.printed[1]!.result.warnings).toEqual(["No daily close on 2026-09-05, a weekend or market holiday: this is the close of 2026-09-04, the trading day before it."]);
+  await fx.execute(["1000", "EUR/CAD", "--date", "2026-09-02"], run.context);
+  expect(run.rows()[2][0].rate).toBeCloseTo(1.15884 * 1.3845, 9);
+  expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.15884 * 1.3845, 6);
+  expect(run.asked).toEqual(["CAD=X", "CAD=X", "EURUSD=X", "CAD=X"]);
+});
+
+test("fx --date refuses today and a day ahead, and a week with no close, before or instead of guessing", async () => {
+  setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  const run = datedHarness("USD", CAD_CLOSES);
+  await expect(fx.execute(["USD/CAD", "--date", "2026-10-20"], run.context)).rejects.toThrow("2026-10-20 has no daily close yet: --date takes a day before today (2026-10-20).");
+  await expect(fx.execute(["USD/CAD", "--date", "2026-08-01"], run.context)).rejects.toThrow("No USD/CAD daily close in the week up to 2026-08-01.");
+  await expect(fx.execute(["USD/CAD", "--date", "9/2/2026"], run.context)).rejects.toThrow(/Use a --date date as YYYY-MM-DD/);
+  expect(run.rows()).toEqual([]);
+});

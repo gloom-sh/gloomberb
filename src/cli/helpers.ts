@@ -1,6 +1,7 @@
 import {
   formatCompact,
   formatCurrency,
+  formatCurrencyCode,
   formatNumber,
   formatPercentRaw,
 } from "../utils/format";
@@ -16,8 +17,10 @@ import { isFiniteNumber } from "../utils/guards";
 import { formatUtcTime } from "../utils/utc-time";
 import { findNamedCollection } from "../portfolio/collection-name";
 
-export function formatSignedCurrency(value: number, currency: string): string {
-  return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
+/** A signed amount with its sign ($), or with `code` its code (+12.50 CAD) as a report for another base currency writes it. */
+export function formatSignedCurrency(value: number, currency: string, code = false): string {
+  const text = (code ? formatCurrencyCode : formatCurrency)(value, currency);
+  return value > 0 ? `+${text}` : text;
 }
 
 /**
