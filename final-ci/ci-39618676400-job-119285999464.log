@@ -1,0 +1,321 @@
+﻿2026-10-21T15:11:39.6201796Z Current runner version: '2.338.0'
+2026-10-21T15:11:39.6227730Z ##[group]Runner Image Provisioner
+2026-10-21T15:11:39.6228616Z Hosted Compute Agent
+2026-10-21T15:11:39.6229331Z Version: 20261015.610
+2026-10-21T15:11:39.6229978Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+2026-10-21T15:11:39.6230766Z Build Date: 2026-10-14T17:06:54Z
+2026-10-21T15:11:39.6231509Z Worker ID: {355cefaa-948b-4f9c-b1b4-ad2429b7c5eb}
+2026-10-21T15:11:39.6232234Z Region: westcentralus
+2026-10-21T15:11:39.6232878Z Cloud: Azure
+2026-10-21T15:11:39.6233466Z ##[endgroup]
+2026-10-21T15:11:39.6235349Z ##[group]Operating System
+2026-10-21T15:11:39.6236086Z Ubuntu
+2026-10-21T15:11:39.6236625Z 24.04.5
+2026-10-21T15:11:39.6237538Z LTS
+2026-10-21T15:11:39.6238107Z ##[endgroup]
+2026-10-21T15:11:39.6238665Z ##[group]Runner Image
+2026-10-21T15:11:39.6239406Z Image: ubuntu-24.04
+2026-10-21T15:11:39.6239988Z Version: 20261018.339.1
+2026-10-21T15:11:39.6241766Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261018.339/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T15:11:39.6243376Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.339
+2026-10-21T15:11:39.6244471Z ##[endgroup]
+2026-10-21T15:11:39.6245579Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T15:11:39.6248075Z Contents: read
+2026-10-21T15:11:39.6248756Z Metadata: read
+2026-10-21T15:11:39.6249443Z ##[endgroup]
+2026-10-21T15:11:39.6251734Z Secret source: Actions
+2026-10-21T15:11:39.6252814Z Cache mode: write
+2026-10-21T15:11:39.6253787Z Prepare workflow directory
+2026-10-21T15:11:39.6620944Z Prepare all required actions
+2026-10-21T15:11:39.6671849Z Getting action download info
+2026-10-21T15:11:39.9837375Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T15:11:40.0824886Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-10-21T15:11:40.1843179Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-21T15:11:40.4144772Z Complete job name: UI tokens, shard 1 of 4
+2026-10-21T15:11:40.5104023Z ##[group]Run actions/checkout@v4
+2026-10-21T15:11:40.5105057Z with:
+2026-10-21T15:11:40.5105509Z   repository: gloom-sh/gloomberb
+2026-10-21T15:11:40.5109582Z   token: ***
+2026-10-21T15:11:40.5110018Z   ssh-strict: true
+2026-10-21T15:11:40.5110449Z   ssh-user: git
+2026-10-21T15:11:40.5110885Z   persist-credentials: true
+2026-10-21T15:11:40.5111474Z   clean: true
+2026-10-21T15:11:40.5112164Z   sparse-checkout-cone-mode: true
+2026-10-21T15:11:40.5112778Z   fetch-depth: 1
+2026-10-21T15:11:40.5113344Z   fetch-tags: false
+2026-10-21T15:11:40.5113783Z   show-progress: true
+2026-10-21T15:11:40.5114223Z   lfs: false
+2026-10-21T15:11:40.5114638Z   submodules: false
+2026-10-21T15:11:40.5115076Z   set-safe-directory: true
+2026-10-21T15:11:40.5115585Z   allow-unsafe-pr-checkout: false
+2026-10-21T15:11:40.5116397Z ##[endgroup]
+2026-10-21T15:11:40.6236490Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T15:11:40.6240180Z ##[group]Getting Git version info
+2026-10-21T15:11:40.6242554Z Working directory is '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:11:40.6244350Z [command]/usr/bin/git version
+2026-10-21T15:11:40.6419111Z git version 2.55.0
+2026-10-21T15:11:40.6422713Z ##[endgroup]
+2026-10-21T15:11:40.6435993Z Temporarily overriding HOME='/home/runner/work/_temp/b332b7c8-60c0-4161-9d40-b08d7655ba42' before making global git config changes
+2026-10-21T15:11:40.6438826Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:11:40.6444606Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:11:40.6509233Z Deleting the contents of '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:11:40.6514446Z ##[group]Initializing the repository
+2026-10-21T15:11:40.6519879Z [command]/usr/bin/git init /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:11:40.6671054Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T15:11:40.6673845Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T15:11:40.6675973Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T15:11:40.6678038Z hint: call:
+2026-10-21T15:11:40.6679194Z hint:
+2026-10-21T15:11:40.6680418Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T15:11:40.6681876Z hint:
+2026-10-21T15:11:40.6683197Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T15:11:40.6685157Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T15:11:40.6687147Z hint:
+2026-10-21T15:11:40.6688228Z hint: 	git branch -m <name>
+2026-10-21T15:11:40.6689419Z hint:
+2026-10-21T15:11:40.6690834Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T15:11:40.6693137Z Initialized empty Git repository in /home/runner/work/gloomberb/gloomberb/.git/
+2026-10-21T15:11:40.6696748Z [command]/usr/bin/git remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T15:11:40.6795448Z ##[endgroup]
+2026-10-21T15:11:40.6797426Z ##[group]Disabling automatic garbage collection
+2026-10-21T15:11:40.6799069Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T15:11:40.6826832Z ##[endgroup]
+2026-10-21T15:11:40.6828390Z ##[group]Setting up auth
+2026-10-21T15:11:40.6837914Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:11:40.6883194Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:11:40.7378891Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:11:40.7428912Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:11:40.7677532Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:11:40.7723207Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:11:40.7975925Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T15:11:40.8029253Z ##[endgroup]
+2026-10-21T15:11:40.8030760Z ##[group]Fetching the repository
+2026-10-21T15:11:40.8042237Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c1810dd09dea69bdb2f00de498f62067528a6ec2:refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T15:11:44.0674153Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T15:11:44.0676591Z  * [new ref]         c1810dd09dea69bdb2f00de498f62067528a6ec2 -> origin/fix/glo-1165-plugin-removal
+2026-10-21T15:11:44.0681247Z ##[endgroup]
+2026-10-21T15:11:44.0683049Z ##[group]Determining the checkout info
+2026-10-21T15:11:44.0685150Z ##[endgroup]
+2026-10-21T15:11:44.0692243Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T15:11:44.0765023Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T15:11:44.0807444Z ##[group]Checking out the ref
+2026-10-21T15:11:44.0813263Z [command]/usr/bin/git checkout --progress --force -B fix/glo-1165-plugin-removal refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T15:11:44.5040896Z Switched to a new branch 'fix/glo-1165-plugin-removal'
+2026-10-21T15:11:44.5045719Z branch 'fix/glo-1165-plugin-removal' set up to track 'origin/fix/glo-1165-plugin-removal'.
+2026-10-21T15:11:44.5144503Z ##[endgroup]
+2026-10-21T15:11:44.5147628Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T15:11:44.5156822Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T15:11:44.5524188Z Prepare all required actions
+2026-10-21T15:11:44.5526408Z Getting action download info
+2026-10-21T15:11:44.6620198Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T15:11:45.0864715Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T15:11:45.0865076Z with:
+2026-10-21T15:11:45.0865317Z   install: true
+2026-10-21T15:11:45.0865566Z ##[endgroup]
+2026-10-21T15:11:45.0926171Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T15:11:45.0979474Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T15:11:45.0980233Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T15:11:45.0980816Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:11:45.1193435Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:11:45.1193977Z ##[endgroup]
+2026-10-21T15:11:45.3638441Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=271]
+2026-10-21T15:11:45.3643546Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T15:11:45.3724428Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T15:11:45.3724825Z with:
+2026-10-21T15:11:45.3725077Z   bun-version: 1.3.11
+2026-10-21T15:11:45.3725343Z   no-cache: false
+2026-10-21T15:11:45.3728146Z   token: ***
+2026-10-21T15:11:45.3728410Z ##[endgroup]
+2026-10-21T15:11:45.7659357Z Cache hit for: bun-7/QmryP/e10nHn0ivgSAK3UdqOg=
+2026-10-21T15:11:46.9515601Z Received 35349280 of 35349280 (100.0%), 35.1 MBs/sec
+2026-10-21T15:11:46.9516665Z Cache Size: ~34 MB (35349280 B)
+2026-10-21T15:11:46.9547728Z [command]/usr/bin/tar -xf /home/runner/work/_temp/dfd470c2-a9de-4c96-9b39-52d61a64c256/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:11:47.1304372Z Cache restored successfully
+2026-10-21T15:11:47.1328090Z [command]/home/runner/.bun/bin/bun --revision
+2026-10-21T15:11:47.1397444Z 1.3.11+af24e281e
+2026-10-21T15:11:47.1404571Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T15:11:47.1539999Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=1789]
+2026-10-21T15:11:47.1544409Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T15:11:47.1573807Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T15:11:47.1574180Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T15:11:47.1632543Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:11:47.1633037Z ##[endgroup]
+2026-10-21T15:11:47.1746787Z bun install v1.3.11 (af24e281)
+2026-10-21T15:11:47.1811734Z Resolving dependencies
+2026-10-21T15:11:47.1820233Z Resolved, downloaded and extracted [3]
+2026-10-21T15:11:48.9345196Z 
+2026-10-21T15:11:48.9345838Z + @types/bun@1.3.14
+2026-10-21T15:11:48.9346368Z + @types/react-dom@19.2.3
+2026-10-21T15:11:48.9368296Z + @types/three@0.165.0
+2026-10-21T15:11:48.9369044Z + electrobun@1.18.1
+2026-10-21T15:11:48.9369888Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T15:11:48.9371286Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T15:11:48.9372433Z + happy-dom@20.11.1
+2026-10-21T15:11:48.9373197Z + playwright-core@1.60.0
+2026-10-21T15:11:48.9374245Z + png-to-ico@2.1.8
+2026-10-21T15:11:48.9374949Z + rcedit@4.0.1
+2026-10-21T15:11:48.9375672Z + typescript@5.9.2
+2026-10-21T15:11:48.9376496Z + wrangler@4.125.0
+2026-10-21T15:11:48.9378723Z + @opentui/core@0.3.2
+2026-10-21T15:11:48.9379618Z + @opentui/react@0.3.2
+2026-10-21T15:11:48.9380493Z + @tanstack/react-virtual@3.14.2
+2026-10-21T15:11:48.9381297Z + hls.js@1.6.13
+2026-10-21T15:11:48.9382000Z + jimp@1.6.1
+2026-10-21T15:11:48.9382737Z + qrcode-generator@2.0.4
+2026-10-21T15:11:48.9383612Z + react@19.2.7
+2026-10-21T15:11:48.9384317Z + react-dom@19.2.7
+2026-10-21T15:11:48.9384994Z + web-tree-sitter@0.25.10
+2026-10-21T15:11:48.9386147Z 
+2026-10-21T15:11:48.9386892Z 194 packages installed [1.76s]
+2026-10-21T15:11:48.9648437Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=1810]
+2026-10-21T15:11:48.9692312Z ##[group]Run echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+2026-10-21T15:11:48.9693181Z [36;1mecho "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:11:48.9693786Z [36;1mecho "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:11:48.9745367Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:11:48.9745639Z ##[endgroup]
+2026-10-21T15:11:48.9940327Z ##[group]Run actions/cache@v4
+2026-10-21T15:11:48.9940626Z with:
+2026-10-21T15:11:48.9940961Z   path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-155.0.8059.39
+2026-10-21T15:11:48.9941417Z   key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:11:48.9941757Z   enableCrossOsArchive: false
+2026-10-21T15:11:48.9942014Z   fail-on-cache-miss: false
+2026-10-21T15:11:48.9942253Z   lookup-only: false
+2026-10-21T15:11:48.9942464Z   save-always: false
+2026-10-21T15:11:48.9942693Z ##[endgroup]
+2026-10-21T15:11:49.1087328Z (node:2408) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:11:49.1088711Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:11:49.2971948Z Cache hit for: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:11:49.3082881Z (node:2408) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:11:50.4936507Z Received 41943040 of 109436485 (38.3%), 40.0 MBs/sec
+2026-10-21T15:11:51.0528201Z Received 109436485 of 109436485 (100.0%), 66.9 MBs/sec
+2026-10-21T15:11:51.0530460Z Cache Size: ~104 MB (109436485 B)
+2026-10-21T15:11:51.0725830Z [command]/usr/bin/tar -xf /home/runner/work/_temp/f6ddb8cd-5d20-4bae-ab9c-f30fa0ee8211/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:11:51.5693203Z Cache restored successfully
+2026-10-21T15:11:51.5823258Z Cache restored from key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:11:51.6018173Z ##[group]Run actions/cache@v4
+2026-10-21T15:11:51.6018638Z with:
+2026-10-21T15:11:51.6019094Z   path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
+2026-10-21T15:11:51.6019698Z   key: ui-audit-plugins-2026-43
+2026-10-21T15:11:51.6020175Z   restore-keys: ui-audit-plugins-
+2026-10-21T15:11:51.6020656Z   enableCrossOsArchive: false
+2026-10-21T15:11:51.6021129Z   fail-on-cache-miss: false
+2026-10-21T15:11:51.6021544Z   lookup-only: false
+2026-10-21T15:11:51.6021922Z   save-always: false
+2026-10-21T15:11:51.6022297Z ##[endgroup]
+2026-10-21T15:11:51.7167668Z (node:2425) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:11:51.7169377Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:11:51.9204665Z Cache hit for: ui-audit-plugins-2026-43
+2026-10-21T15:11:51.9324862Z (node:2425) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:11:52.9271137Z Received 21246746 of 21246746 (100.0%), 25.5 MBs/sec
+2026-10-21T15:11:52.9271845Z Cache Size: ~20 MB (21246746 B)
+2026-10-21T15:11:52.9299350Z [command]/usr/bin/tar -xf /home/runner/work/_temp/c3c0e4cc-5362-498b-8702-48b737128aa5/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:11:54.2287895Z Cache restored successfully
+2026-10-21T15:11:54.2377951Z Cache restored from key: ui-audit-plugins-2026-43
+2026-10-21T15:11:54.2540683Z ##[group]Run actions/cache/restore@v4
+2026-10-21T15:11:54.2541003Z with:
+2026-10-21T15:11:54.2541250Z   path: ~/.cache/gloomberb-pane-chrome/ui-replay
+2026-10-21T15:11:54.2541778Z   key: ui-replay-v2-1of4-2026-43
+2026-10-21T15:11:54.2542063Z   restore-keys: ui-replay-v2-1of4-
+2026-10-21T15:11:54.2542358Z   enableCrossOsArchive: false
+2026-10-21T15:11:54.2542616Z   fail-on-cache-miss: false
+2026-10-21T15:11:54.2542865Z   lookup-only: false
+2026-10-21T15:11:54.2543085Z ##[endgroup]
+2026-10-21T15:11:54.3688070Z (node:2446) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:11:54.3689560Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:11:54.5567195Z Cache hit for: ui-replay-v2-1of4-2026-43
+2026-10-21T15:11:54.5678067Z (node:2446) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:11:55.2776731Z Received 1409297 of 1409297 (100.0%), 2.6 MBs/sec
+2026-10-21T15:11:55.2777605Z Cache Size: ~1 MB (1409297 B)
+2026-10-21T15:11:55.2808431Z [command]/usr/bin/tar -xf /home/runner/work/_temp/25eab595-7b7a-403b-b8cc-ce9b0b9964df/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:11:55.3226300Z Cache restored successfully
+2026-10-21T15:11:55.3306019Z Cache restored from key: ui-replay-v2-1of4-2026-43
+2026-10-21T15:11:55.3440025Z ##[group]Run bun run check:ui-tokens --shard "$((SHARD - 1))/4" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
+2026-10-21T15:11:55.3440909Z [36;1mbun run check:ui-tokens --shard "$((SHARD - 1))/4" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD[0m
+2026-10-21T15:11:55.3490985Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:11:55.3491264Z env:
+2026-10-21T15:11:55.3491465Z   SHARD: 1
+2026-10-21T15:11:55.3491664Z   RECORD: 
+2026-10-21T15:11:55.3491860Z ##[endgroup]
+2026-10-21T15:11:55.3583205Z $ bun run scripts/pane-chrome/ui-tokens.ts --shard "0/4" --replay /home/runner/.cache/gloomberb-pane-chrome/ui-replay
+2026-10-21T15:11:57.6646099Z Bundled 16 plugins: polls, prediction-markets, adjacent-indices, hackernews, crypto-fear-greed, ibkr-gateway, ibkr, substack, byok-ai, growthepie, public, robinhood, simplefin, tv, fxmacrodata, alpaca-data
+2026-10-21T15:12:03.6040949Z shell: measured
+2026-10-21T15:12:08.0455080Z command-bar: measured
+2026-10-21T15:12:15.0191433Z command-bar-search: measured
+2026-10-21T15:12:21.7109430Z theme-picker: measured
+2026-10-21T15:12:28.9084682Z feedback-dialog: measured
+2026-10-21T15:12:35.7657766Z pane-settings-dialog: measured
+2026-10-21T15:12:39.8566431Z pane-menu: measured
+2026-10-21T15:13:00.1144726Z ALRT: 4 views in 20s
+2026-10-21T15:13:11.3490633Z ASKG: 1 views in 11s
+2026-10-21T15:13:22.7429976Z attention-trending-pane: 2 views in 11s
+2026-10-21T15:14:49.4337321Z CAT: 18 views in 87s
+2026-10-21T15:15:14.7269679Z CDS: 8 views in 25s
+2026-10-21T15:15:39.8943266Z CDX: 8 views in 25s
+2026-10-21T15:15:54.4184553Z CHAT: 1 views in 15s
+2026-10-21T15:16:05.8497812Z CHOKE: 1 views in 11s
+2026-10-21T15:16:19.2772106Z CN: 2 views in 13s
+2026-10-21T15:16:30.6801653Z CONN: 2 views in 11s
+2026-10-21T15:16:42.2952822Z CORR: 1 views in 12s
+2026-10-21T15:16:53.7712403Z ECO: 2 views in 11s
+2026-10-21T15:17:05.4439165Z EVT: 2 views in 12s
+2026-10-21T15:17:16.9721823Z FA: 2 views in 12s
+2026-10-21T15:17:28.3157193Z G: 1 views in 11s
+2026-10-21T15:17:44.2136474Z GC: 2 views in 16s
+2026-10-21T15:18:08.8427557Z HALT: 5 views in 25s
+2026-10-21T15:18:31.3152805Z HM: 3 views in 22s
+2026-10-21T15:18:42.5668865Z HP: 1 views in 11s
+2026-10-21T15:19:07.4778181Z IPO: 4 views in 25s
+2026-10-21T15:19:46.9636580Z KELLY: 7 views in 39s
+2026-10-21T15:20:02.6631982Z LITI: 2 views in 16s
+2026-10-21T15:20:13.8482581Z MA: 1 views in 11s
+2026-10-21T15:20:35.7001681Z new-watchlist-pane: 3 views in 22s
+2026-10-21T15:20:46.9224497Z NOTE: 1 views in 11s
+2026-10-21T15:21:02.0103183Z OMON: 2 views in 15s
+2026-10-21T15:21:31.3869329Z OPX: 3 views in 29s
+2026-10-21T15:21:53.1230622Z PF: 3 views in 22s
+2026-10-21T15:22:37.7940648Z PORT: 8 views in 45s
+2026-10-21T15:22:58.7925385Z SEC: 2 views in 21s
+2026-10-21T15:23:23.6436097Z SPLC: 5 views in 25s
+2026-10-21T15:23:43.8050128Z THEM: 4 views in 20s
+2026-10-21T15:23:54.9286645Z THESIS: 1 views in 11s
+2026-10-21T15:24:19.6463490Z TRACE: 7 views in 25s
+2026-10-21T15:24:30.9251728Z TRIAL: 2 views in 11s
+2026-10-21T15:24:42.2033008Z unread-inbox-pane: 1 views in 11s
+2026-10-21T15:24:53.5007760Z VCA: 1 views in 11s
+2026-10-21T15:25:21.7659471Z ADJ: 4 views in 28s
+2026-10-21T15:25:33.0974282Z CFNG: 1 views in 11s
+2026-10-21T15:25:33.2519814Z 
+2026-10-21T15:25:33.2520695Z ## UI tokens
+2026-10-21T15:25:33.2521020Z 
+2026-10-21T15:25:33.2521348Z 126 views of 46 functions and shell views, at 640 and 1280px.
+2026-10-21T15:25:33.2522335Z Every value is on the tokens or allowed (6 allowed by `src/architecture/ui-tokens-allowlist.json`).
+2026-10-21T15:25:33.2523022Z 
+2026-10-21T15:25:33.2523463Z Allowlist entries nothing matched this run (an offline run draws less): ADJ: 0.
+2026-10-21T15:25:33.2724206Z Post job cleanup.
+2026-10-21T15:25:33.3940376Z Cache hit occurred on the primary key ui-audit-plugins-2026-43, not saving cache.
+2026-10-21T15:25:33.3941812Z (node:2835) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:25:33.3942843Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:25:33.4078048Z Post job cleanup.
+2026-10-21T15:25:33.5420542Z Cache hit occurred on the primary key chrome-headless-shell-155.0.8059.39-Linux-X64, not saving cache.
+2026-10-21T15:25:33.5422203Z (node:2843) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:25:33.5423576Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:25:33.5549421Z Post job cleanup.
+2026-10-21T15:25:33.5553182Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__515f2cd7-e1e9-44f1-9eb0-79dee53d263a.__oven-sh_setup-bun]
+2026-10-21T15:25:33.5594606Z Post job cleanup.
+2026-10-21T15:25:33.7523736Z ##[end-action id=__515f2cd7-e1e9-44f1-9eb0-79dee53d263a.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=196]
+2026-10-21T15:25:33.7657668Z Post job cleanup.
+2026-10-21T15:25:33.8813306Z [command]/usr/bin/git version
+2026-10-21T15:25:33.8867882Z git version 2.55.0
+2026-10-21T15:25:33.8920042Z Temporarily overriding HOME='/home/runner/work/_temp/9384035e-e421-4a1c-8d13-957d8f9a3532' before making global git config changes
+2026-10-21T15:25:33.8921465Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:25:33.8927114Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:25:33.8982950Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:25:33.9037771Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:25:33.9343428Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:25:33.9380041Z http.https://github.com/.extraheader
+2026-10-21T15:25:33.9393528Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T15:25:33.9438948Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:25:33.9762720Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:25:33.9816129Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:25:34.0272916Z Cleaning up orphan processes
+2026-10-21T15:25:34.0706088Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache/restore@v4, actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

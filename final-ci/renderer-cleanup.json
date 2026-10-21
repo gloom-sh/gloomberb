@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-10-21T16:00:15.854084+00:00",
+  "processMatchers": [
+    "glo-1165-footer",
+    "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/terminal.tsx",
+    "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/capture-ui.ts"
+  ],
+  "ownedRendererProcesses": [],
+  "previousArchiveRemoved": true,
+  "terminalProfileRemoved": true,
+  "baselineProfileRemoved": true
+}

@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "exactHead": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "bun": "1.3.11",
+  "cases": 150,
+  "artifactPairs": 750,
+  "rawWrittenFilePairs": 298,
+  "allSavedFilesPerSide": 1049,
+  "allRawBytesAndManifestMetadataVerified": true,
+  "byteIdentical": true,
+  "originalHarnessHash": "f9a6ff9efd5c01292b8bdb09c18e721d6e678bbb68de007f725818cbb69f6a52",
+  "fixtureHashes": {
+    "preload.ts": "b09844c357864b4290a1d80ca2c34179e2495d64118749ce191cac0b9248150b",
+    "seed-config.json": "b73c94568c9e2e2394d15b408f54c54f654d146644b5515a1041deaf0033340b"
+  },
+  "wrapperHashMatchesCurrentDisk": "bc336ce4692a6716f10492d3a9351a28fe3e5b3fd8eae6fa7b3b4916f5c246bc",
+  "declarationsMatch": true,
+  "declaredArtifactDifferences": {},
+  "scratchRemoved": true,
+  "baselineReuse": false,
+  "captureRerun": false,
+  "inventorySha256": "9fb9efcff5928357f30679bf2609bed599e97c6965c38d7756700458a596c000",
+  "reviewMethod": "Fresh read-only inventory, raw hash and provenance check of the existing c181 capture; no earlier audit or raw capture file was changed.",
+  "scratchParentRemoved": true
+}

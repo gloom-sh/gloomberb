@@ -1,0 +1,565 @@
+﻿2026-10-21T14:56:37.8338858Z Current runner version: '2.338.0'
+2026-10-21T14:56:37.8354401Z ##[group]Runner Image Provisioner
+2026-10-21T14:56:37.8354896Z Hosted Compute Agent
+2026-10-21T14:56:37.8355220Z Version: 20261012.601
+2026-10-21T14:56:37.8355663Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-21T14:56:37.8356075Z Build Date: 2026-10-12T17:48:21Z
+2026-10-21T14:56:37.8356485Z Worker ID: {0f439bb5-3c29-4bb7-8ea1-011c5b6d38ca}
+2026-10-21T14:56:37.8356896Z Region: centralus
+2026-10-21T14:56:37.8357235Z Cloud: Azure
+2026-10-21T14:56:37.8357642Z ##[endgroup]
+2026-10-21T14:56:37.8358549Z ##[group]Operating System
+2026-10-21T14:56:37.8358935Z Ubuntu
+2026-10-21T14:56:37.8359290Z 24.04.5
+2026-10-21T14:56:37.8359591Z LTS
+2026-10-21T14:56:37.8359952Z ##[endgroup]
+2026-10-21T14:56:37.8360266Z ##[group]Runner Image
+2026-10-21T14:56:37.8360868Z Image: ubuntu-24.04
+2026-10-21T14:56:37.8361242Z Version: 20261012.334.1
+2026-10-21T14:56:37.8361952Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T14:56:37.8362852Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-21T14:56:37.8363589Z ##[endgroup]
+2026-10-21T14:56:37.8364271Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T14:56:37.8365589Z Contents: read
+2026-10-21T14:56:37.8365968Z Metadata: read
+2026-10-21T14:56:37.8366315Z ##[endgroup]
+2026-10-21T14:56:37.8367602Z Secret source: Actions
+2026-10-21T14:56:37.8368102Z Cache mode: write
+2026-10-21T14:56:37.8368675Z Prepare workflow directory
+2026-10-21T14:56:37.8595455Z Prepare all required actions
+2026-10-21T14:56:37.8625463Z Getting action download info
+2026-10-21T14:56:38.1389545Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T14:56:38.2148024Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-10-21T14:56:38.3634262Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-21T14:56:38.5666234Z Complete job name: Pointer checks
+2026-10-21T14:56:38.6135252Z ##[group]Run actions/checkout@v4
+2026-10-21T14:56:38.6135664Z with:
+2026-10-21T14:56:38.6135913Z   repository: gloom-sh/gloomberb
+2026-10-21T14:56:38.6138120Z   token: ***
+2026-10-21T14:56:38.6138355Z   ssh-strict: true
+2026-10-21T14:56:38.6138599Z   ssh-user: git
+2026-10-21T14:56:38.6138852Z   persist-credentials: true
+2026-10-21T14:56:38.6139125Z   clean: true
+2026-10-21T14:56:38.6139383Z   sparse-checkout-cone-mode: true
+2026-10-21T14:56:38.6139674Z   fetch-depth: 1
+2026-10-21T14:56:38.6139915Z   fetch-tags: false
+2026-10-21T14:56:38.6140166Z   show-progress: true
+2026-10-21T14:56:38.6140551Z   lfs: false
+2026-10-21T14:56:38.6140787Z   submodules: false
+2026-10-21T14:56:38.6141036Z   set-safe-directory: true
+2026-10-21T14:56:38.6141320Z   allow-unsafe-pr-checkout: false
+2026-10-21T14:56:38.6141690Z ##[endgroup]
+2026-10-21T14:56:38.6802449Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T14:56:38.6803653Z ##[group]Getting Git version info
+2026-10-21T14:56:38.6804077Z Working directory is '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T14:56:38.6804628Z [command]/usr/bin/git version
+2026-10-21T14:56:38.6870649Z git version 2.55.0
+2026-10-21T14:56:38.6883130Z ##[endgroup]
+2026-10-21T14:56:38.6892839Z Temporarily overriding HOME='/home/runner/work/_temp/a315d4d0-209f-4de5-b545-0d9af6f16cd1' before making global git config changes
+2026-10-21T14:56:38.6894135Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:56:38.6896795Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T14:56:38.6940888Z Deleting the contents of '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T14:56:38.6943811Z ##[group]Initializing the repository
+2026-10-21T14:56:38.6946447Z [command]/usr/bin/git init /home/runner/work/gloomberb/gloomberb
+2026-10-21T14:56:38.7047050Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T14:56:38.7048466Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T14:56:38.7049492Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T14:56:38.7050542Z hint: call:
+2026-10-21T14:56:38.7051198Z hint:
+2026-10-21T14:56:38.7051742Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T14:56:38.7052390Z hint:
+2026-10-21T14:56:38.7052984Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T14:56:38.7053897Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T14:56:38.7054639Z hint:
+2026-10-21T14:56:38.7055075Z hint: 	git branch -m <name>
+2026-10-21T14:56:38.7055565Z hint:
+2026-10-21T14:56:38.7056266Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T14:56:38.7057267Z Initialized empty Git repository in /home/runner/work/gloomberb/gloomberb/.git/
+2026-10-21T14:56:38.7059035Z [command]/usr/bin/git remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T14:56:38.7109120Z ##[endgroup]
+2026-10-21T14:56:38.7109796Z ##[group]Disabling automatic garbage collection
+2026-10-21T14:56:38.7112392Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T14:56:38.7148758Z ##[endgroup]
+2026-10-21T14:56:38.7149243Z ##[group]Setting up auth
+2026-10-21T14:56:38.7149648Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:56:38.7177709Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T14:56:38.7466567Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:56:38.7495299Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T14:56:38.7664727Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:56:38.7691653Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T14:56:38.7857344Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T14:56:38.7889589Z ##[endgroup]
+2026-10-21T14:56:38.7890143Z ##[group]Fetching the repository
+2026-10-21T14:56:38.7895721Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c1810dd09dea69bdb2f00de498f62067528a6ec2:refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:56:42.1233208Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T14:56:42.1235270Z  * [new ref]         c1810dd09dea69bdb2f00de498f62067528a6ec2 -> origin/fix/glo-1165-plugin-removal
+2026-10-21T14:56:42.1238252Z ##[endgroup]
+2026-10-21T14:56:42.1239214Z ##[group]Determining the checkout info
+2026-10-21T14:56:42.1240274Z ##[endgroup]
+2026-10-21T14:56:42.1241219Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T14:56:42.1344638Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T14:56:42.1369884Z ##[group]Checking out the ref
+2026-10-21T14:56:42.1372382Z [command]/usr/bin/git checkout --progress --force -B fix/glo-1165-plugin-removal refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:56:42.4375509Z Switched to a new branch 'fix/glo-1165-plugin-removal'
+2026-10-21T14:56:42.4378423Z branch 'fix/glo-1165-plugin-removal' set up to track 'origin/fix/glo-1165-plugin-removal'.
+2026-10-21T14:56:42.4389413Z ##[endgroup]
+2026-10-21T14:56:42.4427161Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T14:56:42.4449964Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T14:56:42.4645597Z Prepare all required actions
+2026-10-21T14:56:42.4646134Z Getting action download info
+2026-10-21T14:56:42.5829585Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T14:56:42.9799075Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T14:56:42.9799274Z with:
+2026-10-21T14:56:42.9799407Z   install: true
+2026-10-21T14:56:42.9799541Z ##[endgroup]
+2026-10-21T14:56:42.9834672Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T14:56:42.9871334Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T14:56:42.9871719Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T14:56:42.9872014Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T14:56:43.0079311Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:56:43.0079580Z ##[endgroup]
+2026-10-21T14:56:43.1713433Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=187]
+2026-10-21T14:56:43.1716442Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T14:56:43.1763355Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T14:56:43.1763575Z with:
+2026-10-21T14:56:43.1763715Z   bun-version: 1.3.11
+2026-10-21T14:56:43.1763863Z   no-cache: false
+2026-10-21T14:56:43.1765304Z   token: ***
+2026-10-21T14:56:43.1765441Z ##[endgroup]
+2026-10-21T14:56:43.4310199Z Cache hit for: bun-7/QmryP/e10nHn0ivgSAK3UdqOg=
+2026-10-21T14:56:44.2807438Z Received 35349280 of 35349280 (100.0%), 48.8 MBs/sec
+2026-10-21T14:56:44.2807835Z Cache Size: ~34 MB (35349280 B)
+2026-10-21T14:56:44.2825036Z [command]/usr/bin/tar -xf /home/runner/work/_temp/5cbbceb8-ce89-4a03-8e92-0f5e166ebd1e/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T14:56:44.3816559Z Cache restored successfully
+2026-10-21T14:56:44.3835714Z [command]/home/runner/.bun/bin/bun --revision
+2026-10-21T14:56:44.3870442Z 1.3.11+af24e281e
+2026-10-21T14:56:44.3874779Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T14:56:44.3953083Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=1223]
+2026-10-21T14:56:44.3956056Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T14:56:44.3976073Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T14:56:44.3976276Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T14:56:44.4031692Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:56:44.4031887Z ##[endgroup]
+2026-10-21T14:56:44.4114975Z bun install v1.3.11 (af24e281)
+2026-10-21T14:56:44.4137666Z Resolving dependencies
+2026-10-21T14:56:44.4168172Z Resolved, downloaded and extracted [3]
+2026-10-21T14:56:45.8579050Z 
+2026-10-21T14:56:45.8579566Z + @types/bun@1.3.14
+2026-10-21T14:56:45.8579905Z + @types/react-dom@19.2.3
+2026-10-21T14:56:45.8580169Z + @types/three@0.165.0
+2026-10-21T14:56:45.8580482Z + electrobun@1.18.1
+2026-10-21T14:56:45.8580728Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T14:56:45.8581124Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T14:56:45.8581450Z + happy-dom@20.11.1
+2026-10-21T14:56:45.8601207Z + playwright-core@1.60.0
+2026-10-21T14:56:45.8601535Z + png-to-ico@2.1.8
+2026-10-21T14:56:45.8601731Z + rcedit@4.0.1
+2026-10-21T14:56:45.8601911Z + typescript@5.9.2
+2026-10-21T14:56:45.8602103Z + wrangler@4.125.0
+2026-10-21T14:56:45.8602320Z + @opentui/core@0.3.2
+2026-10-21T14:56:45.8602536Z + @opentui/react@0.3.2
+2026-10-21T14:56:45.8602798Z + @tanstack/react-virtual@3.14.2
+2026-10-21T14:56:45.8603018Z + hls.js@1.6.13
+2026-10-21T14:56:45.8603198Z + jimp@1.6.1
+2026-10-21T14:56:45.8603527Z + qrcode-generator@2.0.4
+2026-10-21T14:56:45.8603750Z + react@19.2.7
+2026-10-21T14:56:45.8603917Z + react-dom@19.2.7
+2026-10-21T14:56:45.8604106Z + web-tree-sitter@0.25.10
+2026-10-21T14:56:45.8604828Z 
+2026-10-21T14:56:45.8604930Z 194 packages installed [1447.00ms]
+2026-10-21T14:56:45.8837044Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=1488]
+2026-10-21T14:56:45.9399944Z ##[group]Run echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+2026-10-21T14:56:45.9400616Z [36;1mecho "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T14:56:45.9450184Z shell: /usr/bin/bash -e {0}
+2026-10-21T14:56:45.9450327Z ##[endgroup]
+2026-10-21T14:56:46.0739467Z ##[group]Run actions/cache@v4
+2026-10-21T14:56:46.0739615Z with:
+2026-10-21T14:56:46.0739799Z   path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-155.0.8059.39
+2026-10-21T14:56:46.0740041Z   key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T14:56:46.0740223Z   enableCrossOsArchive: false
+2026-10-21T14:56:46.0740530Z   fail-on-cache-miss: false
+2026-10-21T14:56:46.0740674Z   lookup-only: false
+2026-10-21T14:56:46.0740795Z   save-always: false
+2026-10-21T14:56:46.0740912Z ##[endgroup]
+2026-10-21T14:56:46.1387316Z (node:2148) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T14:56:46.1387981Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T14:56:46.2836579Z Cache hit for: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T14:56:46.2894516Z (node:2148) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T14:56:47.3976061Z Received 109436485 of 109436485 (100.0%), 107.5 MBs/sec
+2026-10-21T14:56:47.3976844Z Cache Size: ~104 MB (109436485 B)
+2026-10-21T14:56:47.4031604Z [command]/usr/bin/tar -xf /home/runner/work/_temp/827a05e7-fc15-4fdb-bb4f-5ca12ac76c3d/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T14:56:47.6778327Z Cache restored successfully
+2026-10-21T14:56:47.6874341Z Cache restored from key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T14:56:47.7933083Z ##[group]Run bun run check:pane-chrome
+2026-10-21T14:56:47.7933288Z [36;1mbun run check:pane-chrome[0m
+2026-10-21T14:56:47.7983397Z shell: /usr/bin/bash -e {0}
+2026-10-21T14:56:47.7983552Z ##[endgroup]
+2026-10-21T14:56:47.8063704Z $ bun run scripts/pane-chrome/checks.ts
+2026-10-21T14:57:09.6668673Z ok   theme preview paints every surface, cancel and commit agree (21337 ms)
+2026-10-21T14:57:30.3048085Z ok   theme preview paints a popped-out chart, cancel and commit agree (20638 ms)
+2026-10-21T14:57:33.7429932Z ok   first paint has no blank or provisional chart and no blank overview frame (white) (3438 ms)
+2026-10-21T14:57:37.1927356Z ok   first paint has no blank or provisional chart and no blank overview frame (colorblind-light) (3450 ms)
+2026-10-21T14:57:37.7903417Z ok   docked pane: drag by the grip docks it elsewhere (598 ms)
+2026-10-21T14:57:38.3735243Z ok   docked pane: drag by the title docks it elsewhere (583 ms)
+2026-10-21T14:57:38.9402451Z ok   docked pane: drag by the empty bar docks it elsewhere (567 ms)
+2026-10-21T14:57:39.5236002Z ok   tabbed pane: drag by the grip docks it elsewhere (583 ms)
+2026-10-21T14:57:40.1066563Z ok   tabbed pane: drag by the title docks it elsewhere (583 ms)
+2026-10-21T14:57:40.6733349Z ok   tabbed pane: drag by the empty bar docks it elsewhere (567 ms)
+2026-10-21T14:57:41.2568728Z ok   error card pane: drag by the grip docks it elsewhere (583 ms)
+2026-10-21T14:57:41.8232335Z ok   error card pane: drag by the title docks it elsewhere (566 ms)
+2026-10-21T14:57:42.4067142Z ok   error card pane: drag by the empty bar docks it elsewhere (583 ms)
+2026-10-21T14:57:42.9735074Z ok   floating pane: drag by the grip moves it (567 ms)
+2026-10-21T14:57:43.5567224Z ok   floating pane: drag by the title moves it (583 ms)
+2026-10-21T14:57:44.1234315Z ok   floating pane: drag by the empty bar moves it (567 ms)
+2026-10-21T14:57:44.5069107Z ok   fullscreen pane: the grip moves the window, not the pane (383 ms)
+2026-10-21T14:57:44.8898977Z ok   fullscreen pane: the title moves the window, not the pane (383 ms)
+2026-10-21T14:57:45.2565898Z ok   fullscreen pane: the empty bar moves the window, not the pane (367 ms)
+2026-10-21T14:57:45.4567413Z ok   docked pane: the ? asks for its docs and leaves the pane in place (200 ms)
+2026-10-21T14:57:45.9063334Z ok   floating pane: the ? asks for its docs and leaves the pane in place (450 ms)
+2026-10-21T14:57:46.1071011Z ok   docked pane: Ask Gloom asks about the pane and leaves it and its header's buttons in place (201 ms)
+2026-10-21T14:57:46.5065673Z ok   floating pane: a press dragged off Ask Gloom asks nothing and moves nothing; a click asks (399 ms)
+2026-10-21T14:57:47.5567695Z ok   keyboard: the Ask Gloom key asks about the focused pane, and not twice (1050 ms)
+2026-10-21T14:57:47.7901060Z ok   Ask Gloom: a pane hands over the text it shows, not rows scrolled out of view (233 ms)
+2026-10-21T14:57:47.9898084Z ok   Ask Gloom: a tabbed pane hands over the tab it has open (200 ms)
+2026-10-21T14:57:48.3065255Z ok   narrow panes: Ask Gloom leaves a header too narrow for it and keeps to its own place at the width that fits (317 ms)
+2026-10-21T14:57:48.4735416Z ok   tabs: a click selects the tab and leaves the pane in place (167 ms)
+2026-10-21T14:57:49.0567075Z ok   tabs: dragging a tab reorders the strip and leaves the pane in place (583 ms)
+2026-10-21T14:57:49.6901294Z ok   tabs: a tab dragged onto another pane never moves its pane (633 ms)
+2026-10-21T14:57:50.2566331Z ok   floating pane: the corner handle resizes it (566 ms)
+2026-10-21T14:57:50.8734620Z ok   floating pane: the left edge resizes it, following the pointer (617 ms)
+2026-10-21T14:57:51.4897362Z ok   floating pane: the right edge resizes it, following the pointer (616 ms)
+2026-10-21T14:57:52.1065091Z ok   floating pane: the bottom edge resizes it, following the pointer (617 ms)
+2026-10-21T14:57:52.7232004Z ok   floating pane: the top-left edge resizes it, following the pointer (617 ms)
+2026-10-21T14:57:53.3398900Z ok   dock divider: the panes on both sides follow the pointer during the drag (617 ms)
+2026-10-21T14:57:53.9898445Z ok   table column: the sidebar beside a table follows the pointer during the drag (650 ms)
+2026-10-21T14:57:54.2725209Z ok   floating chart: what it draws follows the corner between catch-ups (283 ms)
+2026-10-21T14:57:54.5558060Z ok   floating heat map: what it draws follows the corner between catch-ups (283 ms)
+2026-10-21T14:57:54.8393445Z ok   floating board: the table under the chart band keeps its size between catch-ups (284 ms)
+2026-10-21T14:57:55.1066476Z ok   dock divider: the chart beside it keeps to its pane's edge between catch-ups (267 ms)
+2026-10-21T14:57:55.5890641Z ok   chart: the crosshair sits under the pointer across the plot (482 ms)
+2026-10-21T14:57:56.0224315Z ok   chart-bar:dock chart: the crosshair sits under the pointer across the plot (433 ms)
+2026-10-21T14:57:57.1727423Z ok   chart-bar:dock chart: a pan keeps the observation under the pointer (1150 ms)
+2026-10-21T14:57:57.4814203Z ok   chart-bar:dock chart: the line markers follow the crosshair and no readout floats over the plot (308 ms)
+2026-10-21T14:57:58.1728660Z ok   chart-bar:dock chart: a wheel zoom keeps the observation under the pointer (692 ms)
+2026-10-21T14:57:58.9067275Z ok   chart-bar:dock chart: a trend line runs from the press to the release (734 ms)
+2026-10-21T14:57:59.5434741Z ok   chart-bar:dock chart: the ruler spans from the press to the pointer (637 ms)
+2026-10-21T14:58:00.0891215Z ok   beside:dock chart: the crosshair sits under the pointer across the plot (546 ms)
+2026-10-21T14:58:01.2560143Z ok   beside:dock chart: a pan keeps the observation under the pointer (1167 ms)
+2026-10-21T14:58:01.5626556Z ok   beside:dock chart: the line markers follow the crosshair and no readout floats over the plot (307 ms)
+2026-10-21T14:58:02.2393135Z ok   beside:dock chart: a wheel zoom keeps the observation under the pointer (677 ms)
+2026-10-21T14:58:03.0227449Z ok   beside:dock chart: a trend line runs from the press to the release (783 ms)
+2026-10-21T14:58:03.7417616Z ok   beside:dock chart: the ruler spans from the press to the pointer (719 ms)
+2026-10-21T14:58:04.2387855Z ok   overlay:dock chart: the crosshair sits under the pointer across the plot (497 ms)
+2026-10-21T14:58:05.4225015Z ok   overlay:dock chart: a pan keeps the observation under the pointer (1184 ms)
+2026-10-21T14:58:05.7308232Z ok   overlay:dock chart: the line markers follow the crosshair and no readout floats over the plot (308 ms)
+2026-10-21T14:58:06.3893520Z ok   overlay:dock chart: a wheel zoom keeps the observation under the pointer (659 ms)
+2026-10-21T14:58:07.1955093Z ok   overlay:dock chart: a trend line runs from the press to the release (803 ms)
+2026-10-21T14:58:07.9088881Z ok   overlay:dock chart: the ruler spans from the press to the pointer (716 ms)
+2026-10-21T14:58:08.1156893Z ok   board:dock chart: the band resting on its latest close follows the pointer across it and goes back when it leaves (207 ms)
+2026-10-21T14:58:08.4247394Z ok   chart tools: only the focused pane shows them, and a press on another pane's plot moves them there (309 ms)
+2026-10-21T14:58:09.0894493Z ok   floating chart:float: its time axis stays clear of the resize grip (665 ms)
+2026-10-21T14:58:09.7392896Z ok   floating chart-bar:float: its time axis stays clear of the resize grip (650 ms)
+2026-10-21T14:58:10.3894037Z ok   floating beside:float: its time axis stays clear of the resize grip (650 ms)
+2026-10-21T14:58:11.0391851Z ok   floating overlay:float: its time axis stays clear of the resize grip (650 ms)
+2026-10-21T14:58:11.2921799Z ok   nested: at rest, a chart's fill moves nothing outside it (253 ms)
+2026-10-21T14:58:11.5238909Z ok   stacked: at rest, a chart's fill moves nothing outside it (232 ms)
+2026-10-21T14:58:11.7649817Z ok   resize: at rest, a chart's fill moves nothing outside it (241 ms)
+2026-10-21T14:58:12.0767898Z ok   resize&float=under: at rest, a chart's fill moves nothing outside it (312 ms)
+2026-10-21T14:58:12.3264523Z ok   resize&float=board: at rest, a chart's fill moves nothing outside it (250 ms)
+2026-10-21T14:58:23.3937417Z ok   chart composer: a long pan back keeps its span, loads older bars as it goes and never jumps forward (11067 ms)
+2026-10-21T14:58:30.7770863Z ok   chart composer: a pan past the oldest bar stops at it (7383 ms)
+2026-10-21T14:58:34.8381189Z ok   chart composer: choosing the selected range again returns a panned or zoomed view to it, and leaves one that was not moved alone (4061 ms)
+2026-10-21T14:58:35.5769157Z ok   chart composer: the legend reads out every series at the crosshair, by key and by pointer, and nothing floats over the plot (739 ms)
+2026-10-21T14:58:36.0773712Z ok   chart composer: a daily and a 30-minute chart in one tab follow each other's crosshair to the same session, and clear with it (500 ms)
+2026-10-21T14:58:36.7379293Z ok   chart composer: pin in the footer holds both charts at the crosshair's moment after the pointer leaves, the arrows move the pin and Esc lifts it (661 ms)
+2026-10-21T14:58:37.3179846Z ok   chart composer: IV history, a monthly macro series and Fear & Greed's charts in one tab follow its crosshair and each other's, each reading its own series, and clear with it (580 ms)
+2026-10-21T14:58:38.9720845Z ok   idle: a pane with two tables renders nothing while nothing moves (1654 ms)
+2026-10-21T14:58:39.5548429Z ok   dock divider: a drag resizes the panes on both sides (582 ms)
+2026-10-21T14:58:39.9375594Z ok   popped-out window: the empty bar moves the window (383 ms)
+2026-10-21T14:58:40.3209745Z ok   popped-out window: the title moves the window (383 ms)
+2026-10-21T14:58:40.4880184Z ok   popped-out window: a tab selects without moving the window (167 ms)
+2026-10-21T14:58:40.6547921Z ok   popped-out window: the ? asks for the pane's docs without moving the window (167 ms)
+2026-10-21T14:58:40.8213776Z ok   popped-out window: the pane menu button opens its menu without moving the window (167 ms)
+2026-10-21T14:58:44.4707510Z ok   popped-out window: one Share entry shares at once by pointer and held key, with no dialog (3649 ms)
+2026-10-21T14:58:47.8045716Z ok   held keys: Cmd+Shift+C held for 1.5 s copies one screenshot, and a later press copies another (3333 ms)
+2026-10-21T14:58:50.2721608Z ok   held keys: Cmd+Shift+C sent 45 times with no repeat flag in 1.5 s still copies one screenshot (2468 ms)
+2026-10-21T14:58:52.7710779Z ok   held keys: the Ask Gloom key held for 1.5 s hands the pane over once (2499 ms)
+2026-10-21T14:58:55.4369351Z ok   held keys: Cmd+W held for 1.5 s closes one pane, and a later press closes the next (2666 ms)
+2026-10-21T14:58:56.6703067Z ok   held keys: the arrow keys keep repeating in a table (1233 ms)
+2026-10-21T14:58:59.1199584Z ok   held keys: Cmd+W held in a popped-out window closes it once (2450 ms)
+2026-10-21T14:58:59.4868615Z ok   popped-out window (Windows): the minimize button does not move the window (367 ms)
+2026-10-21T14:58:59.8535924Z ok   popped-out window (Windows): the maximize button does not move the window (367 ms)
+2026-10-21T14:59:00.2368596Z ok   popped-out window (Windows): the close button does not move the window (383 ms)
+2026-10-21T14:59:01.0039980Z ok   chat window review: keyboard reply at the bottom stays pinned as the composer grows (767 ms)
+2026-10-21T14:59:01.7371531Z ok   chat window review: click reply at the bottom stays pinned as the composer grows (733 ms)
+2026-10-21T14:59:02.7589568Z ok   chat window review: copy with an unmounted selection edge uses the browser selection (1022 ms)
+2026-10-21T14:59:03.5535764Z ok   chat window review: profile shortcut works after the selected row unmounts (795 ms)
+2026-10-21T14:59:05.1535509Z ok   chat window review: a hidden tab preserves the scrolled-back reader and visible rows (1600 ms)
+2026-10-21T14:59:05.8708622Z ok   chat window review: a quote click focuses a detached pane and keeps the jump highlight (717 ms)
+2026-10-21T14:59:09.2200848Z ok   chat window: an offscreen notification target mounts, highlights and copies, and keyboard navigation crosses windows (3349 ms)
+2026-10-21T14:59:10.7038544Z ok   chat window: a pending send, failed-send retry, reply and reaction survive window changes (1484 ms)
+2026-10-21T14:59:11.3713914Z ok   chat window: clicking a quote loads older pages and mounts its highlighted target (668 ms)
+2026-10-21T14:59:12.1202318Z ok   chat window: an image reserves its measured space before decoding (749 ms)
+2026-10-21T14:59:12.6385933Z ok   chat people: a bot's name has its own colour and its icon always, a person's icons wait for the pointer (518 ms)
+2026-10-21T14:59:13.8203803Z ok   chat people: Team and Pro show on the row under the pointer and on the selected row, and nothing moves (1182 ms)
+2026-10-21T14:59:14.8195764Z ok   chat people: pointing at a name opens the card with their icons, local time and what they trade, and the keyboard opens the same card (999 ms)
+2026-10-21T14:59:15.7368538Z ok   chat people: at phone width the name stays whole and the icons and the row's actions stay inside the row (917 ms)
+2026-10-21T14:59:19.4712650Z ok   chat list: a message a notification opened on is marked in view, then goes back to normal (3734 ms)
+2026-10-21T14:59:20.2027253Z ok   chat list: the marked message goes back to normal on the first wheel turn (731 ms)
+2026-10-21T14:59:20.7859421Z ok   chat list: the marked message goes back to normal on a key press (583 ms)
+2026-10-21T14:59:21.3860794Z ok   chat list: the marked message goes back to normal on a click (600 ms)
+2026-10-21T14:59:21.9862329Z ok   chat list: the marked message goes back to normal when a message arrives, and the view stays (600 ms)
+2026-10-21T14:59:22.7194824Z ok   chat list: a new message does not pull a reader who scrolled on from a notification message back to it (733 ms)
+2026-10-21T14:59:23.3026968Z ok   chat list: a notification message at the bottom still follows new messages (583 ms)
+2026-10-21T14:59:23.9192207Z ok   chat list: a row under the pointer shows its Reply button, and loses it when the pointer leaves the pane (617 ms)
+2026-10-21T14:59:24.9857947Z ok   chat list: the row under a pointer that stays still is let go when the list scrolls, and one row is marked again on the next move (1067 ms)
+2026-10-21T14:59:25.8262329Z ok   chat list: the row under a pointer that stays still is let go when a message arrives (840 ms)
+2026-10-21T14:59:26.5524165Z ok   chat list: the row under the pointer is let go when the window loses focus or a key is pressed (726 ms)
+2026-10-21T14:59:27.2694622Z ok   chat list: a message that arrives behind a reader who scrolled back leaves the view alone and shows a control that goes to it (717 ms)
+2026-10-21T14:59:28.3195712Z ok   chat list: the control goes when the reader scrolls to the bottom themselves (1050 ms)
+2026-10-21T14:59:29.0025940Z ok   chat list: a reader at, or a few pixels from, the bottom follows a new message (683 ms)
+2026-10-21T14:59:29.5358044Z ok   chat list: a reader at the bottom stays there when the last message grows later, as an image loading would make it (533 ms)
+2026-10-21T14:59:30.4034814Z ok   chat list: a reader at the bottom keeps following when rows above grow and when they re-wrap as the view gets shorter (868 ms)
+2026-10-21T14:59:31.0189188Z ok   chat list: a message changing above the view does not move the reader, with no help from the browser (615 ms)
+2026-10-21T14:59:31.7856205Z ok   chat list: older messages arriving above keep the reader on the same message, even if they scrolled while waiting (767 ms)
+2026-10-21T14:59:32.8521599Z ok   chat list: older messages arriving select no message (1067 ms)
+2026-10-21T14:59:33.4687788Z ok   chat list: clicking into the composer does not move a reader who scrolled back (617 ms)
+2026-10-21T14:59:34.1526586Z ok   chat list: a message of your own goes to the bottom, from wherever the reader was (684 ms)
+2026-10-21T14:59:34.7854342Z ok   chat list: a growing composer keeps a reader at the bottom there (633 ms)
+2026-10-21T14:59:36.0189781Z ok   chat list: narrowing the pane to a stack keeps a reader who scrolled back on the same message (1234 ms)
+2026-10-21T14:59:38.4209698Z ok   chat resize: messages, reply quotes and wrapped text follow a divider drag to the pixel, and stay put when it lets go (2402 ms)
+2026-10-21T14:59:40.8195810Z ok   chat resize: messages, reply quotes and wrapped text follow a floating pane's corner to the pixel, and stay put when it lets go (2399 ms)
+2026-10-21T14:59:42.7856923Z ok   chat resize: a reader who scrolled back stays on the message they are reading through a drag and its release (1966 ms)
+2026-10-21T14:59:45.1878241Z ok   chat resize: over 500 loaded messages, every row in view follows a drag, every row takes the new width on release, and the list keeps its bottom (2402 ms)
+2026-10-21T14:59:45.7188443Z ok   chat chips: a share link is a chip with the share's title and pane, and its row keeps its height while the share is read (531 ms)
+2026-10-21T14:59:46.3854132Z ok   chat chips: a click on a share chip opens the shared pane and a Wire post's chip opens its calendar, without selecting the row (667 ms)
+2026-10-21T14:59:47.0682166Z ok   chat chips: the keyboard opens the chip of the selected message (683 ms)
+2026-10-21T14:59:47.6046204Z ok   chat chips: a news post that still ends in the publisher's address draws no address, and its chip opens the story in Gloom (536 ms)
+2026-10-21T14:59:48.4353284Z ok   chat chips: o on that news post opens the story at once, with no publisher address to choose (831 ms)
+2026-10-21T14:59:49.4523824Z ok   chat handle: the first-chat prompt keeps a refused handle in its field, gives the chat its keys back when the pointer leaves, and saves into the composer with the draft kept (1017 ms)
+2026-10-21T14:59:50.4539386Z ok   DES resize: after the divider jumps 60 px inward in one move, no glyph is outside its cell on any frame, and nothing is past the pane's edge (1002 ms)
+2026-10-21T14:59:51.4707531Z ok   DES resize: after a floating pane's corner jumps 60 px inward in one move, no glyph is outside its cell on any frame, and nothing is past the pane's edge (1017 ms)
+2026-10-21T14:59:52.4871364Z ok   DES resize: after the divider jumps 200 px inward in one move, no glyph is outside its cell on any frame, and nothing is past the pane's edge (1016 ms)
+2026-10-21T14:59:53.5035562Z ok   DES resize: after a floating pane's corner jumps 200 px inward in one move, no glyph is outside its cell on any frame, and nothing is past the pane's edge (1016 ms)
+2026-10-21T14:59:54.5193821Z ok   DES resize: after the divider jumps 60 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (1016 ms)
+2026-10-21T14:59:55.5187857Z ok   DES resize: after a floating pane's corner jumps 60 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (999 ms)
+2026-10-21T14:59:56.5360856Z ok   DES resize: after the divider jumps 60 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (range bars side by side) (1017 ms)
+2026-10-21T14:59:57.5357101Z ok   DES resize: after a floating pane's corner jumps 60 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (range bars side by side) (1000 ms)
+2026-10-21T14:59:58.5359069Z ok   DES resize: after the divider jumps 200 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (1000 ms)
+2026-10-21T14:59:59.5529417Z ok   DES resize: after a floating pane's corner jumps 200 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (1017 ms)
+2026-10-21T15:00:00.5519423Z ok   DES resize: after the divider jumps 200 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (range bars side by side) (999 ms)
+2026-10-21T15:00:01.5518208Z ok   DES resize: after a floating pane's corner jumps 200 px inward in one move, the range bars, return strip, company line and footer hint are where a CSS layout puts them on every frame (range bars side by side) (1000 ms)
+2026-10-21T15:00:03.8194257Z ok   DES resize: the range bars, return strip, company line and footer hint follow a divider drag to the pixel, and stay put when it lets go (2268 ms)
+2026-10-21T15:00:06.0858698Z ok   DES resize: the range bars, return strip, company line and footer hint follow a floating pane's corner to the pixel, and stay put when it lets go (2266 ms)
+2026-10-21T15:00:08.3385728Z ok   DES resize: the quote book, fundamentals, positions and description follow a divider drag to the pixel, line up with their headers, and stay put when it lets go (2252 ms)
+2026-10-21T15:00:10.5866783Z ok   DES resize: the quote book, fundamentals, positions and description follow a floating pane's corner to the pixel, line up with their headers, and stay put when it lets go (2249 ms)
+2026-10-21T15:00:14.0930868Z ok   market heat map: a corner resize stretches the board, holds every tile still, and lays it out once after the release, a refresh mid-drag included (3506 ms)
+2026-10-21T15:00:16.6764226Z ok   market heat map: a window resize stretches the docked board and lays it out once the window holds still (2583 ms)
+2026-10-21T15:00:18.9568724Z ok   market heat map: maximise and restore lay the board out once each, with no tile animation (2280 ms)
+2026-10-21T15:00:22.6009527Z ok   top bar (macOS title bar): every update state fits beside Help and the market summary from 520 to 1440 px, the command bar closed and open (3644 ms)
+2026-10-21T15:00:22.9004829Z ok   top bar (macOS title bar): at 520 px a click on Restart restarts and a click on Help opens Help (300 ms)
+2026-10-21T15:00:26.5342446Z ok   top bar (macOS title bar in full screen): every update state fits beside Help and the market summary from 520 to 1440 px, the command bar closed and open (3634 ms)
+2026-10-21T15:00:26.8337232Z ok   top bar (macOS title bar in full screen): at 520 px a click on Restart restarts and a click on Help opens Help (299 ms)
+2026-10-21T15:00:30.4678760Z ok   top bar (Windows title bar with caption buttons): every update state fits beside Help and the market summary from 520 to 1440 px, the command bar closed and open (3634 ms)
+2026-10-21T15:00:30.7671033Z ok   top bar (Windows title bar with caption buttons): at 520 px a click on Restart restarts and a click on Help opens Help (299 ms)
+2026-10-21T15:00:34.4005615Z ok   top bar (Linux title bar): every update state fits beside Help and the market summary from 520 to 1440 px, the command bar closed and open (3633 ms)
+2026-10-21T15:00:34.6999947Z ok   top bar (Linux title bar): at 520 px a click on Restart restarts and a click on Help opens Help (299 ms)
+2026-10-21T15:00:38.3337398Z ok   top bar (web app): every update state fits beside Help and the market summary from 520 to 1440 px, the command bar closed and open (3634 ms)
+2026-10-21T15:00:38.6331742Z ok   top bar (web app): at 520 px a click on Restart restarts and a click on Help opens Help (299 ms)
+2026-10-21T15:00:41.5671296Z ok   top bar (macOS title bar at the largest text size): every update state fits beside Help and the market summary from 640 to 1440 px, the command bar closed and open (2934 ms)
+2026-10-21T15:00:41.8664859Z ok   top bar (macOS title bar at the largest text size): at 800 px a click on Restart restarts and a click on Help opens Help (299 ms)
+2026-10-21T15:00:42.7904916Z ok   layout: the Trials study runs to the footer and across its width, docked, at three window sizes (924 ms)
+2026-10-21T15:00:43.7271583Z ok   layout: the Trials study runs to the footer and across its width, floating, at three window sizes (936 ms)
+2026-10-21T15:00:44.7998376Z ok   layout: the Changelog release runs to the footer and across its width, docked, at three window sizes (1073 ms)
+2026-10-21T15:00:45.9874230Z ok   layout: the Changelog release runs to the footer and across its width, floating, at three window sizes (1187 ms)
+2026-10-21T15:00:46.7886624Z ok   layout: the article reader runs to the footer and across its width, docked, at three window sizes (801 ms)
+2026-10-21T15:00:47.5550108Z ok   layout: the article reader runs to the footer and across its width, floating, at three window sizes (766 ms)
+2026-10-21T15:00:48.4423216Z ok   layout: the markdown in a detail body runs to the footer and across its width, docked, at three window sizes (887 ms)
+2026-10-21T15:00:49.3917242Z ok   layout: the markdown in a detail body runs to the footer and across its width, floating, at three window sizes (950 ms)
+2026-10-21T15:00:50.2793737Z ok   layout: the prose paragraphs in a detail body runs to the footer and across its width, docked, at three window sizes (888 ms)
+2026-10-21T15:00:51.1981878Z ok   layout: the prose paragraphs in a detail body runs to the footer and across its width, floating, at three window sizes (917 ms)
+2026-10-21T15:00:52.0476008Z ok   layout: the table runs to the footer and across its width, docked, at three window sizes (850 ms)
+2026-10-21T15:00:52.8637371Z ok   layout: the table runs to the footer and across its width, floating, at three window sizes (816 ms)
+2026-10-21T15:00:53.6743490Z ok   layout: the page of a table as tall as its rows and label and value rows runs to the footer and across its width, docked, at three window sizes (812 ms)
+2026-10-21T15:00:54.4732501Z ok   layout: the page of a table as tall as its rows and label and value rows runs to the footer and across its width, floating, at three window sizes (799 ms)
+2026-10-21T15:00:55.2857433Z ok   layout: the chart sized in rows under a query bar runs to the footer and across its width, docked, at three window sizes (812 ms)
+2026-10-21T15:00:56.0866097Z ok   layout: the chart sized in rows under a query bar runs to the footer and across its width, floating, at three window sizes (801 ms)
+2026-10-21T15:00:56.9097110Z ok   layout: the series list and its detail under a query bar runs to the footer and across its width, docked, at three window sizes (823 ms)
+2026-10-21T15:00:57.7279814Z ok   layout: the series list and its detail under a query bar runs to the footer and across its width, floating, at three window sizes (816 ms)
+2026-10-21T15:00:59.9695692Z ok   selection: a chart pane: its axis labels, legend, toolbar and tabs cannot be selected with Ctrl+A, Select All, a double or triple click, or a drag across (2242 ms)
+2026-10-21T15:01:01.6486211Z ok   selection: docked panes: their headers, tabs and footers cannot be selected with Ctrl+A, Select All, a double or triple click, or a drag across (1680 ms)
+2026-10-21T15:01:02.4986479Z ok   selection: the article reader's text can be selected, and nothing around it (850 ms)
+2026-10-21T15:01:03.3653891Z ok   selection: markdown can be selected, and nothing around it (867 ms)
+2026-10-21T15:01:04.2152708Z ok   selection: a chat message can be selected, and nothing around it (850 ms)
+2026-10-21T15:01:04.8151646Z ok   selection: a field takes typing, keeps its caret and selects its own text (600 ms)
+2026-10-21T15:01:06.0155852Z ok   series axis tags: desktop 640 white docked two (1200 ms)
+2026-10-21T15:01:07.2493705Z ok   series axis tags: desktop 640 white docked three (1234 ms)
+2026-10-21T15:01:08.4487630Z ok   series axis tags: desktop 640 white docked percent (1199 ms)
+2026-10-21T15:01:09.6487460Z ok   series axis tags: desktop 640 white docked mixed (1200 ms)
+2026-10-21T15:01:10.8486362Z ok   series axis tags: desktop 640 white docked missing (1200 ms)
+2026-10-21T15:01:13.3818215Z ok   series axis tags: desktop 640 white docked stacked (2533 ms)
+2026-10-21T15:01:14.5823870Z ok   series axis tags: desktop 640 white docked dense (1201 ms)
+2026-10-21T15:01:15.9818141Z ok   series axis tags: desktop 640 white floating two (1399 ms)
+2026-10-21T15:01:17.3983912Z ok   series axis tags: desktop 640 white floating three (1417 ms)
+2026-10-21T15:01:18.7984435Z ok   series axis tags: desktop 640 white floating percent (1400 ms)
+2026-10-21T15:01:20.2150783Z ok   series axis tags: desktop 640 white floating mixed (1417 ms)
+2026-10-21T15:01:21.6148869Z ok   series axis tags: desktop 640 white floating missing (1400 ms)
+2026-10-21T15:01:24.3649133Z ok   series axis tags: desktop 640 white floating stacked (2750 ms)
+2026-10-21T15:01:25.7648478Z ok   series axis tags: desktop 640 white floating dense (1400 ms)
+2026-10-21T15:01:26.9646403Z ok   series axis tags: desktop 640 paper docked two (1200 ms)
+2026-10-21T15:01:28.1813189Z ok   series axis tags: desktop 640 paper docked three (1217 ms)
+2026-10-21T15:01:29.3646159Z ok   series axis tags: desktop 640 paper docked percent (1183 ms)
+2026-10-21T15:01:30.5645385Z ok   series axis tags: desktop 640 paper docked mixed (1200 ms)
+2026-10-21T15:01:31.7478594Z ok   series axis tags: desktop 640 paper docked missing (1183 ms)
+2026-10-21T15:01:34.2985460Z ok   series axis tags: desktop 640 paper docked stacked (2551 ms)
+2026-10-21T15:01:35.4978166Z ok   series axis tags: desktop 640 paper docked dense (1199 ms)
+2026-10-21T15:01:36.9309415Z ok   series axis tags: desktop 640 paper floating two (1433 ms)
+2026-10-21T15:01:38.3313545Z ok   series axis tags: desktop 640 paper floating three (1400 ms)
+2026-10-21T15:01:39.7308286Z ok   series axis tags: desktop 640 paper floating percent (1399 ms)
+2026-10-21T15:01:41.1475263Z ok   series axis tags: desktop 640 paper floating mixed (1417 ms)
+2026-10-21T15:01:42.5483417Z ok   series axis tags: desktop 640 paper floating missing (1401 ms)
+2026-10-21T15:01:45.3140560Z ok   series axis tags: desktop 640 paper floating stacked (2766 ms)
+2026-10-21T15:01:46.7143635Z ok   series axis tags: desktop 640 paper floating dense (1400 ms)
+2026-10-21T15:01:47.8972004Z ok   series axis tags: desktop 1280 white docked two (1183 ms)
+2026-10-21T15:01:49.1471951Z ok   series axis tags: desktop 1280 white docked three (1250 ms)
+2026-10-21T15:01:50.3303881Z ok   series axis tags: desktop 1280 white docked percent (1183 ms)
+2026-10-21T15:01:51.5304191Z ok   series axis tags: desktop 1280 white docked mixed (1200 ms)
+2026-10-21T15:01:52.7303027Z ok   series axis tags: desktop 1280 white docked missing (1200 ms)
+2026-10-21T15:01:55.2803946Z ok   series axis tags: desktop 1280 white docked stacked (2550 ms)
+2026-10-21T15:01:56.4801931Z ok   series axis tags: desktop 1280 white docked dense (1200 ms)
+2026-10-21T15:01:57.8801701Z ok   series axis tags: desktop 1280 white floating two (1400 ms)
+2026-10-21T15:01:59.2803382Z ok   series axis tags: desktop 1280 white floating three (1400 ms)
+2026-10-21T15:02:00.6967760Z ok   series axis tags: desktop 1280 white floating percent (1416 ms)
+2026-10-21T15:02:02.0973905Z ok   series axis tags: desktop 1280 white floating mixed (1401 ms)
+2026-10-21T15:02:03.4966438Z ok   series axis tags: desktop 1280 white floating missing (1399 ms)
+2026-10-21T15:02:06.2466749Z ok   series axis tags: desktop 1280 white floating stacked (2750 ms)
+2026-10-21T15:02:07.6298628Z ok   series axis tags: desktop 1280 white floating dense (1383 ms)
+2026-10-21T15:02:08.8131064Z ok   series axis tags: desktop 1280 paper docked two (1183 ms)
+2026-10-21T15:02:10.0462794Z ok   series axis tags: desktop 1280 paper docked three (1233 ms)
+2026-10-21T15:02:11.2307392Z ok   series axis tags: desktop 1280 paper docked percent (1184 ms)
+2026-10-21T15:02:12.4296454Z ok   series axis tags: desktop 1280 paper docked mixed (1199 ms)
+2026-10-21T15:02:13.6295161Z ok   series axis tags: desktop 1280 paper docked missing (1200 ms)
+2026-10-21T15:02:16.1796209Z ok   series axis tags: desktop 1280 paper docked stacked (2550 ms)
+2026-10-21T15:02:17.3794679Z ok   series axis tags: desktop 1280 paper docked dense (1200 ms)
+2026-10-21T15:02:18.7960986Z ok   series axis tags: desktop 1280 paper floating two (1417 ms)
+2026-10-21T15:02:20.2126328Z ok   series axis tags: desktop 1280 paper floating three (1417 ms)
+2026-10-21T15:02:21.6127049Z ok   series axis tags: desktop 1280 paper floating percent (1400 ms)
+2026-10-21T15:02:23.0127416Z ok   series axis tags: desktop 1280 paper floating mixed (1400 ms)
+2026-10-21T15:02:24.4138032Z ok   series axis tags: desktop 1280 paper floating missing (1401 ms)
+2026-10-21T15:02:27.1792212Z ok   series axis tags: desktop 1280 paper floating stacked (2765 ms)
+2026-10-21T15:02:28.5792178Z ok   series axis tags: desktop 1280 paper floating dense (1400 ms)
+2026-10-21T15:02:29.7788678Z ok   series axis tags: browser 640 white docked two (1200 ms)
+2026-10-21T15:02:31.0121632Z ok   series axis tags: browser 640 white docked three (1233 ms)
+2026-10-21T15:02:32.1954485Z ok   series axis tags: browser 640 white docked percent (1183 ms)
+2026-10-21T15:02:33.3956451Z ok   series axis tags: browser 640 white docked mixed (1200 ms)
+2026-10-21T15:02:34.5955115Z ok   series axis tags: browser 640 white docked missing (1200 ms)
+2026-10-21T15:02:37.1454219Z ok   series axis tags: browser 640 white docked stacked (2550 ms)
+2026-10-21T15:02:38.3451646Z ok   series axis tags: browser 640 white docked dense (1200 ms)
+2026-10-21T15:02:39.7452395Z ok   series axis tags: browser 640 white floating two (1400 ms)
+2026-10-21T15:02:41.1618846Z ok   series axis tags: browser 640 white floating three (1417 ms)
+2026-10-21T15:02:42.5620949Z ok   series axis tags: browser 640 white floating percent (1400 ms)
+2026-10-21T15:02:44.0117619Z ok   series axis tags: browser 640 white floating mixed (1450 ms)
+2026-10-21T15:02:45.4117586Z ok   series axis tags: browser 640 white floating missing (1400 ms)
+2026-10-21T15:02:48.1782556Z ok   series axis tags: browser 640 white floating stacked (2766 ms)
+2026-10-21T15:02:49.5780710Z ok   series axis tags: browser 640 white floating dense (1400 ms)
+2026-10-21T15:02:50.7613502Z ok   series axis tags: browser 640 paper docked two (1183 ms)
+2026-10-21T15:02:51.9778837Z ok   series axis tags: browser 640 paper docked three (1217 ms)
+2026-10-21T15:02:53.1611158Z ok   series axis tags: browser 640 paper docked percent (1183 ms)
+2026-10-21T15:02:54.3611645Z ok   series axis tags: browser 640 paper docked mixed (1200 ms)
+2026-10-21T15:02:55.5444204Z ok   series axis tags: browser 640 paper docked missing (1183 ms)
+2026-10-21T15:02:58.0775797Z ok   series axis tags: browser 640 paper docked stacked (2533 ms)
+2026-10-21T15:02:59.2783804Z ok   series axis tags: browser 640 paper docked dense (1201 ms)
+2026-10-21T15:03:00.6777883Z ok   series axis tags: browser 640 paper floating two (1399 ms)
+2026-10-21T15:03:02.0943692Z ok   series axis tags: browser 640 paper floating three (1417 ms)
+2026-10-21T15:03:03.5114042Z ok   series axis tags: browser 640 paper floating percent (1417 ms)
+2026-10-21T15:03:04.9277175Z ok   series axis tags: browser 640 paper floating mixed (1416 ms)
+2026-10-21T15:03:06.3444641Z ok   series axis tags: browser 640 paper floating missing (1417 ms)
+2026-10-21T15:03:09.1276825Z ok   series axis tags: browser 640 paper floating stacked (2783 ms)
+2026-10-21T15:03:10.5277150Z ok   series axis tags: browser 640 paper floating dense (1400 ms)
+2026-10-21T15:03:11.7272499Z ok   series axis tags: browser 1280 white docked two (1200 ms)
+2026-10-21T15:03:12.9773278Z ok   series axis tags: browser 1280 white docked three (1250 ms)
+2026-10-21T15:03:14.1771199Z ok   series axis tags: browser 1280 white docked percent (1200 ms)
+2026-10-21T15:03:15.3771301Z ok   series axis tags: browser 1280 white docked mixed (1200 ms)
+2026-10-21T15:03:16.5771608Z ok   series axis tags: browser 1280 white docked missing (1200 ms)
+2026-10-21T15:03:19.1275023Z ok   series axis tags: browser 1280 white docked stacked (2550 ms)
+2026-10-21T15:03:20.3439493Z ok   series axis tags: browser 1280 white docked dense (1216 ms)
+2026-10-21T15:03:21.7772650Z ok   series axis tags: browser 1280 white floating two (1433 ms)
+2026-10-21T15:03:23.1937295Z ok   series axis tags: browser 1280 white floating three (1416 ms)
+2026-10-21T15:03:24.6103214Z ok   series axis tags: browser 1280 white floating percent (1417 ms)
+2026-10-21T15:03:26.0436420Z ok   series axis tags: browser 1280 white floating mixed (1433 ms)
+2026-10-21T15:03:27.4773359Z ok   series axis tags: browser 1280 white floating missing (1434 ms)
+2026-10-21T15:03:30.2432635Z ok   series axis tags: browser 1280 white floating stacked (2766 ms)
+2026-10-21T15:03:31.6430046Z ok   series axis tags: browser 1280 white floating dense (1400 ms)
+2026-10-21T15:03:32.8597193Z ok   series axis tags: browser 1280 paper docked two (1217 ms)
+2026-10-21T15:03:34.1104417Z ok   series axis tags: browser 1280 paper docked three (1251 ms)
+2026-10-21T15:03:35.3119970Z ok   series axis tags: browser 1280 paper docked percent (1202 ms)
+2026-10-21T15:03:36.5265398Z ok   series axis tags: browser 1280 paper docked mixed (1215 ms)
+2026-10-21T15:03:37.7261891Z ok   series axis tags: browser 1280 paper docked missing (1200 ms)
+2026-10-21T15:03:40.2760491Z ok   series axis tags: browser 1280 paper docked stacked (2550 ms)
+2026-10-21T15:03:41.4763398Z ok   series axis tags: browser 1280 paper docked dense (1200 ms)
+2026-10-21T15:03:42.8761949Z ok   series axis tags: browser 1280 paper floating two (1400 ms)
+2026-10-21T15:03:44.3263764Z ok   series axis tags: browser 1280 paper floating three (1450 ms)
+2026-10-21T15:03:45.7433616Z ok   series axis tags: browser 1280 paper floating percent (1417 ms)
+2026-10-21T15:03:47.1759747Z ok   series axis tags: browser 1280 paper floating mixed (1433 ms)
+2026-10-21T15:03:48.5933709Z ok   series axis tags: browser 1280 paper floating missing (1417 ms)
+2026-10-21T15:03:51.3758855Z ok   series axis tags: browser 1280 paper floating stacked (2782 ms)
+2026-10-21T15:03:52.7769143Z ok   series axis tags: browser 1280 paper floating dense (1401 ms)
+2026-10-21T15:03:54.6424566Z ok   series axis tags: desktop 640 hover and tools place a level (three) (1866 ms)
+2026-10-21T15:03:57.3263854Z ok   series axis tags: desktop 640 hover and tools place a level (stacked) (2684 ms)
+2026-10-21T15:03:59.3422603Z ok   series axis tags: desktop 1280 hover and tools place a level (three) (2016 ms)
+2026-10-21T15:04:02.4591451Z ok   series axis tags: desktop 1280 hover and tools place a level (stacked) (3117 ms)
+2026-10-21T15:04:04.3258169Z ok   series axis tags: browser 640 hover and tools place a level (three) (1867 ms)
+2026-10-21T15:04:07.0257334Z ok   series axis tags: browser 640 hover and tools place a level (stacked) (2700 ms)
+2026-10-21T15:04:09.0422037Z ok   series axis tags: browser 1280 hover and tools place a level (three) (2016 ms)
+2026-10-21T15:04:12.1755126Z ok   series axis tags: browser 1280 hover and tools place a level (stacked) (3133 ms)
+2026-10-21T15:04:20.4618709Z ok   layout sweep: every tab in an overflowing strip of 25 is opened and confirmed, a press that does nothing is reported, nothing is dropped (8286 ms)
+2026-10-21T15:04:20.6756405Z ok   readers: the article reader, markdown and Docs set paragraphs, a section heading and prose bullets alike; label and value facts stay at the app's size (214 ms)
+2026-10-21T15:04:32.7096200Z ok   global Share: real pointer menu, aliases, keys/repeat, link copied with no dialog, pending pan and drawing (/home/runner/.cache/gloomberb-pane-chrome/share-evidence)
+2026-10-21T15:04:32.7420840Z 
+2026-10-21T15:04:32.7421400Z 320/320 passed
+2026-10-21T15:04:32.7582235Z ##[group]Run bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
+2026-10-21T15:04:32.7582624Z [36;1mbun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency[0m
+2026-10-21T15:04:32.7636433Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:04:32.7636585Z ##[endgroup]
+2026-10-21T15:04:39.4359914Z {"host":"desktop","count":500,"image":false,"cold":55.09999999997672,"warm":40.70000000001164,"p50":5.2999999999883585,"p95":6.399999999965075,"p99":6.599999999976717,"rows":0,"commits":127,"long":0}
+2026-10-21T15:04:44.6978706Z {"host":"desktop","count":500,"image":true,"cold":55.09999999997672,"warm":40.70000000001164,"p50":6.099999999976717,"p95":7.199999999953434,"p99":7.399999999965075,"rows":0,"commits":132,"long":0}
+2026-10-21T15:04:51.1018861Z {"host":"browser","count":500,"image":false,"cold":45.90000000002328,"warm":24.29999999998836,"p50":14.599999999976717,"p95":14.900000000023283,"p99":15.099999999976717,"rows":0,"commits":127,"long":0}
+2026-10-21T15:04:56.3346730Z {"host":"browser","count":500,"image":true,"cold":45.90000000002328,"warm":24.29999999998836,"p50":10.800000000046566,"p95":11.300000000046566,"p99":11.400000000023283,"rows":0,"commits":130,"long":0}
+2026-10-21T15:04:56.7346863Z ##[group]Run mkdir -p ~/.cache
+2026-10-21T15:04:56.7347070Z [36;1mmkdir -p ~/.cache[0m
+2026-10-21T15:04:56.7347311Z [36;1mflock ~/.cache/gloom-announce-render.lock nice -n19 bun run check:chat-mentions[0m
+2026-10-21T15:04:56.7400689Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:04:56.7400841Z ##[endgroup]
+2026-10-21T15:04:56.7508232Z $ bun scripts/pane-chrome/chat-mentions.ts
+2026-10-21T15:04:58.2066181Z desktop: cold cache, silent member, display name, Tab, DM contact, cap, full-set filtering, channel isolation and read counts passed
+2026-10-21T15:04:59.1898094Z browser: cold cache, silent member, display name, Tab, DM contact, cap, full-set filtering, channel isolation and read counts passed
+2026-10-21T15:04:59.2383270Z ##[group]Run bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle
+2026-10-21T15:04:59.2384020Z [36;1mbun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle[0m
+2026-10-21T15:04:59.2438517Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:04:59.2438679Z ##[endgroup]
+2026-10-21T15:05:06.6869245Z {"run":1,"host":"desktop","count":500,"states":29,"failed":[]}
+2026-10-21T15:05:13.5092221Z {"run":1,"host":"browser","count":500,"states":29,"failed":[]}
+2026-10-21T15:05:13.5600163Z Post job cleanup.
+2026-10-21T15:05:13.6328454Z Cache hit occurred on the primary key chrome-headless-shell-155.0.8059.39-Linux-X64, not saving cache.
+2026-10-21T15:05:13.6329458Z (node:2694) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:05:13.6330087Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:05:13.6428385Z Post job cleanup.
+2026-10-21T15:05:13.6432109Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__3c6842fb-2889-45bc-8b69-a3c6e95336cf.__oven-sh_setup-bun]
+2026-10-21T15:05:13.6465111Z Post job cleanup.
+2026-10-21T15:05:13.7615004Z ##[end-action id=__3c6842fb-2889-45bc-8b69-a3c6e95336cf.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=118]
+2026-10-21T15:05:13.7660761Z Post job cleanup.
+2026-10-21T15:05:13.8286692Z [command]/usr/bin/git version
+2026-10-21T15:05:13.8333534Z git version 2.55.0
+2026-10-21T15:05:13.8350309Z Temporarily overriding HOME='/home/runner/work/_temp/ff14d5de-e426-4fa7-a347-77c2b9eeab40' before making global git config changes
+2026-10-21T15:05:13.8351097Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:05:13.8355041Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:05:13.8391041Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:05:13.8418686Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:05:13.8632204Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:05:13.8656249Z http.https://github.com/.extraheader
+2026-10-21T15:05:13.8665906Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T15:05:13.8720870Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:05:13.8929184Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:05:13.8959901Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:05:13.9472909Z Cleaning up orphan processes
+2026-10-21T15:05:13.9675846Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

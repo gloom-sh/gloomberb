@@ -1,0 +1,62 @@
+{
+  "run": 39618676400,
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "id": 119285999115,
+      "name": "UI tokens, shard 2 of 4",
+      "conclusion": "success",
+      "log": "ci-ui-tokens-119285999115.log",
+      "logSha256": "37634f050168e58cfb5a6ab95c15a8018ff119d71dbed625c52bf45e3e18ef7f",
+      "reportedViews": 160,
+      "existingAllowedValues": 0,
+      "testedRevision": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "id": 119285999464,
+      "name": "UI tokens, shard 1 of 4",
+      "conclusion": "success",
+      "log": "ci-ui-tokens-119285999464.log",
+      "logSha256": "e678b4d9ad0abda97908a5459343392ca201a38a0e1f5eb3185c109819a3b0dc",
+      "reportedViews": 126,
+      "existingAllowedValues": 6,
+      "testedRevision": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "id": 119285999568,
+      "name": "UI tokens, shard 4 of 4",
+      "conclusion": "success",
+      "log": "ci-ui-tokens-119285999568.log",
+      "logSha256": "9546c48ffdc18f0f1fcd569ca0d2700e58d3724da3af29e1179cae7e587a4c0e",
+      "reportedViews": 119,
+      "existingAllowedValues": 2,
+      "testedRevision": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "id": 119285999667,
+      "name": "UI tokens, shard 3 of 4",
+      "conclusion": "success",
+      "log": "ci-ui-tokens-119285999667.log",
+      "logSha256": "7bdb60b1efed0ffa937791863513f3944d5e5203418ac87f7d7a16785f1a2847",
+      "reportedViews": 125,
+      "existingAllowedValues": 0,
+      "testedRevision": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "id": 119321913970,
+      "name": "UI tokens",
+      "conclusion": "success",
+      "log": "ci-ui-tokens-119321913970.log",
+      "logSha256": "f97418eede4a401ecd3bbc5adbcdae09ceaec35611f4bb689af1e880ad08ca12",
+      "verdict": "The shards: success"
+    }
+  ],
+  "testedSourceTreeMatchesSubmittedHead": true,
+  "allowlistUnchanged": {
+    "path": "src/architecture/ui-tokens-allowlist.json",
+    "baselineBlob": "b4d20c9e4cf75b1e64902c931694c3b4e0271ecc",
+    "headBlob": "b4d20c9e4cf75b1e64902c931694c3b4e0271ecc"
+  },
+  "scope": "The existing browser token sweep at 640/1280 px; successful workflow does not retain raw token measurements. Benchmark capture and focused both-theme evidence are audited separately."
+}

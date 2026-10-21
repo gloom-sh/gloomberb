@@ -1,0 +1,49 @@
+{
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "submittedHead": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "sourcesIdentical": [
+    {
+      "path": "src/plugins/catalog.ts",
+      "baseBlob": "5a7fabc364be2f571d379fd7ca4989a5f863cc1e",
+      "headBlob": "5a7fabc364be2f571d379fd7ca4989a5f863cc1e"
+    },
+    {
+      "path": "src/plugins/catalog-ui.ts",
+      "baseBlob": "f5bdcaa51249375adedaf55dfdb240b9083ac303",
+      "headBlob": "f5bdcaa51249375adedaf55dfdb240b9083ac303"
+    },
+    {
+      "path": "src/plugins/catalog-browser.ts",
+      "baseBlob": "d8ddef95fbc13c7275f6d133ba4d22f86f1dbe1a",
+      "headBlob": "d8ddef95fbc13c7275f6d133ba4d22f86f1dbe1a"
+    },
+    {
+      "path": "src/plugins/builtin/composite-plugins.ts",
+      "baseBlob": "1adf09a2a0f93924cd27e8e72c28d9915f71904a",
+      "headBlob": "1adf09a2a0f93924cd27e8e72c28d9915f71904a"
+    },
+    {
+      "path": "scripts/pane-chrome/ui-audit.ts",
+      "baseBlob": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+      "headBlob": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e"
+    },
+    {
+      "path": "scripts/pane-chrome/ui-audit-compare.ts",
+      "baseBlob": "13883fc23cdc4212ef2c547b333e9cb5d6d04664",
+      "headBlob": "13883fc23cdc4212ef2c547b333e9cb5d6d04664"
+    },
+    {
+      "path": "scripts/pane-chrome/ui-benchmark.ts",
+      "baseBlob": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436",
+      "headBlob": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436"
+    }
+  ],
+  "sourceInspection": {
+    "EVTS/ERN": "Browser earnings composition includes calls/ripple; full UI earnings composition also includes earningsModule.",
+    "HDS": "Browser ownership composition includes insider/short-interest/short-volume; full UI composition also includes holdersModule.",
+    "VIEW": "Full UI catalog includes customViewPlugin; browser catalog does not.",
+    "debug-log": "CLI catalog includes debugPlugin; browser catalog does not.",
+    "detailDeclarationCaveat": "auditPane records a detail declaration after awaiting record(detail) without testing its boolean result. A missing scope can therefore leave a declaration without measurements; inspect actual artifacts before deciding whether this occurred."
+  },
+  "scope": "These are verified source facts at both refs, not claims that any specific catalog omission or false declaration occurred in the pending capture."
+}

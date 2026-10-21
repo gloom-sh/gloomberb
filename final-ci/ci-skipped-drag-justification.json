@@ -1,0 +1,12 @@
+{
+  "job": "Pane drag frame budget",
+  "expectedSkip": true,
+  "condition": "needs.pane-drag-scope.outputs.relevant == 'true'",
+  "scopeJob": "Pane drag scope",
+  "scopeSucceeded": true,
+  "rawScopeResult": "None of the 8 changed files touch pane chrome.",
+  "scopeLog": "ci-39617892455-job-119283477920.log",
+  "scopeLogSha256": "9562e2d1dce0ca45f9d9e6c8266b8ae8d3510b85de9cb5b45fc3552f2a0ed631",
+  "workflowRevision": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+  "workflowBlob": "b8b6e0c12dd9f30bf487e153ed3005412c847ddd"
+}

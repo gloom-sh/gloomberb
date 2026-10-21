@@ -1,0 +1,915 @@
+﻿2026-10-21T15:23:24.8868997Z Current runner version: '2.338.0'
+2026-10-21T15:23:24.8905205Z ##[group]Runner Image Provisioner
+2026-10-21T15:23:24.8906595Z Hosted Compute Agent
+2026-10-21T15:23:24.8907900Z Version: 20261015.610
+2026-10-21T15:23:24.8909153Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+2026-10-21T15:23:24.8910480Z Build Date: 2026-10-14T17:06:54Z
+2026-10-21T15:23:24.8911765Z Worker ID: {134e08b0-581f-45f1-92be-81bb52558296}
+2026-10-21T15:23:24.8913018Z Region: eastus
+2026-10-21T15:23:24.8913877Z Cloud: Azure
+2026-10-21T15:23:24.8914903Z ##[endgroup]
+2026-10-21T15:23:24.8917444Z ##[group]Operating System
+2026-10-21T15:23:24.8919200Z Ubuntu
+2026-10-21T15:23:24.8920158Z 24.04.5
+2026-10-21T15:23:24.8920997Z LTS
+2026-10-21T15:23:24.8921991Z ##[endgroup]
+2026-10-21T15:23:24.8923018Z ##[group]Runner Image
+2026-10-21T15:23:24.8924143Z Image: ubuntu-24.04
+2026-10-21T15:23:24.8925126Z Version: 20261018.339.1
+2026-10-21T15:23:24.8927632Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261018.339/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T15:23:24.8930364Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.339
+2026-10-21T15:23:24.8932215Z ##[endgroup]
+2026-10-21T15:23:24.8934096Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T15:23:24.8937721Z Contents: read
+2026-10-21T15:23:24.8938715Z Metadata: read
+2026-10-21T15:23:24.8939751Z ##[endgroup]
+2026-10-21T15:23:24.8942940Z Secret source: Actions
+2026-10-21T15:23:24.8944736Z Cache mode: write
+2026-10-21T15:23:24.8946201Z Prepare workflow directory
+2026-10-21T15:23:24.9441368Z Prepare all required actions
+2026-10-21T15:23:24.9512683Z Getting action download info
+2026-10-21T15:23:25.1641858Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T15:23:25.2781570Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-10-21T15:23:25.3737712Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-21T15:23:25.5985293Z Complete job name: Picture base and head, shard 2 of 4
+2026-10-21T15:23:25.6795966Z ##[group]Run actions/checkout@v4
+2026-10-21T15:23:25.6796849Z with:
+2026-10-21T15:23:25.6797474Z   fetch-depth: 0
+2026-10-21T15:23:25.6797939Z   repository: gloom-sh/gloomberb
+2026-10-21T15:23:25.6801846Z   token: ***
+2026-10-21T15:23:25.6802271Z   ssh-strict: true
+2026-10-21T15:23:25.6802689Z   ssh-user: git
+2026-10-21T15:23:25.6803130Z   persist-credentials: true
+2026-10-21T15:23:25.6803603Z   clean: true
+2026-10-21T15:23:25.6804030Z   sparse-checkout-cone-mode: true
+2026-10-21T15:23:25.6804540Z   fetch-tags: false
+2026-10-21T15:23:25.6804969Z   show-progress: true
+2026-10-21T15:23:25.6805401Z   lfs: false
+2026-10-21T15:23:25.6805795Z   submodules: false
+2026-10-21T15:23:25.6806232Z   set-safe-directory: true
+2026-10-21T15:23:25.6806733Z   allow-unsafe-pr-checkout: false
+2026-10-21T15:23:25.6807637Z ##[endgroup]
+2026-10-21T15:23:25.7842950Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T15:23:25.7845583Z ##[group]Getting Git version info
+2026-10-21T15:23:25.7846605Z Working directory is '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:23:25.7847990Z [command]/usr/bin/git version
+2026-10-21T15:23:25.7930023Z git version 2.55.0
+2026-10-21T15:23:25.7958994Z ##[endgroup]
+2026-10-21T15:23:25.7979138Z Temporarily overriding HOME='/home/runner/work/_temp/367721a4-ac55-4dd7-a557-5061fb35c9c7' before making global git config changes
+2026-10-21T15:23:25.7981807Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:23:25.7986108Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:23:25.8041053Z Deleting the contents of '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:23:25.8047962Z ##[group]Initializing the repository
+2026-10-21T15:23:25.8053431Z [command]/usr/bin/git init /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:23:25.8166058Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T15:23:25.8168395Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T15:23:25.8169963Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T15:23:25.8171600Z hint: call:
+2026-10-21T15:23:25.8172263Z hint:
+2026-10-21T15:23:25.8173086Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T15:23:25.8174079Z hint:
+2026-10-21T15:23:25.8175014Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T15:23:25.8176623Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T15:23:25.8178057Z hint:
+2026-10-21T15:23:25.8178710Z hint: 	git branch -m <name>
+2026-10-21T15:23:25.8179466Z hint:
+2026-10-21T15:23:25.8180520Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T15:23:25.8182233Z Initialized empty Git repository in /home/runner/work/gloomberb/gloomberb/.git/
+2026-10-21T15:23:25.8193405Z [command]/usr/bin/git remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T15:23:25.8246684Z ##[endgroup]
+2026-10-21T15:23:25.8248209Z ##[group]Disabling automatic garbage collection
+2026-10-21T15:23:25.8251397Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T15:23:25.8288232Z ##[endgroup]
+2026-10-21T15:23:25.8289586Z ##[group]Setting up auth
+2026-10-21T15:23:25.8296811Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:23:25.8334859Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:23:25.8781049Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:23:25.8843647Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:23:25.9125683Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:23:25.9174910Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:23:25.9447969Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T15:23:25.9501397Z ##[endgroup]
+2026-10-21T15:23:25.9502203Z ##[group]Fetching the repository
+2026-10-21T15:23:25.9513398Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-10-21T15:23:38.2133819Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T15:23:38.2135826Z  * [new branch]        assets/GLO-1082-eco-shots -> origin/assets/GLO-1082-eco-shots
+2026-10-21T15:23:38.2138991Z  * [new branch]        assets/GLO-1098-ovdv-shots -> origin/assets/GLO-1098-ovdv-shots
+2026-10-21T15:23:38.2141111Z  * [new branch]        assets/GLO-1098-spot-label -> origin/assets/GLO-1098-spot-label
+2026-10-21T15:23:38.2143248Z  * [new branch]        assets/GLO-1129-runway-shots -> origin/assets/GLO-1129-runway-shots
+2026-10-21T15:23:38.2145112Z  * [new branch]        assets/glo-1005-splc-period-shots -> origin/assets/glo-1005-splc-period-shots
+2026-10-21T15:23:38.2147356Z  * [new branch]        assets/glo-1019-fut-shots -> origin/assets/glo-1019-fut-shots
+2026-10-21T15:23:38.2150359Z  * [new branch]        assets/glo-1022-hedge-shots -> origin/assets/glo-1022-hedge-shots
+2026-10-21T15:23:38.2153648Z  * [new branch]        assets/glo-1023-splc-shots -> origin/assets/glo-1023-splc-shots
+2026-10-21T15:23:38.2156589Z  * [new branch]        assets/glo-1028-muni-shots -> origin/assets/glo-1028-muni-shots
+2026-10-21T15:23:38.2160617Z  * [new branch]        assets/glo-1034-signup-social-first -> origin/assets/glo-1034-signup-social-first
+2026-10-21T15:23:38.2163992Z  * [new branch]        assets/glo-1040-announcement-shots -> origin/assets/glo-1040-announcement-shots
+2026-10-21T15:23:38.2166479Z  * [new branch]        assets/glo-1044-fx-cost -> origin/assets/glo-1044-fx-cost
+2026-10-21T15:23:38.2168910Z  * [new branch]        assets/glo-1044-port-quality -> origin/assets/glo-1044-port-quality
+2026-10-21T15:23:38.2171214Z  * [new branch]        assets/glo-1044-turkish-cpi -> origin/assets/glo-1044-turkish-cpi
+2026-10-21T15:23:38.2173761Z  * [new branch]        assets/glo-1047-perps-shots -> origin/assets/glo-1047-perps-shots
+2026-10-21T15:23:38.2176349Z  * [new branch]        assets/glo-1048-crosshair-shots -> origin/assets/glo-1048-crosshair-shots
+2026-10-21T15:23:38.2179218Z  * [new branch]        assets/glo-1049-broker-shots -> origin/assets/glo-1049-broker-shots
+2026-10-21T15:23:38.2181462Z  * [new branch]        assets/glo-1053-shots   -> origin/assets/glo-1053-shots
+2026-10-21T15:23:38.2183734Z  * [new branch]        assets/glo-1076-ytd-base-shots -> origin/assets/glo-1076-ytd-base-shots
+2026-10-21T15:23:38.2186595Z  * [new branch]        assets/glo-1085-position-form-shots -> origin/assets/glo-1085-position-form-shots
+2026-10-21T15:23:38.2189907Z  * [new branch]        assets/glo-1089-change-basis-shots -> origin/assets/glo-1089-change-basis-shots
+2026-10-21T15:23:38.2192946Z  * [new branch]        assets/glo-1107-chart-tools-shots -> origin/assets/glo-1107-chart-tools-shots
+2026-10-21T15:23:38.2195822Z  * [new branch]        assets/glo-1109-tab-strip-shots -> origin/assets/glo-1109-tab-strip-shots
+2026-10-21T15:23:38.2198972Z  * [new branch]        assets/glo-1112-account-name-shots -> origin/assets/glo-1112-account-name-shots
+2026-10-21T15:23:38.2202009Z  * [new branch]        assets/glo-1116-delayed-clock-shots -> origin/assets/glo-1116-delayed-clock-shots
+2026-10-21T15:23:38.2204843Z  * [new branch]        assets/glo-1117-broker-logos -> origin/assets/glo-1117-broker-logos
+2026-10-21T15:23:38.2207890Z  * [new branch]        assets/glo-1117-row-clipping-shots -> origin/assets/glo-1117-row-clipping-shots
+2026-10-21T15:23:38.2210863Z  * [new branch]        assets/glo-1117-row-fit-shots -> origin/assets/glo-1117-row-fit-shots
+2026-10-21T15:23:38.2213594Z  * [new branch]        assets/glo-1131-axis-zoom-shots -> origin/assets/glo-1131-axis-zoom-shots
+2026-10-21T15:23:38.2216769Z  * [new branch]        assets/glo-1138-title-tab-shots -> origin/assets/glo-1138-title-tab-shots
+2026-10-21T15:23:38.2219962Z  * [new branch]        assets/glo-1141-drawings-shots -> origin/assets/glo-1141-drawings-shots
+2026-10-21T15:23:38.2223412Z  * [new branch]        assets/glo-383-fresh-ticket-price-shots -> origin/assets/glo-383-fresh-ticket-price-shots
+2026-10-21T15:23:38.2227820Z  * [new branch]        assets/glo-383-one-trading-account-shots -> origin/assets/glo-383-one-trading-account-shots
+2026-10-21T15:23:38.2313011Z  * [new branch]        assets/glo-383-screenshot-grid-shots -> origin/assets/glo-383-screenshot-grid-shots
+2026-10-21T15:23:38.2316398Z  * [new branch]        assets/glo-383-trade-key-shots -> origin/assets/glo-383-trade-key-shots
+2026-10-21T15:23:38.2319455Z  * [new branch]        assets/glo-829-update-shots -> origin/assets/glo-829-update-shots
+2026-10-21T15:23:38.2321798Z  * [new branch]        assets/glo-877-shots    -> origin/assets/glo-877-shots
+2026-10-21T15:23:38.2324918Z  * [new branch]        assets/glo-887-mars-coverage -> origin/assets/glo-887-mars-coverage
+2026-10-21T15:23:38.2329165Z  * [new branch]        assets/glo-909-share-copies-link -> origin/assets/glo-909-share-copies-link
+2026-10-21T15:23:38.2333499Z  * [new branch]        assets/glo-917-stopped-dividends -> origin/assets/glo-917-stopped-dividends
+2026-10-21T15:23:38.2337671Z  * [new branch]        assets/glo-918-issuer-debt -> origin/assets/glo-918-issuer-debt
+2026-10-21T15:23:38.2341702Z  * [new branch]        assets/glo-920-insider-buying -> origin/assets/glo-920-insider-buying
+2026-10-21T15:23:38.2345787Z  * [new branch]        assets/glo-921-insider-activity -> origin/assets/glo-921-insider-activity
+2026-10-21T15:23:38.2350519Z  * [new branch]        assets/glo-922-call-player -> origin/assets/glo-922-call-player
+2026-10-21T15:23:38.2353636Z  * [new branch]        assets/glo-973-trial-cancel -> origin/assets/glo-973-trial-cancel
+2026-10-21T15:23:38.2356400Z  * [new branch]        assets/glo-979-g-pane-shots -> origin/assets/glo-979-g-pane-shots
+2026-10-21T15:23:38.2359365Z  * [new branch]        assets/pane-empty-columns -> origin/assets/pane-empty-columns
+2026-10-21T15:23:38.2361621Z  * [new branch]        assets/pr-861           -> origin/assets/pr-861
+2026-10-21T15:23:38.2364490Z  * [new branch]        assets/pr-866           -> origin/assets/pr-866
+2026-10-21T15:23:38.2368335Z  * [new branch]        assets/roe-near-zero-equity -> origin/assets/roe-near-zero-equity
+2026-10-21T15:23:38.2372525Z  * [new branch]        chore/glo-479-eps-basis-evidence -> origin/chore/glo-479-eps-basis-evidence
+2026-10-21T15:23:38.2377361Z  * [new branch]        chore/glo-633-ask-gloom-personal-from-declaration -> origin/chore/glo-633-ask-gloom-personal-from-declaration
+2026-10-21T15:23:38.2381285Z  * [new branch]        chore/glo-667-chart-evidence -> origin/chore/glo-667-chart-evidence
+2026-10-21T15:23:38.2383810Z  * [new branch]        chore/glo-833-shots     -> origin/chore/glo-833-shots
+2026-10-21T15:23:38.2386675Z  * [new branch]        chore/glo-856-review-shots -> origin/chore/glo-856-review-shots
+2026-10-21T15:23:38.2389487Z  * [new branch]        chore/linear-glo-820-review-shots -> origin/chore/linear-glo-820-review-shots
+2026-10-21T15:23:38.2392238Z  * [new branch]        chore/linear-glo-827-review-shots -> origin/chore/linear-glo-827-review-shots
+2026-10-21T15:23:38.2394997Z  * [new branch]        chore/linear-glo-831-review-shots -> origin/chore/linear-glo-831-review-shots
+2026-10-21T15:23:38.2398245Z  * [new branch]        chore/linear-glo-847-review-shots -> origin/chore/linear-glo-847-review-shots
+2026-10-21T15:23:38.2401036Z  * [new branch]        chore/linear-glo-882-review-shots -> origin/chore/linear-glo-882-review-shots
+2026-10-21T15:23:38.2403916Z  * [new branch]        cleanup/simplify-foundations -> origin/cleanup/simplify-foundations
+2026-10-21T15:23:38.2406740Z  * [new branch]        evidence/glo-1125-benchmark-correction -> origin/evidence/glo-1125-benchmark-correction
+2026-10-21T15:23:38.2410322Z  * [new branch]        evidence/glo-1164-alert-storage -> origin/evidence/glo-1164-alert-storage
+2026-10-21T15:23:38.2413704Z  * [new branch]        evidence/glo-1165-footer-c181 -> origin/evidence/glo-1165-footer-c181
+2026-10-21T15:23:38.2416326Z  * [new branch]        evidence/glo-1165-plugin-removal -> origin/evidence/glo-1165-plugin-removal
+2026-10-21T15:23:38.2419400Z  * [new branch]        feat/GLO-1082-em-calendar-forward -> origin/feat/GLO-1082-em-calendar-forward
+2026-10-21T15:23:38.2422266Z  * [new branch]        feat/analytics-single-risk-pane -> origin/feat/analytics-single-risk-pane
+2026-10-21T15:23:38.2424789Z  * [new branch]        feat/attention-app      -> origin/feat/attention-app
+2026-10-21T15:23:38.2427548Z  * [new branch]        feat/awards-app         -> origin/feat/awards-app
+2026-10-21T15:23:38.2429735Z  * [new branch]        feat/catalysts-app      -> origin/feat/catalysts-app
+2026-10-21T15:23:38.2432501Z  * [new branch]        feat/congress-returns-context -> origin/feat/congress-returns-context
+2026-10-21T15:23:38.2434745Z  * [new branch]        feat/credit-app         -> origin/feat/credit-app
+2026-10-21T15:23:38.2436801Z  * [new branch]        feat/credit-app-design  -> origin/feat/credit-app-design
+2026-10-21T15:23:38.2439256Z  * [new branch]        feat/exposure-app       -> origin/feat/exposure-app
+2026-10-21T15:23:38.2441665Z  * [new branch]        feat/glo-1090-crypto-etf-flows -> origin/feat/glo-1090-crypto-etf-flows
+2026-10-21T15:23:38.2444037Z  * [new branch]        feat/glo-1129-cash-runway -> origin/feat/glo-1129-cash-runway
+2026-10-21T15:23:38.2446365Z  * [new branch]        feat/glo-1131-chart-axis-zoom -> origin/feat/glo-1131-chart-axis-zoom
+2026-10-21T15:23:38.2449212Z  * [new branch]        feat/glo-583-share-pane-to-chat -> origin/feat/glo-583-share-pane-to-chat
+2026-10-21T15:23:38.2451819Z  * [new branch]        feat/hiring-apps-app    -> origin/feat/hiring-apps-app
+2026-10-21T15:23:38.2453779Z  * [new branch]        feat/kpis-app           -> origin/feat/kpis-app
+2026-10-21T15:23:38.2455659Z  * [new branch]        feat/perps-app          -> origin/feat/perps-app
+2026-10-21T15:23:38.2457707Z  * [new branch]        feat/power-app          -> origin/feat/power-app
+2026-10-21T15:23:38.2459650Z  * [new branch]        feat/theme-styles-v2    -> origin/feat/theme-styles-v2
+2026-10-21T15:23:38.2461858Z  * [new branch]        feat/web-plugin-http-proxy -> origin/feat/web-plugin-http-proxy
+2026-10-21T15:23:38.2464905Z  * [new branch]        fix/GLO-1098-ovdv-close-spot-forward-skew -> origin/fix/GLO-1098-ovdv-close-spot-forward-skew
+2026-10-21T15:23:38.2468675Z  * [new branch]        fix/GLO-1130-catalyst-trial-dates -> origin/fix/GLO-1130-catalyst-trial-dates
+2026-10-21T15:23:38.2471611Z  * [new branch]        fix/askg-tool-name-pattern -> origin/fix/askg-tool-name-pattern
+2026-10-21T15:23:38.2474199Z  * [new branch]        fix/assist-test-deadline -> origin/fix/assist-test-deadline
+2026-10-21T15:23:38.2476695Z  * [new branch]        fix/curve-lookback-export -> origin/fix/curve-lookback-export
+2026-10-21T15:23:38.2479320Z  * [new branch]        fix/fx-cache-test-weekday -> origin/fix/fx-cache-test-weekday
+2026-10-21T15:23:38.2481701Z  * [new branch]        fix/glo-1047-perps-live -> origin/fix/glo-1047-perps-live
+2026-10-21T15:23:38.2484381Z  * [new branch]        fix/glo-1085-position-cost-lots -> origin/fix/glo-1085-position-cost-lots
+2026-10-21T15:23:38.2487113Z  * [new branch]        fix/glo-1095-event-labels -> origin/fix/glo-1095-event-labels
+2026-10-21T15:23:38.2489728Z  * [new branch]        fix/glo-1163-trending-quotes -> origin/fix/glo-1163-trending-quotes
+2026-10-21T15:23:38.2492370Z  * [new branch]        fix/glo-1164-preserve-alerts -> origin/fix/glo-1164-preserve-alerts
+2026-10-21T15:23:38.2495283Z  * [new branch]        fix/glo-1165-plugin-removal -> origin/fix/glo-1165-plugin-removal
+2026-10-21T15:23:38.2498313Z  * [new branch]        fix/glo-1166-retain-plugin-updates -> origin/fix/glo-1166-retain-plugin-updates
+2026-10-21T15:23:38.2501318Z  * [new branch]        fix/glo-301-plugin-peer-retry -> origin/fix/glo-301-plugin-peer-retry
+2026-10-21T15:23:38.2504542Z  * [new branch]        fix/linear-glo-1153-heatmap-prices-as-of -> origin/fix/linear-glo-1153-heatmap-prices-as-of
+2026-10-21T15:23:38.2507543Z  * [new branch]        fix/power-pane-suite    -> origin/fix/power-pane-suite
+2026-10-21T15:23:38.2509758Z  * [new branch]        glo-523-eu-energy       -> origin/glo-523-eu-energy
+2026-10-21T15:23:38.2511924Z  * [new branch]        glo-848-review-shots    -> origin/glo-848-review-shots
+2026-10-21T15:23:38.2514138Z  * [new branch]        glo-906-review-shots    -> origin/glo-906-review-shots
+2026-10-21T15:23:38.2516134Z  * [new branch]        main                    -> origin/main
+2026-10-21T15:23:38.2518253Z  * [new branch]        preview/glo-383-aries   -> origin/preview/glo-383-aries
+2026-10-21T15:23:38.2520985Z  * [new branch]        review/glo-1081-mpashc-ui-evidence -> origin/review/glo-1081-mpashc-ui-evidence
+2026-10-21T15:23:38.2523970Z  * [new branch]        review/glo-1103-mpashc-ui-evidence -> origin/review/glo-1103-mpashc-ui-evidence
+2026-10-21T15:23:38.2526691Z  * [new branch]        review/glo-1125-ui-evidence -> origin/review/glo-1125-ui-evidence
+2026-10-21T15:23:38.2529293Z  * [new branch]        review/glo-1127-ui-evidence -> origin/review/glo-1127-ui-evidence
+2026-10-21T15:23:38.2531708Z  * [new branch]        review/glo-1163-mpashc-ui-evidence -> origin/review/glo-1163-mpashc-ui-evidence
+2026-10-21T15:23:38.2534476Z  * [new branch]        review/glo-1166-mpashc-ui-evidence -> origin/review/glo-1166-mpashc-ui-evidence
+2026-10-21T15:23:38.2536842Z  * [new branch]        screenshots/bt-2026-09-22 -> origin/screenshots/bt-2026-09-22
+2026-10-21T15:23:38.2539431Z  * [new branch]        screenshots/btmm-2026-09-22 -> origin/screenshots/btmm-2026-09-22
+2026-10-21T15:23:38.2541865Z  * [new branch]        screenshots/cbr-2026-09-22 -> origin/screenshots/cbr-2026-09-22
+2026-10-21T15:23:38.2543999Z  * [new branch]        screenshots/cot-2026-09-22 -> origin/screenshots/cot-2026-09-22
+2026-10-21T15:23:38.2546155Z  * [new branch]        screenshots/cryp-2026-09-22 -> origin/screenshots/cryp-2026-09-22
+2026-10-21T15:23:38.2548781Z  * [new branch]        screenshots/cryp-live-2026-09-23 -> origin/screenshots/cryp-live-2026-09-23
+2026-10-21T15:23:38.2551092Z  * [new branch]        screenshots/ctm-2026-09-22 -> origin/screenshots/ctm-2026-09-22
+2026-10-21T15:23:38.2553409Z  * [new branch]        screenshots/ddis-2026-09-22 -> origin/screenshots/ddis-2026-09-22
+2026-10-21T15:23:38.2555542Z  * [new branch]        screenshots/em-2026-09-22 -> origin/screenshots/em-2026-09-22
+2026-10-21T15:23:38.2557859Z  * [new branch]        screenshots/eqs-2026-09-22 -> origin/screenshots/eqs-2026-09-22
+2026-10-21T15:23:38.2560288Z  * [new branch]        screenshots/glo-1077-halt-2026-10-20 -> origin/screenshots/glo-1077-halt-2026-10-20
+2026-10-21T15:23:38.2562547Z  * [new branch]        screenshots/glo-427     -> origin/screenshots/glo-427
+2026-10-21T15:23:38.2564735Z  * [new branch]        screenshots/iv-history-2026-09-23 -> origin/screenshots/iv-history-2026-09-23
+2026-10-21T15:23:38.2567552Z  * [new branch]        screenshots/kit-everywhere-2026-09-23 -> origin/screenshots/kit-everywhere-2026-09-23
+2026-10-21T15:23:38.2570357Z  * [new branch]        screenshots/omon-enrichment-2026-09-22 -> origin/screenshots/omon-enrichment-2026-09-22
+2026-10-21T15:23:38.2572824Z  * [new branch]        screenshots/osa-2026-09-22 -> origin/screenshots/osa-2026-09-22
+2026-10-21T15:23:38.2574975Z  * [new branch]        screenshots/ovdv-2026-09-22 -> origin/screenshots/ovdv-2026-09-22
+2026-10-21T15:23:38.2577287Z  * [new branch]        screenshots/ovdv-3d-2026-09-23 -> origin/screenshots/ovdv-3d-2026-09-23
+2026-10-21T15:23:38.2579995Z  * [new branch]        screenshots/ovdv-mesh-2026-09-22 -> origin/screenshots/ovdv-mesh-2026-09-22
+2026-10-21T15:23:38.2582501Z  * [new branch]        screenshots/ovme-2026-09-22 -> origin/screenshots/ovme-2026-09-22
+2026-10-21T15:23:38.2585034Z  * [new branch]        screenshots/pane-chrome-2026-09-23 -> origin/screenshots/pane-chrome-2026-09-23
+2026-10-21T15:23:38.2588182Z  * [new branch]        screenshots/pane-chrome-sweep-2026-09-24 -> origin/screenshots/pane-chrome-sweep-2026-09-24
+2026-10-21T15:23:38.2590749Z  * [new branch]        screenshots/port-2026-09-22 -> origin/screenshots/port-2026-09-22
+2026-10-21T15:23:38.2593065Z  * [new branch]        screenshots/rates-desk-2026-09-22 -> origin/screenshots/rates-desk-2026-09-22
+2026-10-21T15:23:38.2595605Z  * [new branch]        screenshots/realized-vol-2026-09-22 -> origin/screenshots/realized-vol-2026-09-22
+2026-10-21T15:23:38.2598197Z  * [new branch]        screenshots/rrg-2026-09-22 -> origin/screenshots/rrg-2026-09-22
+2026-10-21T15:23:38.2600260Z  * [new branch]        screenshots/siv-2026-09-22 -> origin/screenshots/siv-2026-09-22
+2026-10-21T15:23:38.2602342Z  * [new branch]        screenshots/tas-2026-09-22 -> origin/screenshots/tas-2026-09-22
+2026-10-21T15:23:38.2604647Z  * [new branch]        screenshots/tas-capture-2026-09-22 -> origin/screenshots/tas-capture-2026-09-22
+2026-10-21T15:23:38.2607254Z  * [new branch]        screenshots/vix-board-2026-09-22 -> origin/screenshots/vix-board-2026-09-22
+2026-10-21T15:23:38.2609662Z  * [new branch]        screenshots/vol-fixes-2026-09-22 -> origin/screenshots/vol-fixes-2026-09-22
+2026-10-21T15:23:38.2612051Z  * [new branch]        screenshots/vol-shots-2026-09-22 -> origin/screenshots/vol-shots-2026-09-22
+2026-10-21T15:23:38.2614301Z  * [new branch]        screenshots/wirp-2026-09-22 -> origin/screenshots/wirp-2026-09-22
+2026-10-21T15:23:38.2616371Z  * [new branch]        screenshots/yas-2026-09-22 -> origin/screenshots/yas-2026-09-22
+2026-10-21T15:23:38.2618393Z  * [new tag]           backup-before-rewrite   -> backup-before-rewrite
+2026-10-21T15:23:38.2620096Z  * [new tag]           v0.1.0                  -> v0.1.0
+2026-10-21T15:23:38.2621373Z  * [new tag]           v0.10.1                 -> v0.10.1
+2026-10-21T15:23:38.2622669Z  * [new tag]           v0.10.2                 -> v0.10.2
+2026-10-21T15:23:38.2623955Z  * [new tag]           v0.10.3                 -> v0.10.3
+2026-10-21T15:23:38.2625239Z  * [new tag]           v0.10.4                 -> v0.10.4
+2026-10-21T15:23:38.2626525Z  * [new tag]           v0.10.5                 -> v0.10.5
+2026-10-21T15:23:38.2627976Z  * [new tag]           v0.11.0                 -> v0.11.0
+2026-10-21T15:23:38.2629273Z  * [new tag]           v0.11.1                 -> v0.11.1
+2026-10-21T15:23:38.2630551Z  * [new tag]           v0.11.2                 -> v0.11.2
+2026-10-21T15:23:38.2631817Z  * [new tag]           v0.11.3                 -> v0.11.3
+2026-10-21T15:23:38.2633105Z  * [new tag]           v0.12.0                 -> v0.12.0
+2026-10-21T15:23:38.2634377Z  * [new tag]           v0.13.0                 -> v0.13.0
+2026-10-21T15:23:38.2635665Z  * [new tag]           v0.13.1                 -> v0.13.1
+2026-10-21T15:23:38.2636951Z  * [new tag]           v0.13.2                 -> v0.13.2
+2026-10-21T15:23:38.2638362Z  * [new tag]           v0.13.3                 -> v0.13.3
+2026-10-21T15:23:38.2639627Z  * [new tag]           v0.14.0                 -> v0.14.0
+2026-10-21T15:23:38.2640896Z  * [new tag]           v0.14.1                 -> v0.14.1
+2026-10-21T15:23:38.2642162Z  * [new tag]           v0.15.0                 -> v0.15.0
+2026-10-21T15:23:38.2643429Z  * [new tag]           v0.15.1                 -> v0.15.1
+2026-10-21T15:23:38.2644688Z  * [new tag]           v0.15.2                 -> v0.15.2
+2026-10-21T15:23:38.2645973Z  * [new tag]           v0.15.3                 -> v0.15.3
+2026-10-21T15:23:38.2647381Z  * [new tag]           v0.15.4                 -> v0.15.4
+2026-10-21T15:23:38.2648718Z  * [new tag]           v0.15.5                 -> v0.15.5
+2026-10-21T15:23:38.2650028Z  * [new tag]           v0.15.6                 -> v0.15.6
+2026-10-21T15:23:38.2651497Z  * [new tag]           v0.15.7                 -> v0.15.7
+2026-10-21T15:23:38.2652840Z  * [new tag]           v0.15.8                 -> v0.15.8
+2026-10-21T15:23:38.2654140Z  * [new tag]           v0.16.0                 -> v0.16.0
+2026-10-21T15:23:38.2655449Z  * [new tag]           v0.16.1                 -> v0.16.1
+2026-10-21T15:23:38.2656749Z  * [new tag]           v0.16.2                 -> v0.16.2
+2026-10-21T15:23:38.2658217Z  * [new tag]           v0.16.3                 -> v0.16.3
+2026-10-21T15:23:38.2659536Z  * [new tag]           v0.16.4                 -> v0.16.4
+2026-10-21T15:23:38.2660818Z  * [new tag]           v0.16.5                 -> v0.16.5
+2026-10-21T15:23:38.2662105Z  * [new tag]           v0.16.6                 -> v0.16.6
+2026-10-21T15:23:38.2663399Z  * [new tag]           v0.17.0                 -> v0.17.0
+2026-10-21T15:23:38.2664704Z  * [new tag]           v0.17.1                 -> v0.17.1
+2026-10-21T15:23:38.2666010Z  * [new tag]           v0.17.2                 -> v0.17.2
+2026-10-21T15:23:38.2667456Z  * [new tag]           v0.17.3                 -> v0.17.3
+2026-10-21T15:23:38.2668759Z  * [new tag]           v0.17.4                 -> v0.17.4
+2026-10-21T15:23:38.2670049Z  * [new tag]           v0.17.5                 -> v0.17.5
+2026-10-21T15:23:38.2671360Z  * [new tag]           v0.17.6                 -> v0.17.6
+2026-10-21T15:23:38.2673088Z  * [new tag]           v0.17.6-nightly.20261016.4.ge28ca26 -> v0.17.6-nightly.20261016.4.ge28ca26
+2026-10-21T15:23:38.2675340Z  * [new tag]           v0.17.7-nightly.20261017.6.g2a23d5c -> v0.17.7-nightly.20261017.6.g2a23d5c
+2026-10-21T15:23:38.2677676Z  * [new tag]           v0.17.7-nightly.20261018.7.gb95e6ad -> v0.17.7-nightly.20261018.7.gb95e6ad
+2026-10-21T15:23:38.2679882Z  * [new tag]           v0.17.7-nightly.20261019.8.g3fac85e -> v0.17.7-nightly.20261019.8.g3fac85e
+2026-10-21T15:23:38.2681657Z  * [new tag]           v0.18.0                 -> v0.18.0
+2026-10-21T15:23:38.2683130Z  * [new tag]           v0.18.1                 -> v0.18.1
+2026-10-21T15:23:38.2685103Z  * [new tag]           v0.18.1-nightly.20261020.9.ge08eca6 -> v0.18.1-nightly.20261020.9.ge08eca6
+2026-10-21T15:23:38.2686924Z  * [new tag]           v0.18.2                 -> v0.18.2
+2026-10-21T15:23:38.2688640Z  * [new tag]           v0.2.0                  -> v0.2.0
+2026-10-21T15:23:38.2689960Z  * [new tag]           v0.3.0                  -> v0.3.0
+2026-10-21T15:23:38.2691262Z  * [new tag]           v0.3.1                  -> v0.3.1
+2026-10-21T15:23:38.2692571Z  * [new tag]           v0.3.2                  -> v0.3.2
+2026-10-21T15:23:38.2693852Z  * [new tag]           v0.3.3                  -> v0.3.3
+2026-10-21T15:23:38.2695142Z  * [new tag]           v0.3.4                  -> v0.3.4
+2026-10-21T15:23:38.2696419Z  * [new tag]           v0.3.5                  -> v0.3.5
+2026-10-21T15:23:38.2697973Z  * [new tag]           v0.3.6                  -> v0.3.6
+2026-10-21T15:23:38.2699267Z  * [new tag]           v0.3.7                  -> v0.3.7
+2026-10-21T15:23:38.2700551Z  * [new tag]           v0.4.0                  -> v0.4.0
+2026-10-21T15:23:38.2701826Z  * [new tag]           v0.4.1                  -> v0.4.1
+2026-10-21T15:23:38.2703100Z  * [new tag]           v0.5.0                  -> v0.5.0
+2026-10-21T15:23:38.2704370Z  * [new tag]           v0.5.1                  -> v0.5.1
+2026-10-21T15:23:38.2705647Z  * [new tag]           v0.6.0                  -> v0.6.0
+2026-10-21T15:23:38.2706913Z  * [new tag]           v0.6.1                  -> v0.6.1
+2026-10-21T15:23:38.2708351Z  * [new tag]           v0.7.0                  -> v0.7.0
+2026-10-21T15:23:38.2709625Z  * [new tag]           v0.7.1                  -> v0.7.1
+2026-10-21T15:23:38.2710915Z  * [new tag]           v0.7.2                  -> v0.7.2
+2026-10-21T15:23:38.2712191Z  * [new tag]           v0.7.3                  -> v0.7.3
+2026-10-21T15:23:38.2713456Z  * [new tag]           v0.7.4                  -> v0.7.4
+2026-10-21T15:23:38.2714744Z  * [new tag]           v0.7.5                  -> v0.7.5
+2026-10-21T15:23:38.2716223Z  * [new tag]           v0.8.0                  -> v0.8.0
+2026-10-21T15:23:38.2717661Z  * [new tag]           v0.8.1                  -> v0.8.1
+2026-10-21T15:23:38.2718938Z  * [new tag]           v0.8.2                  -> v0.8.2
+2026-10-21T15:23:38.2720198Z  * [new tag]           v0.8.3                  -> v0.8.3
+2026-10-21T15:23:38.2721464Z  * [new tag]           v0.9.0                  -> v0.9.0
+2026-10-21T15:23:38.2722726Z  * [new tag]           v0.9.1                  -> v0.9.1
+2026-10-21T15:23:38.2724002Z  * [new tag]           v0.9.10                 -> v0.9.10
+2026-10-21T15:23:38.2725284Z  * [new tag]           v0.9.2                  -> v0.9.2
+2026-10-21T15:23:38.2726554Z  * [new tag]           v0.9.3                  -> v0.9.3
+2026-10-21T15:23:38.2727944Z  * [new tag]           v0.9.4                  -> v0.9.4
+2026-10-21T15:23:38.2729221Z  * [new tag]           v0.9.5                  -> v0.9.5
+2026-10-21T15:23:38.2730494Z  * [new tag]           v0.9.6                  -> v0.9.6
+2026-10-21T15:23:38.2731752Z  * [new tag]           v0.9.7                  -> v0.9.7
+2026-10-21T15:23:38.2733011Z  * [new tag]           v0.9.8                  -> v0.9.8
+2026-10-21T15:23:38.2734260Z  * [new tag]           v0.9.9                  -> v0.9.9
+2026-10-21T15:23:38.2737428Z [command]/usr/bin/git branch --list --remote origin/fix/glo-1165-plugin-removal
+2026-10-21T15:23:38.2739167Z   origin/fix/glo-1165-plugin-removal
+2026-10-21T15:23:38.2741755Z [command]/usr/bin/git rev-parse refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T15:23:38.2743358Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T15:23:38.2746028Z ##[endgroup]
+2026-10-21T15:23:38.2747565Z ##[group]Determining the checkout info
+2026-10-21T15:23:38.2749149Z ##[endgroup]
+2026-10-21T15:23:38.2750042Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T15:23:38.2752681Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T15:23:38.2756011Z ##[group]Checking out the ref
+2026-10-21T15:23:38.2758275Z [command]/usr/bin/git checkout --progress --force -B fix/glo-1165-plugin-removal refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T15:23:38.7057715Z Switched to a new branch 'fix/glo-1165-plugin-removal'
+2026-10-21T15:23:38.7063803Z branch 'fix/glo-1165-plugin-removal' set up to track 'origin/fix/glo-1165-plugin-removal'.
+2026-10-21T15:23:38.7098890Z ##[endgroup]
+2026-10-21T15:23:38.7161401Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T15:23:38.7197503Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T15:23:38.7490849Z Prepare all required actions
+2026-10-21T15:23:38.7491509Z Getting action download info
+2026-10-21T15:23:38.8324856Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T15:23:38.9536543Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T15:23:38.9536923Z with:
+2026-10-21T15:23:38.9537543Z   install: true
+2026-10-21T15:23:38.9537817Z ##[endgroup]
+2026-10-21T15:23:38.9596254Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T15:23:38.9637384Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T15:23:38.9638470Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T15:23:38.9639106Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:23:38.9811011Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:23:38.9811513Z ##[endgroup]
+2026-10-21T15:23:39.1555143Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=195]
+2026-10-21T15:23:39.1561112Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T15:23:39.1646952Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T15:23:39.1647660Z with:
+2026-10-21T15:23:39.1647925Z   bun-version: 1.3.11
+2026-10-21T15:23:39.1648211Z   no-cache: false
+2026-10-21T15:23:39.1651022Z   token: ***
+2026-10-21T15:23:39.1651295Z ##[endgroup]
+2026-10-21T15:23:39.4448333Z Cache hit for: bun-7/QmryP/e10nHn0ivgSAK3UdqOg=
+2026-10-21T15:23:39.7665726Z Received 35349280 of 35349280 (100.0%), 130.7 MBs/sec
+2026-10-21T15:23:39.7666641Z Cache Size: ~34 MB (35349280 B)
+2026-10-21T15:23:39.7699413Z [command]/usr/bin/tar -xf /home/runner/work/_temp/8082da19-a171-45d4-9480-17feeeefce65/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:23:39.9491334Z Cache restored successfully
+2026-10-21T15:23:39.9515434Z [command]/home/runner/.bun/bin/bun --revision
+2026-10-21T15:23:39.9591813Z 1.3.11+af24e281e
+2026-10-21T15:23:39.9597464Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T15:23:39.9733570Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=817]
+2026-10-21T15:23:39.9737678Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T15:23:39.9764063Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T15:23:39.9764448Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T15:23:39.9824242Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:23:39.9824620Z ##[endgroup]
+2026-10-21T15:23:39.9954875Z bun install v1.3.11 (af24e281)
+2026-10-21T15:23:40.0018971Z Resolving dependencies
+2026-10-21T15:23:40.0058871Z Resolved, downloaded and extracted [3]
+2026-10-21T15:23:41.1942857Z 
+2026-10-21T15:23:41.1943348Z + @types/bun@1.3.14
+2026-10-21T15:23:41.1943820Z + @types/react-dom@19.2.3
+2026-10-21T15:23:41.1944297Z + @types/three@0.165.0
+2026-10-21T15:23:41.1944695Z + electrobun@1.18.1
+2026-10-21T15:23:41.1945155Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T15:23:41.1945951Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T15:23:41.1946679Z + happy-dom@20.11.1
+2026-10-21T15:23:41.1947518Z + playwright-core@1.60.0
+2026-10-21T15:23:41.1947988Z + png-to-ico@2.1.8
+2026-10-21T15:23:41.1948782Z + rcedit@4.0.1
+2026-10-21T15:23:41.1949133Z + typescript@5.9.2
+2026-10-21T15:23:41.1949484Z + wrangler@4.125.0
+2026-10-21T15:23:41.1949862Z + @opentui/core@0.3.2
+2026-10-21T15:23:41.1950239Z + @opentui/react@0.3.2
+2026-10-21T15:23:41.1950643Z + @tanstack/react-virtual@3.14.2
+2026-10-21T15:23:41.1951070Z + hls.js@1.6.13
+2026-10-21T15:23:41.1951409Z + jimp@1.6.1
+2026-10-21T15:23:41.1951751Z + qrcode-generator@2.0.4
+2026-10-21T15:23:41.1952142Z + react@19.2.7
+2026-10-21T15:23:41.1952475Z + react-dom@19.2.7
+2026-10-21T15:23:41.1952833Z + web-tree-sitter@0.25.10
+2026-10-21T15:23:41.1953328Z 
+2026-10-21T15:23:41.1953513Z 194 packages installed [1200.00ms]
+2026-10-21T15:23:41.2361684Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=1262]
+2026-10-21T15:23:41.2409825Z ##[group]Run command -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
+2026-10-21T15:23:41.2410590Z [36;1mcommand -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)[0m
+2026-10-21T15:23:41.2462333Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:23:41.2462615Z ##[endgroup]
+2026-10-21T15:23:41.3187916Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T15:23:41.3528320Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-10-21T15:23:41.3529770Z Get:6 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-10-21T15:23:41.3547395Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-10-21T15:23:41.3597895Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-10-21T15:23:41.3621784Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-10-21T15:23:41.4917551Z Get:7 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [628 kB]
+2026-10-21T15:23:41.5089126Z Get:8 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [565 kB]
+2026-10-21T15:23:41.5457304Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1400 kB]
+2026-10-21T15:23:41.5524979Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [309 kB]
+2026-10-21T15:23:41.5548213Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1706 kB]
+2026-10-21T15:23:41.5626269Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [342 kB]
+2026-10-21T15:23:41.6470721Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1145 kB]
+2026-10-21T15:23:41.6529088Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [231 kB]
+2026-10-21T15:23:41.6547647Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1222 kB]
+2026-10-21T15:23:45.5548589Z Fetched 7931 kB in 1s (9366 kB/s)
+2026-10-21T15:23:46.6092745Z Reading package lists...
+2026-10-21T15:23:46.6476549Z Reading package lists...
+2026-10-21T15:23:46.8744969Z Building dependency tree...
+2026-10-21T15:23:46.8752510Z Reading state information...
+2026-10-21T15:23:47.0254896Z The following additional packages will be installed:
+2026-10-21T15:23:47.0256170Z   fonts-droid-fallback fonts-noto-mono fonts-urw-base35 ghostscript
+2026-10-21T15:23:47.0258031Z   imagemagick-6.q16 libdjvulibre-text libdjvulibre21 libgs-common libgs10
+2026-10-21T15:23:47.0273897Z   libgs10-common libidn12 libijs-0.35 libimath-3-1-29t64 libjbig2dec0
+2026-10-21T15:23:47.0275369Z   libjxr-tools libjxr0t64 libmagickcore-6.q16-7-extra libnetpbm11t64
+2026-10-21T15:23:47.0276984Z   libopenexr-3-1-30 libpaper-utils libpaper1 libwmflite-0.2-7 netpbm
+2026-10-21T15:23:47.0278580Z   poppler-data xfonts-encodings xfonts-utils
+2026-10-21T15:23:47.0279699Z Suggested packages:
+2026-10-21T15:23:47.0280678Z   fonts-noto fonts-freefont-otf | fonts-freefont-ttf fonts-texgyre
+2026-10-21T15:23:47.0281646Z   texlive-binaries imagemagick-6-doc autotrace cups-bsd | lpr | lprng enscript
+2026-10-21T15:23:47.0282647Z   ffmpeg gimp gnuplot grads graphviz hp2xx html2ps libwmf-bin mplayer povray
+2026-10-21T15:23:47.0283938Z   radiance sane-utils texlive-base-bin transfig libraw-bin inkscape
+2026-10-21T15:23:47.0284774Z   poppler-utils fonts-japanese-mincho | fonts-ipafont-mincho
+2026-10-21T15:23:47.0285560Z   fonts-japanese-gothic | fonts-ipafont-gothic fonts-arphic-ukai
+2026-10-21T15:23:47.0286255Z   fonts-arphic-uming fonts-nanum
+2026-10-21T15:23:47.1333243Z The following NEW packages will be installed:
+2026-10-21T15:23:47.1334275Z   fonts-droid-fallback fonts-noto-mono fonts-urw-base35 ghostscript
+2026-10-21T15:23:47.1338240Z   imagemagick imagemagick-6.q16 libdjvulibre-text libdjvulibre21 libgs-common
+2026-10-21T15:23:47.1348240Z   libgs10 libgs10-common libidn12 libijs-0.35 libimath-3-1-29t64 libjbig2dec0
+2026-10-21T15:23:47.1349961Z   libjxr-tools libjxr0t64 libmagickcore-6.q16-7-extra libnetpbm11t64
+2026-10-21T15:23:47.1351251Z   libopenexr-3-1-30 libpaper-utils libpaper1 libwmflite-0.2-7 netpbm
+2026-10-21T15:23:47.1352316Z   poppler-data xfonts-encodings xfonts-utils
+2026-10-21T15:23:47.1955234Z 0 upgraded, 27 newly installed, 0 to remove and 52 not upgraded.
+2026-10-21T15:23:47.1955860Z Need to get 25.2 MB of archives.
+2026-10-21T15:23:47.1956239Z After this operation, 85.4 MB of additional disk space will be used.
+2026-10-21T15:23:47.1956670Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T15:23:47.3083856Z Get:2 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 fonts-droid-fallback all 1:6.0.1r16-1.1build1 [1805 kB]
+2026-10-21T15:23:47.4171815Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 poppler-data all 0.4.12-1 [2060 kB]
+2026-10-21T15:23:47.5282456Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 fonts-noto-mono all 20201225-2 [435 kB]
+2026-10-21T15:23:47.6219047Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
+2026-10-21T15:23:47.7165062Z Get:6 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-utils amd64 1:7.7+6build3 [94.4 kB]
+2026-10-21T15:23:47.8066544Z Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 fonts-urw-base35 all 20200910-8 [11.0 MB]
+2026-10-21T15:23:48.1914784Z Get:8 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libgs-common all 10.02.1~dfsg1-0ubuntu7.9 [176 kB]
+2026-10-21T15:23:48.2856264Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libgs10-common all 10.02.1~dfsg1-0ubuntu7.9 [488 kB]
+2026-10-21T15:23:48.3880591Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libidn12 amd64 1.42-1ubuntu0.1 [56.1 kB]
+2026-10-21T15:23:48.4784770Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libijs-0.35 amd64 0.35-15.1build1 [15.3 kB]
+2026-10-21T15:23:48.5679327Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libjbig2dec0 amd64 0.20-1ubuntu0.24.04.1 [65.2 kB]
+2026-10-21T15:23:48.6598768Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libpaper1 amd64 1.1.29build1 [13.4 kB]
+2026-10-21T15:23:48.7498113Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libgs10 amd64 10.02.1~dfsg1-0ubuntu7.9 [3898 kB]
+2026-10-21T15:23:48.9507558Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 ghostscript amd64 10.02.1~dfsg1-0ubuntu7.9 [43.4 kB]
+2026-10-21T15:23:49.0412022Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 imagemagick-6.q16 amd64 8:6.9.12.98+dfsg1-5.2build2 [254 kB]
+2026-10-21T15:23:49.1372403Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 imagemagick amd64 8:6.9.12.98+dfsg1-5.2build2 [14.2 kB]
+2026-10-21T15:23:49.2272252Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libdjvulibre-text all 3.5.28-2ubuntu0.24.04.2 [51.1 kB]
+2026-10-21T15:23:49.3179485Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libdjvulibre21 amd64 3.5.28-2ubuntu0.24.04.2 [638 kB]
+2026-10-21T15:23:49.4433435Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libimath-3-1-29t64 amd64 3.1.9-3.1ubuntu2 [72.2 kB]
+2026-10-21T15:23:49.5339401Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libjxr0t64 amd64 1.2~git20170615.f752187-5.1ubuntu2 [181 kB]
+2026-10-21T15:23:49.6279438Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libjxr-tools amd64 1.2~git20170615.f752187-5.1ubuntu2 [15.8 kB]
+2026-10-21T15:23:49.7405900Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libopenexr-3-1-30 amd64 3.1.5-5.1build3 [1004 kB]
+2026-10-21T15:23:49.8359318Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libwmflite-0.2-7 amd64 0.2.13-1.1build3 [68.6 kB]
+2026-10-21T15:23:49.9268576Z Get:25 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libmagickcore-6.q16-7-extra amd64 8:6.9.12.98+dfsg1-5.2build2 [70.1 kB]
+2026-10-21T15:23:50.0179733Z Get:26 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 libnetpbm11t64 amd64 2:11.05.02-1.1build1 [114 kB]
+2026-10-21T15:23:50.1098990Z Get:27 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libpaper-utils amd64 1.1.29build1 [8650 B]
+2026-10-21T15:23:50.1997354Z Get:28 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 netpbm amd64 2:11.05.02-1.1build1 [2054 kB]
+2026-10-21T15:23:50.4955524Z Preconfiguring packages ...
+2026-10-21T15:23:50.5676268Z Fetched 25.2 MB in 3s (8208 kB/s)
+2026-10-21T15:23:50.5911909Z Selecting previously unselected package fonts-droid-fallback.
+2026-10-21T15:23:50.6168681Z (Reading database ... 
+2026-10-21T15:23:50.6169207Z (Reading database ... 5%
+2026-10-21T15:23:50.6169993Z (Reading database ... 10%
+2026-10-21T15:23:50.6170271Z (Reading database ... 15%
+2026-10-21T15:23:50.6170534Z (Reading database ... 20%
+2026-10-21T15:23:50.6170789Z (Reading database ... 25%
+2026-10-21T15:23:50.6171062Z (Reading database ... 30%
+2026-10-21T15:23:50.6171446Z (Reading database ... 35%
+2026-10-21T15:23:50.6171696Z (Reading database ... 40%
+2026-10-21T15:23:50.6171938Z (Reading database ... 45%
+2026-10-21T15:23:50.6172182Z (Reading database ... 50%
+2026-10-21T15:23:50.6212355Z (Reading database ... 55%
+2026-10-21T15:23:50.7267377Z (Reading database ... 60%
+2026-10-21T15:23:50.9740183Z (Reading database ... 65%
+2026-10-21T15:23:51.0318897Z (Reading database ... 70%
+2026-10-21T15:23:51.1792822Z (Reading database ... 75%
+2026-10-21T15:23:51.3244506Z (Reading database ... 80%
+2026-10-21T15:23:51.4780639Z (Reading database ... 85%
+2026-10-21T15:23:51.5751859Z (Reading database ... 90%
+2026-10-21T15:23:51.6787636Z (Reading database ... 95%
+2026-10-21T15:23:51.6788253Z (Reading database ... 100%
+2026-10-21T15:23:51.6788800Z (Reading database ... 214410 files and directories currently installed.)
+2026-10-21T15:23:51.6831732Z Preparing to unpack .../00-fonts-droid-fallback_1%3a6.0.1r16-1.1build1_all.deb ...
+2026-10-21T15:23:51.7057707Z Unpacking fonts-droid-fallback (1:6.0.1r16-1.1build1) ...
+2026-10-21T15:23:51.9252629Z Selecting previously unselected package poppler-data.
+2026-10-21T15:23:51.9393598Z Preparing to unpack .../01-poppler-data_0.4.12-1_all.deb ...
+2026-10-21T15:23:51.9401476Z Unpacking poppler-data (0.4.12-1) ...
+2026-10-21T15:23:52.0594786Z Selecting previously unselected package fonts-noto-mono.
+2026-10-21T15:23:52.0734702Z Preparing to unpack .../02-fonts-noto-mono_20201225-2_all.deb ...
+2026-10-21T15:23:52.0741538Z Unpacking fonts-noto-mono (20201225-2) ...
+2026-10-21T15:23:52.1041637Z Selecting previously unselected package xfonts-encodings.
+2026-10-21T15:23:52.1178859Z Preparing to unpack .../03-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
+2026-10-21T15:23:52.1185914Z Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-10-21T15:23:52.1500936Z Selecting previously unselected package xfonts-utils.
+2026-10-21T15:23:52.1641862Z Preparing to unpack .../04-xfonts-utils_1%3a7.7+6build3_amd64.deb ...
+2026-10-21T15:23:52.1647887Z Unpacking xfonts-utils (1:7.7+6build3) ...
+2026-10-21T15:23:52.2028109Z Selecting previously unselected package fonts-urw-base35.
+2026-10-21T15:23:52.2165494Z Preparing to unpack .../05-fonts-urw-base35_20200910-8_all.deb ...
+2026-10-21T15:23:52.2832741Z Unpacking fonts-urw-base35 (20200910-8) ...
+2026-10-21T15:23:52.3764612Z Selecting previously unselected package libgs-common.
+2026-10-21T15:23:52.3905025Z Preparing to unpack .../06-libgs-common_10.02.1~dfsg1-0ubuntu7.9_all.deb ...
+2026-10-21T15:23:52.3911280Z Unpacking libgs-common (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:52.4162060Z Selecting previously unselected package libgs10-common.
+2026-10-21T15:23:52.4314884Z Preparing to unpack .../07-libgs10-common_10.02.1~dfsg1-0ubuntu7.9_all.deb ...
+2026-10-21T15:23:52.4323550Z Unpacking libgs10-common (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:52.4961330Z Selecting previously unselected package libidn12:amd64.
+2026-10-21T15:23:52.5103522Z Preparing to unpack .../08-libidn12_1.42-1ubuntu0.1_amd64.deb ...
+2026-10-21T15:23:52.5118662Z Unpacking libidn12:amd64 (1.42-1ubuntu0.1) ...
+2026-10-21T15:23:52.5375297Z Selecting previously unselected package libijs-0.35:amd64.
+2026-10-21T15:23:52.5512865Z Preparing to unpack .../09-libijs-0.35_0.35-15.1build1_amd64.deb ...
+2026-10-21T15:23:52.5520335Z Unpacking libijs-0.35:amd64 (0.35-15.1build1) ...
+2026-10-21T15:23:52.5745341Z Selecting previously unselected package libjbig2dec0:amd64.
+2026-10-21T15:23:52.5885491Z Preparing to unpack .../10-libjbig2dec0_0.20-1ubuntu0.24.04.1_amd64.deb ...
+2026-10-21T15:23:52.5892378Z Unpacking libjbig2dec0:amd64 (0.20-1ubuntu0.24.04.1) ...
+2026-10-21T15:23:52.6135629Z Selecting previously unselected package libpaper1:amd64.
+2026-10-21T15:23:52.6273888Z Preparing to unpack .../11-libpaper1_1.1.29build1_amd64.deb ...
+2026-10-21T15:23:52.6280979Z Unpacking libpaper1:amd64 (1.1.29build1) ...
+2026-10-21T15:23:52.6524198Z Selecting previously unselected package libgs10:amd64.
+2026-10-21T15:23:52.6664265Z Preparing to unpack .../12-libgs10_10.02.1~dfsg1-0ubuntu7.9_amd64.deb ...
+2026-10-21T15:23:52.6671109Z Unpacking libgs10:amd64 (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:52.7699051Z Selecting previously unselected package ghostscript.
+2026-10-21T15:23:52.7841612Z Preparing to unpack .../13-ghostscript_10.02.1~dfsg1-0ubuntu7.9_amd64.deb ...
+2026-10-21T15:23:52.7847675Z Unpacking ghostscript (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:52.8182761Z Selecting previously unselected package imagemagick-6.q16.
+2026-10-21T15:23:52.8323355Z Preparing to unpack .../14-imagemagick-6.q16_8%3a6.9.12.98+dfsg1-5.2build2_amd64.deb ...
+2026-10-21T15:23:52.8330354Z Unpacking imagemagick-6.q16 (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:52.9205060Z Selecting previously unselected package imagemagick.
+2026-10-21T15:23:52.9347751Z Preparing to unpack .../15-imagemagick_8%3a6.9.12.98+dfsg1-5.2build2_amd64.deb ...
+2026-10-21T15:23:52.9355050Z Unpacking imagemagick (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:52.9578905Z Selecting previously unselected package libdjvulibre-text.
+2026-10-21T15:23:52.9722129Z Preparing to unpack .../16-libdjvulibre-text_3.5.28-2ubuntu0.24.04.2_all.deb ...
+2026-10-21T15:23:52.9730507Z Unpacking libdjvulibre-text (3.5.28-2ubuntu0.24.04.2) ...
+2026-10-21T15:23:52.9994250Z Selecting previously unselected package libdjvulibre21:amd64.
+2026-10-21T15:23:53.0135581Z Preparing to unpack .../17-libdjvulibre21_3.5.28-2ubuntu0.24.04.2_amd64.deb ...
+2026-10-21T15:23:53.0145241Z Unpacking libdjvulibre21:amd64 (3.5.28-2ubuntu0.24.04.2) ...
+2026-10-21T15:23:53.0436375Z Selecting previously unselected package libimath-3-1-29t64:amd64.
+2026-10-21T15:23:53.0579896Z Preparing to unpack .../18-libimath-3-1-29t64_3.1.9-3.1ubuntu2_amd64.deb ...
+2026-10-21T15:23:53.0586661Z Unpacking libimath-3-1-29t64:amd64 (3.1.9-3.1ubuntu2) ...
+2026-10-21T15:23:53.0836695Z Selecting previously unselected package libjxr0t64:amd64.
+2026-10-21T15:23:53.0978062Z Preparing to unpack .../19-libjxr0t64_1.2~git20170615.f752187-5.1ubuntu2_amd64.deb ...
+2026-10-21T15:23:53.0986320Z Unpacking libjxr0t64:amd64 (1.2~git20170615.f752187-5.1ubuntu2) ...
+2026-10-21T15:23:53.1239664Z Selecting previously unselected package libjxr-tools.
+2026-10-21T15:23:53.1380407Z Preparing to unpack .../20-libjxr-tools_1.2~git20170615.f752187-5.1ubuntu2_amd64.deb ...
+2026-10-21T15:23:53.1386633Z Unpacking libjxr-tools (1.2~git20170615.f752187-5.1ubuntu2) ...
+2026-10-21T15:23:53.1613391Z Selecting previously unselected package libopenexr-3-1-30:amd64.
+2026-10-21T15:23:53.1752940Z Preparing to unpack .../21-libopenexr-3-1-30_3.1.5-5.1build3_amd64.deb ...
+2026-10-21T15:23:53.1761043Z Unpacking libopenexr-3-1-30:amd64 (3.1.5-5.1build3) ...
+2026-10-21T15:23:53.2154449Z Selecting previously unselected package libwmflite-0.2-7:amd64.
+2026-10-21T15:23:53.2294993Z Preparing to unpack .../22-libwmflite-0.2-7_0.2.13-1.1build3_amd64.deb ...
+2026-10-21T15:23:53.2305322Z Unpacking libwmflite-0.2-7:amd64 (0.2.13-1.1build3) ...
+2026-10-21T15:23:53.2539305Z Selecting previously unselected package libmagickcore-6.q16-7-extra:amd64.
+2026-10-21T15:23:53.2679680Z Preparing to unpack .../23-libmagickcore-6.q16-7-extra_8%3a6.9.12.98+dfsg1-5.2build2_amd64.deb ...
+2026-10-21T15:23:53.2686648Z Unpacking libmagickcore-6.q16-7-extra:amd64 (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:53.3258289Z Selecting previously unselected package libnetpbm11t64:amd64.
+2026-10-21T15:23:53.3399896Z Preparing to unpack .../24-libnetpbm11t64_2%3a11.05.02-1.1build1_amd64.deb ...
+2026-10-21T15:23:53.3763654Z Unpacking libnetpbm11t64:amd64 (2:11.05.02-1.1build1) ...
+2026-10-21T15:23:53.3999311Z Selecting previously unselected package libpaper-utils.
+2026-10-21T15:23:53.4139380Z Preparing to unpack .../25-libpaper-utils_1.1.29build1_amd64.deb ...
+2026-10-21T15:23:53.4145989Z Unpacking libpaper-utils (1.1.29build1) ...
+2026-10-21T15:23:53.4376019Z Selecting previously unselected package netpbm.
+2026-10-21T15:23:53.4517280Z Preparing to unpack .../26-netpbm_2%3a11.05.02-1.1build1_amd64.deb ...
+2026-10-21T15:23:53.4523566Z Unpacking netpbm (2:11.05.02-1.1build1) ...
+2026-10-21T15:23:53.6434185Z Setting up libpaper1:amd64 (1.1.29build1) ...
+2026-10-21T15:23:53.7927343Z 
+2026-10-21T15:23:53.7928012Z Creating config file /etc/papersize with new version
+2026-10-21T15:23:53.8352776Z Setting up fonts-noto-mono (20201225-2) ...
+2026-10-21T15:23:53.8374250Z Setting up libwmflite-0.2-7:amd64 (0.2.13-1.1build3) ...
+2026-10-21T15:23:53.8390518Z Setting up libijs-0.35:amd64 (0.35-15.1build1) ...
+2026-10-21T15:23:53.8406766Z Setting up libgs-common (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:53.8423478Z Setting up libpaper-utils (1.1.29build1) ...
+2026-10-21T15:23:53.8439573Z Setting up libnetpbm11t64:amd64 (2:11.05.02-1.1build1) ...
+2026-10-21T15:23:53.8455600Z Setting up poppler-data (0.4.12-1) ...
+2026-10-21T15:23:53.8563346Z Setting up libjxr0t64:amd64 (1.2~git20170615.f752187-5.1ubuntu2) ...
+2026-10-21T15:23:53.8581081Z Setting up libjbig2dec0:amd64 (0.20-1ubuntu0.24.04.1) ...
+2026-10-21T15:23:53.8596572Z Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-10-21T15:23:53.8612092Z Setting up libimath-3-1-29t64:amd64 (3.1.9-3.1ubuntu2) ...
+2026-10-21T15:23:53.8626325Z Setting up libidn12:amd64 (1.42-1ubuntu0.1) ...
+2026-10-21T15:23:53.8645846Z Setting up netpbm (2:11.05.02-1.1build1) ...
+2026-10-21T15:23:53.8663096Z Setting up imagemagick-6.q16 (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:53.8735161Z update-alternatives: using /usr/bin/compare-im6.q16 to provide /usr/bin/compare (compare) in auto mode
+2026-10-21T15:23:53.8779465Z update-alternatives: using /usr/bin/compare-im6.q16 to provide /usr/bin/compare-im6 (compare-im6) in auto mode
+2026-10-21T15:23:53.8833594Z update-alternatives: using /usr/bin/animate-im6.q16 to provide /usr/bin/animate (animate) in auto mode
+2026-10-21T15:23:53.8877473Z update-alternatives: using /usr/bin/animate-im6.q16 to provide /usr/bin/animate-im6 (animate-im6) in auto mode
+2026-10-21T15:23:53.8931422Z update-alternatives: using /usr/bin/convert-im6.q16 to provide /usr/bin/convert (convert) in auto mode
+2026-10-21T15:23:53.8975845Z update-alternatives: using /usr/bin/convert-im6.q16 to provide /usr/bin/convert-im6 (convert-im6) in auto mode
+2026-10-21T15:23:53.9031186Z update-alternatives: using /usr/bin/composite-im6.q16 to provide /usr/bin/composite (composite) in auto mode
+2026-10-21T15:23:53.9074908Z update-alternatives: using /usr/bin/composite-im6.q16 to provide /usr/bin/composite-im6 (composite-im6) in auto mode
+2026-10-21T15:23:53.9129534Z update-alternatives: using /usr/bin/conjure-im6.q16 to provide /usr/bin/conjure (conjure) in auto mode
+2026-10-21T15:23:53.9174147Z update-alternatives: using /usr/bin/conjure-im6.q16 to provide /usr/bin/conjure-im6 (conjure-im6) in auto mode
+2026-10-21T15:23:53.9229652Z update-alternatives: using /usr/bin/import-im6.q16 to provide /usr/bin/import (import) in auto mode
+2026-10-21T15:23:53.9274092Z update-alternatives: using /usr/bin/import-im6.q16 to provide /usr/bin/import-im6 (import-im6) in auto mode
+2026-10-21T15:23:53.9332988Z update-alternatives: using /usr/bin/identify-im6.q16 to provide /usr/bin/identify (identify) in auto mode
+2026-10-21T15:23:53.9379102Z update-alternatives: using /usr/bin/identify-im6.q16 to provide /usr/bin/identify-im6 (identify-im6) in auto mode
+2026-10-21T15:23:53.9434355Z update-alternatives: using /usr/bin/stream-im6.q16 to provide /usr/bin/stream (stream) in auto mode
+2026-10-21T15:23:53.9481298Z update-alternatives: using /usr/bin/stream-im6.q16 to provide /usr/bin/stream-im6 (stream-im6) in auto mode
+2026-10-21T15:23:53.9537532Z update-alternatives: using /usr/bin/display-im6.q16 to provide /usr/bin/display (display) in auto mode
+2026-10-21T15:23:53.9583605Z update-alternatives: using /usr/bin/display-im6.q16 to provide /usr/bin/display-im6 (display-im6) in auto mode
+2026-10-21T15:23:53.9652343Z update-alternatives: using /usr/bin/montage-im6.q16 to provide /usr/bin/montage (montage) in auto mode
+2026-10-21T15:23:53.9699457Z update-alternatives: using /usr/bin/montage-im6.q16 to provide /usr/bin/montage-im6 (montage-im6) in auto mode
+2026-10-21T15:23:53.9756532Z update-alternatives: using /usr/bin/mogrify-im6.q16 to provide /usr/bin/mogrify (mogrify) in auto mode
+2026-10-21T15:23:54.0266161Z update-alternatives: using /usr/bin/mogrify-im6.q16 to provide /usr/bin/mogrify-im6 (mogrify-im6) in auto mode
+2026-10-21T15:23:54.0284208Z Setting up fonts-droid-fallback (1:6.0.1r16-1.1build1) ...
+2026-10-21T15:23:54.0489996Z Setting up libdjvulibre-text (3.5.28-2ubuntu0.24.04.2) ...
+2026-10-21T15:23:54.0506140Z Setting up libjxr-tools (1.2~git20170615.f752187-5.1ubuntu2) ...
+2026-10-21T15:23:54.0523955Z Setting up libdjvulibre21:amd64 (3.5.28-2ubuntu0.24.04.2) ...
+2026-10-21T15:23:54.0549214Z Setting up xfonts-utils (1:7.7+6build3) ...
+2026-10-21T15:23:54.0590124Z Setting up libopenexr-3-1-30:amd64 (3.1.5-5.1build3) ...
+2026-10-21T15:23:54.0606507Z Setting up imagemagick (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:54.0623865Z Setting up libmagickcore-6.q16-7-extra:amd64 (8:6.9.12.98+dfsg1-5.2build2) ...
+2026-10-21T15:23:54.0640847Z Setting up fonts-urw-base35 (20200910-8) ...
+2026-10-21T15:23:54.2009861Z Setting up libgs10-common (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:54.2027227Z Setting up libgs10:amd64 (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:54.2042690Z Setting up ghostscript (10.02.1~dfsg1-0ubuntu7.9) ...
+2026-10-21T15:23:54.2109386Z Processing triggers for fontconfig (2.15.0-1.1ubuntu2) ...
+2026-10-21T15:23:54.3762636Z Processing triggers for hicolor-icon-theme (0.17-2) ...
+2026-10-21T15:23:54.5450517Z Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+2026-10-21T15:23:54.5765538Z Processing triggers for man-db (2.12.0-4build2) ...
+2026-10-21T15:23:54.5788039Z Not building database; man-db/auto-update is not 'true'.
+2026-10-21T15:23:55.2441347Z 
+2026-10-21T15:23:55.2442030Z Running kernel seems to be up-to-date.
+2026-10-21T15:23:55.2442430Z 
+2026-10-21T15:23:55.2442619Z No services need to be restarted.
+2026-10-21T15:23:55.2442940Z 
+2026-10-21T15:23:55.2443124Z No containers need to be restarted.
+2026-10-21T15:23:55.2443480Z 
+2026-10-21T15:23:55.2443688Z No user sessions are running outdated binaries.
+2026-10-21T15:23:55.2444072Z 
+2026-10-21T15:23:55.2444424Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2026-10-21T15:23:56.2609783Z ##[group]Run echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+2026-10-21T15:23:56.2610824Z [36;1mecho "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:23:56.2611411Z [36;1mecho "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:23:56.2664502Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:23:56.2664770Z ##[endgroup]
+2026-10-21T15:23:56.2865666Z ##[group]Run actions/cache@v4
+2026-10-21T15:23:56.2865958Z with:
+2026-10-21T15:23:56.2866303Z   path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-155.0.8059.39
+2026-10-21T15:23:56.2866769Z   key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:23:56.2867420Z   enableCrossOsArchive: false
+2026-10-21T15:23:56.2867710Z   fail-on-cache-miss: false
+2026-10-21T15:23:56.2867956Z   lookup-only: false
+2026-10-21T15:23:56.2868175Z   save-always: false
+2026-10-21T15:23:56.2868388Z ##[endgroup]
+2026-10-21T15:23:56.3947671Z (node:3338) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:23:56.3948770Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:23:56.4601835Z Cache hit for: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:23:56.4754596Z (node:3338) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:23:57.0915513Z Received 109436485 of 109436485 (100.0%), 177.8 MBs/sec
+2026-10-21T15:23:57.0916332Z Cache Size: ~104 MB (109436485 B)
+2026-10-21T15:23:57.0945167Z [command]/usr/bin/tar -xf /home/runner/work/_temp/fbfcbb17-400e-4268-b77c-5b0929a5268e/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:23:57.5983536Z Cache restored successfully
+2026-10-21T15:23:57.6107211Z Cache restored from key: chrome-headless-shell-155.0.8059.39-Linux-X64
+2026-10-21T15:23:57.6409671Z ##[group]Run actions/cache@v4
+2026-10-21T15:23:57.6409974Z with:
+2026-10-21T15:23:57.6410258Z   path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
+2026-10-21T15:23:57.6410617Z   key: ui-audit-plugins-2026-43
+2026-10-21T15:23:57.6410901Z   restore-keys: ui-audit-plugins-
+2026-10-21T15:23:57.6411180Z   enableCrossOsArchive: false
+2026-10-21T15:23:57.6411448Z   fail-on-cache-miss: false
+2026-10-21T15:23:57.6411695Z   lookup-only: false
+2026-10-21T15:23:57.6411930Z   save-always: false
+2026-10-21T15:23:57.6412144Z ##[endgroup]
+2026-10-21T15:23:57.7496626Z (node:3355) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:23:57.7497803Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:23:57.8263387Z Cache hit for: ui-audit-plugins-2026-43
+2026-10-21T15:23:57.8369178Z (node:3355) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:23:58.1111965Z Received 21246746 of 21246746 (100.0%), 87.0 MBs/sec
+2026-10-21T15:23:58.1112633Z Cache Size: ~20 MB (21246746 B)
+2026-10-21T15:23:58.1138814Z [command]/usr/bin/tar -xf /home/runner/work/_temp/b332def9-18ad-4c90-a71f-fa86686afbb7/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:23:59.4066831Z Cache restored successfully
+2026-10-21T15:23:59.4157638Z Cache restored from key: ui-audit-plugins-2026-43
+2026-10-21T15:23:59.4313483Z ##[group]Run actions/cache/restore@v4
+2026-10-21T15:23:59.4313817Z with:
+2026-10-21T15:23:59.4314080Z   path: ~/.cache/gloomberb-pane-chrome/ui-replay
+2026-10-21T15:23:59.4314434Z   key: ui-replay-v2-2of4-2026-43
+2026-10-21T15:23:59.4314735Z   restore-keys: ui-replay-v2-2of4-
+2026-10-21T15:23:59.4315033Z   enableCrossOsArchive: false
+2026-10-21T15:23:59.4315487Z   fail-on-cache-miss: false
+2026-10-21T15:23:59.4315747Z   lookup-only: false
+2026-10-21T15:23:59.4315977Z ##[endgroup]
+2026-10-21T15:23:59.5382054Z (node:3372) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T15:23:59.5383682Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T15:23:59.6057177Z Cache hit for: ui-replay-v2-2of4-2026-43
+2026-10-21T15:23:59.6164632Z (node:3372) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T15:23:59.7544389Z Received 2912920 of 2912920 (100.0%), 28.6 MBs/sec
+2026-10-21T15:23:59.7544904Z Cache Size: ~3 MB (2912920 B)
+2026-10-21T15:23:59.7573099Z [command]/usr/bin/tar -xf /home/runner/work/_temp/256c84e6-cfde-491a-a212-1bc4d7bb5747/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:23:59.8388722Z Cache restored successfully
+2026-10-21T15:23:59.8469800Z Cache restored from key: ui-replay-v2-2of4-2026-43
+2026-10-21T15:23:59.8596743Z ##[group]Run bun run ui:benchmark shoot --shard "$((SHARD - 1))/4" --out ~/ui-benchmark-shard --base "$BASE" --replay ~/.cache/gloomberb-pane-chrome/ui-replay $OFFLINE
+2026-10-21T15:23:59.8598288Z [36;1mbun run ui:benchmark shoot --shard "$((SHARD - 1))/4" --out ~/ui-benchmark-shard --base "$BASE" --replay ~/.cache/gloomberb-pane-chrome/ui-replay $OFFLINE[0m
+2026-10-21T15:23:59.8650228Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:23:59.8650501Z env:
+2026-10-21T15:23:59.8650761Z   BASE: 0568f95db049dccad254c672c2c8d284bbe6a586
+2026-10-21T15:23:59.8651093Z   SHARD: 2
+2026-10-21T15:23:59.8651310Z   OFFLINE: --offline
+2026-10-21T15:23:59.8651549Z ##[endgroup]
+2026-10-21T15:23:59.8746172Z $ bun run scripts/pane-chrome/ui-benchmark.ts shoot --shard "1/4" --out /home/runner/ui-benchmark-shard --base "0568f95db049dccad254c672c2c8d284bbe6a586" --replay /home/runner/.cache/gloomberb-pane-chrome/ui-replay --offline
+2026-10-21T15:24:00.1270887Z Preparing worktree (detached HEAD 0568f95d)
+2026-10-21T15:24:00.5841698Z HEAD is now at 0568f95d Convert minor-unit caps as their currency, quote rate pairs by convention, name INS dollars in the pane (Linear: GLO-1106) (#2062)
+2026-10-21T15:24:00.5906049Z bun install v1.3.11 (af24e281)
+2026-10-21T15:24:00.5946508Z Resolving dependencies
+2026-10-21T15:24:00.5957731Z Resolved, downloaded and extracted [3]
+2026-10-21T15:24:00.8859158Z 
+2026-10-21T15:24:00.8859724Z + @types/bun@1.3.14
+2026-10-21T15:24:00.8860211Z + @types/react-dom@19.2.3
+2026-10-21T15:24:00.8860630Z + @types/three@0.165.0
+2026-10-21T15:24:00.8861000Z + electrobun@1.18.1
+2026-10-21T15:24:00.8861408Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T15:24:00.8862051Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T15:24:00.8862631Z + happy-dom@20.11.1
+2026-10-21T15:24:00.8863024Z + playwright-core@1.60.0
+2026-10-21T15:24:00.8863406Z + png-to-ico@2.1.8
+2026-10-21T15:24:00.8863756Z + rcedit@4.0.1
+2026-10-21T15:24:00.8864098Z + typescript@5.9.2
+2026-10-21T15:24:00.8864447Z + wrangler@4.125.0
+2026-10-21T15:24:00.8864791Z + @opentui/core@0.3.2
+2026-10-21T15:24:00.8865148Z + @opentui/react@0.3.2
+2026-10-21T15:24:00.8865517Z + @tanstack/react-virtual@3.14.2
+2026-10-21T15:24:00.8865906Z + hls.js@1.6.13
+2026-10-21T15:24:00.8866243Z + jimp@1.6.1
+2026-10-21T15:24:00.8866583Z + qrcode-generator@2.0.4
+2026-10-21T15:24:00.8866946Z + react@19.2.7
+2026-10-21T15:24:00.8867919Z + react-dom@19.2.7
+2026-10-21T15:24:00.8868305Z + web-tree-sitter@0.25.10
+2026-10-21T15:24:00.8868590Z 
+2026-10-21T15:24:00.8868819Z 194 packages installed [296.00ms]
+2026-10-21T15:24:02.9261014Z Bundled 16 plugins: polls, prediction-markets, adjacent-indices, hackernews, crypto-fear-greed, ibkr-gateway, ibkr, substack, byok-ai, growthepie, public, robinhood, simplefin, tv, fxmacrodata, alpaca-data
+2026-10-21T15:24:15.9141463Z ANR: 1 views in 12s
+2026-10-21T15:24:49.5952716Z ATTN: 6 views in 34s
+2026-10-21T15:25:28.6965924Z AUCT: 8 views in 39s
+2026-10-21T15:25:39.9710009Z BR: 1 views in 11s
+2026-10-21T15:25:57.3426116Z BT: 3 views in 17s
+2026-10-21T15:26:17.9104127Z BTMM: 4 views in 21s
+2026-10-21T15:26:35.4744961Z BTST: 3 views in 18s
+2026-10-21T15:26:46.8629650Z CALLS: 1 views in 11s
+2026-10-21T15:26:58.2946245Z CBR: 2 views in 11s
+2026-10-21T15:27:09.6398742Z CG: 2 views in 11s
+2026-10-21T15:27:21.8331785Z CMP: 1 views in 12s
+2026-10-21T15:28:02.0735296Z COT: 10 views in 40s
+2026-10-21T15:28:27.3087305Z CRD: 8 views in 25s
+2026-10-21T15:28:38.5035075Z DIAG: 1 views in 11s
+2026-10-21T15:28:54.3585923Z DIST: 2 views in 16s
+2026-10-21T15:29:05.7436824Z DOCS: 2 views in 11s
+2026-10-21T15:29:50.4366713Z DOE: 9 views in 45s
+2026-10-21T15:30:02.1708288Z ECST: 1 views in 12s
+2026-10-21T15:30:13.3969797Z EM: 1 views in 11s
+2026-10-21T15:30:57.0017803Z EPWR: 9 views in 44s
+2026-10-21T15:31:03.8652897Z EVTS: 0 views in 7s
+2026-10-21T15:31:15.0502944Z EXEC: 1 views in 11s
+2026-10-21T15:31:26.5217208Z FDA: 2 views in 11s
+2026-10-21T15:31:51.8672713Z FI: 8 views in 25s
+2026-10-21T15:32:03.0351536Z FLOW: 1 views in 11s
+2026-10-21T15:32:15.9563484Z GE: 1 views in 13s
+2026-10-21T15:32:28.2932884Z GIP: 1 views in 12s
+2026-10-21T15:32:40.5111611Z GP: 1 views in 12s
+2026-10-21T15:33:05.6956065Z GPU: 5 views in 25s
+2026-10-21T15:33:17.2712804Z GR: 1 views in 12s
+2026-10-21T15:33:28.5981288Z GUID: 1 views in 11s
+2026-10-21T15:33:39.8758852Z HILO: 1 views in 11s
+2026-10-21T15:33:52.1460714Z HIVG: 1 views in 12s
+2026-10-21T15:34:10.2089990Z HVG: 2 views in 18s
+2026-10-21T15:34:27.6918110Z HVT: 2 views in 17s
+2026-10-21T15:34:56.0979634Z INS: 2 views in 28s
+2026-10-21T15:35:41.2688498Z MARS: 8 views in 45s
+2026-10-21T15:35:52.4146670Z MOST: 1 views in 11s
+2026-10-21T15:36:03.6668506Z news-story-pane: 1 views in 11s
+2026-10-21T15:36:32.9333517Z PDLR: 5 views in 29s
+2026-10-21T15:36:45.1317811Z PEB: 1 views in 12s
+2026-10-21T15:37:14.6852651Z PERP: 6 views in 30s
+2026-10-21T15:37:58.3003141Z POWER: 9 views in 44s
+2026-10-21T15:38:14.2851099Z SI: 2 views in 16s
+2026-10-21T15:38:30.3325957Z SIV: 3 views in 16s
+2026-10-21T15:38:41.6089595Z SIW: 1 views in 11s
+2026-10-21T15:38:52.7918579Z SRCH: 1 views in 11s
+2026-10-21T15:39:04.0140660Z team-pane: 1 views in 11s
+2026-10-21T15:39:15.3610741Z WEI: 1 views in 11s
+2026-10-21T15:39:40.2776250Z WIRP: 4 views in 25s
+2026-10-21T15:40:15.6984564Z POLL: 7 views in 35s
+2026-10-21T15:40:35.9232926Z TV: 3 views in 20s
+2026-10-21T15:41:28.3407830Z PM: 10 views in 52s
+2026-10-21T15:41:30.2120190Z Bundled 16 plugins: polls, prediction-markets, adjacent-indices, hackernews, crypto-fear-greed, ibkr-gateway, ibkr, substack, byok-ai, growthepie, public, robinhood, simplefin, tv, fxmacrodata, alpaca-data
+2026-10-21T15:41:43.1313433Z ANR: 1 views in 12s
+2026-10-21T15:42:17.0031548Z ATTN: 6 views in 34s
+2026-10-21T15:42:56.1877580Z AUCT: 8 views in 39s
+2026-10-21T15:43:07.5063966Z BR: 1 views in 11s
+2026-10-21T15:43:25.2192086Z BT: 3 views in 18s
+2026-10-21T15:43:46.0525677Z BTMM: 4 views in 21s
+2026-10-21T15:44:03.7669095Z BTST: 3 views in 18s
+2026-10-21T15:44:15.2034105Z CALLS: 1 views in 11s
+2026-10-21T15:44:26.8111418Z CBR: 2 views in 12s
+2026-10-21T15:44:38.3255950Z CG: 2 views in 12s
+2026-10-21T15:44:50.7112262Z CMP: 1 views in 12s
+2026-10-21T15:45:31.2493709Z COT: 10 views in 41s
+2026-10-21T15:45:56.7005341Z CRD: 8 views in 25s
+2026-10-21T15:46:07.8878714Z DIAG: 1 views in 11s
+2026-10-21T15:46:23.8666715Z DIST: 2 views in 16s
+2026-10-21T15:46:35.3301757Z DOCS: 2 views in 11s
+2026-10-21T15:47:20.1111650Z DOE: 9 views in 45s
+2026-10-21T15:47:32.1680202Z ECST: 1 views in 12s
+2026-10-21T15:47:43.4030318Z EM: 1 views in 11s
+2026-10-21T15:48:27.1921658Z EPWR: 9 views in 44s
+2026-10-21T15:48:34.0326956Z EVTS: 0 views in 7s
+2026-10-21T15:48:45.2521840Z EXEC: 1 views in 11s
+2026-10-21T15:48:56.6551597Z FDA: 2 views in 11s
+2026-10-21T15:49:21.9747781Z FI: 8 views in 25s
+2026-10-21T15:49:33.1580692Z FLOW: 1 views in 11s
+2026-10-21T15:49:46.5645106Z GE: 1 views in 13s
+2026-10-21T15:49:58.8298447Z GIP: 1 views in 12s
+2026-10-21T15:50:10.9681818Z GP: 1 views in 12s
+2026-10-21T15:50:35.9699017Z GPU: 5 views in 25s
+2026-10-21T15:50:47.1704747Z GR: 1 views in 11s
+2026-10-21T15:50:58.3172937Z GUID: 1 views in 11s
+2026-10-21T15:51:09.4573363Z HILO: 1 views in 11s
+2026-10-21T15:51:21.7272116Z HIVG: 1 views in 12s
+2026-10-21T15:51:39.9674646Z HVG: 2 views in 18s
+2026-10-21T15:51:57.3845608Z HVT: 2 views in 17s
+2026-10-21T15:52:25.6783745Z INS: 2 views in 28s
+2026-10-21T15:53:11.6448102Z MARS: 8 views in 46s
+2026-10-21T15:53:23.0003905Z MOST: 1 views in 11s
+2026-10-21T15:53:34.3932190Z news-story-pane: 1 views in 11s
+2026-10-21T15:54:04.0751646Z PDLR: 5 views in 30s
+2026-10-21T15:54:16.5000449Z PEB: 1 views in 12s
+2026-10-21T15:54:46.2775196Z PERP: 6 views in 30s
+2026-10-21T15:55:30.1933338Z POWER: 9 views in 44s
+2026-10-21T15:55:46.2590985Z SI: 2 views in 16s
+2026-10-21T15:56:02.5407651Z SIV: 3 views in 16s
+2026-10-21T15:56:13.8591321Z SIW: 1 views in 11s
+2026-10-21T15:56:25.0780311Z SRCH: 1 views in 11s
+2026-10-21T15:56:36.3731636Z team-pane: 1 views in 11s
+2026-10-21T15:56:47.6472638Z WEI: 1 views in 11s
+2026-10-21T15:57:12.7181560Z WIRP: 4 views in 25s
+2026-10-21T15:57:47.8073531Z POLL: 7 views in 35s
+2026-10-21T15:58:08.0143946Z TV: 3 views in 20s
+2026-10-21T15:59:00.3308815Z PM: 10 views in 52s
+2026-10-21T15:59:34.4701116Z GP: 1 views in 12s
+2026-10-21T16:00:03.9953293Z PERP: 6 views in 30s
+2026-10-21T16:00:19.0810891Z GP: 1 views in 13s
+2026-10-21T16:00:48.5276300Z PERP: 6 views in 29s
+2026-10-21T16:00:49.5185607Z ##[group]Run actions/upload-artifact@v4
+2026-10-21T16:00:49.5185966Z with:
+2026-10-21T16:00:49.5186201Z   name: ui-benchmark-shard-2
+2026-10-21T16:00:49.5186483Z   path: ~/ui-benchmark-shard
+2026-10-21T16:00:49.5186758Z   retention-days: 7
+2026-10-21T16:00:49.5187270Z   if-no-files-found: ignore
+2026-10-21T16:00:49.5187726Z   compression-level: 6
+2026-10-21T16:00:49.5188025Z   overwrite: false
+2026-10-21T16:00:49.5188269Z   include-hidden-files: false
+2026-10-21T16:00:49.5188564Z ##[endgroup]
+2026-10-21T16:00:49.6890802Z (node:6459) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T16:00:49.6891715Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T16:00:49.7839997Z With the provided path, there will be 646 files uploaded
+2026-10-21T16:00:49.7841030Z Artifact name is valid!
+2026-10-21T16:00:49.7841511Z Root directory input is valid!
+2026-10-21T16:00:50.0105708Z Beginning upload of artifact content to blob storage
+2026-10-21T16:00:50.4989993Z (node:6459) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T16:00:50.6952209Z Uploaded bytes 8388608
+2026-10-21T16:00:51.0387689Z Uploaded bytes 16777216
+2026-10-21T16:00:51.4054280Z Uploaded bytes 24667077
+2026-10-21T16:00:51.4192949Z Finished uploading artifact content to blob storage!
+2026-10-21T16:00:51.4197246Z SHA256 digest of uploaded artifact zip is 4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64
+2026-10-21T16:00:51.4200018Z Finalizing artifact upload
+2026-10-21T16:00:51.6366202Z Artifact ui-benchmark-shard-2.zip successfully finalized. Artifact ID 12357854342
+2026-10-21T16:00:51.6368025Z Artifact ui-benchmark-shard-2 has been successfully uploaded! Final size is 24667077 bytes. Artifact ID is 12357854342
+2026-10-21T16:00:51.6378238Z Artifact download URL: https://github.com/gloom-sh/gloomberb/actions/runs/39618670567/artifacts/12357854342
+2026-10-21T16:00:51.6641342Z Post job cleanup.
+2026-10-21T16:00:51.7783944Z Cache hit occurred on the primary key ui-audit-plugins-2026-43, not saving cache.
+2026-10-21T16:00:51.7785661Z (node:6471) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T16:00:51.7787494Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T16:00:51.7903924Z Post job cleanup.
+2026-10-21T16:00:51.9068167Z Cache hit occurred on the primary key chrome-headless-shell-155.0.8059.39-Linux-X64, not saving cache.
+2026-10-21T16:00:51.9069777Z (node:6479) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T16:00:51.9071087Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T16:00:51.9196829Z Post job cleanup.
+2026-10-21T16:00:51.9200705Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__164fd1fb-2fe1-471e-9e7b-9e94d54299a2.__oven-sh_setup-bun]
+2026-10-21T16:00:51.9239962Z Post job cleanup.
+2026-10-21T16:00:52.0989884Z ##[end-action id=__164fd1fb-2fe1-471e-9e7b-9e94d54299a2.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=178]
+2026-10-21T16:00:52.1060824Z Post job cleanup.
+2026-10-21T16:00:52.2038876Z [command]/usr/bin/git version
+2026-10-21T16:00:52.2086737Z git version 2.55.0
+2026-10-21T16:00:52.2130550Z Temporarily overriding HOME='/home/runner/work/_temp/9a295ba4-c92f-43cd-9c0f-94a616479a98' before making global git config changes
+2026-10-21T16:00:52.2132019Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T16:00:52.2136956Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T16:00:52.2185533Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T16:00:52.2229386Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T16:00:52.2516603Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T16:00:52.2548659Z http.https://github.com/.extraheader
+2026-10-21T16:00:52.2561723Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T16:00:52.2607237Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T16:00:52.2881606Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T16:00:52.2929702Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T16:00:52.3375757Z Cleaning up orphan processes
+2026-10-21T16:00:52.3735118Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache/restore@v4, actions/cache@v4, actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

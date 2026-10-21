@@ -1,0 +1,793 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "historicalHead": "245815174ae508140bf3c2e0c9703e95e1b2968b",
+  "run": 39618670567,
+  "checkedAt": "2026-10-21T16:46:48.110326+00:00",
+  "view": "GP--root",
+  "reviewSha256": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c",
+  "officialChangedCount": 1,
+  "officialClassificationPreserved": true,
+  "captureRerun": false,
+  "accepted": false,
+  "archives": [
+    {
+      "label": "current",
+      "run": 39618670567,
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "artifact": {
+        "name": "ui-benchmark-shard-2",
+        "id": 12357854342,
+        "bytes": 24667077,
+        "sha256": "4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64"
+      },
+      "archive": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2-12357854342.zip",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "dirty": false,
+        "shard": "1/4",
+        "offline": true
+      },
+      "review": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-review.json",
+      "reviewSha256": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c"
+    },
+    {
+      "label": "historical",
+      "run": 39608554472,
+      "head": "245815174ae508140bf3c2e0c9703e95e1b2968b",
+      "artifact": {
+        "name": "ui-benchmark-shard-2",
+        "id": 12353357578,
+        "bytes": 24663200,
+        "sha256": "df47b1dc1bb09d85168526f3131cbdf333d3016cfe7d9c503313fb27e95204f6"
+      },
+      "archive": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2-12353357578.zip",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "245815174ae508140bf3c2e0c9703e95e1b2968b",
+        "dirty": false,
+        "shard": "1/4",
+        "offline": true
+      },
+      "review": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-review.json",
+      "reviewSha256": "8e04e2d665fc530cdb28b376fa5ba03806228c0e29a228d13487704178a62d9e"
+    }
+  ],
+  "rawInputs": [
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/before/views.jsonl",
+      "sha256": "ca057b7dd4fa67aff449db6bdef4e127ee1b80918e7cc154d0f7f405bf372c51"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/before/results.jsonl",
+      "sha256": "6cbcc1d26893033eaa19a6c191e74a92ae5c7082aa6e1beecfe0d47c238e2bc5"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/after/views.jsonl",
+      "sha256": "f61e175c2d0400ca992e7337385106ce666e045f02d9cb54491d2eacbeed53b1"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/after/results.jsonl",
+      "sha256": "22d837b669215b2a54f03b41f57ea94e47b38aa366520b3fae52964e51004ca0"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/before/views.jsonl",
+      "sha256": "119aabcdebab5e996431c7a9e1516420989c8de103254effe11eef011189eba3"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/before/results.jsonl",
+      "sha256": "9d7af3ab125ae6d6f3bb23f0e3dfcc1fef56b443ba6000dcde687e00403d6b84"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/after/views.jsonl",
+      "sha256": "192f7d3b1c70b483e4cdcd98a6c469528b318bc984d7c82222e3bfe8a5913843"
+    },
+    {
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/after/results.jsonl",
+      "sha256": "1027ffd007796f841b18ce20c43ab699185d881c42028964a955a7339c79dd7a"
+    }
+  ],
+  "originalImages": [
+    {
+      "run": "current",
+      "side": "before",
+      "width": 640,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/640/GP--root.jpg",
+      "imageSha256": "7d11fd2cc4aa23f9e3c0422c9e616d422ba99a5b968677478fb01d71b31c3bf9",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "47d0ab21c7671b11e87a1e58e367a798b6b202a2bf4e5445636edbcbbbebcbf2"
+    },
+    {
+      "run": "current",
+      "side": "before",
+      "width": 1280,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/1280/GP--root.jpg",
+      "imageSha256": "6f5de4abb1c6f0ee9df0d7e7ac174b914f09ae58fb22ce1c4cf966281ea41df0",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "358089cfeac4fa856c8f32ab27df7d4516508faa3408bc2643c7ebe83f4646ae"
+    },
+    {
+      "run": "current",
+      "side": "after",
+      "width": 640,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/640/GP--root.jpg",
+      "imageSha256": "a2127c76c02dd7913c55fde5da022e6c808932329895f37b1409c2b8bccdcbb9",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "47d0ab21c7671b11e87a1e58e367a798b6b202a2bf4e5445636edbcbbbebcbf2"
+    },
+    {
+      "run": "current",
+      "side": "after",
+      "width": 1280,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/1280/GP--root.jpg",
+      "imageSha256": "834901d4d4c53749814bf9f69f097a0cfdda742b48ab5662aea62f20d29972c6",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "358089cfeac4fa856c8f32ab27df7d4516508faa3408bc2643c7ebe83f4646ae"
+    },
+    {
+      "run": "historical",
+      "side": "before",
+      "width": 640,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/640/GP--root.jpg",
+      "imageSha256": "a2127c76c02dd7913c55fde5da022e6c808932329895f37b1409c2b8bccdcbb9",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "47d0ab21c7671b11e87a1e58e367a798b6b202a2bf4e5445636edbcbbbebcbf2"
+    },
+    {
+      "run": "historical",
+      "side": "before",
+      "width": 1280,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/1280/GP--root.jpg",
+      "imageSha256": "834901d4d4c53749814bf9f69f097a0cfdda742b48ab5662aea62f20d29972c6",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "358089cfeac4fa856c8f32ab27df7d4516508faa3408bc2643c7ebe83f4646ae"
+    },
+    {
+      "run": "historical",
+      "side": "after",
+      "width": 640,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/640/GP--root.jpg",
+      "imageSha256": "7d11fd2cc4aa23f9e3c0422c9e616d422ba99a5b968677478fb01d71b31c3bf9",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "47d0ab21c7671b11e87a1e58e367a798b6b202a2bf4e5445636edbcbbbebcbf2"
+    },
+    {
+      "run": "historical",
+      "side": "after",
+      "width": 1280,
+      "image": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/1280/GP--root.jpg",
+      "imageSha256": "6f5de4abb1c6f0ee9df0d7e7ac174b914f09ae58fb22ce1c4cf966281ea41df0",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "settings": {
+        "chartSpec": {
+          "version": 2,
+          "viewport": {
+            "range": "5Y",
+            "resolution": "auto"
+          },
+          "panels": [
+            {
+              "id": "main"
+            },
+            {
+              "id": "volume",
+              "label": "Volume",
+              "height": 0.24
+            }
+          ],
+          "series": [
+            {
+              "id": "aapl-market-ohlcv-1",
+              "source": {
+                "kind": "security",
+                "instrument": {
+                  "symbol": "AAPL",
+                  "instrument": null
+                },
+                "fieldId": "market.ohlcv",
+                "period": "auto"
+              },
+              "transform": "raw",
+              "axis": "auto",
+              "panelId": "main",
+              "style": "candles",
+              "interpolation": "none"
+            }
+          ],
+          "studies": [
+            {
+              "id": "builtin:volume:aapl-market-ohlcv-1",
+              "kind": "volume",
+              "inputSeriesIds": [
+                "aapl-market-ohlcv-1"
+              ],
+              "parameters": {},
+              "panelId": "volume",
+              "axis": "auto"
+            }
+          ]
+        }
+      },
+      "measureSha256": "358089cfeac4fa856c8f32ab27df7d4516508faa3408bc2643c7ebe83f4646ae"
+    }
+  ],
+  "reversedCrossRunMatches": [
+    {
+      "width": 640,
+      "currentSide": "before",
+      "historicalSide": "after",
+      "sha256": "7d11fd2cc4aa23f9e3c0422c9e616d422ba99a5b968677478fb01d71b31c3bf9",
+      "exactByteMatch": true
+    },
+    {
+      "width": 640,
+      "currentSide": "after",
+      "historicalSide": "before",
+      "sha256": "a2127c76c02dd7913c55fde5da022e6c808932329895f37b1409c2b8bccdcbb9",
+      "exactByteMatch": true
+    },
+    {
+      "width": 1280,
+      "currentSide": "before",
+      "historicalSide": "after",
+      "sha256": "6f5de4abb1c6f0ee9df0d7e7ac174b914f09ae58fb22ce1c4cf966281ea41df0",
+      "exactByteMatch": true
+    },
+    {
+      "width": 1280,
+      "currentSide": "after",
+      "historicalSide": "before",
+      "sha256": "834901d4d4c53749814bf9f69f097a0cfdda742b48ab5662aea62f20d29972c6",
+      "exactByteMatch": true
+    }
+  ],
+  "sourceObjectsUnchanged": [
+    {
+      "path": "src/plugins/builtin/chart-composer",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "c913b41344088eaed0e45dd2f9a9b0366222b840",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "c913b41344088eaed0e45dd2f9a9b0366222b840",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "c913b41344088eaed0e45dd2f9a9b0366222b840"
+      }
+    },
+    {
+      "path": "src/time-series",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "f7e23811faa14ceb5489bbf85968a2c4b55e2c14",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "f7e23811faa14ceb5489bbf85968a2c4b55e2c14",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "f7e23811faa14ceb5489bbf85968a2c4b55e2c14"
+      }
+    },
+    {
+      "path": "src/react",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "ab05a5feb6804ae594fefccb9c69539fa5af97a8",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "ab05a5feb6804ae594fefccb9c69539fa5af97a8",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "ab05a5feb6804ae594fefccb9c69539fa5af97a8"
+      }
+    },
+    {
+      "path": "src/market-data",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "7037657c5f3c81118ad52eb012a67e33bb19d9b4",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "7037657c5f3c81118ad52eb012a67e33bb19d9b4",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "7037657c5f3c81118ad52eb012a67e33bb19d9b4"
+      }
+    },
+    {
+      "path": "src/data",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "4778875f5b2eb912d497b581ab3b798c7b8b4207",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "4778875f5b2eb912d497b581ab3b798c7b8b4207",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "4778875f5b2eb912d497b581ab3b798c7b8b4207"
+      }
+    },
+    {
+      "path": "src/components",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07"
+      }
+    },
+    {
+      "path": "src/ui",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "ece4250a898d4aca57d4604c384e7ed80c6de548",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "ece4250a898d4aca57d4604c384e7ed80c6de548",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "ece4250a898d4aca57d4604c384e7ed80c6de548"
+      }
+    },
+    {
+      "path": "src/theme",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "c19b9c6e9ff4794a511a41ac0f48142436fe4451",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "c19b9c6e9ff4794a511a41ac0f48142436fe4451",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "c19b9c6e9ff4794a511a41ac0f48142436fe4451"
+      }
+    },
+    {
+      "path": "src/renderers/dom",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580"
+      }
+    },
+    {
+      "path": "src/renderers/browser",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "464ea25cf4fdd6789738ed978779388178778f99",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "464ea25cf4fdd6789738ed978779388178778f99",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "464ea25cf4fdd6789738ed978779388178778f99"
+      }
+    },
+    {
+      "path": "scripts/pane-chrome",
+      "objects": {
+        "0568f95db049dccad254c672c2c8d284bbe6a586": "12a82fc3d360736e08e541d8802497976a94c7f0",
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2": "12a82fc3d360736e08e541d8802497976a94c7f0",
+        "245815174ae508140bf3c2e0c9703e95e1b2968b": "12a82fc3d360736e08e541d8802497976a94c7f0"
+      }
+    }
+  ],
+  "captureAndRetryLogs": [
+    {
+      "run": "current",
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy/ci-ui-benchmark/job-119285980184.log",
+      "sha256": "05903b3f5f8f12889466c8a0a88221857d0b7d07bfa0516d10841f64fd0562f0",
+      "captures": [
+        {
+          "line": 778,
+          "text": "2026-10-21T15:32:40.5111611Z GP: 1 views in 12s"
+        },
+        {
+          "line": 832,
+          "text": "2026-10-21T15:50:10.9681818Z GP: 1 views in 12s"
+        },
+        {
+          "line": 858,
+          "text": "2026-10-21T15:59:34.4701116Z GP: 1 views in 12s"
+        },
+        {
+          "line": 860,
+          "text": "2026-10-21T16:00:19.0810891Z GP: 1 views in 13s"
+        }
+      ]
+    },
+    {
+      "run": "historical",
+      "path": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ci-ui-benchmark/job-119251069790.log",
+      "sha256": "26f6954981220697ea8ca48cc84790ca006ca581a27acae631846d3939b45413",
+      "captures": [
+        {
+          "line": 782,
+          "text": "2026-10-21T14:09:09.2185037Z GP: 1 views in 12s"
+        },
+        {
+          "line": 836,
+          "text": "2026-10-21T14:26:42.2781142Z GP: 1 views in 12s"
+        },
+        {
+          "line": 863,
+          "text": "2026-10-21T14:36:17.0792848Z GP: 1 views in 12s"
+        },
+        {
+          "line": 865,
+          "text": "2026-10-21T14:36:44.2924612Z GP: 1 views in 12s"
+        }
+      ]
+    }
+  ],
+  "bodyComparisons": [
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/1280/GP--root.jpg",
+      "differingBodyPixels": 1139.0,
+      "fraction": 0.001242798533519553,
+      "aboveBenchmarkThreshold": true
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/GP--root.jpg",
+      "differingBodyPixels": 1115.0,
+      "fraction": 0.0024332227653631284,
+      "aboveBenchmarkThreshold": true
+    }
+  ],
+  "rootVisualReview": {
+    "path": "gp-root-visual-peer.json",
+    "sha256": "978c442ec37b282efdd00902125c63e34edc59e00677e5e38fd93337d4d443ae"
+  },
+  "qualification": "The official result remains 1 of 530 changed views, GP--root. The original chart difference is localized to the left price/volume edge: 1,115 body pixels (0.2433%) at 640px and 1,139 (0.1243%) at 1280px. Both complete image pairs are byte-for-byte reversed matches of the independent frozen-base\u21922458 run, which officially classified GP as unsteady. Eleven chart/data/UI/browser/harness source objects match across frozen base, c181 and 2458. This establishes an already-observed capture variation, while preserving the current run\u2019s changed classification. The exact rendering/timing cause is unproven; deleted retry captures prevent reconstruction of why this run did not exclude it.",
+  "preciseCauseProven": false,
+  "limits": [
+    "Both workflows delete retry images and measurements before upload.",
+    "The restored replay snapshot and exact timing traces are not archived.",
+    "The entire application source is not identical: this PR changes removal/deactivation paths.",
+    "No recapture, screenshot normalization, official count or source change was performed."
+  ]
+}

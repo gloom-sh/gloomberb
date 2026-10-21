@@ -1,0 +1,100 @@
+{
+  "submittedHead": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "observedPRMergeCheckout": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+  "mergeParents": [
+    "18469dc8c2622392c9cdec7f1a76c0c0db049624",
+    "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+  ],
+  "headTree": "7d23864d57eefbb953430c5750674c07c167d795",
+  "mergeTree": "e39e8af4a09c2cd7994b24cd34f8dec7d69a3f09",
+  "wholeTreesMatch": false,
+  "allChangedFilesMatch": true,
+  "changedFiles": [
+    {
+      "path": "PLUGINS.md",
+      "headBlob": "c5641b55dee4023fc3404b01aef01bdca6630fd8",
+      "mergeBlob": "c5641b55dee4023fc3404b01aef01bdca6630fd8"
+    },
+    {
+      "path": "src/app/pane-runtime/plugin-bindings.test.ts",
+      "headBlob": "ef97a98f645e0a4d9a248803039abe48a1a95175",
+      "mergeBlob": "ef97a98f645e0a4d9a248803039abe48a1a95175"
+    },
+    {
+      "path": "src/app/pane-runtime/plugin-bindings.ts",
+      "headBlob": "ef191ffbb9b9b0ac23cf930abe9fcbcaf0bb9beb",
+      "mergeBlob": "ef191ffbb9b9b0ac23cf930abe9fcbcaf0bb9beb"
+    },
+    {
+      "path": "src/plugins/builtin/plugin-marketplace/pane.tsx",
+      "headBlob": "c326614dccaf0c705a23f6eda54ee0a0879d05fc",
+      "mergeBlob": "c326614dccaf0c705a23f6eda54ee0a0879d05fc"
+    },
+    {
+      "path": "src/plugins/builtin/plugin-marketplace/removal.test.tsx",
+      "headBlob": "20a911dc316ad4d271e8b34da302952c3602002e",
+      "mergeBlob": "20a911dc316ad4d271e8b34da302952c3602002e"
+    },
+    {
+      "path": "src/plugins/marketplace/deactivation.ts",
+      "headBlob": "a7f96bb391c67e9f509c0e0af075a8016b4f6950",
+      "mergeBlob": "a7f96bb391c67e9f509c0e0af075a8016b4f6950"
+    },
+    {
+      "path": "src/renderers/electrobun/bun/external-plugins.test.ts",
+      "headBlob": "2e92949b5175e8887c5356d99d1918f2bd8671a1",
+      "mergeBlob": "2e92949b5175e8887c5356d99d1918f2bd8671a1"
+    },
+    {
+      "path": "src/renderers/electrobun/bun/external-plugins.ts",
+      "headBlob": "4168df54da7db92be1993e12318199728cd2a274",
+      "mergeBlob": "4168df54da7db92be1993e12318199728cd2a274"
+    }
+  ],
+  "unrelatedMainDifferences": [
+    "M\t.github/workflows/pane-chrome.yml",
+    "M\tdocs/pane-conventions.md",
+    "M\tdocs/trading.md",
+    "M\tdocs/usage.md",
+    "M\tscripts/pane-chrome/checks.ts",
+    "M\tscripts/pane-chrome/kit-fixture.tsx",
+    "A\tscripts/pane-chrome/title-tab-checks.ts",
+    "M\tsrc/components/chart/composite/composite-chart.test.tsx",
+    "M\tsrc/components/chart/composite/composite-chart.tsx",
+    "A\tsrc/components/chart/composite/drawing-store.test.tsx",
+    "M\tsrc/components/chart/composite/drawing-store.ts",
+    "M\tsrc/components/chart/composite/interactions.ts",
+    "M\tsrc/components/chart/composite/panel-surface.tsx",
+    "M\tsrc/components/chart/composite/types.ts",
+    "M\tsrc/components/chart/composite/use-composite-chart-keyboard.ts",
+    "M\tsrc/components/layout/detached-pane-shell.tsx",
+    "M\tsrc/components/layout/floating-pane.tsx",
+    "M\tsrc/components/layout/pane/header.tsx",
+    "M\tsrc/components/layout/pane/index.tsx",
+    "M\tsrc/core/app-services.test.ts",
+    "M\tsrc/core/app-services.ts",
+    "A\tsrc/plugins/builtin/broker-trading/dock-chart.test.tsx",
+    "M\tsrc/plugins/builtin/broker-trading/dock.tsx",
+    "M\tsrc/plugins/builtin/broker-trading/pane.test.tsx",
+    "M\tsrc/plugins/builtin/broker-trading/pane.tsx",
+    "M\tsrc/plugins/builtin/broker-trading/ticket.tsx",
+    "M\tsrc/plugins/builtin/chart-composer/pane.tsx",
+    "M\tsrc/plugins/builtin/exposure/pane.test.tsx",
+    "M\tsrc/plugins/builtin/notes/cli.ts",
+    "A\tsrc/plugins/builtin/notes/export-failures.test.ts",
+    "M\tsrc/plugins/builtin/notes/export.ts",
+    "M\tsrc/plugins/builtin/notes/files.ts",
+    "M\tsrc/plugins/builtin/shared/research-trading.tsx",
+    "M\tsrc/renderers/dom/desktop/controls.tsx",
+    "M\tsrc/renderers/dom/desktop/query-bar.tsx",
+    "M\tsrc/renderers/dom/host/tabs.tsx",
+    "A\tsrc/renderers/dom/host/top-surface.ts",
+    "M\tsrc/renderers/dom/styles.css",
+    "M\tsrc/renderers/electrobun/bun/core-capabilities.ts",
+    "A\tsrc/renderers/electrobun/bun/notes-export-failures.test.ts",
+    "M\tsrc/renderers/electrobun/view/news-source.test.ts",
+    "M\tsrc/renderers/electrobun/view/news-source.ts",
+    "M\tsrc/renderers/electrobun/view/remote/asset-data-client.ts"
+  ],
+  "source": "Performance Pane drag scope checkout log; remaining PR jobs must independently confirm this checkout. Standalone Windows,Panechrome,UI benchmark,UI tokens target submitted head directly."
+}

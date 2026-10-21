@@ -1,0 +1,30 @@
+{
+  "observedAt": "2026-10-21T15:55:23.975203+00:00",
+  "job": {
+    "id": 119321913970,
+    "run_id": 39618676400,
+    "workflow_name": "UI tokens",
+    "head_branch": "fix/glo-1165-plugin-removal",
+    "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39618676400",
+    "run_attempt": 1,
+    "node_id": "CR_kwDORwA07s8AAAAbyCPqcg",
+    "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119321913970",
+    "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39618676400/job/119321913970",
+    "status": "queued",
+    "conclusion": null,
+    "created_at": "2026-10-21T15:48:44Z",
+    "started_at": "2026-10-21T15:48:44Z",
+    "completed_at": null,
+    "name": "UI tokens",
+    "steps": [],
+    "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119321913970",
+    "labels": [
+      "ubuntu-latest"
+    ],
+    "runner_id": 0,
+    "runner_name": "",
+    "runner_group_id": 0,
+    "runner_group_name": ""
+  }
+}

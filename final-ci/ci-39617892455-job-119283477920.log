@@ -1,0 +1,185 @@
+﻿2026-10-21T14:46:01.5411842Z Current runner version: '2.338.0'
+2026-10-21T14:46:01.5439309Z ##[group]Runner Image Provisioner
+2026-10-21T14:46:01.5440291Z Hosted Compute Agent
+2026-10-21T14:46:01.5441045Z Version: 20261015.610
+2026-10-21T14:46:01.5441731Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+2026-10-21T14:46:01.5442591Z Build Date: 2026-10-14T17:06:54Z
+2026-10-21T14:46:01.5443385Z Worker ID: {c5257411-e9d4-42de-bfe4-05c9c118d87c}
+2026-10-21T14:46:01.5444134Z Region: westus
+2026-10-21T14:46:01.5444795Z Cloud: Azure
+2026-10-21T14:46:01.5445383Z ##[endgroup]
+2026-10-21T14:46:01.5446957Z ##[group]Operating System
+2026-10-21T14:46:01.5447804Z Ubuntu
+2026-10-21T14:46:01.5448415Z 24.04.5
+2026-10-21T14:46:01.5449325Z LTS
+2026-10-21T14:46:01.5449914Z ##[endgroup]
+2026-10-21T14:46:01.5450494Z ##[group]Runner Image
+2026-10-21T14:46:01.5451317Z Image: ubuntu-24.04
+2026-10-21T14:46:01.5451918Z Version: 20261018.339.1
+2026-10-21T14:46:01.5453310Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261018.339/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T14:46:01.5454966Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.339
+2026-10-21T14:46:01.5456060Z ##[endgroup]
+2026-10-21T14:46:01.5457240Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T14:46:01.5459806Z Contents: read
+2026-10-21T14:46:01.5460478Z Metadata: read
+2026-10-21T14:46:01.5461204Z ##[endgroup]
+2026-10-21T14:46:01.5463659Z Secret source: Actions
+2026-10-21T14:46:01.5464782Z Cache mode: write
+2026-10-21T14:46:01.5465584Z Prepare workflow directory
+2026-10-21T14:46:01.5873284Z Prepare all required actions
+2026-10-21T14:46:01.5935397Z Getting action download info
+2026-10-21T14:46:01.9642502Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T14:46:02.1719168Z Complete job name: Pane drag scope
+2026-10-21T14:46:02.2562769Z ##[group]Run actions/checkout@v4
+2026-10-21T14:46:02.2563715Z with:
+2026-10-21T14:46:02.2564227Z   repository: gloom-sh/gloomberb
+2026-10-21T14:46:02.2568175Z   token: ***
+2026-10-21T14:46:02.2568660Z   ssh-strict: true
+2026-10-21T14:46:02.2569364Z   ssh-user: git
+2026-10-21T14:46:02.2569837Z   persist-credentials: true
+2026-10-21T14:46:02.2570356Z   clean: true
+2026-10-21T14:46:02.2570828Z   sparse-checkout-cone-mode: true
+2026-10-21T14:46:02.2571382Z   fetch-depth: 1
+2026-10-21T14:46:02.2571840Z   fetch-tags: false
+2026-10-21T14:46:02.2572306Z   show-progress: true
+2026-10-21T14:46:02.2572781Z   lfs: false
+2026-10-21T14:46:02.2573213Z   submodules: false
+2026-10-21T14:46:02.2573803Z   set-safe-directory: true
+2026-10-21T14:46:02.2574342Z   allow-unsafe-pr-checkout: false
+2026-10-21T14:46:02.2575197Z ##[endgroup]
+2026-10-21T14:46:02.3680681Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T14:46:02.3683356Z ##[group]Getting Git version info
+2026-10-21T14:46:02.3684672Z Working directory is '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T14:46:02.3686333Z [command]/usr/bin/git version
+2026-10-21T14:46:02.3768518Z git version 2.55.0
+2026-10-21T14:46:02.3792260Z ##[endgroup]
+2026-10-21T14:46:02.3807218Z Temporarily overriding HOME='/home/runner/work/_temp/a5d17a3b-ec22-4c88-a7d7-91d8efd3754a' before making global git config changes
+2026-10-21T14:46:02.3809890Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:46:02.3813190Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T14:46:02.3877595Z Deleting the contents of '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T14:46:02.3887176Z ##[group]Initializing the repository
+2026-10-21T14:46:02.3888417Z [command]/usr/bin/git init /home/runner/work/gloomberb/gloomberb
+2026-10-21T14:46:02.4054412Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T14:46:02.4056610Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T14:46:02.4058417Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T14:46:02.4060806Z hint: call:
+2026-10-21T14:46:02.4062199Z hint:
+2026-10-21T14:46:02.4063264Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T14:46:02.4064436Z hint:
+2026-10-21T14:46:02.4065640Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T14:46:02.4067419Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T14:46:02.4069036Z hint:
+2026-10-21T14:46:02.4069911Z hint: 	git branch -m <name>
+2026-10-21T14:46:02.4071123Z hint:
+2026-10-21T14:46:02.4071969Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T14:46:02.4073097Z Initialized empty Git repository in /home/runner/work/gloomberb/gloomberb/.git/
+2026-10-21T14:46:02.4087345Z [command]/usr/bin/git remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T14:46:02.4152736Z ##[endgroup]
+2026-10-21T14:46:02.4154213Z ##[group]Disabling automatic garbage collection
+2026-10-21T14:46:02.4157971Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T14:46:02.4203898Z ##[endgroup]
+2026-10-21T14:46:02.4205313Z ##[group]Setting up auth
+2026-10-21T14:46:02.4212366Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:46:02.4262082Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T14:46:02.4736070Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:46:02.4785062Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T14:46:02.5042986Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:46:02.5095822Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T14:46:02.5358379Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T14:46:02.5443132Z ##[endgroup]
+2026-10-21T14:46:02.5444094Z ##[group]Fetching the repository
+2026-10-21T14:46:02.5454446Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +137bf0b985b4c78ba9254737bee683593a7cbf33:refs/remotes/pull/2073/merge
+2026-10-21T14:46:05.1807363Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T14:46:05.1810139Z  * [new ref]         137bf0b985b4c78ba9254737bee683593a7cbf33 -> pull/2073/merge
+2026-10-21T14:46:05.1815453Z ##[endgroup]
+2026-10-21T14:46:05.1817555Z ##[group]Determining the checkout info
+2026-10-21T14:46:05.1820078Z ##[endgroup]
+2026-10-21T14:46:05.1825773Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T14:46:05.1891322Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T14:46:05.1935483Z ##[group]Checking out the ref
+2026-10-21T14:46:05.1938724Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/2073/merge
+2026-10-21T14:46:05.6219387Z Note: switching to 'refs/remotes/pull/2073/merge'.
+2026-10-21T14:46:05.6219928Z 
+2026-10-21T14:46:05.6220233Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-21T14:46:05.6220868Z changes and commit them, and you can discard any commits you make in this
+2026-10-21T14:46:05.6221445Z state without impacting any branches by switching back to a branch.
+2026-10-21T14:46:05.6221796Z 
+2026-10-21T14:46:05.6222055Z If you want to create a new branch to retain commits you create, you may
+2026-10-21T14:46:05.6222625Z do so (now or later) by using -c with the switch command. Example:
+2026-10-21T14:46:05.6222934Z 
+2026-10-21T14:46:05.6223136Z   git switch -c <new-branch-name>
+2026-10-21T14:46:05.6223361Z 
+2026-10-21T14:46:05.6223539Z Or undo this operation with:
+2026-10-21T14:46:05.6223777Z 
+2026-10-21T14:46:05.6224201Z   git switch -
+2026-10-21T14:46:05.6224404Z 
+2026-10-21T14:46:05.6224687Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-21T14:46:05.6225059Z 
+2026-10-21T14:46:05.6225482Z HEAD is now at 137bf0b Merge c1810dd09dea69bdb2f00de498f62067528a6ec2 into 18469dc8c2622392c9cdec7f1a76c0c0db049624
+2026-10-21T14:46:05.6240297Z ##[endgroup]
+2026-10-21T14:46:05.6299454Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T14:46:05.6335734Z 137bf0b985b4c78ba9254737bee683593a7cbf33
+2026-10-21T14:46:05.6658227Z Prepare all required actions
+2026-10-21T14:46:05.6659202Z Getting action download info
+2026-10-21T14:46:05.8209018Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T14:46:06.1792818Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T14:46:06.1793213Z with:
+2026-10-21T14:46:06.1793469Z   install: false
+2026-10-21T14:46:06.1793731Z ##[endgroup]
+2026-10-21T14:46:06.1945558Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T14:46:06.2053003Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T14:46:06.2053827Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T14:46:06.2054420Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T14:46:06.2254449Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:46:06.2255092Z ##[endgroup]
+2026-10-21T14:46:06.4711525Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=276]
+2026-10-21T14:46:06.4720963Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T14:46:06.4821619Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T14:46:06.4822004Z with:
+2026-10-21T14:46:06.4822259Z   bun-version: 1.3.11
+2026-10-21T14:46:06.4822539Z   no-cache: false
+2026-10-21T14:46:06.4825125Z   token: ***
+2026-10-21T14:46:06.4825392Z ##[endgroup]
+2026-10-21T14:46:06.9842001Z Cache hit for: bun-7/QmryP/e10nHn0ivgSAK3UdqOg=
+2026-10-21T14:46:08.2967495Z Received 8388608 of 35349280 (23.7%), 8.0 MBs/sec
+2026-10-21T14:46:08.4999277Z Received 35349280 of 35349280 (100.0%), 28.0 MBs/sec
+2026-10-21T14:46:08.5000321Z Cache Size: ~34 MB (35349280 B)
+2026-10-21T14:46:08.5031991Z [command]/usr/bin/tar -xf /home/runner/work/_temp/a072273f-3a71-4730-910f-2987632b2c7a/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T14:46:08.6840077Z Cache restored successfully
+2026-10-21T14:46:08.6865922Z [command]/home/runner/.bun/bin/bun --revision
+2026-10-21T14:46:08.6937836Z 1.3.11+af24e281e
+2026-10-21T14:46:08.6945403Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T14:46:08.7077919Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=2235]
+2026-10-21T14:46:08.7082875Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T14:46:08.7091897Z ##[end-action id=__self.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-21T14:46:08.7168399Z ##[group]Run git fetch --depth=1 origin "main"
+2026-10-21T14:46:08.7169162Z [36;1mgit fetch --depth=1 origin "main"[0m
+2026-10-21T14:46:08.7169706Z [36;1mbun run scripts/pane-chrome/scope.ts FETCH_HEAD .github/workflows/performance.yml[0m
+2026-10-21T14:46:08.7229787Z shell: /usr/bin/bash -e {0}
+2026-10-21T14:46:08.7230142Z ##[endgroup]
+2026-10-21T14:46:09.1757502Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T14:46:09.1758048Z  * branch            main       -> FETCH_HEAD
+2026-10-21T14:46:09.1758419Z  * [new branch]      main       -> origin/main
+2026-10-21T14:46:09.1977577Z None of the 8 changed files touch pane chrome.
+2026-10-21T14:46:09.2134204Z Post job cleanup.
+2026-10-21T14:46:09.2138164Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__c86461c2-605f-424c-977e-5e113b7c59d1.__oven-sh_setup-bun]
+2026-10-21T14:46:09.2207265Z Post job cleanup.
+2026-10-21T14:46:09.4036524Z ##[end-action id=__c86461c2-605f-424c-977e-5e113b7c59d1.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=189]
+2026-10-21T14:46:09.4137694Z Post job cleanup.
+2026-10-21T14:46:09.5129836Z [command]/usr/bin/git version
+2026-10-21T14:46:09.5189870Z git version 2.55.0
+2026-10-21T14:46:09.5260250Z Temporarily overriding HOME='/home/runner/work/_temp/8330901c-ed3c-4f1d-96ad-fdd5ced5d75a' before making global git config changes
+2026-10-21T14:46:09.5261900Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:46:09.5270127Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T14:46:09.5331244Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:46:09.5402707Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T14:46:09.5801832Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:46:09.5860112Z http.https://github.com/.extraheader
+2026-10-21T14:46:09.5875135Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T14:46:09.5922085Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T14:46:09.6221484Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:46:09.6273316Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T14:46:09.6714542Z Evaluate and set job outputs
+2026-10-21T14:46:09.6720807Z Set output 'relevant'
+2026-10-21T14:46:09.6722777Z Cleaning up orphan processes
+2026-10-21T14:46:09.7027721Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

@@ -1,0 +1,277 @@
+{
+  "run": 39617892516,
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "testedPRMerge": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+  "wholeSourceTreeMatchesSubmittedHead": false,
+  "allChangedFilesMatchSubmittedHead": true,
+  "fullTestSuite": {
+    "pass": 9400,
+    "fail": 0,
+    "skip": 1,
+    "tests": 9401,
+    "files": 1407,
+    "bun": "1.3.11",
+    "log": "ci-39617892516-job-119283477393.log"
+  },
+  "typecheckPassed": true,
+  "knipPassed": true,
+  "jobs": [
+    {
+      "name": "typecheck",
+      "log": "ci-39617892516-job-119283476980.log",
+      "sha256": "4ad315188f30b47127defd7f67f39a0c997edd1fab9c9315ed0112dcf028df05",
+      "testedRevision": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T14:52:55Z",
+          "completed_at": "2026-10-21T14:52:56Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T14:52:56Z",
+          "completed_at": "2026-10-21T14:52:59Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T14:52:59Z",
+          "completed_at": "2026-10-21T14:53:02Z"
+        },
+        {
+          "name": "Typecheck production runtimes and built-in plugin tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T14:53:02Z",
+          "completed_at": "2026-10-21T14:55:34Z"
+        },
+        {
+          "name": "Check for unused code",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T14:55:34Z",
+          "completed_at": "2026-10-21T14:55:39Z"
+        },
+        {
+          "name": "Check the built-in plugin manifest",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T14:55:39Z",
+          "completed_at": "2026-10-21T14:55:40Z"
+        },
+        {
+          "name": "Check the web proxy allowlist",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T14:55:40Z",
+          "completed_at": "2026-10-21T14:55:41Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-21T14:55:41Z",
+          "completed_at": "2026-10-21T14:55:41Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-21T14:55:41Z",
+          "completed_at": "2026-10-21T14:55:41Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-21T14:55:41Z",
+          "completed_at": "2026-10-21T14:55:41Z"
+        }
+      ]
+    },
+    {
+      "name": "build-and-test",
+      "log": "ci-39617892516-job-119283477393.log",
+      "sha256": "250046d2c82762b14e821d0d91c60abc2afa32a3b7d63721877c34fa2a36650a",
+      "testedRevision": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T14:59:23Z",
+          "completed_at": "2026-10-21T14:59:23Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T14:59:23Z",
+          "completed_at": "2026-10-21T14:59:29Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T14:59:29Z",
+          "completed_at": "2026-10-21T14:59:31Z"
+        },
+        {
+          "name": "Test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T14:59:31Z",
+          "completed_at": "2026-10-21T15:05:37Z"
+        },
+        {
+          "name": "Build Electrobun view",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T15:05:37Z",
+          "completed_at": "2026-10-21T15:05:38Z"
+        },
+        {
+          "name": "Build and audit browser app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T15:05:38Z",
+          "completed_at": "2026-10-21T15:05:39Z"
+        },
+        {
+          "name": "Dry-run Cloudflare Worker",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T15:05:39Z",
+          "completed_at": "2026-10-21T15:05:42Z"
+        },
+        {
+          "name": "Build core binary",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-21T15:05:42Z",
+          "completed_at": "2026-10-21T15:06:01Z"
+        },
+        {
+          "name": "Test global upgrade from 0.5.0",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-21T15:06:01Z",
+          "completed_at": "2026-10-21T15:06:07Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-21T15:06:07Z",
+          "completed_at": "2026-10-21T15:06:07Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-21T15:06:07Z",
+          "completed_at": "2026-10-21T15:06:07Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-21T15:06:07Z",
+          "completed_at": "2026-10-21T15:06:07Z"
+        }
+      ]
+    },
+    {
+      "name": "registry-plugins",
+      "log": "ci-39617892516-job-119283477641.log",
+      "sha256": "aad8f15816a09bc26d85864e462821f8e41525693b92e3881ddf23bfa0b49236",
+      "testedRevision": "137bf0b985b4c78ba9254737bee683593a7cbf33",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T15:04:50Z",
+          "completed_at": "2026-10-21T15:04:51Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T15:04:51Z",
+          "completed_at": "2026-10-21T15:04:55Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T15:04:55Z",
+          "completed_at": "2026-10-21T15:04:59Z"
+        },
+        {
+          "name": "Compile registry plugins against this host",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T15:04:59Z",
+          "completed_at": "2026-10-21T15:05:11Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T15:05:11Z",
+          "completed_at": "2026-10-21T15:05:12Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-21T15:05:12Z",
+          "completed_at": "2026-10-21T15:05:12Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-21T15:05:12Z",
+          "completed_at": "2026-10-21T15:05:12Z"
+        }
+      ]
+    }
+  ],
+  "deploymentSkipReason": "Workflow only deploys on push main; this run is pull_request."
+}

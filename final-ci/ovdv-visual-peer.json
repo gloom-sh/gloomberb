@@ -1,0 +1,86 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "checkedAt": "2026-10-21T16:42:06.376085+00:00",
+  "scope": "Manual visual peer review of four retained original OVDV root images and two derived body diff maps only. The other reviewer owns ZIP/source/log verification and final acceptance.",
+  "allFourOriginalsViewed": true,
+  "allTwoDiffMapsViewed": true,
+  "viewedStates": [
+    {
+      "side": "before",
+      "width": 640,
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/640/OVDV--root.jpg",
+      "sha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+      "viewed": true,
+      "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+    },
+    {
+      "side": "before",
+      "width": 1280,
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/1280/OVDV--root.jpg",
+      "sha256": "88b2e2eb5f706d82e1513ffc1932bfce1a2c1805116b460650646350402650d4",
+      "viewed": true,
+      "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+    },
+    {
+      "side": "after",
+      "width": 640,
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/640/OVDV--root.jpg",
+      "sha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+      "viewed": true,
+      "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+    },
+    {
+      "side": "after",
+      "width": 1280,
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/1280/OVDV--root.jpg",
+      "sha256": "d3e98c82182268a06657d86cf4a3afe72e48e39ea8ed6ea38eed090848dab2d2",
+      "viewed": true,
+      "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+    }
+  ],
+  "comparisons": [
+    {
+      "width": 640,
+      "differingBodyPixels": 0,
+      "bodyFraction": 0.0,
+      "crop": {
+        "x": 0,
+        "y": 42,
+        "width": 640,
+        "height": 716
+      },
+      "fuzz": "2%",
+      "diffMap": "ovdv-visual-peer/640-body-diff.png",
+      "diffMapSha256": "4798c932914a073f5fa3abffef0c76b6b7fa642b70109bad28e41893c3b76848",
+      "viewed": true,
+      "observation": "No marked body differences at benchmark fuzz."
+    },
+    {
+      "width": 1280,
+      "differingBodyPixels": 780,
+      "bodyFraction": 0.0008510824022346368,
+      "crop": {
+        "x": 0,
+        "y": 42,
+        "width": 1280,
+        "height": 716
+      },
+      "fuzz": "2%",
+      "diffMap": "ovdv-visual-peer/1280-body-diff.png",
+      "diffMapSha256": "eb796b347262ea2f455bb25257718306a3a129b0d9f3ca263d58e516f1fc6148",
+      "viewed": true,
+      "observation": "Marked differences sit around the ATM label and several expiry-axis tick labels (18M,6M,2M,1W vicinity). The mesh, selected-point value, controls and surrounding layout appear unchanged."
+    }
+  ],
+  "noVisibleOriginalPartialLoad": true,
+  "noVisibleOriginalDetailRoute": true,
+  "captureRerun": false,
+  "sourceChanged": false,
+  "rawEvidenceChanged": false,
+  "finalAcceptance": false,
+  "limits": [
+    "Original before/after comparisons are not same-code retry comparisons. This visual review does not infer the missing retry state or exact transient label-placement cause.",
+    "Official unsteady labels and counts remain untouched."
+  ]
+}

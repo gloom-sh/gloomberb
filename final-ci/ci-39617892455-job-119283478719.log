@@ -1,0 +1,864 @@
+﻿2026-10-21T15:38:40.9720511Z Current runner version: '2.338.0'
+2026-10-21T15:38:40.9745439Z ##[group]Runner Image Provisioner
+2026-10-21T15:38:40.9746252Z Hosted Compute Agent
+2026-10-21T15:38:40.9746855Z Version: 20261012.601
+2026-10-21T15:38:40.9747487Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-21T15:38:40.9748343Z Build Date: 2026-10-12T17:48:21Z
+2026-10-21T15:38:40.9749003Z Worker ID: {0880c157-a077-4e23-a1fa-4d0c335a2118}
+2026-10-21T15:38:40.9749645Z Region: westus3
+2026-10-21T15:38:40.9750198Z Cloud: Azure
+2026-10-21T15:38:40.9750685Z ##[endgroup]
+2026-10-21T15:38:40.9752087Z ##[group]Operating System
+2026-10-21T15:38:40.9752735Z Ubuntu
+2026-10-21T15:38:40.9753212Z 24.04.5
+2026-10-21T15:38:40.9753687Z LTS
+2026-10-21T15:38:40.9754185Z ##[endgroup]
+2026-10-21T15:38:40.9754705Z ##[group]Runner Image
+2026-10-21T15:38:40.9755279Z Image: ubuntu-24.04
+2026-10-21T15:38:40.9755794Z Version: 20261012.334.1
+2026-10-21T15:38:40.9756984Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T15:38:40.9758580Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-21T15:38:40.9759497Z ##[endgroup]
+2026-10-21T15:38:40.9760485Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T15:38:40.9762437Z Contents: read
+2026-10-21T15:38:40.9762967Z Metadata: read
+2026-10-21T15:38:40.9763530Z ##[endgroup]
+2026-10-21T15:38:40.9765594Z Secret source: Actions
+2026-10-21T15:38:40.9766513Z Cache mode: write
+2026-10-21T15:38:40.9767161Z Prepare workflow directory
+2026-10-21T15:38:41.0194786Z Prepare all required actions
+2026-10-21T15:38:41.0244707Z Getting action download info
+2026-10-21T15:38:41.3558651Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T15:38:41.5475914Z Complete job name: tui-benchmarks
+2026-10-21T15:38:41.6182886Z ##[group]Run actions/checkout@v4
+2026-10-21T15:38:41.6183791Z with:
+2026-10-21T15:38:41.6184307Z   repository: gloom-sh/gloomberb
+2026-10-21T15:38:41.6188001Z   token: ***
+2026-10-21T15:38:41.6188639Z   ssh-strict: true
+2026-10-21T15:38:41.6189170Z   ssh-user: git
+2026-10-21T15:38:41.6189666Z   persist-credentials: true
+2026-10-21T15:38:41.6190177Z   clean: true
+2026-10-21T15:38:41.6190701Z   sparse-checkout-cone-mode: true
+2026-10-21T15:38:41.6191275Z   fetch-depth: 1
+2026-10-21T15:38:41.6191752Z   fetch-tags: false
+2026-10-21T15:38:41.6192275Z   show-progress: true
+2026-10-21T15:38:41.6192743Z   lfs: false
+2026-10-21T15:38:41.6193257Z   submodules: false
+2026-10-21T15:38:41.6193745Z   set-safe-directory: true
+2026-10-21T15:38:41.6194300Z   allow-unsafe-pr-checkout: false
+2026-10-21T15:38:41.6195260Z env:
+2026-10-21T15:38:41.6195729Z   TERM: xterm-256color
+2026-10-21T15:38:41.6196271Z ##[endgroup]
+2026-10-21T15:38:41.7395329Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T15:38:41.7398566Z ##[group]Getting Git version info
+2026-10-21T15:38:41.7399846Z Working directory is '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:38:41.7401588Z [command]/usr/bin/git version
+2026-10-21T15:38:41.7450159Z git version 2.55.0
+2026-10-21T15:38:41.7478396Z ##[endgroup]
+2026-10-21T15:38:41.7487250Z Temporarily overriding HOME='/home/runner/work/_temp/42d27367-0bfa-4ca8-b8d2-183e3ce893f8' before making global git config changes
+2026-10-21T15:38:41.7490128Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:38:41.7492459Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:38:41.7544189Z Deleting the contents of '/home/runner/work/gloomberb/gloomberb'
+2026-10-21T15:38:41.7548730Z ##[group]Initializing the repository
+2026-10-21T15:38:41.7553150Z [command]/usr/bin/git init /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:38:41.7673026Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T15:38:41.7675235Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T15:38:41.7676881Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T15:38:41.7678743Z hint: call:
+2026-10-21T15:38:41.7679433Z hint:
+2026-10-21T15:38:41.7680306Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T15:38:41.7681328Z hint:
+2026-10-21T15:38:41.7682285Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T15:38:41.7683893Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T15:38:41.7685176Z hint:
+2026-10-21T15:38:41.7685890Z hint: 	git branch -m <name>
+2026-10-21T15:38:41.7686697Z hint:
+2026-10-21T15:38:41.7687781Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T15:38:41.7690157Z Initialized empty Git repository in /home/runner/work/gloomberb/gloomberb/.git/
+2026-10-21T15:38:41.7698757Z [command]/usr/bin/git remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T15:38:41.7738982Z ##[endgroup]
+2026-10-21T15:38:41.7740325Z ##[group]Disabling automatic garbage collection
+2026-10-21T15:38:41.7744350Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T15:38:41.7775017Z ##[endgroup]
+2026-10-21T15:38:41.7783255Z ##[group]Setting up auth
+2026-10-21T15:38:41.7784562Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:38:41.7814781Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:38:41.8222481Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:38:41.8259980Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:38:41.8462817Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:38:41.8493728Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:38:41.8703355Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T15:38:41.8741634Z ##[endgroup]
+2026-10-21T15:38:41.8742497Z ##[group]Fetching the repository
+2026-10-21T15:38:41.8750827Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +137bf0b985b4c78ba9254737bee683593a7cbf33:refs/remotes/pull/2073/merge
+2026-10-21T15:38:45.9801879Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T15:38:45.9804720Z  * [new ref]         137bf0b985b4c78ba9254737bee683593a7cbf33 -> pull/2073/merge
+2026-10-21T15:38:45.9812646Z ##[endgroup]
+2026-10-21T15:38:45.9815777Z ##[group]Determining the checkout info
+2026-10-21T15:38:45.9819146Z ##[endgroup]
+2026-10-21T15:38:45.9821251Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T15:38:45.9863905Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T15:38:45.9893885Z ##[group]Checking out the ref
+2026-10-21T15:38:45.9896355Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/2073/merge
+2026-10-21T15:38:46.3495395Z Note: switching to 'refs/remotes/pull/2073/merge'.
+2026-10-21T15:38:46.3495997Z 
+2026-10-21T15:38:46.3496412Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-21T15:38:46.3497358Z changes and commit them, and you can discard any commits you make in this
+2026-10-21T15:38:46.3498462Z state without impacting any branches by switching back to a branch.
+2026-10-21T15:38:46.3499010Z 
+2026-10-21T15:38:46.3499999Z If you want to create a new branch to retain commits you create, you may
+2026-10-21T15:38:46.3501100Z do so (now or later) by using -c with the switch command. Example:
+2026-10-21T15:38:46.3501663Z 
+2026-10-21T15:38:46.3502104Z   git switch -c <new-branch-name>
+2026-10-21T15:38:46.3502401Z 
+2026-10-21T15:38:46.3502651Z Or undo this operation with:
+2026-10-21T15:38:46.3503282Z 
+2026-10-21T15:38:46.3503452Z   git switch -
+2026-10-21T15:38:46.3503946Z 
+2026-10-21T15:38:46.3504631Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-21T15:38:46.3505249Z 
+2026-10-21T15:38:46.3505937Z HEAD is now at 137bf0b Merge c1810dd09dea69bdb2f00de498f62067528a6ec2 into 18469dc8c2622392c9cdec7f1a76c0c0db049624
+2026-10-21T15:38:46.3509513Z ##[endgroup]
+2026-10-21T15:38:46.3550435Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T15:38:46.3572774Z 137bf0b985b4c78ba9254737bee683593a7cbf33
+2026-10-21T15:38:46.3844101Z Prepare all required actions
+2026-10-21T15:38:46.3844788Z Getting action download info
+2026-10-21T15:38:46.5398016Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T15:38:47.2070657Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T15:38:47.2070984Z with:
+2026-10-21T15:38:47.2071195Z   install: true
+2026-10-21T15:38:47.2071396Z env:
+2026-10-21T15:38:47.2071703Z   TERM: xterm-256color
+2026-10-21T15:38:47.2071924Z ##[endgroup]
+2026-10-21T15:38:47.2137603Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T15:38:47.2190087Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T15:38:47.2190862Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T15:38:47.2191403Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T15:38:47.2409308Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:38:47.2409722Z env:
+2026-10-21T15:38:47.2409939Z   TERM: xterm-256color
+2026-10-21T15:38:47.2410160Z ##[endgroup]
+2026-10-21T15:38:47.4511658Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=237]
+2026-10-21T15:38:47.4516530Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T15:38:47.4605738Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T15:38:47.4606043Z with:
+2026-10-21T15:38:47.4606248Z   bun-version: 1.3.11
+2026-10-21T15:38:47.4606465Z   no-cache: false
+2026-10-21T15:38:47.4609009Z   token: ***
+2026-10-21T15:38:47.4609211Z env:
+2026-10-21T15:38:47.4609407Z   TERM: xterm-256color
+2026-10-21T15:38:47.4609628Z ##[endgroup]
+2026-10-21T15:38:47.8447026Z Cache hit for: bun-7/QmryP/e10nHn0ivgSAK3UdqOg=
+2026-10-21T15:38:49.0785723Z Received 35349280 of 35349280 (100.0%), 33.2 MBs/sec
+2026-10-21T15:38:49.0786582Z Cache Size: ~34 MB (35349280 B)
+2026-10-21T15:38:49.0819854Z [command]/usr/bin/tar -xf /home/runner/work/_temp/8a60bdd7-f35e-404a-a0f8-32635eaa4ca3/cache.tzst -P -C /home/runner/work/gloomberb/gloomberb --use-compress-program unzstd
+2026-10-21T15:38:49.2465944Z Cache restored successfully
+2026-10-21T15:38:49.2488631Z [command]/home/runner/.bun/bin/bun --revision
+2026-10-21T15:38:49.2526156Z 1.3.11+af24e281e
+2026-10-21T15:38:49.2531978Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T15:38:49.2596342Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=1807]
+2026-10-21T15:38:49.2599975Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T15:38:49.2629618Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T15:38:49.2629971Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T15:38:49.2673767Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-21T15:38:49.2674128Z env:
+2026-10-21T15:38:49.2674326Z   TERM: xterm-256color
+2026-10-21T15:38:49.2674556Z ##[endgroup]
+2026-10-21T15:38:49.2773253Z bun install v1.3.11 (af24e281)
+2026-10-21T15:38:49.2804188Z Resolving dependencies
+2026-10-21T15:38:49.2814471Z Resolved, downloaded and extracted [3]
+2026-10-21T15:38:50.6336464Z 
+2026-10-21T15:38:50.6336842Z + @types/bun@1.3.14
+2026-10-21T15:38:50.6337151Z + @types/react-dom@19.2.3
+2026-10-21T15:38:50.6337421Z + @types/three@0.165.0
+2026-10-21T15:38:50.6337672Z + electrobun@1.18.1
+2026-10-21T15:38:50.6338602Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T15:38:50.6339130Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T15:38:50.6339601Z + happy-dom@20.11.1
+2026-10-21T15:38:50.6339845Z + playwright-core@1.60.0
+2026-10-21T15:38:50.6340112Z + png-to-ico@2.1.8
+2026-10-21T15:38:50.6340336Z + rcedit@4.0.1
+2026-10-21T15:38:50.6340554Z + typescript@5.9.2
+2026-10-21T15:38:50.6340768Z + wrangler@4.125.0
+2026-10-21T15:38:50.6341018Z + @opentui/core@0.3.2
+2026-10-21T15:38:50.6341253Z + @opentui/react@0.3.2
+2026-10-21T15:38:50.6341715Z + @tanstack/react-virtual@3.14.2
+2026-10-21T15:38:50.6341993Z + hls.js@1.6.13
+2026-10-21T15:38:50.6342213Z + jimp@1.6.1
+2026-10-21T15:38:50.6342442Z + qrcode-generator@2.0.4
+2026-10-21T15:38:50.6342686Z + react@19.2.7
+2026-10-21T15:38:50.6342897Z + react-dom@19.2.7
+2026-10-21T15:38:50.6343126Z + web-tree-sitter@0.25.10
+2026-10-21T15:38:50.6343307Z 
+2026-10-21T15:38:50.6343421Z 194 packages installed [1357.00ms]
+2026-10-21T15:38:50.6554684Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=1395]
+2026-10-21T15:38:50.6593307Z ##[group]Run sudo apt-get update && sudo apt-get install -y tmux
+2026-10-21T15:38:50.6593767Z [36;1msudo apt-get update && sudo apt-get install -y tmux[0m
+2026-10-21T15:38:50.6633736Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:38:50.6634005Z env:
+2026-10-21T15:38:50.6634213Z   TERM: xterm-256color
+2026-10-21T15:38:50.6634433Z ##[endgroup]
+2026-10-21T15:38:50.7432264Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T15:38:50.7696991Z Get:6 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-10-21T15:38:50.7860180Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-10-21T15:38:50.7872704Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-10-21T15:38:50.7949917Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-10-21T15:38:50.7974665Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-10-21T15:38:50.8491322Z Get:7 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [628 kB]
+2026-10-21T15:38:50.8690333Z Get:8 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [565 kB]
+2026-10-21T15:38:50.8772697Z Get:9 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [12.4 kB]
+2026-10-21T15:38:50.9556937Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1400 kB]
+2026-10-21T15:38:50.9632880Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [309 kB]
+2026-10-21T15:38:50.9657316Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1706 kB]
+2026-10-21T15:38:50.9749655Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [342 kB]
+2026-10-21T15:38:50.9770018Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1805 kB]
+2026-10-21T15:38:50.9921585Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [411 kB]
+2026-10-21T15:38:51.0584241Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1145 kB]
+2026-10-21T15:38:51.0642905Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [231 kB]
+2026-10-21T15:38:51.0662546Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1222 kB]
+2026-10-21T15:38:51.0722377Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [246 kB]
+2026-10-21T15:38:51.1183535Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1713 kB]
+2026-10-21T15:38:51.1260304Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [392 kB]
+2026-10-21T15:38:54.5201782Z Fetched 12.5 MB in 1s (9795 kB/s)
+2026-10-21T15:38:55.5452072Z Reading package lists...
+2026-10-21T15:38:55.5803251Z Reading package lists...
+2026-10-21T15:38:55.7960287Z Building dependency tree...
+2026-10-21T15:38:55.7967447Z Reading state information...
+2026-10-21T15:38:55.9875660Z The following packages will be upgraded:
+2026-10-21T15:38:55.9876110Z   tmux
+2026-10-21T15:38:56.0037647Z 1 upgraded, 0 newly installed, 0 to remove and 93 not upgraded.
+2026-10-21T15:38:56.0038125Z Need to get 480 kB of archives.
+2026-10-21T15:38:56.0038709Z After this operation, 0 B of additional disk space will be used.
+2026-10-21T15:38:56.0039340Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-10-21T15:38:56.2118693Z Get:2 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 tmux amd64 3.4-1ubuntu0.2 [480 kB]
+2026-10-21T15:38:56.4757774Z Fetched 480 kB in 0s (2117 kB/s)
+2026-10-21T15:38:56.5213730Z (Reading database ... 
+2026-10-21T15:38:56.5214202Z (Reading database ... 5%
+2026-10-21T15:38:56.5214453Z (Reading database ... 10%
+2026-10-21T15:38:56.5214694Z (Reading database ... 15%
+2026-10-21T15:38:56.5214923Z (Reading database ... 20%
+2026-10-21T15:38:56.5215180Z (Reading database ... 25%
+2026-10-21T15:38:56.5215653Z (Reading database ... 30%
+2026-10-21T15:38:56.5216058Z (Reading database ... 35%
+2026-10-21T15:38:56.5216405Z (Reading database ... 40%
+2026-10-21T15:38:56.5216737Z (Reading database ... 45%
+2026-10-21T15:38:56.5216976Z (Reading database ... 50%
+2026-10-21T15:38:56.5270046Z (Reading database ... 55%
+2026-10-21T15:38:56.6154378Z (Reading database ... 60%
+2026-10-21T15:38:56.8223259Z (Reading database ... 65%
+2026-10-21T15:38:57.0300572Z (Reading database ... 70%
+2026-10-21T15:38:57.2130517Z (Reading database ... 75%
+2026-10-21T15:38:57.3682121Z (Reading database ... 80%
+2026-10-21T15:38:57.4779683Z (Reading database ... 85%
+2026-10-21T15:38:57.5920455Z (Reading database ... 90%
+2026-10-21T15:38:57.7703266Z (Reading database ... 95%
+2026-10-21T15:38:57.7703739Z (Reading database ... 100%
+2026-10-21T15:38:57.7704386Z (Reading database ... 203540 files and directories currently installed.)
+2026-10-21T15:38:57.7765002Z Preparing to unpack .../tmux_3.4-1ubuntu0.2_amd64.deb ...
+2026-10-21T15:38:57.7800906Z Unpacking tmux (3.4-1ubuntu0.2) over (3.4-1ubuntu0.1) ...
+2026-10-21T15:38:57.8279473Z Setting up tmux (3.4-1ubuntu0.2) ...
+2026-10-21T15:38:57.8306570Z Processing triggers for debianutils (5.17build1) ...
+2026-10-21T15:38:57.9192333Z Processing triggers for man-db (2.12.0-4build2) ...
+2026-10-21T15:38:57.9211082Z Not building database; man-db/auto-update is not 'true'.
+2026-10-21T15:38:58.5321076Z 
+2026-10-21T15:38:58.5322036Z Running kernel seems to be up-to-date.
+2026-10-21T15:38:58.5322351Z 
+2026-10-21T15:38:58.5322492Z No services need to be restarted.
+2026-10-21T15:38:58.5322729Z 
+2026-10-21T15:38:58.5322864Z No containers need to be restarted.
+2026-10-21T15:38:58.5323070Z 
+2026-10-21T15:38:58.5323203Z No user sessions are running outdated binaries.
+2026-10-21T15:38:58.5323407Z 
+2026-10-21T15:38:58.5323603Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2026-10-21T15:38:59.6330228Z ##[group]Run git fetch --depth=1 origin "main"
+2026-10-21T15:38:59.6330609Z [36;1mgit fetch --depth=1 origin "main"[0m
+2026-10-21T15:38:59.6330915Z [36;1mgit worktree add ../base FETCH_HEAD[0m
+2026-10-21T15:38:59.6331233Z [36;1mcd ../base && bun install --frozen-lockfile[0m
+2026-10-21T15:38:59.6367132Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:38:59.6367397Z env:
+2026-10-21T15:38:59.6367609Z   TERM: xterm-256color
+2026-10-21T15:38:59.6367825Z ##[endgroup]
+2026-10-21T15:39:00.3222908Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T15:39:00.3223545Z  * branch            main       -> FETCH_HEAD
+2026-10-21T15:39:00.3224040Z  * [new branch]      main       -> origin/main
+2026-10-21T15:39:00.3256153Z Preparing worktree (detached HEAD 46bace2)
+2026-10-21T15:39:00.6828610Z HEAD is now at 46bace2 Install over an old copy that cannot be removed, keep Linux's app on a failed install, name a move across disks (#2069)
+2026-10-21T15:39:00.6860586Z bun install v1.3.11 (af24e281)
+2026-10-21T15:39:00.6899497Z Resolving dependencies
+2026-10-21T15:39:00.6929266Z Resolved, downloaded and extracted [3]
+2026-10-21T15:39:00.8681761Z 
+2026-10-21T15:39:00.8682272Z + @types/bun@1.3.14
+2026-10-21T15:39:00.8682735Z + @types/react-dom@19.2.3
+2026-10-21T15:39:00.8683171Z + @types/three@0.165.0
+2026-10-21T15:39:00.8683569Z + electrobun@1.18.1
+2026-10-21T15:39:00.8684030Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T15:39:00.8684841Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T15:39:00.8685564Z + happy-dom@20.11.1
+2026-10-21T15:39:00.8685961Z + playwright-core@1.60.0
+2026-10-21T15:39:00.8686397Z + png-to-ico@2.1.8
+2026-10-21T15:39:00.8686766Z + rcedit@4.0.1
+2026-10-21T15:39:00.8687120Z + typescript@5.9.2
+2026-10-21T15:39:00.8687493Z + wrangler@4.125.0
+2026-10-21T15:39:00.8687969Z + @opentui/core@0.3.2
+2026-10-21T15:39:00.8688497Z + @opentui/react@0.3.2
+2026-10-21T15:39:00.8799639Z + @tanstack/react-virtual@3.14.2
+2026-10-21T15:39:00.8800246Z + hls.js@1.6.13
+2026-10-21T15:39:00.8800607Z + jimp@1.6.1
+2026-10-21T15:39:00.8800978Z + qrcode-generator@2.0.4
+2026-10-21T15:39:00.8801479Z + react@19.2.7
+2026-10-21T15:39:00.8801840Z + react-dom@19.2.7
+2026-10-21T15:39:00.8802266Z + web-tree-sitter@0.25.10
+2026-10-21T15:39:00.8802569Z 
+2026-10-21T15:39:00.8809750Z 194 packages installed [183.00ms]
+2026-10-21T15:39:00.8846297Z ##[group]Run bun run benchmark:tui:compare --base ../base
+2026-10-21T15:39:00.8846718Z [36;1mbun run benchmark:tui:compare --base ../base[0m
+2026-10-21T15:39:00.8883723Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:39:00.8884000Z env:
+2026-10-21T15:39:00.8884218Z   TERM: xterm-256color
+2026-10-21T15:39:00.8884452Z ##[endgroup]
+2026-10-21T15:39:00.8966096Z $ bun run scripts/benchmark-tui-compare.ts --base ../base
+2026-10-21T15:39:24.3184859Z base 1/5: p50 10.3 ms, p95 27.91 ms
+2026-10-21T15:39:44.0466097Z head 1/5: p50 9.91 ms, p95 22.78 ms
+2026-10-21T15:40:04.5485695Z base 2/5: p50 10.76 ms, p95 25.14 ms
+2026-10-21T15:40:26.0288406Z head 2/5: p50 10.13 ms, p95 28.01 ms
+2026-10-21T15:40:47.7734421Z base 3/5: p50 10.29 ms, p95 23.29 ms
+2026-10-21T15:41:06.3126826Z head 3/5: p50 9.7 ms, p95 21.87 ms
+2026-10-21T15:41:25.2592963Z base 4/5: p50 8.84 ms, p95 20.55 ms
+2026-10-21T15:41:46.8193991Z head 4/5: p50 9.11 ms, p95 23.58 ms
+2026-10-21T15:42:07.1349155Z base 5/5: p50 9.16 ms, p95 21.53 ms
+2026-10-21T15:42:26.0818090Z head 5/5: p50 9.29 ms, p95 20.21 ms
+2026-10-21T15:42:26.0824151Z ### TUI navigation benchmark
+2026-10-21T15:42:26.0824324Z 
+2026-10-21T15:42:26.0824453Z Middle value of 5 alternating runs per side.
+2026-10-21T15:42:26.0824661Z 
+2026-10-21T15:42:26.0824750Z | | main | this PR |
+2026-10-21T15:42:26.0824977Z |---|---|---|
+2026-10-21T15:42:26.0825216Z | typical keypress (p50) | 10.29 ms | 9.7 ms |
+2026-10-21T15:42:26.0825609Z | slow keypress (p95) | 23.29 ms | 22.78 ms |
+2026-10-21T15:42:26.0826037Z | slowest keypress | 28.46 ms | 29.05 ms |
+2026-10-21T15:42:26.0826354Z | peak memory | 471.5 MiB | 479.7 MiB |
+2026-10-21T15:42:26.0826632Z | cells redrawn per keypress | 92 | 92 |
+2026-10-21T15:42:26.0826855Z 
+2026-10-21T15:42:26.0826971Z The typical keypress is within the limit.
+2026-10-21T15:42:26.0827276Z 
+2026-10-21T15:42:26.0894470Z ##[group]Run bun run benchmark:tui:memory
+2026-10-21T15:42:26.0894819Z [36;1mbun run benchmark:tui:memory[0m
+2026-10-21T15:42:26.0931176Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:42:26.0931458Z env:
+2026-10-21T15:42:26.0931664Z   TERM: xterm-256color
+2026-10-21T15:42:26.0931886Z ##[endgroup]
+2026-10-21T15:42:26.1005225Z $ bun run scripts/benchmark-tui-memory.ts
+2026-10-21T15:46:11.5369715Z {
+2026-10-21T15:46:11.5370099Z   "tickers": 120,
+2026-10-21T15:46:11.5370468Z   "startHeapMiB": 100.87,
+2026-10-21T15:46:11.5370829Z   "endHeapMiB": 176.47,
+2026-10-21T15:46:11.5371171Z   "earlyMiBPerTicker": 0.74,
+2026-10-21T15:46:11.5371541Z   "lateMiBPerTicker": 0.07,
+2026-10-21T15:46:11.5371923Z   "maxLateMiBPerTicker": 0.3,
+2026-10-21T15:46:11.5372284Z   "samples": [
+2026-10-21T15:46:11.5372570Z     {
+2026-10-21T15:46:11.5372851Z       "tickers": 0,
+2026-10-21T15:46:11.5373586Z       "heapMiB": 100.87
+2026-10-21T15:46:11.5373900Z     },
+2026-10-21T15:46:11.5374164Z     {
+2026-10-21T15:46:11.5374499Z       "tickers": 1,
+2026-10-21T15:46:11.5374805Z       "heapMiB": 121.14
+2026-10-21T15:46:11.5375112Z     },
+2026-10-21T15:46:11.5375366Z     {
+2026-10-21T15:46:11.5375647Z       "tickers": 2,
+2026-10-21T15:46:11.5375961Z       "heapMiB": 131.8
+2026-10-21T15:46:11.5376270Z     },
+2026-10-21T15:46:11.5376538Z     {
+2026-10-21T15:46:11.5376813Z       "tickers": 3,
+2026-10-21T15:46:11.5377127Z       "heapMiB": 126.1
+2026-10-21T15:46:11.5377442Z     },
+2026-10-21T15:46:11.5377700Z     {
+2026-10-21T15:46:11.5377959Z       "tickers": 4,
+2026-10-21T15:46:11.5378489Z       "heapMiB": 128.85
+2026-10-21T15:46:11.5378968Z     },
+2026-10-21T15:46:11.5379221Z     {
+2026-10-21T15:46:11.5388927Z       "tickers": 5,
+2026-10-21T15:46:11.5389390Z       "heapMiB": 129.61
+2026-10-21T15:46:11.5389746Z     },
+2026-10-21T15:46:11.5390012Z     {
+2026-10-21T15:46:11.5390281Z       "tickers": 6,
+2026-10-21T15:46:11.5390597Z       "heapMiB": 127.44
+2026-10-21T15:46:11.5390914Z     },
+2026-10-21T15:46:11.5391180Z     {
+2026-10-21T15:46:11.5391469Z       "tickers": 7,
+2026-10-21T15:46:11.5391818Z       "heapMiB": 133.95
+2026-10-21T15:46:11.5392158Z     },
+2026-10-21T15:46:11.5392440Z     {
+2026-10-21T15:46:11.5392721Z       "tickers": 8,
+2026-10-21T15:46:11.5393032Z       "heapMiB": 132.14
+2026-10-21T15:46:11.5393311Z     },
+2026-10-21T15:46:11.5393524Z     {
+2026-10-21T15:46:11.5393753Z       "tickers": 9,
+2026-10-21T15:46:11.5394053Z       "heapMiB": 129.74
+2026-10-21T15:46:11.5394383Z     },
+2026-10-21T15:46:11.5394659Z     {
+2026-10-21T15:46:11.5394944Z       "tickers": 10,
+2026-10-21T15:46:11.5395268Z       "heapMiB": 131.21
+2026-10-21T15:46:11.5395589Z     },
+2026-10-21T15:46:11.5395878Z     {
+2026-10-21T15:46:11.5396152Z       "tickers": 11,
+2026-10-21T15:46:11.5396499Z       "heapMiB": 132.35
+2026-10-21T15:46:11.5396839Z     },
+2026-10-21T15:46:11.5397116Z     {
+2026-10-21T15:46:11.5397384Z       "tickers": 12,
+2026-10-21T15:46:11.5397766Z       "heapMiB": 130.06
+2026-10-21T15:46:11.5398098Z     },
+2026-10-21T15:46:11.5408975Z     {
+2026-10-21T15:46:11.5409326Z       "tickers": 13,
+2026-10-21T15:46:11.5409703Z       "heapMiB": 129.77
+2026-10-21T15:46:11.5410035Z     },
+2026-10-21T15:46:11.5410313Z     {
+2026-10-21T15:46:11.5410612Z       "tickers": 14,
+2026-10-21T15:46:11.5411082Z       "heapMiB": 133.85
+2026-10-21T15:46:11.5411385Z     },
+2026-10-21T15:46:11.5411631Z     {
+2026-10-21T15:46:11.5411886Z       "tickers": 15,
+2026-10-21T15:46:11.5412189Z       "heapMiB": 133.3
+2026-10-21T15:46:11.5412501Z     },
+2026-10-21T15:46:11.5412764Z     {
+2026-10-21T15:46:11.5413032Z       "tickers": 16,
+2026-10-21T15:46:11.5413345Z       "heapMiB": 133.79
+2026-10-21T15:46:11.5413904Z     },
+2026-10-21T15:46:11.5414162Z     {
+2026-10-21T15:46:11.5414426Z       "tickers": 17,
+2026-10-21T15:46:11.5414830Z       "heapMiB": 137.2
+2026-10-21T15:46:11.5415149Z     },
+2026-10-21T15:46:11.5415531Z     {
+2026-10-21T15:46:11.5415814Z       "tickers": 18,
+2026-10-21T15:46:11.5416201Z       "heapMiB": 134.21
+2026-10-21T15:46:11.5416522Z     },
+2026-10-21T15:46:11.5417114Z     {
+2026-10-21T15:46:11.5417384Z       "tickers": 19,
+2026-10-21T15:46:11.5417705Z       "heapMiB": 134.03
+2026-10-21T15:46:11.5418015Z     },
+2026-10-21T15:46:11.5418444Z     {
+2026-10-21T15:46:11.5418719Z       "tickers": 20,
+2026-10-21T15:46:11.5419025Z       "heapMiB": 136.26
+2026-10-21T15:46:11.5419336Z     },
+2026-10-21T15:46:11.5419601Z     {
+2026-10-21T15:46:11.5419867Z       "tickers": 21,
+2026-10-21T15:46:11.5420257Z       "heapMiB": 135.54
+2026-10-21T15:46:11.5420560Z     },
+2026-10-21T15:46:11.5420791Z     {
+2026-10-21T15:46:11.5421040Z       "tickers": 22,
+2026-10-21T15:46:11.5421334Z       "heapMiB": 138.92
+2026-10-21T15:46:11.5421626Z     },
+2026-10-21T15:46:11.5421889Z     {
+2026-10-21T15:46:11.5422214Z       "tickers": 23,
+2026-10-21T15:46:11.5422595Z       "heapMiB": 136.42
+2026-10-21T15:46:11.5422994Z     },
+2026-10-21T15:46:11.5423233Z     {
+2026-10-21T15:46:11.5423705Z       "tickers": 24,
+2026-10-21T15:46:11.5423973Z       "heapMiB": 138.95
+2026-10-21T15:46:11.5424272Z     },
+2026-10-21T15:46:11.5424499Z     {
+2026-10-21T15:46:11.5424775Z       "tickers": 25,
+2026-10-21T15:46:11.5425057Z       "heapMiB": 139.34
+2026-10-21T15:46:11.5425354Z     },
+2026-10-21T15:46:11.5425590Z     {
+2026-10-21T15:46:11.5425832Z       "tickers": 26,
+2026-10-21T15:46:11.5426100Z       "heapMiB": 137.02
+2026-10-21T15:46:11.5426388Z     },
+2026-10-21T15:46:11.5426611Z     {
+2026-10-21T15:46:11.5426851Z       "tickers": 27,
+2026-10-21T15:46:11.5427119Z       "heapMiB": 139.88
+2026-10-21T15:46:11.5427402Z     },
+2026-10-21T15:46:11.5427653Z     {
+2026-10-21T15:46:11.5427882Z       "tickers": 28,
+2026-10-21T15:46:11.5428457Z       "heapMiB": 145.25
+2026-10-21T15:46:11.5428775Z     },
+2026-10-21T15:46:11.5429037Z     {
+2026-10-21T15:46:11.5429307Z       "tickers": 29,
+2026-10-21T15:46:11.5429615Z       "heapMiB": 146.69
+2026-10-21T15:46:11.5429915Z     },
+2026-10-21T15:46:11.5430192Z     {
+2026-10-21T15:46:11.5430471Z       "tickers": 30,
+2026-10-21T15:46:11.5430784Z       "heapMiB": 150.06
+2026-10-21T15:46:11.5431097Z     },
+2026-10-21T15:46:11.5431357Z     {
+2026-10-21T15:46:11.5431632Z       "tickers": 31,
+2026-10-21T15:46:11.5431960Z       "heapMiB": 150.76
+2026-10-21T15:46:11.5432270Z     },
+2026-10-21T15:46:11.5432530Z     {
+2026-10-21T15:46:11.5432799Z       "tickers": 32,
+2026-10-21T15:46:11.5433116Z       "heapMiB": 147.34
+2026-10-21T15:46:11.5433428Z     },
+2026-10-21T15:46:11.5433681Z     {
+2026-10-21T15:46:11.5433963Z       "tickers": 33,
+2026-10-21T15:46:11.5434275Z       "heapMiB": 148.48
+2026-10-21T15:46:11.5434597Z     },
+2026-10-21T15:46:11.5434846Z     {
+2026-10-21T15:46:11.5435119Z       "tickers": 34,
+2026-10-21T15:46:11.5435437Z       "heapMiB": 144.81
+2026-10-21T15:46:11.5435760Z     },
+2026-10-21T15:46:11.5436038Z     {
+2026-10-21T15:46:11.5436305Z       "tickers": 35,
+2026-10-21T15:46:11.5436596Z       "heapMiB": 147.71
+2026-10-21T15:46:11.5436903Z     },
+2026-10-21T15:46:11.5437182Z     {
+2026-10-21T15:46:11.5437451Z       "tickers": 36,
+2026-10-21T15:46:11.5437885Z       "heapMiB": 149.46
+2026-10-21T15:46:11.5438366Z     },
+2026-10-21T15:46:11.5438650Z     {
+2026-10-21T15:46:11.5438924Z       "tickers": 37,
+2026-10-21T15:46:11.5439249Z       "heapMiB": 147.44
+2026-10-21T15:46:11.5439578Z     },
+2026-10-21T15:46:11.5439819Z     {
+2026-10-21T15:46:11.5440092Z       "tickers": 38,
+2026-10-21T15:46:11.5440407Z       "heapMiB": 152.56
+2026-10-21T15:46:11.5440708Z     },
+2026-10-21T15:46:11.5440955Z     {
+2026-10-21T15:46:11.5441190Z       "tickers": 39,
+2026-10-21T15:46:11.5441526Z       "heapMiB": 154.7
+2026-10-21T15:46:11.5441807Z     },
+2026-10-21T15:46:11.5442064Z     {
+2026-10-21T15:46:11.5442326Z       "tickers": 40,
+2026-10-21T15:46:11.5442650Z       "heapMiB": 153.59
+2026-10-21T15:46:11.5442967Z     },
+2026-10-21T15:46:11.5443243Z     {
+2026-10-21T15:46:11.5443526Z       "tickers": 41,
+2026-10-21T15:46:11.5443876Z       "heapMiB": 153.64
+2026-10-21T15:46:11.5444239Z     },
+2026-10-21T15:46:11.5444519Z     {
+2026-10-21T15:46:11.5444807Z       "tickers": 42,
+2026-10-21T15:46:11.5445547Z       "heapMiB": 152.37
+2026-10-21T15:46:11.5445915Z     },
+2026-10-21T15:46:11.5446213Z     {
+2026-10-21T15:46:11.5446516Z       "tickers": 43,
+2026-10-21T15:46:11.5446868Z       "heapMiB": 151.6
+2026-10-21T15:46:11.5447264Z     },
+2026-10-21T15:46:11.5447541Z     {
+2026-10-21T15:46:11.5447790Z       "tickers": 44,
+2026-10-21T15:46:11.5448112Z       "heapMiB": 152.34
+2026-10-21T15:46:11.5453749Z     },
+2026-10-21T15:46:11.5454098Z     {
+2026-10-21T15:46:11.5454390Z       "tickers": 45,
+2026-10-21T15:46:11.5454812Z       "heapMiB": 157.98
+2026-10-21T15:46:11.5455232Z     },
+2026-10-21T15:46:11.5455552Z     {
+2026-10-21T15:46:11.5455839Z       "tickers": 46,
+2026-10-21T15:46:11.5456051Z       "heapMiB": 153.92
+2026-10-21T15:46:11.5456267Z     },
+2026-10-21T15:46:11.5456440Z     {
+2026-10-21T15:46:11.5456625Z       "tickers": 47,
+2026-10-21T15:46:11.5456829Z       "heapMiB": 155.13
+2026-10-21T15:46:11.5457234Z     },
+2026-10-21T15:46:11.5457406Z     {
+2026-10-21T15:46:11.5457592Z       "tickers": 48,
+2026-10-21T15:46:11.5457798Z       "heapMiB": 159.02
+2026-10-21T15:46:11.5458000Z     },
+2026-10-21T15:46:11.5458706Z     {
+2026-10-21T15:46:11.5458892Z       "tickers": 49,
+2026-10-21T15:46:11.5459103Z       "heapMiB": 160.82
+2026-10-21T15:46:11.5459307Z     },
+2026-10-21T15:46:11.5459478Z     {
+2026-10-21T15:46:11.5459665Z       "tickers": 50,
+2026-10-21T15:46:11.5459869Z       "heapMiB": 160.54
+2026-10-21T15:46:11.5460072Z     },
+2026-10-21T15:46:11.5460248Z     {
+2026-10-21T15:46:11.5460433Z       "tickers": 51,
+2026-10-21T15:46:11.5460638Z       "heapMiB": 159.46
+2026-10-21T15:46:11.5460843Z     },
+2026-10-21T15:46:11.5461016Z     {
+2026-10-21T15:46:11.5461193Z       "tickers": 52,
+2026-10-21T15:46:11.5461409Z       "heapMiB": 158.14
+2026-10-21T15:46:11.5461614Z     },
+2026-10-21T15:46:11.5461786Z     {
+2026-10-21T15:46:11.5461966Z       "tickers": 53,
+2026-10-21T15:46:11.5462183Z       "heapMiB": 157.56
+2026-10-21T15:46:11.5462395Z     },
+2026-10-21T15:46:11.5462566Z     {
+2026-10-21T15:46:11.5462747Z       "tickers": 54,
+2026-10-21T15:46:11.5462956Z       "heapMiB": 163.33
+2026-10-21T15:46:11.5463165Z     },
+2026-10-21T15:46:11.5463340Z     {
+2026-10-21T15:46:11.5463521Z       "tickers": 55,
+2026-10-21T15:46:11.5463727Z       "heapMiB": 162.44
+2026-10-21T15:46:11.5463941Z     },
+2026-10-21T15:46:11.5464111Z     {
+2026-10-21T15:46:11.5464287Z       "tickers": 56,
+2026-10-21T15:46:11.5464493Z       "heapMiB": 163.21
+2026-10-21T15:46:11.5464692Z     },
+2026-10-21T15:46:11.5464867Z     {
+2026-10-21T15:46:11.5465044Z       "tickers": 57,
+2026-10-21T15:46:11.5465249Z       "heapMiB": 168.51
+2026-10-21T15:46:11.5465446Z     },
+2026-10-21T15:46:11.5465622Z     {
+2026-10-21T15:46:11.5465796Z       "tickers": 58,
+2026-10-21T15:46:11.5465996Z       "heapMiB": 168.85
+2026-10-21T15:46:11.5466199Z     },
+2026-10-21T15:46:11.5466367Z     {
+2026-10-21T15:46:11.5466550Z       "tickers": 59,
+2026-10-21T15:46:11.5466753Z       "heapMiB": 163.28
+2026-10-21T15:46:11.5466950Z     },
+2026-10-21T15:46:11.5467116Z     {
+2026-10-21T15:46:11.5467297Z       "tickers": 60,
+2026-10-21T15:46:11.5467507Z       "heapMiB": 165.84
+2026-10-21T15:46:11.5467706Z     },
+2026-10-21T15:46:11.5467880Z     {
+2026-10-21T15:46:11.5468060Z       "tickers": 61,
+2026-10-21T15:46:11.5468393Z       "heapMiB": 169.54
+2026-10-21T15:46:11.5468601Z     },
+2026-10-21T15:46:11.5468778Z     {
+2026-10-21T15:46:11.5468959Z       "tickers": 62,
+2026-10-21T15:46:11.5469170Z       "heapMiB": 168.23
+2026-10-21T15:46:11.5469383Z     },
+2026-10-21T15:46:11.5469559Z     {
+2026-10-21T15:46:11.5469743Z       "tickers": 63,
+2026-10-21T15:46:11.5469955Z       "heapMiB": 169.99
+2026-10-21T15:46:11.5470170Z     },
+2026-10-21T15:46:11.5470346Z     {
+2026-10-21T15:46:11.5470524Z       "tickers": 64,
+2026-10-21T15:46:11.5470732Z       "heapMiB": 171.39
+2026-10-21T15:46:11.5470952Z     },
+2026-10-21T15:46:11.5471134Z     {
+2026-10-21T15:46:11.5471310Z       "tickers": 65,
+2026-10-21T15:46:11.5471521Z       "heapMiB": 171.16
+2026-10-21T15:46:11.5471725Z     },
+2026-10-21T15:46:11.5472052Z     {
+2026-10-21T15:46:11.5472243Z       "tickers": 66,
+2026-10-21T15:46:11.5472450Z       "heapMiB": 171.83
+2026-10-21T15:46:11.5472656Z     },
+2026-10-21T15:46:11.5472831Z     {
+2026-10-21T15:46:11.5473026Z       "tickers": 67,
+2026-10-21T15:46:11.5473233Z       "heapMiB": 172.6
+2026-10-21T15:46:11.5473437Z     },
+2026-10-21T15:46:11.5473611Z     {
+2026-10-21T15:46:11.5473803Z       "tickers": 68,
+2026-10-21T15:46:11.5474008Z       "heapMiB": 171.99
+2026-10-21T15:46:11.5474211Z     },
+2026-10-21T15:46:11.5474381Z     {
+2026-10-21T15:46:11.5474558Z       "tickers": 69,
+2026-10-21T15:46:11.5474766Z       "heapMiB": 170.51
+2026-10-21T15:46:11.5474963Z     },
+2026-10-21T15:46:11.5475134Z     {
+2026-10-21T15:46:11.5475309Z       "tickers": 70,
+2026-10-21T15:46:11.5475518Z       "heapMiB": 170.41
+2026-10-21T15:46:11.5475722Z     },
+2026-10-21T15:46:11.5475893Z     {
+2026-10-21T15:46:11.5476156Z       "tickers": 71,
+2026-10-21T15:46:11.5476362Z       "heapMiB": 179.03
+2026-10-21T15:46:11.5476575Z     },
+2026-10-21T15:46:11.5476754Z     {
+2026-10-21T15:46:11.5476934Z       "tickers": 72,
+2026-10-21T15:46:11.5477140Z       "heapMiB": 170.86
+2026-10-21T15:46:11.5477344Z     },
+2026-10-21T15:46:11.5477526Z     {
+2026-10-21T15:46:11.5477713Z       "tickers": 73,
+2026-10-21T15:46:11.5477920Z       "heapMiB": 170.72
+2026-10-21T15:46:11.5478123Z     },
+2026-10-21T15:46:11.5478397Z     {
+2026-10-21T15:46:11.5478585Z       "tickers": 74,
+2026-10-21T15:46:11.5478802Z       "heapMiB": 173.73
+2026-10-21T15:46:11.5479015Z     },
+2026-10-21T15:46:11.5479199Z     {
+2026-10-21T15:46:11.5479400Z       "tickers": 75,
+2026-10-21T15:46:11.5479617Z       "heapMiB": 170.45
+2026-10-21T15:46:11.5479833Z     },
+2026-10-21T15:46:11.5481465Z     {
+2026-10-21T15:46:11.5481658Z       "tickers": 76,
+2026-10-21T15:46:11.5481862Z       "heapMiB": 174.32
+2026-10-21T15:46:11.5482065Z     },
+2026-10-21T15:46:11.5482236Z     {
+2026-10-21T15:46:11.5482422Z       "tickers": 77,
+2026-10-21T15:46:11.5482630Z       "heapMiB": 173.04
+2026-10-21T15:46:11.5482839Z     },
+2026-10-21T15:46:11.5483005Z     {
+2026-10-21T15:46:11.5483176Z       "tickers": 78,
+2026-10-21T15:46:11.5483383Z       "heapMiB": 168.56
+2026-10-21T15:46:11.5483583Z     },
+2026-10-21T15:46:11.5483756Z     {
+2026-10-21T15:46:11.5483930Z       "tickers": 79,
+2026-10-21T15:46:11.5484131Z       "heapMiB": 168.09
+2026-10-21T15:46:11.5484335Z     },
+2026-10-21T15:46:11.5484504Z     {
+2026-10-21T15:46:11.5484679Z       "tickers": 80,
+2026-10-21T15:46:11.5484887Z       "heapMiB": 178.52
+2026-10-21T15:46:11.5485095Z     },
+2026-10-21T15:46:11.5485267Z     {
+2026-10-21T15:46:11.5485441Z       "tickers": 81,
+2026-10-21T15:46:11.5485651Z       "heapMiB": 176.75
+2026-10-21T15:46:11.5485852Z     },
+2026-10-21T15:46:11.5486037Z     {
+2026-10-21T15:46:11.5486211Z       "tickers": 82,
+2026-10-21T15:46:11.5486416Z       "heapMiB": 178.45
+2026-10-21T15:46:11.5486616Z     },
+2026-10-21T15:46:11.5486794Z     {
+2026-10-21T15:46:11.5486983Z       "tickers": 83,
+2026-10-21T15:46:11.5487191Z       "heapMiB": 179.04
+2026-10-21T15:46:11.5487393Z     },
+2026-10-21T15:46:11.5487565Z     {
+2026-10-21T15:46:11.5487752Z       "tickers": 84,
+2026-10-21T15:46:11.5487956Z       "heapMiB": 174.75
+2026-10-21T15:46:11.5488271Z     },
+2026-10-21T15:46:11.5488457Z     {
+2026-10-21T15:46:11.5488650Z       "tickers": 85,
+2026-10-21T15:46:11.5488878Z       "heapMiB": 175.92
+2026-10-21T15:46:11.5489089Z     },
+2026-10-21T15:46:11.5489267Z     {
+2026-10-21T15:46:11.5489448Z       "tickers": 86,
+2026-10-21T15:46:11.5489665Z       "heapMiB": 175.49
+2026-10-21T15:46:11.5489868Z     },
+2026-10-21T15:46:11.5490039Z     {
+2026-10-21T15:46:11.5490214Z       "tickers": 87,
+2026-10-21T15:46:11.5490416Z       "heapMiB": 171.29
+2026-10-21T15:46:11.5490620Z     },
+2026-10-21T15:46:11.5490786Z     {
+2026-10-21T15:46:11.5490962Z       "tickers": 88,
+2026-10-21T15:46:11.5491161Z       "heapMiB": 174.9
+2026-10-21T15:46:11.5491370Z     },
+2026-10-21T15:46:11.5491541Z     {
+2026-10-21T15:46:11.5491715Z       "tickers": 89,
+2026-10-21T15:46:11.5492051Z       "heapMiB": 179.46
+2026-10-21T15:46:11.5492262Z     },
+2026-10-21T15:46:11.5492443Z     {
+2026-10-21T15:46:11.5492620Z       "tickers": 90,
+2026-10-21T15:46:11.5492827Z       "heapMiB": 174.61
+2026-10-21T15:46:11.5493028Z     },
+2026-10-21T15:46:11.5493203Z     {
+2026-10-21T15:46:11.5493394Z       "tickers": 91,
+2026-10-21T15:46:11.5493601Z       "heapMiB": 178.86
+2026-10-21T15:46:11.5493805Z     },
+2026-10-21T15:46:11.5493980Z     {
+2026-10-21T15:46:11.5494168Z       "tickers": 92,
+2026-10-21T15:46:11.5494373Z       "heapMiB": 178.15
+2026-10-21T15:46:11.5494578Z     },
+2026-10-21T15:46:11.5494751Z     {
+2026-10-21T15:46:11.5494932Z       "tickers": 93,
+2026-10-21T15:46:11.5495143Z       "heapMiB": 177.18
+2026-10-21T15:46:11.5495346Z     },
+2026-10-21T15:46:11.5495521Z     {
+2026-10-21T15:46:11.5495698Z       "tickers": 94,
+2026-10-21T15:46:11.5495913Z       "heapMiB": 172.94
+2026-10-21T15:46:11.5496186Z     },
+2026-10-21T15:46:11.5496360Z     {
+2026-10-21T15:46:11.5496536Z       "tickers": 95,
+2026-10-21T15:46:11.5496742Z       "heapMiB": 177.57
+2026-10-21T15:46:11.5496953Z     },
+2026-10-21T15:46:11.5497125Z     {
+2026-10-21T15:46:11.5497310Z       "tickers": 96,
+2026-10-21T15:46:11.5497514Z       "heapMiB": 180.35
+2026-10-21T15:46:11.5497731Z     },
+2026-10-21T15:46:11.5497901Z     {
+2026-10-21T15:46:11.5498078Z       "tickers": 97,
+2026-10-21T15:46:11.5498373Z       "heapMiB": 173.3
+2026-10-21T15:46:11.5498581Z     },
+2026-10-21T15:46:11.5498765Z     {
+2026-10-21T15:46:11.5498946Z       "tickers": 98,
+2026-10-21T15:46:11.5499157Z       "heapMiB": 173.52
+2026-10-21T15:46:11.5499364Z     },
+2026-10-21T15:46:11.5499553Z     {
+2026-10-21T15:46:11.5499735Z       "tickers": 99,
+2026-10-21T15:46:11.5499941Z       "heapMiB": 173.02
+2026-10-21T15:46:11.5500148Z     },
+2026-10-21T15:46:11.5500321Z     {
+2026-10-21T15:46:11.5500512Z       "tickers": 100,
+2026-10-21T15:46:11.5500723Z       "heapMiB": 176.91
+2026-10-21T15:46:11.5500929Z     },
+2026-10-21T15:46:11.5501103Z     {
+2026-10-21T15:46:11.5501292Z       "tickers": 101,
+2026-10-21T15:46:11.5501515Z       "heapMiB": 179.05
+2026-10-21T15:46:11.5501720Z     },
+2026-10-21T15:46:11.5501897Z     {
+2026-10-21T15:46:11.5502078Z       "tickers": 102,
+2026-10-21T15:46:11.5502304Z       "heapMiB": 174.28
+2026-10-21T15:46:11.5502510Z     },
+2026-10-21T15:46:11.5502684Z     {
+2026-10-21T15:46:11.5502867Z       "tickers": 103,
+2026-10-21T15:46:11.5503080Z       "heapMiB": 173.16
+2026-10-21T15:46:11.5503291Z     },
+2026-10-21T15:46:11.5503463Z     {
+2026-10-21T15:46:11.5503652Z       "tickers": 104,
+2026-10-21T15:46:11.5503870Z       "heapMiB": 175.32
+2026-10-21T15:46:11.5504091Z     },
+2026-10-21T15:46:11.5504265Z     {
+2026-10-21T15:46:11.5504448Z       "tickers": 105,
+2026-10-21T15:46:11.5504657Z       "heapMiB": 176.91
+2026-10-21T15:46:11.5504860Z     },
+2026-10-21T15:46:11.5505046Z     {
+2026-10-21T15:46:11.5505220Z       "tickers": 106,
+2026-10-21T15:46:11.5505431Z       "heapMiB": 174.38
+2026-10-21T15:46:11.5505633Z     },
+2026-10-21T15:46:11.5505810Z     {
+2026-10-21T15:46:11.5505994Z       "tickers": 107,
+2026-10-21T15:46:11.5506202Z       "heapMiB": 173.69
+2026-10-21T15:46:11.5506404Z     },
+2026-10-21T15:46:11.5506575Z     {
+2026-10-21T15:46:11.5506758Z       "tickers": 108,
+2026-10-21T15:46:11.5506963Z       "heapMiB": 178.48
+2026-10-21T15:46:11.5507166Z     },
+2026-10-21T15:46:11.5507336Z     {
+2026-10-21T15:46:11.5507524Z       "tickers": 109,
+2026-10-21T15:46:11.5507730Z       "heapMiB": 180.91
+2026-10-21T15:46:11.5507934Z     },
+2026-10-21T15:46:11.5508109Z     {
+2026-10-21T15:46:11.5508663Z       "tickers": 110,
+2026-10-21T15:46:11.5508887Z       "heapMiB": 175.76
+2026-10-21T15:46:11.5509091Z     },
+2026-10-21T15:46:11.5509273Z     {
+2026-10-21T15:46:11.5509454Z       "tickers": 111,
+2026-10-21T15:46:11.5509678Z       "heapMiB": 173.1
+2026-10-21T15:46:11.5509882Z     },
+2026-10-21T15:46:11.5510055Z     {
+2026-10-21T15:46:11.5510232Z       "tickers": 112,
+2026-10-21T15:46:11.5510451Z       "heapMiB": 175.25
+2026-10-21T15:46:11.5510663Z     },
+2026-10-21T15:46:11.5511022Z     {
+2026-10-21T15:46:11.5511208Z       "tickers": 113,
+2026-10-21T15:46:11.5511416Z       "heapMiB": 178.05
+2026-10-21T15:46:11.5511631Z     },
+2026-10-21T15:46:11.5511815Z     {
+2026-10-21T15:46:11.5512005Z       "tickers": 114,
+2026-10-21T15:46:11.5512227Z       "heapMiB": 177.07
+2026-10-21T15:46:11.5512429Z     },
+2026-10-21T15:46:11.5512609Z     {
+2026-10-21T15:46:11.5512786Z       "tickers": 115,
+2026-10-21T15:46:11.5512992Z       "heapMiB": 180.27
+2026-10-21T15:46:11.5513196Z     },
+2026-10-21T15:46:11.5513372Z     {
+2026-10-21T15:46:11.5513550Z       "tickers": 116,
+2026-10-21T15:46:11.5513752Z       "heapMiB": 172
+2026-10-21T15:46:11.5513947Z     },
+2026-10-21T15:46:11.5514120Z     {
+2026-10-21T15:46:11.5514305Z       "tickers": 117,
+2026-10-21T15:46:11.5514509Z       "heapMiB": 177.06
+2026-10-21T15:46:11.5514714Z     },
+2026-10-21T15:46:11.5514885Z     {
+2026-10-21T15:46:11.5515133Z       "tickers": 118,
+2026-10-21T15:46:11.5515341Z       "heapMiB": 179.17
+2026-10-21T15:46:11.5515540Z     },
+2026-10-21T15:46:11.5515712Z     {
+2026-10-21T15:46:11.5515889Z       "tickers": 119,
+2026-10-21T15:46:11.5516102Z       "heapMiB": 175.4
+2026-10-21T15:46:11.5516309Z     },
+2026-10-21T15:46:11.5516485Z     {
+2026-10-21T15:46:11.5516662Z       "tickers": 120,
+2026-10-21T15:46:11.5516867Z       "heapMiB": 176.47
+2026-10-21T15:46:11.5517081Z     }
+2026-10-21T15:46:11.5517253Z   ]
+2026-10-21T15:46:11.5517430Z }
+2026-10-21T15:46:11.7279217Z Post job cleanup.
+2026-10-21T15:46:11.7282739Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__b93498ec-f230-4801-b2bc-67349bffe4fa.__oven-sh_setup-bun]
+2026-10-21T15:46:11.7351865Z Post job cleanup.
+2026-10-21T15:46:11.9005720Z ##[end-action id=__b93498ec-f230-4801-b2bc-67349bffe4fa.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=172]
+2026-10-21T15:46:11.9073008Z Post job cleanup.
+2026-10-21T15:46:12.0386181Z [command]/usr/bin/git version
+2026-10-21T15:46:12.0438915Z git version 2.55.0
+2026-10-21T15:46:12.0485345Z Temporarily overriding HOME='/home/runner/work/_temp/5c5f6300-bea6-4b81-a54a-9b61fa2c607c' before making global git config changes
+2026-10-21T15:46:12.0486927Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T15:46:12.0493630Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/gloomberb/gloomberb
+2026-10-21T15:46:12.0545739Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T15:46:12.0602732Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T15:46:12.0862093Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T15:46:12.0886971Z http.https://github.com/.extraheader
+2026-10-21T15:46:12.0898894Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T15:46:12.0933317Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T15:46:12.1153304Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T15:46:12.1197418Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T15:46:12.1569618Z Cleaning up orphan processes
+2026-10-21T15:46:12.1836948Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

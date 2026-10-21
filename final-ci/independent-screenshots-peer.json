@@ -1,0 +1,414 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "passed": true,
+  "reviewedAt": "2026-10-21T14:45:43.179438+00:00",
+  "method": "Independent raw pixel differences and bounding boxes, rehashed raw images/sheets, recalculated DOM Range clipping and More bounds from retained metadata; no recapture or raw mutations.",
+  "comparisons": [
+    {
+      "comparison": "correction",
+      "baseline": "41043a6c496735a809fc01bf5117a521eddc80bf",
+      "baselineCaptureReused": false,
+      "pairs": 16,
+      "changed": 12,
+      "rows": [
+        {
+          "file": "healthy-paper-1280.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "2d77cf7fe25c0c221b455691aacf47e2c925d303d67bd08e09efc1d2db8cfcf7"
+        },
+        {
+          "file": "healthy-paper-640.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "187a9e275c1d79c576df269c0d23e29824665eca92c91094410fb7bb3f139034"
+        },
+        {
+          "file": "healthy-white-1280.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "90db466c6c5e6f49465a24b67eba06b9e2f89b0ad562d9d97446f634d22a2de7"
+        },
+        {
+          "file": "healthy-white-640.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "749f0e3b9f9d5fe8742b5ad3559cbaf5dbf692abc3425c4766e7ede104fb407e"
+        },
+        {
+          "file": "native-paper-1280.png",
+          "changedPixels": 1622,
+          "differenceBounds": [
+            17,
+            628,
+            345,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01"
+        },
+        {
+          "file": "native-paper-640.png",
+          "changedPixels": 1139,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010"
+        },
+        {
+          "file": "native-white-1280.png",
+          "changedPixels": 1619,
+          "differenceBounds": [
+            17,
+            628,
+            345,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47"
+        },
+        {
+          "file": "native-white-640.png",
+          "changedPixels": 1139,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11"
+        },
+        {
+          "file": "remove-paper-1280.png",
+          "changedPixels": 1238,
+          "differenceBounds": [
+            17,
+            628,
+            429,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "3376191ea9b1a8edeaa55920175c982eeffde473109cebc124dedbacedf1e311"
+        },
+        {
+          "file": "remove-paper-640.png",
+          "changedPixels": 482,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "0624108c2e496635bdcdb32c2237dfea329d2aa788cf0c458fbe99a7f7a00d10"
+        },
+        {
+          "file": "remove-white-1280.png",
+          "changedPixels": 1231,
+          "differenceBounds": [
+            17,
+            628,
+            428,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "d72d21ec54929e88b3614ee6277275c3e4187ba3ab20661f8398a0163de46fd0"
+        },
+        {
+          "file": "remove-white-640.png",
+          "changedPixels": 481,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "7ce427b4bb798239509f587b876ce4e3300ed59629a275304ee4c9d1cfb3c300"
+        },
+        {
+          "file": "view-paper-1280.png",
+          "changedPixels": 1622,
+          "differenceBounds": [
+            17,
+            628,
+            345,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01"
+        },
+        {
+          "file": "view-paper-640.png",
+          "changedPixels": 1139,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010"
+        },
+        {
+          "file": "view-white-1280.png",
+          "changedPixels": 1619,
+          "differenceBounds": [
+            17,
+            628,
+            345,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47"
+        },
+        {
+          "file": "view-white-640.png",
+          "changedPixels": 1139,
+          "differenceBounds": [
+            17,
+            628,
+            249,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11"
+        }
+      ],
+      "reportSha256": "436dd7f1a9f906388d7a38be6d409fb137da246195a3920ff8ef1fc638510608"
+    },
+    {
+      "comparison": "main",
+      "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "baselineCaptureReused": true,
+      "pairs": 12,
+      "changed": 8,
+      "rows": [
+        {
+          "file": "healthy-paper-1280.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "2d77cf7fe25c0c221b455691aacf47e2c925d303d67bd08e09efc1d2db8cfcf7"
+        },
+        {
+          "file": "healthy-paper-640.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "187a9e275c1d79c576df269c0d23e29824665eca92c91094410fb7bb3f139034"
+        },
+        {
+          "file": "healthy-white-1280.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "90db466c6c5e6f49465a24b67eba06b9e2f89b0ad562d9d97446f634d22a2de7"
+        },
+        {
+          "file": "healthy-white-640.png",
+          "changedPixels": 0,
+          "differenceBounds": null,
+          "neighbourPixels": 0,
+          "rawHeadSha256": "749f0e3b9f9d5fe8742b5ad3559cbaf5dbf692abc3425c4766e7ede104fb407e"
+        },
+        {
+          "file": "native-paper-1280.png",
+          "changedPixels": 14006,
+          "differenceBounds": [
+            9,
+            72,
+            625,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01"
+        },
+        {
+          "file": "native-paper-640.png",
+          "changedPixels": 7066,
+          "differenceBounds": [
+            9,
+            72,
+            305,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010"
+        },
+        {
+          "file": "native-white-1280.png",
+          "changedPixels": 13983,
+          "differenceBounds": [
+            9,
+            72,
+            625,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47"
+        },
+        {
+          "file": "native-white-640.png",
+          "changedPixels": 7055,
+          "differenceBounds": [
+            9,
+            72,
+            305,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11"
+        },
+        {
+          "file": "view-paper-1280.png",
+          "changedPixels": 1140,
+          "differenceBounds": [
+            17,
+            628,
+            299,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "fa50fc5d5b02f9d938f71785ce78af3eaedee32f7ef98b1070c5277633d5bc01"
+        },
+        {
+          "file": "view-paper-640.png",
+          "changedPixels": 1111,
+          "differenceBounds": [
+            17,
+            628,
+            233,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "0e6bc780f21bce524256cfccb34bcaafad8f26a7dc395cfc3045ce59d6340010"
+        },
+        {
+          "file": "view-white-1280.png",
+          "changedPixels": 1134,
+          "differenceBounds": [
+            17,
+            628,
+            299,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "033797961d19e0e179eb1a21192c6b6198b1909f6bf1da58473b86a74a291c47"
+        },
+        {
+          "file": "view-white-640.png",
+          "changedPixels": 1108,
+          "differenceBounds": [
+            17,
+            628,
+            233,
+            640
+          ],
+          "neighbourPixels": 0,
+          "rawHeadSha256": "7c08fa24e4dbbdf89ac4d0de920644a142f538df43a7b275a4c30ea9563c1b11"
+        }
+      ],
+      "reportSha256": "20c1cdd0ac667e09ac675a922d2b8794a7408a1411f3f556772b3c05b0f6f85a"
+    }
+  ],
+  "allTwelveFailureWarningsFullyVisible": true,
+  "warnings": {
+    "native-paper-1280.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 328,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "native-paper-640.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "native-white-1280.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 328,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "native-white-640.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "remove-paper-1280.png": {
+      "text": "removal failed, restart to retry",
+      "rangeWidth": 230.4375,
+      "minimumClipWidth": 504,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "remove-paper-640.png": {
+      "text": "removal failed, restart to retry",
+      "rangeWidth": 230.4375,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "remove-white-1280.png": {
+      "text": "removal failed, restart to retry",
+      "rangeWidth": 230.4375,
+      "minimumClipWidth": 504,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "remove-white-640.png": {
+      "text": "removal failed, restart to retry",
+      "rangeWidth": 230.4375,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "view-paper-1280.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 328,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "view-paper-640.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "view-white-1280.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 328,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    },
+    "view-white-640.png": {
+      "text": "stop failed, restart to remove",
+      "rangeWidth": 216.046875,
+      "minimumClipWidth": 232,
+      "fullyVisible": true,
+      "noMoreOverlap": true
+    }
+  },
+  "sourceProvenanceSha256": "48891f6bf6a0c1ac48020ddf74b66c5e7fde72c6f50c11b30779283a08548e89",
+  "rootVisualProofSha256": "e93e9601d7efdeee8afdd0f4fde225e18448762c44eb0ac6ee20cfad833236b9",
+  "mainBaselineReuseDisclosed": true
+}

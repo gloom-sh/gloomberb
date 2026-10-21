@@ -1,0 +1,70 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "run": 39618670567,
+  "checkedAt": "2026-10-21T16:43:30.473669+00:00",
+  "reviewedUnsteadyIds": [
+    "PERP--tab-history",
+    "OVDV--root"
+  ],
+  "reviewSha256": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c",
+  "allExclusionsReviewed": true,
+  "officialClassificationModified": false,
+  "captureRerun": false,
+  "records": [
+    {
+      "view": "PERP--tab-history",
+      "evidence": "perp-unsteady-peer.json",
+      "evidenceSha256": "9baacd60f9ce381441d3245e69ac66e8ac962f5c2de9afc22674e8d606d17620",
+      "qualification": "This is a width-specific data-state mismatch, not an identical rendering or a successful history regression check. The unchanged harness marked PERP history unsteady after two captures of each source revision. The Perps/API/cache/React/shared-UI/browser-renderer/harness source objects are identical across frozen base and final head, supporting an existing replay/capture instability qualification. Preserve the official unsteady exclusion; it leaves this view without stable before/after comparison coverage.",
+      "limits": [
+        "The two640 captures are different data states; both1280 captures are the replay-error state.",
+        "The archived retry images/results were removed by the existing harness, so which retry changed and by how much cannot be independently reconstructed.",
+        "Replay response bodies, labels and clock.json were not archived; matching cache keys or source trees do not prove identical snapshot contents or actual request times.",
+        "No claim that all application source is unchanged: the PR changes removal/deactivation paths, including app pane plugin bindings. The audited Perps and shared render/data paths listed above are unchanged.",
+        "No new rendering, tests, network requests, source changes or raw-evidence changes were performed by this review."
+      ],
+      "originalBodyComparisons": [
+        {
+          "width": 640,
+          "bodyPixels": 28608.0,
+          "bodyFraction": 0.06243016759776536,
+          "rawBytesIdentical": false
+        },
+        {
+          "width": 1280,
+          "bodyPixels": 0.0,
+          "bodyFraction": 0.0,
+          "rawBytesIdentical": true
+        }
+      ]
+    },
+    {
+      "view": "OVDV--root",
+      "evidence": "ovdv-unsteady-peer.json",
+      "evidenceSha256": "091b4b79960a118db3268fb3c08d386f86292b2f6657a07ab95ce7023ee35534",
+      "qualification": "The four original root measurements/images are the settled 3D surface with matching footer dates. At640 the JPEGs are byte-identical; at1280 a780-pixel body difference localizes visually to canvas ATM/expiry labels while the mesh and controls appear unchanged. The precise transient label-placement cause is unproven. The unchanged harness classified OVDV root as unsteady after same-code retries. Identical relevant pane, chart-data, shared-UI, browser-renderer and harness source objects support an existing capture-instability qualification. Preserve the official exclusion; this is not stable before/after comparison coverage.",
+      "limits": [
+        "Retry images/results were deleted before upload. The logs prove two original six-view captures and two seven-view retries; the exact retry differences and extra view cannot be reconstructed.",
+        "Original captures all have complete640/1280 root coverage, with no retained OVDV detail declarations. Do not import the815 partial-load/false-detail observation into this run.",
+        "Replay response bodies and request timelines were not archived; identical source trees do not establish identical snapshot contents or exact timing.",
+        "No claim that all application source is unchanged: this PR changes removal/deactivation and native plugin integration. The listed vol-surface and browser/shared rendering trees are identical.",
+        "No new rendering, tests, source changes or raw-evidence changes were performed."
+      ],
+      "originalBodyComparisons": [
+        {
+          "width": 640,
+          "bodyPixels": 0.0,
+          "bodyFraction": 0.0,
+          "rawBytesIdentical": true
+        },
+        {
+          "width": 1280,
+          "bodyPixels": 780.0,
+          "bodyFraction": 0.0008510824022346368,
+          "rawBytesIdentical": false
+        }
+      ]
+    }
+  ],
+  "qualification": "PERP history is an excluded width-specific data-state mismatch: at 640px the baseline shows the replay error while the head shows funding metadata and a Pro history gate (6.2430% of body pixels differ); both 1280px images are byte-identical replay-error states. Nine relevant Perps/data/React/UI/browser/harness source objects are unchanged. Advancing clock-derived history queries and exact replay request keys are a plausible source-supported cause, but the actual request trace, clock and snapshot replies are not retained. Retry captures were deleted by the existing harness. Preserve the official exclusion; this does not establish stable history-state comparison coverage. OVDV root is also excluded: the original 640px JPEGs are byte-identical; at 1280px 780 body pixels (0.0851%) differ around canvas ATM/expiry labels. The retained originals show the settled surface with matching dates, and 11 relevant source objects are unchanged. The precise label-placement cause is unproven. Retry logs show an additional view, but their deleted images/results prevent reconstruction of that state. This exclusion also leaves the view without stable before/after comparison coverage."
+}

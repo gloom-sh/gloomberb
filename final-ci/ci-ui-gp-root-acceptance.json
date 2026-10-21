@@ -1,0 +1,23 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "workflowRun": 39618670567,
+  "checkedAt": "2026-10-21T16:47:26.349161+00:00",
+  "diagnosisSha256": "a25a3125633b87293ba2e8fae5d53707f6173d9365668e54ef1672153da12038",
+  "rootVisualReviewSha256": "978c442ec37b282efdd00902125c63e34edc59e00677e5e38fd93337d4d443ae",
+  "accepted": true,
+  "acceptedChangedView": "GP--root",
+  "officialChangedCount": 1,
+  "allDiagnosisArchiveInputAndLogHashesRechecked": true,
+  "allElevenSourceObjectsRechecked": true,
+  "allFourOriginalsViewed": true,
+  "fourReversedCrossRunByteMatchesIndependentlyVerified": true,
+  "classification": "Existing capture variation demonstrated by exact reversed baseline/head pairs from the independent run, which excluded GP as unsteady. The current official changed classification remains intact.",
+  "preciseCauseProven": false,
+  "conditions": [
+    "Keep official1/530 and exact pixel fractions public; do not claim zero unintended pixel differences.",
+    "Allow this exact GP--root artifact-bound exception only; other unexplained changed views remain rejected.",
+    "Publish the source/cross-run evidence and limitations; no recapture or normalization."
+  ],
+  "officialResultsModified": false
+}

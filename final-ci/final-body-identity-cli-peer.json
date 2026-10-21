@@ -1,0 +1,60 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "run": 39618670567,
+  "checkedAt": "2026-10-21T16:44:57.357274+00:00",
+  "reviewer": "/root/cli_replay",
+  "boundedAuditPassed": true,
+  "sourceInputs": {
+    "ci-ui-review.json": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c",
+    "ci-ui-body-comparison.json": "f09da49d6c521e40ef9746c83dfdb80229f9df49e43bcd17ece26976f71ff41b",
+    "ci-ui-pane-identity-review.json": "ed29da648b192aa5ecd16960b33e1806e6ba14875f9d402555f32b10525e9271"
+  },
+  "archiveDigestsAndExtractedOriginalsVerified": [
+    {
+      "id": 12363475496,
+      "sha256": "43d766df20fc8435152c2d43a06cad641f952fbcad530b9180847ac3be3860e2"
+    },
+    {
+      "id": 12362440055,
+      "sha256": "0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183"
+    },
+    {
+      "id": 12360313783,
+      "sha256": "12f8add1785fe14d13d47b01e0134814ca5abfee6c1993c1aa69e72be57e629a"
+    },
+    {
+      "id": 12357854342,
+      "sha256": "4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64"
+    },
+    {
+      "id": 12357518993,
+      "sha256": "5b2540fb1a5352329c295bfec4ecb41b8bd7d2b70be5f83ea0252fb1c045ea1b"
+    }
+  ],
+  "bodyRowsRecomputed": 46,
+  "imagePairs": 1060,
+  "symmetricMismatchedViewIds": 12,
+  "gpOriginalComparisons": [
+    {
+      "view": "GP--root",
+      "width": 1280,
+      "pixels": 1139.0,
+      "fraction": 0.001242798533519553
+    },
+    {
+      "view": "GP--root",
+      "width": 640,
+      "pixels": 1115.0,
+      "fraction": 0.0024332227653631284
+    }
+  ],
+  "officialChangedViews": [
+    "GP--root"
+  ],
+  "officialUnsteadyIds": [
+    "PERP--tab-history",
+    "OVDV--root"
+  ],
+  "allChangedViewsAccepted": false,
+  "limit": "This verifies final body/identity/archive linkage only. GP remains an unexplained official stable change requiring owner diagnosis/review. Snapshot hashes may be superseded by later qualified review metadata; raw archives remain unchanged."
+}

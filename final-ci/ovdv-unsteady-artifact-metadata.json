@@ -1,0 +1,85 @@
+{
+  "total_count": 4,
+  "artifacts": [
+    {
+      "id": 12362440055,
+      "node_id": "MDg6QXJ0aWZhY3QxMjM2MjQ0MDA1NQ==",
+      "name": "ui-benchmark-shard-4",
+      "size_in_bytes": 18888334,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12362440055",
+      "archive_download_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12362440055/zip",
+      "expired": false,
+      "digest": "sha256:0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183",
+      "created_at": "2026-10-21T16:38:57Z",
+      "updated_at": "2026-10-21T16:38:57Z",
+      "expires_at": "2026-10-28T16:38:56Z",
+      "workflow_run": {
+        "id": 39618670567,
+        "repository_id": 1191195886,
+        "head_repository_id": 1191195886,
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      }
+    },
+    {
+      "id": 12360313783,
+      "node_id": "MDg6QXJ0aWZhY3QxMjM2MDMxMzc4Mw==",
+      "name": "ui-benchmark-shard-3",
+      "size_in_bytes": 21564137,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12360313783",
+      "archive_download_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12360313783/zip",
+      "expired": false,
+      "digest": "sha256:12f8add1785fe14d13d47b01e0134814ca5abfee6c1993c1aa69e72be57e629a",
+      "created_at": "2026-10-21T16:31:25Z",
+      "updated_at": "2026-10-21T16:31:25Z",
+      "expires_at": "2026-10-28T16:31:22Z",
+      "workflow_run": {
+        "id": 39618670567,
+        "repository_id": 1191195886,
+        "head_repository_id": 1191195886,
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      }
+    },
+    {
+      "id": 12357854342,
+      "node_id": "MDg6QXJ0aWZhY3QxMjM1Nzg1NDM0Mg==",
+      "name": "ui-benchmark-shard-2",
+      "size_in_bytes": 24667077,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12357854342",
+      "archive_download_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12357854342/zip",
+      "expired": false,
+      "digest": "sha256:4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64",
+      "created_at": "2026-10-21T16:00:51Z",
+      "updated_at": "2026-10-21T16:00:51Z",
+      "expires_at": "2026-10-28T16:00:49Z",
+      "workflow_run": {
+        "id": 39618670567,
+        "repository_id": 1191195886,
+        "head_repository_id": 1191195886,
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      }
+    },
+    {
+      "id": 12357518993,
+      "node_id": "MDg6QXJ0aWZhY3QxMjM1NzUxODk5Mw==",
+      "name": "ui-benchmark-shard-1",
+      "size_in_bytes": 22799193,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12357518993",
+      "archive_download_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/artifacts/12357518993/zip",
+      "expired": false,
+      "digest": "sha256:5b2540fb1a5352329c295bfec4ecb41b8bd7d2b70be5f83ea0252fb1c045ea1b",
+      "created_at": "2026-10-21T15:51:56Z",
+      "updated_at": "2026-10-21T15:51:56Z",
+      "expires_at": "2026-10-28T15:51:54Z",
+      "workflow_run": {
+        "id": 39618670567,
+        "repository_id": 1191195886,
+        "head_repository_id": 1191195886,
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      }
+    }
+  ]
+}

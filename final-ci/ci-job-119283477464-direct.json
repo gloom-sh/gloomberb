@@ -1,0 +1,30 @@
+{
+  "observedAt": "2026-10-21T15:21:23.106481+00:00",
+  "job": {
+    "id": 119283477464,
+    "run_id": 39617892455,
+    "workflow_name": "Performance",
+    "head_branch": "fix/glo-1165-plugin-removal",
+    "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892455",
+    "run_attempt": 1,
+    "node_id": "CR_kwDORwA07s8AAAAbxdlr2A",
+    "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119283477464",
+    "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892455/job/119283477464",
+    "status": "queued",
+    "conclusion": null,
+    "created_at": "2026-10-21T14:33:50Z",
+    "started_at": "2026-10-21T14:33:50Z",
+    "completed_at": null,
+    "name": "Cloud sync main-thread budget",
+    "steps": [],
+    "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119283477464",
+    "labels": [
+      "ubuntu-latest"
+    ],
+    "runner_id": 0,
+    "runner_name": "",
+    "runner_group_id": 0,
+    "runner_group_name": ""
+  }
+}

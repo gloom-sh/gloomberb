@@ -1,0 +1,75 @@
+{
+  "allGitHubArchiveDigestsVerified": true,
+  "allExtractedOriginalsByteIdenticalToZIP": true,
+  "archives": [
+    {
+      "artifact": "ui-benchmark",
+      "id": 12363475496,
+      "sha256": "43d766df20fc8435152c2d43a06cad641f952fbcad530b9180847ac3be3860e2",
+      "extractedFilesVerified": 20
+    },
+    {
+      "artifact": "ui-benchmark-shard-4",
+      "id": 12362440055,
+      "sha256": "0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183",
+      "extractedFilesVerified": 482
+    },
+    {
+      "artifact": "ui-benchmark-shard-3",
+      "id": 12360313783,
+      "sha256": "12f8add1785fe14d13d47b01e0134814ca5abfee6c1993c1aa69e72be57e629a",
+      "extractedFilesVerified": 506
+    },
+    {
+      "artifact": "ui-benchmark-shard-2",
+      "id": 12357854342,
+      "sha256": "4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64",
+      "extractedFilesVerified": 646
+    },
+    {
+      "artifact": "ui-benchmark-shard-1",
+      "id": 12357518993,
+      "sha256": "5b2540fb1a5352329c295bfec4ecb41b8bd7d2b70be5f83ea0252fb1c045ea1b",
+      "extractedFilesVerified": 510
+    }
+  ],
+  "totalExtractedFilesVerified": 2164,
+  "crossShardMeasurementKeysUnique": true,
+  "measurementsPerSide": {
+    "before": 1060,
+    "after": 1060
+  },
+  "matchedMeasurementKeys": true,
+  "shards": [
+    {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "0/4",
+      "offline": true
+    },
+    {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "1/4",
+      "offline": true
+    },
+    {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "2/4",
+      "offline": true
+    },
+    {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "3/4",
+      "offline": true
+    }
+  ],
+  "captureRerun": false,
+  "submittedTreeMatchesEveryTestedHead": true
+}

@@ -1,0 +1,39 @@
+﻿2026-10-21T15:55:32.9704319Z Current runner version: '2.338.0'
+2026-10-21T15:55:32.9729111Z ##[group]Runner Image Provisioner
+2026-10-21T15:55:32.9730022Z Hosted Compute Agent
+2026-10-21T15:55:32.9730646Z Version: 20261012.601
+2026-10-21T15:55:32.9731393Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-21T15:55:32.9732124Z Build Date: 2026-10-12T17:48:21Z
+2026-10-21T15:55:32.9732849Z Worker ID: {dab04b80-e271-421e-a603-0d907988c130}
+2026-10-21T15:55:32.9733593Z Region: southcentralus
+2026-10-21T15:55:32.9734176Z Cloud: Azure
+2026-10-21T15:55:32.9734730Z ##[endgroup]
+2026-10-21T15:55:32.9736118Z ##[group]Operating System
+2026-10-21T15:55:32.9736743Z Ubuntu
+2026-10-21T15:55:32.9737253Z 24.04.5
+2026-10-21T15:55:32.9737748Z LTS
+2026-10-21T15:55:32.9738288Z ##[endgroup]
+2026-10-21T15:55:32.9739018Z ##[group]Runner Image
+2026-10-21T15:55:32.9739668Z Image: ubuntu-24.04
+2026-10-21T15:55:32.9740285Z Version: 20261012.334.1
+2026-10-21T15:55:32.9741550Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T15:55:32.9743069Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-21T15:55:32.9744060Z ##[endgroup]
+2026-10-21T15:55:32.9745238Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T15:55:32.9747426Z Contents: read
+2026-10-21T15:55:32.9747998Z Metadata: read
+2026-10-21T15:55:32.9748565Z ##[endgroup]
+2026-10-21T15:55:32.9751228Z Secret source: Actions
+2026-10-21T15:55:32.9752130Z Cache mode: write
+2026-10-21T15:55:32.9753380Z Prepare workflow directory
+2026-10-21T15:55:33.0094404Z Prepare all required actions
+2026-10-21T15:55:33.0195093Z Complete job name: UI tokens
+2026-10-21T15:55:33.0903303Z ##[group]Run echo "The shards: $SHARDS"
+2026-10-21T15:55:33.0904157Z [36;1mecho "The shards: $SHARDS"[0m
+2026-10-21T15:55:33.0904882Z [36;1mtest "$SHARDS" = success[0m
+2026-10-21T15:55:33.1822804Z shell: /usr/bin/bash -e {0}
+2026-10-21T15:55:33.1823849Z env:
+2026-10-21T15:55:33.1824491Z   SHARDS: success
+2026-10-21T15:55:33.1825055Z ##[endgroup]
+2026-10-21T15:55:33.2037237Z The shards: success
+2026-10-21T15:55:33.2209538Z Cleaning up orphan processes

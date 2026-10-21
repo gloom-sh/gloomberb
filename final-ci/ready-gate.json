@@ -1,0 +1,211 @@
+{
+  "passed": true,
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "checkedAt": "2026-10-21T16:49:48.786930+00:00",
+  "failures": [],
+  "jobs": [
+    {
+      "workflow": "Verify",
+      "name": "typecheck",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Verify",
+      "name": "build-and-test",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Verify",
+      "name": "registry-plugins",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Verify",
+      "name": "Deploy terminal to Cloudflare",
+      "conclusion": "skipped"
+    },
+    {
+      "workflow": "Verify Windows",
+      "name": "desktop",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Verify Windows",
+      "name": "cli",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Pane chrome",
+      "name": "Chat painting in WebKit",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Pane chrome",
+      "name": "Pointer checks",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Pane chrome",
+      "name": "Copy screenshot",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Performance",
+      "name": "Cloud sync main-thread budget",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Performance",
+      "name": "Pane drag scope",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Performance",
+      "name": "tui-benchmarks",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "Performance",
+      "name": "Pane drag frame budget",
+      "conclusion": "skipped"
+    },
+    {
+      "workflow": "UI tokens",
+      "name": "UI tokens, shard 2 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI tokens",
+      "name": "UI tokens, shard 1 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI tokens",
+      "name": "UI tokens, shard 4 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI tokens",
+      "name": "UI tokens, shard 3 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI tokens",
+      "name": "UI tokens",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI benchmark",
+      "name": "Picture base and head, shard 1 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI benchmark",
+      "name": "Picture base and head, shard 4 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI benchmark",
+      "name": "Picture base and head, shard 2 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI benchmark",
+      "name": "Picture base and head, shard 3 of 4",
+      "conclusion": "success"
+    },
+    {
+      "workflow": "UI benchmark",
+      "name": "Report the blast radius",
+      "conclusion": "success"
+    }
+  ],
+  "expectedSkippedJobs": [
+    "Verify/Deploy terminal to Cloudflare",
+    "Performance/Pane drag frame budget"
+  ],
+  "acceptedChangedViews": [
+    "GP--root"
+  ],
+  "ciLogHashes": {
+    "ci-39617892516-job-119283476980.log": "4ad315188f30b47127defd7f67f39a0c997edd1fab9c9315ed0112dcf028df05",
+    "ci-39617892516-job-119283477393.log": "250046d2c82762b14e821d0d91c60abc2afa32a3b7d63721877c34fa2a36650a",
+    "ci-39617892516-job-119283477641.log": "aad8f15816a09bc26d85864e462821f8e41525693b92e3881ddf23bfa0b49236",
+    "ci-39618608868-job-119285774249.log": "719df22d3427c8f108dbe3806b983d46ddb4a511f39d4ab4e9494e1ae416668d",
+    "ci-39618608868-job-119285774895.log": "1e59849592e898d64174c78f9cbee885faebfcbee110b92c478b16a8dec09a5a",
+    "ci-39618613755-job-119285790941.log": "e1c0127a2290c6bf17ec46e08b52d9c62bb170bd11112d21b4fce8b75ccabadf",
+    "ci-39618613755-job-119285791269.log": "8b0eb9a2ead085618a9b8a2c4bdbe791aeca5473127c36b6e7deb3949057c46c",
+    "ci-39618613755-job-119285791419.log": "4b1701d139dc56d37a41ef79eb313e0989ce52783a9f5951444f94f13f6fe42c",
+    "ci-39617892455-job-119283477464.log": "cb9346f152baf27211156b93ed681e80c774302913e81bc00cde47b596a4b2cd",
+    "ci-39617892455-job-119283477920.log": "9562e2d1dce0ca45f9d9e6c8266b8ae8d3510b85de9cb5b45fc3552f2a0ed631",
+    "ci-39617892455-job-119283478719.log": "f4e4f8af6789a0fd25a9b1a97f50213c32d319945d6c147b14eb6f298a4f5fe2",
+    "ci-39618676400-job-119285999115.log": "37634f050168e58cfb5a6ab95c15a8018ff119d71dbed625c52bf45e3e18ef7f",
+    "ci-39618676400-job-119285999464.log": "e678b4d9ad0abda97908a5459343392ca201a38a0e1f5eb3185c109819a3b0dc",
+    "ci-39618676400-job-119285999568.log": "9546c48ffdc18f0f1fcd569ca0d2700e58d3724da3af29e1179cae7e587a4c0e",
+    "ci-39618676400-job-119285999667.log": "7bdb60b1efed0ffa937791863513f3944d5e5203418ac87f7d7a16785f1a2847",
+    "ci-39618676400-job-119321913970.log": "f97418eede4a401ecd3bbc5adbcdae09ceaec35611f4bb689af1e880ad08ca12",
+    "ci-39618670567-job-119285979716.log": "c5fac68f5966d4dba050991c5b452256029b8639431ffe854ff09ec8f3020ac9",
+    "ci-39618670567-job-119285980154.log": "5315dad9c82bd6089ff984e57463e7083c8fc393f4cb5ecffe26d6c9b60d45ae",
+    "ci-39618670567-job-119285980184.log": "05903b3f5f8f12889466c8a0a88221857d0b7d07bfa0516d10841f64fd0562f0",
+    "ci-39618670567-job-119285980230.log": "b695f2e063bb489ac6ce019ec575a634a690270f1dc7a5099506ae7bac1b6c30",
+    "ci-39618670567-job-119348905939.log": "e0b4dd1d71f25c21927ede251b586e814035d29f63a6520f886c52dc79b944b7"
+  },
+  "evidenceHashes": {
+    "ci-39617892516-raw-metadata.json": "d6c6ec4d8834b89bb272f0fe53d6fcdf38e786c5b9ceba00680cec7d1c4663b8",
+    "independent-screenshots-peer.json": "c53cce6d223393895c282712a5c422947785b069e9ce6463d54f176b19139c59",
+    "final-body-identity-cli-peer.json": "41ed367c63465ba4a8111217b2049d74ad371ae7ce3f473513b1dd1cc10a2acb",
+    "ovdv-unsteady-peer.json": "091b4b79960a118db3268fb3c08d386f86292b2f6657a07ab95ce7023ee35534",
+    "independent-cli-c181-peer-inventory.json": "6c5d1141f4151d45e9ee6ad9565ce9ff789b7b252d1e67dc543d8c351c41b2e3",
+    "ci-job-119285999115-direct.json": "cd12543f22b64aaf0d9310e5307608ca1c32197f2097d7148bb569091ee461fd",
+    "ci-39617892455-raw-metadata.json": "a68ad1b65d7480228d1e2f87e76d443686d7bff4e06edb0dafb9ac61dc86e8f6",
+    "pane-chrome-check-suite.json": "cca8ab74df94788d2656518e66467dde5a40ad61db2aa97626e7c45161ef66fd",
+    "renderer-cleanup.json": "dc5889065363ef06b6a7cd88a578d55c436eb3822f9d3613f148a9bb04e43021",
+    "ci-ui-integrity.json": "94aa168a2dce2d09350941ef7a2f078e09aa5dcc97b81cbd1e33b3ff78907f0c",
+    "ci-39618613755-raw-metadata.json": "947a612e4ed07baa539265ae89e1f5d4147f775b28f1a30b2bcec85dc500a352",
+    "ci-job-119283478719-direct.json": "b7a8995bb72eedc1cf504656cb3a05907e944f9a41199d90cd847de713357e55",
+    "ci-39618670567-raw-metadata.json": "347aeba1f5620c6ede4388460d33e2d9a0cef6c7a065ecdf20238d79dcc8b8d6",
+    "gp-root-visual-peer.json": "978c442ec37b282efdd00902125c63e34edc59e00677e5e38fd93337d4d443ae",
+    "ovdv-visual-peer.json": "a07f33ac8e7533c71be5d40ad6cfd1f7cc318cd9d90ae8825c17ad82c34698b7",
+    "ci-job-119321913970-direct.json": "3180f02f4aa761f4a64d031dd49c39467036ae7a79a6681c9b830118723e6896",
+    "independent-cli-c181-peer-audit.json": "327effd1d219fbcf0705494ae1933200a82ec9dfc8ffed7b440fd05dc7d1e372",
+    "ci-required.json": "5ac4d629b104d7e1afe7f7f44b6bc6dfb38fd2b2f1856e83cf07716df6c429c9",
+    "pane-chrome-job-audit.json": "fdc2002efb0a507c29b9f59b92bcc257fa8a67a627af7062de4f319c3f8ca359",
+    "root-visual-review.json": "e93e9601d7efdeee8afdd0f4fde225e18448762c44eb0ac6ee20cfad833236b9",
+    "ci-ui-lay-diagnostic.json": "16780435b4d27227149af51d9220fac5c135ebff44ce678ac6d15ffee120c349",
+    "ci-job-119285979716-direct.json": "9e3608e02a52d79e75f082b6edeaea4d77f2deea36d543ebab6d02eec894f86e",
+    "ci-ui-review.json": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c",
+    "ci-job-119285999667-direct.json": "c26ca87ca530ad16dc459adab759f6899c6fb3b2037d9fdb7ab634ce38221f37",
+    "ci-ui-tokens-status.json": "73c7882e7029b3a40f1225ef9c103bea0c83a1c350fee7d28072628889b8a2d1",
+    "ovdv-unsteady-artifact-metadata.json": "88dea374e06973e7aa5a269826461ad7bf7584e6576849f79a74f15d8303ccaf",
+    "ready-gate-before-gp-review.json": "e2391f0326d3777657119e562a0b4c32119796593a62f32097f58ae0d69622c8",
+    "ci-job-119285980230-direct.json": "a46ce3c12c19bb4820ab8a6171a953ba385bd9d6b3303bd0d996f2c87a82fb49",
+    "ci-ui-pane-identity-review.json": "ed29da648b192aa5ecd16960b33e1806e6ba14875f9d402555f32b10525e9271",
+    "scratch-cleanup.json": "a9b51b9d4d120d9b57c20154efd22c90198be34f75d571c325c41f1bb4fed29e",
+    "ci-39618676400-raw-metadata.json": "bc6206f5c3a4c41e4a581ae5b2ee8b415433fc9369938b891632e627082d32b6",
+    "ci-job-119285999464-direct.json": "b45d8c7c1946c1b7a34e6113b2871aec6ad727dc058651bd36856ff315a2708e",
+    "ci-ui-unsteady-audit.json": "86397fde41786bc1a52fbbb4da636b9441a66f4e6bf243154277e6507d66dd95",
+    "ci-verify-audit.json": "ad10d23bc7177b83842e0944a5c327b900567cb523265723f81bb078cd050eb6",
+    "ci-ui-gp-root-acceptance.json": "2a5f0f237068898ca37d9ecd2614aef16d6dd2242de0d15f8d8a8dd05e5464b6",
+    "ci-superseded.json": "f21f61727a83da302e8c4312c3b79ac448a6d474dae29e75e12f439a435b789a",
+    "ci-job-119285980154-direct.json": "ad09d308d62f9ed8b6c18c56a12ff05dffde616ac341c74751dcc97b60b3544f",
+    "performance-audit.json": "25d597216400b6b81ccfae5cc00a5938b78143a14dffbfa9b6ed657509644f25",
+    "ci-skipped-drag-justification.json": "24f2816f861d1408a93565e20c0b5dc03d7b2e2128ad2e52b6b5a3a9d9994b28",
+    "ci-job-119348905939-direct.json": "23e39cb84fbdee59ce6f0677b4f02aa6fd4368c951d4624dfaf96419860805a1",
+    "ci-ui-body-comparison.json": "f09da49d6c521e40ef9746c83dfdb80229f9df49e43bcd17ece26976f71ff41b",
+    "ci-job-119285980184-direct.json": "619a5638e4c0103d9019a938a199f0819e46ea4a54f5c69df2600264563285e4",
+    "baseline-regressions-provenance.json": "19701bb24df050c7ec666abd705ad9788d9d856f49c869a2096c2c3d3073e8ac",
+    "ci-job-119285999568-direct.json": "58186892cf1ba7fa42d2db64e3bb07eccf3ff6938a3de2ab4d9f2af08fbc00cb",
+    "check-rollup.json": "54396a6d3b2abf804fb17065638991a63707e406d5ee22020ef3182f04137805",
+    "published-evidence.json": "4fa401fe50a26e8c97563b8b07db2cac7e9572d8afe6e8831ff96906c683205d",
+    "ci-job-119283477464-direct.json": "c5f2b5bb7cec2765dd6a15f20d4a22e0956434a409c7d132c18199cbeb9dd0ae",
+    "ci-merge-provenance.json": "34918dc3ae44ae2fd3bc1c01e21b91c9b34c1ad70538f81a725a46dcfbfbf808",
+    "ci-ui-tokens-audit.json": "d05ff1d003f2f84eec89dd068c48a1e382896325e23b08a5afc9884b7971f4d6",
+    "perp-unsteady-peer.json": "9baacd60f9ce381441d3245e69ac66e8ac962f5c2de9afc22674e8d606d17620",
+    "ci-ui-source-provenance.json": "5109ba88b5824b4170b065043d327eeb8b388193018da9c90d5e43d3ae721fb9",
+    "ci-ui-gp-diagnostic.json": "a25a3125633b87293ba2e8fae5d53707f6173d9365668e54ef1672153da12038",
+    "perp-unsteady-artifact-metadata.json": "d30ce068e172eea0a911e8b8951ecae0671e0af328d265b6ff0da83da566de65",
+    "windows-success-audit.json": "7fe6cfae04e6169e731551859fa2db2048ee0e4a38e31bf06282f8991245d70b",
+    "source-provenance.json": "48891f6bf6a0c1ac48020ddf74b66c5e7fde72c6f50c11b30779283a08548e89",
+    "ci-39618608868-raw-metadata.json": "614627770af46cc4b4fc24b965d8100e9e46737bdec782c563c32d7d17c2eff4"
+  }
+}

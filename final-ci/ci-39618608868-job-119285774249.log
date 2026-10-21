@@ -1,0 +1,1179 @@
+﻿2026-10-21T14:39:44.1924625Z Current runner version: '2.338.0'
+2026-10-21T14:39:44.1964339Z ##[group]Runner Image Provisioner
+2026-10-21T14:39:44.1965662Z Hosted Compute Agent
+2026-10-21T14:39:44.1966386Z Version: 20261002.596
+2026-10-21T14:39:44.1967070Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-21T14:39:44.1967864Z Build Date: 2026-10-02T22:28:27Z
+2026-10-21T14:39:44.1968611Z Worker ID: {d03fa4cf-b564-4e7d-bd05-04db4d0e8c23}
+2026-10-21T14:39:44.1969667Z Region: eastus
+2026-10-21T14:39:44.1970403Z Cloud: Azure
+2026-10-21T14:39:44.1972530Z ##[endgroup]
+2026-10-21T14:39:44.1975605Z ##[group]Operating System
+2026-10-21T14:39:44.1976397Z Microsoft Windows Server 2025
+2026-10-21T14:39:44.1977145Z 10.0.26100
+2026-10-21T14:39:44.1977747Z Datacenter
+2026-10-21T14:39:44.1978293Z ##[endgroup]
+2026-10-21T14:39:44.1978880Z ##[group]Runner Image
+2026-10-21T14:39:44.1979507Z Image: windows-2025-vs2026
+2026-10-21T14:39:44.1980146Z Version: 20261007.264.1
+2026-10-21T14:39:44.1983089Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261007.264/images/windows/Windows2025-VS2026-Readme.md
+2026-10-21T14:39:44.1986157Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261007.264
+2026-10-21T14:39:44.1987885Z ##[endgroup]
+2026-10-21T14:39:44.1989771Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T14:39:44.1993648Z Contents: read
+2026-10-21T14:39:44.1994635Z Metadata: read
+2026-10-21T14:39:44.1995487Z ##[endgroup]
+2026-10-21T14:39:44.1998453Z Secret source: Actions
+2026-10-21T14:39:44.1999858Z Cache mode: write
+2026-10-21T14:39:44.2000945Z Prepare workflow directory
+2026-10-21T14:39:44.2413598Z Prepare all required actions
+2026-10-21T14:39:44.2473528Z Getting action download info
+2026-10-21T14:39:44.3979443Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T14:39:44.5639065Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-21T14:39:44.9166126Z Complete job name: desktop
+2026-10-21T14:39:45.0674618Z ##[group]Run actions/checkout@v4
+2026-10-21T14:39:45.0675655Z with:
+2026-10-21T14:39:45.0676089Z   repository: gloom-sh/gloomberb
+2026-10-21T14:39:45.0681018Z   token: ***
+2026-10-21T14:39:45.0681533Z   ssh-strict: true
+2026-10-21T14:39:45.0682727Z   ssh-user: git
+2026-10-21T14:39:45.0683364Z   persist-credentials: true
+2026-10-21T14:39:45.0684093Z   clean: true
+2026-10-21T14:39:45.0684633Z   sparse-checkout-cone-mode: true
+2026-10-21T14:39:45.0685252Z   fetch-depth: 1
+2026-10-21T14:39:45.0685761Z   fetch-tags: false
+2026-10-21T14:39:45.0686285Z   show-progress: true
+2026-10-21T14:39:45.0686704Z   lfs: false
+2026-10-21T14:39:45.0687142Z   submodules: false
+2026-10-21T14:39:45.0688385Z   set-safe-directory: true
+2026-10-21T14:39:45.0689228Z   allow-unsafe-pr-checkout: false
+2026-10-21T14:39:45.0690840Z ##[endgroup]
+2026-10-21T14:39:45.2531282Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T14:39:45.2535824Z ##[group]Getting Git version info
+2026-10-21T14:39:45.2536840Z Working directory is 'D:\a\gloomberb\gloomberb'
+2026-10-21T14:39:45.3534917Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-21T14:39:45.7642543Z git version 2.56.0.windows.2
+2026-10-21T14:39:45.7708880Z ##[endgroup]
+2026-10-21T14:39:45.7733269Z Temporarily overriding HOME='D:\a\_temp\6fc32506-6891-48d5-a22f-833e15685b5c' before making global git config changes
+2026-10-21T14:39:45.7736176Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:39:45.7746878Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\gloomberb\gloomberb
+2026-10-21T14:39:45.8551305Z Deleting the contents of 'D:\a\gloomberb\gloomberb'
+2026-10-21T14:39:45.8560178Z ##[group]Initializing the repository
+2026-10-21T14:39:45.8569696Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\gloomberb\gloomberb
+2026-10-21T14:39:45.9663964Z Initialized empty Git repository in D:/a/gloomberb/gloomberb/.git/
+2026-10-21T14:39:45.9717468Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T14:39:46.0570070Z ##[endgroup]
+2026-10-21T14:39:46.0571348Z ##[group]Disabling automatic garbage collection
+2026-10-21T14:39:46.0581006Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-21T14:39:46.0980198Z ##[endgroup]
+2026-10-21T14:39:46.0981409Z ##[group]Setting up auth
+2026-10-21T14:39:46.0993777Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:39:46.1400318Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-21T14:39:47.9194926Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:39:47.9623695Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-21T14:39:48.6076992Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:39:48.6505333Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-21T14:39:49.2902903Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-21T14:39:49.3346672Z ##[endgroup]
+2026-10-21T14:39:49.3347797Z ##[group]Fetching the repository
+2026-10-21T14:39:49.3364496Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c1810dd09dea69bdb2f00de498f62067528a6ec2:refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:39:53.1758148Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T14:39:53.1759471Z  * [new ref]         c1810dd09dea69bdb2f00de498f62067528a6ec2 -> origin/fix/glo-1165-plugin-removal
+2026-10-21T14:39:53.1841158Z ##[endgroup]
+2026-10-21T14:39:53.1841992Z ##[group]Determining the checkout info
+2026-10-21T14:39:53.1843989Z ##[endgroup]
+2026-10-21T14:39:53.1860272Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-21T14:39:53.2610085Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-21T14:39:53.3131272Z ##[group]Checking out the ref
+2026-10-21T14:39:53.3143487Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B fix/glo-1165-plugin-removal refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:39:54.3860212Z Updating files:  55% (2586/4638)
+2026-10-21T14:39:54.4009370Z Updating files:  56% (2598/4638)
+2026-10-21T14:39:54.4160805Z Updating files:  57% (2644/4638)
+2026-10-21T14:39:54.4300371Z Updating files:  58% (2691/4638)
+2026-10-21T14:39:54.4437055Z Updating files:  59% (2737/4638)
+2026-10-21T14:39:54.4601274Z Updating files:  60% (2783/4638)
+2026-10-21T14:39:54.4758546Z Updating files:  61% (2830/4638)
+2026-10-21T14:39:54.4909101Z Updating files:  62% (2876/4638)
+2026-10-21T14:39:54.5059662Z Updating files:  63% (2922/4638)
+2026-10-21T14:39:54.5215417Z Updating files:  64% (2969/4638)
+2026-10-21T14:39:54.5367917Z Updating files:  65% (3015/4638)
+2026-10-21T14:39:54.5518054Z Updating files:  66% (3062/4638)
+2026-10-21T14:39:54.5653786Z Updating files:  67% (3108/4638)
+2026-10-21T14:39:54.5781208Z Updating files:  68% (3154/4638)
+2026-10-21T14:39:54.5901676Z Updating files:  69% (3201/4638)
+2026-10-21T14:39:54.6037460Z Updating files:  70% (3247/4638)
+2026-10-21T14:39:54.6185339Z Updating files:  71% (3293/4638)
+2026-10-21T14:39:54.6333489Z Updating files:  72% (3340/4638)
+2026-10-21T14:39:54.6460605Z Updating files:  73% (3386/4638)
+2026-10-21T14:39:54.6598551Z Updating files:  74% (3433/4638)
+2026-10-21T14:39:54.6742052Z Updating files:  75% (3479/4638)
+2026-10-21T14:39:54.6870005Z Updating files:  76% (3525/4638)
+2026-10-21T14:39:54.7007782Z Updating files:  77% (3572/4638)
+2026-10-21T14:39:54.7138270Z Updating files:  78% (3618/4638)
+2026-10-21T14:39:54.7280151Z Updating files:  79% (3665/4638)
+2026-10-21T14:39:54.7427084Z Updating files:  80% (3711/4638)
+2026-10-21T14:39:54.7738378Z Updating files:  81% (3757/4638)
+2026-10-21T14:39:54.7918374Z Updating files:  82% (3804/4638)
+2026-10-21T14:39:54.8104294Z Updating files:  83% (3850/4638)
+2026-10-21T14:39:54.8266536Z Updating files:  84% (3896/4638)
+2026-10-21T14:39:54.8421962Z Updating files:  85% (3943/4638)
+2026-10-21T14:39:54.8579742Z Updating files:  86% (3989/4638)
+2026-10-21T14:39:54.8793014Z Updating files:  87% (4036/4638)
+2026-10-21T14:39:54.8920713Z Updating files:  88% (4082/4638)
+2026-10-21T14:39:54.9054118Z Updating files:  89% (4128/4638)
+2026-10-21T14:39:54.9183217Z Updating files:  90% (4175/4638)
+2026-10-21T14:39:54.9331366Z Updating files:  91% (4221/4638)
+2026-10-21T14:39:54.9481805Z Updating files:  92% (4267/4638)
+2026-10-21T14:39:54.9610717Z Updating files:  93% (4314/4638)
+2026-10-21T14:39:54.9739964Z Updating files:  94% (4360/4638)
+2026-10-21T14:39:54.9907109Z Updating files:  95% (4407/4638)
+2026-10-21T14:39:55.0057385Z Updating files:  96% (4453/4638)
+2026-10-21T14:39:55.0226976Z Updating files:  97% (4499/4638)
+2026-10-21T14:39:55.0388593Z Updating files:  98% (4546/4638)
+2026-10-21T14:39:55.0523788Z Updating files:  99% (4592/4638)
+2026-10-21T14:39:55.0524345Z Updating files: 100% (4638/4638)
+2026-10-21T14:39:55.0524759Z Updating files: 100% (4638/4638), done.
+2026-10-21T14:39:55.0731231Z Switched to a new branch 'fix/glo-1165-plugin-removal'
+2026-10-21T14:39:55.0809622Z branch 'fix/glo-1165-plugin-removal' set up to track 'origin/fix/glo-1165-plugin-removal'.
+2026-10-21T14:39:55.0917669Z ##[endgroup]
+2026-10-21T14:39:55.1496715Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-21T14:39:55.1900144Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T14:39:55.2520223Z Prepare all required actions
+2026-10-21T14:39:55.2521059Z Getting action download info
+2026-10-21T14:39:55.3345075Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T14:39:55.5122862Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T14:39:55.5123214Z with:
+2026-10-21T14:39:55.5123433Z   install: true
+2026-10-21T14:39:55.5123665Z ##[endgroup]
+2026-10-21T14:39:55.5226855Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T14:39:55.5496424Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T14:39:55.5497557Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T14:39:55.5498349Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T14:39:55.5524859Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:39:55.5525301Z ##[endgroup]
+2026-10-21T14:39:59.8240859Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=4301]
+2026-10-21T14:39:59.8249913Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T14:39:59.8578254Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T14:39:59.8578580Z with:
+2026-10-21T14:39:59.8578891Z   bun-version: 1.3.11
+2026-10-21T14:39:59.8579185Z   no-cache: false
+2026-10-21T14:39:59.8584225Z   token: ***
+2026-10-21T14:39:59.8585099Z ##[endgroup]
+2026-10-21T14:40:00.4956078Z Cache hit for: bun-1JxJYWZA6nckysAgA0k0YFuYi44=
+2026-10-21T14:40:00.8373839Z Received 38625194 of 38625194 (100.0%), 125.3 MBs/sec
+2026-10-21T14:40:00.8375838Z Cache Size: ~37 MB (38625194 B)
+2026-10-21T14:40:00.8450265Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/f4414ab4-8096-4170-8bdd-700ad188f520/cache.tzst -P -C D:/a/gloomberb/gloomberb --force-local --use-compress-program "zstd -d"
+2026-10-21T14:40:01.2216651Z Cache restored successfully
+2026-10-21T14:40:01.2252591Z [command]C:\Users\runneradmin\.bun\bin\bun.exe --revision
+2026-10-21T14:40:03.4161351Z 1.3.11+af24e281e
+2026-10-21T14:40:03.4208277Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T14:40:03.4407654Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=3615]
+2026-10-21T14:40:03.4411947Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T14:40:03.4584862Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T14:40:03.4585386Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T14:40:03.4613027Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:40:03.4613690Z ##[endgroup]
+2026-10-21T14:40:03.6262986Z bun install v1.3.11 (af24e281)
+2026-10-21T14:40:03.6344659Z Resolving dependencies
+2026-10-21T14:40:03.6365193Z Resolved, downloaded and extracted [3]
+2026-10-21T14:40:48.0210436Z 
+2026-10-21T14:40:48.0211833Z + @types/bun@1.3.14
+2026-10-21T14:40:48.0212338Z + @types/react-dom@19.2.3
+2026-10-21T14:40:48.0214980Z + @types/three@0.165.0
+2026-10-21T14:40:48.0217308Z + electrobun@1.18.1
+2026-10-21T14:40:48.0218078Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T14:40:48.0219062Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T14:40:48.0219954Z + happy-dom@20.11.1
+2026-10-21T14:40:48.0220384Z + playwright-core@1.60.0
+2026-10-21T14:40:48.0220900Z + png-to-ico@2.1.8
+2026-10-21T14:40:48.0221300Z + rcedit@4.0.1
+2026-10-21T14:40:48.0221684Z + typescript@5.9.2
+2026-10-21T14:40:48.0222082Z + wrangler@4.125.0
+2026-10-21T14:40:48.0222482Z + @opentui/core@0.3.2
+2026-10-21T14:40:48.0222899Z + @opentui/react@0.3.2
+2026-10-21T14:40:48.0223346Z + @tanstack/react-virtual@3.14.2
+2026-10-21T14:40:48.0223824Z + hls.js@1.6.13
+2026-10-21T14:40:48.0224240Z + jimp@1.6.1
+2026-10-21T14:40:48.0224626Z + qrcode-generator@2.0.4
+2026-10-21T14:40:48.0225060Z + react@19.2.7
+2026-10-21T14:40:48.0229106Z + react-dom@19.2.7
+2026-10-21T14:40:48.0229509Z + web-tree-sitter@0.25.10
+2026-10-21T14:40:48.0229766Z 
+2026-10-21T14:40:48.0229924Z 190 packages installed [44.40s]
+2026-10-21T14:40:48.0733188Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=44632]
+2026-10-21T14:40:48.0956394Z ##[group]Run ./scripts/verify-windows-diagnostics.test.ps1
+2026-10-21T14:40:48.0957308Z [36;1m./scripts/verify-windows-diagnostics.test.ps1[0m
+2026-10-21T14:40:48.1922039Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:40:48.1922481Z ##[endgroup]
+2026-10-21T14:40:53.4747845Z PASS window diagnostics: normal, hidden/titleless, invalid bounds
+2026-10-21T14:40:53.6028841Z PASS onboarding diagnostics: success
+2026-10-21T14:40:53.6856870Z PASS onboarding diagnostics: exited
+2026-10-21T14:40:53.7362218Z PASS onboarding diagnostics: alive
+2026-10-21T14:40:53.7545578Z Could not capture onboarding failure screenshot: Screenshot failed
+2026-10-21T14:40:53.7624200Z PASS onboarding diagnostics: diagnostics-fail
+2026-10-21T14:40:53.7843575Z Could not save onboarding failure diagnostics: Unable to clear content of 'C:\Users\runneradmin\.cache\gloom-smoke\glo-645\diagnostics-e84798d3-3a9b-4794-be16-5e2a08973a78\write-fail\windows-onboarding-failure.json' because it is a directory. Clear-Content is only supported on files.
+2026-10-21T14:40:53.7922931Z PASS onboarding diagnostics: write-fail
+2026-10-21T14:40:53.9010654Z PASS partial window discovery: retained exit and two-window recovery
+2026-10-21T14:40:53.9675227Z PASS main diagnostics: main-launcher-exit
+2026-10-21T14:40:53.9938503Z PASS main diagnostics: main-partial-exit
+2026-10-21T14:40:54.0265812Z PASS main diagnostics: main-later-failure
+2026-10-21T14:40:54.0459868Z Could not capture Windows GUI failure screenshot: Screenshot failed
+2026-10-21T14:40:54.0497079Z PASS main diagnostics: diagnostics-fail
+2026-10-21T14:40:54.0715784Z Could not save Windows GUI failure diagnostics: Unable to clear content of 'C:\Users\runneradmin\.cache\gloom-smoke\glo-645\diagnostics-e84798d3-3a9b-4794-be16-5e2a08973a78\write-fail\windows-main-failure.json' because it is a directory. Clear-Content is only supported on files.
+2026-10-21T14:40:54.0763171Z PASS main diagnostics: write-fail
+2026-10-21T14:40:54.2289512Z ##[group]Run ./scripts/build-windows-desktop-package.ps1
+2026-10-21T14:40:54.2290158Z [36;1m./scripts/build-windows-desktop-package.ps1[0m
+2026-10-21T14:40:54.2369419Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:40:54.2369992Z ##[endgroup]
+2026-10-21T14:40:54.6044842Z Building Windows desktop package (attempt 1 of 3)...
+2026-10-21T14:40:54.6261305Z $ electrobun build --env=stable --targets=win-x64
+2026-10-21T14:40:55.3016445Z Downloading electrobun CLI for your platform...
+2026-10-21T14:40:56.6810192Z electrobun CLI downloaded successfully!
+2026-10-21T14:40:56.8041696Z Using config file: electrobun.config.ts
+2026-10-21T14:40:56.8128101Z Core dependencies not found for win-x64. Missing files: .\dist-win-x64\bun.exe, .\dist-win-x64\bsdiff.exe, .\dist-win-x64\bspatch.exe, .\dist-win-x64\libNativeWrapper.dll
+2026-10-21T14:40:56.8129222Z Downloading core binaries for win-x64...
+2026-10-21T14:40:56.8130270Z Downloading core binaries from: https://github.com/blackboardsh/electrobun/releases/download/v1.18.1/electrobun-core-win-x64.tar.gz
+2026-10-21T14:40:57.0681319Z Downloaded 50531883 bytes for win-x64
+2026-10-21T14:40:57.0702489Z Verified download: D:\a\gloomberb\gloomberb\node_modules\electrobun\core-win-x64-temp.tar.gz (50531883 bytes)
+2026-10-21T14:40:57.0703152Z Extracting core dependencies for win-x64...
+2026-10-21T14:40:57.4402774Z Extracted files to D:\a\gloomberb\gloomberb\node_modules\electrobun\dist-win-x64: [
+2026-10-21T14:40:57.4403606Z   "api", "bsdiff.exe", "bspatch.exe", "bun.exe", "d3dcompiler_47.dll", "extractor.exe", "launcher.exe",
+2026-10-21T14:40:57.4404676Z   "libNativeWrapper.dll", "main.js", "npmbin.js", "process_helper.exe", "webgpu_dawn.dll", "WebView2Loader.dll",
+2026-10-21T14:40:57.4405390Z   "zig-asar", "zig-zstd.exe"
+2026-10-21T14:40:57.4405661Z ]
+2026-10-21T14:40:57.4405881Z   api/: browser, bun, shared
+2026-10-21T14:40:57.4409945Z   zig-asar/: arm64, x64
+2026-10-21T14:40:57.4414000Z Core dependencies for win-x64 downloaded and cached successfully
+2026-10-21T14:40:57.4417570Z Running preBuild script: scripts/build-electrobun-view.ts
+2026-10-21T14:41:01.7665707Z Ensured launcher has .exe extension on Windows
+2026-10-21T14:41:01.7668908Z Embedding icon into launcher.exe: D:\a\gloomberb\gloomberb\src\assets\gloomberb-logo-windows.ico
+2026-10-21T14:41:01.7691406Z Warning: Failed to embed icon into launcher.exe: ResolveMessage: Cannot find module 'D:\a\electrobun\electrobun\package\node_modules\rcedit\package.json' from 'B:\~BUN\root\electrobun'
+2026-10-21T14:41:01.8053974Z Embedding icon into bun.exe: D:\a\gloomberb\gloomberb\src\assets\gloomberb-logo-windows.ico
+2026-10-21T14:41:01.8055640Z Warning: Failed to embed icon into bun.exe: ResolveMessage: Cannot find module 'D:\a\electrobun\electrobun\package\node_modules\rcedit\package.json' from 'B:\~BUN\root\electrobun'
+2026-10-21T14:41:01.8089423Z CEF dependencies not found for win-x64, downloading...
+2026-10-21T14:41:01.8094682Z Downloading CEF (attempt 1/3) from: https://github.com/blackboardsh/electrobun/releases/download/v1.18.1/electrobun-cef-win-x64.tar.gz
+2026-10-21T14:41:01.9198350Z   Progress: 0% (0MB/161MB)
+2026-10-21T14:41:02.0345284Z   Progress: 10% (16MB/161MB)
+2026-10-21T14:41:02.1020269Z   Progress: 20% (32MB/161MB)
+2026-10-21T14:41:02.1541602Z   Progress: 30% (48MB/161MB)
+2026-10-21T14:41:02.1980620Z   Progress: 40% (64MB/161MB)
+2026-10-21T14:41:02.2728972Z   Progress: 50% (80MB/161MB)
+2026-10-21T14:41:02.4019338Z   Progress: 60% (96MB/161MB)
+2026-10-21T14:41:02.5112561Z   Progress: 70% (112MB/161MB)
+2026-10-21T14:41:02.6781139Z   Progress: 80% (128MB/161MB)
+2026-10-21T14:41:02.7418627Z   Progress: 90% (144MB/161MB)
+2026-10-21T14:41:02.7838912Z   Progress: 100% (161MB/161MB)
+2026-10-21T14:41:02.7869101Z ✓ Download completed successfully (161MB)
+2026-10-21T14:41:02.7869724Z Extracting CEF dependencies for win-x64...
+2026-10-21T14:41:02.8364026Z ✓ Tar file validation passed (161MB)
+2026-10-21T14:41:04.1494400Z ✓ Extraction completed successfully
+2026-10-21T14:41:04.1584131Z CEF extracted files to D:\a\gloomberb\gloomberb\node_modules\electrobun\dist-win-x64: [
+2026-10-21T14:41:04.1585029Z   "api", "bsdiff.exe", "bspatch.exe", "bun.exe", "cef", "d3dcompiler_47.dll", "extractor.exe",
+2026-10-21T14:41:04.1585961Z   "launcher.exe", "libNativeWrapper.dll", "main.js", "npmbin.js", "process_helper.exe", "webgpu_dawn.dll",
+2026-10-21T14:41:04.1587225Z   "WebView2Loader.dll", "zig-asar", "zig-zstd.exe"
+2026-10-21T14:41:04.1587878Z ]
+2026-10-21T14:41:04.1588948Z CEF directory contents: chrome_100_percent.pak, chrome_200_percent.pak, chrome_elf.dll, d3dcompiler_47.dll, dxcompiler.dll, dxil.dll, icudtl.dat, libcef.dll, libEGL.dll, libGLESv2.dll...
+2026-10-21T14:41:04.1590436Z ✓ CEF dependencies for win-x64 downloaded and cached successfully
+2026-10-21T14:41:06.6259277Z Running postBuild script: scripts/install-electrobun-tui-shim.ts
+2026-10-21T14:41:08.1210858Z Bundled 2621 modules in 1359ms
+2026-10-21T14:41:08.1211561Z 
+2026-10-21T14:41:08.1212185Z   tui-entry.js                                20.62 MB  (entry point)
+2026-10-21T14:41:08.1213270Z   highlights-ghv9g403.scm                     2.86 KB   (asset)
+2026-10-21T14:41:08.1214063Z   tree-sitter-javascript-nd0q4pe9.wasm        0.41 MB   (asset)
+2026-10-21T14:41:08.1216189Z   highlights-eq9cgrbb.scm                     9.83 KB   (asset)
+2026-10-21T14:41:08.1217071Z   tree-sitter-typescript-zxjzwt75.wasm        1.41 MB   (asset)
+2026-10-21T14:41:08.1217847Z   highlights-r812a2qc.scm                     3.44 KB   (asset)
+2026-10-21T14:41:08.1218617Z   tree-sitter-markdown-411r6y9b.wasm          0.42 MB   (asset)
+2026-10-21T14:41:08.1219477Z   injections-73j83es3.scm                     0.82 KB   (asset)
+2026-10-21T14:41:08.1220200Z   highlights-x6tmsnaa.scm                     2.15 KB   (asset)
+2026-10-21T14:41:08.1220912Z   tree-sitter-markdown_inline-j5349f42.wasm   0.43 MB   (asset)
+2026-10-21T14:41:08.1221663Z   highlights-hk7bwhj4.scm                     3.48 KB   (asset)
+2026-10-21T14:41:08.1222465Z   tree-sitter-zig-e78zbjpm.wasm               0.69 MB   (asset)
+2026-10-21T14:41:08.1222950Z 
+2026-10-21T14:41:10.1734337Z Embedded Windows icon: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb\bin\launcher.exe
+2026-10-21T14:41:10.4145011Z Embedded Windows icon: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb\bin\bun.exe
+2026-10-21T14:41:10.4151400Z Installed TUI shim: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb\bin\gloomberb.cmd
+2026-10-21T14:41:10.4906604Z [51.55ms] Generate Bundle hash
+2026-10-21T14:41:10.4944132Z skipping codesign
+2026-10-21T14:41:10.4945175Z skipping notarization
+2026-10-21T14:41:11.5399672Z baseUrl:  https://github.com/gloom-sh/gloomberb/releases/latest/download
+2026-10-21T14:41:11.5400883Z generating a patch from the previous version...
+2026-10-21T14:41:11.5401612Z Patch generation disabled (release.generatePatch = false)
+2026-10-21T14:41:11.5402169Z compressing tarball...
+2026-10-21T14:44:31.5344980Z Compression time: 199961.95 ms
+2026-10-21T14:44:31.7528877Z skipping codesign
+2026-10-21T14:44:31.7529335Z skipping notarization
+2026-10-21T14:44:31.7536728Z Creating Windows installer with separate archive...
+2026-10-21T14:44:31.7547525Z Embedding icon into Windows installer: D:\a\gloomberb\gloomberb\src\assets\gloomberb-logo-windows.ico
+2026-10-21T14:44:31.7551569Z Warning: Failed to embed icon into Windows installer: ResolveMessage: Cannot find module 'D:\a\electrobun\electrobun\package\node_modules\rcedit\package.json' from 'B:\~BUN\root\electrobun'
+2026-10-21T14:44:31.8572081Z Created Windows installer:
+2026-10-21T14:44:31.8573849Z   - Extractor: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-Setup.exe (0.40 MB)
+2026-10-21T14:44:31.8575427Z   - Archive: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-Setup.tar.zst (300.25 MB)
+2026-10-21T14:44:31.8576916Z   - Metadata: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-Setup.metadata.json
+2026-10-21T14:44:31.8579345Z   - Total size: 300.66 MB
+2026-10-21T14:44:44.5411807Z Created Windows installer package: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-Setup.zip (300.23 MB)
+2026-10-21T14:44:44.5623475Z creating artifacts folder...
+2026-10-21T14:44:44.5625238Z creating update.json...
+2026-10-21T14:44:44.5633934Z moving artifacts...
+2026-10-21T14:44:44.7302422Z ##[group]Run choco install innosetup -y --no-progress
+2026-10-21T14:44:44.7303021Z [36;1mchoco install innosetup -y --no-progress[0m
+2026-10-21T14:44:44.7415918Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:44:44.7416666Z ##[endgroup]
+2026-10-21T14:44:47.4393500Z Chocolatey v2.7.4
+2026-10-21T14:44:47.7129587Z Installing the following packages:
+2026-10-21T14:44:47.7134874Z innosetup
+2026-10-21T14:44:47.7138622Z By installing, you accept licenses for the packages.
+2026-10-21T14:44:50.4376788Z InnoSetup v6.7.1 already installed.
+2026-10-21T14:44:50.4377490Z  Use --force to reinstall, specify a version to install, or try upgrade.
+2026-10-21T14:44:50.4464008Z 
+2026-10-21T14:44:50.4464506Z Chocolatey installed 0/1 packages. 
+2026-10-21T14:44:50.4465366Z  See the log for details (C:\ProgramData\chocolatey\logs\chocolatey.log).
+2026-10-21T14:44:50.4468540Z 
+2026-10-21T14:44:50.4472935Z Warnings:
+2026-10-21T14:44:50.4479054Z  - InnoSetup - InnoSetup v6.7.1 already installed.
+2026-10-21T14:44:50.4481633Z  Use --force to reinstall, specify a version to install, or try upgrade.
+2026-10-21T14:44:50.6053647Z ##[group]Run ./scripts/build-windows-installer.ps1
+2026-10-21T14:44:50.6054496Z [36;1m./scripts/build-windows-installer.ps1[0m
+2026-10-21T14:44:50.6155789Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:44:50.6156237Z ##[endgroup]
+2026-10-21T14:44:53.2679832Z Decompression time: 2203.16 ms
+2026-10-21T14:44:54.2608611Z Inno Setup 6 Command-Line Compiler
+2026-10-21T14:44:54.2609535Z Copyright (C) 1997-2026 Jordan Russell. All rights reserved.
+2026-10-21T14:44:54.2610581Z Portions Copyright (C) 2000-2026 Martijn Laan. All rights reserved.
+2026-10-21T14:44:54.2611729Z Portions Copyright (C) 2001-2004 Alex Yackimoff. All rights reserved.
+2026-10-21T14:44:54.2612576Z https://www.innosetup.com
+2026-10-21T14:44:54.2612965Z 
+2026-10-21T14:44:54.4313377Z Compiler engine version: Inno Setup 6.7.1
+2026-10-21T14:44:54.4313923Z Non-commercial use only
+2026-10-21T14:44:54.4314160Z 
+2026-10-21T14:44:54.5487486Z Preprocessing
+2026-10-21T14:44:54.5491104Z    Reading file: C:\Program Files (x86)\Inno Setup 6\ISPPBuiltins.iss
+2026-10-21T14:44:54.5505640Z Parsing [Setup] section, line 14
+2026-10-21T14:44:54.5506309Z Parsing [Setup] section, line 15
+2026-10-21T14:44:54.5506965Z Parsing [Setup] section, line 16
+2026-10-21T14:44:54.5507524Z Parsing [Setup] section, line 17
+2026-10-21T14:44:54.5508054Z Parsing [Setup] section, line 18
+2026-10-21T14:44:54.5508595Z Parsing [Setup] section, line 19
+2026-10-21T14:44:54.5509104Z Parsing [Setup] section, line 20
+2026-10-21T14:44:54.5509662Z Parsing [Setup] section, line 21
+2026-10-21T14:44:54.5510244Z Parsing [Setup] section, line 22
+2026-10-21T14:44:54.5510799Z Parsing [Setup] section, line 23
+2026-10-21T14:44:54.5511817Z Parsing [Setup] section, line 24
+2026-10-21T14:44:54.5512378Z Parsing [Setup] section, line 25
+2026-10-21T14:44:54.5512942Z Parsing [Setup] section, line 26
+2026-10-21T14:44:54.5513491Z Parsing [Setup] section, line 27
+2026-10-21T14:44:54.5514037Z Parsing [Setup] section, line 28
+2026-10-21T14:44:54.5514651Z Parsing [Setup] section, line 29
+2026-10-21T14:44:54.5515266Z Parsing [Setup] section, line 30
+2026-10-21T14:44:54.5516263Z Parsing [Setup] section, line 31
+2026-10-21T14:44:54.5516829Z Parsing [Setup] section, line 32
+2026-10-21T14:44:54.5517435Z Parsing [Setup] section, line 33
+2026-10-21T14:44:54.5517988Z Parsing [Setup] section, line 34
+2026-10-21T14:44:54.5518563Z Parsing [Setup] section, line 35
+2026-10-21T14:44:54.5519141Z Parsing [Setup] section, line 36
+2026-10-21T14:44:54.5519764Z Reading file (WizardImageFile)
+2026-10-21T14:44:54.5521068Z Reading file (WizardSmallImageFile)
+2026-10-21T14:44:54.5521740Z Preparing Setup program executable
+2026-10-21T14:44:54.9339164Z    Verification successful
+2026-10-21T14:44:54.9383221Z    Updating icons (Setup.e32)
+2026-10-21T14:44:54.9483646Z    Updating version info (Setup.e32)
+2026-10-21T14:44:54.9499182Z Determining language code pages
+2026-10-21T14:44:54.9500378Z    Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+2026-10-21T14:44:54.9606040Z    Messages in script file
+2026-10-21T14:44:54.9606859Z Reading default messages from Default.isl
+2026-10-21T14:44:54.9612220Z Parsing [LangOptions], [Messages], and [CustomMessages] sections
+2026-10-21T14:44:54.9613352Z    Reading file: C:\Program Files (x86)\Inno Setup 6\Default.isl
+2026-10-21T14:44:54.9615459Z    Messages in script file
+2026-10-21T14:44:54.9617210Z Reading [Code] section
+2026-10-21T14:44:54.9618020Z Parsing [Tasks] section, line 39
+2026-10-21T14:44:54.9618914Z Parsing [Icons] section, line 45
+2026-10-21T14:44:54.9619587Z Parsing [Icons] section, line 46
+2026-10-21T14:44:54.9620607Z Parsing [Run] section, line 49
+2026-10-21T14:44:54.9621230Z Parsing [Files] section, line 42
+2026-10-21T14:44:54.9680935Z Compiling [Code] section
+2026-10-21T14:44:54.9729531Z Creating setup files
+2026-10-21T14:44:55.0706171Z    Verification successful
+2026-10-21T14:44:55.0717215Z    Updating icons (Setup.exe)
+2026-10-21T14:44:55.0752618Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Info.plist
+2026-10-21T14:44:55.0754237Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bspatch.exe
+2026-10-21T14:44:55.0850831Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun Helper (Alerts).exe
+2026-10-21T14:44:55.0927206Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun Helper (GPU).exe
+2026-10-21T14:44:55.1002064Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun Helper (Plugin).exe
+2026-10-21T14:44:55.1077172Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun Helper (Renderer).exe
+2026-10-21T14:44:55.1151722Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun Helper.exe
+2026-10-21T14:44:55.1226793Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\bun.exe
+2026-10-21T14:45:23.1924007Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\chrome_100_percent.pak
+2026-10-21T14:45:23.1996235Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\chrome_elf.dll
+2026-10-21T14:45:23.2271206Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\d3dcompiler_47.dll
+2026-10-21T14:45:23.9499163Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\dxcompiler.dll
+2026-10-21T14:45:31.8378013Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\dxil.dll
+2026-10-21T14:45:32.7393290Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\gloomberb.cmd
+2026-10-21T14:45:32.7394991Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\icudtl.dat
+2026-10-21T14:45:34.3164703Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\launcher.exe
+2026-10-21T14:45:34.3221123Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libasar-arm64.dll
+2026-10-21T14:45:34.3281452Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libasar.dll
+2026-10-21T14:45:34.3343337Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libcef.dll
+2026-10-21T14:47:14.1048691Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libEGL.dll
+2026-10-21T14:47:14.1102649Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libGLESv2.dll
+2026-10-21T14:47:16.2593547Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\libNativeWrapper.dll
+2026-10-21T14:47:16.2794566Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\resources.pak
+2026-10-21T14:47:18.7997253Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\v8_context_snapshot.bin
+2026-10-21T14:47:18.8099169Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\vk_swiftshader.dll
+2026-10-21T14:47:20.5451026Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\vulkan-1.dll
+2026-10-21T14:47:20.5591059Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\WebView2Loader.dll
+2026-10-21T14:47:20.5613806Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\zig-zstd.exe
+2026-10-21T14:47:20.5736609Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\chrome_100_percent.pak
+2026-10-21T14:47:20.5812989Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\chrome_200_percent.pak
+2026-10-21T14:47:20.5934326Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\chrome_elf.dll
+2026-10-21T14:47:21.4034575Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\d3dcompiler_47.dll
+2026-10-21T14:47:22.6064664Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\dxcompiler.dll
+2026-10-21T14:47:30.6175360Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\dxil.dll
+2026-10-21T14:47:30.6334439Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\icudtl.dat
+2026-10-21T14:47:32.4155052Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\libcef.dll
+2026-10-21T14:49:18.4422340Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\libEGL.dll
+2026-10-21T14:49:18.4469611Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\libGLESv2.dll
+2026-10-21T14:49:19.4409781Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\resources.pak
+2026-10-21T14:49:22.8028942Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\v8_context_snapshot.bin
+2026-10-21T14:49:22.8152986Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\vk_swiftshader.dll
+2026-10-21T14:49:25.0027569Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\vulkan-1.dll
+2026-10-21T14:49:25.0158639Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\af.pak
+2026-10-21T14:49:25.0277170Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\af_FEMININE.pak
+2026-10-21T14:49:25.0345333Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\af_MASCULINE.pak
+2026-10-21T14:49:25.0347168Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\af_NEUTER.pak
+2026-10-21T14:49:25.0349128Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\am.pak
+2026-10-21T14:49:25.0353456Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\am_FEMININE.pak
+2026-10-21T14:49:25.0355502Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\am_MASCULINE.pak
+2026-10-21T14:49:25.0357476Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\am_NEUTER.pak
+2026-10-21T14:49:25.0358615Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ar.pak
+2026-10-21T14:49:25.0506813Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ar_FEMININE.pak
+2026-10-21T14:49:25.0508828Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ar_MASCULINE.pak
+2026-10-21T14:49:25.0510639Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ar_NEUTER.pak
+2026-10-21T14:49:25.0512402Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bg.pak
+2026-10-21T14:49:26.0907051Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bg_FEMININE.pak
+2026-10-21T14:49:26.0949217Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bg_MASCULINE.pak
+2026-10-21T14:49:26.0951390Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bg_NEUTER.pak
+2026-10-21T14:49:26.0953363Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bn.pak
+2026-10-21T14:49:26.0955572Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bn_FEMININE.pak
+2026-10-21T14:49:26.0976313Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bn_MASCULINE.pak
+2026-10-21T14:49:26.0978629Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\bn_NEUTER.pak
+2026-10-21T14:49:26.0980684Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ca.pak
+2026-10-21T14:49:26.1012119Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ca_FEMININE.pak
+2026-10-21T14:49:26.1014532Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ca_MASCULINE.pak
+2026-10-21T14:49:26.1016577Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ca_NEUTER.pak
+2026-10-21T14:49:26.1018453Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\cs.pak
+2026-10-21T14:49:26.1145472Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\cs_FEMININE.pak
+2026-10-21T14:49:26.1147879Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\cs_MASCULINE.pak
+2026-10-21T14:49:26.1175172Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\cs_NEUTER.pak
+2026-10-21T14:49:26.1177035Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\da.pak
+2026-10-21T14:49:26.1207143Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\da_FEMININE.pak
+2026-10-21T14:49:26.1210541Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\da_MASCULINE.pak
+2026-10-21T14:49:26.1212496Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\da_NEUTER.pak
+2026-10-21T14:49:26.1214934Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\de.pak
+2026-10-21T14:49:26.1340260Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\de_FEMININE.pak
+2026-10-21T14:49:26.1342801Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\de_MASCULINE.pak
+2026-10-21T14:49:26.1344872Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\de_NEUTER.pak
+2026-10-21T14:49:26.1346689Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\el.pak
+2026-10-21T14:49:27.2449060Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\el_FEMININE.pak
+2026-10-21T14:49:27.2530821Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\el_MASCULINE.pak
+2026-10-21T14:49:27.2532883Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\el_NEUTER.pak
+2026-10-21T14:49:27.2534683Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-GB.pak
+2026-10-21T14:49:27.2536605Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-GB_FEMININE.pak
+2026-10-21T14:49:27.2538471Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-GB_MASCULINE.pak
+2026-10-21T14:49:27.2540713Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-GB_NEUTER.pak
+2026-10-21T14:49:27.2542618Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-US.pak
+2026-10-21T14:49:27.2617367Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-US_FEMININE.pak
+2026-10-21T14:49:27.2619534Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-US_MASCULINE.pak
+2026-10-21T14:49:27.2621425Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\en-US_NEUTER.pak
+2026-10-21T14:49:27.2623223Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es-419.pak
+2026-10-21T14:49:27.2723045Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es-419_FEMININE.pak
+2026-10-21T14:49:27.2725467Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es-419_MASCULINE.pak
+2026-10-21T14:49:27.2727480Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es-419_NEUTER.pak
+2026-10-21T14:49:27.2730183Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es.pak
+2026-10-21T14:49:27.2812213Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es_FEMININE.pak
+2026-10-21T14:49:27.2814603Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es_MASCULINE.pak
+2026-10-21T14:49:27.2816485Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\es_NEUTER.pak
+2026-10-21T14:49:27.2818211Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\et.pak
+2026-10-21T14:49:27.2894530Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\et_FEMININE.pak
+2026-10-21T14:49:27.2896718Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\et_MASCULINE.pak
+2026-10-21T14:49:27.2898595Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\et_NEUTER.pak
+2026-10-21T14:49:27.2900414Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fa.pak
+2026-10-21T14:49:28.4152121Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fa_FEMININE.pak
+2026-10-21T14:49:28.4155919Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fa_MASCULINE.pak
+2026-10-21T14:49:28.4158197Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fa_NEUTER.pak
+2026-10-21T14:49:28.4160470Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fi.pak
+2026-10-21T14:49:28.4234811Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fil.pak
+2026-10-21T14:49:28.4329558Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fil_FEMININE.pak
+2026-10-21T14:49:28.4331881Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fil_MASCULINE.pak
+2026-10-21T14:49:28.4334450Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fil_NEUTER.pak
+2026-10-21T14:49:28.4336496Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fi_FEMININE.pak
+2026-10-21T14:49:28.4338507Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fi_MASCULINE.pak
+2026-10-21T14:49:28.4340748Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fi_NEUTER.pak
+2026-10-21T14:49:28.4343008Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fr.pak
+2026-10-21T14:49:28.4447672Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fr_FEMININE.pak
+2026-10-21T14:49:28.4459667Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fr_MASCULINE.pak
+2026-10-21T14:49:28.4461867Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\fr_NEUTER.pak
+2026-10-21T14:49:28.4463686Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\gu.pak
+2026-10-21T14:49:28.4638618Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\gu_FEMININE.pak
+2026-10-21T14:49:28.4640905Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\gu_MASCULINE.pak
+2026-10-21T14:49:28.4642973Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\gu_NEUTER.pak
+2026-10-21T14:49:28.4644857Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\he.pak
+2026-10-21T14:49:28.4775012Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\he_FEMININE.pak
+2026-10-21T14:49:28.4799469Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\he_MASCULINE.pak
+2026-10-21T14:49:28.4801685Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\he_NEUTER.pak
+2026-10-21T14:49:28.4813390Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hi.pak
+2026-10-21T14:49:29.8274541Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hi_FEMININE.pak
+2026-10-21T14:49:29.8276782Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hi_MASCULINE.pak
+2026-10-21T14:49:29.8278716Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hi_NEUTER.pak
+2026-10-21T14:49:29.8279763Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hr.pak
+2026-10-21T14:49:29.8375573Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hr_FEMININE.pak
+2026-10-21T14:49:29.8378029Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hr_MASCULINE.pak
+2026-10-21T14:49:29.8381951Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hr_NEUTER.pak
+2026-10-21T14:49:29.8383302Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hu.pak
+2026-10-21T14:49:29.8486267Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hu_FEMININE.pak
+2026-10-21T14:49:29.8488487Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hu_MASCULINE.pak
+2026-10-21T14:49:29.8490476Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\hu_NEUTER.pak
+2026-10-21T14:49:29.8492355Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\id.pak
+2026-10-21T14:49:29.8573297Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\id_FEMININE.pak
+2026-10-21T14:49:29.8575054Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\id_MASCULINE.pak
+2026-10-21T14:49:29.8577278Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\id_NEUTER.pak
+2026-10-21T14:49:29.8579074Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\it.pak
+2026-10-21T14:49:29.8662653Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\it_FEMININE.pak
+2026-10-21T14:49:29.8665926Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\it_MASCULINE.pak
+2026-10-21T14:49:29.8667649Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\it_NEUTER.pak
+2026-10-21T14:49:29.8668697Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ja.pak
+2026-10-21T14:49:31.0710072Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ja_FEMININE.pak
+2026-10-21T14:49:31.0713415Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ja_MASCULINE.pak
+2026-10-21T14:49:31.0715622Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ja_NEUTER.pak
+2026-10-21T14:49:31.0717662Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\kn.pak
+2026-10-21T14:49:31.0902551Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\kn_FEMININE.pak
+2026-10-21T14:49:31.0904941Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\kn_MASCULINE.pak
+2026-10-21T14:49:31.0906786Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\kn_NEUTER.pak
+2026-10-21T14:49:31.0908498Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ko.pak
+2026-10-21T14:49:31.0979864Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ko_FEMININE.pak
+2026-10-21T14:49:31.0981816Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ko_MASCULINE.pak
+2026-10-21T14:49:31.0983668Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ko_NEUTER.pak
+2026-10-21T14:49:31.0985415Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lt.pak
+2026-10-21T14:49:31.1060784Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lt_FEMININE.pak
+2026-10-21T14:49:31.1062675Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lt_MASCULINE.pak
+2026-10-21T14:49:31.1063821Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lt_NEUTER.pak
+2026-10-21T14:49:31.1064833Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lv.pak
+2026-10-21T14:49:31.1145718Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lv_FEMININE.pak
+2026-10-21T14:49:31.1147699Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lv_MASCULINE.pak
+2026-10-21T14:49:31.1149490Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\lv_NEUTER.pak
+2026-10-21T14:49:31.1151186Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ml.pak
+2026-10-21T14:49:32.2511911Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ml_FEMININE.pak
+2026-10-21T14:49:32.2514272Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ml_MASCULINE.pak
+2026-10-21T14:49:32.2516711Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ml_NEUTER.pak
+2026-10-21T14:49:32.2518595Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\mr.pak
+2026-10-21T14:49:32.2718167Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\mr_FEMININE.pak
+2026-10-21T14:49:32.2720088Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\mr_MASCULINE.pak
+2026-10-21T14:49:32.2721962Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\mr_NEUTER.pak
+2026-10-21T14:49:32.2723673Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ms.pak
+2026-10-21T14:49:32.2793867Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ms_FEMININE.pak
+2026-10-21T14:49:32.2795799Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ms_MASCULINE.pak
+2026-10-21T14:49:32.2797585Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ms_NEUTER.pak
+2026-10-21T14:49:32.2799303Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nb.pak
+2026-10-21T14:49:32.2861368Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nb_FEMININE.pak
+2026-10-21T14:49:32.2863568Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nb_MASCULINE.pak
+2026-10-21T14:49:32.2865478Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nb_NEUTER.pak
+2026-10-21T14:49:32.2867334Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nl.pak
+2026-10-21T14:49:32.2943915Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nl_FEMININE.pak
+2026-10-21T14:49:32.2946043Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nl_MASCULINE.pak
+2026-10-21T14:49:32.2948011Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\nl_NEUTER.pak
+2026-10-21T14:49:32.2950152Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pl.pak
+2026-10-21T14:49:33.4646188Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pl_FEMININE.pak
+2026-10-21T14:49:33.4648507Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pl_MASCULINE.pak
+2026-10-21T14:49:33.4650515Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pl_NEUTER.pak
+2026-10-21T14:49:33.4653625Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-BR.pak
+2026-10-21T14:49:33.4750038Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-BR_FEMININE.pak
+2026-10-21T14:49:33.4752284Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-BR_MASCULINE.pak
+2026-10-21T14:49:33.4771756Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-BR_NEUTER.pak
+2026-10-21T14:49:33.4774082Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-PT.pak
+2026-10-21T14:49:33.4854181Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-PT_FEMININE.pak
+2026-10-21T14:49:33.4856310Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-PT_MASCULINE.pak
+2026-10-21T14:49:33.4858608Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\pt-PT_NEUTER.pak
+2026-10-21T14:49:33.4860546Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ro.pak
+2026-10-21T14:49:33.4940538Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ro_FEMININE.pak
+2026-10-21T14:49:33.4942057Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ro_MASCULINE.pak
+2026-10-21T14:49:33.4944383Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ro_NEUTER.pak
+2026-10-21T14:49:33.4946152Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ru.pak
+2026-10-21T14:49:33.5063535Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ru_FEMININE.pak
+2026-10-21T14:49:33.5065461Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ru_MASCULINE.pak
+2026-10-21T14:49:33.5068964Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ru_NEUTER.pak
+2026-10-21T14:49:33.5070773Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sk.pak
+2026-10-21T14:49:33.5168634Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sk_FEMININE.pak
+2026-10-21T14:49:33.5170176Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sk_MASCULINE.pak
+2026-10-21T14:49:33.5171203Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sk_NEUTER.pak
+2026-10-21T14:49:33.5172181Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sl.pak
+2026-10-21T14:49:34.6993034Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sl_FEMININE.pak
+2026-10-21T14:49:34.6995069Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sl_MASCULINE.pak
+2026-10-21T14:49:34.6996917Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sl_NEUTER.pak
+2026-10-21T14:49:34.6998682Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sr.pak
+2026-10-21T14:49:34.7156656Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sr_FEMININE.pak
+2026-10-21T14:49:34.7158740Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sr_MASCULINE.pak
+2026-10-21T14:49:34.7161097Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sr_NEUTER.pak
+2026-10-21T14:49:34.7162162Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sv.pak
+2026-10-21T14:49:34.7233386Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sv_FEMININE.pak
+2026-10-21T14:49:34.7236006Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sv_MASCULINE.pak
+2026-10-21T14:49:34.7237913Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sv_NEUTER.pak
+2026-10-21T14:49:34.7239634Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sw.pak
+2026-10-21T14:49:34.7306294Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sw_FEMININE.pak
+2026-10-21T14:49:34.7308522Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sw_MASCULINE.pak
+2026-10-21T14:49:34.7310384Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\sw_NEUTER.pak
+2026-10-21T14:49:34.7312125Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ta.pak
+2026-10-21T14:49:34.7495711Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ta_FEMININE.pak
+2026-10-21T14:49:34.7498160Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ta_MASCULINE.pak
+2026-10-21T14:49:34.7500107Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ta_NEUTER.pak
+2026-10-21T14:49:34.7502679Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\te.pak
+2026-10-21T14:49:36.2657381Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\te_FEMININE.pak
+2026-10-21T14:49:36.2680977Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\te_MASCULINE.pak
+2026-10-21T14:49:36.2683641Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\te_NEUTER.pak
+2026-10-21T14:49:36.2686234Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\th.pak
+2026-10-21T14:49:36.2881886Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\th_FEMININE.pak
+2026-10-21T14:49:36.2884846Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\th_MASCULINE.pak
+2026-10-21T14:49:36.2887724Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\th_NEUTER.pak
+2026-10-21T14:49:36.2889705Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\tr.pak
+2026-10-21T14:49:36.2975960Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\tr_FEMININE.pak
+2026-10-21T14:49:36.2978491Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\tr_MASCULINE.pak
+2026-10-21T14:49:36.2980537Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\tr_NEUTER.pak
+2026-10-21T14:49:36.2982437Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\uk.pak
+2026-10-21T14:49:36.3201699Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\uk_FEMININE.pak
+2026-10-21T14:49:36.3209591Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\uk_MASCULINE.pak
+2026-10-21T14:49:36.3211584Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\uk_NEUTER.pak
+2026-10-21T14:49:36.3213348Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ur.pak
+2026-10-21T14:49:37.9411341Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ur_FEMININE.pak
+2026-10-21T14:49:37.9414857Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ur_MASCULINE.pak
+2026-10-21T14:49:37.9417090Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\ur_NEUTER.pak
+2026-10-21T14:49:37.9419083Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\vi.pak
+2026-10-21T14:49:37.9524868Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\vi_FEMININE.pak
+2026-10-21T14:49:37.9527402Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\vi_MASCULINE.pak
+2026-10-21T14:49:37.9529499Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\vi_NEUTER.pak
+2026-10-21T14:49:37.9566559Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-CN.pak
+2026-10-21T14:49:37.9619655Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-CN_FEMININE.pak
+2026-10-21T14:49:37.9622517Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-CN_MASCULINE.pak
+2026-10-21T14:49:37.9631514Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-CN_NEUTER.pak
+2026-10-21T14:49:37.9633946Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-TW.pak
+2026-10-21T14:49:37.9684117Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-TW_FEMININE.pak
+2026-10-21T14:49:37.9686817Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-TW_MASCULINE.pak
+2026-10-21T14:49:37.9688998Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\bin\cef\Resources\locales\zh-TW_NEUTER.pak
+2026-10-21T14:49:37.9690844Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app.ico
+2026-10-21T14:49:37.9692622Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\build.json
+2026-10-21T14:49:37.9718804Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-logo.ico
+2026-10-21T14:49:37.9733317Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\main.js
+2026-10-21T14:49:37.9735003Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\version.json
+2026-10-21T14:49:37.9736599Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\bun\index.js
+2026-10-21T14:49:46.6759681Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\bun\index.js.map
+2026-10-21T14:50:05.9395387Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\index.html
+2026-10-21T14:50:08.2438265Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\main.js
+2026-10-21T14:50:09.6070938Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\main.js.map
+2026-10-21T14:50:24.6463117Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\snapshot.chunk.js
+2026-10-21T14:50:24.6493216Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\index.chunk.js
+2026-10-21T14:50:24.6500471Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\labels.chunk.js
+2026-10-21T14:50:24.6503008Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\world-50m.chunk.js
+2026-10-21T14:50:24.6510600Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n00.chunk.js
+2026-10-21T14:50:24.6512690Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n15.chunk.js
+2026-10-21T14:50:24.6515236Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n30.chunk.js
+2026-10-21T14:50:24.6523479Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n45.chunk.js
+2026-10-21T14:50:24.6525737Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n60.chunk.js
+2026-10-21T14:50:24.6531190Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000n75.chunk.js
+2026-10-21T14:50:24.6556396Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000s15.chunk.js
+2026-10-21T14:50:24.6558601Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000s30.chunk.js
+2026-10-21T14:50:24.6604044Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e000s60.chunk.js
+2026-10-21T14:50:24.6620791Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n00.chunk.js
+2026-10-21T14:50:24.6652478Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n15.chunk.js
+2026-10-21T14:50:24.6654850Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n30.chunk.js
+2026-10-21T14:50:24.6657100Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n45.chunk.js
+2026-10-21T14:50:24.6660289Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n60.chunk.js
+2026-10-21T14:50:24.6662418Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015n75.chunk.js
+2026-10-21T14:50:24.6664718Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015s15.chunk.js
+2026-10-21T14:50:24.6667322Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015s30.chunk.js
+2026-10-21T14:50:24.6669250Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e015s45.chunk.js
+2026-10-21T14:50:24.6671155Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n00.chunk.js
+2026-10-21T14:50:24.6673168Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n15.chunk.js
+2026-10-21T14:50:24.6675085Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n30.chunk.js
+2026-10-21T14:50:24.6677023Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n45.chunk.js
+2026-10-21T14:50:24.6678926Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n60.chunk.js
+2026-10-21T14:50:24.6680798Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030n75.chunk.js
+2026-10-21T14:50:24.6682729Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030s15.chunk.js
+2026-10-21T14:50:24.6685079Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030s30.chunk.js
+2026-10-21T14:50:24.6687408Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030s45.chunk.js
+2026-10-21T14:50:24.6689335Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e030s60.chunk.js
+2026-10-21T14:50:24.6691226Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n00.chunk.js
+2026-10-21T14:50:24.6693083Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n15.chunk.js
+2026-10-21T14:50:24.6695137Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n30.chunk.js
+2026-10-21T14:50:24.6697170Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n45.chunk.js
+2026-10-21T14:50:24.6699175Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n60.chunk.js
+2026-10-21T14:50:24.6701203Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045n75.chunk.js
+2026-10-21T14:50:24.6703663Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045s15.chunk.js
+2026-10-21T14:50:24.6723018Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045s30.chunk.js
+2026-10-21T14:50:24.6725128Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e045s60.chunk.js
+2026-10-21T14:50:24.6727906Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n00.chunk.js
+2026-10-21T14:50:24.6729844Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n15.chunk.js
+2026-10-21T14:50:24.6731680Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n30.chunk.js
+2026-10-21T14:50:24.6733572Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n45.chunk.js
+2026-10-21T14:50:24.6735597Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n60.chunk.js
+2026-10-21T14:50:24.6737558Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060n75.chunk.js
+2026-10-21T14:50:24.6739431Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060s15.chunk.js
+2026-10-21T14:50:24.6741350Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060s30.chunk.js
+2026-10-21T14:50:24.6743250Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e060s60.chunk.js
+2026-10-21T14:50:24.6745496Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n00.chunk.js
+2026-10-21T14:50:24.6747844Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n15.chunk.js
+2026-10-21T14:50:24.6749796Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n30.chunk.js
+2026-10-21T14:50:24.6751654Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n45.chunk.js
+2026-10-21T14:50:24.6753545Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n60.chunk.js
+2026-10-21T14:50:24.6755411Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075n75.chunk.js
+2026-10-21T14:50:24.6757292Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e075s45.chunk.js
+2026-10-21T14:50:24.6759280Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n00.chunk.js
+2026-10-21T14:50:24.6761139Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n15.chunk.js
+2026-10-21T14:50:24.6763107Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n30.chunk.js
+2026-10-21T14:50:24.6765613Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n45.chunk.js
+2026-10-21T14:50:24.6767561Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n60.chunk.js
+2026-10-21T14:50:24.6769494Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090n75.chunk.js
+2026-10-21T14:50:24.6771711Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e090s15.chunk.js
+2026-10-21T14:50:24.6773652Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n00.chunk.js
+2026-10-21T14:50:24.6775709Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n15.chunk.js
+2026-10-21T14:50:24.6777591Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n30.chunk.js
+2026-10-21T14:50:24.6779463Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n45.chunk.js
+2026-10-21T14:50:24.6781446Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n60.chunk.js
+2026-10-21T14:50:24.6783485Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105n75.chunk.js
+2026-10-21T14:50:24.6786779Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105s15.chunk.js
+2026-10-21T14:50:24.6788807Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105s30.chunk.js
+2026-10-21T14:50:24.6791296Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e105s45.chunk.js
+2026-10-21T14:50:24.6793902Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120n00.chunk.js
+2026-10-21T14:50:24.6795933Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120n15.chunk.js
+2026-10-21T14:50:24.6797975Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120n30.chunk.js
+2026-10-21T14:50:24.6799991Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120n45.chunk.js
+2026-10-21T14:50:24.6801990Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120n60.chunk.js
+2026-10-21T14:50:24.6805780Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120s15.chunk.js
+2026-10-21T14:50:24.6808343Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120s30.chunk.js
+2026-10-21T14:50:24.6810358Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e120s45.chunk.js
+2026-10-21T14:50:24.6813145Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n00.chunk.js
+2026-10-21T14:50:24.6815450Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n15.chunk.js
+2026-10-21T14:50:24.6849983Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n30.chunk.js
+2026-10-21T14:50:24.6871969Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n45.chunk.js
+2026-10-21T14:50:24.6874483Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n60.chunk.js
+2026-10-21T14:50:24.6876604Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135n75.chunk.js
+2026-10-21T14:50:24.6878847Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135s15.chunk.js
+2026-10-21T14:50:24.6880891Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135s30.chunk.js
+2026-10-21T14:50:24.6883491Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e135s45.chunk.js
+2026-10-21T14:50:24.6886346Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150n00.chunk.js
+2026-10-21T14:50:24.6889397Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150n15.chunk.js
+2026-10-21T14:50:24.6891645Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150n45.chunk.js
+2026-10-21T14:50:24.6894643Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150n60.chunk.js
+2026-10-21T14:50:24.6896832Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150n75.chunk.js
+2026-10-21T14:50:24.6899052Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150s15.chunk.js
+2026-10-21T14:50:24.6901182Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150s30.chunk.js
+2026-10-21T14:50:24.6903290Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150s45.chunk.js
+2026-10-21T14:50:24.6915033Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e150s60.chunk.js
+2026-10-21T14:50:24.6917328Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165n00.chunk.js
+2026-10-21T14:50:24.6920004Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165n15.chunk.js
+2026-10-21T14:50:24.6922232Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165n45.chunk.js
+2026-10-21T14:50:24.6924800Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165n60.chunk.js
+2026-10-21T14:50:24.6926953Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165s15.chunk.js
+2026-10-21T14:50:24.6929188Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165s30.chunk.js
+2026-10-21T14:50:24.6931322Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165s45.chunk.js
+2026-10-21T14:50:24.6935268Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\e165s60.chunk.js
+2026-10-21T14:50:24.6938421Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n00.chunk.js
+2026-10-21T14:50:24.6940501Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n15.chunk.js
+2026-10-21T14:50:24.6942549Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n30.chunk.js
+2026-10-21T14:50:24.6945066Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n45.chunk.js
+2026-10-21T14:50:24.6947165Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n60.chunk.js
+2026-10-21T14:50:24.6958741Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015n75.chunk.js
+2026-10-21T14:50:24.6960941Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015s15.chunk.js
+2026-10-21T14:50:24.6962996Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015s30.chunk.js
+2026-10-21T14:50:24.6967274Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w015s45.chunk.js
+2026-10-21T14:50:24.6970140Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030n00.chunk.js
+2026-10-21T14:50:24.6972595Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030n15.chunk.js
+2026-10-21T14:50:24.6975071Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030n30.chunk.js
+2026-10-21T14:50:24.6978565Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030n60.chunk.js
+2026-10-21T14:50:24.6981365Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030n75.chunk.js
+2026-10-21T14:50:24.6983543Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030s30.chunk.js
+2026-10-21T14:50:24.6986365Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w030s60.chunk.js
+2026-10-21T14:50:24.6989162Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045n30.chunk.js
+2026-10-21T14:50:24.6991906Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045n45.chunk.js
+2026-10-21T14:50:24.6994648Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045n60.chunk.js
+2026-10-21T14:50:24.6997637Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045n75.chunk.js
+2026-10-21T14:50:24.7002918Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045s15.chunk.js
+2026-10-21T14:50:24.7005603Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045s30.chunk.js
+2026-10-21T14:50:24.7008580Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w045s60.chunk.js
+2026-10-21T14:50:24.7010711Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060n00.chunk.js
+2026-10-21T14:50:24.7012772Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060n30.chunk.js
+2026-10-21T14:50:24.7014904Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060n45.chunk.js
+2026-10-21T14:50:24.7016837Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060n60.chunk.js
+2026-10-21T14:50:24.7018921Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060n75.chunk.js
+2026-10-21T14:50:24.7020790Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060s15.chunk.js
+2026-10-21T14:50:24.7022593Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060s30.chunk.js
+2026-10-21T14:50:24.7024874Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060s45.chunk.js
+2026-10-21T14:50:24.7027198Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w060s60.chunk.js
+2026-10-21T14:50:24.7029038Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n00.chunk.js
+2026-10-21T14:50:24.7030861Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n15.chunk.js
+2026-10-21T14:50:24.7032689Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n30.chunk.js
+2026-10-21T14:50:24.7034677Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n45.chunk.js
+2026-10-21T14:50:24.7036528Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n60.chunk.js
+2026-10-21T14:50:24.7038384Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075n75.chunk.js
+2026-10-21T14:50:24.7040192Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075s15.chunk.js
+2026-10-21T14:50:24.7042034Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075s30.chunk.js
+2026-10-21T14:50:24.7043946Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075s45.chunk.js
+2026-10-21T14:50:24.7046121Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w075s60.chunk.js
+2026-10-21T14:50:24.7058193Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n00.chunk.js
+2026-10-21T14:50:24.7060164Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n15.chunk.js
+2026-10-21T14:50:24.7062005Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n30.chunk.js
+2026-10-21T14:50:24.7063967Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n45.chunk.js
+2026-10-21T14:50:24.7066266Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n60.chunk.js
+2026-10-21T14:50:24.7068233Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090n75.chunk.js
+2026-10-21T14:50:24.7070068Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090s15.chunk.js
+2026-10-21T14:50:24.7071875Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090s30.chunk.js
+2026-10-21T14:50:24.7073753Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090s45.chunk.js
+2026-10-21T14:50:24.7076013Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w090s60.chunk.js
+2026-10-21T14:50:24.7077878Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n00.chunk.js
+2026-10-21T14:50:24.7079628Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n15.chunk.js
+2026-10-21T14:50:24.7081512Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n30.chunk.js
+2026-10-21T14:50:24.7083347Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n45.chunk.js
+2026-10-21T14:50:24.7085871Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n60.chunk.js
+2026-10-21T14:50:24.7087838Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105n75.chunk.js
+2026-10-21T14:50:24.7089752Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w105s15.chunk.js
+2026-10-21T14:50:24.7091683Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n00.chunk.js
+2026-10-21T14:50:24.7093640Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n15.chunk.js
+2026-10-21T14:50:24.7095607Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n30.chunk.js
+2026-10-21T14:50:24.7097655Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n45.chunk.js
+2026-10-21T14:50:24.7101325Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n60.chunk.js
+2026-10-21T14:50:24.7103331Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120n75.chunk.js
+2026-10-21T14:50:24.7106142Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w120s30.chunk.js
+2026-10-21T14:50:24.7108607Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w135n30.chunk.js
+2026-10-21T14:50:24.7110614Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w135n45.chunk.js
+2026-10-21T14:50:24.7112571Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w135n60.chunk.js
+2026-10-21T14:50:24.7114498Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w135n75.chunk.js
+2026-10-21T14:50:24.7116558Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w135s30.chunk.js
+2026-10-21T14:50:24.7118489Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w150n45.chunk.js
+2026-10-21T14:50:24.7120447Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w150n60.chunk.js
+2026-10-21T14:50:24.7122893Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w150s15.chunk.js
+2026-10-21T14:50:24.7125400Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w150s30.chunk.js
+2026-10-21T14:50:24.7127361Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165n00.chunk.js
+2026-10-21T14:50:24.7129330Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165n15.chunk.js
+2026-10-21T14:50:24.7131307Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165n45.chunk.js
+2026-10-21T14:50:24.7133266Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165n60.chunk.js
+2026-10-21T14:50:24.7147220Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165s15.chunk.js
+2026-10-21T14:50:24.7149284Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w165s30.chunk.js
+2026-10-21T14:50:24.7151247Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180n00.chunk.js
+2026-10-21T14:50:24.7153212Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180n15.chunk.js
+2026-10-21T14:50:24.7155131Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180n45.chunk.js
+2026-10-21T14:50:24.7157068Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180n60.chunk.js
+2026-10-21T14:50:24.7159757Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180s15.chunk.js
+2026-10-21T14:50:24.7161860Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180s30.chunk.js
+2026-10-21T14:50:24.7164082Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\app\views\mainview\natural-earth\tiles\w180s45.chunk.js
+2026-10-21T14:50:24.7166495Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\highlights-eq9cgrbb.scm
+2026-10-21T14:50:24.7168311Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\highlights-ghv9g403.scm
+2026-10-21T14:50:24.7170081Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\highlights-hk7bwhj4.scm
+2026-10-21T14:50:24.7171839Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\highlights-r812a2qc.scm
+2026-10-21T14:50:24.7174405Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\highlights-x6tmsnaa.scm
+2026-10-21T14:50:24.7176792Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\injections-73j83es3.scm
+2026-10-21T14:50:24.7179734Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\shot-view.json.gz
+2026-10-21T14:50:27.2871391Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tree-sitter-javascript-nd0q4pe9.wasm
+2026-10-21T14:50:27.2929338Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tree-sitter-markdown-411r6y9b.wasm
+2026-10-21T14:50:27.2990035Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tree-sitter-markdown_inline-j5349f42.wasm
+2026-10-21T14:50:27.3042644Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tree-sitter-typescript-zxjzwt75.wasm
+2026-10-21T14:50:27.3202087Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tree-sitter-zig-e78zbjpm.wasm
+2026-10-21T14:50:27.3306292Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\tui-entry.js
+2026-10-21T14:50:33.2634606Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\index.bun.js
+2026-10-21T14:50:33.2637152Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\index.d.ts
+2026-10-21T14:50:33.2640171Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\index.js
+2026-10-21T14:50:33.2641513Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\LICENSE
+2026-10-21T14:50:33.2642736Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\opentui.dll
+2026-10-21T14:50:34.7686850Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\package.json
+2026-10-21T14:50:34.7689858Z    Compressing: D:\a\gloomberb\gloomberb\build\stable-win-x64\Gloomberb-inno-source\Gloomberb\Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64\README.md
+2026-10-21T14:50:35.2664161Z    Compressing Setup program executable
+2026-10-21T14:50:35.8707149Z    Updating version info (Setup.exe)
+2026-10-21T14:50:35.8707851Z    Updating manifest (Setup.exe)
+2026-10-21T14:50:35.8709708Z 
+2026-10-21T14:50:35.8715423Z 
+2026-10-21T14:50:35.8715947Z Successful compile (341.453 sec). Resulting Setup program filename is:
+2026-10-21T14:50:35.8716851Z D:\a\gloomberb\gloomberb\artifacts\GloomberbSetup.exe
+2026-10-21T14:50:36.6716945Z Created installer: D:\a\gloomberb\gloomberb\artifacts\stable-win-x64-GloomberbSetup.exe
+2026-10-21T14:50:36.7136886Z ##[group]Run ./scripts/verify-windows-desktop.ps1
+2026-10-21T14:50:36.7137683Z [36;1m./scripts/verify-windows-desktop.ps1[0m
+2026-10-21T14:50:36.7238411Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:50:36.7239061Z ##[endgroup]
+2026-10-21T14:50:43.2759294Z gloomberb 0.18.2
+2026-10-21T14:50:43.2759859Z Market research and portfolio tracker for the terminal
+2026-10-21T14:50:43.2760893Z 
+2026-10-21T14:50:43.2761051Z Start here
+2026-10-21T14:50:43.2762723Z   gloomberb search apple       Find a ticker from a company name
+2026-10-21T14:50:43.2763359Z   gloomberb quote AAPL         Show the latest price
+2026-10-21T14:50:43.2764031Z   gloomberb ticker AAPL        Open the full research report
+2026-10-21T14:50:43.2765015Z   gloomberb catalog earnings   Find a function, then run it with fn
+2026-10-21T14:50:43.2765471Z 
+2026-10-21T14:50:43.2765594Z Usage
+2026-10-21T14:50:43.2765919Z   gloomberb                    Open the terminal UI
+2026-10-21T14:50:43.2767448Z   gloomberb <command> [args]   Run a command and print the result
+2026-10-21T14:50:43.2768322Z   gloomberb help <command>     Show a command's usage, options, and examples
+2026-10-21T14:50:43.2769114Z   gloomberb ticker SAN:EPA     Name the listing of a symbol that trades in
+2026-10-21T14:50:43.2769809Z                                several places (or --exchange EPA)
+2026-10-21T14:50:43.2770176Z 
+2026-10-21T14:50:43.2770299Z Research
+2026-10-21T14:50:43.2770614Z   search            Search tickers and company names
+2026-10-21T14:50:43.2771178Z   ticker            Show the full research report for one symbol
+2026-10-21T14:50:43.2771802Z   quote             Show the latest price for one or more symbols
+2026-10-21T14:50:43.2772477Z   compare           Compare quotes for several symbols side by side
+2026-10-21T14:50:43.2773180Z   history           Fetch open, high, low, close, and volume over a range
+2026-10-21T14:50:43.2773879Z   options           Fetch an options chain, or rank LEAPS across symbols
+2026-10-21T14:50:43.2774606Z   provider-search   Search instruments at the connected data providers
+2026-10-21T14:50:43.2775451Z   correlation       Correlate two symbols' daily returns over the past year
+2026-10-21T14:50:43.2775976Z 
+2026-10-21T14:50:43.2776123Z Company data
+2026-10-21T14:50:43.2776534Z   financials        Fetch annual revenue, profit, and EPS
+2026-10-21T14:50:43.2777575Z   fundamentals      Fetch fundamentals and the company profile
+2026-10-21T14:50:43.2778354Z   valuation         Fetch market cap, enterprise value, and valuation multiples
+2026-10-21T14:50:43.2779513Z   earnings          Show upcoming and recent earnings dates
+2026-10-21T14:50:43.2780040Z   events            Fetch dividends, splits, and earnings events
+2026-10-21T14:50:43.2780453Z   analyst           Fetch analyst rating changes and price targets
+2026-10-21T14:50:43.2780877Z   holders           Fetch institutional holders, or the 13D/13G beneficial
+2026-10-21T14:50:43.2781236Z                     owners
+2026-10-21T14:50:43.2781478Z   insider           Fetch insider holders
+2026-10-21T14:50:43.2781776Z   13f               Fetch institutional and fund holders
+2026-10-21T14:50:43.2782079Z   filings           Fetch recent SEC filings
+2026-10-21T14:50:43.2783155Z   news              Fetch market headlines, news for one symbol, or stories
+2026-10-21T14:50:43.2783524Z                     matching text
+2026-10-21T14:50:43.2783681Z 
+2026-10-21T14:50:43.2783758Z Markets
+2026-10-21T14:50:43.2784032Z   fx                Convert a currency into your base currency, quote a pair
+2026-10-21T14:50:43.2784450Z                     such as USD/NGN, or convert an amount such as fx 1234.5
+2026-10-21T14:50:43.2784772Z                     EUR/USD
+2026-10-21T14:50:43.2785075Z   movers            Show gainers, losers, most active, or trending stocks
+2026-10-21T14:50:43.2785442Z   indices           Show the major US stock indices
+2026-10-21T14:50:43.2785742Z   sectors           Show the SPDR sector ETFs
+2026-10-21T14:50:43.2788828Z   econ              List upcoming economic calendar events
+2026-10-21T14:50:43.2789345Z   fred              Fetch a FRED economic series, or list the ones served
+2026-10-21T14:50:43.2789814Z   yield-curve       Show the latest 3M, 2Y, 10Y, and 30Y Treasury yields
+2026-10-21T14:50:43.2790225Z   rss               Read any RSS or Atom feed as headlines
+2026-10-21T14:50:43.2790572Z   fear-greed        Fetch CNN Fear & Greed gauge data
+2026-10-21T14:50:43.2790784Z 
+2026-10-21T14:50:43.2790860Z Functions
+2026-10-21T14:50:43.2791154Z   catalog           Find market functions to run with fn or capture with shot,
+2026-10-21T14:50:43.2791531Z                     or look up a term
+2026-10-21T14:50:43.2791844Z   fn                Run a market function and print its report
+2026-10-21T14:50:43.2792216Z   shot              Save a desktop-style PNG of a market function
+2026-10-21T14:50:43.2792466Z 
+2026-10-21T14:50:43.2792540Z Portfolios
+2026-10-21T14:50:43.2792755Z   broker            List connected broker accounts
+2026-10-21T14:50:43.2793164Z   portfolio         Show holdings, value, weights and P&L; manage manual
+2026-10-21T14:50:43.2793535Z                     portfolios, cash and targets
+2026-10-21T14:50:43.2793876Z   watchlist         Show watchlist quotes, and add or remove symbols
+2026-10-21T14:50:43.2794246Z   notes             Read, write, or export ticker notes
+2026-10-21T14:50:43.2794612Z   alerts            List, add, and remove price alerts and alerts before
+2026-10-21T14:50:43.2794958Z                     earnings, CPI and FOMC
+2026-10-21T14:50:43.2795139Z 
+2026-10-21T14:50:43.2795208Z Plugins
+2026-10-21T14:50:43.2795425Z   plugins           List plugins installed from GitHub
+2026-10-21T14:50:43.2795746Z   install           Install a plugin from GitHub
+2026-10-21T14:50:43.2796073Z   update            Update installed plugins, or one by name
+2026-10-21T14:50:43.2796403Z   remove            Remove an installed plugin
+2026-10-21T14:50:43.2796753Z   plugin            Inspect, turn on or off, link, or check any plugin
+2026-10-21T14:50:43.2797009Z 
+2026-10-21T14:50:43.2797080Z App
+2026-10-21T14:50:43.2797316Z   launch-ui         Open the terminal UI, like plain gloomberb
+2026-10-21T14:50:43.2797712Z   api               List, inspect, call, or subscribe to plugin capabilities
+2026-10-21T14:50:43.2798141Z   remote            Drive a running gloomberb app through its remote API
+2026-10-21T14:50:43.2798545Z   version           Print the version, runtime, and data folder
+2026-10-21T14:50:43.2798952Z   doctor            Check that config, cache, plugins, and capabilities load
+2026-10-21T14:50:43.2799363Z   config            Show or change settings and keybindings
+2026-10-21T14:50:43.2800000Z   cache             Show the size of cached market data, or clear it
+2026-10-21T14:50:43.2800651Z   provider          List data sources and the operations each one serves
+2026-10-21T14:50:43.2801212Z   layout            List saved layouts
+2026-10-21T14:50:43.2801743Z   pane              List panes and templates with the plugin that owns each
+2026-10-21T14:50:43.2802185Z 
+2026-10-21T14:50:43.2802294Z Global options
+2026-10-21T14:50:43.2802642Z   --json                Print the full result as JSON
+2026-10-21T14:50:43.2803543Z   --csv                 Print rows as CSV under the columns the text shows; fn
+2026-10-21T14:50:43.2804434Z                         reports and fundamentals put each table under # section:
+2026-10-21T14:50:43.2805006Z                         and end with # source lines
+2026-10-21T14:50:43.2805514Z   --ndjson              Print one JSON object per table row
+2026-10-21T14:50:43.2806096Z   --limit <n>           Show at most n rows, the first n as printed
+2026-10-21T14:50:43.2806746Z   --tail <n>            Show the newest n rows of a dated series (history, fred,
+2026-10-21T14:50:43.2807430Z                         econ) in their printed order, or the last n of another
+2026-10-21T14:50:43.2807946Z                         list
+2026-10-21T14:50:43.2809080Z   --refresh             Fetch fresh data instead of reading the cache
+2026-10-21T14:50:43.2809854Z   --dry-run             Preview config, cache, notes, alerts, plugin on/off, and
+2026-10-21T14:50:43.2810504Z                         remote changes without saving
+2026-10-21T14:50:43.2811145Z   -q, --quiet           Print no results or errors in text mode, for commands
+2026-10-21T14:50:43.2811765Z                         that print results
+2026-10-21T14:50:43.2812381Z   --color, --no-color   Force or turn off colors (NO_COLOR=1 also turns them
+2026-10-21T14:50:43.2812998Z                         off)
+2026-10-21T14:50:43.2813519Z   --width <n>           Fit tables to n columns (default: the terminal width;
+2026-10-21T14:50:43.2814246Z                         piped output is not fitted). shot takes its own --width
+2026-10-21T14:50:43.2814818Z                         in pixels
+2026-10-21T14:50:43.2815082Z 
+2026-10-21T14:50:43.2815193Z Exit codes
+2026-10-21T14:50:43.2815470Z   0   Success
+2026-10-21T14:50:43.2815957Z   1   Failed: bad input, no data found or a failed check. fn exits 0 on partial
+2026-10-21T14:50:43.2816719Z       data with warnings; --json ok is false exactly when this is 1
+2026-10-21T14:50:43.2817397Z   2   shot --strict saved an image of a pane with no usable data
+2026-10-21T14:51:19.2944917Z gloomberb 0.18.2
+2026-10-21T14:51:19.2945404Z Market research and portfolio tracker for the terminal
+2026-10-21T14:51:19.2946289Z 
+2026-10-21T14:51:19.2946419Z Start here
+2026-10-21T14:51:19.2948012Z   gloomberb search apple       Find a ticker from a company name
+2026-10-21T14:51:19.2949282Z   gloomberb quote AAPL         Show the latest price
+2026-10-21T14:51:19.2950066Z   gloomberb ticker AAPL        Open the full research report
+2026-10-21T14:51:19.2950742Z   gloomberb catalog earnings   Find a function, then run it with fn
+2026-10-21T14:51:19.2951262Z 
+2026-10-21T14:51:19.2951366Z Usage
+2026-10-21T14:51:19.2951696Z   gloomberb                    Open the terminal UI
+2026-10-21T14:51:19.2952356Z   gloomberb <command> [args]   Run a command and print the result
+2026-10-21T14:51:19.2953421Z   gloomberb help <command>     Show a command's usage, options, and examples
+2026-10-21T14:51:19.2954214Z   gloomberb ticker SAN:EPA     Name the listing of a symbol that trades in
+2026-10-21T14:51:19.2954896Z                                several places (or --exchange EPA)
+2026-10-21T14:51:19.2955253Z 
+2026-10-21T14:51:19.2955355Z Research
+2026-10-21T14:51:19.2955702Z   search            Search tickers and company names
+2026-10-21T14:51:19.2956273Z   ticker            Show the full research report for one symbol
+2026-10-21T14:51:19.2956876Z   quote             Show the latest price for one or more symbols
+2026-10-21T14:51:19.2957497Z   compare           Compare quotes for several symbols side by side
+2026-10-21T14:51:19.2958175Z   history           Fetch open, high, low, close, and volume over a range
+2026-10-21T14:51:19.2958933Z   options           Fetch an options chain, or rank LEAPS across symbols
+2026-10-21T14:51:19.2959715Z   provider-search   Search instruments at the connected data providers
+2026-10-21T14:51:19.2960455Z   correlation       Correlate two symbols' daily returns over the past year
+2026-10-21T14:51:19.2960913Z 
+2026-10-21T14:51:19.2961563Z Company data
+2026-10-21T14:51:19.2961950Z   financials        Fetch annual revenue, profit, and EPS
+2026-10-21T14:51:19.2962583Z   fundamentals      Fetch fundamentals and the company profile
+2026-10-21T14:51:19.2963379Z   valuation         Fetch market cap, enterprise value, and valuation multiples
+2026-10-21T14:51:19.2964744Z   earnings          Show upcoming and recent earnings dates
+2026-10-21T14:51:19.2965843Z   events            Fetch dividends, splits, and earnings events
+2026-10-21T14:51:19.2966841Z   analyst           Fetch analyst rating changes and price targets
+2026-10-21T14:51:19.2967583Z   holders           Fetch institutional holders, or the 13D/13G beneficial
+2026-10-21T14:51:19.2968501Z                     owners
+2026-10-21T14:51:19.2968896Z   insider           Fetch insider holders
+2026-10-21T14:51:19.2969399Z   13f               Fetch institutional and fund holders
+2026-10-21T14:51:19.2969876Z   filings           Fetch recent SEC filings
+2026-10-21T14:51:19.2970418Z   news              Fetch market headlines, news for one symbol, or stories
+2026-10-21T14:51:19.2970972Z                     matching text
+2026-10-21T14:51:19.2971228Z 
+2026-10-21T14:51:19.2971339Z Markets
+2026-10-21T14:51:19.2971789Z   fx                Convert a currency into your base currency, quote a pair
+2026-10-21T14:51:19.2972518Z                     such as USD/NGN, or convert an amount such as fx 1234.5
+2026-10-21T14:51:19.2973070Z                     EUR/USD
+2026-10-21T14:51:19.2973521Z   movers            Show gainers, losers, most active, or trending stocks
+2026-10-21T14:51:19.2974269Z   indices           Show the major US stock indices
+2026-10-21T14:51:19.2974762Z   sectors           Show the SPDR sector ETFs
+2026-10-21T14:51:19.2975260Z   econ              List upcoming economic calendar events
+2026-10-21T14:51:19.2975868Z   fred              Fetch a FRED economic series, or list the ones served
+2026-10-21T14:51:19.2976581Z   yield-curve       Show the latest 3M, 2Y, 10Y, and 30Y Treasury yields
+2026-10-21T14:51:19.2977253Z   rss               Read any RSS or Atom feed as headlines
+2026-10-21T14:51:19.2977782Z   fear-greed        Fetch CNN Fear & Greed gauge data
+2026-10-21T14:51:19.2978147Z 
+2026-10-21T14:51:19.2978255Z Functions
+2026-10-21T14:51:19.2978723Z   catalog           Find market functions to run with fn or capture with shot,
+2026-10-21T14:51:19.2979200Z                     or look up a term
+2026-10-21T14:51:19.2979515Z   fn                Run a market function and print its report
+2026-10-21T14:51:19.2979909Z   shot              Save a desktop-style PNG of a market function
+2026-10-21T14:51:19.2980168Z 
+2026-10-21T14:51:19.2980248Z Portfolios
+2026-10-21T14:51:19.2980469Z   broker            List connected broker accounts
+2026-10-21T14:51:19.2980855Z   portfolio         Show holdings, value, weights and P&L; manage manual
+2026-10-21T14:51:19.2981225Z                     portfolios, cash and targets
+2026-10-21T14:51:19.2981576Z   watchlist         Show watchlist quotes, and add or remove symbols
+2026-10-21T14:51:19.2981944Z   notes             Read, write, or export ticker notes
+2026-10-21T14:51:19.2982303Z   alerts            List, add, and remove price alerts and alerts before
+2026-10-21T14:51:19.2982642Z                     earnings, CPI and FOMC
+2026-10-21T14:51:19.2982824Z 
+2026-10-21T14:51:19.2982898Z Plugins
+2026-10-21T14:51:19.2983112Z   plugins           List plugins installed from GitHub
+2026-10-21T14:51:19.2983420Z   install           Install a plugin from GitHub
+2026-10-21T14:51:19.2983750Z   update            Update installed plugins, or one by name
+2026-10-21T14:51:19.2984083Z   remove            Remove an installed plugin
+2026-10-21T14:51:19.2984427Z   plugin            Inspect, turn on or off, link, or check any plugin
+2026-10-21T14:51:19.2984677Z 
+2026-10-21T14:51:19.2984740Z App
+2026-10-21T14:51:19.2984969Z   launch-ui         Open the terminal UI, like plain gloomberb
+2026-10-21T14:51:19.2985374Z   api               List, inspect, call, or subscribe to plugin capabilities
+2026-10-21T14:51:19.2986038Z   remote            Drive a running gloomberb app through its remote API
+2026-10-21T14:51:19.2986904Z   version           Print the version, runtime, and data folder
+2026-10-21T14:51:19.2987317Z   doctor            Check that config, cache, plugins, and capabilities load
+2026-10-21T14:51:19.2987941Z   config            Show or change settings and keybindings
+2026-10-21T14:51:19.2988528Z   cache             Show the size of cached market data, or clear it
+2026-10-21T14:51:19.2989165Z   provider          List data sources and the operations each one serves
+2026-10-21T14:51:19.2989715Z   layout            List saved layouts
+2026-10-21T14:51:19.2990483Z   pane              List panes and templates with the plugin that owns each
+2026-10-21T14:51:19.2990921Z 
+2026-10-21T14:51:19.2991048Z Global options
+2026-10-21T14:51:19.2991387Z   --json                Print the full result as JSON
+2026-10-21T14:51:19.2991975Z   --csv                 Print rows as CSV under the columns the text shows; fn
+2026-10-21T14:51:19.2992654Z                         reports and fundamentals put each table under # section:
+2026-10-21T14:51:19.2993215Z                         and end with # source lines
+2026-10-21T14:51:19.2993713Z   --ndjson              Print one JSON object per table row
+2026-10-21T14:51:19.2994296Z   --limit <n>           Show at most n rows, the first n as printed
+2026-10-21T14:51:19.2994953Z   --tail <n>            Show the newest n rows of a dated series (history, fred,
+2026-10-21T14:51:19.2995630Z                         econ) in their printed order, or the last n of another
+2026-10-21T14:51:19.2996155Z                         list
+2026-10-21T14:51:19.2996627Z   --refresh             Fetch fresh data instead of reading the cache
+2026-10-21T14:51:19.2997334Z   --dry-run             Preview config, cache, notes, alerts, plugin on/off, and
+2026-10-21T14:51:19.2997951Z                         remote changes without saving
+2026-10-21T14:51:19.2998537Z   -q, --quiet           Print no results or errors in text mode, for commands
+2026-10-21T14:51:19.2999112Z                         that print results
+2026-10-21T14:51:19.2999683Z   --color, --no-color   Force or turn off colors (NO_COLOR=1 also turns them
+2026-10-21T14:51:19.3000251Z                         off)
+2026-10-21T14:51:19.3000727Z   --width <n>           Fit tables to n columns (default: the terminal width;
+2026-10-21T14:51:19.3001408Z                         piped output is not fitted). shot takes its own --width
+2026-10-21T14:51:19.3001943Z                         in pixels
+2026-10-21T14:51:19.3002191Z 
+2026-10-21T14:51:19.3002299Z Exit codes
+2026-10-21T14:51:19.3002550Z   0   Success
+2026-10-21T14:51:19.3003023Z   1   Failed: bad input, no data found or a failed check. fn exits 0 on partial
+2026-10-21T14:51:19.3003741Z       data with warnings; --json ok is false exactly when this is 1
+2026-10-21T14:51:19.3004387Z   2   shot --strict saved an image of a pane with no usable data
+2026-10-21T14:51:20.3899366Z caller-config: exit 0
+2026-10-21T14:51:21.4654818Z native: exit 0
+2026-10-21T14:51:22.6956511Z runtime: exit 0
+2026-10-21T14:51:23.6072871Z plugin-host: exit 0
+2026-10-21T14:51:24.5409555Z archive: exit 0
+2026-10-21T14:51:25.4036413Z help: exit 0
+2026-10-21T14:51:26.6195784Z invalid-command: exit 1
+2026-10-21T14:51:53.3931873Z shot-docs: exit 0
+2026-10-21T14:51:58.7005284Z fn-docs: exit 0
+2026-10-21T14:52:02.8176159Z fn-diag: exit 1
+2026-10-21T14:52:02.8193082Z Desktop CLI verification passed. Evidence: D:\a\gloomberb\gloomberb\artifacts\windows-cli-verification
+2026-10-21T14:52:41.1843747Z Main window close glyph padding: top=11 right=11 delta=0
+2026-10-21T14:52:41.1864999Z Detached pop-out close glyph padding: top=11 right=11 delta=0
+2026-10-21T14:52:47.7953140Z ##[group]Run actions/upload-artifact@v4
+2026-10-21T14:52:47.7953506Z with:
+2026-10-21T14:52:47.7953774Z   name: windows-x64-desktop-cli-verification
+2026-10-21T14:52:47.7954130Z   path: artifacts/windows-cli-verification
+2026-10-21T14:52:47.7955462Z   if-no-files-found: warn
+2026-10-21T14:52:47.7955705Z   compression-level: 6
+2026-10-21T14:52:47.7955916Z   overwrite: false
+2026-10-21T14:52:47.7956134Z   include-hidden-files: false
+2026-10-21T14:52:47.7956367Z ##[endgroup]
+2026-10-21T14:52:47.9956576Z (node:4772) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-21T14:52:47.9957608Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-21T14:52:48.0115403Z With the provided path, there will be 23 files uploaded
+2026-10-21T14:52:48.0121825Z Artifact name is valid!
+2026-10-21T14:52:48.0123586Z Root directory input is valid!
+2026-10-21T14:52:48.2712682Z Beginning upload of artifact content to blob storage
+2026-10-21T14:52:48.3499037Z (node:4772) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-10-21T14:52:48.4208903Z Uploaded bytes 343979
+2026-10-21T14:52:48.4372230Z Finished uploading artifact content to blob storage!
+2026-10-21T14:52:48.4374170Z SHA256 digest of uploaded artifact zip is aa649fe2f2417b3e02fa9b021c900c95de79dfaa26fee88dddd5e1bef4412277
+2026-10-21T14:52:48.4376523Z Finalizing artifact upload
+2026-10-21T14:52:48.6598112Z Artifact windows-x64-desktop-cli-verification.zip successfully finalized. Artifact ID 12353834162
+2026-10-21T14:52:48.6599974Z Artifact windows-x64-desktop-cli-verification has been successfully uploaded! Final size is 343979 bytes. Artifact ID is 12353834162
+2026-10-21T14:52:48.6609654Z Artifact download URL: https://github.com/gloom-sh/gloomberb/actions/runs/39618608868/artifacts/12353834162
+2026-10-21T14:52:48.6991485Z Post job cleanup.
+2026-10-21T14:52:48.6995883Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__b9c6019b-0eba-4145-8332-92b66043e52f.__oven-sh_setup-bun]
+2026-10-21T14:52:48.7219188Z Post job cleanup.
+2026-10-21T14:52:48.9585612Z ##[end-action id=__b9c6019b-0eba-4145-8332-92b66043e52f.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=258]
+2026-10-21T14:52:48.9800335Z Post job cleanup.
+2026-10-21T14:52:49.1940320Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-21T14:52:49.2325197Z git version 2.56.0.windows.2
+2026-10-21T14:52:49.2402049Z Temporarily overriding HOME='D:\a\_temp\1bf6e2d1-ca5a-4ef7-a86f-8c733237a37b' before making global git config changes
+2026-10-21T14:52:49.2403188Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:52:49.2414497Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\gloomberb\gloomberb
+2026-10-21T14:52:49.2851944Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:52:49.3319840Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-21T14:52:49.9815005Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:52:50.0228080Z http.https://github.com/.extraheader
+2026-10-21T14:52:50.0313875Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T14:52:50.0734214Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-21T14:52:50.6836695Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:52:50.7268714Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-21T14:52:51.3642132Z Cleaning up orphan processes
+2026-10-21T14:52:51.4519307Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

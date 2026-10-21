@@ -1,0 +1,211 @@
+{
+  "run": 39618608868,
+  "attempt": 1,
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "allJobsSuccess": true,
+  "allSourceCheckoutsMatchSubmittedHead": true,
+  "jobs": [
+    {
+      "job": "desktop",
+      "log": "ci-39618608868-job-119285774249.log",
+      "sha256": "719df22d3427c8f108dbe3806b983d46ddb4a511f39d4ab4e9494e1ae416668d",
+      "checkoutShas": [
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      ],
+      "tests": [],
+      "allSteps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T14:39:44Z",
+          "completed_at": "2026-10-21T14:39:44Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T14:39:44Z",
+          "completed_at": "2026-10-21T14:39:55Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T14:39:55Z",
+          "completed_at": "2026-10-21T14:40:48Z"
+        },
+        {
+          "name": "Test Windows verification diagnostics",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T14:40:48Z",
+          "completed_at": "2026-10-21T14:40:54Z"
+        },
+        {
+          "name": "Build Windows desktop package",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T14:40:54Z",
+          "completed_at": "2026-10-21T14:44:44Z"
+        },
+        {
+          "name": "Install Inno Setup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T14:44:44Z",
+          "completed_at": "2026-10-21T14:44:50Z"
+        },
+        {
+          "name": "Build Windows installer",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T14:44:50Z",
+          "completed_at": "2026-10-21T14:50:36Z"
+        },
+        {
+          "name": "Verify Windows desktop artifacts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-21T14:50:36Z",
+          "completed_at": "2026-10-21T14:52:47Z"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-21T14:52:47Z",
+          "completed_at": "2026-10-21T14:52:48Z"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 10,
+          "started_at": "2026-10-21T14:52:48Z",
+          "completed_at": "2026-10-21T14:52:48Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-21T14:52:48Z",
+          "completed_at": "2026-10-21T14:52:48Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-10-21T14:52:48Z",
+          "completed_at": "2026-10-21T14:52:51Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-21T14:52:51Z",
+          "completed_at": "2026-10-21T14:52:51Z"
+        }
+      ]
+    },
+    {
+      "job": "cli",
+      "log": "ci-39618608868-job-119285774895.log",
+      "sha256": "1e59849592e898d64174c78f9cbee885faebfcbee110b92c478b16a8dec09a5a",
+      "checkoutShas": [
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      ],
+      "tests": [
+        "2026-10-21T14:43:59.1769191Z  87 pass",
+        "2026-10-21T14:43:59.1769529Z  0 fail",
+        "2026-10-21T14:43:59.1769992Z Ran 87 tests across 3 files. [1.72s]"
+      ],
+      "allSteps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T14:42:46Z",
+          "completed_at": "2026-10-21T14:42:48Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T14:42:49Z",
+          "completed_at": "2026-10-21T14:43:00Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T14:43:00Z",
+          "completed_at": "2026-10-21T14:43:57Z"
+        },
+        {
+          "name": "Test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T14:43:57Z",
+          "completed_at": "2026-10-21T14:43:59Z"
+        },
+        {
+          "name": "Build standalone CLI",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T14:43:59Z",
+          "completed_at": "2026-10-21T14:44:18Z"
+        },
+        {
+          "name": "Verify standalone CLI artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T14:44:18Z",
+          "completed_at": "2026-10-21T14:44:18Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-21T14:44:18Z",
+          "completed_at": "2026-10-21T14:44:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-21T14:44:19Z",
+          "completed_at": "2026-10-21T14:44:21Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-21T14:44:21Z",
+          "completed_at": "2026-10-21T14:44:21Z"
+        }
+      ]
+    }
+  ]
+}

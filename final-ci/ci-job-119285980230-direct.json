@@ -1,0 +1,143 @@
+{
+  "observedAt": "2026-10-21T16:30:49.578720+00:00",
+  "job": {
+    "id": 119285980230,
+    "run_id": 39618670567,
+    "workflow_name": "UI benchmark",
+    "head_branch": "fix/glo-1165-plugin-removal",
+    "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39618670567",
+    "run_attempt": 1,
+    "node_id": "CR_kwDORwA07s8AAAAbxf-cRg",
+    "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119285980230",
+    "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39618670567/job/119285980230",
+    "status": "in_progress",
+    "conclusion": null,
+    "created_at": "2026-10-21T14:38:54Z",
+    "started_at": "2026-10-21T16:03:42Z",
+    "completed_at": null,
+    "name": "Picture base and head, shard 3 of 4",
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-21T16:03:43Z",
+        "completed_at": "2026-10-21T16:03:44Z"
+      },
+      {
+        "name": "Run actions/checkout@v4",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-21T16:03:44Z",
+        "completed_at": "2026-10-21T16:03:56Z"
+      },
+      {
+        "name": "Run ./.github/actions/setup-bun",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-21T16:03:56Z",
+        "completed_at": "2026-10-21T16:04:00Z"
+      },
+      {
+        "name": "Install ImageMagick",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 4,
+        "started_at": "2026-10-21T16:04:00Z",
+        "completed_at": "2026-10-21T16:04:15Z"
+      },
+      {
+        "name": "Read the pinned Chrome version and this week",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-21T16:04:15Z",
+        "completed_at": "2026-10-21T16:04:15Z"
+      },
+      {
+        "name": "Run actions/cache@v4",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 6,
+        "started_at": "2026-10-21T16:04:15Z",
+        "completed_at": "2026-10-21T16:04:18Z"
+      },
+      {
+        "name": "Run actions/cache@v4",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 7,
+        "started_at": "2026-10-21T16:04:18Z",
+        "completed_at": "2026-10-21T16:04:21Z"
+      },
+      {
+        "name": "Restore the data snapshot",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-21T16:04:21Z",
+        "completed_at": "2026-10-21T16:04:22Z"
+      },
+      {
+        "name": "Picture this shard's views on the base and on the head",
+        "status": "in_progress",
+        "conclusion": null,
+        "number": 9,
+        "started_at": "2026-10-21T16:04:22Z",
+        "completed_at": null
+      },
+      {
+        "name": "Run actions/upload-artifact@v4",
+        "status": "pending",
+        "conclusion": null,
+        "number": 10,
+        "started_at": null,
+        "completed_at": null
+      },
+      {
+        "name": "Post Run actions/cache@v4",
+        "status": "pending",
+        "conclusion": null,
+        "number": 17,
+        "started_at": null,
+        "completed_at": null
+      },
+      {
+        "name": "Post Run actions/cache@v4",
+        "status": "pending",
+        "conclusion": null,
+        "number": 18,
+        "started_at": null,
+        "completed_at": null
+      },
+      {
+        "name": "Post Run ./.github/actions/setup-bun",
+        "status": "pending",
+        "conclusion": null,
+        "number": 19,
+        "started_at": null,
+        "completed_at": null
+      },
+      {
+        "name": "Post Run actions/checkout@v4",
+        "status": "pending",
+        "conclusion": null,
+        "number": 20,
+        "started_at": null,
+        "completed_at": null
+      }
+    ],
+    "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119285980230",
+    "labels": [
+      "ubuntu-latest"
+    ],
+    "runner_id": 1000024683,
+    "runner_name": "GitHub Actions 1000024683",
+    "runner_group_id": 0,
+    "runner_group_name": "GitHub Actions"
+  }
+}

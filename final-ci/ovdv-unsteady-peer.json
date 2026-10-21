@@ -1,0 +1,662 @@
+{
+  "reviewedAt": "2026-10-21T16:42:49.318083+00:00",
+  "reviewer": "/root/cli_replay",
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "run": 39618670567,
+  "view": "OVDV--root",
+  "officialUnsteadyClassificationPreserved": true,
+  "retainedArtifact": {
+    "name": "ui-benchmark-shard-4",
+    "id": 12362440055,
+    "path": "ci-ui-benchmark/ui-benchmark-shard-4-12362440055.zip",
+    "sha256": "0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183",
+    "githubDigest": "sha256:0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183",
+    "sides": {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "3/4",
+      "offline": true
+    },
+    "metadataPath": "ovdv-unsteady-artifact-metadata.json",
+    "metadataSha256": "88dea374e06973e7aa5a269826461ad7bf7584e6576849f79a74f15d8303ccaf"
+  },
+  "rawInputs": [
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/sides.json",
+      "sha256": "5a40d1e3734db47f3a221559f0780cecb6096362f543d11b71965cffaf79dc1a"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/unsteady.json",
+      "sha256": "6d6173fcd611fb69539b9e547830e3e8bb1e6be97dcd4fc656af9c7f1cfa1818"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/views.jsonl",
+      "sha256": "0935eb93376e1edee9634b434eb6608a8e68f54711a0448f35550567a7e873f3"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/results.jsonl",
+      "sha256": "286190e8d216f48f21f6059d08d796942061d638a993a855dc33c622ee9cc452"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/views.jsonl",
+      "sha256": "5b59c11f38a0ccea658dcde76e59278f818226a52db8218d7b40d73d5ccb2866"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/results.jsonl",
+      "sha256": "c1156710e718e4dab19f09627b3983a28a9609e88a5ac371210c396fe645935e"
+    }
+  ],
+  "captures": [
+    {
+      "side": "before",
+      "width": 640,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/640/OVDV--root.jpg",
+      "imageSha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+      "recordCanonicalSha256": "f59100ee9e79aad1909bc054a057057e417f54f102bbe3ae06cc9f46c65c8cfb",
+      "actualPane": "vol-surface",
+      "measureText": "Expiry\n2026-11-13\nDate\nLive\nSpot 342.62 USD \u00b7 2026-10-16\nIV30\n28.2%\n10-16 close\nIV rank\n69\nIV pctl\n79\n30%\nIMPLIED VOL\n10P\n25P\nATM\n25C\n10C\nDELTA\nEXPIRY\nATM\n27.5%",
+      "footer": [
+        "as of 19:59:59 UTC"
+      ]
+    },
+    {
+      "side": "before",
+      "width": 1280,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/1280/OVDV--root.jpg",
+      "imageSha256": "88b2e2eb5f706d82e1513ffc1932bfce1a2c1805116b460650646350402650d4",
+      "recordCanonicalSha256": "61006391021771eab7d904d6ac5108d425d2784267616038ac3b2ef17a537f6a",
+      "actualPane": "vol-surface",
+      "measureText": "Expiry\n2026-11-13\nDate\nLive\nSpot 342.62 USD \u00b7 2026-10-16\nIV30\n28.2%\n10-16 close\nIV rank\n69\nIV pctl\n79\n30%\nIMPLIED VOL\n10P\n25P\nATM\n25C\n10C\nDELTA\nEXPIRY\nATM\n30%\n2",
+      "footer": [
+        "as of 19:59:59 UTC"
+      ]
+    },
+    {
+      "side": "after",
+      "width": 640,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/640/OVDV--root.jpg",
+      "imageSha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+      "recordCanonicalSha256": "f59100ee9e79aad1909bc054a057057e417f54f102bbe3ae06cc9f46c65c8cfb",
+      "actualPane": "vol-surface",
+      "measureText": "Expiry\n2026-11-13\nDate\nLive\nSpot 342.62 USD \u00b7 2026-10-16\nIV30\n28.2%\n10-16 close\nIV rank\n69\nIV pctl\n79\n30%\nIMPLIED VOL\n10P\n25P\nATM\n25C\n10C\nDELTA\nEXPIRY\nATM\n27.5%",
+      "footer": [
+        "as of 19:59:59 UTC"
+      ]
+    },
+    {
+      "side": "after",
+      "width": 1280,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/1280/OVDV--root.jpg",
+      "imageSha256": "d3e98c82182268a06657d86cf4a3afe72e48e39ea8ed6ea38eed090848dab2d2",
+      "recordCanonicalSha256": "61006391021771eab7d904d6ac5108d425d2784267616038ac3b2ef17a537f6a",
+      "actualPane": "vol-surface",
+      "measureText": "Expiry\n2026-11-13\nDate\nLive\nSpot 342.62 USD \u00b7 2026-10-16\nIV30\n28.2%\n10-16 close\nIV rank\n69\nIV pctl\n79\n30%\nIMPLIED VOL\n10P\n25P\nATM\n25C\n10C\nDELTA\nEXPIRY\nATM\n30%\n2",
+      "footer": [
+        "as of 19:59:59 UTC"
+      ]
+    }
+  ],
+  "sourceObjectsUnchanged": [
+    {
+      "path": "src/plugins/builtin/vol-surface",
+      "objects": {
+        "base": "b8d094020acd561c8e05d13b7c710c102129b38f",
+        "head": "b8d094020acd561c8e05d13b7c710c102129b38f"
+      }
+    },
+    {
+      "path": "src/plugins/builtin/options",
+      "objects": {
+        "base": "19ee0058993c060da6763fae590d5a71c9a99377",
+        "head": "19ee0058993c060da6763fae590d5a71c9a99377"
+      }
+    },
+    {
+      "path": "src/plugins/builtin/shared/volatility",
+      "objects": {
+        "base": "d6628ebb4aebea9ef14847afd4fb29396dbc93c3",
+        "head": "d6628ebb4aebea9ef14847afd4fb29396dbc93c3"
+      }
+    },
+    {
+      "path": "src/renderers/dom",
+      "objects": {
+        "base": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580",
+        "head": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580"
+      }
+    },
+    {
+      "path": "src/renderers/browser",
+      "objects": {
+        "base": "464ea25cf4fdd6789738ed978779388178778f99",
+        "head": "464ea25cf4fdd6789738ed978779388178778f99"
+      }
+    },
+    {
+      "path": "src/components",
+      "objects": {
+        "base": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07",
+        "head": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07"
+      }
+    },
+    {
+      "path": "src/ui",
+      "objects": {
+        "base": "ece4250a898d4aca57d4604c384e7ed80c6de548",
+        "head": "ece4250a898d4aca57d4604c384e7ed80c6de548"
+      }
+    },
+    {
+      "path": "src/theme",
+      "objects": {
+        "base": "c19b9c6e9ff4794a511a41ac0f48142436fe4451",
+        "head": "c19b9c6e9ff4794a511a41ac0f48142436fe4451"
+      }
+    },
+    {
+      "path": "src/sources",
+      "objects": {
+        "base": "49e5210ed8e12b2c8b3af8457fbdceb7d1d1fdeb",
+        "head": "49e5210ed8e12b2c8b3af8457fbdceb7d1d1fdeb"
+      }
+    },
+    {
+      "path": "src/market-data",
+      "objects": {
+        "base": "7037657c5f3c81118ad52eb012a67e33bb19d9b4",
+        "head": "7037657c5f3c81118ad52eb012a67e33bb19d9b4"
+      }
+    },
+    {
+      "path": "scripts/pane-chrome",
+      "objects": {
+        "base": "12a82fc3d360736e08e541d8802497976a94c7f0",
+        "head": "12a82fc3d360736e08e541d8802497976a94c7f0"
+      }
+    }
+  ],
+  "sourceLineEvidence": [
+    {
+      "path": "scripts/pane-chrome/ui-benchmark.ts",
+      "blob": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436",
+      "selectedLines": [
+        {
+          "line": 98,
+          "text": "  // A view that moved is pictured once more on each side: if two pictures of the same code"
+        },
+        {
+          "line": 99,
+          "text": "  // differ, the view is unsteady (a 3D surface's labels, a value read from the clock), not changed."
+        },
+        {
+          "line": 100,
+          "text": "  const moving = (await changes(join(options.out, \"before\"), join(options.out, \"after\"))).filter(moved);"
+        },
+        {
+          "line": 101,
+          "text": "  const unsteady = new Set<string>();"
+        },
+        {
+          "line": 102,
+          "text": "  if (moving.length) {"
+        },
+        {
+          "line": 103,
+          "text": "    const only = [...new Set(moving.map((change) => change.view.split(\"--\")[0]!))].join(\",\");"
+        },
+        {
+          "line": 104,
+          "text": "    for (const [side, root] of [[\"before\", base], [\"after\", head]] as const) {"
+        },
+        {
+          "line": 105,
+          "text": "      audit(`${side}-again`, root, { ...options, only });"
+        },
+        {
+          "line": 106,
+          "text": "      const twice = new Map((await changes(join(options.out, side), join(options.out, `${side}-again`))).map((change) => [change.view, change]));"
+        },
+        {
+          "line": 107,
+          "text": "      for (const change of moving) {"
+        },
+        {
+          "line": 108,
+          "text": "        const second = twice.get(change.view);"
+        },
+        {
+          "line": 109,
+          "text": "        // Drawn differently, or opened only once of the two times (a detail Enter opened while the root was still moving)."
+        },
+        {
+          "line": 110,
+          "text": "        if (second && moved(second)) unsteady.add(change.view);"
+        },
+        {
+          "line": 111,
+          "text": "      }"
+        },
+        {
+          "line": 112,
+          "text": "    }"
+        },
+        {
+          "line": 113,
+          "text": "  }"
+        },
+        {
+          "line": 114,
+          "text": "  // Written last: a shard with this file finished."
+        },
+        {
+          "line": 115,
+          "text": "  await Bun.write(join(options.out, \"unsteady.json\"), JSON.stringify([...unsteady]));"
+        },
+        {
+          "line": 116,
+          "text": "  // The builds are large and each side's results and pictures are what the report reads."
+        },
+        {
+          "line": 117,
+          "text": "  await rm(join(options.out, \"web-before\"), { recursive: true, force: true });"
+        },
+        {
+          "line": 118,
+          "text": "  await rm(join(options.out, \"web-after\"), { recursive: true, force: true });"
+        },
+        {
+          "line": 119,
+          "text": "  await rm(join(options.out, \"before-again\"), { recursive: true, force: true });"
+        },
+        {
+          "line": 120,
+          "text": "  await rm(join(options.out, \"after-again\"), { recursive: true, force: true });"
+        }
+      ]
+    },
+    {
+      "path": "scripts/pane-chrome/web-app.ts",
+      "blob": "85c9080554c89f86e7024fb49912a1f6a44874de",
+      "selectedLines": [
+        {
+          "line": 187,
+          "text": "  await cdp.send(\"Page.navigate\", { url });"
+        },
+        {
+          "line": 188,
+          "text": "  await loaded;"
+        },
+        {
+          "line": 189,
+          "text": "  await cdp.send(\"Page.removeScriptToEvaluateOnNewDocument\", { identifier });"
+        },
+        {
+          "line": 190,
+          "text": "}"
+        },
+        {
+          "line": 191,
+          "text": ""
+        },
+        {
+          "line": 192,
+          "text": "/** Until nothing in `scope` has changed for `quietMs`, at most `maxMs`. */"
+        },
+        {
+          "line": 193,
+          "text": "export async function settle(cdp: Cdp, scope: string, quietMs = 800, maxMs = 9_000): Promise<void> {"
+        },
+        {
+          "line": 194,
+          "text": "  await evaluate(cdp, `(() => { window.__changed = performance.now(); window.__settle?.disconnect(); const root = document.querySelector(${JSON.stringify(scope)}) ?? document.body; window.__settle = new MutationObserver(() => { window.__changed = performance.now(); }); window.__settle.observe(root, { subtree: true, childList: true, attributes: true, characterData: true }); })()`);"
+        },
+        {
+          "line": 195,
+          "text": "  const until = Date.now() + maxMs;"
+        },
+        {
+          "line": 196,
+          "text": "  while (Date.now() < until) {"
+        },
+        {
+          "line": 197,
+          "text": "    await sleep(200);"
+        },
+        {
+          "line": 198,
+          "text": "    if (await evaluate<number>(cdp, \"performance.now() - window.__changed\") >= quietMs) return;"
+        }
+      ]
+    },
+    {
+      "path": "scripts/pane-chrome/ui-audit.ts",
+      "blob": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+      "selectedLines": [
+        {
+          "line": 403,
+          "text": "        const rootView: AuditView = { ...base, id: `${entry.token}--root`, view: \"root\" };"
+        },
+        {
+          "line": 404,
+          "text": "        if (!await record(rootView, id, width, theme, measure)) continue;"
+        },
+        {
+          "line": 405,
+          "text": "        views.set(rootView.id, rootView);"
+        },
+        {
+          "line": 406,
+          "text": "        // The detail Enter opens from the root."
+        },
+        {
+          "line": 407,
+          "text": "        const before = await paneText();"
+        },
+        {
+          "line": 408,
+          "text": "        await key(cdp, \"Enter\", \"Enter\", 13);"
+        },
+        {
+          "line": 409,
+          "text": "        await settle(cdp, scope, 700, 6_000);"
+        },
+        {
+          "line": 410,
+          "text": "        if (await paneText() !== before) {"
+        },
+        {
+          "line": 411,
+          "text": "          const detail: AuditView = { ...base, id: `${entry.token}--detail`, view: \"detail\" };"
+        },
+        {
+          "line": 412,
+          "text": "          await record(detail, id, width, theme, measure);"
+        },
+        {
+          "line": 413,
+          "text": "          views.set(detail.id, detail);"
+        },
+        {
+          "line": 414,
+          "text": "        }"
+        }
+      ]
+    },
+    {
+      "path": "src/plugins/builtin/vol-surface/pane.tsx",
+      "blob": "1c31a45760cc6e307ab2c8fdd9c7aacdd5158625",
+      "selectedLines": [
+        {
+          "line": 303,
+          "text": "      Math.abs(value - surfaceCoordinate) < Math.abs(values[best]! - surfaceCoordinate) ? i : best, 0);"
+        },
+        {
+          "line": 304,
+          "text": "    const next = values[Math.max(0, Math.min(values.length - 1, index + direction))];"
+        },
+        {
+          "line": 305,
+          "text": "    if (next != null) setSurfaceCoordinate(next);"
+        },
+        {
+          "line": 306,
+          "text": "  };"
+        },
+        {
+          "line": 307,
+          "text": "  const zoomCamera = (factor: number) => setCamera((value) => zoomSurface3DCamera(value, factor));"
+        },
+        {
+          "line": 308,
+          "text": "  const handleKey = (event: DataTableKeyEvent): boolean => {"
+        },
+        {
+          "line": 309,
+          "text": "    if (event.ctrl || event.meta || event.alt) return false;"
+        },
+        {
+          "line": 310,
+          "text": "    const key = event.name;"
+        },
+        {
+          "line": 311,
+          "text": "    // History steps with < and > (footer hints); \".\" stays the pane menu."
+        },
+        {
+          "line": 312,
+          "text": "    if (surface3d && event.shift && (key === \"left\" || key === \"right\")) stepSurfacePoint(key === \"left\" ? -1 : 1);"
+        },
+        {
+          "line": 313,
+          "text": "    else if (key === \"r\") { void active.reload(); void dates.reload(); }"
+        },
+        {
+          "line": 314,
+          "text": "    else if (key === \"v\") cycleTab();"
+        },
+        {
+          "line": 315,
+          "text": "    else if (key === \"t\") toggleHistory();"
+        },
+        {
+          "line": 316,
+          "text": "    else if (key === \"p\") openPricer();"
+        },
+        {
+          "line": 317,
+          "text": "    else if (key === \"m\" && canLoadMore) loadMore();"
+        },
+        {
+          "line": 318,
+          "text": "    else if (key === \"[\") nextExpiry(-1);"
+        },
+        {
+          "line": 319,
+          "text": "    else if (key === \"]\") nextExpiry(1);"
+        },
+        {
+          "line": 320,
+          "text": "    else if (key === \"c\" && snapshot) openChain();"
+        },
+        {
+          "line": 321,
+          "text": "    else if (key === \"d\" && surface3d) setSurfaceAxis(deltaSurface ? \"moneyness\" : \"delta\");"
+        },
+        {
+          "line": 322,
+          "text": "    else if (activeTab === \"table\" && (key === \"h\" || key === \"l\")) stepTab(key === \"h\" ? -1 : 1);"
+        },
+        {
+          "line": 323,
+          "text": "    else if (surface3d && [\"left\", \"right\", \"up\", \"down\", \"h\", \"j\", \"k\", \"l\", \"+\", \"=\", \"-\", \"0\"].includes(key ?? \"\")) {"
+        },
+        {
+          "line": 324,
+          "text": "      setCamera((value) => key === \"0\" ? DEFAULT_SURFACE3D_CAMERA : [\"+\", \"=\", \"-\"].includes(key!)"
+        },
+        {
+          "line": 325,
+          "text": "        ? zoomSurface3DCamera(value, key === \"-\" ? 1 / 1.08 : 1.08)"
+        },
+        {
+          "line": 326,
+          "text": "        : rotateSurface3DCamera(value, [\"left\", \"h\"].includes(key!) ? -0.1 : [\"right\", \"l\"].includes(key!) ? 0.1 : 0,"
+        },
+        {
+          "line": 327,
+          "text": "          [\"up\", \"k\"].includes(key!) ? 0.07 : [\"down\", \"j\"].includes(key!) ? -0.07 : 0));"
+        },
+        {
+          "line": 328,
+          "text": "    } else if ((activeTab === \"table\" || activeTab === \"surface\" && !bitmapAvailable) && [\"left\", \"right\"].includes(key ?? \"\") && selectedRow) {"
+        },
+        {
+          "line": 329,
+          "text": "      const next = selectedRow.cells[Math.max(0, Math.min(selectedRow.cells.length - 1, cellIndex + (key === \"right\" ? 1 : -1)))];"
+        },
+        {
+          "line": 330,
+          "text": "      if (next) setCoordinate(next.coordinate);"
+        },
+        {
+          "line": 331,
+          "text": "    } else return false;"
+        }
+      ]
+    }
+  ],
+  "originalBodyComparisons": [
+    {
+      "width": 640,
+      "bodyPixels": 0.0,
+      "bodyFraction": 0.0,
+      "rawBytesIdentical": true
+    },
+    {
+      "width": 1280,
+      "bodyPixels": 780.0,
+      "bodyFraction": 0.0008510824022346368,
+      "rawBytesIdentical": false
+    }
+  ],
+  "captureAndRetryLog": {
+    "path": "ci-39618670567-job-119285980154.log",
+    "sha256": "5315dad9c82bd6089ff984e57463e7083c8fc393f4cb5ecffe26d6c9b60d45ae",
+    "selectedLines": [
+      {
+        "line": 782,
+        "text": "2026-10-21T16:18:21.6489399Z OVDV: 6 views in 56s"
+      },
+      {
+        "line": 825,
+        "text": "2026-10-21T16:31:56.0828560Z OVDV: 6 views in 56s"
+      },
+      {
+        "line": 843,
+        "text": "2026-10-21T16:37:57.7188157Z OVDV: 7 views in 52s"
+      },
+      {
+        "line": 844,
+        "text": "2026-10-21T16:38:55.2493554Z OVDV: 7 views in 55s"
+      }
+    ],
+    "inferredOrder": [
+      "original baseline",
+      "original head",
+      "baseline same-code retry",
+      "head same-code retry"
+    ]
+  },
+  "visualInspection": {
+    "path": "ovdv-visual-peer.json",
+    "sha256": "a07f33ac8e7533c71be5d40ad6cfd1f7cc318cd9d90ae8825c17ad82c34698b7",
+    "review": {
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "checkedAt": "2026-10-21T16:42:06.376085+00:00",
+      "scope": "Manual visual peer review of four retained original OVDV root images and two derived body diff maps only. The other reviewer owns ZIP/source/log verification and final acceptance.",
+      "allFourOriginalsViewed": true,
+      "allTwoDiffMapsViewed": true,
+      "viewedStates": [
+        {
+          "side": "before",
+          "width": 640,
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/640/OVDV--root.jpg",
+          "sha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+          "viewed": true,
+          "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+        },
+        {
+          "side": "before",
+          "width": 1280,
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/1280/OVDV--root.jpg",
+          "sha256": "88b2e2eb5f706d82e1513ffc1932bfce1a2c1805116b460650646350402650d4",
+          "viewed": true,
+          "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+        },
+        {
+          "side": "after",
+          "width": 640,
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/640/OVDV--root.jpg",
+          "sha256": "c98d013bbe15a386a0ccad11dcc487a61ddf5fa6f5b5f0262805384056d77c95",
+          "viewed": true,
+          "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+        },
+        {
+          "side": "after",
+          "width": 1280,
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/1280/OVDV--root.jpg",
+          "sha256": "d3e98c82182268a06657d86cf4a3afe72e48e39ea8ed6ea38eed090848dab2d2",
+          "viewed": true,
+          "visibleState": "OVDV AAPL 3D surface; expiry2026-11-13; Date Live; spot342.62USD; as of19:59:59UTC footer; no visible loading counter or modal; settled coloured mesh with27.5% selected point."
+        }
+      ],
+      "comparisons": [
+        {
+          "width": 640,
+          "differingBodyPixels": 0,
+          "bodyFraction": 0.0,
+          "crop": {
+            "x": 0,
+            "y": 42,
+            "width": 640,
+            "height": 716
+          },
+          "fuzz": "2%",
+          "diffMap": "ovdv-visual-peer/640-body-diff.png",
+          "diffMapSha256": "4798c932914a073f5fa3abffef0c76b6b7fa642b70109bad28e41893c3b76848",
+          "viewed": true,
+          "observation": "No marked body differences at benchmark fuzz."
+        },
+        {
+          "width": 1280,
+          "differingBodyPixels": 780,
+          "bodyFraction": 0.0008510824022346368,
+          "crop": {
+            "x": 0,
+            "y": 42,
+            "width": 1280,
+            "height": 716
+          },
+          "fuzz": "2%",
+          "diffMap": "ovdv-visual-peer/1280-body-diff.png",
+          "diffMapSha256": "eb796b347262ea2f455bb25257718306a3a129b0d9f3ca263d58e516f1fc6148",
+          "viewed": true,
+          "observation": "Marked differences sit around the ATM label and several expiry-axis tick labels (18M,6M,2M,1W vicinity). The mesh, selected-point value, controls and surrounding layout appear unchanged."
+        }
+      ],
+      "noVisibleOriginalPartialLoad": true,
+      "noVisibleOriginalDetailRoute": true,
+      "captureRerun": false,
+      "sourceChanged": false,
+      "rawEvidenceChanged": false,
+      "finalAcceptance": false,
+      "limits": [
+        "Original before/after comparisons are not same-code retry comparisons. This visual review does not infer the missing retry state or exact transient label-placement cause.",
+        "Official unsteady labels and counts remain untouched."
+      ]
+    }
+  },
+  "qualification": "The four original root measurements/images are the settled 3D surface with matching footer dates. At640 the JPEGs are byte-identical; at1280 a780-pixel body difference localizes visually to canvas ATM/expiry labels while the mesh and controls appear unchanged. The precise transient label-placement cause is unproven. The unchanged harness classified OVDV root as unsteady after same-code retries. Identical relevant pane, chart-data, shared-UI, browser-renderer and harness source objects support an existing capture-instability qualification. Preserve the official exclusion; this is not stable before/after comparison coverage.",
+  "preciseCauseProven": false,
+  "limits": [
+    "Retry images/results were deleted before upload. The logs prove two original six-view captures and two seven-view retries; the exact retry differences and extra view cannot be reconstructed.",
+    "Original captures all have complete640/1280 root coverage, with no retained OVDV detail declarations. Do not import the815 partial-load/false-detail observation into this run.",
+    "Replay response bodies and request timelines were not archived; identical source trees do not establish identical snapshot contents or exact timing.",
+    "No claim that all application source is unchanged: this PR changes removal/deactivation and native plugin integration. The listed vol-surface and browser/shared rendering trees are identical.",
+    "No new rendering, tests, source changes or raw-evidence changes were performed."
+  ],
+  "changedSourcePaths": [
+    "PLUGINS.md",
+    "src/app/pane-runtime/plugin-bindings.test.ts",
+    "src/app/pane-runtime/plugin-bindings.ts",
+    "src/plugins/builtin/plugin-marketplace/pane.tsx",
+    "src/plugins/builtin/plugin-marketplace/removal.test.tsx",
+    "src/plugins/marketplace/deactivation.ts",
+    "src/renderers/electrobun/bun/external-plugins.test.ts",
+    "src/renderers/electrobun/bun/external-plugins.ts"
+  ],
+  "acceptsOtherViews": false
+}

@@ -1,0 +1,36 @@
+{
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "jobs": [
+    {
+      "name": "Chat painting in WebKit",
+      "status": "completed",
+      "conclusion": "success",
+      "checkoutShas": [
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      ],
+      "log": "ci-39618613755-job-119285790941.log"
+    },
+    {
+      "name": "Pointer checks",
+      "status": "completed",
+      "conclusion": "success",
+      "checkoutShas": [
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      ],
+      "log": "ci-39618613755-job-119285791269.log"
+    },
+    {
+      "name": "Copy screenshot",
+      "status": "completed",
+      "conclusion": "success",
+      "checkoutShas": [
+        "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+      ],
+      "log": "ci-39618613755-job-119285791419.log"
+    }
+  ],
+  "allIndividualJobsPassed": true,
+  "workflowRollupPending": false,
+  "workflowConclusion": "success",
+  "run": 39618613755
+}

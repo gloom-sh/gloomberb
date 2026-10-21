@@ -1,0 +1,537 @@
+{
+  "reviewedAt": "2026-10-21T16:11:27.308277+00:00",
+  "reviewer": "/root/cli_replay",
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "run": 39618670567,
+  "view": "PERP--tab-history",
+  "officialUnsteadyClassificationPreserved": true,
+  "retainedArtifact": {
+    "name": "ui-benchmark-shard-2",
+    "id": 12357854342,
+    "path": "ci-ui-benchmark/ui-benchmark-shard-2-12357854342.zip",
+    "sha256": "4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64",
+    "githubDigest": "sha256:4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64",
+    "sides": {
+      "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "dirty": false,
+      "shard": "1/4",
+      "offline": true
+    },
+    "metadataPath": "perp-unsteady-artifact-metadata.json",
+    "metadataSha256": "d30ce068e172eea0a911e8b8951ecae0671e0af328d265b6ff0da83da566de65"
+  },
+  "rawInputs": [
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/sides.json",
+      "sha256": "8ad4c1a5755cfebc88c7b100c3d5fb3b925e612791b3e3b7c39d0e040835de47"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/unsteady.json",
+      "sha256": "025979a4ca4d3df305735970c41ddefa2303dcb8abc9d4a5a241f35c6c8a4c12"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/before/views.jsonl",
+      "sha256": "ca057b7dd4fa67aff449db6bdef4e127ee1b80918e7cc154d0f7f405bf372c51"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/before/results.jsonl",
+      "sha256": "6cbcc1d26893033eaa19a6c191e74a92ae5c7082aa6e1beecfe0d47c238e2bc5"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/after/views.jsonl",
+      "sha256": "f61e175c2d0400ca992e7337385106ce666e045f02d9cb54491d2eacbeed53b1"
+    },
+    {
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2/after/results.jsonl",
+      "sha256": "22d837b669215b2a54f03b41f57ea94e47b38aa366520b3fae52964e51004ca0"
+    }
+  ],
+  "captures": [
+    {
+      "side": "before",
+      "width": 640,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/640/PERP--tab-history.jpg",
+      "imageSha256": "314d4a2aac369d9e46a93137518a9ec1c1a275cb7cb6f7460b82c948489deaf9",
+      "recordCanonicalSha256": "9468b82dd628bd2cab204b0d5c6f0349873ff18e0c87b118c7c62f17880f5842",
+      "actualPane": "perps",
+      "measureText": "Series\nFunding\nRange\n7D\nperpetual history unavailable.\nNot in the replay",
+      "gated": false,
+      "historyTabSelected": true
+    },
+    {
+      "side": "before",
+      "width": 1280,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/1280/PERP--tab-history.jpg",
+      "imageSha256": "38bf80a04eeab4991b50db329c56de98b8eebf16d9c761e0a7697e6699dc532c",
+      "recordCanonicalSha256": "e6b0bf118bcbb5b4c35e91d99f3bfeea24cf3d695ee0001013e30b76142e96ec",
+      "actualPane": "perps",
+      "measureText": "Series\nFunding\nRange\n7D\nperpetual history unavailable.\nNot in the replay",
+      "gated": false,
+      "historyTabSelected": true
+    },
+    {
+      "side": "after",
+      "width": 640,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/640/PERP--tab-history.jpg",
+      "imageSha256": "28153a5d1d8e4058928706c6d4ea7a782c121406de134dec3d3456beeab008a3",
+      "recordCanonicalSha256": "2945994b4ab2875f7616836ea524f7b633901eddb653a646d69d3b80d85400c4",
+      "actualPane": "perps",
+      "measureText": "Series\nFunding\nRange\n7D\nFunding / 8h\n+0.0083%\nMark USDT\n82,460.00\nOpen interest USD\n7.75B\nFull history requires Gloom Pro.\nGloom Pro adds Binance BTC history an",
+      "gated": true,
+      "historyTabSelected": true
+    },
+    {
+      "side": "after",
+      "width": 1280,
+      "image": "ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/1280/PERP--tab-history.jpg",
+      "imageSha256": "38bf80a04eeab4991b50db329c56de98b8eebf16d9c761e0a7697e6699dc532c",
+      "recordCanonicalSha256": "d14d6d1229dfa298abf031ae242e05abd4fafb6f2357ce8616ac515b65213d58",
+      "actualPane": "perps",
+      "measureText": "Series\nFunding\nRange\n7D\nperpetual history unavailable.\nNot in the replay",
+      "gated": false,
+      "historyTabSelected": true
+    }
+  ],
+  "originalBodyComparisons": [
+    {
+      "width": 640,
+      "bodyPixels": 28608.0,
+      "bodyFraction": 0.06243016759776536,
+      "rawBytesIdentical": false
+    },
+    {
+      "width": 1280,
+      "bodyPixels": 0.0,
+      "bodyFraction": 0.0,
+      "rawBytesIdentical": true
+    }
+  ],
+  "sourceObjectsUnchanged": [
+    {
+      "path": "src/plugins/builtin/perps",
+      "objects": {
+        "base": "2d19f39bcb76330306a2ee608daa23def69f8bb5",
+        "head": "2d19f39bcb76330306a2ee608daa23def69f8bb5"
+      }
+    },
+    {
+      "path": "src/api-client",
+      "objects": {
+        "base": "d317aaa02f8bb6337298417ec14238903805d772",
+        "head": "d317aaa02f8bb6337298417ec14238903805d772"
+      }
+    },
+    {
+      "path": "src/react/async-resource.ts",
+      "objects": {
+        "base": "12edd5adcb53b9593ea1a2b564a0c324b6fecb41",
+        "head": "12edd5adcb53b9593ea1a2b564a0c324b6fecb41"
+      }
+    },
+    {
+      "path": "src/plugins/builtin/shared/cloud-resource.ts",
+      "objects": {
+        "base": "356f7cb4690f5a1b14a0b3afa1c65327e3649905",
+        "head": "356f7cb4690f5a1b14a0b3afa1c65327e3649905"
+      }
+    },
+    {
+      "path": "src/data",
+      "objects": {
+        "base": "4778875f5b2eb912d497b581ab3b798c7b8b4207",
+        "head": "4778875f5b2eb912d497b581ab3b798c7b8b4207"
+      }
+    },
+    {
+      "path": "src/components",
+      "objects": {
+        "base": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07",
+        "head": "2b353c9fe24b6cf17e08e9e80cf79884796b7c07"
+      }
+    },
+    {
+      "path": "src/renderers/dom",
+      "objects": {
+        "base": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580",
+        "head": "9fe80d0b8e1c66c61122d0fe8c7040bc440a8580"
+      }
+    },
+    {
+      "path": "src/renderers/browser",
+      "objects": {
+        "base": "464ea25cf4fdd6789738ed978779388178778f99",
+        "head": "464ea25cf4fdd6789738ed978779388178778f99"
+      }
+    },
+    {
+      "path": "scripts/pane-chrome",
+      "objects": {
+        "base": "12a82fc3d360736e08e541d8802497976a94c7f0",
+        "head": "12a82fc3d360736e08e541d8802497976a94c7f0"
+      }
+    }
+  ],
+  "sourceLineEvidence": [
+    {
+      "path": "src/plugins/builtin/perps/pane.tsx",
+      "blob": "c198cb163c0a559201e496d18f266426e72d0212",
+      "selectedLines": [
+        {
+          "line": 110,
+          "text": "  const colors = useThemeColors();"
+        },
+        {
+          "line": 111,
+          "text": "  const loader = useCallback((force: boolean) => loadPerpsHistoryForRange(market.marketId, Number(range), accessKey, force), [market.marketId, range, accessKey]);"
+        },
+        {
+          "line": 112,
+          "text": "  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });"
+        },
+        {
+          "line": 113,
+          "text": "  const data = resource.data?.payload;"
+        },
+        {
+          "line": 114,
+          "text": "  const rows = useMemo(() => historyRows(data, metric), [data, metric]);"
+        },
+        {
+          "line": 158,
+          "text": "  const shownColumns = oneBasis ? columns.filter((column) => column.id !== \"basis\") : columns;"
+        },
+        {
+          "line": 159,
+          "text": "  if (data?.locked) return <Box flexDirection=\"column\" flexGrow={1}>"
+        },
+        {
+          "line": 160,
+          "text": "    <StatGrid width={width} items={figures} />"
+        },
+        {
+          "line": 161,
+          "text": "    <Box paddingX={1} paddingTop={1}><EmptyState title=\"Full history requires Gloom Pro.\" message={`Gloom Pro adds ${perpHistoryProText(market, venues)}.`} actions={<UpgradeLabel text=\"Upgrade for full history\" onPress={upgrade} role=\"perps-history-upgrade\" />} /></Box>"
+        },
+        {
+          "line": 162,
+          "text": "  </Box>;"
+        },
+        {
+          "line": 163,
+          "text": "  return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject=\"perpetual history\">"
+        },
+        {
+          "line": 164,
+          "text": "    <DataTableView columns={shownColumns} items={rows} focused={focused} rootWidth={width} rootHeight={height} getItemKey={(row) => row.time} sortColumnId=\"time\" sortDirection=\"asc\""
+        }
+      ]
+    },
+    {
+      "path": "src/plugins/builtin/perps/client.ts",
+      "blob": "ebad6c2373106e98602329fe93114f6701118205",
+      "selectedLines": [
+        {
+          "line": 269,
+          "text": "export const cachedPerpSelection = (market: string, access: string) => cachedCloudResource(perpsMarketCache, `${market}:${access}`, validatePerpsMarket);"
+        },
+        {
+          "line": 270,
+          "text": "export const loadPerpSelection = (market: string, access: string, force = false) => loadCloudResource(perpsMarketCache, `${market}:${access}`, () => fetchPerpSelection(market), { force, validate: validatePerpsMarket });"
+        },
+        {
+          "line": 271,
+          "text": "export const loadPerpsHistoryForRange = (marketId: string, days: number, access: string, force = false) => loadCloudResource(perpsHistoryCache, `${marketId}:${days}:${access}`, () => fetchPerpsHistory({ marketId,"
+        },
+        {
+          "line": 272,
+          "text": "  from: new Date(Date.now() - days * 86_400_000).toISOString(), resolution: \"auto\", limit: 5000 }), { force, validate: (data) => validatePerpsHistory(data, marketId) });"
+        }
+      ]
+    },
+    {
+      "path": "src/api-client/data.ts",
+      "blob": "be249fc61429994a0d3e43611bc1255e6a16408e",
+      "selectedLines": [
+        {
+          "line": 623,
+          "text": "  async getCloudPerpsHistory(query: PerpHistoryQuery): Promise<PerpHistoryPayload> {"
+        },
+        {
+          "line": 624,
+          "text": "    return this.request(`/cloud/perps/history?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);"
+        },
+        {
+          "line": 625,
+          "text": "  }"
+        }
+      ]
+    },
+    {
+      "path": "scripts/pane-chrome/web-app.ts",
+      "blob": "85c9080554c89f86e7024fb49912a1f6a44874de",
+      "selectedLines": [
+        {
+          "line": 28,
+          "text": "function keyOf(text: string): string {"
+        },
+        {
+          "line": 29,
+          "text": "  return new Bun.CryptoHasher(\"sha256\").update(text).digest(\"hex\").slice(0, 40);"
+        },
+        {
+          "line": 30,
+          "text": "}"
+        },
+        {
+          "line": 51,
+          "text": "/** Answered for a read an offline replay did not keep, as the worker answers when Gloom Cloud is down. */"
+        },
+        {
+          "line": 52,
+          "text": "const NOT_KEPT: Answer = { status: 503, type: \"text/plain\", bytes: new TextEncoder().encode(\"Not in the replay\") };"
+        },
+        {
+          "line": 61,
+          "text": "  return {"
+        },
+        {
+          "line": 62,
+          "text": "    async read(label, load) {"
+        },
+        {
+          "line": 63,
+          "text": "      const file = join(dir, keyOf(label));"
+        },
+        {
+          "line": 64,
+          "text": "      if (await Bun.file(`${file}.json`).exists()) {"
+        },
+        {
+          "line": 65,
+          "text": "        const meta = await Bun.file(`${file}.json`).json();"
+        },
+        {
+          "line": 66,
+          "text": "        return remember({ status: meta.status, type: meta.type, bytes: new Uint8Array(await Bun.file(`${file}.body`).arrayBuffer()) });"
+        },
+        {
+          "line": 67,
+          "text": "      }"
+        },
+        {
+          "line": 68,
+          "text": "      if (offline) return NOT_KEPT;"
+        },
+        {
+          "line": 178,
+          "text": "  const RealDate = Date, startedAt = RealDate.now(), now = () => ${clockMs} + (RealDate.now() - startedAt);"
+        },
+        {
+          "line": 179,
+          "text": "  globalThis.Date = class extends RealDate { constructor(...args) { if (args.length === 0) super(now()); else super(...args); } static now() { return now(); } };"
+        }
+      ]
+    },
+    {
+      "path": "scripts/pane-chrome/ui-benchmark.ts",
+      "blob": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436",
+      "selectedLines": [
+        {
+          "line": 98,
+          "text": "  // A view that moved is pictured once more on each side: if two pictures of the same code"
+        },
+        {
+          "line": 99,
+          "text": "  // differ, the view is unsteady (a 3D surface's labels, a value read from the clock), not changed."
+        },
+        {
+          "line": 100,
+          "text": "  const moving = (await changes(join(options.out, \"before\"), join(options.out, \"after\"))).filter(moved);"
+        },
+        {
+          "line": 101,
+          "text": "  const unsteady = new Set<string>();"
+        },
+        {
+          "line": 102,
+          "text": "  if (moving.length) {"
+        },
+        {
+          "line": 103,
+          "text": "    const only = [...new Set(moving.map((change) => change.view.split(\"--\")[0]!))].join(\",\");"
+        },
+        {
+          "line": 104,
+          "text": "    for (const [side, root] of [[\"before\", base], [\"after\", head]] as const) {"
+        },
+        {
+          "line": 105,
+          "text": "      audit(`${side}-again`, root, { ...options, only });"
+        },
+        {
+          "line": 106,
+          "text": "      const twice = new Map((await changes(join(options.out, side), join(options.out, `${side}-again`))).map((change) => [change.view, change]));"
+        },
+        {
+          "line": 107,
+          "text": "      for (const change of moving) {"
+        },
+        {
+          "line": 108,
+          "text": "        const second = twice.get(change.view);"
+        },
+        {
+          "line": 109,
+          "text": "        // Drawn differently, or opened only once of the two times (a detail Enter opened while the root was still moving)."
+        },
+        {
+          "line": 110,
+          "text": "        if (second && moved(second)) unsteady.add(change.view);"
+        },
+        {
+          "line": 111,
+          "text": "      }"
+        },
+        {
+          "line": 112,
+          "text": "    }"
+        },
+        {
+          "line": 113,
+          "text": "  }"
+        },
+        {
+          "line": 114,
+          "text": "  // Written last: a shard with this file finished."
+        },
+        {
+          "line": 115,
+          "text": "  await Bun.write(join(options.out, \"unsteady.json\"), JSON.stringify([...unsteady]));"
+        },
+        {
+          "line": 116,
+          "text": "  // The builds are large and each side's results and pictures are what the report reads."
+        },
+        {
+          "line": 117,
+          "text": "  await rm(join(options.out, \"web-before\"), { recursive: true, force: true });"
+        },
+        {
+          "line": 118,
+          "text": "  await rm(join(options.out, \"web-after\"), { recursive: true, force: true });"
+        }
+      ]
+    },
+    {
+      "path": "scripts/pane-chrome/ui-audit.ts",
+      "blob": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+      "selectedLines": [
+        {
+          "line": 398,
+          "text": "    for (const width of widths) {"
+        },
+        {
+          "line": 399,
+          "text": "      await viewport(width);"
+        },
+        {
+          "line": 400,
+          "text": "      for (const [index, theme] of themes.entries()) {"
+        },
+        {
+          "line": 401,
+          "text": "        const measure = index === 0;"
+        },
+        {
+          "line": 402,
+          "text": "        await open(theme);"
+        },
+        {
+          "line": 403,
+          "text": "        const rootView: AuditView = { ...base, id: `${entry.token}--root`, view: \"root\" };"
+        },
+        {
+          "line": 404,
+          "text": "        if (!await record(rootView, id, width, theme, measure)) continue;"
+        },
+        {
+          "line": 405,
+          "text": "        views.set(rootView.id, rootView);"
+        },
+        {
+          "line": 406,
+          "text": "        // The detail Enter opens from the root."
+        },
+        {
+          "line": 407,
+          "text": "        const before = await paneText();"
+        }
+      ]
+    }
+  ],
+  "captureAndRetryLog": {
+    "path": "ci-39618670567-job-119285980184.log",
+    "sha256": "05903b3f5f8f12889466c8a0a88221857d0b7d07bfa0516d10841f64fd0562f0",
+    "selectedLines": [
+      {
+        "line": 792,
+        "text": "2026-10-21T15:37:14.6852651Z PERP: 6 views in 30s"
+      },
+      {
+        "line": 846,
+        "text": "2026-10-21T15:54:46.2775196Z PERP: 6 views in 30s"
+      },
+      {
+        "line": 859,
+        "text": "2026-10-21T16:00:03.9953293Z PERP: 6 views in 30s"
+      },
+      {
+        "line": 861,
+        "text": "2026-10-21T16:00:48.5276300Z PERP: 6 views in 29s"
+      }
+    ],
+    "inferredOrder": [
+      "original baseline",
+      "original head",
+      "baseline same-code retry",
+      "head same-code retry"
+    ]
+  },
+  "visualInspection": {
+    "method": "view_image of both original640 JPEGs",
+    "observed": "Baseline shows perpetual-history unavailable / Not in the replay. Head shows funding and market metadata plus the Gloom Pro history gate. Both1280 measurements show the replay-error body.",
+    "images": [
+      {
+        "path": "ci-ui-benchmark/ui-benchmark-shard-2/before/shots/white/640/PERP--tab-history.jpg",
+        "sha256": "314d4a2aac369d9e46a93137518a9ec1c1a275cb7cb6f7460b82c948489deaf9"
+      },
+      {
+        "path": "ci-ui-benchmark/ui-benchmark-shard-2/after/shots/white/640/PERP--tab-history.jpg",
+        "sha256": "28153a5d1d8e4058928706c6d4ea7a782c121406de134dec3d3456beeab008a3"
+      }
+    ]
+  },
+  "qualification": "This is a width-specific data-state mismatch, not an identical rendering or a successful history regression check. The unchanged harness marked PERP history unsteady after two captures of each source revision. The Perps/API/cache/React/shared-UI/browser-renderer/harness source objects are identical across frozen base and final head, supporting an existing replay/capture instability qualification. Preserve the official unsteady exclusion; it leaves this view without stable before/after comparison coverage.",
+  "sourceSupportedCandidate": "History requests include an ISO from value computed from Date.now(). The replay seeds a clock that continues advancing with elapsed real time and keys the exact request string. A request made at a different elapsed millisecond can miss a retained response and receive the observed503 replay error, while a matched locked-history reply renders the Pro gate. This is a concrete source-supported candidate, not a recovered request trace.",
+  "preciseCauseProven": false,
+  "limits": [
+    "The two640 captures are different data states; both1280 captures are the replay-error state.",
+    "The archived retry images/results were removed by the existing harness, so which retry changed and by how much cannot be independently reconstructed.",
+    "Replay response bodies, labels and clock.json were not archived; matching cache keys or source trees do not prove identical snapshot contents or actual request times.",
+    "No claim that all application source is unchanged: the PR changes removal/deactivation paths, including app pane plugin bindings. The audited Perps and shared render/data paths listed above are unchanged.",
+    "No new rendering, tests, network requests, source changes or raw-evidence changes were performed by this review."
+  ],
+  "changedSourcePaths": [
+    "PLUGINS.md",
+    "src/app/pane-runtime/plugin-bindings.test.ts",
+    "src/app/pane-runtime/plugin-bindings.ts",
+    "src/plugins/builtin/plugin-marketplace/pane.tsx",
+    "src/plugins/builtin/plugin-marketplace/removal.test.tsx",
+    "src/plugins/marketplace/deactivation.ts",
+    "src/renderers/electrobun/bun/external-plugins.test.ts",
+    "src/renderers/electrobun/bun/external-plugins.ts"
+  ],
+  "acceptsOtherViews": false
+}

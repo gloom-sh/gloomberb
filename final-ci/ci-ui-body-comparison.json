@@ -1,0 +1,337 @@
+{
+  "reviewSha256": "e41d45c7ae585ee0d8ef9a3b9e192a7614257eb773aadfe47974c82221b5f78c",
+  "completeBenchmark": true,
+  "captureRerun": false,
+  "rawImagePairs": 1060,
+  "byteDifferentPairsIndependentlyCompared": 46,
+  "bodyInset": {
+    "top": 42,
+    "bottom": 42
+  },
+  "fuzz": "2%",
+  "everyOfficialPixelValueMatchesRawImages": true,
+  "rows": [
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/1280/CHOKE--root.jpg",
+      "differingBodyPixels": 51.0,
+      "fraction": 5.564769553072626e-05,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/ADJ--tab-rates.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/CDS--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/CDS--tab-issuer-debt.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/CDS--tab-treasury.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/CDX--tab-treasury.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/G--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/KELLY--tab-history.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/KELLY--tab-risk.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/PORT--tab-correlation.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/PORT--tab-factors.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-1",
+      "image": "white/640/PORT--tab-greeks.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/1280/GP--root.jpg",
+      "differingBodyPixels": 1139.0,
+      "fraction": 0.001242798533519553,
+      "aboveBenchmarkThreshold": true
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/ATTN--tab-evidence.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/COT--tab-crops.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/COT--tab-curve.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/CRD--tab-treasury.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/EPWR--tab-outcomes.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/GP--root.jpg",
+      "differingBodyPixels": 1115.0,
+      "fraction": 0.0024332227653631284,
+      "aboveBenchmarkThreshold": true
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/GPU--tab-equities.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/GPU--tab-history.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/MARS--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/MARS--tab-greeks.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/MARS--tab-holdings.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/PERP--tab-history.jpg",
+      "differingBodyPixels": 28608.0,
+      "fraction": 0.06243016759776536,
+      "aboveBenchmarkThreshold": true
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/POLL--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/POLL--tab-favorability.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/POLL--tab-generic.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/POLL--tab-governor.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "image": "white/640/SI--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/FUT--tab-curve.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/FUT--tab-inventories.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/FUT--tab-oil-gas.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/GF--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/PSD--root.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/PSD--tab-curve.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "image": "white/640/PSD--tab-positioning.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/1280/OVDV--root.jpg",
+      "differingBodyPixels": 780.0,
+      "fraction": 0.0008510824022346368,
+      "aboveBenchmarkThreshold": true
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/1280/TAS--tab-nbbo.jpg",
+      "differingBodyPixels": 23.0,
+      "fraction": 2.5096019553072626e-05,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/BI--tab-industries.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/NGS--tab-crops.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/OVDV--tab-smile.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/OVDV--tab-table.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/SOVR--tab-treasury.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/TAS--tab-nbbo.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "image": "white/640/new-portfolio-pane--tab-watchlist.jpg",
+      "differingBodyPixels": 0.0,
+      "fraction": 0.0,
+      "aboveBenchmarkThreshold": false
+    }
+  ]
+}

@@ -1,0 +1,888 @@
+{
+  "directory": "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1165/footer-copy",
+  "checkedAt": "2026-10-21T16:42:46.395125+00:00",
+  "status": "four retained shards audited",
+  "captureRerun": false,
+  "officialResultsModified": false,
+  "shardsAvailable": 4,
+  "expectedShards": 4,
+  "observedTestedHeads": [
+    "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+  ],
+  "observedBaselines": [
+    "0568f95db049dccad254c672c2c8d284bbe6a586"
+  ],
+  "artifactInputs": [
+    {
+      "name": "ui-benchmark-shard-1",
+      "id": 12357518993,
+      "sha256": "5b2540fb1a5352329c295bfec4ecb41b8bd7d2b70be5f83ea0252fb1c045ea1b",
+      "path": "ci-ui-benchmark/ui-benchmark-shard-1-12357518993.zip",
+      "workflowRunId": 39618670567,
+      "workflowHeadSha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "name": "ui-benchmark-shard-2",
+      "id": 12357854342,
+      "sha256": "4ff9a834d9cea4058fbf61ca371a4104df32f9d36bd09823b5045ba65e292b64",
+      "path": "ci-ui-benchmark/ui-benchmark-shard-2-12357854342.zip",
+      "workflowRunId": 39618670567,
+      "workflowHeadSha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "name": "ui-benchmark-shard-3",
+      "id": 12360313783,
+      "sha256": "12f8add1785fe14d13d47b01e0134814ca5abfee6c1993c1aa69e72be57e629a",
+      "path": "ci-ui-benchmark/ui-benchmark-shard-3-12360313783.zip",
+      "workflowRunId": 39618670567,
+      "workflowHeadSha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    },
+    {
+      "name": "ui-benchmark-shard-4",
+      "id": 12362440055,
+      "sha256": "0e9fbc28da9176b75428d000b81ea4f1e8eb26ae6f6478c96b931da9583b3183",
+      "path": "ci-ui-benchmark/ui-benchmark-shard-4-12362440055.zip",
+      "workflowRunId": 39618670567,
+      "workflowHeadSha": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+    }
+  ],
+  "unchangedHarnessSource": [
+    {
+      "ref": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "blobs": {
+        "scripts/pane-chrome/web-app.ts": "85c9080554c89f86e7024fb49912a1f6a44874de",
+        "scripts/pane-chrome/ui-audit.ts": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e"
+      }
+    },
+    {
+      "ref": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "blobs": {
+        "scripts/pane-chrome/web-app.ts": "85c9080554c89f86e7024fb49912a1f6a44874de",
+        "scripts/pane-chrome/ui-audit.ts": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e"
+      }
+    }
+  ],
+  "harnessSourceIdenticalAcrossAvailableBaseAndHeadRefs": true,
+  "counts": {
+    "before": {
+      "mismatchedCapturedViewIds": 12,
+      "mismatchedCapturedWidthMeasurements": 24,
+      "affectedTokens": [
+        "13F",
+        "BR",
+        "IBKR",
+        "MOST",
+        "NOTE",
+        "ORD",
+        "PL",
+        "TBO"
+      ]
+    },
+    "after": {
+      "mismatchedCapturedViewIds": 12,
+      "mismatchedCapturedWidthMeasurements": 24,
+      "affectedTokens": [
+        "13F",
+        "BR",
+        "IBKR",
+        "MOST",
+        "NOTE",
+        "ORD",
+        "PL",
+        "TBO"
+      ]
+    }
+  },
+  "sameBothSidesMismatchCount": 12,
+  "sameBothSidesMismatches": [
+    {
+      "id": "13F--detail",
+      "declaredPaneId": "thirteenf-funds",
+      "capturedPaneId": "alerts"
+    },
+    {
+      "id": "13F--root",
+      "declaredPaneId": "thirteenf-funds",
+      "capturedPaneId": "alerts"
+    },
+    {
+      "id": "13F--tab-events",
+      "declaredPaneId": "thirteenf-funds",
+      "capturedPaneId": "alerts"
+    },
+    {
+      "id": "13F--tab-history",
+      "declaredPaneId": "thirteenf-funds",
+      "capturedPaneId": "alerts"
+    },
+    {
+      "id": "BR--root",
+      "declaredPaneId": "brokers",
+      "capturedPaneId": "ticker-research"
+    },
+    {
+      "id": "IBKR--root",
+      "declaredPaneId": "ibkr-trading",
+      "capturedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--root",
+      "declaredPaneId": "market-movers",
+      "capturedPaneId": "ticker-research"
+    },
+    {
+      "id": "NOTE--root",
+      "declaredPaneId": "quick-notes",
+      "capturedPaneId": "ticker-research"
+    },
+    {
+      "id": "ORD--root",
+      "declaredPaneId": "broker-orders",
+      "capturedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "ORD--tab-2-hops",
+      "declaredPaneId": "broker-orders",
+      "capturedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "PL--root",
+      "declaredPaneId": "plugin-marketplace",
+      "capturedPaneId": "ticker-research"
+    },
+    {
+      "id": "TBO--root",
+      "declaredPaneId": "buildout",
+      "capturedPaneId": "ticker-research"
+    }
+  ],
+  "beforeOnlyMismatchSignatures": [],
+  "afterOnlyMismatchSignatures": [],
+  "focusedTokens": {
+    "before": [
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--root",
+        "token": "ALRT",
+        "view": "root",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--detail",
+        "token": "ALRT",
+        "view": "detail",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--tab-events",
+        "token": "ALRT",
+        "view": "tab",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--tab-history",
+        "token": "ALRT",
+        "view": "tab",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "NOTE--root",
+        "token": "NOTE",
+        "view": "root",
+        "declaredPaneId": "quick-notes",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "NOTE",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      },
+      {
+        "shard": "ui-benchmark-shard-2",
+        "id": "MOST--root",
+        "token": "MOST",
+        "view": "root",
+        "declaredPaneId": "market-movers",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "MOST-USD",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      },
+      {
+        "shard": "ui-benchmark-shard-3",
+        "id": "PL--root",
+        "token": "PL",
+        "view": "root",
+        "declaredPaneId": "plugin-marketplace",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "PL",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      }
+    ],
+    "after": [
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--root",
+        "token": "ALRT",
+        "view": "root",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--detail",
+        "token": "ALRT",
+        "view": "detail",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--tab-events",
+        "token": "ALRT",
+        "view": "tab",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "ALRT--tab-history",
+        "token": "ALRT",
+        "view": "tab",
+        "declaredPaneId": "alerts",
+        "capturedPaneId": "alerts",
+        "capturedTitle": null,
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": false
+      },
+      {
+        "shard": "ui-benchmark-shard-1",
+        "id": "NOTE--root",
+        "token": "NOTE",
+        "view": "root",
+        "declaredPaneId": "quick-notes",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "NOTE",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      },
+      {
+        "shard": "ui-benchmark-shard-2",
+        "id": "MOST--root",
+        "token": "MOST",
+        "view": "root",
+        "declaredPaneId": "market-movers",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "MOST-USD",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      },
+      {
+        "shard": "ui-benchmark-shard-3",
+        "id": "PL--root",
+        "token": "PL",
+        "view": "root",
+        "declaredPaneId": "plugin-marketplace",
+        "capturedPaneId": "ticker-research",
+        "capturedTitle": "PL",
+        "widths": [
+          640,
+          1280
+        ],
+        "mismatch": true
+      }
+    ]
+  },
+  "shards": [
+    {
+      "shard": "ui-benchmark-shard-1",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "dirty": false,
+        "shard": "0/4",
+        "offline": true
+      },
+      "sourceInputs": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-1/before/views.jsonl",
+          "sha256": "de5d2b83914e759fddaa33923fea35cfbe66a06f83d4866b274bdc467fda1be6"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-1/before/results.jsonl",
+          "sha256": "2cf3efe17cc35f82828b9cdb0603e876e2fd17c557da5dd62dc013ccfdcbf1a2"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-1/after/views.jsonl",
+          "sha256": "0dacb835e059e0ddca7e1e1189249b5fe8c40a21106a4ec8880133e38d995a98"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-1/after/results.jsonl",
+          "sha256": "8fa9de43220af5942fe28afc2af2e8b72084993e6abcaf5dcc82e205b2ba8f79"
+        }
+      ],
+      "sidesSha256": "adfdb9383151c3f27eb314ac02a2b8391418346a99a574c241466931f0bce42d",
+      "coverage": {
+        "before": {
+          "measuredPaneViewIds": 119,
+          "mismatchedViewIds": 1,
+          "mismatchedWidthMeasurements": 2,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-1",
+              "id": "NOTE--root",
+              "token": "NOTE",
+              "view": "root",
+              "declaredPaneId": "quick-notes",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "NOTE",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        },
+        "after": {
+          "measuredPaneViewIds": 119,
+          "mismatchedViewIds": 1,
+          "mismatchedWidthMeasurements": 2,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-1",
+              "id": "NOTE--root",
+              "token": "NOTE",
+              "view": "root",
+              "declaredPaneId": "quick-notes",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "NOTE",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "shard": "ui-benchmark-shard-2",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "dirty": false,
+        "shard": "1/4",
+        "offline": true
+      },
+      "sourceInputs": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-2/before/views.jsonl",
+          "sha256": "ca057b7dd4fa67aff449db6bdef4e127ee1b80918e7cc154d0f7f405bf372c51"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-2/before/results.jsonl",
+          "sha256": "6cbcc1d26893033eaa19a6c191e74a92ae5c7082aa6e1beecfe0d47c238e2bc5"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-2/after/views.jsonl",
+          "sha256": "f61e175c2d0400ca992e7337385106ce666e045f02d9cb54491d2eacbeed53b1"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-2/after/results.jsonl",
+          "sha256": "22d837b669215b2a54f03b41f57ea94e47b38aa366520b3fae52964e51004ca0"
+        }
+      ],
+      "sidesSha256": "8ad4c1a5755cfebc88c7b100c3d5fb3b925e612791b3e3b7c39d0e040835de47",
+      "coverage": {
+        "before": {
+          "measuredPaneViewIds": 160,
+          "mismatchedViewIds": 2,
+          "mismatchedWidthMeasurements": 4,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-2",
+              "id": "BR--root",
+              "token": "BR",
+              "view": "root",
+              "declaredPaneId": "brokers",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "BR",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-2",
+              "id": "MOST--root",
+              "token": "MOST",
+              "view": "root",
+              "declaredPaneId": "market-movers",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "MOST-USD",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        },
+        "after": {
+          "measuredPaneViewIds": 160,
+          "mismatchedViewIds": 2,
+          "mismatchedWidthMeasurements": 4,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-2",
+              "id": "BR--root",
+              "token": "BR",
+              "view": "root",
+              "declaredPaneId": "brokers",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "BR",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-2",
+              "id": "MOST--root",
+              "token": "MOST",
+              "view": "root",
+              "declaredPaneId": "market-movers",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "MOST-USD",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "shard": "ui-benchmark-shard-3",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "dirty": false,
+        "shard": "2/4",
+        "offline": true
+      },
+      "sourceInputs": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-3/before/views.jsonl",
+          "sha256": "3a9cdc6f7753ad4d53bc3e7d1f506d66008fa5295bd3b808138f1111a61364da"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-3/before/results.jsonl",
+          "sha256": "f902f9a93c45ec7059eb78f9b84444ec2cabebe889630cfc19489cf93a25d3b3"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-3/after/views.jsonl",
+          "sha256": "774d4b0d7658e34a74b2dfffea31255022a7fac338affc972ab1972e7f951a61"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-3/after/results.jsonl",
+          "sha256": "9aeb83b933a6bd481c2e166313c949b7d443f2e60fd9421183850b3f2b7a61e8"
+        }
+      ],
+      "sidesSha256": "4bbcf53837e63a6ef04c936c1114528580338cb9e5e7359464f4ee0b8a02ccd9",
+      "coverage": {
+        "before": {
+          "measuredPaneViewIds": 125,
+          "mismatchedViewIds": 6,
+          "mismatchedWidthMeasurements": 12,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--root",
+              "token": "13F",
+              "view": "root",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--detail",
+              "token": "13F",
+              "view": "detail",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--tab-events",
+              "token": "13F",
+              "view": "tab",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--tab-history",
+              "token": "13F",
+              "view": "tab",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "PL--root",
+              "token": "PL",
+              "view": "root",
+              "declaredPaneId": "plugin-marketplace",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "PL",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "TBO--root",
+              "token": "TBO",
+              "view": "root",
+              "declaredPaneId": "buildout",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "TBOTEK",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        },
+        "after": {
+          "measuredPaneViewIds": 125,
+          "mismatchedViewIds": 6,
+          "mismatchedWidthMeasurements": 12,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--root",
+              "token": "13F",
+              "view": "root",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--detail",
+              "token": "13F",
+              "view": "detail",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--tab-events",
+              "token": "13F",
+              "view": "tab",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "13F--tab-history",
+              "token": "13F",
+              "view": "tab",
+              "declaredPaneId": "thirteenf-funds",
+              "capturedPaneId": "alerts",
+              "capturedTitle": null,
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "PL--root",
+              "token": "PL",
+              "view": "root",
+              "declaredPaneId": "plugin-marketplace",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "PL",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-3",
+              "id": "TBO--root",
+              "token": "TBO",
+              "view": "root",
+              "declaredPaneId": "buildout",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "TBOTEK",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "shard": "ui-benchmark-shard-4",
+      "sides": {
+        "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+        "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "dirty": false,
+        "shard": "3/4",
+        "offline": true
+      },
+      "sourceInputs": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/views.jsonl",
+          "sha256": "0935eb93376e1edee9634b434eb6608a8e68f54711a0448f35550567a7e873f3"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/results.jsonl",
+          "sha256": "286190e8d216f48f21f6059d08d796942061d638a993a855dc33c622ee9cc452"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/views.jsonl",
+          "sha256": "5b59c11f38a0ccea658dcde76e59278f818226a52db8218d7b40d73d5ccb2866"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/results.jsonl",
+          "sha256": "c1156710e718e4dab19f09627b3983a28a9609e88a5ac371210c396fe645935e"
+        }
+      ],
+      "sidesSha256": "5a40d1e3734db47f3a221559f0780cecb6096362f543d11b71965cffaf79dc1a",
+      "coverage": {
+        "before": {
+          "measuredPaneViewIds": 119,
+          "mismatchedViewIds": 3,
+          "mismatchedWidthMeasurements": 6,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "ORD--root",
+              "token": "ORD",
+              "view": "root",
+              "declaredPaneId": "broker-orders",
+              "capturedPaneId": "earnings-ripple",
+              "capturedTitle": "Earnings Ripple",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "ORD--tab-2-hops",
+              "token": "ORD",
+              "view": "tab",
+              "declaredPaneId": "broker-orders",
+              "capturedPaneId": "earnings-ripple",
+              "capturedTitle": "Earnings Ripple",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "IBKR--root",
+              "token": "IBKR",
+              "view": "root",
+              "declaredPaneId": "ibkr-trading",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "IBKR",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        },
+        "after": {
+          "measuredPaneViewIds": 119,
+          "mismatchedViewIds": 3,
+          "mismatchedWidthMeasurements": 6,
+          "mismatches": [
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "ORD--root",
+              "token": "ORD",
+              "view": "root",
+              "declaredPaneId": "broker-orders",
+              "capturedPaneId": "earnings-ripple",
+              "capturedTitle": "Earnings Ripple",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "ORD--tab-2-hops",
+              "token": "ORD",
+              "view": "tab",
+              "declaredPaneId": "broker-orders",
+              "capturedPaneId": "earnings-ripple",
+              "capturedTitle": "Earnings Ripple",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            },
+            {
+              "shard": "ui-benchmark-shard-4",
+              "id": "IBKR--root",
+              "token": "IBKR",
+              "view": "root",
+              "declaredPaneId": "ibkr-trading",
+              "capturedPaneId": "ticker-research",
+              "capturedTitle": "IBKR",
+              "widths": [
+                640,
+                1280
+              ],
+              "mismatch": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "diagnosis": "discover() first seeks the requested pane, but falls back to instances[0] if none matches (web-app.ts:234). ui-audit.ts:389 stores the requested token/paneId beside that returned instance, and uses the actual instance to render. A saved mismatch is a capture of another pane, not coverage of the declared pane. Symmetric mismatches with unchanged harness source predate these source changes; the exact command-resolution reason is not recovered from these artifacts.",
+  "limits": [
+    "Official measured/changed totals remain untouched; this is a qualification of which pane was actually measured.",
+    "Focused component fixtures can independently cover the intended target pane, but do not turn these generic captures into that pane.",
+    "Only currently retained shards are audited; absent shards are pending, not passed.",
+    "This audit verifies metadata and archived artifact digests; it does not rerender panes or infer missing command/network traces."
+  ]
+}

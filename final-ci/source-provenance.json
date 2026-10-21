@@ -1,0 +1,9 @@
+{
+  "previousHead": "41043a6c496735a809fc01bf5117a521eddc80bf",
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "previousArchiveSha256": "b45a33ad0197871f287be2ef759df2e50d12229a053f869e803b28a16bdc5e19",
+  "fixtureSha256": "998f4a6a97e86f494360d59fa08d9c4da8b42b43823b6c20b1e8f2e49c476966",
+  "captureScriptSha256": "a6f406244edbf172f27be95557a833f645fcbe2f07e804a7ab7a41546646cea6",
+  "sourceDiff": " src/app/pane-runtime/plugin-bindings.test.ts            | 4 ++--\n src/plugins/builtin/plugin-marketplace/pane.tsx         | 6 +++---\n src/plugins/builtin/plugin-marketplace/removal.test.tsx | 9 ++++-----\n src/plugins/marketplace/deactivation.ts                 | 2 +-\n src/renderers/electrobun/bun/external-plugins.test.ts   | 4 ++--\n 5 files changed, 12 insertions(+), 13 deletions(-)\n"
+}

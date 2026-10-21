@@ -1,0 +1,254 @@
+{
+  "run": 39617892455,
+  "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "job": "Cloud sync main-thread budget",
+      "log": "ci-39617892455-job-119283477464.log",
+      "sha256": "cb9346f152baf27211156b93ed681e80c774302913e81bc00cde47b596a4b2cd",
+      "checkoutShas": [
+        "137bf0b985b4c78ba9254737bee683593a7cbf33"
+      ],
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T15:21:56Z",
+          "completed_at": "2026-10-21T15:21:57Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T15:21:57Z",
+          "completed_at": "2026-10-21T15:22:05Z"
+        },
+        {
+          "name": "Check whether the change touches the sync or the desktop RPC path",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T15:22:05Z",
+          "completed_at": "2026-10-21T15:22:06Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T15:22:06Z",
+          "completed_at": "2026-10-21T15:22:10Z"
+        },
+        {
+          "name": "Install the pinned WebKit build and system libraries",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T15:22:10Z",
+          "completed_at": "2026-10-21T15:22:51Z"
+        },
+        {
+          "name": "Check a Cloud sync's longest main-thread block",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T15:22:51Z",
+          "completed_at": "2026-10-21T15:23:01Z"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T15:23:01Z",
+          "completed_at": "2026-10-21T15:23:07Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-21T15:23:07Z",
+          "completed_at": "2026-10-21T15:23:07Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-21T15:23:07Z",
+          "completed_at": "2026-10-21T15:23:08Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-21T15:23:08Z",
+          "completed_at": "2026-10-21T15:23:08Z"
+        }
+      ]
+    },
+    {
+      "job": "Pane drag scope",
+      "log": "ci-39617892455-job-119283477920.log",
+      "sha256": "9562e2d1dce0ca45f9d9e6c8266b8ae8d3510b85de9cb5b45fc3552f2a0ed631",
+      "checkoutShas": [
+        "137bf0b985b4c78ba9254737bee683593a7cbf33"
+      ],
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T14:46:01Z",
+          "completed_at": "2026-10-21T14:46:02Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T14:46:02Z",
+          "completed_at": "2026-10-21T14:46:05Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T14:46:05Z",
+          "completed_at": "2026-10-21T14:46:08Z"
+        },
+        {
+          "name": "Check whether the change touches pane chrome",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T14:46:08Z",
+          "completed_at": "2026-10-21T14:46:09Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T14:46:09Z",
+          "completed_at": "2026-10-21T14:46:09Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-21T14:46:09Z",
+          "completed_at": "2026-10-21T14:46:09Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-21T14:46:09Z",
+          "completed_at": "2026-10-21T14:46:09Z"
+        }
+      ]
+    },
+    {
+      "job": "tui-benchmarks",
+      "log": "ci-39617892455-job-119283478719.log",
+      "sha256": "f4e4f8af6789a0fd25a9b1a97f50213c32d319945d6c147b14eb6f298a4f5fe2",
+      "checkoutShas": [
+        "137bf0b985b4c78ba9254737bee683593a7cbf33"
+      ],
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-21T15:38:40Z",
+          "completed_at": "2026-10-21T15:38:41Z"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-21T15:38:41Z",
+          "completed_at": "2026-10-21T15:38:46Z"
+        },
+        {
+          "name": "Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-21T15:38:46Z",
+          "completed_at": "2026-10-21T15:38:50Z"
+        },
+        {
+          "name": "Install tmux",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-21T15:38:50Z",
+          "completed_at": "2026-10-21T15:38:59Z"
+        },
+        {
+          "name": "Check out the base branch next to the PR",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-21T15:38:59Z",
+          "completed_at": "2026-10-21T15:39:00Z"
+        },
+        {
+          "name": "Compare navigation speed with the base branch",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-21T15:39:00Z",
+          "completed_at": "2026-10-21T15:42:26Z"
+        },
+        {
+          "name": "Check memory levels off while browsing tickers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-21T15:42:26Z",
+          "completed_at": "2026-10-21T15:46:11Z"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-bun",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-21T15:46:11Z",
+          "completed_at": "2026-10-21T15:46:11Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-21T15:46:11Z",
+          "completed_at": "2026-10-21T15:46:12Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-21T15:46:12Z",
+          "completed_at": "2026-10-21T15:46:12Z"
+        }
+      ]
+    }
+  ],
+  "conditionalSkipEvidence": "ci-skipped-drag-justification.json"
+}

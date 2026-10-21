@@ -1,0 +1,599 @@
+{
+  "observedAt": "2026-10-21T15:08:11.414434+00:00",
+  "run": {
+    "id": 39617892516,
+    "name": "Verify",
+    "node_id": "WFR_kwLORwA07s8AAAAJOWkQpA",
+    "head_branch": "fix/glo-1165-plugin-removal",
+    "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "path": ".github/workflows/verify.yml",
+    "display_title": "Keep plugin files when cleanup fails (Linear: GLO-1165)",
+    "run_number": 4425,
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 322986373,
+    "check_suite_id": 107364585670,
+    "check_suite_node_id": "CS_kwDORwA07s8AAAAY_22Qxg",
+    "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516",
+    "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892516",
+    "pull_requests": [
+      {
+        "url": "https://api.github.com/repos/gloom-sh/gloomberb/pulls/2073",
+        "id": 4951262125,
+        "number": 2073,
+        "head": {
+          "ref": "fix/glo-1165-plugin-removal",
+          "sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+          "repo": {
+            "id": 1191195886,
+            "url": "https://api.github.com/repos/gloom-sh/gloomberb",
+            "name": "gloomberb"
+          }
+        },
+        "base": {
+          "ref": "main",
+          "sha": "0568f95db049dccad254c672c2c8d284bbe6a586",
+          "repo": {
+            "id": 1191195886,
+            "url": "https://api.github.com/repos/gloom-sh/gloomberb",
+            "name": "gloomberb"
+          }
+        }
+      }
+    ],
+    "created_at": "2026-10-21T14:33:49Z",
+    "updated_at": "2026-10-21T15:07:42Z",
+    "actor": {
+      "login": "vincelwt",
+      "id": 5092466,
+      "node_id": "MDQ6VXNlcjUwOTI0NjY=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5092466?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/vincelwt",
+      "html_url": "https://github.com/vincelwt",
+      "followers_url": "https://api.github.com/users/vincelwt/followers",
+      "following_url": "https://api.github.com/users/vincelwt/following{/other_user}",
+      "gists_url": "https://api.github.com/users/vincelwt/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/vincelwt/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/vincelwt/subscriptions",
+      "organizations_url": "https://api.github.com/users/vincelwt/orgs",
+      "repos_url": "https://api.github.com/users/vincelwt/repos",
+      "events_url": "https://api.github.com/users/vincelwt/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/vincelwt/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "run_attempt": 1,
+    "referenced_workflows": [],
+    "run_started_at": "2026-10-21T14:33:49Z",
+    "triggering_actor": {
+      "login": "vincelwt",
+      "id": 5092466,
+      "node_id": "MDQ6VXNlcjUwOTI0NjY=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5092466?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/vincelwt",
+      "html_url": "https://github.com/vincelwt",
+      "followers_url": "https://api.github.com/users/vincelwt/followers",
+      "following_url": "https://api.github.com/users/vincelwt/following{/other_user}",
+      "gists_url": "https://api.github.com/users/vincelwt/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/vincelwt/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/vincelwt/subscriptions",
+      "organizations_url": "https://api.github.com/users/vincelwt/orgs",
+      "repos_url": "https://api.github.com/users/vincelwt/repos",
+      "events_url": "https://api.github.com/users/vincelwt/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/vincelwt/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "jobs_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516/jobs",
+    "logs_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516/logs",
+    "check_suite_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-suites/107364585670",
+    "artifacts_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516/artifacts",
+    "cancel_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516/cancel",
+    "rerun_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516/rerun",
+    "previous_attempt_url": null,
+    "workflow_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/workflows/322986373",
+    "head_commit": {
+      "id": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+      "tree_id": "7d23864d57eefbb953430c5750674c07c167d795",
+      "message": "Keep plugin-removal restart advice visible (Linear: GLO-1165)",
+      "timestamp": "2026-10-21T14:33:31Z",
+      "author": {
+        "name": "Vincelwt",
+        "email": "vincelwt@users.noreply.github.com"
+      },
+      "committer": {
+        "name": "Vincelwt",
+        "email": "vincelwt@users.noreply.github.com"
+      }
+    },
+    "repository": {
+      "id": 1191195886,
+      "node_id": "R_kgDORwA07g",
+      "name": "gloomberb",
+      "full_name": "gloom-sh/gloomberb",
+      "private": false,
+      "owner": {
+        "login": "gloom-sh",
+        "id": 312960844,
+        "node_id": "O_kgDOEqdnTA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/312960844?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/gloom-sh",
+        "html_url": "https://github.com/gloom-sh",
+        "followers_url": "https://api.github.com/users/gloom-sh/followers",
+        "following_url": "https://api.github.com/users/gloom-sh/following{/other_user}",
+        "gists_url": "https://api.github.com/users/gloom-sh/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/gloom-sh/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/gloom-sh/subscriptions",
+        "organizations_url": "https://api.github.com/users/gloom-sh/orgs",
+        "repos_url": "https://api.github.com/users/gloom-sh/repos",
+        "events_url": "https://api.github.com/users/gloom-sh/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/gloom-sh/received_events",
+        "type": "Organization",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/gloom-sh/gloomberb",
+      "description": "Finance terminal, in your terminal.",
+      "fork": false,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb",
+      "forks_url": "https://api.github.com/repos/gloom-sh/gloomberb/forks",
+      "keys_url": "https://api.github.com/repos/gloom-sh/gloomberb/keys{/key_id}",
+      "collaborators_url": "https://api.github.com/repos/gloom-sh/gloomberb/collaborators{/collaborator}",
+      "teams_url": "https://api.github.com/repos/gloom-sh/gloomberb/teams",
+      "hooks_url": "https://api.github.com/repos/gloom-sh/gloomberb/hooks",
+      "issue_events_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues/events{/number}",
+      "events_url": "https://api.github.com/repos/gloom-sh/gloomberb/events",
+      "assignees_url": "https://api.github.com/repos/gloom-sh/gloomberb/assignees{/user}",
+      "branches_url": "https://api.github.com/repos/gloom-sh/gloomberb/branches{/branch}",
+      "tags_url": "https://api.github.com/repos/gloom-sh/gloomberb/tags",
+      "blobs_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/blobs{/sha}",
+      "git_tags_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/tags{/sha}",
+      "git_refs_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/refs{/sha}",
+      "trees_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/trees{/sha}",
+      "statuses_url": "https://api.github.com/repos/gloom-sh/gloomberb/statuses/{sha}",
+      "languages_url": "https://api.github.com/repos/gloom-sh/gloomberb/languages",
+      "stargazers_url": "https://api.github.com/repos/gloom-sh/gloomberb/stargazers",
+      "contributors_url": "https://api.github.com/repos/gloom-sh/gloomberb/contributors",
+      "subscribers_url": "https://api.github.com/repos/gloom-sh/gloomberb/subscribers",
+      "subscription_url": "https://api.github.com/repos/gloom-sh/gloomberb/subscription",
+      "commits_url": "https://api.github.com/repos/gloom-sh/gloomberb/commits{/sha}",
+      "git_commits_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/commits{/sha}",
+      "comments_url": "https://api.github.com/repos/gloom-sh/gloomberb/comments{/number}",
+      "issue_comment_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues/comments{/number}",
+      "contents_url": "https://api.github.com/repos/gloom-sh/gloomberb/contents/{+path}",
+      "compare_url": "https://api.github.com/repos/gloom-sh/gloomberb/compare/{base}...{head}",
+      "merges_url": "https://api.github.com/repos/gloom-sh/gloomberb/merges",
+      "archive_url": "https://api.github.com/repos/gloom-sh/gloomberb/{archive_format}{/ref}",
+      "downloads_url": "https://api.github.com/repos/gloom-sh/gloomberb/downloads",
+      "issues_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues{/number}",
+      "pulls_url": "https://api.github.com/repos/gloom-sh/gloomberb/pulls{/number}",
+      "milestones_url": "https://api.github.com/repos/gloom-sh/gloomberb/milestones{/number}",
+      "notifications_url": "https://api.github.com/repos/gloom-sh/gloomberb/notifications{?since,all,participating}",
+      "labels_url": "https://api.github.com/repos/gloom-sh/gloomberb/labels{/name}",
+      "releases_url": "https://api.github.com/repos/gloom-sh/gloomberb/releases{/id}",
+      "deployments_url": "https://api.github.com/repos/gloom-sh/gloomberb/deployments"
+    },
+    "head_repository": {
+      "id": 1191195886,
+      "node_id": "R_kgDORwA07g",
+      "name": "gloomberb",
+      "full_name": "gloom-sh/gloomberb",
+      "private": false,
+      "owner": {
+        "login": "gloom-sh",
+        "id": 312960844,
+        "node_id": "O_kgDOEqdnTA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/312960844?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/gloom-sh",
+        "html_url": "https://github.com/gloom-sh",
+        "followers_url": "https://api.github.com/users/gloom-sh/followers",
+        "following_url": "https://api.github.com/users/gloom-sh/following{/other_user}",
+        "gists_url": "https://api.github.com/users/gloom-sh/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/gloom-sh/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/gloom-sh/subscriptions",
+        "organizations_url": "https://api.github.com/users/gloom-sh/orgs",
+        "repos_url": "https://api.github.com/users/gloom-sh/repos",
+        "events_url": "https://api.github.com/users/gloom-sh/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/gloom-sh/received_events",
+        "type": "Organization",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/gloom-sh/gloomberb",
+      "description": "Finance terminal, in your terminal.",
+      "fork": false,
+      "url": "https://api.github.com/repos/gloom-sh/gloomberb",
+      "forks_url": "https://api.github.com/repos/gloom-sh/gloomberb/forks",
+      "keys_url": "https://api.github.com/repos/gloom-sh/gloomberb/keys{/key_id}",
+      "collaborators_url": "https://api.github.com/repos/gloom-sh/gloomberb/collaborators{/collaborator}",
+      "teams_url": "https://api.github.com/repos/gloom-sh/gloomberb/teams",
+      "hooks_url": "https://api.github.com/repos/gloom-sh/gloomberb/hooks",
+      "issue_events_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues/events{/number}",
+      "events_url": "https://api.github.com/repos/gloom-sh/gloomberb/events",
+      "assignees_url": "https://api.github.com/repos/gloom-sh/gloomberb/assignees{/user}",
+      "branches_url": "https://api.github.com/repos/gloom-sh/gloomberb/branches{/branch}",
+      "tags_url": "https://api.github.com/repos/gloom-sh/gloomberb/tags",
+      "blobs_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/blobs{/sha}",
+      "git_tags_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/tags{/sha}",
+      "git_refs_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/refs{/sha}",
+      "trees_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/trees{/sha}",
+      "statuses_url": "https://api.github.com/repos/gloom-sh/gloomberb/statuses/{sha}",
+      "languages_url": "https://api.github.com/repos/gloom-sh/gloomberb/languages",
+      "stargazers_url": "https://api.github.com/repos/gloom-sh/gloomberb/stargazers",
+      "contributors_url": "https://api.github.com/repos/gloom-sh/gloomberb/contributors",
+      "subscribers_url": "https://api.github.com/repos/gloom-sh/gloomberb/subscribers",
+      "subscription_url": "https://api.github.com/repos/gloom-sh/gloomberb/subscription",
+      "commits_url": "https://api.github.com/repos/gloom-sh/gloomberb/commits{/sha}",
+      "git_commits_url": "https://api.github.com/repos/gloom-sh/gloomberb/git/commits{/sha}",
+      "comments_url": "https://api.github.com/repos/gloom-sh/gloomberb/comments{/number}",
+      "issue_comment_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues/comments{/number}",
+      "contents_url": "https://api.github.com/repos/gloom-sh/gloomberb/contents/{+path}",
+      "compare_url": "https://api.github.com/repos/gloom-sh/gloomberb/compare/{base}...{head}",
+      "merges_url": "https://api.github.com/repos/gloom-sh/gloomberb/merges",
+      "archive_url": "https://api.github.com/repos/gloom-sh/gloomberb/{archive_format}{/ref}",
+      "downloads_url": "https://api.github.com/repos/gloom-sh/gloomberb/downloads",
+      "issues_url": "https://api.github.com/repos/gloom-sh/gloomberb/issues{/number}",
+      "pulls_url": "https://api.github.com/repos/gloom-sh/gloomberb/pulls{/number}",
+      "milestones_url": "https://api.github.com/repos/gloom-sh/gloomberb/milestones{/number}",
+      "notifications_url": "https://api.github.com/repos/gloom-sh/gloomberb/notifications{?since,all,participating}",
+      "labels_url": "https://api.github.com/repos/gloom-sh/gloomberb/labels{/name}",
+      "releases_url": "https://api.github.com/repos/gloom-sh/gloomberb/releases{/id}",
+      "deployments_url": "https://api.github.com/repos/gloom-sh/gloomberb/deployments"
+    }
+  },
+  "jobs": {
+    "total_count": 4,
+    "jobs": [
+      {
+        "id": 119283476980,
+        "run_id": 39617892516,
+        "workflow_name": "Verify",
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516",
+        "run_attempt": 1,
+        "node_id": "CR_kwDORwA07s8AAAAbxdlp9A",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119283476980",
+        "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892516/job/119283476980",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-21T14:33:50Z",
+        "started_at": "2026-10-21T14:52:54Z",
+        "completed_at": "2026-10-21T14:55:43Z",
+        "name": "typecheck",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-10-21T14:52:55Z",
+            "completed_at": "2026-10-21T14:52:56Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-10-21T14:52:56Z",
+            "completed_at": "2026-10-21T14:52:59Z"
+          },
+          {
+            "name": "Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-10-21T14:52:59Z",
+            "completed_at": "2026-10-21T14:53:02Z"
+          },
+          {
+            "name": "Typecheck production runtimes and built-in plugin tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-10-21T14:53:02Z",
+            "completed_at": "2026-10-21T14:55:34Z"
+          },
+          {
+            "name": "Check for unused code",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-10-21T14:55:34Z",
+            "completed_at": "2026-10-21T14:55:39Z"
+          },
+          {
+            "name": "Check the built-in plugin manifest",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-10-21T14:55:39Z",
+            "completed_at": "2026-10-21T14:55:40Z"
+          },
+          {
+            "name": "Check the web proxy allowlist",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-10-21T14:55:40Z",
+            "completed_at": "2026-10-21T14:55:41Z"
+          },
+          {
+            "name": "Post Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13,
+            "started_at": "2026-10-21T14:55:41Z",
+            "completed_at": "2026-10-21T14:55:41Z"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14,
+            "started_at": "2026-10-21T14:55:41Z",
+            "completed_at": "2026-10-21T14:55:41Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15,
+            "started_at": "2026-10-21T14:55:41Z",
+            "completed_at": "2026-10-21T14:55:41Z"
+          }
+        ],
+        "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119283476980",
+        "labels": [
+          "ubuntu-latest"
+        ],
+        "runner_id": 1000024539,
+        "runner_name": "GitHub Actions 1000024539",
+        "runner_group_id": 0,
+        "runner_group_name": "GitHub Actions"
+      },
+      {
+        "id": 119283477393,
+        "run_id": 39617892516,
+        "workflow_name": "Verify",
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516",
+        "run_attempt": 1,
+        "node_id": "CR_kwDORwA07s8AAAAbxdlrkQ",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119283477393",
+        "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892516/job/119283477393",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-21T14:33:50Z",
+        "started_at": "2026-10-21T14:59:22Z",
+        "completed_at": "2026-10-21T15:06:09Z",
+        "name": "build-and-test",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-10-21T14:59:23Z",
+            "completed_at": "2026-10-21T14:59:23Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-10-21T14:59:23Z",
+            "completed_at": "2026-10-21T14:59:29Z"
+          },
+          {
+            "name": "Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-10-21T14:59:29Z",
+            "completed_at": "2026-10-21T14:59:31Z"
+          },
+          {
+            "name": "Test",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-10-21T14:59:31Z",
+            "completed_at": "2026-10-21T15:05:37Z"
+          },
+          {
+            "name": "Build Electrobun view",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5,
+            "started_at": "2026-10-21T15:05:37Z",
+            "completed_at": "2026-10-21T15:05:38Z"
+          },
+          {
+            "name": "Build and audit browser app",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6,
+            "started_at": "2026-10-21T15:05:38Z",
+            "completed_at": "2026-10-21T15:05:39Z"
+          },
+          {
+            "name": "Dry-run Cloudflare Worker",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-10-21T15:05:39Z",
+            "completed_at": "2026-10-21T15:05:42Z"
+          },
+          {
+            "name": "Build core binary",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-10-21T15:05:42Z",
+            "completed_at": "2026-10-21T15:06:01Z"
+          },
+          {
+            "name": "Test global upgrade from 0.5.0",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-10-21T15:06:01Z",
+            "completed_at": "2026-10-21T15:06:07Z"
+          },
+          {
+            "name": "Post Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17,
+            "started_at": "2026-10-21T15:06:07Z",
+            "completed_at": "2026-10-21T15:06:07Z"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18,
+            "started_at": "2026-10-21T15:06:07Z",
+            "completed_at": "2026-10-21T15:06:07Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19,
+            "started_at": "2026-10-21T15:06:07Z",
+            "completed_at": "2026-10-21T15:06:07Z"
+          }
+        ],
+        "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119283477393",
+        "labels": [
+          "ubuntu-latest"
+        ],
+        "runner_id": 1000024551,
+        "runner_name": "GitHub Actions 1000024551",
+        "runner_group_id": 0,
+        "runner_group_name": "GitHub Actions"
+      },
+      {
+        "id": 119283477641,
+        "run_id": 39617892516,
+        "workflow_name": "Verify",
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516",
+        "run_attempt": 1,
+        "node_id": "CR_kwDORwA07s8AAAAbxdlsiQ",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119283477641",
+        "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892516/job/119283477641",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-10-21T14:33:50Z",
+        "started_at": "2026-10-21T15:04:50Z",
+        "completed_at": "2026-10-21T15:05:13Z",
+        "name": "registry-plugins",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1,
+            "started_at": "2026-10-21T15:04:50Z",
+            "completed_at": "2026-10-21T15:04:51Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2,
+            "started_at": "2026-10-21T15:04:51Z",
+            "completed_at": "2026-10-21T15:04:55Z"
+          },
+          {
+            "name": "Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3,
+            "started_at": "2026-10-21T15:04:55Z",
+            "completed_at": "2026-10-21T15:04:59Z"
+          },
+          {
+            "name": "Compile registry plugins against this host",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4,
+            "started_at": "2026-10-21T15:04:59Z",
+            "completed_at": "2026-10-21T15:05:11Z"
+          },
+          {
+            "name": "Post Run ./.github/actions/setup-bun",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7,
+            "started_at": "2026-10-21T15:05:11Z",
+            "completed_at": "2026-10-21T15:05:12Z"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8,
+            "started_at": "2026-10-21T15:05:12Z",
+            "completed_at": "2026-10-21T15:05:12Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9,
+            "started_at": "2026-10-21T15:05:12Z",
+            "completed_at": "2026-10-21T15:05:12Z"
+          }
+        ],
+        "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119283477641",
+        "labels": [
+          "ubuntu-latest"
+        ],
+        "runner_id": 1000024564,
+        "runner_name": "GitHub Actions 1000024564",
+        "runner_group_id": 0,
+        "runner_group_name": "GitHub Actions"
+      },
+      {
+        "id": 119299920119,
+        "run_id": 39617892516,
+        "workflow_name": "Verify",
+        "head_branch": "fix/glo-1165-plugin-removal",
+        "run_url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/runs/39617892516",
+        "run_attempt": 1,
+        "node_id": "CR_kwDORwA07s8AAAAbxtRQ9w",
+        "head_sha": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+        "url": "https://api.github.com/repos/gloom-sh/gloomberb/actions/jobs/119299920119",
+        "html_url": "https://github.com/gloom-sh/gloomberb/actions/runs/39617892516/job/119299920119",
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-21T15:06:09Z",
+        "started_at": "2026-10-21T15:06:09Z",
+        "completed_at": "2026-10-21T15:06:09Z",
+        "name": "Deploy terminal to Cloudflare",
+        "steps": [],
+        "check_run_url": "https://api.github.com/repos/gloom-sh/gloomberb/check-runs/119299920119",
+        "labels": [
+          "ubuntu-latest"
+        ],
+        "runner_id": null,
+        "runner_name": null,
+        "runner_group_id": null,
+        "runner_group_name": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,3747 @@
+{
+ "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+ "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+ "dirty": false,
+ "shard": "3/4",
+ "offline": true,
+ "shards": {
+  "expected": 4,
+  "finished": [
+   0,
+   1,
+   2,
+   3
+  ],
+  "unfinished": []
+ },
+ "unsteady": [
+  "PERP--tab-history",
+  "OVDV--root"
+ ],
+ "complete": true,
+ "views": 530,
+ "changed": 1,
+ "changedViews": [
+  "GP--root"
+ ],
+ "oneSided": {
+  "gone": [],
+  "new": []
+ },
+ "failed": {
+  "before": [],
+  "after": []
+ },
+ "changes": [
+  {
+   "view": "13F--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "13F--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "13F--tab-events",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "13F--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ACM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ADJ--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ADJ--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ADJ--tab-cftc",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ADJ--tab-rates",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ALRT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ALRT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ALRT--tab-events",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ALRT--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ANR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "APPS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "APPS--tab-chart",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "APPS--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "APPS--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "APPS--tab-peers",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ASKG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "attention-trending-pane--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "attention-trending-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--tab-abnormal",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--tab-countries",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ATTN--tab-sectors",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-bills",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-bonds-1-3",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-bonds-2-4",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AUCT--tab-notes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--tab-agencies",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--tab-company",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--tab-events",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "AWARDS--tab-sectors",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BI--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BI--tab-industries",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BI--tab-themes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BT--tab-trades",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTMM--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTMM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTMM--tab-bills",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTMM--tab-liquidity",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTST--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTST--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BTST--tab-trades",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BUZZ--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "BUZZ--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CALLS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-alternative-data",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-crypto",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-defense-fiscal",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-economy",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-energy",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-futures",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-fx",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-inflation",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-options",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-rates",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-securities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-sentiment",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-valuation",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CAT--tab-volatility",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CATL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CATL--tab-changes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CBR--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CBR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDS--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDS--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDS--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDX--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDX--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDX--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDX--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CDX--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CFNG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CG--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CHAT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CHG--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CHG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CHOKE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0.00005564769553072626
+   }
+  },
+  {
+   "view": "CLTR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CMP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CN--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "command-bar",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "command-bar-search",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CONN--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CONN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CORR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-disaggregated",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-inventories",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COT--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-capital",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-maturities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-screen",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "COVN--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CPI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRD--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRD--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRD--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRD--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRD--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-covenants",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-maturities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-screen",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRDOC--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRYP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CRYP--tab-stablecoins",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--tab-inventories",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "CTM--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--tab-filing",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DDIS--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DIAG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DIST--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DIST--tab-deals",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOCS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOCS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-gas-storage",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DOE--tab-products",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DTS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DTS--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DTS--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DTS--tab-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DTS--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "DVD--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ECO--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ECO--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ECST--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EE--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EK--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-capacity",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-coverage",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-loads",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-outcomes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-queue",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EPWR--tab-utilities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EQS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EQS--tab-criteria",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EQS--tab-saved",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ETF--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EVT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EVT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXEC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXPO--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXPO--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXPO--tab-drivers",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXPO--tab-paths",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "EXPO--tab-portfolio",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FA--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FA--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FDA--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FDA--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "feedback-dialog",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FI--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FI--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FI--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FI--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FIRST--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FIRST--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FLOW--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FNG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--tab-inventories",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FUT--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FXC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "FXMD_REST_HEALTH--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "G--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GC--tab-world",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GEX--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GEX--tab-expiries",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GEX--tab-strikes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GF--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GIP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GP--root",
+   "widths": {
+    "640": 0.0024332227653631284,
+    "1280": 0.001242798533519553
+   }
+  },
+  {
+   "view": "GPU--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GPU--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GPU--tab-changes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GPU--tab-equities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GPU--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-addresses",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-fees",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-stables",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-throughput",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-tvs",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GTP--tab-tx-cost",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GUID--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GUIDE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GUIDE--tab-chart",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GUIDE--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "GUIDE--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HALT--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HALT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HALT--tab-active",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HALT--tab-long-term",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HALT--tab-resumed",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HELP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HELP--tab-feedback",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HELP--tab-functions",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HELP--tab-reference",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HELP--tab-shortcuts",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HILO--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--tab-chart",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--tab-mix",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIRE--tab-peers",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HIVG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HM--tab-main-portfolio",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HM--tab-us-etfs",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--tab-ask",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--tab-best",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--tab-new",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HN--tab-show",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HVG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HVG--tab-cone",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HVT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "HVT--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "IBKR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "INS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "INS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "IPO--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "IPO--tab-apac",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "IPO--tab-europe",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "IPO--tab-us",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JOBS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--tab-inventories",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "JODI--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--tab-asym",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--tab-market",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--tab-risk",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KELLY--tab-scenario",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KPIS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KPIS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KPIS--tab-chart",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "KPIS--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "LAY--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "LITI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "LITI--tab-changes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MA--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MAP--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MAP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-attribution",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-correlation",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-factors",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-greeks",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-holdings",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-performance",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MARS--tab-stress",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MDAY--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MEMB--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "MOST--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "N--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "N--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-portfolio-pane--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-portfolio-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-portfolio-pane--tab-watchlist",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-watchlist-pane--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-watchlist-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "new-watchlist-pane--tab-watchlist",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "news-story-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-crops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-crude",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NGS--tab-products",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NI--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "NOTE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OMON--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OMON--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OPX--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OPX--tab-expiries",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OPX--tab-gex",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ORD--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "ORD--tab-2-hops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OSA--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OSA--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OSA--tab-legs",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OSA--tab-p-l-grid",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVDV--root",
+   "widths": {
+    "640": 0,
+    "1280": 0.0008510824022346368
+   }
+  },
+  {
+   "view": "OVDV--tab-forwards",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVDV--tab-skew",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVDV--tab-smile",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVDV--tab-table",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVDV--tab-term",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVME--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "OVME--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "pane-menu",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "pane-settings-dialog",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PDLR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PDLR--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PDLR--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PDLR--tab-fails",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PDLR--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PEB--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--tab-compare",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--tab-evidence",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--tab-history",
+   "widths": {
+    "640": 0.06243016759776536,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PERP--tab-rankings",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PF--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PF--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PF--tab-watchlist",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-climate",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-crypto",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-entertainment",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-macro",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-politics",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-science",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-social",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-sports",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PM--tab-world",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--tab-favorability",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--tab-generic",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--tab-governor",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--tab-house",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POLL--tab-senate",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-attribution",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-correlation",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-factors",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-greeks",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-holdings",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-performance",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PORT--tab-stress",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-capacity",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-coverage",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-loads",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-outcomes",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-prices",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "POWER--tab-utilities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--tab-inventories",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--tab-markets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--tab-oil-gas",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "PSD--tab-positioning",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "QQ--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "QQ--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "QR--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "QR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "QR--tab-trades",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RDCF--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RETURN--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RIPL--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RIPL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RIPL--tab-2-hops",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RISK--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RRG--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RRG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "RV--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEAS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEAS--tab-overlay",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEAS--tab-weekdays",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEC--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SEG--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "shell",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SI--tab-daily-volume",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SIV--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SIV--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SIV--tab-interest",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SIW--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SOVR--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SOVR--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SOVR--tab-bonds",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SOVR--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SOVR--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SPLC--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SPLC--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SPLC--tab-flow",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SPLC--tab-graph",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SPLC--tab-path",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SRCH--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SUB--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "SUB--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-8-k",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-analyst",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-apps",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-ask-ai",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-calls",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-catalysts",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-chart",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-diagnostic",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-dividends",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-events",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-exec",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-financials",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-hiring",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-hiring-momentum",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-insider",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-m-a",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-news",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-options",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-revenue",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-risks",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-sec",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-short-interest",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-thesis",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "T--tab-tweets",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TAS--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TAS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TAS--tab-nbbo",
+   "widths": {
+    "640": 0,
+    "1280": 0.000025096019553072626
+   }
+  },
+  {
+   "view": "TBO--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "team-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "THEM--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "THEM--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "THEM--tab-industries",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "THEM--tab-sectors",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "theme-picker",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "THESIS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TOP--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TOP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRACE--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRACE--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRACE--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRACE--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRIAL--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TRIAL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TV--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TV--tab-2-cnbc",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "TV--tab-3-yahoo-finance",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "twitter-feed-pane--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "twitter-feed-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "unread-inbox-pane--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VAL--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VCA--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VIX--detail",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VIX--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VIX--tab-cross-asset",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VIX--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VOLS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VOLS--tab-curve",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "VOLS--tab-history",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "WEI--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "WIRP--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "WIRP--tab-contracts",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "WIRP--tab-probabilities",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "WIRP--tab-projections",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--root",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--tab-cash-flows",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--tab-credit",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--tab-issuer-debt",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--tab-sensitivity",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  },
+  {
+   "view": "YAS--tab-treasury",
+   "widths": {
+    "640": 0,
+    "1280": 0
+   }
+  }
+ ]
+}

@@ -1,0 +1,187 @@
+{
+  "issue": "footer-copy",
+  "rawPreserved": true,
+  "sides": {
+    "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+    "head": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "dirty": false,
+    "shard": "3/4",
+    "offline": true
+  },
+  "refs": {
+    "base": "0568f95db049dccad254c672c2c8d284bbe6a586",
+    "testedHead": "c1810dd09dea69bdb2f00de498f62067528a6ec2",
+    "submittedHead": "c1810dd09dea69bdb2f00de498f62067528a6ec2"
+  },
+  "captures": {
+    "before": {
+      "declarations": [
+        {
+          "kind": "pane",
+          "token": "LAY",
+          "paneId": "layout-marketplace",
+          "instance": {
+            "instanceId": "layout-marketplace:mvelrpqo1",
+            "paneId": "layout-marketplace",
+            "binding": {
+              "kind": "none"
+            }
+          },
+          "id": "LAY--root",
+          "view": "root"
+        },
+        {
+          "kind": "pane",
+          "token": "LAY",
+          "paneId": "layout-marketplace",
+          "instance": {
+            "instanceId": "layout-marketplace:mvelrpqo1",
+            "paneId": "layout-marketplace",
+            "binding": {
+              "kind": "none"
+            }
+          },
+          "id": "LAY--detail",
+          "view": "detail"
+        }
+      ],
+      "measurementKeys": [
+        [
+          "LAY--root",
+          640
+        ],
+        [
+          "LAY--root",
+          1280
+        ]
+      ],
+      "rootSamples": [
+        "Layouts",
+        "/",
+        "Your layouts (1)",
+        "\u25cf",
+        "Sweep",
+        "Log in to browse community layouts.",
+        "Log in",
+        "Sign up free",
+        "Sweep",
+        "Active",
+        "0 docked",
+        "[/]",
+        "search"
+      ],
+      "images": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/1280/LAY--root.jpg",
+          "sha256": "2c56ef54e1447b2c1d9649957489b0881d0d1dfc63e7afa878fcfc09b11aa864"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/before/shots/white/640/LAY--root.jpg",
+          "sha256": "fcd55e91ab15f638e6b029c83ee30bd93f9917834cd329a180d33bdfd46d56a8"
+        }
+      ]
+    },
+    "after": {
+      "declarations": [
+        {
+          "kind": "pane",
+          "token": "LAY",
+          "paneId": "layout-marketplace",
+          "instance": {
+            "instanceId": "layout-marketplace:mvelrpr31",
+            "paneId": "layout-marketplace",
+            "binding": {
+              "kind": "none"
+            }
+          },
+          "id": "LAY--root",
+          "view": "root"
+        },
+        {
+          "kind": "pane",
+          "token": "LAY",
+          "paneId": "layout-marketplace",
+          "instance": {
+            "instanceId": "layout-marketplace:mvelrpr31",
+            "paneId": "layout-marketplace",
+            "binding": {
+              "kind": "none"
+            }
+          },
+          "id": "LAY--detail",
+          "view": "detail"
+        }
+      ],
+      "measurementKeys": [
+        [
+          "LAY--root",
+          640
+        ],
+        [
+          "LAY--root",
+          1280
+        ]
+      ],
+      "rootSamples": [
+        "Layouts",
+        "/",
+        "Your layouts (1)",
+        "\u25cf",
+        "Sweep",
+        "Log in to browse community layouts.",
+        "Log in",
+        "Sign up free",
+        "Sweep",
+        "Active",
+        "0 docked",
+        "[/]",
+        "search"
+      ],
+      "images": [
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/1280/LAY--root.jpg",
+          "sha256": "2c56ef54e1447b2c1d9649957489b0881d0d1dfc63e7afa878fcfc09b11aa864"
+        },
+        {
+          "path": "ci-ui-benchmark/ui-benchmark-shard-4/after/shots/white/640/LAY--root.jpg",
+          "sha256": "fcd55e91ab15f638e6b029c83ee30bd93f9917834cd329a180d33bdfd46d56a8"
+        }
+      ]
+    }
+  },
+  "unchangedSource": [
+    {
+      "path": "scripts/pane-chrome/ui-audit.ts",
+      "blobs": {
+        "base": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+        "testedHead": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e",
+        "submittedHead": "52ba0ccc44996cb8d7a5badf50d2b377e84d217e"
+      }
+    },
+    {
+      "path": "scripts/pane-chrome/ui-benchmark.ts",
+      "blobs": {
+        "base": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436",
+        "testedHead": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436",
+        "submittedHead": "1ec79fbad12a26fcd31a4b54dd78ab57fa0d7436"
+      }
+    },
+    {
+      "path": "src/layout-marketplace/gallery.tsx",
+      "blobs": {
+        "base": "e449cee4cf0db487dfc60bede134270a72f318f9",
+        "testedHead": "e449cee4cf0db487dfc60bede134270a72f318f9",
+        "submittedHead": "e449cee4cf0db487dfc60bede134270a72f318f9"
+      }
+    },
+    {
+      "path": "src/layout-marketplace/gallery-desktop.tsx",
+      "blobs": {
+        "base": "e31c90f38b110d5e026659d9be87060ebb16c1a8",
+        "testedHead": "e31c90f38b110d5e026659d9be87060ebb16c1a8",
+        "submittedHead": "e31c90f38b110d5e026659d9be87060ebb16c1a8"
+      }
+    }
+  ],
+  "diagnosis": "The selected owned Sweep entry closes the gallery on Enter. The audit detects changed pane text, record() returns false for the now-missing pane scope, and the caller still declares LAY--detail. Both sides have the same declaration without a detail measurement or image. LAY--root is measured at both widths. The current artifact text confirms the owned Sweep state, and relevant base/tested/submitted source blobs match. No original evidence was changed."
+}

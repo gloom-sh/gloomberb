@@ -1,0 +1,386 @@
+﻿2026-10-21T14:42:48.3934758Z Current runner version: '2.338.0'
+2026-10-21T14:42:48.3975913Z ##[group]Runner Image Provisioner
+2026-10-21T14:42:48.3976990Z Hosted Compute Agent
+2026-10-21T14:42:48.3977767Z Version: 20261002.596
+2026-10-21T14:42:48.3978545Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-21T14:42:48.3979512Z Build Date: 2026-10-02T22:28:27Z
+2026-10-21T14:42:48.3980387Z Worker ID: {f226a1e2-6e99-42ef-9222-a602572ed97c}
+2026-10-21T14:42:48.3981288Z Region: westus3
+2026-10-21T14:42:48.3981965Z Cloud: Azure
+2026-10-21T14:42:48.3982610Z ##[endgroup]
+2026-10-21T14:42:48.3984166Z ##[group]Operating System
+2026-10-21T14:42:48.3985061Z Microsoft Windows Server 2025
+2026-10-21T14:42:48.3986037Z 10.0.26100
+2026-10-21T14:42:48.3986699Z Datacenter
+2026-10-21T14:42:48.3987340Z ##[endgroup]
+2026-10-21T14:42:48.3988103Z ##[group]Runner Image
+2026-10-21T14:42:48.3988868Z Image: windows-2025-vs2026
+2026-10-21T14:42:48.3989664Z Version: 20261007.264.1
+2026-10-21T14:42:48.3992122Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261007.264/images/windows/Windows2025-VS2026-Readme.md
+2026-10-21T14:42:48.3995065Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261007.264
+2026-10-21T14:42:48.3997119Z ##[endgroup]
+2026-10-21T14:42:48.3999033Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T14:42:48.4001468Z Contents: read
+2026-10-21T14:42:48.4002458Z Metadata: read
+2026-10-21T14:42:48.4003379Z ##[endgroup]
+2026-10-21T14:42:48.4006106Z Secret source: Actions
+2026-10-21T14:42:48.4007624Z Cache mode: write
+2026-10-21T14:42:48.4008706Z Prepare workflow directory
+2026-10-21T14:42:48.4346256Z Prepare all required actions
+2026-10-21T14:42:48.4395853Z Getting action download info
+2026-10-21T14:42:48.6922086Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-21T14:42:48.9839374Z Complete job name: cli
+2026-10-21T14:42:49.2089003Z ##[group]Run actions/checkout@v4
+2026-10-21T14:42:49.2090684Z with:
+2026-10-21T14:42:49.2091450Z   repository: gloom-sh/gloomberb
+2026-10-21T14:42:49.2100758Z   token: ***
+2026-10-21T14:42:49.2101486Z   ssh-strict: true
+2026-10-21T14:42:49.2102213Z   ssh-user: git
+2026-10-21T14:42:49.2102959Z   persist-credentials: true
+2026-10-21T14:42:49.2103793Z   clean: true
+2026-10-21T14:42:49.2104539Z   sparse-checkout-cone-mode: true
+2026-10-21T14:42:49.2105450Z   fetch-depth: 1
+2026-10-21T14:42:49.2106176Z   fetch-tags: false
+2026-10-21T14:42:49.2106912Z   show-progress: true
+2026-10-21T14:42:49.2107667Z   lfs: false
+2026-10-21T14:42:49.2108341Z   submodules: false
+2026-10-21T14:42:49.2109065Z   set-safe-directory: true
+2026-10-21T14:42:49.2109951Z   allow-unsafe-pr-checkout: false
+2026-10-21T14:42:49.2111148Z ##[endgroup]
+2026-10-21T14:42:49.3687284Z Syncing repository: gloom-sh/gloomberb
+2026-10-21T14:42:49.3689757Z ##[group]Getting Git version info
+2026-10-21T14:42:49.3690927Z Working directory is 'D:\a\gloomberb\gloomberb'
+2026-10-21T14:42:49.4712537Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-21T14:42:50.0331123Z git version 2.56.0.windows.2
+2026-10-21T14:42:50.0385029Z ##[endgroup]
+2026-10-21T14:42:50.0405738Z Temporarily overriding HOME='D:\a\_temp\cb69123c-dba9-4277-b6c0-d3e2d274d3e7' before making global git config changes
+2026-10-21T14:42:50.0407481Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:42:50.0418412Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\gloomberb\gloomberb
+2026-10-21T14:42:50.1710150Z Deleting the contents of 'D:\a\gloomberb\gloomberb'
+2026-10-21T14:42:50.1716425Z ##[group]Initializing the repository
+2026-10-21T14:42:50.1725066Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\gloomberb\gloomberb
+2026-10-21T14:42:50.3429528Z Initialized empty Git repository in D:/a/gloomberb/gloomberb/.git/
+2026-10-21T14:42:50.3482122Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/gloom-sh/gloomberb
+2026-10-21T14:42:50.4445220Z ##[endgroup]
+2026-10-21T14:42:50.4445966Z ##[group]Disabling automatic garbage collection
+2026-10-21T14:42:50.4454529Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-21T14:42:50.4876194Z ##[endgroup]
+2026-10-21T14:42:50.4877278Z ##[group]Setting up auth
+2026-10-21T14:42:50.4890627Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:42:50.5348160Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-21T14:42:52.9284118Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:42:52.9754878Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-21T14:42:53.5393773Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:42:53.5803780Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-21T14:42:54.1561025Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-21T14:42:54.1960282Z ##[endgroup]
+2026-10-21T14:42:54.1960827Z ##[group]Fetching the repository
+2026-10-21T14:42:54.1981524Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c1810dd09dea69bdb2f00de498f62067528a6ec2:refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:42:58.5821875Z From https://github.com/gloom-sh/gloomberb
+2026-10-21T14:42:58.5822967Z  * [new ref]         c1810dd09dea69bdb2f00de498f62067528a6ec2 -> origin/fix/glo-1165-plugin-removal
+2026-10-21T14:42:58.5863328Z ##[endgroup]
+2026-10-21T14:42:58.5864138Z ##[group]Determining the checkout info
+2026-10-21T14:42:58.5866897Z ##[endgroup]
+2026-10-21T14:42:58.5882871Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-21T14:42:58.6436152Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-21T14:42:58.6845894Z ##[group]Checking out the ref
+2026-10-21T14:42:58.6860647Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B fix/glo-1165-plugin-removal refs/remotes/origin/fix/glo-1165-plugin-removal
+2026-10-21T14:42:59.7567627Z Updating files:  56% (2633/4638)
+2026-10-21T14:42:59.7701106Z Updating files:  57% (2644/4638)
+2026-10-21T14:42:59.7840119Z Updating files:  58% (2691/4638)
+2026-10-21T14:42:59.7959199Z Updating files:  59% (2737/4638)
+2026-10-21T14:42:59.8092664Z Updating files:  60% (2783/4638)
+2026-10-21T14:42:59.8221766Z Updating files:  61% (2830/4638)
+2026-10-21T14:42:59.8364948Z Updating files:  62% (2876/4638)
+2026-10-21T14:42:59.8492064Z Updating files:  63% (2922/4638)
+2026-10-21T14:42:59.8617491Z Updating files:  64% (2969/4638)
+2026-10-21T14:42:59.8744153Z Updating files:  65% (3015/4638)
+2026-10-21T14:42:59.8875585Z Updating files:  66% (3062/4638)
+2026-10-21T14:42:59.8992869Z Updating files:  67% (3108/4638)
+2026-10-21T14:42:59.9109011Z Updating files:  68% (3154/4638)
+2026-10-21T14:42:59.9235598Z Updating files:  69% (3201/4638)
+2026-10-21T14:42:59.9370237Z Updating files:  70% (3247/4638)
+2026-10-21T14:42:59.9512512Z Updating files:  71% (3293/4638)
+2026-10-21T14:42:59.9635326Z Updating files:  72% (3340/4638)
+2026-10-21T14:42:59.9761341Z Updating files:  73% (3386/4638)
+2026-10-21T14:42:59.9891154Z Updating files:  74% (3433/4638)
+2026-10-21T14:43:00.0022180Z Updating files:  75% (3479/4638)
+2026-10-21T14:43:00.0202339Z Updating files:  76% (3525/4638)
+2026-10-21T14:43:00.0349085Z Updating files:  77% (3572/4638)
+2026-10-21T14:43:00.0467603Z Updating files:  78% (3618/4638)
+2026-10-21T14:43:00.0590212Z Updating files:  79% (3665/4638)
+2026-10-21T14:43:00.0712267Z Updating files:  80% (3711/4638)
+2026-10-21T14:43:00.0833494Z Updating files:  81% (3757/4638)
+2026-10-21T14:43:00.0950965Z Updating files:  82% (3804/4638)
+2026-10-21T14:43:00.1131513Z Updating files:  83% (3850/4638)
+2026-10-21T14:43:00.1249981Z Updating files:  84% (3896/4638)
+2026-10-21T14:43:00.1366390Z Updating files:  85% (3943/4638)
+2026-10-21T14:43:00.1488551Z Updating files:  86% (3989/4638)
+2026-10-21T14:43:00.1628502Z Updating files:  87% (4036/4638)
+2026-10-21T14:43:00.1750728Z Updating files:  88% (4082/4638)
+2026-10-21T14:43:00.1881132Z Updating files:  89% (4128/4638)
+2026-10-21T14:43:00.2004353Z Updating files:  90% (4175/4638)
+2026-10-21T14:43:00.2136264Z Updating files:  91% (4221/4638)
+2026-10-21T14:43:00.2279123Z Updating files:  92% (4267/4638)
+2026-10-21T14:43:00.2399631Z Updating files:  93% (4314/4638)
+2026-10-21T14:43:00.2526831Z Updating files:  94% (4360/4638)
+2026-10-21T14:43:00.2668153Z Updating files:  95% (4407/4638)
+2026-10-21T14:43:00.2780430Z Updating files:  96% (4453/4638)
+2026-10-21T14:43:00.2899617Z Updating files:  97% (4499/4638)
+2026-10-21T14:43:00.3006623Z Updating files:  98% (4546/4638)
+2026-10-21T14:43:00.3116023Z Updating files:  99% (4592/4638)
+2026-10-21T14:43:00.3119796Z Updating files: 100% (4638/4638)
+2026-10-21T14:43:00.3120264Z Updating files: 100% (4638/4638), done.
+2026-10-21T14:43:00.3296927Z Switched to a new branch 'fix/glo-1165-plugin-removal'
+2026-10-21T14:43:00.3374385Z branch 'fix/glo-1165-plugin-removal' set up to track 'origin/fix/glo-1165-plugin-removal'.
+2026-10-21T14:43:00.3465809Z ##[endgroup]
+2026-10-21T14:43:00.3979838Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-21T14:43:00.4331025Z c1810dd09dea69bdb2f00de498f62067528a6ec2
+2026-10-21T14:43:00.4811867Z Prepare all required actions
+2026-10-21T14:43:00.4812579Z Getting action download info
+2026-10-21T14:43:00.6099953Z Download action repository 'oven-sh/setup-bun@v2' (SHA:0c5077e51419868618aeaa5fe8019c62421857d6)
+2026-10-21T14:43:01.2498879Z ##[group]Run ./.github/actions/setup-bun
+2026-10-21T14:43:01.2499152Z with:
+2026-10-21T14:43:01.2499321Z   install: true
+2026-10-21T14:43:01.2499502Z ##[endgroup]
+2026-10-21T14:43:01.2560636Z ##[start-action display=Run package_manager="$(node -p 'require("./package.json").packageManager')";id=__self.bun-version]
+2026-10-21T14:43:01.2734239Z ##[group]Run package_manager="$(node -p 'require("./package.json").packageManager')"
+2026-10-21T14:43:01.2734882Z [36;1mpackage_manager="$(node -p 'require("./package.json").packageManager')"[0m
+2026-10-21T14:43:01.2735375Z [36;1mecho "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"[0m
+2026-10-21T14:43:01.2756011Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:43:01.2756431Z ##[endgroup]
+2026-10-21T14:43:04.2334497Z ##[end-action id=__self.bun-version;outcome=success;conclusion=success;duration_ms=2977]
+2026-10-21T14:43:04.2339487Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__self.__oven-sh_setup-bun]
+2026-10-21T14:43:04.2524963Z ##[group]Run oven-sh/setup-bun@v2
+2026-10-21T14:43:04.2525227Z with:
+2026-10-21T14:43:04.2525417Z   bun-version: 1.3.11
+2026-10-21T14:43:04.2525620Z   no-cache: false
+2026-10-21T14:43:04.2528383Z   token: ***
+2026-10-21T14:43:04.2528575Z ##[endgroup]
+2026-10-21T14:43:04.8932222Z Cache hit for: bun-1JxJYWZA6nckysAgA0k0YFuYi44=
+2026-10-21T14:43:06.1807868Z Received 34430890 of 38625194 (89.1%), 32.8 MBs/sec
+2026-10-21T14:43:07.1811969Z Received 34430890 of 38625194 (89.1%), 16.4 MBs/sec
+2026-10-21T14:43:08.1819507Z Received 34430890 of 38625194 (89.1%), 10.9 MBs/sec
+2026-10-21T14:43:09.1686072Z Received 38625194 of 38625194 (100.0%), 9.2 MBs/sec
+2026-10-21T14:43:09.1690247Z Cache Size: ~37 MB (38625194 B)
+2026-10-21T14:43:09.1843839Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/4bae5d2d-2474-4361-818d-fcdec12a5cf9/cache.tzst -P -C D:/a/gloomberb/gloomberb --force-local --use-compress-program "zstd -d"
+2026-10-21T14:43:09.5382087Z Cache restored successfully
+2026-10-21T14:43:09.5421931Z [command]C:\Users\runneradmin\.bun\bin\bun.exe --revision
+2026-10-21T14:43:11.2724231Z 1.3.11+af24e281e
+2026-10-21T14:43:11.2756133Z Using a cached version of Bun: 1.3.11+af24e281e
+2026-10-21T14:43:11.2914899Z ##[end-action id=__self.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=7057]
+2026-10-21T14:43:11.2917810Z ##[start-action display=Run bun install --frozen-lockfile;id=__self.__run]
+2026-10-21T14:43:11.3054864Z ##[group]Run bun install --frozen-lockfile
+2026-10-21T14:43:11.3055209Z [36;1mbun install --frozen-lockfile[0m
+2026-10-21T14:43:11.3072953Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-21T14:43:11.3073379Z ##[endgroup]
+2026-10-21T14:43:11.3754819Z bun install v1.3.11 (af24e281)
+2026-10-21T14:43:11.3884803Z Resolving dependencies
+2026-10-21T14:43:11.3898770Z Resolved, downloaded and extracted [3]
+2026-10-21T14:43:56.9710552Z 
+2026-10-21T14:43:56.9711188Z + @types/bun@1.3.14
+2026-10-21T14:43:56.9711640Z + @types/react-dom@19.2.3
+2026-10-21T14:43:56.9712047Z + @types/three@0.165.0
+2026-10-21T14:43:56.9714178Z + electrobun@1.18.1
+2026-10-21T14:43:56.9714828Z + gloom-polls@github:gloom-sh/gloom-polls#90a780e
+2026-10-21T14:43:56.9715661Z + gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#c7566c4
+2026-10-21T14:43:56.9716388Z + happy-dom@20.11.1
+2026-10-21T14:43:56.9716711Z + playwright-core@1.60.0
+2026-10-21T14:43:56.9717107Z + png-to-ico@2.1.8
+2026-10-21T14:43:56.9717408Z + rcedit@4.0.1
+2026-10-21T14:43:56.9718210Z + typescript@5.9.2
+2026-10-21T14:43:56.9718570Z + wrangler@4.125.0
+2026-10-21T14:43:56.9718857Z + @opentui/core@0.3.2
+2026-10-21T14:43:56.9719196Z + @opentui/react@0.3.2
+2026-10-21T14:43:56.9722486Z + @tanstack/react-virtual@3.14.2
+2026-10-21T14:43:56.9722866Z + hls.js@1.6.13
+2026-10-21T14:43:56.9723076Z + jimp@1.6.1
+2026-10-21T14:43:56.9723273Z + qrcode-generator@2.0.4
+2026-10-21T14:43:56.9723504Z + react@19.2.7
+2026-10-21T14:43:56.9723694Z + react-dom@19.2.7
+2026-10-21T14:43:56.9723903Z + web-tree-sitter@0.25.10
+2026-10-21T14:43:56.9724057Z 
+2026-10-21T14:43:56.9724148Z 190 packages installed [45.60s]
+2026-10-21T14:43:56.9988305Z ##[end-action id=__self.__run;outcome=success;conclusion=success;duration_ms=45706]
+2026-10-21T14:43:57.0151419Z ##[group]Run bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts
+2026-10-21T14:43:57.0152320Z [36;1mbun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts[0m
+2026-10-21T14:43:57.0950468Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:43:57.0950916Z ##[endgroup]
+2026-10-21T14:43:57.4574919Z bun test v1.3.11 (af24e281)
+2026-10-21T14:43:57.5089843Z 
+2026-10-21T14:43:57.5090915Z ##[group]src\app\global-shortcuts.test.tsx:
+2026-10-21T14:43:58.2873174Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.2882562Z (pass) useAppGlobalShortcuts > leaves Ctrl-P to the open command bar and still closes it with Ctrl-K [62.00ms]
+2026-10-21T14:43:58.3160901Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.3164509Z (pass) useAppGlobalShortcuts > U retries a failed self-update [31.00ms]
+2026-10-21T14:43:58.3265507Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.3635545Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.3637836Z (pass) useAppGlobalShortcuts > U restarts into a downloaded desktop update, and does nothing for a terminal one [47.00ms]
+2026-10-21T14:43:58.3955597Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.3958756Z (pass) useAppGlobalShortcuts > a rebound action answers to its new key and not the old one [32.00ms]
+2026-10-21T14:43:58.4192827Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.4195031Z (pass) useAppGlobalShortcuts > a command binding opens the bar with the text to run, unless the bar or a dialog owns the keyboard [15.00ms]
+2026-10-21T14:43:58.4595045Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.4598465Z (pass) useAppGlobalShortcuts > a Control command binding yields to the editor while text is being typed [47.00ms]
+2026-10-21T14:43:58.4844071Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.4846721Z (pass) useAppGlobalShortcuts > Ctrl+Z and Ctrl+Shift+Z restore and redo the layout, except while text is being typed [16.00ms]
+2026-10-21T14:43:58.5064442Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.5067244Z (pass) useAppGlobalShortcuts > Ctrl+Z stays with the editor while a field has the keyboard [31.00ms]
+2026-10-21T14:43:58.5283633Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.5285416Z (pass) useAppGlobalShortcuts > a plugin shortcut honours its override [16.00ms]
+2026-10-21T14:43:58.5375976Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.5378309Z (pass) useAppGlobalShortcuts > toggles the command bar with Ctrl-P [15.00ms]
+2026-10-21T14:43:58.5539800Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.5541468Z (pass) useAppGlobalShortcuts > toggles the command bar with Ctrl-K [16.00ms]
+2026-10-21T14:43:58.5874831Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.5875979Z (pass) useAppGlobalShortcuts > opens ticker search with backtick [31.00ms]
+2026-10-21T14:43:58.6170741Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.6171877Z (pass) useAppGlobalShortcuts > switches saved layouts with Ctrl-number [31.00ms]
+2026-10-21T14:43:58.6488398Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.6490141Z (pass) useAppGlobalShortcuts > switches saved layouts with the Cmd-number reported by web and kitty hosts [32.00ms]
+2026-10-21T14:43:58.6709019Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.6710268Z (pass) useAppGlobalShortcuts > ignores Alt-number [15.00ms]
+2026-10-21T14:43:58.6974601Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.6975448Z (pass) useAppGlobalShortcuts > consumes layout numbers while the command bar is open without switching [31.00ms]
+2026-10-21T14:43:58.7123031Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7124815Z (pass) useAppGlobalShortcuts > consumes primary-modifier numbers with only one layout [16.00ms]
+2026-10-21T14:43:58.7322339Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7324342Z (pass) useAppGlobalShortcuts > consumes layout numbers while an editable field owns the keyboard [16.00ms]
+2026-10-21T14:43:58.7438616Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7439836Z (pass) useAppGlobalShortcuts > does not run plain plugin shortcuts while input is captured [15.00ms]
+2026-10-21T14:43:58.7600108Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7601200Z (pass) useAppGlobalShortcuts > opens Help with question mark after the command bar is closed [16.00ms]
+2026-10-21T14:43:58.7801069Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7802139Z (pass) useAppGlobalShortcuts > does not open Help with question mark while using the command bar [16.00ms]
+2026-10-21T14:43:58.7912714Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.7914448Z (pass) useAppGlobalShortcuts > does not open Help with question mark while typing [15.00ms]
+2026-10-21T14:43:58.8035586Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.8036621Z (pass) useAppGlobalShortcuts > cycles panes with Tab while input is captured [16.00ms]
+2026-10-21T14:43:58.8390030Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.8395420Z (pass) useAppGlobalShortcuts > does not treat modified Shift-R as force refresh [31.00ms]
+2026-10-21T14:43:58.8610784Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.8612109Z (pass) useAppGlobalShortcuts with a key held down > toggling the command bar runs once for flagged repeats, and again after a pause [31.00ms]
+2026-10-21T14:43:58.8866294Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.8867688Z (pass) useAppGlobalShortcuts with a key held down > ticker search runs once for flagged repeats, and again after a pause [16.00ms]
+2026-10-21T14:43:58.8951491Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.8952607Z (pass) useAppGlobalShortcuts with a key held down > Help runs once for flagged repeats, and again after a pause [16.00ms]
+2026-10-21T14:43:58.9185364Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.9186656Z (pass) useAppGlobalShortcuts with a key held down > refreshing the focused ticker runs once for flagged repeats, and again after a pause [15.00ms]
+2026-10-21T14:43:58.9501038Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.9502417Z (pass) useAppGlobalShortcuts with a key held down > toggling the command bar runs once when the terminal cannot flag them, and again after a pause [31.00ms]
+2026-10-21T14:43:58.9569934Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.9570838Z (pass) useAppGlobalShortcuts with a key held down > ticker search runs once when the terminal cannot flag them, and again after a pause [16.00ms]
+2026-10-21T14:43:58.9819486Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:58.9821415Z (pass) useAppGlobalShortcuts with a key held down > Help runs once when the terminal cannot flag them, and again after a pause [16.00ms]
+2026-10-21T14:43:58.9978175Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:59.0022526Z (pass) useAppGlobalShortcuts with a key held down > refreshing the focused ticker runs once when the terminal cannot flag them, and again after a pause [15.00ms]
+2026-10-21T14:43:59.0304186Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:59.0308039Z (pass) useAppGlobalShortcuts with a key held down > Help held past a slow repeat delay opens once [32.00ms]
+2026-10-21T14:43:59.0375853Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:59.0377018Z (pass) useAppGlobalShortcuts with a key held down > a held Tab keeps moving focus [15.00ms]
+2026-10-21T14:43:59.0582416Z The current testing environment is not configured to support act(...)
+2026-10-21T14:43:59.0584106Z (pass) useAppGlobalShortcuts with a key held down > a refused refresh does not take R from the focused pane [16.00ms]
+2026-10-21T14:43:59.0585145Z 
+2026-10-21T14:43:59.0585715Z ##[endgroup]
+2026-10-21T14:43:59.0585858Z 
+2026-10-21T14:43:59.0586191Z ##[group]src\plugins\host-link.test.ts:
+2026-10-21T14:43:59.0871146Z (pass) linkPeerPlugins > links a peer whose install directory uses the other product name [16.00ms]
+2026-10-21T14:43:59.0924482Z (pass) linkPeerPlugins > links a gloom- peer, which the old prefix filter dropped
+2026-10-21T14:43:59.0971086Z (pass) linkPeerPlugins > skips a peer that is not installed under either name [16.00ms]
+2026-10-21T14:43:59.1030593Z (pass) linkPeerPlugins > reports symlinks as the provider when a package root exists
+2026-10-21T14:43:59.1108894Z (pass) linkPeerPlugins > links a react that a global install hoisted beside the host [15.00ms]
+2026-10-21T14:43:59.1204478Z (pass) linkPeerPlugins > repoints a stale link without touching what it pointed at
+2026-10-21T14:43:59.1229766Z (pass) linkHostPackages without a package root > hands the imports to the host process instead of failing
+2026-10-21T14:43:59.1274812Z (pass) linkHostPackages without a package root > still links peer plugins, which the resolver cannot serve [16.00ms]
+2026-10-21T14:43:59.1297034Z (pass) linkHostPackages without a package root > keeps the error when the process cannot register a resolver
+2026-10-21T14:43:59.1327796Z (pass) missingPeerPlugins > names a declared sibling plugin installed under neither name
+2026-10-21T14:43:59.1328413Z 
+2026-10-21T14:43:59.1328820Z ##[endgroup]
+2026-10-21T14:43:59.1328952Z 
+2026-10-21T14:43:59.1329249Z ##[group]src\updater\index.test.ts:
+2026-10-21T14:43:59.1394394Z (pass) getAssetBaseNameForRuntime > uses the Windows executable release asset name on win32
+2026-10-21T14:43:59.1395234Z (pass) getAssetBaseNameForRuntime > keeps macOS arm64 runtimes on the arm64 asset
+2026-10-21T14:43:59.1395936Z (pass) getAssetBaseNameForRuntime > asks for an x64 asset on an x64 macOS runtime
+2026-10-21T14:43:59.1401284Z (pass) detectUpdateAction > uses self-update for standalone binaries
+2026-10-21T14:43:59.1402545Z (pass) detectUpdateAction > reports a standalone binary the process cannot overwrite as package-managed
+2026-10-21T14:43:59.1404079Z (pass) detectUpdateAction > uses manual bun updates for bun-managed installs
+2026-10-21T14:43:59.1405132Z (pass) detectUpdateAction > uses manual bun updates for Windows bun-managed installs
+2026-10-21T14:43:59.1406174Z (pass) detectUpdateAction > uses manual npm updates for node-managed installs
+2026-10-21T14:43:59.1407237Z (pass) detectUpdateAction > does not offer self-update for standalone Windows executables
+2026-10-21T14:43:59.1408308Z (pass) detectUpdateAction > skips updates when launched from source under bun
+2026-10-21T14:43:59.1409416Z (pass) detectUpdateAction > does not treat a macOS app bundle launcher as a standalone CLI binary
+2026-10-21T14:43:59.1410644Z (pass) detectUpdateAction > does not suggest Bun-managed updates for the bundled macOS app runtime
+2026-10-21T14:43:59.1411903Z (pass) detectUpdateAction > does not suggest Bun-managed updates for the bundled Windows app TUI runtime
+2026-10-21T14:43:59.1412968Z (pass) resolveSelfUpdateTargetPath > rejects Bun runtime paths
+2026-10-21T14:43:59.1414164Z (pass) resolveSelfUpdateTargetPath > rejects Node runtime paths
+2026-10-21T14:43:59.1415055Z (pass) resolveSelfUpdateTargetPath > rejects Windows Bun runtime paths
+2026-10-21T14:43:59.1415986Z (pass) resolveSelfUpdateTargetPath > accepts packaged gloomberb binaries
+2026-10-21T14:43:59.1416958Z (pass) resolveSelfUpdateTargetPath > rejects launchers inside macOS app bundles
+2026-10-21T14:43:59.1419186Z (pass) update host > delegates update checks to an installed host
+2026-10-21T14:43:59.1429637Z (pass) update host > delegates update installation and progress to an installed host [16.00ms]
+2026-10-21T14:43:59.1433127Z (pass) restarting into a ready update > only a host that can relaunch offers it, and the terminal never restarts itself
+2026-10-21T14:43:59.1438642Z (pass) checkForUpdate > skips update checks when running from source
+2026-10-21T14:43:59.1448399Z (pass) checkForUpdate > finds gzipped release assets published on GitHub
+2026-10-21T14:43:59.1452778Z (pass) checkForUpdateDetailed > returns a useful error when GitHub rejects the request
+2026-10-21T14:43:59.1457426Z (pass) checkForUpdateDetailed > rejects release assets with a missing digest
+2026-10-21T14:43:59.1459163Z (pass) checkForUpdateDetailed > rejects release assets with a malformed digest
+2026-10-21T14:43:59.1463939Z (pass) checkForUpdateDetailed > does not offer a prerelease of the running version as an update
+2026-10-21T14:43:59.1465192Z (pass) checkForUpdateDetailed > does not offer a tag that is not a version as an update
+2026-10-21T14:43:59.1467411Z (pass) performUpdate > returns a manual command instead of trying to overwrite Bun-managed installs
+2026-10-21T14:43:59.1469642Z (pass) performUpdate > names the package manager instead of downloading into a read-only install
+2026-10-21T14:43:59.1473092Z (pass) performUpdate > returns an explicit error instead of overwriting Bun when execution context changes
+2026-10-21T14:43:59.1492230Z (pass) performUpdate > leaves the installed binary untouched when the checksum is missing
+2026-10-21T14:43:59.1514826Z (pass) performUpdate > leaves the installed binary untouched when the checksum is malformed
+2026-10-21T14:43:59.1615896Z (pass) performUpdate > replaces the binary when an uncompressed asset's checksum matches [15.00ms]
+2026-10-21T14:43:59.1656717Z (pass) performUpdate > replaces the binary when a gzipped asset's checksum matches
+2026-10-21T14:43:59.1715952Z (pass) performUpdate > a nightly build swapped in is put back for the binary this run started from
+2026-10-21T14:43:59.1735860Z (pass) performUpdate > leaves the installed binary untouched when the checksum mismatches
+2026-10-21T14:43:59.1743122Z (pass) update channels > stable reads releases/latest only, which never holds a prerelease [16.00ms]
+2026-10-21T14:43:59.1752562Z (pass) update channels > nightly takes the highest version, prereleases included, that has this platform's binary
+2026-10-21T14:43:59.1756174Z (pass) update channels > a nightly build is offered the stable release once it passes the nightly's version
+2026-10-21T14:43:59.1762256Z (pass) update channels > back on stable, a nightly build stays until a newer stable release, and says so
+2026-10-21T14:43:59.1765367Z (pass) update channels > npm and Bun installs follow stable on either channel
+2026-10-21T14:43:59.1765953Z 
+2026-10-21T14:43:59.1766579Z ##[endgroup]
+2026-10-21T14:43:59.1768775Z 
+2026-10-21T14:43:59.1769191Z  87 pass
+2026-10-21T14:43:59.1769529Z  0 fail
+2026-10-21T14:43:59.1769756Z  211 expect() calls
+2026-10-21T14:43:59.1769992Z Ran 87 tests across 3 files. [1.72s]
+2026-10-21T14:43:59.3475986Z ##[group]Run bun run scripts/build.ts
+2026-10-21T14:43:59.3476386Z [36;1mbun run scripts/build.ts[0m
+2026-10-21T14:43:59.3546164Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:43:59.3546529Z ##[endgroup]
+2026-10-21T14:43:59.7008859Z Building the pane page...
+2026-10-21T14:44:01.2813848Z Building bun-windows-x64...
+2026-10-21T14:44:02.1701246Z  [625ms]  minify  -23.75 MB (estimate)
+2026-10-21T14:44:02.1701784Z  [250ms]  bundle  2619 modules
+2026-10-21T14:44:02.4920692Z  [322ms] compile  D:\a\gloomberb\gloomberb\dist\gloomberb-windows-x64.exe
+2026-10-21T14:44:02.5369173Z Smoke testing packaged binary...
+2026-10-21T14:44:18.3567303Z   -> D:\a\gloomberb\gloomberb\dist\gloomberb-windows-x64.exe.gz
+2026-10-21T14:44:18.5569416Z ##[group]Run if (-not (Test-Path "dist\gloomberb-windows-x64.exe.gz")) {
+2026-10-21T14:44:18.5570035Z [36;1mif (-not (Test-Path "dist\gloomberb-windows-x64.exe.gz")) {[0m
+2026-10-21T14:44:18.5570491Z [36;1m  throw "Missing standalone Windows CLI archive"[0m
+2026-10-21T14:44:18.5570797Z [36;1m}[0m
+2026-10-21T14:44:18.5641731Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T14:44:18.5642096Z ##[endgroup]
+2026-10-21T14:44:18.9994557Z Post job cleanup.
+2026-10-21T14:44:18.9998300Z ##[start-action display=Run oven-sh/setup-bun@v2;id=__f399e714-42b3-46da-8370-5c95d62abff2.__oven-sh_setup-bun]
+2026-10-21T14:44:19.0150677Z Post job cleanup.
+2026-10-21T14:44:19.2389682Z ##[end-action id=__f399e714-42b3-46da-8370-5c95d62abff2.__oven-sh_setup-bun;outcome=success;conclusion=success;duration_ms=239]
+2026-10-21T14:44:19.2580492Z Post job cleanup.
+2026-10-21T14:44:19.4523506Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-21T14:44:19.5040948Z git version 2.56.0.windows.2
+2026-10-21T14:44:19.5122687Z Temporarily overriding HOME='D:\a\_temp\dc8b062b-cb5f-48e7-974f-b548cde08a05' before making global git config changes
+2026-10-21T14:44:19.5123947Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T14:44:19.5137821Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\gloomberb\gloomberb
+2026-10-21T14:44:19.5613868Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T14:44:19.6060568Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-21T14:44:20.2051262Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T14:44:20.2399619Z http.https://github.com/.extraheader
+2026-10-21T14:44:20.2445575Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-21T14:44:20.2839416Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-21T14:44:20.8644775Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T14:44:20.9062363Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-21T14:44:21.5064702Z Cleaning up orphan processes
+2026-10-21T14:44:21.5103520Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
