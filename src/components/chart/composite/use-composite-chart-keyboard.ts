@@ -424,7 +424,7 @@ export function useCompositeChartKeyboard({
       stepLevel(event.name === "[" ? -1 : 1);
       return;
     }
-    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace")) {
+    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace", "delete")) {
       consume();
       removeSelectedLevel();
       return;

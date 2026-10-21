@@ -1188,6 +1188,7 @@ function ChartComposerSurface({
           showLatestChangePercent={!spec.viewport.dateWindow && spec.viewport.range === "1D"}
           onViewportChange={handleChartViewportChange}
           onActivate={activatePane}
+          onPress={trade?.focusChart}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           timePick={timePick}

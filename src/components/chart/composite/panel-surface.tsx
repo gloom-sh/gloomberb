@@ -623,6 +623,17 @@ export function CompositePanelSurface({
       updateCursor(event);
       return;
     }
+    // With no tool in hand, a press on a drawing or a level picks it so Backspace
+    // or Delete can remove it; the press still pans, and one on bare plot lets go.
+    const ratios = pointerRatios(event);
+    if (ratios) {
+      const drawingHit = drawings.length > 0 ? hitTestDrawings(drawings, scene, panel, ratios, plotAspect) : null;
+      const levelHit = !drawingHit && levels?.onEdit && levelDomain
+        ? hitTestLevel(projectedLevels, ratios.yRatio, levelGrabRatio(panel.height))
+        : null;
+      onSelectDrawing(drawingHit ? drawingHit.drawing.id : null);
+      onSelectLevel(levelHit?.editable ? levelHit.id : null);
+    }
     if (!updateCursor(event)) return;
     dragRef.current = startPanGesture(
       frame,

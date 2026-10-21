@@ -315,6 +315,12 @@ export interface CompositeChartProps {
     interaction: "pan" | "reset" | "zoom",
   ) => void;
   onActivate?: () => void;
+  /**
+   * A press on the chart itself (plot, legend or tool bar), not a wheel turn.
+   * The chart consumes the press, so an owner that shares the pane with a
+   * field that takes typed keys hears it here to hand the keyboard back.
+   */
+  onPress?: () => void;
   onToggleSeries?: (seriesId: string) => void;
   isSeriesToggleable?: (series: ResolvedSeries) => boolean;
   /**

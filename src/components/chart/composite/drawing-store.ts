@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { CHART_DRAWINGS_SETTING_KEY, parseChartDrawings, type ChartDrawing } from "./tools";
 
@@ -40,6 +40,12 @@ export function ChartDrawingStore({
   if (restoredRef.current === null) {
     restoredRef.current = parseChartDrawings(stored);
   }
+  // What the settings hold, so removing the last drawing is told even when the
+  // pane opened with none: it is not "nothing to say" but "the stored one is gone".
+  const writtenRef = useRef<readonly ChartDrawing[]>(restoredRef.current);
+  const pendingRef = useRef<readonly ChartDrawing[] | null>(null);
+  const setStoredRef = useRef(setStored);
+  setStoredRef.current = setStored;
 
   useEffect(() => {
     const restored = restoredRef.current;
@@ -47,13 +53,27 @@ export function ChartDrawingStore({
     // Restoring once on mount: later writes must not scroll back in time.
   }, []);
 
+  const write = useCallback((next: readonly ChartDrawing[]) => {
+    pendingRef.current = null;
+    writtenRef.current = next;
+    setStoredRef.current(next);
+  }, []);
+
   useEffect(() => {
-    const restored = restoredRef.current ?? NO_DRAWINGS;
-    if (drawings === restored) return;
-    if (drawings.length === 0 && restored.length === 0) return;
-    const timer = setTimeout(() => setStored(drawings), DRAWING_PERSIST_DELAY_MS);
+    // Untouched, or still waiting for the restore above: nothing of the user's to write.
+    if (drawings === NO_DRAWINGS || drawings === writtenRef.current || (drawings.length === 0 && writtenRef.current.length === 0)) {
+      pendingRef.current = null;
+      return;
+    }
+    pendingRef.current = drawings;
+    const timer = setTimeout(() => write(drawings), DRAWING_PERSIST_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [drawings, setStored]);
+  }, [drawings, write]);
+
+  // A change made just before the chart goes away (a tab switch) is still saved.
+  useEffect(() => () => {
+    if (pendingRef.current) write(pendingRef.current);
+  }, [write]);
 
   return null;
 }

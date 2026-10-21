@@ -362,7 +362,8 @@ export function resolveCompositeChartInteraction(event: {
   if (shifted && key === "d") return "arm-line";
   if (shifted && key === "p") return "arm-pencil";
   if (shifted && key === "h") return "arm-level";
-  if (key === "backspace") return "delete-drawing";
+  // Delete is the same act on a keyboard that has the key, or on a Mac with fn.
+  if (key === "backspace" || key === "delete") return "delete-drawing";
   if (key === "c" && !event.shift) return "cycle-colour";
   if (event.shift) return null;
   if (key === "a") return "pan-left";

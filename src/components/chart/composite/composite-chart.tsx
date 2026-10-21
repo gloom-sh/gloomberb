@@ -145,6 +145,7 @@ function ThemedCompositeChart({
   onCursorDateChange,
   onViewportChange,
   onActivate,
+  onPress,
   onToggleSeries,
   isSeriesToggleable,
   timePick,
@@ -527,6 +528,14 @@ function ThemedCompositeChart({
     removeDrawing,
     pickDrawColor,
   });
+  const pressFromPointer = useCallback(() => {
+    onPress?.();
+    activateFromPointer();
+  }, [activateFromPointer, onPress]);
+  const pressPlot = useCallback(() => {
+    cancelKeyboardPlacement();
+    onPress?.();
+  }, [cancelKeyboardPlacement, onPress]);
   const handleEmptyMouseScroll = useCallback((event: ChartMouseEvent) => {
     const scroll = event.scroll;
     if (!interactive || !navigationFrame || !scroll) return;
@@ -597,7 +606,7 @@ function ThemedCompositeChart({
             accessoryWidth={legendAccessoryWidth}
             formatValue={formatValue}
             showLatestChangePercent={showLatestChangePercent}
-            onActivate={activateFromPointer}
+            onActivate={pressFromPointer}
             onToggleSeries={onToggleSeries}
             isSeriesToggleable={isSeriesToggleable}
             keyboardIndex={legendKeyboardIndex}
@@ -716,7 +725,7 @@ function ThemedCompositeChart({
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
           showLatestChangePercent={showLatestChangePercent}
-          onActivate={activateFromPointer}
+          onActivate={pressFromPointer}
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           keyboardIndex={legendKeyboardIndex}
@@ -734,11 +743,11 @@ function ThemedCompositeChart({
           showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
           levelTool={levelsEditable}
           onArmTool={(tool) => {
-            activateFromPointer();
+            pressFromPointer();
             armTool(tool);
           }}
           onPickColor={(color) => {
-            activateFromPointer();
+            pressFromPointer();
             pickDrawColor(color);
           }}
         />
@@ -782,7 +791,7 @@ function ThemedCompositeChart({
           onToolSpanChange={setToolSpan}
           onDragActiveChange={setPointerDragging}
           keyboardToolDrag={keyboardToolDrag?.panelId === panel.id ? keyboardToolDrag : null}
-          onPointerPress={cancelKeyboardPlacement}
+          onPointerPress={pressPlot}
           showTextFallback={showTextFallback}
           onPickTime={timePick?.onPick}
           levels={levelHost?.panel.id === panel.id ? levels ?? null : null}

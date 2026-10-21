@@ -25,6 +25,8 @@ export interface ResearchTrading extends ResearchTradeProjection {
   /** Opens the ticket; without a side it keeps its draft, and Buy or Sell is chosen in it. */
   open(side?: "BUY" | "SELL"): void;
   close(): void;
+  /** A press on the chart takes the keyboard back from the ticket, even a field typing in it. */
+  focusChart?(): void;
   /** This ticker's working orders and latest fills, for Overview; absent without a trading profile. */
   orders?(width: number): ReactNode;
   publish(projection: ResearchTradeProjection): void;
