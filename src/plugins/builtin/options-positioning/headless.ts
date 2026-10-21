@@ -12,6 +12,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  formatPositioningSpot,
   formatPayout,
   formatRatio,
   formatStrike,
@@ -51,7 +52,7 @@ function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null)
     { key: "oiDate", label: "Open interest as of", value: openInterest.oiDate },
   ];
   const textEntries: HeadlessPaneEntry[] = [
-    { label: "Spot", value: spot, formatted: spot == null ? "--" : spotAsOf ? `${formatLevel(spot)} at ${time(spotAsOf)}` : formatLevel(spot) },
+    { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf) },
     ...(dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
     { label: "Open interest as of", value: openInterest.oiDate, formatted: openInterest.oiDate ?? "--" },
   ];

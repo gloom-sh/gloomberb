@@ -1003,10 +1003,12 @@ KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 8
 
 ### Greeks spot and time
 
-A chain's IV and Greeks (`options`, OMON) are valued at one spot and one instant, which the footer and every export name; OVDV values its surface at the same spot:
+A chain's IV and Greeks (`options`, OMON) are valued at one spot and one instant, which the pane and every export name; OVDV values its surface at the same spot:
 
 - When the underlying's quote carries the official close of the regular session the chain's quotes were taken in, as it does before the next open and early in it while the chain is still the close's, the spot is that close and time to expiry runs from the chain's time. A pre-market or after-hours print does not move the delta of a chain still quoting the close.
 - Otherwise the spot is the underlying's latest price, and time runs from the chain's time once its quotes are over an hour old, else from now.
+
+Every options pane stamps the spot it priced with the same way: `close Tue 20 Oct` for a session's official close, `pre-market Wed 21 Oct 09:35 UTC` (or `after hours`, `overnight`) for an extended-session print, and nothing extra for the regular session's live price, which the pane's status already dates. OMON's Spot figure is the spot its Greeks, ATM IV, straddle, skew and slope are valued at, so a chain from the close reads `769.05 close Tue 20 Oct`, and an extended print the pane shows beside it is named by its session, `· pre-market 770.65`. OVDV's query bar reads `Spot 769.05 USD · close Tue 20 Oct`. OPX and GEX read the spot Gloom Cloud measured distances and dealer gamma at, stamped by the session its time falls in (`Spot 770.88 pre-market Wed 21 Oct 09:35 UTC`). OSA's Spot figure and footer stamp a scenario valued at an extended-session print the same way. Reports and exports that always date the spot add `last Wed 21 Oct 14:05 UTC` for the regular session's price.
 
 The rate is 4% and the dividend yield the underlying's: any its fundamentals state, else, as OSA reads it, 0% when its current distribution history shows no dividend paid or declared in the last 15 months (GLD). A yield neither knows, or a history that takes over five seconds to read, is valued as none and the footer says `dividend yield unknown (valued at 0%)`. A delta can be checked by hand: KO's November 20, 2026 85 put on Monday 12 October's chain is -0.20 at the 89.79 close (IV 21.56%, dividend yield 2.34%, 39.04 days), where Tuesday's pre-market 90.65 would give -0.16. OSA values a seeded strategy at the spot its quote mids imply and names it beside the last price.
 

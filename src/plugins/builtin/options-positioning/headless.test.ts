@@ -69,7 +69,7 @@ test("the GEX export adds up, names its unit, and opens with spot and quote time
   // One summary block first, in the text and the CSV, dating spot and quotes apart from open interest.
   expect(text.split("\n").slice(2, 6)).toEqual([
     "Summary · Oct 30 '26",
-    expect.stringMatching(/^Spot +764\.20 at 2026-10-16 17:08 UTC/),
+    expect.stringMatching(/^Spot +764\.20 last Fri 16 Oct 17:08 UTC/),
     expect.stringMatching(/^Quotes as of +2026-10-16 17:04 UTC/),
     expect.stringMatching(/^Open interest as of +2026-10-14$/),
   ]);

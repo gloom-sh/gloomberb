@@ -126,7 +126,7 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(json.metadata).toMatchObject({ symbol: "GOOGL", currency: "USD", interval: "snapshot",
       model: { spot: 352.72, spotBasis: "close", spotAsOf: "2026-10-12T20:00:00.000Z" }, openInterest: { asOf: "2026-10-09" } });
     expect(json.source).toMatchObject({ name: "Gloom Cloud", observationDate: "2026-10-12T19:59:59.000Z" });
-    expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct 20:00 UTC), dividend yield 0%, rate 4% · OI as of Fri 9 Oct");
+    expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct), dividend yield 0%, rate 4% · OI as of Fri 9 Oct");
   } finally {
     setSystemTime();
   }

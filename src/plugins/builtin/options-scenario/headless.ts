@@ -6,7 +6,7 @@ import {
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import {
   createScenarioDependencies, loadScenarioMarket, SCENARIO_STRATEGIES, scenarioControlsFromSettings, scenarioPositionFromSettings,
-  scenarioSpotBasis, suppliedScenarioInputs, type ScenarioMarketSnapshot,
+  scenarioSpotBasis, scenarioSpotStamp, suppliedScenarioInputs, type ScenarioMarketSnapshot,
 } from "./client";
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
@@ -142,9 +142,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
         { title: "Inputs", entries: [
           { key: "spot", label: lastPrint != null ? "Spot implied by option quotes" : "Spot", value: position!.spot,
-            formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${spotBasis})` : ""}` },
+            formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${scenarioSpotStamp(spotBasis!, position!.asOf)})` : ""}` },
           ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint,
-            formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${lastSession})` : ""}` }] : []),
+            formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${scenarioSpotStamp(lastSession, market.asOf)})` : ""}` }] : []),
           ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity,
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
           { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },

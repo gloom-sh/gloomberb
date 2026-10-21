@@ -1,5 +1,6 @@
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatExpDate } from "../../../utils/options";
+import { modelSpotLabel, modelSpotStamp, observedModelSpot } from "../options/model-spot";
 
 export type PositioningTab = "strikes" | "expiries" | "gex";
 export const POSITIONING_TABS: { value: PositioningTab; label: string }[] = [
@@ -66,6 +67,23 @@ export function formatRatio(value: number | null | undefined): string {
 export function formatLevel(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 }
+/**
+ * The spot Gloom Cloud read the distances and dealer gamma at, stamped as
+ * every options pane stamps its spot (`modelSpotStamp`): `pre-market Wed 21
+ * Oct 09:35 UTC` for an extended-session print, null for the regular session's.
+ */
+export function positioningSpotStamp(spot: number | null | undefined, spotAsOf: string | null | undefined): string | null {
+  const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
+  return spot == null || !Number.isFinite(at) ? null : modelSpotStamp(observedModelSpot(spot, at));
+}
+
+/** The spot as a report says it: `770.88 pre-market Wed 21 Oct 09:35 UTC`, `770.10 last Wed 21 Oct 14:05 UTC`. */
+export function formatPositioningSpot(spot: number | null | undefined, spotAsOf: string | null | undefined): string {
+  const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
+  if (spot == null || !Number.isFinite(spot)) return "--";
+  return Number.isFinite(at) ? `${formatLevel(spot)} ${modelSpotLabel(observedModelSpot(spot, at))}` : formatLevel(spot);
+}
+
 /** Where a level sits against spot: +0.6%. */
 export function formatDistance(level: number | null | undefined, spot: number | null | undefined): string {
   if (level == null || spot == null || !(spot > 0)) return "--";

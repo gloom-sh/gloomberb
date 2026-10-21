@@ -13,7 +13,7 @@ import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
-import { extendedSession } from "../options/model-spot";
+import { extendedSession, modelSpotStamp, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
 
 export interface ScenarioMarketSnapshot {
@@ -189,6 +189,18 @@ export function scenarioSpotBasis(
   if (marketSpot == null) return "input";
   if (position.legs.some((leg) => leg.volatilitySource === "mid") && cents(marketSpot) !== cents(position.spot)) return "implied by option quotes";
   return (market?.underlyingQuote ? extendedSession(market.underlyingQuote) : null) ?? "last price";
+}
+
+const EXTENDED_BASES: readonly string[] = ["pre-market", "after hours", "overnight"];
+
+/**
+ * A spot basis as the pane and report name it: an extended-session print with
+ * its time, stamped as every options pane stamps its spot (`modelSpotStamp`),
+ * `pre-market Wed 21 Oct 09:42 UTC`; any other basis as it is.
+ */
+export function scenarioSpotStamp(basis: string, observedAt: number): string {
+  if (!EXTENDED_BASES.includes(basis)) return basis;
+  return modelSpotStamp({ basis: "last", session: basis as OptionModelSpot["session"], observedAt }) ?? basis;
 }
 
 function supplied(value: unknown): boolean { return value != null && value !== ""; }
