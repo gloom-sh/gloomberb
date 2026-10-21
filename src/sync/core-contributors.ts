@@ -9,6 +9,7 @@ import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { SyncContributor } from "./types";
 import { convertCurrency } from "../utils/format";
+import { fxRateCurrencies } from "../utils/currency-units";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../market-data/coordinator";
 import {
   computeDatedBeta,
@@ -597,18 +598,15 @@ async function loadHoldingExchangeRates(
   const rates = new Map([["USD", 1]]);
   const coordinator = getSharedMarketDataCoordinator();
   if (!coordinator) return rates;
-  const currencies = new Set<string>();
-  const track = (currency: string | undefined) => {
-    const normalized = currency?.trim().toUpperCase();
-    if (normalized && normalized !== "USD") currencies.add(normalized);
-  };
-  track(config.baseCurrency);
+  const held: Array<string | undefined> = [config.baseCurrency];
   for (const ticker of tickers.values()) {
     if (ticker.metadata.positions.length === 0) continue;
-    track(financials.get(ticker.metadata.ticker)?.quote?.currency);
-    for (const position of ticker.metadata.positions) track(position.currency);
+    held.push(financials.get(ticker.metadata.ticker)?.quote?.currency);
+    for (const position of ticker.metadata.positions) held.push(position.currency);
   }
-  await Promise.all([...currencies].map(async (currency) => {
+  // With a minor unit's major currency, as the panes load them (GBX and ILA have no rate of their own).
+  const currencies = fxRateCurrencies(held).filter((currency) => currency !== "USD");
+  await Promise.all(currencies.map(async (currency) => {
     // A failed FX load must not hold back the rest of the push.
     await coordinator.loadFxRate(currency).catch(() => {});
     const rate = resolveEntryValue(coordinator.getFxEntry(currency));

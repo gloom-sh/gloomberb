@@ -104,6 +104,25 @@ export function heldCurrencyUnit(currency?: string | null): CurrencyUnitInfo {
   return currency?.trim().toUpperCase() === US_CENTS ? { currency: "USD", divisor: 100 } : resolveCurrencyUnit(currency);
 }
 
+/**
+ * The codes whose USD rates convert money held in `currencies`: each as a
+ * rate is asked for (upper-cased), and a minor unit's major currency too,
+ * which convertCurrency reads a hundredth of when the unit has no rate of its
+ * own. Gloom Cloud serves none for GBX or ILA, and ZAc and GBp are kept in
+ * their own case, which no upper-cased rate matches.
+ */
+export function fxRateCurrencies(currencies: Iterable<string | null | undefined>): string[] {
+  const codes = new Set<string>();
+  for (const currency of currencies) {
+    const raw = currency?.trim();
+    if (!raw) continue;
+    codes.add(raw.toUpperCase());
+    const unit = heldCurrencyUnit(raw);
+    if (unit.divisor !== 1 && unit.currency) codes.add(unit.currency);
+  }
+  return [...codes].sort((left, right) => left.localeCompare(right));
+}
+
 interface ExchangeSubUnitOptions {
   allowDefaultCurrency?: boolean;
   allowMissingCurrency?: boolean;

@@ -298,8 +298,29 @@ describe("team collections sync", () => {
     expect(alice.getState().tickers.get("BRK.B")?.metadata.positions).toEqual([lot]);
 
     // Bob's lot now matches the server: another pass sends nothing more.
-    await settleAfter(() => { for (const refresh of refreshers) refresh(); });
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+    const pass = async () => {
+      await settleAfter(() => { for (const refresh of refreshers) refresh(); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+    };
+    await pass();
     expect(pushed).toHaveLength(1);
+
+    // Alice empties Purchase Date, then Cost FX: each clear goes up, reaches Bob, and stays through a refresh.
+    const { dateAcquired: _date, ...undated } = lot;
+    const { costFxRate: _rate, costFxCurrency: _rateCurrency, ...unrated } = undated;
+    for (const [cleared, sent] of [
+      [undated, { dateAcquired: null }],
+      [unrated, { currency: "USD", costFxRate: null, costFxCurrency: null }],
+    ] as const) {
+      await settleAfter(() => alice.dispatch({ type: "UPDATE_TICKER", ticker: record([cleared]) }));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+      expect(pushed.at(-1)).toEqual({ symbol: "BRK.B", exchange: "NYSE", quantity: 10, ...sent });
+      const count = pushed.length;
+      await pass();
+      expect(pushed).toHaveLength(count);
+      expect(alice.getState().tickers.get("BRK.B")?.metadata.positions).toEqual([cleared]);
+      expect(bob.getState().tickers.get("BRK.B")?.metadata.positions).toEqual([{ ...cleared, avgCost: 0 }]);
+    }
+    expect(pushed).toHaveLength(3);
   });
 });

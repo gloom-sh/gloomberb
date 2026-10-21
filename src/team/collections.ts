@@ -67,10 +67,11 @@ export function reconcileConfigCollections(
  * What a portfolio item carries of the holding beside its quantity, as sent:
  * its purchase date, and its currency with the rate its cost was bought at
  * (null when it has none), which go together. A field left out is kept as the
- * server has it, so a sync never clears a date or rate it did not know.
+ * server has it, so a sync never clears a date or rate it did not know; a null
+ * date clears the server's.
  */
 interface TeamItemTerms {
-  dateAcquired?: string;
+  dateAcquired?: string | null;
   currency?: string;
   costFxRate?: number | null;
   costFxCurrency?: string | null;
@@ -120,7 +121,13 @@ function positionCostFx(position: Pick<TickerPosition, "costFxRate" | "costFxCur
     : null;
 }
 
-/** The date, currency and rate a server item holds, each only when it holds a usable one. */
+/**
+ * The date, currency and rate a server item holds, each only when it holds a
+ * usable one. An item with a currency carries the holding's terms as a
+ * teammate's app set them, a missing date or rate included: the first terms
+ * an item gets carry the currency (changedTerms). One without (written before
+ * terms were synced, or by an older app) carries none, and a lot keeps its own.
+ */
 function itemTerms(item: TeamCollectionItem): LotTerms {
   const currency = typeof item.currency === "string" && CURRENCY_CODE.test(item.currency.trim()) ? normalizeHeldCurrencyCode(item.currency) : undefined;
   return {
@@ -129,11 +136,34 @@ function itemTerms(item: TeamCollectionItem): LotTerms {
   };
 }
 
-/** What a lot's terms send: a date and currency the server can store, and the rate with its currency. */
-function sentTerms(terms: LotTerms | undefined, parts: { date: boolean; rate: boolean }): TeamItemTerms | null {
+/** A lot's purchase date as the server stores it, null with none; undefined for one it cannot store, which is never sent. */
+function lotDate(terms: LotTerms | undefined): string | null | undefined {
+  if (!terms?.dateAcquired) return null;
+  return ISO_DAY.test(terms.dateAcquired) ? terms.dateAcquired : undefined;
+}
+
+/**
+ * What a push sends of a lot's terms over the server's item (none for a
+ * ticker it does not hold yet), of the parts asked. A date or rate goes as it
+ * is. A missing one goes as null only where this client knows the holding has
+ * none: from a single lot, which takes the item's date and its rate in the
+ * lot's unit whenever they arrive (applyMembership), so one the item holds and
+ * the lot lacks was cleared here; and a rate where the item holds none either.
+ * Otherwise the server keeps its own: several lots never take the item's, so
+ * theirs lacking one says nothing about the holding.
+ */
+function sentTerms(
+  terms: LotTerms | undefined,
+  item: TeamCollectionItem | undefined,
+  parts: { date: boolean; rate: boolean },
+  single: boolean,
+): TeamItemTerms | null {
   const sent: TeamItemTerms = {};
-  if (parts.date && terms?.dateAcquired && ISO_DAY.test(terms.dateAcquired)) sent.dateAcquired = terms.dateAcquired;
-  if (parts.rate && terms?.currency && CURRENCY_CODE.test(terms.currency) && terms.costFx !== undefined) {
+  const held = item ? itemTerms(item) : {};
+  const date = lotDate(terms);
+  if (parts.date && (date || (date === null && single && held.dateAcquired))) sent.dateAcquired = date ?? null;
+  if (parts.rate && terms?.currency && CURRENCY_CODE.test(terms.currency) && terms.costFx !== undefined
+    && (terms.costFx || !held.costFx || (single && sameHeldUnit(held.currency, terms.currency)))) {
     sent.currency = terms.currency;
     sent.costFxRate = terms.costFx?.rate ?? null;
     sent.costFxCurrency = terms.costFx?.currency ?? null;
@@ -183,18 +213,24 @@ export interface MembershipDiff {
 
 /**
  * The date and rate a single lot sends on their own, its count unchanged:
- * those the server lacks or holds otherwise. A rate goes only over the
- * server's in the same currency, or none, so two teammates holding it in
- * different currencies never overwrite each other back and forth; only a
- * server that keeps terms (one that answers with them) is sent any.
+ * those the server lacks, holds otherwise, or holds where the lot was cleared.
+ * A rate goes only over the server's in the same unit, or none, so two
+ * teammates holding it in different currencies never overwrite each other
+ * back and forth, nor do pence written GBp and GBX; only a server that keeps
+ * terms (one that answers with them) is sent any. The first terms an item
+ * gets carry the currency, so it is read as carrying them (itemTerms).
  */
 function changedTerms(terms: LotTerms | undefined, item: TeamCollectionItem): TeamItemTerms | null {
   if (!terms || item.dateAcquired === undefined) return null;
-  const date = !!terms.dateAcquired && terms.dateAcquired !== item.dateAcquired;
   const held = itemTerms(item);
-  const rate = !!terms.costFx && (!held.currency || sameHeldUnit(held.currency, terms.currency))
-    && (held.currency !== terms.currency || held.costFx?.rate !== terms.costFx.rate || held.costFx?.currency !== terms.costFx.currency);
-  return date || rate ? sentTerms(terms, { date, rate }) : null;
+  const local = lotDate(terms);
+  const date = local !== undefined && local !== (held.dateAcquired ?? null);
+  const ownsRate = !held.currency || sameHeldUnit(held.currency, terms.currency);
+  const rate = ownsRate && terms.costFx !== undefined
+    && ((held.costFx?.rate ?? null) !== (terms.costFx?.rate ?? null)
+      || (held.costFx?.currency ?? null) !== (terms.costFx?.currency ?? null)
+      || (date && !held.currency));
+  return date || rate ? sentTerms(terms, item, { date, rate }, true) : null;
 }
 
 /**
@@ -214,7 +250,7 @@ export function diffMembership(
   for (const [symbol, entry] of local) {
     const item = known.get(symbol);
     if (!item || (!entry.lotsNotTotalled && !entry.lotsKept && (item.quantity ?? null) !== entry.quantity)) {
-      const terms = sentTerms(entry.terms, { date: true, rate: true });
+      const terms = sentTerms(entry.terms, item, { date: true, rate: true }, entry.lotCount === 1);
       add.push({ symbol, quantity: entry.quantity, ...(terms ? { terms } : {}) });
       continue;
     }
@@ -276,8 +312,9 @@ export function applyMembership(
     // A count that turns a long into a short, or back, is a new position: the old one's cost and date
     // were for what was closed, so the lot keeps neither and its cost is unknown until it is entered.
     const flipped = !!position && quantity !== 0 && position.shares !== 0 && Math.sign(quantity) !== Math.sign(position.shares);
-    // The team's purchase date and rate, as the teammate who set the holding sent them; the rate only
-    // for a lot in the currency it is a rate of. Otherwise the lot keeps its own, several lots theirs merged.
+    // The team's purchase date and rate, as the teammate who set the holding sent them, a cleared one
+    // included; the rate only for a lot in the currency it is a rate of. An item that carries no terms
+    // leaves the lot its own, several lots theirs merged.
     const shared = itemTerms(item);
     const lotCurrency = position?.currency ?? shared.currency ?? currency;
     const sharedRate = shared.currency && sameHeldUnit(shared.currency, lotCurrency) ? { costFx: shared.costFx ?? null } : null;
@@ -285,7 +322,7 @@ export function applyMembership(
       teamsLog.warn("Kept several lots of a team portfolio holding whose cost FX rates cannot become one position", { symbol: metadata.ticker });
       return withMembership();
     }
-    const dateAcquired = shared.dateAcquired ?? (flipped ? undefined : position?.dateAcquired);
+    const dateAcquired = shared.currency ? shared.dateAcquired : shared.dateAcquired ?? (flipped ? undefined : position?.dateAcquired);
     const costFx = sharedRate ? sharedRate.costFx : flipped || !position ? null : positionCostFx(position);
     const lot: TickerPosition = {
       portfolio: localCollectionId,

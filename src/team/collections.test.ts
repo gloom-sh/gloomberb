@@ -256,6 +256,48 @@ describe("a team portfolio holding's purchase date and cost FX rate", () => {
     const pence = held(lot(100, 7050, { currency: "GBp" }));
     expect(applyMembership(pence, localId, "portfolio", stored(100, { currency: "GBX", costFxRate: 0.52, costFxCurrency: "TRY" }), "TRY")
       ?.metadata.positions[0]).toMatchObject({ currency: "GBp", costFxRate: 0.52 });
+    // A GBp holder over a teammate's GBX item sends nothing back, and a new date goes up alone, so the two never take turns.
+    const gbx = stored(100, { dateAcquired: "2024-03-01", currency: "GBX", costFxRate: 0.52, costFxCurrency: "TRY" });
+    const penceLot = held(lot(100, 7050, { currency: "GBp", dateAcquired: "2024-03-01", costFxRate: 0.52, costFxCurrency: "TRY" }));
+    expect(applyMembership(penceLot, localId, "portfolio", gbx, "TRY")).toBeNull();
+    expect(push(penceLot, new Map([["BRK.B", gbx]]))).toEqual([]);
+    expect(push(held(lot(100, 7050, { currency: "GBp", dateAcquired: "2024-02-15", costFxRate: 0.52, costFxCurrency: "TRY" })), new Map([["BRK.B", gbx]])))
+      .toEqual([{ symbol: "BRK.B", quantity: 100, terms: { dateAcquired: "2024-02-15" } }]);
+  });
+
+  test("an emptied purchase date or rate reaches the server, and neither a refresh nor a teammate brings it back", () => {
+    const terms = { dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" };
+    let server = stored(10, { ...terms, currency: "USD" });
+    const known = () => new Map([["BRK.B", server]]);
+    let bob = held(lot(10, 0, terms));
+
+    // Alice empties Purchase Date: the clear goes up, her lot stays without one, and Bob's follows.
+    const undated = held(lot(10, 410, { costFxRate: 31.37, costFxCurrency: "TRY" }));
+    const [noDate] = push(undated, known());
+    expect(noDate).toEqual({ symbol: "BRK.B", quantity: 10, terms: { dateAcquired: null } });
+    server = stored(10, noDate!.terms, server);
+    expect(applyMembership(undated, localId, "portfolio", server, "TRY")).toBeNull();
+    expect(push(undated, known())).toEqual([]);
+    bob = applyMembership(bob, localId, "portfolio", server, "TRY")!;
+    expect(bob.metadata.positions).toEqual([lot(10, 0, { costFxRate: 31.37, costFxCurrency: "TRY" })]);
+    expect(push(bob, known())).toEqual([]);
+
+    // Then Cost FX: the holding's currency goes up with no rate.
+    const unrated = held(lot(10, 410));
+    const [noRate] = push(unrated, known());
+    expect(noRate).toEqual({ symbol: "BRK.B", quantity: 10, terms: { currency: "USD", costFxRate: null, costFxCurrency: null } });
+    server = stored(10, noRate!.terms, server);
+    expect(applyMembership(unrated, localId, "portfolio", server, "TRY")).toBeNull();
+    expect(push(unrated, known())).toEqual([]);
+    bob = applyMembership(bob, localId, "portfolio", server, "TRY")!;
+    expect(bob.metadata.positions).toEqual([lot(10, 0)]);
+    expect(push(bob, known())).toEqual([]);
+
+    // A new count carries the clears with it; several lots without a date or rate clear none of the holding's.
+    const dated = stored(10, { ...terms, currency: "USD" });
+    expect(push(held(lot(12, 410)), new Map([["BRK.B", dated]]))).toEqual([{ symbol: "BRK.B", quantity: 12,
+      terms: { dateAcquired: null, currency: "USD", costFxRate: null, costFxCurrency: null } }]);
+    expect(push(held(lot(5, 410), lot(7, 410)), new Map([["BRK.B", dated]]))).toEqual([{ symbol: "BRK.B", quantity: 12 }]);
   });
 
   test("a new count collapses lots keeping their earliest date and cost-weighted rate, and refuses lots whose rates cannot become one", () => {
