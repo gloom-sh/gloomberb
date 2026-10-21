@@ -69,7 +69,7 @@ export function maxFloatingZ(layout: LayoutConfig): number {
 }
 
 /** Where floating panes stack from, above the docked panes and the dividers between them. */
-export const FLOATING_PANE_BASE_Z = 50;
+const FLOATING_PANE_BASE_Z = 50;
 
 /**
  * The highest z a floating pane holds. The shell draws its drag and dock

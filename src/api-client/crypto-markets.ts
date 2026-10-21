@@ -145,7 +145,7 @@ export interface StablecoinSupplyHistoryPayload {
 }
 
 /** DeFi TVL's total, in USD, on the board's as-of day, with its 7D and 30D change. */
-export interface DefiTvlTotal {
+interface DefiTvlTotal {
   tvl: number;
   change7d: number | null;
   change7dPercent: number | null;
