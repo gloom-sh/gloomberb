@@ -399,20 +399,23 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
       symbol: "AAPL", price, change: 0, changePercent: 0, currency: "USD",
       lastUpdated: Date.now(), delivery: "stream", dataSource: "live", marketState: "REGULAR",
     } as Quote);
+    // Corruption arriving while still subscribed must block notification, before any save guard runs.
+    const healthy = store.get("alerts")!;
+    const corrupt = JSON.stringify([...JSON.parse(healthy), null]);
+    store.set("alerts", corrupt);
     await act(async () => { tick(201); await Bun.sleep(5); });
+    expect(notifications).toEqual([]);
+    expect(store.get("alerts")).toBe(corrupt);
+    store.set("alerts", healthy);
     await act(async () => { tick(202); await Bun.sleep(5); });
+    await act(async () => { tick(203); await Bun.sleep(5); });
     expect(notifications).toHaveLength(1);
-    expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 201 });
+    expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 202 });
     // The first poll ran before any tick; nothing streaming is re-quoted after it.
     const before = polled;
     await Bun.sleep(5);
     expect(polled).toBe(before);
-    // A corrupt member arriving while subscribed must also block notification, before any save guard runs.
-    const corrupt = JSON.stringify([{ ...makeAlert("next", "AAPL", "above", 200), lastCheckedPrice: 195 }, null]);
-    store.set("alerts", corrupt);
-    await act(async () => { tick(220); await Bun.sleep(5); });
-    expect(notifications).toHaveLength(1);
-    expect(store.get("alerts")).toBe(corrupt);
+
   } finally {
     alertsPlugin.dispose?.();
     coordinator.destroy();

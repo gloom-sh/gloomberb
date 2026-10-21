@@ -158,7 +158,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
   }), [liveEntries, rows]);
 
-  const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]) => {
+  const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]): string | null => {
     let error: string | null = null;
     setAlertsJson((currentJson) => {
       error = readAlertsStoreError(currentJson);
