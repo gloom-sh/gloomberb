@@ -4,7 +4,7 @@ import { formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
-import { cashAndShortTermInvestments, monthlyOperatingBurn, QUARTER_MONTHS, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
+import { cashAndShortTermInvestments, monthlyOperatingBurn, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
 import {
   buildPreviousStatementMap,
   trailingFourQuarters,
@@ -56,6 +56,8 @@ export interface RatioPeriod {
   trailing?: FinancialTableStatement | null;
   /** The close at the period end in the statement's currency. */
   price: RatioAmount;
+  /** The filer reports cash and short-term investments as a total in some period on file (utils/cash-runway). */
+  shortTermTotalOnFile?: boolean;
 }
 
 interface RatioInputDef {
@@ -173,7 +175,7 @@ function returnOnEquity(income: number, [opening, closing]: [number, number]): R
   return Math.abs(value) > MAX_MEANINGFUL_ROE ? "not-meaningful" : value;
 }
 
-const cashAndShortTerm: BalanceLine = (statement) => cashAndShortTermInvestments(statement)?.amount;
+const cashAndShortTerm = line("cashCashEquivalentsAndShortTermInvestments", "cashAndCashEquivalents");
 const receivables = line("accountsReceivable", "receivables");
 /** Total debt plus equity, the definition of reported invested capital. */
 const debtPlusEquity: BalanceLine = (statement) => {
@@ -287,13 +289,18 @@ const monthlyBurn = (months: number) => ({ statement }: RatioPeriod): RatioAmoun
   monthlyOperatingBurn(finite(statement.operatingCashFlow), months) ?? "not-reported"
 );
 
+/** Cash alone for a filer that reports no total with short-term investments, never for one missing it in a period. */
+const runwayCash = ({ statement, shortTermTotalOnFile }: RatioPeriod): RatioAmount => (
+  cashAndShortTermInvestments(statement, shortTermTotalOnFile)?.amount ?? "not-reported"
+);
+
 /** Months of cash and short-term investments at a monthly operating burn (utils/cash-runway, as `ticker` reads it). */
 const runway = (id: string, label: string, burn: RatioInputDef, quarterlyOnly = false): RatioDef => ({
   id,
   label,
   format: "months",
   ...(quarterlyOnly ? { quarterlyOnly } : {}),
-  inputs: [{ label: "Cash + ST Inv", format: "money", value: closing(cashAndShortTerm) }, burn],
+  inputs: [{ label: "Cash + ST Inv", format: "money", value: runwayCash }, burn],
   compute: ([cash, perMonth]) => runwayMonths(cash!, perMonth!),
 });
 
@@ -693,6 +700,7 @@ export function ratioPeriods(
   /** Every statement on file, not only the columns shown, for quarterly columns' trailing years. */
   onFile: { annual: readonly FinancialStatement[]; quarterly: readonly FinancialStatement[] } = { annual: [], quarterly: [] },
 ): RatioPeriod[] {
+  const shortTermTotalOnFile = reportsShortTermTotal([...onFile.annual, ...onFile.quarterly, ...statements]);
   return statements.map((statement) => {
     const quarterly = period === "quarterly" && statement.date !== "TTM";
     return {
@@ -701,6 +709,7 @@ export function ratioPeriods(
       quarterly,
       ...(quarterly ? { trailing: trailingYear(statement, onFile.annual, onFile.quarterly) } : {}),
       price: price(statement),
+      shortTermTotalOnFile,
     };
   });
 }

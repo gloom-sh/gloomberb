@@ -219,6 +219,12 @@ describe("financial ratios", () => {
     expect(table.cells.get("runway-ttm")!.slice(1).map((cell) => cell.value)).toEqual(["short-history", 700 / (300 / 12), "short-history"]);
     expect(table.rows.filter((row) => row.kind === "input" && row.def.format === "months").map((row) => row.label))
       .toEqual(["Cash + ST Inv", "\u00f7 Op Burn/Mo", "Cash + ST Inv", "\u00f7 Op Burn/Mo TTM"]);
+    // A quarter missing the total reads not reported, not its cash alone, when other periods report it.
+    const sparse = createTestFinancials({
+      ...financials,
+      quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 0, operatingCashFlow: -94, cashAndCashEquivalents: 38 }, ...financials.quarterlyStatements.slice(1)],
+    });
+    expect(ratioTableForFinancials(sparse, liquidity, "quarterly").cells.get("runway-quarter")!.at(-1)!.value).toBe("not-reported");
     // Years have no quarter to read: the annual view keeps the trailing runway alone.
     const annual = ratioTableForFinancials(financials, liquidity, "annual");
     expect(annual.ratios.map((def) => def.id)).not.toContain("runway-quarter");

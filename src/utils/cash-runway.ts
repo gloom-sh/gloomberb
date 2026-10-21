@@ -36,14 +36,24 @@ export interface RunwayLiquidity {
   includesShortTerm: boolean;
 }
 
+/** Whether the filer reports cash and short-term investments as a total in any period on file. */
+export function reportsShortTermTotal(statements: Iterable<FinancialStatement>): boolean {
+  for (const statement of statements) if (finite(statement.cashCashEquivalentsAndShortTermInvestments)) return true;
+  return false;
+}
+
 /**
  * Cash, cash equivalents and short-term investments as reported; cash alone
- * when the filer does not report the total. FA's Cash + ST Inv reads the same.
+ * when the filer reports no such total. A filer that reports it in other
+ * periods (`totalOnFile`) holds short-term investments, so a period without
+ * the total is a missing line: Viking's March 2025 quarter has only its 37.9M
+ * of cash on file, the quarter after 807.7M with its investments.
  */
-export function cashAndShortTermInvestments(statement: FinancialStatement): RunwayLiquidity | null {
+export function cashAndShortTermInvestments(statement: FinancialStatement, totalOnFile = false): RunwayLiquidity | null {
   if (finite(statement.cashCashEquivalentsAndShortTermInvestments)) {
     return { amount: statement.cashCashEquivalentsAndShortTermInvestments, includesShortTerm: true };
   }
+  if (totalOnFile) return null;
   return finite(statement.cashAndCashEquivalents) ? { amount: statement.cashAndCashEquivalents, includesShortTerm: false } : null;
 }
 
@@ -116,7 +126,8 @@ export interface CashRunway {
 
 /**
  * Runway at the latest quarter's balance sheet. Null without a quarter, its
- * cash, or any operating cash flow to measure a burn by.
+ * cash (or its total with short-term investments, for a filer that reports
+ * one elsewhere), or any operating cash flow to measure a burn by.
  */
 export function cashRunway({ quarterlyStatements, annualStatements }: {
   quarterlyStatements: readonly FinancialStatement[];
@@ -124,7 +135,7 @@ export function cashRunway({ quarterlyStatements, annualStatements }: {
 }): CashRunway | null {
   const quarter = latestFinancialPeriod(quarterlyStatements, (row) => row.date);
   if (!quarter) return null;
-  const liquidity = cashAndShortTermInvestments(quarter);
+  const liquidity = cashAndShortTermInvestments(quarter, reportsShortTermTotal([...quarterlyStatements, ...annualStatements]));
   if (!liquidity) return null;
   const quarterly = estimate(liquidity.amount, quarter.operatingCashFlow, QUARTER_MONTHS);
   const trailing = estimate(liquidity.amount, trailingOperatingCashFlow(quarter, quarterlyStatements, annualStatements) ?? undefined, YEAR_MONTHS);

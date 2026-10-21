@@ -34,6 +34,9 @@ describe("cashRunway", () => {
     const runway = cashRunway({ quarterlyStatements: cashOnly, annualStatements: [] })!;
     expect(runway).toMatchObject({ liquidity: 125.75e6, includesShortTerm: false });
     expect(runway.quarter?.kind === "months" && runway.quarter.months).toBeCloseTo(3.01, 2);
+    // A filer reporting the total elsewhere holds investments the quarter's cash alone leaves out: no runway, not 3 months.
+    const sparse = [quarter("2025-06-30", { cashCashEquivalentsAndShortTermInvestments: 807.7e6 }), ...cashOnly];
+    expect(cashRunway({ quarterlyStatements: sparse, annualStatements: [] })).toBeNull();
   });
 
   test("a collaboration payment makes the quarter and the year disagree, and both are kept", () => {
