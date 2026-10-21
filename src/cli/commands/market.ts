@@ -1981,9 +1981,10 @@ function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1])
 
 /**
  * `fx <pair> --date <day>`: the rate at that day's daily FX closes, read as
- * PORT and PEB read them (`fxCloseOnDate`): each currency's USD pair at its
- * close of the day, or of the last trading day before it, which the answer
- * then says, crossed through USD as the latest rate is.
+ * a position's purchase-date cost reads them (`fxCloseOnDate`): each
+ * currency's USD pair at its close of the day, or of the last trading day
+ * before it, which the answer then says, crossed through USD as the latest
+ * rate is.
  */
 async function runFxOnDate(
   parsed: Exclude<ReturnType<typeof parseFxArgs>, { error: string }>,
