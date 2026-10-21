@@ -20,6 +20,12 @@ import { cloneLayout, type LayoutConfig, type SavedLayout } from "../../src/type
 /** Saved but inactive panes still participate in workspace sync. */
 export function chatLatencyLayouts(layout: LayoutConfig): SavedLayout[] {
   const layouts: SavedLayout[] = [{ name: "Fixture", layout: cloneLayout(layout) }];
+  if (params.get("layoutReturn") === "1") {
+    for (const name of ["Second", "Third"]) layouts.push({ name, layout: {
+      dockRoot: { kind: "pane", instanceId: `plain:${name}` },
+      instances: [{ instanceId: `plain:${name}`, paneId: "plain", binding: { kind: "none" } }], floating: [], detached: [],
+    } });
+  }
   if (params.get("workspace") !== "large") return layouts;
   for (let index = 1; index <= 8; index++) {
     const instances = Array.from({ length: 80 }, (_, pane) => ({
