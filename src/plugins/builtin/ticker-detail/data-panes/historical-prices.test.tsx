@@ -169,3 +169,18 @@ test("a coin's hourly bars ending with the latest trade have no missing-volume w
   expect(hole.frame).toContain("[!]");
   expect(hole.csv).toContain("Volume note,1 of 4 bars has no reported volume");
 });
+
+test("ALL says where the source's bars start, names a month without a bar, and marks the change across it with its base", async () => {
+  setSystemTime(new Date("2026-10-21T12:00:00Z"));
+  // BTC-USD's monthly bars start 2014-09; November is missing, so December's change is from October.
+  const { frame, csv } = await mountHistory(bars(["2014-09-01", "2014-10-01", "2014-12-01"]), "ALL");
+  expect(frame).toContain("monthly bars from 2014-09");
+  expect(frame).toContain(" 1.00*");
+  expect(frame).toContain("+0.99%*");
+  expect(frame).toContain("[!]");
+  expect(csv).toContain("Source starts,2014-09");
+  expect(csv).toContain("Gap note,No bar for 2014-11");
+  expect(csv).toContain("Gap note,CHG marked * spans the missing bars: 2014-12 is from 2014-10");
+  // The export keeps the change itself, as a number.
+  expect(csv).toContain("2014-12-01,,,,102,1,0.99009900990099,");
+});

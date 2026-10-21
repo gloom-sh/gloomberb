@@ -32,7 +32,9 @@ import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
-import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
+import {
+  cleanFloat32Price, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
+} from "../../../cli/history-rows";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
@@ -340,6 +342,11 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const marked = shown.some((row) => row.partial === true);
     const volumeMissing = missingVolumeCount(shown);
     const volumeNote = missingVolumeNotice(volumeMissing, shown.length);
+    // Every month or week without a bar is named, and ALL says where the source's bars start (BTC-USD's in 2014-09).
+    const interval = size === "intraday" ? null : size;
+    const gapNote = historyMissingPeriodsNote(rows.map((row) => Date.parse(row.date)), interval);
+    const allStart = historyAllStart(range, interval, rows[0]?.date, now);
+    const notes = [allStart ? historyAllStartNote(allStart) : null, gapNote, volumeNote].filter((note): note is string => note != null);
     // The day's bar built from the quote is not a close; a coin's day in progress, as its source flags it, keeps its line.
     const dayToDate = points !== loaded && size === "1d" && shown.at(-1)?.partial === true;
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
@@ -354,10 +361,11 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: historyColumns(size, marked, false),
       textColumns: historyColumns(size, marked, true, volumeMissing > 0),
       freshness,
-      ...(volumeNote ? { notes: [volumeNote] } : {}),
+      ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
-      metadata: { symbol, range, ...(size === "intraday" ? {} : { interval: size }), ...(notice ? { notices: [notice] } : {}) },
+      metadata: { symbol, range, ...(size === "intraday" ? {} : { interval: size }), ...(allStart ? { sourceStart: allStart } : {}),
+        ...(notice ? { notices: [notice] } : {}) },
     };
   },
 };
