@@ -3,6 +3,7 @@ import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
+import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { headlineQuoteDisplay } from "../../../../portfolio/column-values";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
@@ -45,6 +46,13 @@ export interface PortfolioSummaryTotals {
   unrealizedPnlBasis?: PortfolioPositionPnl["basis"];
   dailyPnl: number;
   dailyPnlPct: number;
+  /**
+   * What Day (or a watchlist's Avg Day) is measured from, as each holding's
+   * change line says it: "vs Fri 16 Oct close" when they agree, "vs mixed
+   * closes" when they do not (an HKEX listing beside a US one). Absent
+   * without a move.
+   */
+  dayChangeBasis?: string;
   totalCostBasis: number;
   hasPositions: boolean;
   unrealizedPnl: number;
@@ -131,6 +139,7 @@ export function calculatePortfolioSummaryTotals(
   let hasPositions = false;
   let watchlistChangeSum = 0;
   let watchlistCount = 0;
+  const dayBases: Array<QuoteChangeBasis | null> = [];
   const unavailableConversions = new Set<string>();
   let livePriced = true;
   const pricedLots: PricedPortfolioLot[] = [];
@@ -155,6 +164,7 @@ export function calculatePortfolioSummaryTotals(
       if (changePercent != null) {
         watchlistChangeSum += changePercent;
         watchlistCount++;
+        dayBases.push(quoteChangeBasis(quote));
       }
       continue;
     }
@@ -225,6 +235,13 @@ export function calculatePortfolioSummaryTotals(
           : activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
         totalPrevValue += toBaseQuote(grossPriceUnits * previousClose);
         signedDailyPnl += toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
+        // The move valued: the latest print's from the daily reference, the regular close's from the session before it.
+        if (!quote?.delisting) {
+          dayBases.push(quoteChangeBasis(quote, {
+            session: valuationBasis === "regular-close" ? "regular" : "active",
+            terms: futuresTerms?.get(ticker.metadata.ticker),
+          }));
+        }
       } else {
         // A broker mark is not evidence of an unchanged day.
         signedDailyPnl = Number.NaN;
@@ -244,6 +261,7 @@ export function calculatePortfolioSummaryTotals(
   const unrealizedPnl = signedUnrealizedPnl;
   const unrealizedPnlPct = portfolioPnlPercent(unrealizedPnl, totalCostBasis) ?? Number.NaN;
   const avgWatchlistChange = watchlistCount > 0 ? watchlistChangeSum / watchlistCount : 0;
+  const dayChangeBasis = combinedChangeBasisLabel(dayBases, now);
 
   return {
     totalMktValue,
@@ -260,6 +278,7 @@ export function calculatePortfolioSummaryTotals(
       : pnlBases.size > 1 ? "mixed" : [...pnlBases][0],
     dailyPnl,
     dailyPnlPct,
+    ...(dayChangeBasis ? { dayChangeBasis } : {}),
     totalCostBasis,
     hasPositions,
     unrealizedPnl,

@@ -76,6 +76,7 @@ describe("resolvePortfolioAccountMetrics", () => {
     expect(resolvePortfolioAccountMetrics(createTotals(), account)).toEqual({
       dailyPnl: 250,
       dailyPnlPct: 250 / 12_250 * 100,
+      brokerDay: true,
       unrealizedPnl: 1_600,
       unrealizedPnlPct: 20,
       realizedPnl: -40,

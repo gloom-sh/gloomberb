@@ -7,6 +7,8 @@ import { isFiniteNumber } from "../../../utils/guards";
 export interface PortfolioAccountMetrics {
   dailyPnl: number;
   dailyPnlPct: number;
+  /** The day is the broker's own, measured from its account's prior close rather than each quote's. */
+  brokerDay?: true;
   unrealizedPnl: number;
   unrealizedPnlPct: number;
   realizedPnl?: number;
@@ -196,6 +198,7 @@ export function resolvePortfolioAccountMetrics(
   return {
     dailyPnl,
     dailyPnlPct,
+    ...(brokerDailyPnl != null ? { brokerDay: true as const } : {}),
     unrealizedPnl,
     unrealizedPnlPct,
     realizedPnl: isFiniteNumber(account?.realizedPnl) ? convertAccountValue(account.realizedPnl) : undefined,

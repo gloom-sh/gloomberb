@@ -57,6 +57,11 @@ export interface CryptoRow extends CryptoRowSupply {
   price: number;
   /** The price as the board prints it. */
   priceText: string;
+  /**
+   * The move since 00:00 UTC, from the previous UTC day's close, as `quote`
+   * measures a coin (CRYPTO_CHANGE_BASIS_LABEL); null when the coin has no
+   * such close to measure from.
+   */
   changePercent: number | null;
   return7d: number | null;
   return30d: number | null;
@@ -100,8 +105,27 @@ function closeDaysAgo(asset: CryptoMarketAsset, days: number, now: number): numb
   return isFiniteNumber(close) && close > 0 ? close : null;
 }
 
-const percentChange = (price: number, reference: number | null) =>
+const percentChange = (price: number, reference: number | null | undefined) =>
   reference != null && reference > 0 ? (price / reference - 1) * 100 : null;
+
+/** What the board's day change is measured from, as `quote` labels a coin's: its header says it (CHG% UTC). */
+export const CRYPTO_CHANGE_BASIS_LABEL = "since 00:00 UTC";
+
+/**
+ * A coin's move since 00:00 UTC, the basis `quote` gives a coin: its live
+ * quote's while that quote is measured from the previous close, otherwise the
+ * board's, which Gloom Cloud measures the same way (with a live price, from
+ * the board's previous close). A coin either says moves over 24 hours, or not
+ * at all, has none here, so the column never mixes the two.
+ */
+function utcDayChangePercent(asset: CryptoMarketAsset, quote: Quote | null, price: number): number | null {
+  if (quote && quote.changeBasis == null) {
+    if (isFiniteNumber(quote.changePercent)) return quote.changePercent;
+    if (positive(quote.previousClose)) return percentChange(price, quote.previousClose);
+  }
+  if (asset.changeBasis != null) return null;
+  return quote ? percentChange(price, asset.previousClose) : asset.changePercent;
+}
 
 /** A live quote replaces the board's snapshot once it is at least as new. */
 function liveQuote(
@@ -134,11 +158,7 @@ function buildCryptoRow(
   now = Date.now(),
 ): CryptoRow {
   const price = quote?.price ?? asset.price;
-  const changePercent = quote && isFiniteNumber(quote.changePercent)
-    ? quote.changePercent
-    : quote
-      ? percentChange(price, asset.previousClose)
-      : asset.changePercent;
+  const changePercent = utcDayChangePercent(asset, quote, price);
   // Supply moves slowly; the price is what makes market cap live. Scaling the
   // reported cap keeps the source's supply basis and the board's ranking.
   const marketCap = isFiniteNumber(asset.marketCap)
@@ -389,7 +409,7 @@ const COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 1 },
   { id: "price", label: "PRICE", width: 13, align: "right" },
-  { id: "changePercent", label: "CHG%", width: 8, align: "right" },
+  { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right" },
   { id: "return7d", label: "7D%", width: 8, align: "right" },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 3 },
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 5 },
@@ -415,7 +435,7 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
-  { id: "changePercent", label: "CHG%", width: 8, align: "right", optional: 5 },
+  { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 9 },

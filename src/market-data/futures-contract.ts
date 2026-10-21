@@ -6,7 +6,6 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
-import { getRegularSessionDisplay, regularSessionDisplayDate } from "./market/status";
 import { minorUnitSign } from "../utils/currency-units";
 import { contractPriceUnit } from "../time-series/price-units";
 
@@ -142,7 +141,6 @@ export function minorUnitPricePer(
 }
 
 const DAY_MS = 86_400_000;
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -181,7 +179,7 @@ export interface FuturesChangeBasis {
 
 /**
  * What the move a futures quote headlines is measured from, for the words
- * after it ("vs Fri settle"). `sessionDate` is the session the move belongs
+ * after it ("vs Fri 16 Oct settle", quoteChangeBasis). `sessionDate` is the session the move belongs
  * to (regularSessionDisplayDate); a Saturday or Sunday is Friday's, as no
  * session is dated on one. The basis is only what the numbers show, against
  * the one settlement the contract terms carry: a reference (the price less
@@ -211,24 +209,6 @@ export function futuresChangeBasis(
     if (settled.date < session && settled.date >= previous) return { kind: "last trade", session: settled.date };
   }
   return { kind: "close", session: previous };
-}
-
-/**
- * futuresChangeBasis for the move a quote headlines (getRegularSessionDisplay),
- * dated by the session that move is from: in the pre-market the last close's,
- * not the day ahead's.
- */
-export function futuresQuoteChangeBasis(
-  terms: Parameters<typeof futuresChangeBasis>[0],
-  quote: Quote | null | undefined,
-): FuturesChangeBasis | null {
-  const display = getRegularSessionDisplay(quote);
-  return display ? futuresChangeBasis(terms, { ...display, sessionDate: regularSessionDisplayDate(quote) }) : null;
-}
-
-/** The words a futures move ends with: "vs Fri settle", "vs Mon last trade", "vs Mon close". */
-export function futuresChangeBasisText(basis: FuturesChangeBasis): string {
-  return `vs ${WEEKDAYS[new Date(`${basis.session}T00:00:00Z`).getUTCDay()]} ${basis.kind}`;
 }
 
 /** A listed contract as code and month: "NGX26 (Nov 26)". */

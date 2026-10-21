@@ -1,0 +1,209 @@
+import { classifyInstrumentType, kindFromListingSyntax } from "../../tickers/instrument-kind";
+import { isPerpetualExchange } from "../../tickers/perpetual-listing";
+import type { Quote } from "../../types/financials";
+import { canonicalExchange } from "../../utils/exchanges";
+import { isFiniteNumber } from "../../utils/guards";
+import { formatUtcDayTime } from "../../utils/utc-time";
+import { zonedDateKey } from "../../utils/zoned-date-time";
+import { futuresChangeBasis, isFuturesInstrument } from "../futures-contract";
+import { quoteTradingDay } from "../quotes/day-range";
+import { previousPublishedSession } from "./freshness";
+import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
+
+const DAY_MS = 86_400_000;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * What a quote's day change is measured from, so every change line can say
+ * it: the close of a dated session (a future's settlement or last trade), a
+ * previous close the venue's calendar cannot date, a coin's previous UTC
+ * day (its price at 00:00 UTC) or the last 24 hours.
+ */
+export type QuoteChangeBasis =
+  | DatedChangeBasis
+  | { kind: "previous close" }
+  | { kind: "utc day" }
+  | { kind: "24h" };
+
+/** A move from a dated session's close, settlement or last trade. */
+interface DatedChangeBasis {
+  kind: "close" | "settle" | "last trade";
+  /** The exchange-local date of the session the move is measured from. */
+  date: string;
+  /** The venue, when its calendar dated the close. */
+  venue?: string;
+  /** Days of the venue's trading week it was closed between that session and the move's (holidays). */
+  closed?: readonly string[];
+}
+
+export interface QuoteChangeBasisOptions {
+  /**
+   * Which move: the regular session a headline shows (getRegularSessionDisplay,
+   * the default), or the latest print a position's day is valued at
+   * (getActiveQuoteDisplay), extended hours included.
+   */
+  session?: "regular" | "active";
+  /** A future's contract terms, whose settlement names what its move is from. */
+  terms?: Parameters<typeof futuresChangeBasis>[0];
+}
+
+const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
+
+/** The weekday before `date`, Saturday and Sunday skipped: a currency pair's week. */
+function weekdayBefore(date: string): string {
+  let at = Date.parse(`${date}T00:00:00Z`) - DAY_MS;
+  while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
+  return new Date(at).toISOString().slice(0, 10);
+}
+
+function quoteVenue(quote: Quote): string {
+  return canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+}
+
+function isCurrencyPair(quote: Quote): boolean {
+  return classifyInstrumentType(quote.instrumentType) === "currency"
+    || kindFromListingSyntax(quote.symbol, quote.listingExchangeName || quote.exchangeName) === "currency";
+}
+
+/** A coin on the spot crypto venue: its day is the UTC day. */
+function isSpotCoin(quote: Quote): boolean {
+  return quoteVenue(quote) === "CCC";
+}
+
+/**
+ * The index session before `date`, from the regular sessions an index quote
+ * carries (indexSession): the latest one that opened on an earlier local day.
+ */
+function previousIndexSession(quote: Quote, date: string): string | null {
+  const session = quote.indexSession;
+  if (!session?.timeZone) return null;
+  const days = session.regular.map((window) => zonedDateKey(window.start, session.timeZone)).filter((day) => day < date);
+  return days.length ? days.sort().at(-1)! : null;
+}
+
+/**
+ * The session before the one a move is dated to: from the venue's published
+ * calendar, with the closures in between; for an index from its own sessions;
+ * for a currency pair the weekday before. Null when nothing dates it.
+ */
+function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
+  const venue = quoteVenue(quote);
+  const published = previousPublishedSession(venue, sessionDate);
+  if (published) return { kind: "close", date: published.date, venue, closed: published.closed };
+  const index = previousIndexSession(quote, sessionDate);
+  if (index) return { kind: "close", date: index };
+  if (isCurrencyPair(quote)) return { kind: "close", date: weekdayBefore(sessionDate) };
+  return null;
+}
+
+/**
+ * What the quote's move is measured from. A coin moves from its previous UTC
+ * day's close, the price at 00:00 UTC, unless Gloom Cloud says it moves over
+ * the last 24 hours; a perpetual always moves over 24 hours. A future's is the
+ * settlement or trade its terms name (futuresChangeBasis). Anything else is
+ * the close of the session before the move's, dated by the venue's calendar;
+ * a venue without one has a previous close that is left undated, never
+ * guessed. Null for a quote with no move: none reported, or a listing that no
+ * longer trades.
+ */
+export function quoteChangeBasis(
+  quote: Quote | null | undefined,
+  { session = "regular", terms = null }: QuoteChangeBasisOptions = {},
+): QuoteChangeBasis | null {
+  if (!quote || quote.delisting || quote.changeBasis === "none") return null;
+  const display = session === "active" ? getActiveQuoteDisplay(quote) : getRegularSessionDisplay(quote);
+  if (!display || !isFiniteNumber(display.change)) return null;
+  if (quote.changeBasis === "24h" || isPerpetualExchange(quote.listingExchangeName || quote.exchangeName)) return { kind: "24h" };
+  if (isSpotCoin(quote)) return { kind: "utc day" };
+  const sessionDate = (session === "active" ? quote.changeSessionDate : regularSessionDisplayDate(quote)) ?? quoteTradingDay(quote);
+  if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
+    const basis = futuresChangeBasis(terms ?? { settlement: null }, { ...display, sessionDate });
+    return basis ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
+  }
+  if (!sessionDate || !ISO_DATE.test(sessionDate)) return { kind: "previous close" };
+  return previousSession(quote, sessionDate) ?? { kind: "previous close" };
+}
+
+/**
+ * The exchange-local date of `quote.previousClose`: the session before the
+ * one the quote's change is declared for (changeSessionDate), the UTC day
+ * before for a coin. Null when the quote has no previous close or nothing
+ * dates it, and for a coin or perpetual measured over 24 hours.
+ */
+export function quotePreviousCloseDate(quote: Quote | null | undefined): string | null {
+  if (!quote || !isFiniteNumber(quote.previousClose) || quote.changeBasis != null) return null;
+  if (isPerpetualExchange(quote.listingExchangeName || quote.exchangeName)) return null;
+  const sessionDate = quote.changeSessionDate ?? quoteTradingDay(quote);
+  if (!sessionDate || !ISO_DATE.test(sessionDate)) return null;
+  if (isSpotCoin(quote)) return dayBefore(sessionDate);
+  if (isFuturesInstrument(quote.symbol, quote.instrumentType)) return futuresChangeBasis({ settlement: null }, { price: quote.price, change: 0, sessionDate })?.session ?? null;
+  return previousSession(quote, sessionDate)?.date ?? null;
+}
+
+/** `Fri 16 Oct`, with the year when it is not `now`'s. */
+function sessionDay(date: string, now: number): string {
+  return formatUtcDayTime({ time: Date.parse(`${date}T00:00:00Z`), dateOnly: true }, now);
+}
+
+/**
+ * The words a change line ends with, the same on every surface: "vs Fri 16
+ * Oct close", "vs Fri 16 Oct settle", "vs prev close", "since 00:00 UTC",
+ * "24h".
+ */
+export function changeBasisLabel(basis: QuoteChangeBasis, now = Date.now()): string {
+  switch (basis.kind) {
+    case "previous close":
+      return "vs prev close";
+    case "utc day":
+      return "since 00:00 UTC";
+    case "24h":
+      return "24h";
+    default:
+      return `vs ${sessionDay(basis.date, now)} ${basis.kind}`;
+  }
+}
+
+/**
+ * The days a venue was closed since the close a move is measured from, when
+ * there were any: "HKEX closed Mon 19 Oct, holiday"; three or more read as a
+ * span, "TWSE closed Thu 12 Feb to Fri 20 Feb, holidays". Null otherwise.
+ */
+export function changeBasisNote(basis: QuoteChangeBasis | null | undefined, now = Date.now()): string | null {
+  if (!basis || basis.kind !== "close" || !basis.venue || !basis.closed?.length) return null;
+  const days = basis.closed.map((date) => sessionDay(date, now));
+  const span = days.length === 1 ? days[0] : days.length === 2 ? `${days[0]} and ${days[1]}` : `${days[0]} to ${days.at(-1)}`;
+  return `${basis.venue} closed ${span}, ${days.length === 1 ? "holiday" : "holidays"}`;
+}
+
+/** What several moves summed into one (a portfolio's day) are measured from, when they say. */
+const MIXED_CHANGE_BASIS_LABEL = "vs mixed closes";
+
+/**
+ * The label of a total over moves measured from different closes: the one
+ * label when they agree, "vs mixed closes" when they do not, so a total over
+ * an HKEX and a US listing never names one date for both. Null without a
+ * basis.
+ */
+export function combinedChangeBasisLabel(bases: Iterable<QuoteChangeBasis | null | undefined>, now = Date.now()): string | null {
+  const labels = new Set<string>();
+  for (const basis of bases) if (basis) labels.add(changeBasisLabel(basis, now));
+  if (labels.size === 0) return null;
+  return labels.size === 1 ? [...labels][0]! : MIXED_CHANGE_BASIS_LABEL;
+}
+
+/**
+ * The basis as `--json` gives it beside a move: the kind, the dated session
+ * (`date`), the venue's closures in between and the label and note a change
+ * line shows.
+ */
+export function changeBasisJson(basis: QuoteChangeBasis | null, now = Date.now()) {
+  if (!basis) return null;
+  const note = changeBasisNote(basis, now);
+  return {
+    kind: basis.kind,
+    date: "date" in basis ? basis.date : null,
+    ...("closed" in basis && basis.closed?.length ? { closed: [...basis.closed] } : {}),
+    label: changeBasisLabel(basis, now),
+    ...(note ? { note } : {}),
+  };
+}

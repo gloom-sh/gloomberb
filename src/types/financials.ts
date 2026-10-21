@@ -95,6 +95,13 @@ export interface Quote extends DepositaryReceiptFacts {
   providerPriceDivisor?: number;
   change: number;
   changePercent: number;
+  /**
+   * What change and changePercent measure from when it is not previousClose,
+   * as Gloom Cloud says of a coin whose previous close it cannot date to the
+   * last two days: the last 24 hours ("24h", previousClose absent), or
+   * nothing ("none", no move). Absent on every other quote.
+   */
+  changeBasis?: "24h" | "none";
   previousClose?: number;
   /** Official close of a completed regular session, in this quote's currency. */
   regularClose?: number;

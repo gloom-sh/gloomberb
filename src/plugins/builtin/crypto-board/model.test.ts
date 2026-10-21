@@ -55,6 +55,22 @@ test("a live quote without a change percent is restated from the previous close"
   expect(row!.changePercent).toBeCloseTo(10, 6);
 });
 
+// Linear: GLO-1089. The column is since 00:00 UTC, as `quote` gives a coin;
+// a coin measured over 24 hours (a close weeks old) is blank, never mixed in.
+test("a coin whose quote or board moves over 24 hours has no since-00:00 change", () => {
+  const data = cryptoFixture();
+  const btc = data.assets[0]!;
+  const day = entry({ price: 101, changePercent: 24, changeBasis: "24h", lastUpdated: CRYPTO_FIXTURE_NOW });
+  // The board still has a dated close: the live price moves from it.
+  const [fromBoard] = buildCryptoRows(data.assets, "coin", new Map([[cryptoQuoteKey(btc), day]]), CRYPTO_FIXTURE_NOW);
+  expect(fromBoard!.changePercent).toBeCloseTo((101 / 98 - 1) * 100, 6);
+  data.assets[0] = { ...btc, previousClose: null, change: 0.5, changePercent: 0.5, changeBasis: "24h" };
+  const [none] = buildCryptoRows(data.assets, "coin", new Map([[cryptoQuoteKey(btc), day]]), CRYPTO_FIXTURE_NOW);
+  expect(none!.changePercent).toBeNull();
+  const [boardOnly] = buildCryptoRows(data.assets, "coin", new Map(), CRYPTO_FIXTURE_NOW);
+  expect(boardOnly!.changePercent).toBeNull();
+});
+
 test("a live price crossing a power of ten keeps the decimals of its previous close", () => {
   const coin = { ...cryptoFixture().assets[0]!, price: 9.95, previousClose: 9.9 };
   const rowAt = (price: number) => buildCryptoRows(

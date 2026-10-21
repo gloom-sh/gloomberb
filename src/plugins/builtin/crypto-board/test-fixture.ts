@@ -31,6 +31,7 @@ export function cryptoFixture(): CryptoMarketsPayload {
   return {
     version: 1,
     generatedAt: "2026-09-23T11:59:30.000Z",
+    dayChangeBasis: "utc-day",
     asOf: "2026-09-23T11:59:00.000Z",
     status: "available",
     source: {

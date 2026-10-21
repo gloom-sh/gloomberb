@@ -224,6 +224,15 @@ export function resolvePortfolioAccountState(
   };
 }
 
+/**
+ * What the day's move is measured from, after it, as every change line says
+ * it ("vs Fri 16 Oct close", "vs mixed closes"), so a narrow row never shows
+ * the move without it.
+ */
+function dayBasisPart(totals: Pick<PortfolioSummaryTotals, "dayChangeBasis">): PortfolioSummarySegment["parts"] {
+  return totals.dayChangeBasis ? [{ text: totals.dayChangeBasis, tone: "muted" }] : [];
+}
+
 /** Headline numbers in priority order, so the narrowest header row keeps the most important ones. */
 export function buildPortfolioSummarySegments({
   totals,
@@ -258,6 +267,7 @@ export function buildPortfolioSummarySegments({
       ? [createSummarySegment("avg-day", [
         { text: "Avg Day", tone: "label" },
         { text: formatPercentRaw(totals.avgWatchlistChange), tone: "value", color: priceColor(totals.avgWatchlistChange), bold: true },
+        ...dayBasisPart(totals),
       ])]
       : [];
   }
@@ -332,6 +342,8 @@ export function buildPortfolioSummarySegments({
     { text: "Day", tone: "label" },
     { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.dailyPnlPct) },
+    // The broker's own day is from its account's close, not the quotes': it names none.
+    ...(accountMetrics.brokerDay || !Number.isFinite(accountMetrics.dailyPnl) ? [] : dayBasisPart(totals)),
   ]));
   candidates.push(createSummarySegment("pnl", [
     { text: !Number.isFinite(account?.unrealizedPnl)

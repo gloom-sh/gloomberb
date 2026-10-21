@@ -5,7 +5,7 @@ import {
   formatPercentRaw,
 } from "../utils/format";
 import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
-import { futuresChangeBasisText, futuresQuoteChangeBasis } from "../market-data/futures-contract";
+import { changeBasisLabel, changeBasisNote, quoteChangeBasis } from "../market-data/market/change-basis";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import type { ActiveQuoteDisplay } from "../market-data/market/status";
 import type { Quote } from "../types/financials";
@@ -22,14 +22,17 @@ export function formatSignedCurrency(value: number, currency: string): string {
 
 /**
  * The Change line of `ticker` and of `quote`'s futures block: the regular
- * session's move and its percent, colored by sign, and for a future what the
- * move is measured from, "-$22.00 (-0.39%) vs Mon close".
+ * session's move and its percent, colored by sign, and what the move is
+ * measured from, "-HK$0.10 (-1.05%) vs Fri 16 Oct close" (a future's from
+ * its terms, "vs Fri 16 Oct settle"), with the venue's holidays since that
+ * close on the line under it ("HKEX closed Mon 19 Oct, holiday").
  */
 export function quoteChangeText(
   quote: Quote,
   session: Pick<ActiveQuoteDisplay, "price" | "change" | "changePercent">,
   options: MarketFormatOptions,
   terms?: Pick<FuturesContractTermsPayload, "settlement" | "spec"> | null,
+  now = Date.now(),
 ): string {
   // A listing that no longer trades: its last close moves no more.
   if (quote.delisting) return "—";
@@ -37,8 +40,10 @@ export function quoteChangeText(
     `${formatMarketChangeWithCurrency(session.change, quote.currency ?? "USD", options, session.price)} (${formatPercentRaw(session.changePercent)})`,
     session.change,
   );
-  const basis = terms ? futuresQuoteChangeBasis(terms, quote) : null;
-  return basis ? `${move} ${cliStyles.muted(futuresChangeBasisText(basis))}` : move;
+  const basis = quoteChangeBasis(quote, { terms });
+  if (!basis) return move;
+  const note = changeBasisNote(basis, now);
+  return `${move} ${cliStyles.muted(changeBasisLabel(basis, now))}${note ? `\n${cliStyles.muted(note)}` : ""}`;
 }
 
 // Text-table cell formats. They leave missing values blank; CSV and JSON keep the raw numbers.

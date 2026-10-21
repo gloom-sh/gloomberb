@@ -38,9 +38,16 @@ export interface CryptoMarketAsset {
   /** Market-cap rank within its kind. */
   rank: number;
   price: number;
+  /**
+   * The day's move as `quote` gives the coin: from the previous UTC day's
+   * close, the price at 00:00 UTC. A coin whose close Gloom Cloud cannot date
+   * to the last two days moves over 24 hours (`changeBasis` "24h") or not at
+   * all ("none"), its previousClose null.
+   */
   previousClose: number | null;
   change: number | null;
   changePercent: number | null;
+  changeBasis?: "24h" | "none";
   dayHigh: number | null;
   dayLow: number | null;
   volume24h: number | null;
@@ -62,6 +69,8 @@ export interface CryptoMarketAsset {
 export interface CryptoMarketsPayload {
   version: 1;
   generatedAt: string;
+  /** Each asset's change is since 00:00 UTC; a server before it sent the screener's 24-hour move. */
+  dayChangeBasis?: "utc-day";
   asOf: string | null;
   status: "available" | "partial" | "unavailable";
   source: {

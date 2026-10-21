@@ -12,7 +12,7 @@ import {
   formatPercent,
   formatPercentRaw,
 } from "../../utils/format";
-import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
+import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -33,6 +33,7 @@ import {
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
+import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
 import { currencyCodeLabel } from "../../utils/currency-units";
 import type { AppConfig } from "../../types/config";
@@ -727,7 +728,8 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
     session.changePercent != null && Number.isFinite(session.changePercent)
       ? {
         label: "Change",
-        text: colorBySign(`${formatMarketChangeWithCurrency(session.change, quote.currency, options, session.price)} (${formatPercentRaw(session.changePercent)})`, session.change),
+        // With what the move is measured from, as `ticker` and `quote` say it: "vs Fri 16 Oct close".
+        text: quoteChangeText(quote, session, options),
         value: session.changePercent,
         unit: "%",
       }
@@ -1024,7 +1026,7 @@ export async function buildTickerReport({
       ...futuresContract
         ? [["Settle", futuresSettleText(futuresContract, quote)] as [string, string]]
         : [],
-      // A future's move says what it is measured from: "vs Fri settle".
+      // The move says what it is measured from: "vs Fri 16 Oct close", a future's "vs Fri 16 Oct settle".
       ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       // A listing that no longer trades: its last session's range, never today's.
@@ -1160,6 +1162,10 @@ function buildTickerStructuredData({
       name: quote.name,
       // Last and Change as the text report reads them, then the extended print from that close.
       ...getQuoteSessionFields(quote),
+      // What Change is measured from ("vs Fri 16 Oct close"), and the quote's previous close with its exchange-local date.
+      changeBasis: changeBasisJson(quoteChangeBasis(quote, { terms: futuresContract })),
+      previousClose: quote.previousClose ?? null,
+      previousCloseDate: quotePreviousCloseDate(quote),
       priceBasis: quote.priceBasis ?? null,
       currency: quote.currency,
       marketCap: priced.quote?.marketCap ?? null,

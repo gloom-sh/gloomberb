@@ -498,6 +498,33 @@ export function hasPublishedSessionCalendar(exchange: string | undefined, date: 
   return !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
 }
 
+/**
+ * The venue's regular session before `date` (its local `YYYY-MM-DD`), from
+ * its published calendar, with the days of its trading week it was closed in
+ * between (the Chung Yeung holiday HKEX took on Mon 19 Oct 2026 lies between
+ * Fri 16 and Tue 20 Oct). Null for round-the-clock and unknown venues, and
+ * when a day the walk passes is in a year whose closures the venue has not
+ * published: a holiday there would read as a session.
+ */
+export function previousPublishedSession(
+  exchange: string | undefined,
+  date: string,
+): { date: string; closed: string[] } | null {
+  const canonical = canonicalExchange(exchange);
+  const day = isoLocalDateToUtcDay(date);
+  if (day == null || ALWAYS_OPEN_EXCHANGES.has(canonical) || !sessionCalendarTimeZone(canonical)) return null;
+  const closed: string[] = [];
+  for (let offset = 1; offset <= SESSION_LOOKBACK_DAYS; offset++) {
+    const at = new Date((day - offset) * MS_PER_DAY);
+    const iso = at.toISOString().slice(0, 10);
+    if (!isTradingWeekday(canonical, at.getUTCDay())) continue;
+    if (!hasPublishedSessionCalendar(canonical, iso)) return null;
+    if (!isPublishedClosure(canonical, iso)) return { date: iso, closed: closed.reverse() };
+    closed.push(iso);
+  }
+  return null;
+}
+
 /** How far the delayed feed runs behind the venue's trades. */
 export function delayedFeedLagMs(exchange: string | undefined): number {
   return SLOWER_DELAYED_FEEDS.has(canonicalExchange(exchange)) ? SLOWER_DELAYED_FEED_LAG_MS : DELAYED_FEED_LAG_MS;

@@ -22,8 +22,9 @@ import {
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
+import { changeBasisLabel, changeBasisNote, quoteChangeBasis } from "../../../market-data/market/change-basis";
 import {
-  fitFuturesContractLines, futuresChangeBasisText, futuresQuoteChangeBasis, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
+  fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
   type FuturesContractLine,
 } from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
@@ -200,14 +201,16 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The headline is the regular session, which stops at the close; extended trading is the line below it.
   const sessionQuote = getRegularSessionDisplay(quote);
   const extendedQuote = getExtendedSessionDisplay(quote);
-  // A price in cents says what it is per (314.95¢/lb), and a future's move what it is measured from (vs Fri settle).
+  // A price in cents says what it is per (314.95¢/lb), and the move what it is measured from (vs Fri 16 Oct close).
   const quotePriceText = sessionQuote
     ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${minorUnitPricePer(contractTerms, quote?.currency)}` : "";
   // Nor a move: the close it ended on is where it stays.
   const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
-  const changeBasis = futuresQuoteChangeBasis(contractTerms, quote);
-  const changeBasisText = changeBasis ? futuresChangeBasisText(changeBasis) : "";
+  const changeBasis = delisted ? null : quoteChangeBasis(quote, { terms: contractTerms });
+  const changeBasisText = changeBasis ? changeBasisLabel(changeBasis) : "";
+  // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
+  const changeBasisNoteText = changeBasisNote(changeBasis);
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
@@ -369,6 +372,11 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 )}
               </Box>
             )}
+            {sessionQuote && changeBasisNoteText ? (
+              <Box minWidth={0} overflow="hidden">
+                <ClippedText fg={colors.textDim} text={changeBasisNoteText} width={quoteTextWidth} />
+              </Box>
+            ) : null}
             {extendedQuote && (
               <Box flexDirection="row" gap={2}>
                 <Text fg={colors.textDim}>{extendedSessionLineLabel(extendedQuote, t)}:</Text>
