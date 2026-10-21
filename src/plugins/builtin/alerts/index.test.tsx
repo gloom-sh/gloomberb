@@ -510,7 +510,7 @@ for (const action of ["d", "e"] as const) {
     const alerts = [makeAlert("old", "AAPL", "above", 200)];
     const notifications: any[] = [];
     let writes = 0;
-    const runtime = makeRuntime({ notify: (value: unknown) => notifications.push(value), setConfigState: async () => { writes++; } });
+    const runtime = makeRuntime({ notify: (value: unknown) => { notifications.push(value); }, setConfigState: async () => { writes++; } });
     await tui.render(<AlertsHarness alerts={alerts} runtime={runtime} />, { width: 110, height: 18 });
     await renderSettled();
     await act(async () => { await tui.setup().mockInput.typeText(action); await tui.setup().renderOnce(); });
