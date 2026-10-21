@@ -42,14 +42,14 @@ export function levelAlertCondition(level: number, currentPrice: number | null):
  * duplicate, and a store that does not parse is left alone.
  */
 export function addLevelAlert(
-  storeJson: string | null | undefined,
+  storeJson: unknown,
   target: AlertTarget,
   level: number,
   currentPrice: number | null,
 ): { json: string; alert: AlertRule; created: boolean } | { error: string } {
-  const json = storeJson ?? "[]";
-  const error = readAlertsStoreError(json);
+  const error = readAlertsStoreError(storeJson);
   if (error) return { error };
+  const json = typeof storeJson === "string" ? storeJson : "[]";
   const alerts = deserializeAlerts(json);
   const existing = alerts.find((alert) => (
     alert.status === "active" && alert.targetPrice === level && watches(alert, target)

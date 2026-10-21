@@ -18,6 +18,8 @@ export interface PaneFunctionCapability {
   botSafe: boolean;
   tickerCardinality: PaneFunctionTickerCardinality;
   aliases: string[];
+  /** Words that are no code but ask for this function's data: `fn` and `catalog` answer them with it. */
+  suggestFor?: string[];
   intents: string[];
   outputKind: string;
   reportReadiness: PaneFunctionReadiness;

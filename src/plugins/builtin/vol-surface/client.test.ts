@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
-import type { OptionsChain } from "../../../types/financials";
+import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { createSurfaceDependencies, loadVolatilitySurface, selectSurfaceExpiries, type SurfaceLoaderDependencies } from "./client";
 import type { SurfaceSnapshot } from "./model";
-import { selectSurfaceExpiry } from "./tables";
+import { selectSurfaceExpiry, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -190,5 +192,31 @@ describe("surface loader", () => {
       now: () => now, loadYieldCurve: async () => curve, loadOptions: coordinator.loadOptions.bind(coordinator),
     });
     expect(calls).toEqual([undefined, expirations[1]]);
+  });
+
+  test("a chain from a closed session is priced at that session's close, whatever trades before the next open", async () => {
+    // Monday's chain at 16:14 New York, read twice in Tuesday's pre-market as the print moves.
+    const asOf = "2026-10-19T20:14:00Z", close = 766.48, expiration = Date.UTC(2026, 11, 18) / 1000;
+    const reading = Date.parse(asOf) + 15 * 3_600_000;
+    const days = daysToExpiryFrom(expiration, Date.parse(asOf));
+    const contract = (strike: number, side: "call" | "put"): OptionContract => {
+      const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: close, strike, daysToExpiry: days, rate: 0.04, dividendYield: 0.012,
+        volatility: 0.16 - 0.25 * Math.log(strike / close) }).price;
+      return { contractSymbol: `SPY-${side}-${strike}`, strike, currency: "USD", expiration, bid: price * 0.99, ask: price * 1.01, lastPrice: price, impliedVolatility: 0,
+        openInterest: 10, lastTradeDate: Date.parse(asOf) / 1000, change: 0, percentChange: 0, inTheMoney: side === "call" ? strike < close : strike > close };
+    };
+    const strikes = Array.from({ length: 31 }, (_, index) => 620 + index * 10);
+    const chain: OptionsChain = { underlyingSymbol: "SPY", expirationDates: [expiration], asOf, providerId: "test",
+      calls: strikes.map((strike) => contract(strike, "call")), puts: strikes.map((strike) => contract(strike, "put")) };
+    const deps = { now: () => reading, loadYieldCurve: async () => curve, loadOptions: async () => ready(chain) };
+    const quote = (price: number): Quote => ({ symbol: "SPY", price, preMarketPrice: price, currency: "USD", change: 0, changePercent: 0,
+      lastUpdated: reading, marketState: "PRE", previousClose: close, regularClose: close, regularCloseSessionDate: "2026-10-19" });
+    const [early, later] = await Promise.all([765.37, 768.9].map((price) =>
+      loadVolatilitySurface({ instrument: { symbol: "SPY" }, spot: price, quote: quote(price) }, deps)));
+    expect(early!.spot).toBe(close);
+    expect(early!.spotBasis).toEqual({ basis: "close", session: null, sessionDate: "2026-10-19" });
+    expect(surfaceSpotBasisLabel(early!)).toBe("close Mon 19 Oct");
+    expect(early!.expiries[0]!.skew.butterfly).not.toBeNull();
+    expect(later!.expiries).toEqual(early!.expiries);
   });
 });

@@ -15,9 +15,36 @@ test("a spreadsheet export reads its symbol column, or its first column, past BO
 });
 
 test("a plain list gives every symbol, whether on its own line, split by spaces or by commas", () => {
-  expect(symbolsOf("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual(["AAPL", "msft", "nvda", "XOM"]);
+  // Lines are entries, read as typed entries are: a line with spaces is a name or symbols on one line.
+  expect(parseSymbolText("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual({ symbols: ["AAPL", "msft nvda", "XOM"], ignored: [], entries: true });
   expect(symbolsOf("AAPL, MSFT\nNVDA, XOM")).toEqual(["AAPL", "MSFT", "NVDA", "XOM"]);
   expect(symbolsOf("Symbol\nAAPL\nMSFT\n")).toEqual(["AAPL", "MSFT"]);
+});
+
+test("a pasted list of company names keeps each line or semicolon cell one name, and a line of tickers stays tickers", async () => {
+  // GLO-1105: "Altria Group" was the symbols ALTRIA and GROUP, and "philip morris intl" added INTL, a fund.
+  const names = { "altria group": "MO", "philip morris intl": "PM", "lockheed martin": "LMT" } as Record<string, string>;
+  const readEntries = async (entries: string[]) => entries.flatMap((entry) => names[entry.toLowerCase()] ?? entry.split(/\s+/));
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text, readEntries });
+  expect((await read("Altria Group\nphilip morris intl\nLockheed Martin\n")).symbols).toEqual(["MO", "PM", "LMT"]);
+  expect((await read("Altria Group; Lockheed Martin; philip morris intl\n")).symbols).toEqual(["MO", "LMT", "PM"]);
+  expect((await read("Altria Group;\nLockheed Martin\n")).symbols).toEqual(["MO", "LMT"]);
+  expect(await read("AAPL MSFT NVDA\n")).toEqual({ symbols: ["AAPL", "MSFT", "NVDA"], repeated: 0, notes: [] });
+  expect((await read("MO;PM;LMT")).symbols).toEqual(["MO", "PM", "LMT"]);
+  // Figures beside the symbols, split by spaces or by commas, still make a table read by its first column.
+  expect(parseSymbolText("AAPL 150.00\nMSFT 420.10\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["150.00", "420.10"] });
+});
+
+test("names beside other text are a table read by its first column, or by the column a Name header names", async () => {
+  // A sector beside each name is not a symbol: it was added twice as TECHNOLOGY.
+  const sectors = "Apple Inc,Technology\nMicrosoft Corp,Technology\n";
+  expect(parseSymbolText(sectors)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: ["Technology", "Technology"], entries: true });
+  const names = { "apple inc": "AAPL", "microsoft corp": "MSFT" } as Record<string, string>;
+  const read = await readSymbolList({ args: ["-"], readStdin: async () => sectors, readEntries: async (entries) => entries.map((entry) => names[entry.toLowerCase()] ?? entry) });
+  expect(read).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 cells beside it: Technology, Technology."] });
+  // A header is not a company, and names the column to read.
+  expect(parseSymbolText(`Name,Sector\n${sectors}`)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: [], entries: true });
+  expect(parseSymbolText(`Sector;Company\nTechnology;Apple Inc\n`).symbols).toEqual(["Apple Inc"]);
 });
 
 test("one ragged line, or a symbol with a stray separator in its quotes, does not turn a pasted list into a table", async () => {

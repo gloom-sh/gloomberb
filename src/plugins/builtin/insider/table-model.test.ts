@@ -93,4 +93,21 @@ describe("insider columns", () => {
     expect(ids(48)).toEqual(["date", "insider", "type", "value"]);
     for (const width of [120, 90, 76, 66, 56, 48, 40]) expect(total(width)).toBeLessThanOrEqual(width);
   });
+  // GLO-1106 review: with a CAD base the pane still wrote $48.56 and $199.1k, which a Canadian reads as their own dollars.
+  test("for a base currency other than USD, CCY follows Value and stays with it, and the amounts drop their $", () => {
+    const columns = buildInsiderColumns(120, rows, "USD");
+    expect(columns.map((column) => column.id)).toEqual(["date", "insider", "role", "type", "security", "shares", "price", "value", "ccy"]);
+    const cell = (id: string, row = rows[0]!) => renderInsiderCell(row, columns.find((column) => column.id === id)!, 0, { selected: false }).text;
+    expect([cell("price"), cell("value"), cell("ccy")]).toEqual(["48.56", "199.1k", "USD"]);
+    // A filing with no amount has none to name.
+    const notice = buildInsiderTableRows(parsed.slice(4, 5))[0]!;
+    expect(cell("ccy", notice)).toBe("—");
+    // A narrow pane drops the price before the code that names the value.
+    expect(buildInsiderColumns(48, rows, "USD").map((column) => column.id)).toEqual(["date", "insider", "type", "value", "ccy"]);
+    for (const width of [120, 76, 56, 48, 40]) {
+      expect(buildInsiderColumns(width, rows, "USD").reduce((sum, column) => sum + column.width + 1, 2)).toBeLessThanOrEqual(width);
+    }
+    // A USD base keeps the $ and has no CCY.
+    expect(renderInsiderCell(rows[0]!, buildInsiderColumns(120, rows).find((column) => column.id === "value")!, 0, { selected: false }).text).toBe("$199.1k");
+  });
 });

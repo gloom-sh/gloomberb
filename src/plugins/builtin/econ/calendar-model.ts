@@ -14,7 +14,10 @@ const CACHE_POLICY = {
 } as const;
 
 export type ImpactFilter = "high" | "medium" | "low" | "all";
-/** A region the pane cycles through, or one country by its two-letter code (`econ --country TR`). */
+/**
+ * A region the pane cycles through, or countries by their ISO codes, comma
+ * separated (`econ --country MX,BR,ZA`); a list matches any of its parts.
+ */
 export type CountryFilter = "all" | "US" | "G7" | "EU" | (string & {});
 
 export const FILTER_CYCLE: ImpactFilter[] = ["all", "high", "medium", "low"];
@@ -179,16 +182,82 @@ const IMPACT_WORDS: Record<Exclude<ImpactFilter, "all">, string> = {
  */
 export function filteredEmptyTitle(impact: ImpactFilter, country: CountryFilter): string | null {
   if (impact === "all" && country === "all") return null;
-  const words = [impact === "all" ? null : IMPACT_WORDS[impact], country === "all" ? null : country];
+  const words = [impact === "all" ? null : IMPACT_WORDS[impact], country === "all" ? null : country.split(",").join(", ")];
   return `No ${words.filter(Boolean).join(" ")} events listed`;
 }
 
-export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean {
+function matchesOneCountry(country: string, filter: string): boolean {
   if (filter === "all") return true;
-  if (filter === "US") return event.country === "US";
-  if (filter === "G7") return G7_COUNTRIES.has(event.country);
-  if (filter === "EU") return event.country === "EU";
-  return event.country === filter;
+  if (filter === "G7") return G7_COUNTRIES.has(country);
+  return country === filter;
+}
+
+export function matchesCountry(event: Pick<EconEvent, "country">, filter: CountryFilter): boolean {
+  return filter.split(",").some((part) => matchesOneCountry(event.country, part));
+}
+
+/** What people type for a country whose ISO code is another. */
+const COUNTRY_ALIASES: Readonly<Record<string, string>> = { UK: "GB" };
+
+let regionNames: Intl.DisplayNames | null | undefined;
+
+/** An ISO 3166 country (or the EU) the runtime can name; any two letters when it names none. */
+function isCountryCode(code: string): boolean {
+  if (regionNames === undefined) {
+    try {
+      regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+    } catch {
+      regionNames = null;
+    }
+  }
+  if (!regionNames) return /^[A-Z]{2}$/.test(code);
+  try {
+    // ZZ is CLDR's "Unknown Region".
+    return code !== "ZZ" && regionNames.of(code) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+export const COUNTRY_FILTER_HINT = `Use ${COUNTRY_CYCLE.join(", ")}, or two-letter country codes such as MX, or several as MX,BR,ZA.`;
+
+/**
+ * A country filter as typed: the pane's regions and ISO country codes, any
+ * case, comma separated (`mx, br`, `G7,MX`, `UK` for GB). The filter as the
+ * pane stores it (`MX,BR`), or why it is not one.
+ */
+export function parseCountryFilter(text: string): { filter: CountryFilter } | { error: string } {
+  const parts: string[] = [];
+  for (const token of text.split(/[\s,]+/).filter(Boolean)) {
+    const region = COUNTRY_CYCLE.find((candidate) => candidate.toLowerCase() === token.toLowerCase());
+    const upper = token.toUpperCase();
+    const code = region ?? COUNTRY_ALIASES[upper] ?? (/^[A-Z]{2}$/.test(upper) && isCountryCode(upper) ? upper : null);
+    if (!code) return { error: `Unknown country "${token}".` };
+    if (!parts.includes(code)) parts.push(code);
+  }
+  if (parts.length === 0) return { error: "No country given." };
+  return { filter: parts.includes("all") ? "all" : parts.join(",") };
+}
+
+/** The countries a filter names one by one (MX and BR in `G7,MX,BR`), leaving out the regions. */
+function filterCountries(filter: CountryFilter): string[] {
+  return filter.split(",").filter((part) => !(COUNTRY_CYCLE as readonly string[]).includes(part));
+}
+
+/**
+ * Countries the filter names that no event in `events` is for, so a list
+ * says which of them has nothing scheduled instead of reading as a quiet week
+ * (or as a country the terminal does not know).
+ */
+export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyArray<Pick<EconEvent, "country">>): string[] {
+  const listed = new Set(events.map((event) => event.country));
+  return filterCountries(filter).filter((country) => !listed.has(country));
+}
+
+/** "No scheduled releases for MX in this window", or for MX or ZA. */
+export function noScheduledReleasesMessage(countries: readonly string[]): string {
+  const named = countries.length > 1 ? `${countries.slice(0, -1).join(", ")} or ${countries.at(-1)}` : countries.join("");
+  return `No scheduled releases for ${named} in this window.`;
 }
 
 /**
@@ -198,10 +267,15 @@ export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean
  */
 export const PRINT_PENDING_MS = 20 * 60 * 1000;
 
-/** High-impact releases whose time has come in the last {@link PRINT_PENDING_MS} and that have no actual yet. */
+/**
+ * High-impact releases whose time has come in the last {@link PRINT_PENDING_MS}
+ * and that have no actual yet. Rows Gloom Cloud adds from a bank's or a
+ * statistics office's calendar (`kind`) never get an actual, and a bank's
+ * untimed decision would fall due at midnight UTC, so they are never waited on.
+ */
 export function pendingHighImpactPrints(events: readonly EconEvent[], now: number): EconEvent[] {
   return events.filter((event) => {
-    if (event.impact !== "high" || event.actual) return false;
+    if (event.impact !== "high" || event.actual || event.kind) return false;
     const releasedFor = now - event.date.getTime();
     return releasedFor >= 0 && releasedFor <= PRINT_PENDING_MS;
   });

@@ -1,7 +1,7 @@
 import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestFinancials, createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -383,4 +383,33 @@ test("historical prices count a coin's bars without volume as history does, not 
   expect(signedIn.notes).toBeUndefined();
   const hole = await load([bar("2026-10-18T13:00:00Z", 61_200_000), bar("2026-10-18T14:00:00Z"), bar("2026-10-18T15:00:00Z", 24_100_000), latest]);
   expect(hole.notes).toEqual(["1 of 4 bars has no reported volume (\u2014)"]);
+});
+
+
+test("FA cash-only runway labels its actual input and caps only formatted values; financials omit runway", async () => {
+  const financials = createTestFinancials({
+    annualStatements: [], quarterlyStatements: [{ date: "2026-06-30", totalRevenue: 0, cashAndCashEquivalents: 32_000, operatingCashFlow: -1 }],
+  });
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) });
+  const request = args(["TEST:XETRA"], { statement: "liquidity", period: "quarterly" });
+  const report = await financialStatementsHeadless.load(request, ctx);
+  expect(report.notes?.join(" ")).toContain("cash (no ST investments reported)");
+  expect(report.rows.find((row) => row.id === "runway-quarter:0")?.metric).toMatch(/^Cash \(.*\)$/);
+  expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
+    expect.objectContaining({ value: 96_000, formatted: "> 120 mo" }),
+  ]);
+  expect(report.rows.find((row) => row.id === "runway-ttm")?.cells).toEqual([
+    expect.objectContaining({ gap: "< 4 quarters" }),
+  ]);
+  // A total outside the displayed quarterly columns still governs the input label and fallback.
+  financials.annualStatements = [{ date: "2025-12-31", cashCashEquivalentsAndShortTermInvestments: 50_000 }];
+  const sparse = await financialStatementsHeadless.load(request, ctx);
+  expect(sparse.rows.find((row) => row.id === "runway-quarter:0")?.metric).toContain("Cash + ST Inv");
+  expect(sparse.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
+    expect.objectContaining({ gap: "not reported" }),
+  ]);
+  financials.profile = { sector: "Financial Services" };
+  const bank = await financialStatementsHeadless.load(request, ctx);
+  expect(bank.rows.some((row) => String(row.id).startsWith("runway-"))).toBe(false);
+  expect(bank.notes?.some((note) => note.startsWith("Runway:"))).toBe(false);
 });

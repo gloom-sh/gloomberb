@@ -205,6 +205,8 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
   { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: '[aria-label="Theme picker"]', async open(cdp) { await runCommand(cdp, "TH ", { submit: false }); } },
   { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog", async open(cdp) { await runCommand(cdp, "FB"); } },
   { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=pane-setting-row]", async open(cdp) { await runCommand(cdp, "PS"); } },
+  // A form dialog the command bar opens: the default config's manual portfolio is enough for it.
+  { id: "position-form", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=desktop-text-field]", async open(cdp) { await runCommand(cdp, "Set Portfolio Position"); } },
   {
     id: "pane-menu",
     layout: dock(SAMPLE_PANE),

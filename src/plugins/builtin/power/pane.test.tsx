@@ -85,3 +85,26 @@ test("history distinguishes actual observations from published years and renders
   expect(detail).toContain("Observed UTC");
   expect(detail).toContain("Open primary document");
 });
+
+test("a tab that is still loading keeps the tab strip and the query bar, only its body waits", async () => {
+  let release = () => {};
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  let requests = 0;
+  // The first board answers; the next tab's request waits, as a slow network would.
+  setCloudApiFetchTransport(async () => {
+    if (requests++ > 0) await pending;
+    return Response.json(powerBoard());
+  });
+  try {
+    await mount("queue");
+    await tui.waitForFrameToContain("Storage project");
+    await tui.clickFrameText("Utilities");
+    const frame = await tui.waitForFrameToContain("Loading power and interconnection data...");
+    expect(frame).toContain("Queue");
+    expect(frame).toContain("Utilities");
+    expect(frame).toContain("Project, developer");
+    expect(frame).not.toContain("Storage project");
+  } finally {
+    release();
+  }
+});

@@ -2,6 +2,8 @@ import type { HeadlessPaneDefinition, HeadlessPaneEntry } from "../../../types/p
 import { expirationOptionSeconds, expiryIsoDate, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../../utils/option-expiry";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { loadGamma, loadOpenInterest, positioningSymbol, type GammaPayload, type OpenInterestPayload } from "./client";
+import { listingFateReport, loadListingFate } from "../../../tickers/listing-fate";
+import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import {
   ALL_EXPIRIES,
   expiryLabel,
@@ -10,6 +12,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  formatPositioningSpot,
   formatPayout,
   formatRatio,
   formatStrike,
@@ -49,7 +52,7 @@ function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null)
     { key: "oiDate", label: "Open interest as of", value: openInterest.oiDate },
   ];
   const textEntries: HeadlessPaneEntry[] = [
-    { label: "Spot", value: spot, formatted: spot == null ? "--" : spotAsOf ? `${formatLevel(spot)} at ${time(spotAsOf)}` : formatLevel(spot) },
+    { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf) },
     ...(dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
     { label: "Open interest as of", value: openInterest.oiDate, formatted: openInterest.oiDate ?? "--" },
   ];
@@ -118,7 +121,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     // VIX has no dealer gamma, so its expiries have no column for it.
     const expiryGamma = !(allExpiries instanceof Error) && allExpiries.total ? netGammaByExpiry(allExpiries) : null;
     const gammaColumn = allExpiries instanceof Error || !!allExpiries.total;
-    const errors = [
+    const loadErrors = [
       ...openInterest.warnings,
       ...(dealer instanceof Error ? [`Dealer gamma: ${dealer.message}`] : [
         ...dealer.warnings,
@@ -126,6 +129,11 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
       ]),
       ...(everyExpiry instanceof Error ? [`Net GEX by expiry: ${everyExpiry.message}`] : []),
     ];
+    // A symbol with no listed open interest says what became of it when something did (TWTR stopped
+    // trading, FB is a fund now) in place of the load's errors.
+    const fate = openInterest.expiries.length || expiry ? null
+      : listingFateReport(await loadListingFate(await resolveHeadlessInstrument(ctx, symbol), ctx.marketData), { served: false }, loadErrors);
+    const errors = fate?.errors ?? loadErrors;
     const changes = openInterest.previousOiDate != null;
     const gammaShown = dealer instanceof Error || !dealer.total ? null : dealer;
     const scope = dealer instanceof Error ? null : dealer.expiry ? expiryLabel(dealer.expiry) : "all expiries";
@@ -173,7 +181,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
       ],
       complete: !!openInterest.expiries.length && !(dealer instanceof Error) && errors.length === 0,
       unavailableSymbols: openInterest.expiries.length ? [] : [symbol],
-      errors,
+      errors, ...(fate?.notes.length ? { notes: fate.notes } : {}),
       metadata: {
         underlying: openInterest.underlying,
         oiDate: openInterest.oiDate,

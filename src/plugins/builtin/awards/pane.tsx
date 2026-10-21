@@ -221,15 +221,16 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   if (denied || !data && isCloudSessionRequired(failed?.message)) return <SignInWall placement="awards-signin" action="view government awards" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={paged.loading && !data} error={!data && failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null}
-      empty={!data && failed?.message === AWARDS_UNAVAILABLE} emptyTitle={AWARDS_UNAVAILABLE} subject="government awards">
-      {data ? <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
+    <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
         detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
         rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
+          // A filter change loads under the query bar, which stays.
+          status={data ? undefined : { loading: paged.loading, error: failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null,
+            empty: failed?.message === AWARDS_UNAVAILABLE, emptyTitle: AWARDS_UNAVAILABLE, subject: "government awards" }}
           focused={focused && !openId && !search.active && !tickerSearch.active} scrollRef={tableScrollRef} onBodyScrollActivity={loadMore}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} chart={chart}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} chart={data ? chart : null}
             figures={tab === "company" && ticker && latest ? [{ id: "total", label: `Obligated ${chartCurrency}`, value: money(latest.cumulativeObligatedAmount) },
               { id: "period", label: "Latest cohort", value: latest.month.slice(0, 7), detail: awardScope(chartSource) }] : undefined} />}
           selection={{ kind: "id", selectedId: selected ? itemId(selected) : null, getId: itemId, onChange: setSelected }} getItemKey={itemId}
@@ -277,7 +278,6 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             return { text: award.revenueComparison?.periodEnd ?? "--", color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
-          bodyAfter={data.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} /> : null}
-    </PaneStatusBody>
+          bodyAfter={data?.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} />
   </Box>;
 }

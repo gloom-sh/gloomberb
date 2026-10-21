@@ -308,7 +308,7 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     if (action === "list") {
-      const { alerts, events } = await withConfigData(ctx, (config) => readAlertStores(config.config));
+      const { alerts, alertsError, events } = await withConfigData(ctx, (config) => readAlertStores(config.config));
       // Earnings dates come through market data; CPI and FOMC dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today))
@@ -318,7 +318,7 @@ export const alertsCliCommand: CliCommandDef = {
         ...alerts.map(priceRow),
         ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate)),
       ];
-      const allWarnings = [...(events.error ? [events.error] : []), ...warnings];
+      const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -337,8 +337,9 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     await withConfigData(ctx, async (config) => {
-      const { pluginState, alerts, events } = readAlertStores(config.config);
+      const { pluginState, alerts, alertsError, events } = readAlertStores(config.config);
       const save = async (next: { alerts?: AlertRule[]; events?: EventAlertRule[] }) => {
+        if (next.alerts && alertsError) ctx.fail(alertsError);
         const nextConfig = {
           ...config.config,
           pluginConfig: {
@@ -393,6 +394,7 @@ export const alertsCliCommand: CliCommandDef = {
         const id = requireArg(args[1], "Usage: gloomberb alerts delete <id>", ctx);
         const isPrice = alerts.some((alert) => alert.id === id);
         const isEvent = !isPrice && events.rules.some((rule) => rule.id === id);
+        if (!isPrice && !isEvent && alertsError) ctx.fail(alertsError);
         if (isPrice) await save({ alerts: alerts.filter((alert) => alert.id !== id) });
         if (isEvent) await save({ events: requireEvents().filter((rule) => rule.id !== id) });
         const changed = isPrice || isEvent;
@@ -407,6 +409,7 @@ export const alertsCliCommand: CliCommandDef = {
         const id = requireArg(args[1], "Usage: gloomberb alerts rearm <id>", ctx);
         const isPrice = alerts.some((alert) => alert.id === id);
         const rule = isPrice ? null : events.rules.find((entry) => entry.id === id) ?? null;
+        if (!isPrice && !rule && alertsError) ctx.fail(alertsError);
         if (isPrice) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
         if (rule) {
           // A scheduled alert alerts again for its coming event; any other event alert resumes.

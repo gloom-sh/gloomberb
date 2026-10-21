@@ -106,11 +106,11 @@ export async function fetchPowerTickerScopes(symbol: string, tab: PowerTab, cont
 }
 const key = (query: unknown, scope: string) => `${scope}:${JSON.stringify(query)}`;
 export const loadPowerBoard = (filter: PowerFilter, scope: string, force = false, signal?: AbortSignal) =>
-  loadCloudResource(powerBoardCache, key(filter, scope), () => fetchPowerBoard(filter, apiClient, signal), { force, validate: validatePowerBoard });
+  loadCloudResource(powerBoardCache, key(filter, scope), () => fetchPowerBoard(filter, apiClient, signal), { force, validate: validatePowerBoard, signal });
 export const loadPowerHistory = (filter: PowerFilter, scope: string, force = false) =>
   loadCloudResource(powerHistoryCache, key(filter, scope), () => fetchPowerHistory(filter), { force, validate: validatePowerHistory });
 export const loadPowerDetail = (id: string, scope: string, force = false, offset = 0, signal?: AbortSignal) => loadCloudResource(powerDetailCache, key({ id, offset }, scope),
   async () => { const value = validateDetail(await apiClient.getCloudPowerProject(id, { offset, limit: 100 }, signal));
     if (value.hasMore && value.nextOffset! <= offset) throw new Error("Project revision pagination did not advance.");
     if (value.project && value.project.id !== id || value.revisions.some((r) => r.id !== id)) throw new Error("Project evidence belongs to a different project.");
-    return value; }, { force, validate: validateDetail });
+    return value; }, { force, validate: validateDetail, signal });

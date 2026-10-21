@@ -6,7 +6,7 @@ import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { UpgradeLabel } from "../shared/locked-rows";
-import { catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystFacts, catalystLabel } from "./model";
+import { CATALYST_DATE_WITHHELD, catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystDateWithheld, catalystFacts, catalystLabel } from "./model";
 import { humanLabel } from "../shared/research-cells";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { loadCatalystDetail } from "./client";
@@ -23,7 +23,8 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
     <KeyValueRow label="Status" value={humanLabel(event.status)} detail={`Revision ${event.revision}`} labelWidth={18} />
     <KeyValueRow label="Announced" value={catalystDate(event, "announced")} labelWidth={18} />
     {event.effectiveDate ? <KeyValueRow label={catalystDateBasis(event, "effective")} value={catalystDate(event, "effective")} labelWidth={18} /> : null}
-    {event.deadlineDate ? <KeyValueRow label={catalystDateBasis(event, "deadline")} value={catalystDate(event, "deadline")} labelWidth={18} /> : null}
+    {event.deadlineDate ? <KeyValueRow label={catalystDateBasis(event, "deadline")} value={catalystDate(event, "deadline")} labelWidth={18} />
+      : catalystDateWithheld(event) ? <KeyValueRow label={catalystLabel("deadline")} value={CATALYST_DATE_WITHHELD} labelWidth={18} /> : null}
     <KeyValueRow label="Observed (UTC)" value={catalystDate(event, "observed")} labelWidth={18} />
     <KeyValueRow label="Confidence" value={`${Math.round(event.confidence * 100)}%`} labelWidth={18} />
     {facts.map((fact) => <KeyValueRow key={fact.label} label={fact.label} value={fact.value} labelWidth={18} />)}

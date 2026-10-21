@@ -80,7 +80,7 @@ export const notesCliCommand: CliCommandDef = {
           });
           return;
         }
-        warnings.push(...result.skipped.map(describeExportSkip));
+        warnings.push(...(result.warnings ?? []), ...result.skipped.map(describeExportSkip));
         ctx.printResult({
           data: {
             dir: result.dir,

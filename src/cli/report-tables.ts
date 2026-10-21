@@ -69,7 +69,8 @@ export interface CliReportEntry {
 }
 
 type Cell =
-  | { kind: "blank" }
+  /** `unit`: what the column draws a number of this row in, so a missing figure still names its unit. */
+  | { kind: "blank"; unit?: string }
   | { kind: "text"; text: string; time?: boolean }
   | { kind: "number"; value: number; unit: string }
   /** Text that may read as a number, once the whole column is known. */
@@ -80,6 +81,8 @@ type ResolvedCell = Exclude<Cell, { kind: "textual" }>;
 interface ResolvedColumn {
   header: string;
   cells: ResolvedCell[];
+  /** The unit the column draws its numbers in, for a table with no rows to say it. */
+  unit?: string;
 }
 
 const BLANK = { kind: "blank" } as const;
@@ -265,8 +268,9 @@ function resolveColumn(header: string, cells: Cell[], parseText: boolean): Resol
   };
 }
 
+/** The units a column's numbers are in, a missing figure's own among them, so the header does not change with which figures are missing. */
 function numberUnits(cells: readonly ResolvedCell[]): Set<string> {
-  return new Set(cells.flatMap((cell) => cell.kind === "number" ? [cell.unit] : []));
+  return new Set(cells.flatMap((cell) => cell.kind === "number" ? [cell.unit] : cell.kind === "blank" && cell.unit != null ? [cell.unit] : []));
 }
 
 function cellValue(cell: ResolvedCell): CliReportValue {
@@ -312,8 +316,8 @@ function rowUnits(columns: readonly ResolvedColumn[], mixed: readonly boolean[],
  * metrics whose rows each have one, and otherwise a `<header> unit` column
  * beside a column that mixes them (a rate in % and a spread in bp).
  */
-function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCount: number): CliReportTable {
-  const units = columns.map((column) => numberUnits(column.cells));
+function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCount: number, status?: StatusColumn): CliReportTable {
+  const units = columns.map((column) => rowCount === 0 && column.unit != null ? new Set([column.unit]) : numberUnits(column.cells));
   const mixed = units.map((columnUnits) => columnUnits.size > 1);
   const byRow = mixed.some(Boolean) ? rowUnits(columns, mixed, rowCount) : null;
   const layout = columns.flatMap((column, index) => {
@@ -338,6 +342,7 @@ function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCou
       },
     ];
   });
+  if (status) layout.push({ header: status.header, value: (row: number) => status.values[row] ?? "" });
   return {
     title,
     columns: layout.map((column) => column.header),
@@ -345,28 +350,141 @@ function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCou
   };
 }
 
+/** The `status` column a table of rows ends its own columns with: why a figure is missing, by row. */
+interface StatusColumn {
+  header: string;
+  values: string[];
+}
+
+/**
+ * A number a probe draws through a column's format, to read the unit the
+ * column draws numbers in. A figure format rounds it; a format that prints
+ * it whole passes values through as text and draws no figures of its own.
+ */
+const UNIT_PROBE = 0.1234567891;
+
+/**
+ * A row with nothing in it that a format can still read through: every
+ * field, call and conversion of it is empty. For a format that reads fields of
+ * the row beyond its value and would throw on an empty one.
+ */
+const EMPTY_ROW: unknown = (() => {
+  const empty: unknown = new Proxy(function empty() {}, {
+    get: (_target, key) => key === Symbol.toPrimitive ? (hint: string) => (hint === "number" ? Number.NaN : "") : empty,
+    apply: () => empty,
+  });
+  return empty;
+})();
+
+/**
+ * The unit a column draws a number of this row in (`%` for an IV, `""` for a
+ * plain figure), read from what its format draws for one; null when it draws
+ * no figure for one, passes the value through as it is, or throws.
+ */
+function drawnUnit<Row>(column: CliReportColumn<Row>, row: Row): string | null {
+  const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
+  if (typeof unit === "string" && unit) return unit;
+  if (!column.format) return null;
+  try {
+    const drawn = column.format(UNIT_PROBE, row);
+    if (typeof drawn !== "string" || drawn.trim() === String(UNIT_PROBE)) return null;
+    const read = readDisplay(drawn);
+    return read && read !== BLANK_DISPLAY ? read.unit : null;
+  } catch {
+    // Intentional ignore: a format that cannot draw a number for this row draws no unit for it.
+    return null;
+  }
+}
+
+/**
+ * The unit a column draws its figures in whatever the rows, read without one:
+ * on an empty row, or through a row of nothing when the format throws on an
+ * empty one. The same with rows and without, so a header and the table's
+ * status column do not depend on what was loaded. Null for a column of text.
+ */
+function columnUnit<Row>(column: CliReportColumn<Row>): string | null {
+  if (column.unitKey) return "";
+  if (!column.format) return null;
+  try {
+    column.format(UNIT_PROBE, {} as Row);
+    return drawnUnit(column, {} as Row);
+  } catch {
+    // Intentional ignore: the format reads a field an empty row lacks; read it through a row of nothing.
+    return drawnUnit(column, EMPTY_ROW as Row);
+  }
+}
+
+/** What a status cell says: each reason once, after the columns it is the reason for. */
+function statusText(reasons: ReadonlyArray<{ header: string; text: string }>): string {
+  const byText = new Map<string, string[]>();
+  for (const { header, text } of reasons) byText.set(text, [...byText.get(text) ?? [], header]);
+  return [...byText].map(([text, headers]) => `${headers.join(", ")}: ${text}`).join("; ");
+}
+
+const isMissing = (value: unknown) => value == null || (typeof value === "number" && !Number.isFinite(value));
+
 // Codes a spreadsheet must not turn into numbers, even when they are digits.
 const IDENTIFIER_KEY = /^(?:id|cik|code|cusip|figi|isin|symbol|ticker)$|(?:Id|Cik|Code|Cusip|Figi|Isin|Symbol|Ticker)$/;
 
-/** A table of rows under the columns the text view draws. */
+/**
+ * A table of rows under the columns the text view draws. A figure that is
+ * missing still names the unit its column draws it in, so a header is the same
+ * whichever figures a symbol has. With `status`, a reason the text draws in
+ * place of a missing figure (`not quoted`, `under 7d`) leaves the cell empty
+ * and goes to the `status` column the table ends its own columns with, so a
+ * column of figures holds only numbers. Only a row whose own value is missing,
+ * in a column that draws that row's figures, has a reason: text a format draws
+ * from the rest of the row (a range, N/M, ATM) stays. A table has the column
+ * when one of its columns draws figures through a format, read from the
+ * columns alone so it is there with or without rows, and a table of text has
+ * none; beside a column of its own named Status it is `value_status`.
+ */
 export function exportRowsTable<Row extends Record<string, unknown>>(
   title: string,
   columns: readonly CliReportColumn<Row>[],
   rows: readonly Row[],
+  { status = false }: { status?: boolean } = {},
 ): CliReportTable {
-  return assembleTable(title, columns.map((column) => resolveColumn(
-    column.header,
-    rows.map((row): Cell => {
-      const record = row as Record<string, unknown> | undefined;
-      const value = record?.[column.key];
-      const unit = column.unitKey ? record?.[column.unitKey] : undefined;
-      if (typeof unit === "string" && unit && typeof value === "number" && Number.isFinite(value)) {
-        return { kind: "number", value: exportNumber(value), unit };
-      }
-      return exportCell(value, column.format ? column.format(value, row) : null, column.key);
-    }),
-    !IDENTIFIER_KEY.test(column.key),
-  )), rows.length);
+  const reasons = rows.map((): Array<{ header: string; text: string }> => []);
+  const units = columns.map(columnUnit);
+  // Decided by the columns alone, so a table has the column, or not, whatever rows it has.
+  const withStatus = status && units.some((unit) => unit != null);
+  const resolved = columns.map((column, columnIndex): ResolvedColumn => {
+    const rowUnits = rows.map((row) => drawnUnit(column, row));
+    const values = rows.map((row) => (row as Record<string, unknown> | undefined)?.[column.key]);
+    const { header, cells } = resolveColumn(
+      column.header,
+      rows.map((row, index): Cell => {
+        const value = values[index];
+        const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
+        if (typeof unit === "string" && unit && typeof value === "number" && Number.isFinite(value)) {
+          return { kind: "number", value: exportNumber(value), unit };
+        }
+        return exportCell(value, column.format ? column.format(value, row) : null, column.key);
+      }),
+      !IDENTIFIER_KEY.test(column.key),
+    );
+    const table: ResolvedColumn = {
+      header,
+      cells: cells.map((cell, index): ResolvedCell => {
+        const unit = rowUnits[index];
+        const blank: ResolvedCell = unit != null ? { kind: "blank", unit } : BLANK;
+        if (cell.kind === "blank") return cell.unit == null ? blank : cell;
+        // Text drawn in place of a figure this row does not have, where the column draws this row's figures: a reason.
+        // Text drawn from the rest of the row (a range, N/M, ATM) is no figure's absence and stays.
+        if (!withStatus || cell.kind !== "text" || cell.time || unit == null || !isMissing(values[index])) return cell;
+        reasons[index]!.push({ header: column.header, text: cell.text });
+        return blank;
+      }),
+    };
+    const unit = units[columnIndex];
+    return unit == null ? table : { ...table, unit };
+  });
+  const statusColumn = withStatus ? {
+    header: columns.some((column) => column.header.trim().toLowerCase() === "status") ? "value_status" : "status",
+    values: reasons.map(statusText),
+  } : undefined;
+  return assembleTable(title, resolved, rows.length, statusColumn);
 }
 
 /** Label/value lines as `Metric,Value`; a number's unit moves into its label. */
@@ -464,7 +582,10 @@ function csvLine(row: readonly unknown[]): string {
 
 /**
  * A table with the fixed columns after its own, every row naming what it is
- * and the source and as-of the footer cites. A table without columns stays empty.
+ * and the source and as-of the footer cites. A fixed column the table already
+ * has under the same name is left out, so its own per-row values stay the
+ * only ones (CBR's `source` and `as_of`) and a reader keyed by name finds one
+ * column. A table without columns stays empty.
  */
 function identifiedTable(table: CliReportTable, report: CliReportTables, freshness: ReportFreshness | undefined): CliReportTable {
   if (!freshness || table.columns.length === 0) return table;
@@ -474,7 +595,16 @@ function identifiedTable(table: CliReportTable, report: CliReportTables, freshne
     const own = table.rowIdentities?.[index];
     return own ? exportIdentityCells(freshness, { ...identity, ...own }) : cells;
   };
-  return { ...table, columns: [...table.columns, ...EXPORT_IDENTITY_COLUMNS], rows: table.rows.map((row, index) => [...row, ...rowCells(index)]) };
+  const added = EXPORT_IDENTITY_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]);
+  if (added.length === 0) return table;
+  return {
+    ...table,
+    columns: [...table.columns, ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!)],
+    rows: table.rows.map((row, index) => {
+      const identityCells = rowCells(index);
+      return [...row, ...added.map((column) => identityCells[column]!)];
+    }),
+  };
 }
 
 /**

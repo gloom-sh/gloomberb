@@ -3,6 +3,36 @@ import type { BrokerContractRef } from "./instrument";
 type BrokerOrderAction = "BUY" | "SELL";
 export type BrokerOrderType = "MKT" | "LMT" | "STP" | "STP LMT";
 
+/** Explicit account classification for order confirmation. Missing values are treated as unknown. */
+export type BrokerTradingMode = "simulation" | "live" | "unknown";
+
+/** Synchronous ticket metadata. Adapters may vary this by contract and order type. */
+export interface BrokerTradingCapabilities {
+  enabled: boolean;
+  disabledReason?: string;
+  orderTypes: BrokerOrderType[];
+  tif: string[];
+  extendedHours?: boolean;
+  /** When set, extended hours are available only for these time-in-force values. */
+  extendedHoursTif?: string[];
+  fractionalQuantity?: boolean;
+  /** Explicitly permits sells beyond a known long position. Omission blocks short sales. */
+  shortSelling?: boolean;
+  minQuantity?: number;
+  quantityStep?: number;
+  priceDecimals?: number;
+  /** Broker-reported price increment for this instrument/order. Omit if unknown. */
+  priceStep?: number;
+  modify?: boolean;
+  cancel?: boolean;
+  executionKind?: "fills" | "order-summaries";
+  /**
+   * Multi-leg option orders take up to this many legs (at least 2). Declared
+   * for a combo contract (`secType: "BAG"`); omit when the broker takes none.
+   */
+  maxLegs?: number;
+}
+
 export interface BrokerCashBalance {
   currency: string;
   quantity: number;
@@ -13,6 +43,9 @@ export interface BrokerCashBalance {
 export interface BrokerAccount {
   accountId: string;
   name: string;
+  tradingMode?: BrokerTradingMode;
+  /** Broker-reported account classification, such as Cash or Margin. Omit when unavailable. */
+  accountType?: string;
   currency?: string;
   /** "cloud" is a connection held by the user's Gloom Cloud account. */
   source?: "gateway" | "flex" | "cloud";
@@ -64,10 +97,25 @@ export interface BrokerPortfolioPerformance {
   points: BrokerPortfolioPerformancePoint[];
 }
 
+/**
+ * One leg of a multi-leg option order. The action is what happens to this
+ * contract when the order fills; the ratio is its contracts per spread.
+ */
+export interface BrokerOrderLeg {
+  contract: BrokerContractRef;
+  action: BrokerOrderAction;
+  ratio: number;
+}
+
 export interface BrokerOrderRequest {
   brokerInstanceId?: string;
   accountId?: string;
+  /** A combo contract (`secType: "BAG"`, the underlying's symbol) when the order has legs. */
   contract: BrokerContractRef;
+  /**
+   * BUY pays a net debit and SELL receives a net credit. With legs, the
+   * legs' own actions say which contracts are bought and sold.
+   */
   action: BrokerOrderAction;
   orderType: BrokerOrderType;
   quantity: number;
@@ -75,9 +123,23 @@ export interface BrokerOrderRequest {
   stopPrice?: number;
   tif?: string;
   outsideRth?: boolean;
+  /**
+   * 2 or more option legs filled as one order. `quantity` counts spreads and
+   * `limitPrice` is the positive net price of one spread.
+   */
+  legs?: BrokerOrderLeg[];
 }
 
 export interface BrokerOrderPreview {
+  currency?: string;
+  estimatedCost?: number;
+  fees?: number;
+  buyingPowerBefore?: number;
+  buyingPowerAfter?: number;
+  buyingPowerImpact?: number;
+  warnings?: string[];
+  /** Blocking broker validation errors. A ticket must not submit when these are present. */
+  errors?: string[];
   initMarginBefore?: number;
   initMarginAfter?: number;
   maintMarginBefore?: number;
@@ -91,6 +153,8 @@ export interface BrokerOrderPreview {
 
 export interface BrokerOrder {
   orderId: number;
+  /** Broker-native identity, scoped to profile and account. Numeric orderId remains the mutation handle. */
+  brokerOrderId?: string;
   brokerInstanceId?: string;
   accountId?: string;
   status: string;
@@ -108,12 +172,15 @@ export interface BrokerOrder {
   reviewUrl?: string;
   updatedAt: number;
   contract: BrokerContractRef;
+  /** A multi-leg order's legs, as on its request. */
+  legs?: BrokerOrderLeg[];
 }
 
 export interface BrokerExecution {
   execId: string;
   brokerInstanceId?: string;
   orderId?: number;
+  brokerOrderId?: string;
   accountId?: string;
   side: string;
   shares: number;

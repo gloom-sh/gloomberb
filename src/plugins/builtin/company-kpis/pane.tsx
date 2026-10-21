@@ -100,7 +100,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const guidance = data && "guidance" in data ? data : null;
   const [openingTab] = usePaneSettingValue("tab", "table");
   const [tabValue, setTab] = usePluginPaneState<string>("company:tab", openingTab);
-  const tab = ["table", "chart", "evidence", ...(guidance ? ["history"] : [])].includes(tabValue) ? tabValue : "table";
+  const tab = ["table", "chart", "evidence", ...(mode === "guidance" ? ["history"] : [])].includes(tabValue) ? tabValue : "table";
   const [openingMetric] = usePaneSettingValue("metric", "all");
   const [metric, setMetric] = usePluginPaneState<string>("company:metric", openingMetric);
   const [plotKey, setPlotKey] = usePluginPaneState<string>("company:plot", "");
@@ -166,7 +166,8 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     : guidanceSeries(guides, selected && isGuidance(selected) ? selected : undefined, { low: colors.textMuted, high: colors.warning, actual: colors.positive }), [tab, mode, kpiChart, guides, selected, colors]);
   const link = useChartTableSelection({ rows, getId: (row) => row.id, getDate: (row) => isGuidance(row) ? new Date(row.issuedDate) : kpiChart.dates.get(row.id) ?? null,
     selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openRow, enabled: tab === "chart" });
-  const { strip, rows: tabRows } = usePaneTabs(data ? { tabs: [{ value: "table", label: mode === "guidance" ? "Tracker" : "Table" }, { value: "chart", label: "Chart" },
+  const signInWall = !data && isCloudSessionRequired(resource.error);
+  const { strip, rows: tabRows } = usePaneTabs(symbol && !signInWall ? { tabs: [{ value: "table", label: mode === "guidance" ? "Tracker" : "Table" }, { value: "chart", label: "Chart" },
     ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []), { value: "evidence", label: "Evidence" }], activeValue: tab,
     onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
@@ -190,7 +191,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     data?.truncated && data.access === "full" ? "The response reached its stored-record limit. Narrow the metric or date range in a CLI or REST query." : null,
     data?.coverage.conflicts ? "Conflicting disclosures are retained in Evidence and excluded from comparable trends." : null].filter((value): value is string => !!value) });
   if (!symbol) return <EmptyState title="Select a ticker." />;
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="company-kpis-signin" action={mode === "guidance" ? "view company guidance" : "view company KPIs"} needsVerification={session.needsVerification} />;
+  if (signInWall) return <SignInWall placement="company-kpis-signin" action={mode === "guidance" ? "view company guidance" : "view company KPIs"} needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
   const query = <QueryBar width={width} filters={[{ id: "metric", label: "Metric", value: metric, defaultValue: "all", options: metricOptions,
     onChange: (value: string) => { setMetric(value); setSelected(null); setOpen(null); } }, ...(tab === "chart" && plotOptions.length ? [{ id: "series", label: "Series", value: activePlot,

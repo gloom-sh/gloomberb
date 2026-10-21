@@ -11,6 +11,7 @@ import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
 import { cryptoEtfFlowsModule } from "./crypto-etf-flows";
 import { portfolioAnalyticsModule } from "./analytics";
+import { brokerTradingModule } from "./broker-trading";
 import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
 import { connectionsModule } from "./connections";
@@ -190,9 +191,9 @@ export const brokerPlugin = composeBuiltinPlugin({
   id: "broker",
   name: "Broker",
   version: "1.0.0",
-  description: "Broker profiles, account sync, and connection status.",
+  description: "Broker profiles, account sync, order review, and trading status.",
   toggleable: true,
-  modules: [brokerManagerModule],
+  modules: [brokerManagerModule, brokerTradingModule],
 });
 
 export const globalMarketsPlugin = composeBuiltinPlugin({

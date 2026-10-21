@@ -1,4 +1,5 @@
 import { startCatalystAlerts } from "./catalysts";
+import { logFailure } from "../../../utils/log-failure";
 import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
 import { newYorkToday } from "../earnings/board-model";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
@@ -119,7 +120,7 @@ export const alertsPlugin: GloomPlugin = {
       }
       if (!persist && !(touched && now - lastStreamPersistAt >= STREAM_PERSIST_MS)) return;
       lastStreamPersistAt = now;
-      saveAlerts(ctx, alerts);
+      void saveAlerts(ctx, alerts).catch(logFailure("alerts.stream", "Save streamed price alerts failed"));
       if (persist) alertStream?.sync();
     };
     alertStream?.dispose();
@@ -175,7 +176,7 @@ export const alertsPlugin: GloomPlugin = {
         };
         const existing = loadAlerts(ctx);
         existing.push(alert);
-        saveAlerts(ctx, existing);
+        await saveAlerts(ctx, existing);
         alertStream?.sync();
 
         ctx.notify({
@@ -302,7 +303,7 @@ export const alertsPlugin: GloomPlugin = {
       }
 
       if (changed) {
-        saveAlerts(ctx, alerts);
+        await saveAlerts(ctx, alerts);
       }
     };
 
@@ -313,11 +314,11 @@ export const alertsPlugin: GloomPlugin = {
       const seconds = Number(ctx.paneSettings?.get<string>("alerts", POLL_SECONDS_KEY));
       const delay = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : POLL_INTERVAL_MS;
       pollTimer = setTimeout(() => {
-        void poll().finally(scheduleNextPoll);
+        void poll().catch(logFailure("alerts.poll", "Check price alerts failed")).finally(scheduleNextPoll);
       }, delay);
     };
 
-    void poll().finally(scheduleNextPoll);
+    void poll().catch(logFailure("alerts.poll", "Check price alerts failed")).finally(scheduleNextPoll);
 
     ctx.registerPane({
       id: "alerts",

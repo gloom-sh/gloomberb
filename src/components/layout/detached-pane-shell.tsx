@@ -441,6 +441,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                 onMouseDown: () => toggleQuickSetting(setting.key),
               }))}
               tabs={headerTabs}
+              bodyBackground={background}
               titleBar={{
                 rows: headerHeightRows,
                 overlay: titleBarOverlay === true,

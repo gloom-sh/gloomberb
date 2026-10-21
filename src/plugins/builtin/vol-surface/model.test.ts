@@ -4,7 +4,7 @@ import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, optionDelta, valueOption, type SmileFit } from "../shared/volatility";
 import {
   buildSurfaceExpiry, buildSurfaceGrid, cleanSurfaceQuotes, DEFAULT_SURFACE_SETTINGS,
-  evaluateSurfaceSmile, pendingSurfaceExpiry, surfaceExpirySkew, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid,
+  evaluateSurfaceSmile, pendingSurfaceExpiry, surfaceExpirySkew, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid, withSurfaceTermSlopes,
   type SurfaceExpiry, type SurfacePoint, type SurfaceSnapshot,
 } from "./model";
 import { skewGap, surfaceSkewRow } from "./tables";
@@ -313,7 +313,7 @@ describe("25-delta skew", () => {
     expect(skew.call25).toBeCloseTo(call25!, 8);
     expect(skew.riskReversal).toBeCloseTo(call25! - put25!, 8);
     expect(skew.riskReversal!).toBeLessThan(0);
-    expect(skew.butterfly).toBeCloseTo((put25! + call25!) / 2 - expiry.atmIV!, 8);
+    expect(skew.butterfly).toBeCloseTo((put25! + call25!) / 2 - evaluateSurfaceSmile(expiry, expiry.forward!)!, 8);
     expect(surfaceSkewRow({ ...expiry, skew }).gap).toBeNull();
   });
 
@@ -324,6 +324,35 @@ describe("25-delta skew", () => {
     expect([skew.call25, skew.riskReversal, skew.butterfly]).toEqual([null, null, null]);
     expect(surfaceSkewRow({ ...expiry, skew })).toMatchObject({ gap: "no 25D call", moneynessGap: "not quoted" });
     expect(skewGap({ ...expiry, fit: null, skew })).toBe("no smile fit");
+  });
+
+  test("the fly, 90/110 and slope are measured from the forward, not from a spot several percent below it", () => {
+    // Two years out with the forward 8% over spot, as an index ETF's carry puts it: the skewed smile reads
+    // well over its at-the-forward level at the spot, which dragged long-dated flies below zero.
+    const years = 2, forward = 108, rate = 0.04;
+    const longFit: SmileFit = { method: "svi", years, residual: 0, points: [], droppedPoints: 0, slopes: [], fallbackReason: null,
+      parameters: { a: 0.06, b: 0.1, rho: -0.6, m: 0, sigma: 0.2 } };
+    const atSpot = (spot: number) => {
+      // The parity carry each spot implies for the same forward, as buildSurfaceExpiry derives it.
+      const expiry: SurfaceExpiry = { ...pendingSurfaceExpiry(expiration, now), state: "ready", years, rate, forward,
+        dividendYield: rate - Math.log(forward / spot) / years, fit: longFit,
+        points: [40, 60, 80, 100, 108, 120, 140, 180, 240].map((strike) => ({ strike }) as SurfacePoint) };
+      expiry.atmIV = evaluateSurfaceSmile(expiry, spot);
+      return { expiry, skew: surfaceExpirySkew(expiry, spot) };
+    };
+    const { expiry, skew } = atSpot(100);
+    const smile = (strike: number) => evaluateSurfaceSmile(expiry, strike)!;
+    expect(skew.atm).toBeCloseTo(0.2, 10);
+    expect(skew.butterfly).toBeCloseTo((skew.put25! + skew.call25!) / 2 - smile(forward), 10);
+    expect(skew.butterfly!).toBeGreaterThan(0);
+    expect((skew.put25! + skew.call25!) / 2 - smile(100)).toBeLessThan(0);
+    expect(skew.moneynessSkew).toBeCloseTo(smile(0.9 * forward) - smile(1.1 * forward), 10);
+    // A spot move leaves ATM and 90/110 where they are; the fly moves only through the wings' spot delta.
+    const moved = atSpot(102).skew;
+    expect(moved.atm).toBe(skew.atm);
+    expect(moved.moneynessSkew).toBe(skew.moneynessSkew);
+    const slopes = withSurfaceTermSlopes([{ ...expiry, skew }, { ...expiry, years: 3, skew: { ...skew, atm: 0.21 } }]);
+    expect(slopes[0]!.termSlope).toBeCloseTo(0.01, 10);
   });
 
   test("the ATM slope out of an expiry under a week away is left out, and says so", () => {

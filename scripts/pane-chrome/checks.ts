@@ -11,6 +11,7 @@ import { headerSteps } from "./header-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
 import { tabSweepSteps } from "./tab-sweep-checks";
+import { titleTabSteps } from "./title-tab-checks";
 import { readerSteps } from "./reader-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
@@ -1620,6 +1621,7 @@ const steps: Step[] = [
   ...selectionSteps,
   ...axisSteps,
   ...tabSweepSteps,
+  ...titleTabSteps,
   ...readerSteps,
 ];
 

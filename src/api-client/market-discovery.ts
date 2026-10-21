@@ -60,6 +60,12 @@ export interface MarketHeatmapResult {
   stale?: boolean;
   universe: MarketHeatmapUniverseId;
   source: MarketHeatmapSource;
+  /**
+   * Whose prices the board carries: `realtime` for a Pro account, priced
+   * from a live read the server takes every 15 seconds; `delayed`, fifteen
+   * minutes behind, otherwise. An older server leaves it out (delayed).
+   */
+  access?: "realtime" | "delayed";
   fetchedAt: number;
   /** The US market session the snapshot describes; null when the server cannot tell. */
   session?: "REGULAR" | "PRE" | "POST" | "CLOSED" | null;
@@ -72,6 +78,14 @@ export interface MarketHeatmapResult {
    * leaves it out.
    */
   regularSessionClosedAt?: number | null;
+  /**
+   * When the prices the board's moves are read at were printed, in epoch
+   * milliseconds, never later than any of them: the oldest delayed print
+   * while the session trades, that session's close outside it. `fetchedAt`
+   * is when the server put the snapshot together, at least fifteen minutes
+   * later. Null when a print is unknown; an older server leaves it out.
+   */
+  pricesAsOf?: number | null;
   assets: MarketHeatmapAsset[];
 }
 

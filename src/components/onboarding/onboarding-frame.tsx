@@ -7,6 +7,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { Button, ListView, type ListViewItem } from "../ui";
 import type { ButtonProps } from "../ui/button";
+import { ListRowLines } from "../ui/list-row-lines";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../layout/titlebar-overlay";
 
 /**
@@ -525,17 +526,14 @@ export function OnboardingChoiceList({
       selectOnHover
       renderRow={(item, state) => (
         <Box flexDirection="row" alignItems="center" width="100%" minWidth={0}>
-          <Box flexDirection="column" flexGrow={1} minWidth={0}>
-            <Text
-              fg={state.selected ? colors.textBright : colors.text}
-              attributes={state.selected ? TextAttributes.BOLD : 0}
-              wrapText
-            >
-              {item.label}
-            </Text>
-            {item.description ? (
-              <Text fg={colors.textMuted} wrapText>{item.description}</Text>
-            ) : null}
+          <Box flexDirection="row" flexGrow={1} minWidth={0}>
+            <ListRowLines
+              label={item.label}
+              description={item.description}
+              leading={item.leading}
+              labelColor={state.selected ? colors.textBright : colors.text}
+              labelBold={state.selected}
+            />
           </Box>
           {item.detail ? (
             <Text fg={colors.borderFocused} attributes={TextAttributes.BOLD} style={{ marginLeft: 10 }}>

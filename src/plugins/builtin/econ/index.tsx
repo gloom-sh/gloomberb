@@ -12,18 +12,23 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
+import { usePaneSettingValue } from "../../../public/react";
+import { usePaneInstance } from "../../../state/app/context";
+import { commandRequestParams } from "../shared/command-tab";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
-import type { EconEvent } from "./types";
+import { hasNoStatedTime, type EconEvent } from "./types";
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, retainVisiblePrintRefresh, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
+  COUNTRY_FILTER_HINT,
+  countriesWithoutEvents,
   DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
   attachEconCalendarPersistence,
@@ -41,6 +46,8 @@ import {
   loadCalendar,
   matchesCountry,
   matchesImpact,
+  noScheduledReleasesMessage,
+  parseCountryFilter,
   resetEconCalendarPersistence,
   shortCalendarEnd,
   shortDayLabel,
@@ -93,7 +100,21 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
   const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", DEFAULT_IMPACT_FILTER);
-  const [countryFilter, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
+  const [chosenCountry, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
+  // Countries a caller named (`ECO MX,BR`, `fn ECO --country MX`) are shown once per request; a later choice is the reader's.
+  const pane = usePaneInstance();
+  const [countrySetting] = usePaneSettingValue<string>("country", "");
+  const requestedCountry = pane?.params?.country || countrySetting || null;
+  const countryRequest = pane?.params?.country ? `${pane.params.country}|${pane.params.tabAt ?? ""}`
+    : countrySetting ? `setting|${countrySetting}` : "";
+  const [shownCountryRequest, setShownCountryRequest] = usePluginPaneState("countryRequest", "");
+  const countryPending = !!countryRequest && countryRequest !== shownCountryRequest;
+  const countryFilter: CountryFilter = countryPending && requestedCountry ? requestedCountry : chosenCountry;
+  useEffect(() => {
+    if (!countryPending || !requestedCountry) return;
+    setShownCountryRequest(countryRequest);
+    setCountryFilter(requestedCountry);
+  }, [countryPending, countryRequest, requestedCountry, setCountryFilter, setShownCountryRequest]);
   const [now, setNow] = useState(Date.now());
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
 
@@ -261,7 +282,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
-  const filterEmptyTitle = events.length > 0 ? filteredEmptyTitle(impactFilter, countryFilter) : null;
+  // Countries named one by one with nothing in the calendar: a quiet window there, said plainly.
+  const unscheduled = useMemo(() => countriesWithoutEvents(countryFilter, events), [countryFilter, events]);
+  const filterEmptyTitle = events.length === 0 ? null
+    : unscheduled.length > 0 && unscheduled.length === countryFilter.split(",").length ? noScheduledReleasesMessage(unscheduled).replace(/\.$/, "")
+    : filteredEmptyTitle(impactFilter, countryFilter);
   const emptyStateHint = !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
@@ -271,7 +296,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   // Next upcoming event for countdown
   const nextEvent = nextUpcomingEventIdx >= 0 ? filtered[nextUpcomingEventIdx] : undefined;
-  const nextCountdown = nextEvent ? formatCountdown(nextEvent.date.getTime() - now) : null;
+  // A bank that states no time has a day to count to, not an hour.
+  const nextCountdown = !nextEvent ? null
+    : hasNoStatedTime(nextEvent) ? shortDayLabel(nextEvent.date)
+    : formatCountdown(nextEvent.date.getTime() - now);
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
   const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
@@ -346,7 +374,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const ev = row.event;
     switch (column.id) {
       case "time":
-        return { text: timeLabel(ev.date), color: colors.textMuted };
+        // A bank that states no time has none here; its detail says why.
+        return { text: hasNoStatedTime(ev) ? "" : timeLabel(ev.date), color: colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {
@@ -381,7 +410,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
           options: FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] })),
           onChange: (value: string) => selectImpactFilter(value as ImpactFilter) },
         { id: "region", label: "Region", inline: true, value: countryFilter, defaultValue: "all",
-          options: COUNTRY_CYCLE.map((value) => ({ value, label: value === "all" ? "All" : value })),
+          // Countries a command named stay a choice beside the regions while they are shown.
+          options: [...COUNTRY_CYCLE, ...(COUNTRY_CYCLE.includes(countryFilter) ? [] : [countryFilter])]
+            .map((value) => ({ value, label: value === "all" ? "All" : value.split(",").join(", ") })),
           onChange: (value: string) => selectCountryFilter(value as CountryFilter) },
       ]}
       meta={selectedEvent ? dayLabel(selectedEvent.date, today) : undefined}
@@ -462,6 +493,19 @@ export const economicCalendarModule: PluginModule = {
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 30 },
     tableExport: true,
+    reportOptions: [{
+      key: "country",
+      type: "string",
+      placeholder: "countries",
+      description: "Regions or two-letter country codes to list, comma separated: US, G7, EU, or such as MX,BR,ZA",
+      example: "--country MX,BR,ZA",
+      exampleWithoutArgument: true,
+      normalize: (value) => {
+        const parsed = parseCountryFilter(value);
+        if ("error" in parsed) throw new Error(`${parsed.error} ${COUNTRY_FILTER_HINT}`);
+        return parsed.filter;
+      },
+    }],
     settings: {
       title: "Economic Calendar Settings",
       fields: [{
@@ -479,8 +523,28 @@ export const economicCalendarModule: PluginModule = {
     label: "Economic Calendar",
     description: "Upcoming economic events, releases, and indicators.",
     // "econ" stays a keyword so the old ECON prefix still finds this pane.
-    keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp"],
-    shortcut: { prefix: "ECO" },
+    keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp", "rate decision"],
+    // ECO MX,BR opens the calendar on those countries.
+    shortcut: {
+      prefix: "ECO",
+      argKind: "text",
+      argPlaceholder: "countries",
+      argOptional: true,
+      openWithoutArg: true,
+      argOptions: () => [
+        { value: "US", label: "United States" },
+        { value: "G7", label: "G7" },
+        { value: "EU", label: "Euro area" },
+        { value: "MX,BR,ZA,IN,KR", label: "Mexico, Brazil, South Africa, India and Korea" },
+      ],
+    },
+    createInstance: (_context, options) => {
+      const typed = options?.arg?.trim();
+      if (!typed) return {};
+      const parsed = parseCountryFilter(typed);
+      if ("error" in parsed) throw new Error(`${parsed.error} ${COUNTRY_FILTER_HINT}`);
+      return { params: commandRequestParams({ country: parsed.filter }) };
+    },
   }],
   setup(ctx) {
     attachEconCalendarPersistence(ctx.persistence);

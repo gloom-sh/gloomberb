@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { fxRateCurrencies } from "../utils/currency-units";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
@@ -77,13 +78,7 @@ function useCoordinatorKeysVersion(keys: readonly string[]): number {
   return useSyncExternalStore(subscribe, getSnapshot, () => 0);
 }
 
-function stableCurrencyList(currencies: Array<string | null | undefined>): string[] {
-  return [...new Set(
-    currencies
-      .map((currency) => currency?.trim().toUpperCase() ?? "")
-      .filter(Boolean),
-  )].sort((left, right) => left.localeCompare(right));
-}
+
 
 function buildTickerFinancialsMapKey(tickers: TickerRecord[], options: TickerInstrumentOptions = {}): string {
   return tickers.map((ticker) => {
@@ -572,7 +567,8 @@ export function useArticleSummary(url: string | null | undefined): QueryEntry<st
 
 export function useFxRatesMap(currencies: Array<string | null | undefined>): Map<string, number> {
   const coordinator = getSharedMarketDataCoordinator();
-  const normalizedCurrencyKey = stableCurrencyList(currencies).join("|");
+  // A minor unit's major currency is loaded too: GBX and ILA have no rate of their own.
+  const normalizedCurrencyKey = fxRateCurrencies(currencies).join("|");
   const normalizedCurrencies = useMemo(
     () => (normalizedCurrencyKey ? normalizedCurrencyKey.split("|") : []),
     [normalizedCurrencyKey],

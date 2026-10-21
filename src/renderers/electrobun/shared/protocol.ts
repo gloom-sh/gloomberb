@@ -130,6 +130,8 @@ export interface DesktopExternalPluginBundle {
   /** `owner/repo` of the checkout's GitHub origin. */
   repo?: string;
   linked?: boolean;
+  /** The plugin's logo as a `data:` URL, read from the checkout by the Bun process. */
+  icon?: string;
   /** ES module source, absent when `error` or `unsupportedTarget` is set. */
   code?: string;
   targets?: readonly ("cli" | "tui" | "desktop" | "web")[];

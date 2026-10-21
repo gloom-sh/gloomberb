@@ -8,6 +8,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { loadPerpSelection, loadPerpsEquities } from "./client";
 import { perpEquityIdentity } from "./equity-identity";
+import { useLivePerpRows } from "./live-rows";
 
 const STOCK_TYPES = new Set(["STK", "EQUITY", "STOCK", "COMMON STOCK"]);
 const listingKey = (listing: PerpEquityListing) => `${listing.symbol}:${listing.exchange}`;
@@ -26,6 +27,7 @@ function rowListing(ticker: TickerRecord): PerpEquityListing | null {
 const rowMarket = (ticker: TickerRecord) => perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange)?.marketId ?? null;
 
 const NO_PERPETUALS: ListPerpetuals = { markets: new Map(), version: 0, stale: false };
+const NO_SYMBOLS: ReadonlySet<string> = new Set();
 
 export interface ListPerpetuals {
   /** Each row's contract by ticker, null for none; a row is missing while its first answer loads. */
@@ -55,7 +57,7 @@ async function loadOwnMarket(marketId: string, access: string, force: boolean): 
  * A row's figures never wait on anything else: rows without a stock listing read as no perpetual at once, and a
  * failed or refused lookup leaves every row without one, as DES leaves out its perpetual row.
  */
-export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boolean): ListPerpetuals {
+export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boolean, liveSymbols: ReadonlySet<string> = NO_SYMBOLS): ListPerpetuals {
   const session = useResearchCloudSession();
   const plan = usePlanAccess();
   const accessKey = `${session.requestKey}:${plan.hasProAccess ? "pro" : "preview"}`;
@@ -98,7 +100,7 @@ export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boo
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   const versionRef = useRef(0);
   const { data, loading } = resource;
-  return useMemo(() => {
+  const fetched = useMemo(() => {
     if (!enabled) return NO_PERPETUALS;
     const byListing = new Map<string, PerpBoardRow | null>();
     data?.listings.forEach((listing, index) => byListing.set(listingKey(listing), data.results[index]?.market ?? null));
@@ -112,7 +114,26 @@ export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boo
       // Still loading: the row's cell waits. Otherwise there is nothing to show.
       else if ((!key && !market) || !loading) markets.set(ticker.metadata.ticker, null);
     }
-    versionRef.current += 1;
-    return { markets, version: versionRef.current, stale: !!data?.stale };
+    return { markets, version: 0, stale: !!data?.stale };
   }, [data, enabled, loading, tickers]);
+  // The contracts of the rows in view follow the quote stream, as many as useLivePerpRows follows; each is subscribed
+  // once however many rows share it.
+  const liveRows = useMemo(() => {
+    const rows = new Map<string, PerpBoardRow>();
+    for (const symbol of liveSymbols) {
+      const row = fetched.markets.get(symbol);
+      if (row) rows.set(row.marketId, row);
+    }
+    return [...rows.values()];
+  }, [fetched, liveSymbols]);
+  const live = useLivePerpRows(liveRows, { surface: "watchlist", enabled: enabled && liveRows.length > 0 });
+  return useMemo(() => {
+    if (fetched === NO_PERPETUALS) return NO_PERPETUALS;
+    const byMarket = new Map(live.rows.map((row) => [row.marketId, row]));
+    const markets = byMarket.size
+      ? new Map([...fetched.markets].map(([symbol, row]) => [symbol, row ? byMarket.get(row.marketId) ?? row : row]))
+      : fetched.markets;
+    versionRef.current += 1;
+    return { markets, version: versionRef.current, stale: fetched.stale };
+  }, [fetched, live.rows]);
 }

@@ -1,12 +1,13 @@
 import { apiClient } from "../../../api-client";
 import { newsProvider, type NewsCapability } from "../../../capabilities";
 import { cloudNewsParams, mapCloudNewsArticle } from "../../../sources/gloomberb-cloud/news";
-import type { NewsArticle, NewsQuery } from "../../../types/news-source";
+import type { NewsArticle, NewsPage, NewsQuery } from "../../../news/types";
 
 interface BackendNews {
   id: string;
   name: string;
   getNews(query: NewsQuery): Promise<NewsArticle[]>;
+  getNewsPage(query: NewsQuery): Promise<NewsPage>;
 }
 
 type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "getCloudNewsStory">;
@@ -33,7 +34,8 @@ export function createDesktopNewsSource(backend: BackendNews, client: CloudNewsC
             nextCursor: response.nextCursor ?? null,
           };
         } catch {
-          return { articles: await backend.getNews(query), nextCursor: null };
+          // The aggregate page keeps RSS failures beside any usable stories.
+          return backend.getNewsPage(query);
         }
       },
       fetchNewsStory: async (storyId) => mapCloudNewsArticle(await client.getCloudNewsStory(storyId)),

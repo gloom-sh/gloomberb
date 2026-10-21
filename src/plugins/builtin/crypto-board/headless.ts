@@ -7,6 +7,7 @@ import { fetchCryptoMarkets, fetchStablecoinSupply } from "./client";
 import {
   buildCryptoRows,
   CRYPTO_BOARD_FRESHNESS,
+  CRYPTO_CHANGE_BASIS_LABEL,
   formatCryptoPercent,
   formatDayRangeTime,
   formatOffPeg,
@@ -30,7 +31,9 @@ const COIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "code", header: "Coin" },
   { key: "name", header: "Name" },
   { key: "price", header: "Price", align: "right", format: (_value, row) => String(row.priceText ?? "—") },
-  { key: "changePercent", header: "Chg %", align: "right", format: percent },
+  // Since 00:00 UTC, the day `quote` gives a coin (CRYPTO_CHANGE_BASIS_LABEL): the text says so, as the pane's
+  // CHG% UTC does, and an export keeps the header it has always had.
+  { key: "changePercent", header: "Chg %", textHeader: "Chg % UTC", align: "right", format: percent },
   { key: "return7d", header: "7D %", align: "right", format: percent },
   { key: "return30d", header: "30D %", align: "right", format: percent },
   { key: "return1y", header: "1Y %", align: "right", format: percent },
@@ -167,7 +170,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
         pegType: row.pegType,
       } : {}),
     }));
-    const metadata = { list: kind, status: data.status, asOf: data.asOf, generatedAt: data.generatedAt };
+    const metadata = { list: kind, status: data.status, asOf: data.asOf, generatedAt: data.generatedAt, changeBasis: CRYPTO_CHANGE_BASIS_LABEL };
     if (kind !== "stablecoin") return { rows, errors: data.warnings, metadata };
     const summary = supply ? supplySummaryLine(supply) : null;
     const history = supply ? supplyHistoryTable(supply) : null;

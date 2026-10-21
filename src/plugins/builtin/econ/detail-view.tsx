@@ -3,6 +3,7 @@ import { apiClient } from "../../../api-client";
 import {
   ChartTableHeader,
   DataTableView,
+  ExternalLinkText,
   formatPercentAxis,
   PaneStatusBody,
   scalarPoint,
@@ -10,6 +11,7 @@ import {
   staticSeries,
   TickerBadgeList,
   useChartTableSelection,
+  useExternalLinkFooter,
   usePaneFooter,
   usePaneNoticeFooter,
   type DataTableColumn,
@@ -26,11 +28,11 @@ import {
 } from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
-import { displayWidth } from "../../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, CALENDAR_TIME_ZONE_LABEL, timeLabel } from "./calendar-model";
-import type { EconEvent } from "./types";
+import { hasNoStatedTime, type EconEvent } from "./types";
 
 interface EconDetailViewProps {
   event: EconEvent;
@@ -94,6 +96,22 @@ function formatLevelAxis(value: number, domain: CompositeAxisDomain): string {
   const [divisor, suffix] = COMPACT_UNITS.find(([unit]) => magnitude >= unit) ?? [1, ""];
   const digits = spanDigits({ min: domain.min / divisor, max: domain.max / divisor });
   return `${(value / divisor).toFixed(digits)}${suffix}`;
+}
+
+/**
+ * The publisher's calendar the row was read from, on the detail's last row,
+ * named and linked like a statistic's series under its chart (ECST), never as
+ * a bare address.
+ */
+function SourceLine({ source, kind, width }: { source: NonNullable<EconEvent["source"]>; kind: EconEvent["kind"]; width: number }) {
+  const detail = ` · ${kind === "central-bank-decision" ? "meeting calendar" : "release calendar"}`;
+  const label = truncateToDisplayWidth(source.name, Math.max(4, width - 2 - displayWidth(detail)));
+  return (
+    <Box flexDirection="row" paddingX={1} height={1} flexShrink={0}>
+      <ExternalLinkText url={source.url} label={label} color={colors.text} />
+      <Text fg={colors.textDim}>{detail}</Text>
+    </Box>
+  );
 }
 
 const historyKey = (row: HistoryRow) => row.date;
@@ -188,6 +206,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       onPress: () => openTickerChoice(relatedTickers),
     }],
   } : null, [openTickerChoice, relatedTickers]);
+  // `o` opens the publisher's calendar, the link on the last row.
+  useExternalLinkFooter({ registrationId: "econ-detail:source", focused, url: event.source?.url ?? null });
 
   // The stack bar names the event; the detail opens on the release figures,
   // the outcome first so a short detail keeps it.
@@ -195,8 +215,15 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     ...(event.actual ? [{ id: "actual", label: "Actual", value: event.actual, color: actualColor(event.actual, event.forecast) }] : []),
     ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: event.forecast }] : []),
     ...(event.prior ? [{ id: "prior", label: "Prior", value: event.prior }] : []),
-    { id: "time", label: "Release", value: `${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}` },
+    // The date the prior rate was observed, labelled as Central Bank Rates labels it.
+    ...(event.prior && event.priorAsOf ? [{ id: "priorAsOf", label: "As of", value: event.priorAsOf }] : []),
+    // A bank that states no time has none here, and says so; a publisher's own clock sits under the time.
+    hasNoStatedTime(event)
+      ? { id: "time", label: "Release", value: "No time stated", detail: event.timeNote! }
+      : { id: "time", label: "Release", value: `${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}`,
+        ...(event.localTime && event.timeZone ? { detail: `${event.localTime} ${event.timeZone.split("/").at(-1)!.replaceAll("_", " ")}` } : {}) },
   ];
+  const sourceLine = event.source ? <SourceLine source={event.source} kind={event.kind} width={width} /> : null;
 
   const projected = useMemo(
     () => data && mapping ? projectFredHistory(data.observations, mapping) : [],
@@ -230,6 +257,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           emptyTitle="No historical data available for this indicator"
           align="center"
         />
+        {sourceLine}
       </Box>
     );
   }
@@ -244,8 +272,9 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       detail: [units, data.info?.frequency, data.info?.seasonalAdjustment].filter(Boolean).join(" · ") || undefined },
   ];
   const relatedRows = mapping.relatedTickers.length > 0 ? 1 : 0;
-  // The header and the history share every row above the related tickers.
-  const bodyHeight = Math.max(1, height - relatedRows);
+  const afterRows = relatedRows + (sourceLine ? 1 : 0);
+  // The header and the history share every row above the source and the related tickers.
+  const bodyHeight = Math.max(1, height - afterRows);
 
   return (
     <DataTableView<HistoryRow>
@@ -263,11 +292,16 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           remoteKind: "econ-fred-history",
           ...link,
         } : null} />}
-      rootAfter={relatedRows ? (
-        <Box paddingX={1} height={1} flexDirection="row" flexShrink={0}>
-          <Text fg={colors.textDim}>Related: </Text>
-          <TickerBadgeList symbols={mapping.relatedTickers} width={Math.max(8, width - 12)} liveQuote={false} />
-        </Box>
+      rootAfter={afterRows ? (
+        <>
+          {sourceLine}
+          {relatedRows ? (
+            <Box paddingX={1} height={1} flexDirection="row" flexShrink={0}>
+              <Text fg={colors.textDim}>Related: </Text>
+              <TickerBadgeList symbols={mapping.relatedTickers} width={Math.max(8, width - 12)} liveQuote={false} />
+            </Box>
+          ) : null}
+        </>
       ) : undefined}
       getItemKey={historyKey}
       renderCell={(row, column, _index, state) => {

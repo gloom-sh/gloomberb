@@ -1,6 +1,7 @@
 import type { ScreenerQuote } from "../../../api-client/market-discovery";
 export type { ScreenerQuote } from "../../../api-client/market-discovery";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { logFailure } from "../../../utils/log-failure";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import type {
@@ -324,7 +325,7 @@ async function bestEffortMarketMetadata(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      request.then((result) => result.data).catch(() => []),
+      request.then((result) => result.data).catch(logFailure("market-movers", "Market metadata failed", [])),
       new Promise<ScreenerQuote[]>((resolve) => {
         timeout = setTimeout(() => resolve([]), waitMs);
       }),
@@ -392,8 +393,8 @@ export async function fetchPreferredMarketMovers(
         stale: response.stale === true || response.data.stale === true,
       };
     }
-  } catch {
-    // The public backend snapshot remains available when live rankings fail.
+  } catch (error) {
+    logFailure("market-movers", "Live rankings failed")(error);
   }
 
   const fallback = await marketMetadata;
@@ -409,19 +410,28 @@ export function parseTrendingResponse(data: unknown): TrendingSymbol[] {
   return data.flatMap(q => q && typeof q.symbol === "string" && q.symbol.trim() ? [{ symbol: q.symbol.trim() }] : []);
 }
 
-export async function fetchTrending(
+export async function fetchTrendingResult(
   count = 25,
   api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
-): Promise<TrendingSymbol[]> {
+): Promise<CachedResult<TrendingSymbol[]>> {
   const load = async () => {
     const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
     if (response.status === "empty") return { data: [], stale: response.stale === true };
     if (!response.data) throw new Error("Market trends unavailable");
     return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };
-  if (!shouldUseCache(api, options)) return (await load()).data;
-  return (await loadCached(`trending:US:count=${count}`, load, options)).data;
+  if (!shouldUseCache(api, options)) return load();
+  return loadCached(`trending:US:count=${count}`, load, options);
+}
+
+/** Array-only reader retained for the overview command. */
+export async function fetchTrending(
+  count = 25,
+  api: MarketScreenerApi = screenerApi,
+  options?: FetchCacheOptions,
+): Promise<TrendingSymbol[]> {
+  return (await fetchTrendingResult(count, api, options)).data;
 }
 
 export const MARKET_SUMMARY_SYMBOLS = ["^GSPC", "^DJI", "^IXIC", "^RUT"] as const;

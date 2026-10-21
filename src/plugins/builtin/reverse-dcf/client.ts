@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -27,7 +28,7 @@ export async function loadReverseDcfInputs(
     const entry = await abortable(coordinator.loadSnapshot(request.instrument, { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
     const financials = resolveEntryValue(entry);
     return { financials, stale: !!entry.error || !!financials?.fundamentals?.stale || (entry.staleAt != null && entry.staleAt <= now),
-      error: entry.error?.message ?? (financials ? null : "Fundamentals unavailable"), fetchedAt: entry.fetchedAt ?? now };
+      error: entry.error?.message ?? (financials ? null : unavailableText("Fundamentals")), fetchedAt: entry.fetchedAt ?? now };
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
     return { financials: null, stale: false, error: errorMessage(error), fetchedAt: now };

@@ -1,4 +1,6 @@
-import { Box } from "../../../../ui";
+import { Box, useUiCapabilities } from "../../../../ui";
+import { brokerPortfolioLogo } from "../../../../brokers/logos";
+import { LogoMark } from "../../../../components/ui/logo-mark";
 import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -69,7 +71,7 @@ import { PortfolioGrid } from "../grid";
 import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
 import { getSharedRegistry } from "../../../registry";
-import { usePluginAppActions } from "../../../runtime";
+import { usePluginAppActions, usePluginBrokerActions } from "../../../runtime";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   cursorAfterRemoval,
@@ -81,6 +83,7 @@ import { QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
+  holdsOtherCurrencies,
   getCollectionTickersFromConfig,
   getCollectionTypeFromConfig,
   resolveVisibleWarmupRequirements,
@@ -197,25 +200,29 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   // The positions stay as last synced while the broker is away, dated, with one key to bring it back.
   const offlineBrokerFooter = useOfflineBrokerFooter(brokerPortfolio ? offline : null);
   const portfolioTargets = currentPortfolio?.targetWeights;
+  // Totals, money columns and account values are in the portfolio's currency.
+  const totalsCurrency = useMemo(
+    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
+    [config.baseCurrency, currentPortfolio],
+  );
+  // A boolean, so a quote tick does not rebuild the columns.
+  const otherCurrencies = holdsOtherCurrencies(tickers, financialsMap, totalsCurrency);
   const columns = useMemo(
-    () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio) }),
-    [currentPortfolio, isPortfolioTab, paneSettings.columnIds],
+    () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio), otherCurrencies }),
+    [currentPortfolio, isPortfolioTab, otherCurrencies, paneSettings.columnIds],
   );
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
   const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
-  const perpetuals = useListPerpetuals(tickers, showsPerpetuals);
+  // The rows in view, from the last render: their contracts follow the quote stream.
+  const [perpetualsInView, setPerpetualsInView] = useState<ReadonlySet<string>>(() => new Set());
+  const perpetuals = useListPerpetuals(tickers, showsPerpetuals, perpetualsInView);
   const openPerpMarket = useOpenPerpMarket();
   const visibleWarmupRequirements = useMemo(
     () => resolveVisibleWarmupRequirements(columns),
     [columns],
   );
 
-  // Totals, money columns and account values are in the portfolio's currency.
-  const totalsCurrency = useMemo(
-    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
-    [config.baseCurrency, currentPortfolio],
-  );
   // The broker account's cash when it reports one, else the cash entered by hand.
   const cashLine = useMemo(
     () => isPortfolioTab ? resolvePortfolioCash(currentPortfolio, accountState?.account) : null,
@@ -421,10 +428,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     cancelPendingCursorSymbol();
     setCurrentCollectionId(collectionId);
   }, [cancelPendingCursorSymbol, setCurrentCollectionId]);
-  const collectionTabs = useMemo(
-    () => visibleCollections.map((collection) => ({ label: collection.name, value: collection.id })),
-    [visibleCollections],
-  );
+  const { getBrokerAdapter, getBrokerLogo } = usePluginBrokerActions();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const collectionTabs = useMemo(() => visibleCollections.map((collection) => {
+    const portfolio = desktop && collection.kind === "portfolio"
+      ? config.portfolios.find((entry) => entry.id === collection.id)
+      : undefined;
+    // A broker account's tab leads with its broker's logo on the desktop and the web.
+    const logo = portfolio ? brokerPortfolioLogo(portfolio, config.brokerInstances, getBrokerAdapter, getBrokerLogo) : null;
+    return {
+      label: collection.name,
+      value: collection.id,
+      ...(logo ? { leading: <LogoMark src={logo.src} name={logo.name} /> } : {}),
+    };
+  }), [config.brokerInstances, config.portfolios, desktop, getBrokerAdapter, getBrokerLogo, visibleCollections]);
   const { strip: tabStrip, rows: headerHeight } = usePaneTabs(showCollectionTabs
     ? {
       tabs: collectionTabs,
@@ -534,6 +551,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
         end: Math.min(sortedTickers.length, Math.max(streamWindow.end, height + 4)),
       }
   ), [height, sortedTickers.length, streamWindow, viewMode]);
+
+  const perpetualsInViewKey = showsPerpetuals
+    ? sortedTickers.slice(effectiveStreamWindow.start, effectiveStreamWindow.end).map((ticker) => ticker.metadata.ticker).join("\u001f")
+    : "";
+  useEffect(() => {
+    setPerpetualsInView(new Set(perpetualsInViewKey ? perpetualsInViewKey.split("\u001f") : []));
+  }, [perpetualsInViewKey]);
 
   usePortfolioPaneStreaming({
     appActive,

@@ -27,6 +27,7 @@ import {
 import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
+import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
@@ -139,6 +140,7 @@ import type {
   CloudRiskReportPayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
+  CloudShortRatesPayload,
   CloudMacroReleaseDaysPayload,
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
@@ -471,6 +473,20 @@ export class CloudDataApi {
     return answers;
   }
 
+  /** Every listing of the company a listing belongs to (RCI and RCI.B:TSX are Rogers); empty for one the service does not hold. */
+  async getCloudIssuerListings(
+    symbol: string,
+    exchange = "",
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CloudMarketResponse<IssuerListings>> {
+    const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase() });
+    if (exchange.trim()) params.set("exchange", exchange.trim().toUpperCase());
+    return this.request<CloudMarketResponse<IssuerListings>>(
+      `/market/issuer-listings?${params}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
   /** The listed company each organization name resolves to, if any: a trial's lead sponsors, a page at a time. */
   async getCloudOrganizationTickers(names: readonly string[], signal?: AbortSignal): Promise<OrganizationTickersResponse> {
     return this.request<OrganizationTickersResponse>("/market/organization-tickers", {
@@ -530,6 +546,11 @@ export class CloudDataApi {
   /** The calendar from a UTC day, past events included, and the first day the stored calendar holds. */
   async getCloudEconomicCalendarFrom(from: string): Promise<{ events: CloudEconEventPayload[]; storedFrom: string | null }> {
     return this.request<{ events: CloudEconEventPayload[]; storedFrom: string | null }>(`/cloud/econ/calendar/history?from=${encodeURIComponent(from)}`);
+  }
+
+  /** Each currency's short rate and its day, for forwards implied by covered interest parity. */
+  async getCloudShortRates(): Promise<CloudShortRatesPayload> {
+    return this.request<CloudShortRatesPayload>("/cloud/econ/short-rates");
   }
 
   async getCloudMacroReleaseDays(): Promise<CloudMacroReleaseDaysPayload> {

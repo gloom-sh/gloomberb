@@ -1,4 +1,5 @@
 import type { AlertCondition, AlertRule } from "./types";
+import { logFailure } from "../../../utils/log-failure";
 
 export type { AlertRule };
 
@@ -77,27 +78,38 @@ export function serializeAlerts(alerts: AlertRule[]): string {
   return JSON.stringify(alerts);
 }
 
-/**
- * Non-null when the stored blob is not valid alert JSON. Without this a corrupt
- * store deserializes to `[]` and the pane claims the user has no alerts.
- */
-export function readAlertsStoreError(json: string): string | null {
-  if (!json.trim()) return null;
+/** Keep readable rows for display, but never let a write discard an unreadable member. */
+function readAlerts(json: unknown): { alerts: AlertRule[]; error: string | null } {
+  if (json == null || (typeof json === "string" && !json.trim())) return { alerts: [], error: null };
+  const failed = (detail: string) => ({ alerts: [], error: `Saved price alerts could not be read: ${detail}` });
+  if (typeof json !== "string") return failed("expected saved JSON text.");
   try {
-    return Array.isArray(JSON.parse(json)) ? null : "Saved alerts are not a list.";
+    const parsed: unknown = JSON.parse(json, (_key, value: unknown) => {
+      // JSON numbers can overflow while parsing; serializing Infinity would silently replace it with null.
+      if (typeof value === "number" && !Number.isFinite(value)) throw new Error("a saved number is not finite.");
+      return value;
+    });
+    if (!Array.isArray(parsed)) return failed("expected a list.");
+    const alerts = parsed.filter((a): a is AlertRule => (
+      a != null && typeof a.id === "string" && !!a.id && typeof a.symbol === "string" && !!a.symbol
+      && typeof a.condition === "string" && !!a.condition && typeof a.targetPrice === "number"
+      && (a.exchange == null || typeof a.exchange === "string")
+    ));
+    return {
+      alerts,
+      error: alerts.length === parsed.length ? null : "Saved price alerts contain an unreadable entry. Original data has been kept.",
+    };
   } catch (error) {
-    return error instanceof Error ? error.message : "Saved alerts could not be read.";
+    return failed(error instanceof Error ? error.message : "invalid JSON.");
   }
 }
 
-export function deserializeAlerts(json: string): AlertRule[] {
-  try {
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((a: any) =>
-      a?.id && a?.symbol && a?.condition && typeof a?.targetPrice === "number"
-    );
-  } catch {
-    return [];
-  }
+export function readAlertsStoreError(json: unknown): string | null {
+  return readAlerts(json).error;
+}
+
+export function deserializeAlerts(json: unknown): AlertRule[] {
+  const { alerts, error } = readAlerts(json);
+  if (error) logFailure("alerts.alert-engine", "Read saved price alerts failed")(new Error(error));
+  return alerts;
 }

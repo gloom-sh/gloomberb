@@ -73,6 +73,10 @@ A linked plugin loads like an installed one, shows as `linked` in the Plugins
 pane, is never reported as behind the registry, and is skipped by `update`.
 Removing it removes the link and leaves the checkout alone.
 
+Removal stops the plugin before deleting its files. If cleanup fails, the
+files stay in place and the Plugins pane asks you to restart Gloomberb before
+trying again; restarting is needed when cleanup left background work uncertain.
+
 `doctor` runs the checks that otherwise surface as a `failed` row in the pane
 or as a broken pane on the desktop: the entry file resolves, the Gloomberb the
 plugin declares is not newer than this one, it imports nothing the host has
@@ -217,6 +221,18 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
   index.browser.ts  # optional, see below
   package.json      # optional, for dependencies
   icon.svg          # optional, 64x64, shown in the plugin directory
+```
+
+The icon is the plugin's logo. The desktop and the web also draw it beside
+what the plugin contributes that a person picks from a list: a broker it
+registers leads with it in Add Broker Account, in the Brokers pane and on the
+tabs of the portfolios its accounts fill. Without one, those lists draw the
+broker's initial. A logo that is not `icon.svg` (or `icon.webp`, `icon.png`)
+is named in `gloom.json`, as a path inside the checkout; it is read up to
+256 KB, as SVG, WebP, PNG or JPEG:
+
+```json
+{ "id": "my-broker", "icon": "assets/logo.webp" }
 ```
 
 ### Plugin ids
@@ -789,6 +805,8 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
+A provider that has no data for a symbol it accepted throws `createProviderMiss(message, reason)` from `gloomberb/market-data`, naming the symbol: `createProviderMiss("No quote for XYZ.", "No quote for XYZ.")`. The router moves on to the next provider without logging a failure, and shows the reason where the data would be when no provider answers. Any other error is logged as a provider failure. Better still, have `canProvide` turn the symbol down so it is never asked.
+
 ### Data catalog series
 
 Everything the data catalog (`CAT`) lists, and the chart composer's series search finds, is a registered series: one definition per line that can be charted. Register yours and it can be drawn next to any built-in series, a FRED rate or a ticker's price.
@@ -832,7 +850,7 @@ export default {
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
 | `placement` | Where a chart draws the series when it is added: `price` over its ticker's price, on the price's axis (a moving average, a band; needs `input: "ticker"` and is in the ticker's currency, unit `currency`), or `panel` in a panel of its own under the price (an oscillator). CAT then opens the ticker's price with the series placed. Without it, the series joins the main panel when it fits. |
 | `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
-| `lines` | Several lines drawn together, such as a band's middle and edges: up to eight `{ id, name, style?, color?, fill? }`, all added to a chart at once. `color` is `#rrggbb`. `fill` names another line: the area between the two is shaded in this line's colour, under the lines. `load` then returns `{ lines: { [id]: points } }` (`SeriesLinesLoadResult`) and runs once for all of them. A chart names one line as `CAP:namespace:name~id`. |
+| `lines` | Several lines drawn together, such as a band's middle and edges: up to sixteen `{ id, name, style?, color?, fill? }`, all added to a chart at once. `color` is `#rrggbb`. `fill` names another line: the area between the two is shaded in this line's colour, under the lines. `load` then returns `{ lines: { [id]: points } }` (`SeriesLinesLoadResult`) and runs once for all of them. A chart names one line as `CAP:namespace:name~id`. |
 | `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
 | `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
 | `color` | The series' colour as `#rrggbb`; one of the chart's own when omitted. |
@@ -949,8 +967,14 @@ ctx.hidePane("my-pane");               // Hide a pane
 ctx.focusPane("my-pane");              // Move focus to a pane
 ctx.pinTicker("AAPL");                 // Open or focus a fixed Ticker Research pane for AAPL
 ctx.pinTicker("AAPL", { floating: true, paneType: "ticker-research", forceNewPane: true });
+ctx.pinTicker("AAPL", { tabId: "my-research-tab", tabState: { myTabRequest: requestToken } });
 ctx.createPaneFromTemplate("quote-monitor-new", { symbol: "AAPL" });
 ```
+
+`tabState` merges into the resolved research pane when `tabId` is selected,
+including when an existing pane is reused after ticker resolution. Prefix keys
+for your tab. Pane state is saved with layouts, so keep sensitive draft values
+in memory and pass an opaque, single-use request token for temporary actions.
 
 ### Broker management
 
@@ -962,6 +986,65 @@ await ctx.updateBrokerInstance(instance.id, { token: "new-token" });
 await ctx.syncBrokerInstance(instance.id);  // Trigger position import
 await ctx.removeBrokerInstance(instance.id);
 ```
+
+#### Shared order ticket
+
+The built-in Trade tab and Orders pane use the selected `BrokerAdapter` directly. To opt into the shared ticket, implement `listAccounts`, `getQuote`, `previewOrder`, `placeOrder` and synchronous `getTradingCapabilities(instance, contract?, orderType?)`. An adapter without capability metadata remains read only in this ticket; its existing custom trading UI and method signatures keep working. The ticket never passes on another broker's contract IDs: an instrument opened from another broker or profile reaches your adapter as its public listing (symbol, `secType`, currency, exchange, and an option's expiry, right, strike and multiplier), as a plain listing does, and a combination from another broker is refused. It does not use the market-data router to prefill prices. Its bid, ask and last come from the broker's own `subscribeQuotes` while `canStreamQuotes` allows it (answer it from the profile's configuration, not the session: the desktop app asks in its view, where the session is not): one target for the instrument (the contract's `symbol`, with the contract as `context.instrument`) or one per spread leg (its OCC `localSymbol`), all with `route: "broker"`. Without a stream it asks `getQuote` every 15 seconds. A review reuses a streamed quote while the stream is still pushing it, so an adapter should deliver an unchanged quote again at least once a minute while its stream is up; otherwise the review asks `getQuote`.
+
+```typescript
+getTradingCapabilities(instance, contract, orderType) {
+  return {
+    enabled: instance.config.enableTrading === "true",
+    disabledReason: "Enable trading for this profile in Brokers.",
+    orderTypes: ["MKT", "LMT", "STP", "STP LMT"],
+    tif: orderType === "MKT" ? ["DAY"] : ["DAY", "GTC"],
+    extendedHours: contract?.secType !== "OPT",
+    extendedHoursTif: ["DAY"],
+    fractionalQuantity: false,
+    shortSelling: false,
+    minQuantity: 1,
+    quantityStep: 1,
+    priceDecimals: 2,
+    priceStep: 0.01, // Only when the broker reports this instrument's increment.
+    modify: true,
+    cancel: true,
+    executionKind: "fills",
+  };
+},
+getTradingConfigUpdate(_instance, enabled) {
+  return { enableTrading: String(enabled) };
+},
+```
+
+`BrokerTradingCapabilities` describes supported order types, time in force, quantity and price constraints, extended hours, modification and cancellation. `extendedHoursTif`, when supplied, restricts extended hours to those time-in-force values. Return capabilities for the given instrument and order type, without network requests. `getTradingConfigUpdate` is optional and returns the config patch the host saves after consent, also without I/O; without it, users enable trading through the broker's own settings. Keep the adapter's mutation guards even when the host ticket enforces the same constraints.
+
+Optional `priceStep` is the broker-reported price increment for this instrument and order type. Omit it when unknown. The ticket's numeric controls otherwise use `priceDecimals` (or 0.01 without precision metadata) as an editing convenience only, not an inferred exchange tick. Quantity and price increments are validated with decimal arithmetic before preview.
+
+`shortSelling` defaults to false. Without an explicit true value, selling requires a fresh position snapshot for the exact profile, account and contract, and quantity cannot exceed the long holding. Missing or stale holdings block a sell; a successfully loaded empty position list means zero held. Position changes invalidate a sell review. Quick quantity controls round down to the broker's increment, use the held quantity for sells, and use reported buying power and the broker quote for buys, including the contract multiplier. These are sizing aids; the broker preview still decides whether the order can proceed.
+
+Set optional `BrokerAccount.tradingMode` to `simulation`, `live` or `unknown`. The ticket only selects an account automatically when it is the sole account and explicitly marked simulation. Multiple accounts require a choice; live and unknown accounts require a typed symbol confirmation. Use account names that are safe to display. The ticket reviews the exact current request, invalidates a review on edits or relevant profile changes, and does not automatically retry uncertain mutations. Modification goes through another review; cancellation requires its own confirmation. Confirmation is on by default. A user may explicitly skip the confirmation screen for the current simulation account/ticket session only. That path still requests a fresh exact-draft broker preview and submits once; warnings or errors open review instead. Account/profile, mode, configuration and connection changes reset the preference. LIVE and unknown accounts cannot opt out.
+
+Set optional `BrokerAccount.accountType` to the broker-reported classification, such as Cash or Margin, for the ticket context chip. Omit it when the broker does not report one; never infer it from buying power or balances.
+
+`BrokerOrderPreview` now has optional `currency`, `estimatedCost`, `fees`, `buyingPowerBefore`, `buyingPowerAfter`, `buyingPowerImpact`, `warnings` and blocking `errors`. Return only values reported by the broker or calculations whose units are known. Existing margin fields, `commission`, `commissionCurrency` and `warningText` remain supported. When `warnings` is present, it replaces the legacy `warningText` in the shared review. Preview errors prevent submission. A preview is validation, never order placement.
+
+`BrokerOrder.brokerOrderId` and `BrokerExecution.brokerOrderId` optionally retain native string identifiers. Existing numeric `orderId` and the numeric arguments to `modifyOrder` and `cancelOrder` are unchanged. Adapters with string IDs must maintain a safe mapping from those mutation handles to the original profile, account and native identifier. An uncertain placement without an acknowledged identity cannot be reconciled by symbol or by absence from open orders. `executionKind: "order-summaries"` tells the activity view that history rows are cumulative order summaries, not individual fills.
+
+Optional `getOrderStatus(instance, orderId)` resolves an acknowledged numeric handle to its current broker order, including explicit terminal records from order history. Return `null` when the outcome is unconfirmed. The ticket uses this method when available; disappearance from open orders alone never proves cancellation or a fill.
+
+Optional `subscribeOrders(instance, listener)` pushes order changes as the broker reports them, for every account the profile includes: call `listener.order(order)` with the whole `BrokerOrder` on placement, each fill, replacement, cancellation, rejection and expiry, under the same `orderId` throughout, and `listener.live(true | false)` when pushes start and stop. Keep `brokerOrderId` the order's own native ID: a cancel request that the broker files under a new ID still reports the order it ends. Return a disposer. The host keeps one app-wide order feed per trading profile: it reads `listOpenOrders` when the profile connects, applies pushes as they come and reconciles with open orders once a minute. Without a stream, or while `live` is false, it polls open orders every 5 seconds while an order works and every 30 seconds otherwise. An order that leaves the open list is asked for with `getOrderStatus`. The order drawer, the Orders pane, Overview and the ticket's result read this feed, and it raises the app's fill, partial fill, cancellation, rejection and expiry notifications whether or not a ticket is open.
+
+`ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
+
+The shared ticket handles one instrument per order where the adapter declares support, and option spreads where it declares `maxLegs`. It does not infer unreported broker constraints or guarantee that a vanished open order was filled or cancelled. The order feed keeps open orders and a pending result current, from the broker's order stream where it has one and by polling where it does not. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
+
+#### Option spreads
+
+A spread is one `BrokerOrderRequest` whose `contract` has `secType: "BAG"` with the underlying's symbol, and whose `legs` list each `BrokerOrderLeg { contract, action, ratio }`. Leg contracts are the broker's option contracts (`secType: "OPT"`, OCC `localSymbol`, `lastTradeDateOrContractMonth`, `right`, `strike`, `multiplier`) for one underlying and profile; ratios are whole numbers and `quantity` counts spreads. Each leg's `action` is what happens to that contract. The order's `action` is BUY for a net debit and SELL for a net credit, and `limitPrice` is the positive net price per spread, so selling a spread lists its legs turned over. Return orders read back the same way, with `legs`, so the ticket can name, change and cancel them.
+
+Declare support from `getTradingCapabilities(instance, contract)` for a `BAG` contract, with `maxLegs` (2 to 4 in the ticket) and the order types and time in force the broker takes for spreads. Without `maxLegs`, OSA does not offer Trade and the ticket refuses a spread before preview. The host checks that the legs share the profile and underlying, differ, and have whole ratios; it skips the held-quantity check for spreads, because a short leg is the point of most spreads, and leaves opening or closing each leg to the adapter. The spread's quote is computed from each leg's `getQuote(localSymbol)`, so an adapter must quote its option contracts by OCC symbol.
+
+An adapter maps the request to its native combination order. An IBKR mapping, for example, would resolve each leg's `conId` with `reqContractDetails`, then send a `BAG` contract with `comboLegs` of `{ conId, ratio, action, exchange: "SMART" }` and the order's action and net limit price as given.
 
 #### Bond position price conventions
 
@@ -1793,6 +1876,10 @@ These names still work and are marked `@deprecated` in the types. None is remove
 | An `AppContext` value of `{ state, dispatch }` in tests | `createStaticAppStore(state, dispatch)` from `gloomberb/test-support` |
 
 The `DataProvider` history methods are deprecated on data providers only. `BrokerAdapter` has no `*WithMetadata` variants, so a broker keeps implementing `getPriceHistoryForResolution` and `getDetailedPriceHistory`.
+
+A broker whose intraday history can include pre-market and after-hours bars sets `extendedHoursHistory: true`. When a chart's Ext hours is on, those two methods then receive `{ session: "extended" }` as their last argument, and the chart opens the day at the pre-market. A broker without the flag is not asked for them: the chart's market-data providers answer first, as they do for an unlinked chart, and the broker's regular session answers only when none can.
+
+A broker whose terms restrict redistributing its market data sets `localMarketData: true`. Gloom Cloud sync then never uploads the quotes it supplies (a quote whose `providerId` is the broker's id) or anything derived from its bars; this also holds while its plugin is off. Its accounts still sync like any broker's, which roundups, alerts, the mobile app and Ask Gloom rely on. Users can keep a single connection's account data on the device in Brokers (`localOnly` on the profile); that is their choice, not the plugin's. An older host ignores the flag; a broker that must not reach Cloud there checks `LOCAL_BROKER_MARKET_DATA` from `gloomberb/broker` through a namespace import (`import * as broker from "gloomberb/broker"`) and asks for Cloud to be off when it is missing.
 
 ## Tips
 

@@ -57,6 +57,7 @@ import {
   formatDistance,
   formatGamma,
   formatLevel,
+  positioningSpotDetail,
   formatPayout,
   formatRatio,
   formatStrike,
@@ -204,6 +205,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const openInterest = useAsyncResource<OpenInterestPayload>(openInterestLoader, { keepPreviousData: true });
   const data = openInterest.data;
   const spot = data?.spot ?? null;
+  const spotStamp = useMemo(() => positioningSpotDetail(spot, data?.spotAsOf), [spot, data?.spotAsOf]);
   const expiries = data?.expiries ?? [];
   const shownExpiry = data?.expiry ?? requestedExpiry;
   const changes = data?.previousOiDate != null;
@@ -264,9 +266,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       enabled: expiryIndex < expiryDates.length - 1, onSelect: () => stepExpiry(1) },
   ], [expiryDates.length, expiryIndex, stepExpiry, tab]);
 
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs(data?.expiries.length
-    ? { tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true }
-    : null);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
 
   // Footer: what the data is (delayed or real time, the OI session), and its gaps.
@@ -335,13 +335,13 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const strikeFigures = useMemo<StatItem[]>(() => !callTotal ? [] : [
     { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrike(maxPain), color: colors.warning,
       detail: maxPain == null ? undefined : `${formatDistance(maxPain, spot)} vs spot` },
-    { id: "spot", label: "Spot", value: formatLevel(spot) },
+    { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     { id: "pc", label: "P/C OI", value: formatRatio(callTotal.putCallRatio) },
     { id: "calls", label: "Call OI", value: formatCompact(callTotal.callOI), color: colors.positive,
       detail: callTotal.callChange == null ? undefined : formatCountChange(callTotal.callChange) },
     { id: "puts", label: "Put OI", value: formatCompact(callTotal.putOI), color: colors.negative,
       detail: callTotal.putChange == null ? undefined : formatCountChange(callTotal.putChange) },
-  ], [callTotal, colors.negative, colors.positive, colors.warning, maxPain, spot]);
+  ], [callTotal, colors.negative, colors.positive, colors.warning, maxPain, spot, spotStamp]);
   const selectedStrikeRow = strikes.find((row) => strikeKey(row) === strikeSelectedId) ?? null;
   const strikeStrip = useMemo<ChartStripSpec | null>(() => strikeWindow.length < 3 ? null : {
     label: "Open interest by strike",
@@ -404,9 +404,9 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         split: [{ id: "calls", value: calls, color: colors.positive }, { id: "puts", value: puts, color: colors.negative }] },
       { id: "pc", label: "P/C OI", value: formatRatio(calls > 0 ? puts / calls : null) },
       { id: "largest", label: "Largest expiry", value: expiryLabel(largest.date), detail: formatCompact(expirySize(largest)) },
-      { id: "spot", label: "Spot", value: formatLevel(spot) },
+      { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     ];
-  }, [changes, colors.negative, colors.positive, expiries, spot]);
+  }, [changes, colors.negative, colors.positive, expiries, spot, spotStamp]);
   const selectedExpiryRow = expiries.find((row) => row.date === expirySelectedId) ?? null;
   const expiryStrip = useMemo<ChartStripSpec | null>(() => expiries.length < 3 ? null : {
     label: "Open interest by expiry",
@@ -479,7 +479,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
       detail: `${shares} with dealers${gammaData.boxes?.length ? ", boxes out" : ""}` }] : []),
-    { id: "spot", label: "Spot", value: formatLevel(gammaSpot) },
+    { id: "spot", label: "Spot", value: formatLevel(gammaSpot), ...positioningSpotDetail(gammaSpot, gammaData.spotAsOf) },
   ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares, walls]);
   // The assumption rides in the legend, where the numbers it changes are read; the
   // dealer range figure names its own share. It gives way before the series name does.
@@ -610,13 +610,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   }
 
   return <Box width={width} height={height} flexDirection="column">
+    {tabStrip}
     <PaneStatusBody loading={openInterest.loading && !data} error={!data ? openInterest.error : null}
       empty={!!data && !data.expiries.length} subject="open interest"
       emptyTitle={`No listed options for ${parsePublicTickerKey(symbol).symbol.replace(/^\^/, "")}.`}>
-      {data?.expiries.length ? <>
-        {tabStrip}
-        {content}
-      </> : null}
+      {data?.expiries.length ? content : null}
     </PaneStatusBody>
   </Box>;
 }

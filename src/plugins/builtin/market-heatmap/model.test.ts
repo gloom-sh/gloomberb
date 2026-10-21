@@ -108,6 +108,17 @@ test("a board of a completed session is as of its close when the server gives it
   expect(heatmapBoardCaption({ ...closed, regularSessionDate: null }, { now: saturday })).toBe("top 500 · snapshot 05:58 ET");
 });
 
+test("a board is as of when its prices printed, which the snapshot time is always later than", () => {
+  // Put together at 13:55 New York from delayed prints, the oldest at 13:20.
+  const trading = { topCount: 500, regularSessionDate: null, fetchedAt: Date.parse("2026-10-20T17:55:55Z"), pricesAsOf: Date.parse("2026-10-20T17:20:00Z") };
+  const now = Date.parse("2026-10-20T17:56:30Z");
+  expect(heatmapBoardCaption(trading, { now, checked: "now" })).toBe("top 500 · as of 13:20 ET · checked now");
+  // A print from another day says which.
+  expect(heatmapBoardCaption(trading, { now: now + 86_400_000 })).toBe("top 500 · as of Oct 20 13:20 ET");
+  // An older server, or a print it cannot date, keeps the snapshot's time.
+  for (const pricesAsOf of [undefined, null]) expect(heatmapBoardCaption({ ...trading, pricesAsOf }, { now })).toBe("top 500 · snapshot 13:55 ET");
+});
+
 test("a saved name count is read from the dialog's text or a number, and anything else is all 500", () => {
   expect([heatmapNameCount("100"), heatmapNameCount(150), heatmapNameCount("500")]).toEqual([100, 150, 500]);
   expect([heatmapNameCount(undefined), heatmapNameCount("250"), heatmapNameCount(""), heatmapNameCount("top")]).toEqual([500, 500, 500, 500]);

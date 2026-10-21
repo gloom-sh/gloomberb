@@ -135,6 +135,7 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
     }
     return { rules, error: null };
   } catch {
+    // Intentional ignore: invalid saved rules return the error displayed by callers.
     return { rules: [], error: "Saved event alerts could not be read." };
   }
 }

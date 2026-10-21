@@ -3,6 +3,7 @@ import type { FinancialStatement, PricePoint } from "../../../../types/financial
 import type { AssetDataProvider } from "../../../../types/data-provider";
 import { createTestFinancials, createTestQuote } from "../../../../test-support/data-provider";
 import type { SecEpsBasis } from "../../../../utils/sec-eps-basis";
+import { cashRunway } from "../../../../utils/cash-runway";
 import { FINANCIAL_LABEL_W } from "./model";
 import { loadPeriodEndHistory } from "./period-end-history";
 import {
@@ -12,6 +13,7 @@ import {
   ratioPeriodEnd,
   ratioTableForFinancials,
   resolveFinancialSectionKey,
+  type RatioAmount,
   type RatioDef,
   type RatioPeriod,
 } from "./ratios";
@@ -193,6 +195,40 @@ describe("financial ratios", () => {
     // A year's column reads its own year, as before.
     const annual = ratioTableForFinancials(financials, leverage, "annual");
     expect(annual.rows.find((row) => row.id === "net-debt-ebitda:1")!.label).toBe("÷ EBITDA");
+  });
+
+  test("liquidity's runway reads the months ticker reads, at the quarter's burn and the trailing year's", () => {
+    // A fiscal year to December, its last quarter's year on file, and an inflow quarter that turns the burn off.
+    const quarter = (date: string, operatingCashFlow: number, cash: number): FinancialStatement => ({
+      date, totalRevenue: 0, operatingCashFlow, cashCashEquivalentsAndShortTermInvestments: cash, currentLiabilities: 50,
+    });
+    const financials = createTestFinancials({
+      annualStatements: [{ date: "2025-12-31", totalRevenue: 0, operatingCashFlow: -300, cashCashEquivalentsAndShortTermInvestments: 700 }],
+      quarterlyStatements: [
+        quarter("2025-09-30", -94, 715), quarter("2025-12-31", -85.3, 700), quarter("2026-03-31", 20, 603),
+        quarter("2026-06-30", -125.17, 501.66),
+      ],
+    });
+    const liquidity = RATIO_TABS.find((tab) => tab.key === "liquidity")!;
+    const table = ratioTableForFinancials(financials, liquidity, "quarterly");
+    const runway = cashRunway(financials)!;
+    const months = (estimate: typeof runway.quarter): RatioAmount => estimate?.kind === "months" ? estimate.months : estimate?.kind ?? "not-reported";
+    expect(table.cells.get("runway-quarter")!.map((cell) => cell.value)).toEqual([months(runway.quarter), "no-burn", 700 / (85.3 / 3), 715 / (94 / 3)]);
+    expect(table.cells.get("runway-ttm")![0]!.value).toBe(months(runway.trailing));
+    // The quarter ending with the fiscal year reads that year; one with fewer than four quarters says so.
+    expect(table.cells.get("runway-ttm")!.slice(1).map((cell) => cell.value)).toEqual(["short-history", 700 / (300 / 12), "short-history"]);
+    expect(table.rows.filter((row) => row.kind === "input" && row.def.format === "months").map((row) => row.label))
+      .toEqual(["Cash + ST Inv", "\u00f7 Op Burn/Mo", "Cash + ST Inv", "\u00f7 Op Burn/Mo TTM"]);
+    // A quarter missing the total reads not reported, not its cash alone, when other periods report it.
+    const sparse = createTestFinancials({
+      ...financials,
+      quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 0, operatingCashFlow: -94, cashAndCashEquivalents: 38 }, ...financials.quarterlyStatements.slice(1)],
+    });
+    expect(ratioTableForFinancials(sparse, liquidity, "quarterly").cells.get("runway-quarter")!.at(-1)!.value).toBe("not-reported");
+    // Years have no quarter to read: the annual view keeps the trailing runway alone.
+    const annual = ratioTableForFinancials(financials, liquidity, "annual");
+    expect(annual.ratios.map((def) => def.id)).not.toContain("runway-quarter");
+    expect(annual.cells.get("runway-ttm")!.map((cell) => cell.value)).toEqual([months(runway.trailing), 700 / (300 / 12)]);
   });
 
   describe("quarterly valuation reads the trailing year", () => {

@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { displayWidth, formatCompact, formatCurrency } from "../../../utils/format";
+import { displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
 import {
@@ -10,12 +10,18 @@ import {
   type ParsedInsiderFiling,
 } from "./model";
 
-export type InsiderColumnId = "date" | "insider" | "role" | "type" | "security" | "shares" | "price" | "value";
+export type InsiderColumnId = "date" | "insider" | "role" | "type" | "security" | "shares" | "price" | "value" | "ccy";
 
 export interface InsiderColumn extends DataTableColumn {
   id: InsiderColumnId;
   /** The type column has room for the 10b5-1 marker. */
   plan?: boolean;
+  /**
+   * The currency the CCY column names, and that Price and Value are written
+   * in without a sign, as PF writes LAST beside CCY. Unset when the amounts
+   * keep their $.
+   */
+  currency?: string;
 }
 
 /** One table row: a Form 4 line, or a filing without one (loading, unread, a disclosure). */
@@ -102,12 +108,21 @@ export function formatInsiderShares(value: number | null): string {
   return value == null ? "—" : formatCompact(value);
 }
 
-export function formatInsiderPrice(value: number | null): string {
-  return value == null ? "—" : formatCurrency(value);
+/** A Form 4 price: $412.50, or 412.50 when a CCY column names its currency. */
+export function formatInsiderPrice(value: number | null, currency?: string): string {
+  if (value == null) return "—";
+  return currency ? formatNumber(value, 2) : formatCurrency(value);
 }
 
-export function formatInsiderValue(value: number | null): string {
-  return value == null ? "—" : `$${formatCompact(value)}`;
+/** A Form 4 value: $1.2M, or 1.2M when a CCY column names its currency. */
+export function formatInsiderValue(value: number | null, currency?: string): string {
+  if (value == null) return "—";
+  return currency ? formatCompact(value) : `$${formatCompact(value)}`;
+}
+
+/** What a row's CCY cell says: the currency of its price and value, or a dash for a filing without either. */
+export function insiderCurrencyText(row: Pick<InsiderTableRow, "price" | "value">, currency: string): string {
+  return row.price == null && row.value == null ? "—" : currency;
 }
 
 /** The quieter words after the type: "4/A" always, "10b5-1" when the column has room. */
@@ -136,9 +151,11 @@ function fitWidth(texts: readonly string[], label: string, max: number): number 
  * When the pane runs short, the role goes first, then the price, the
  * 10b5-1 marker, the security and the share count, and only then does the name
  * column shrink below 16 cells, so a narrow pane still reads date, name,
- * type and value.
+ * type and value. With `currency` (Form 4 amounts read by someone whose base
+ * currency is not the dollar), CCY follows Value and is kept with it, as PF
+ * shows CCY once a row is in another currency than the totals.
  */
-export function buildInsiderColumns(width: number, rows: readonly InsiderTableRow[]): InsiderColumn[] {
+export function buildInsiderColumns(width: number, rows: readonly InsiderTableRow[], currency?: string): InsiderColumn[] {
   const anyPlan = rows.some((row) => row.plan);
   const anySecurity = rows.some((row) => row.security);
   const names = rows.map((row) => row.name);
@@ -150,8 +167,9 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     typePlan: fitWidth(rows.map((row) => insiderTypeText(row, true)), "Type", 19),
     security: fitWidth(rows.map((row) => row.security ?? ""), "Security", 12),
     shares: fitWidth(rows.map((row) => formatInsiderShares(row.shares)), "Shares", 9),
-    price: fitWidth(rows.map((row) => formatInsiderPrice(row.price)), "Price", 10),
-    value: fitWidth(rows.map((row) => formatInsiderValue(row.value)), "Value", 9),
+    price: fitWidth(rows.map((row) => formatInsiderPrice(row.price, currency)), "Price", 10),
+    value: fitWidth(rows.map((row) => formatInsiderValue(row.value, currency)), "Value", 9),
+    ccy: currency ? fitWidth(rows.map((row) => insiderCurrencyText(row, currency)), "CCY", 4) : 0,
   };
   const show = { role: true, price: true, plan: anyPlan, security: anySecurity, shares: true };
   let insider = widths.insider;
@@ -165,6 +183,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     show.shares ? widths.shares : 0,
     show.price ? widths.price : 0,
     widths.value,
+    widths.ccy,
   ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
   const shrinkInsider = (floor: number) => {
     insider = Math.max(Math.min(insider, floor), insider - Math.max(0, total() - available));
@@ -187,10 +206,11 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     { id: "type", label: "Type", width: typeWidth, align: "left", plan: show.plan },
     ...(show.security ? [{ id: "security" as const, label: "Security", width: widths.security, align: "left" as const }] : []),
     ...(show.shares ? [{ id: "shares" as const, label: "Shares", width: widths.shares, align: "right" as const }] : []),
-    ...(show.price ? [{ id: "price" as const, label: "Price", width: widths.price, align: "right" as const }] : []),
-    { id: "value", label: "Value", width: widths.value, align: "right" },
+    ...(show.price ? [{ id: "price" as const, label: "Price", width: widths.price, align: "right" as const, currency }] : []),
+    { id: "value", label: "Value", width: widths.value, align: "right", currency },
+    ...(currency ? [{ id: "ccy" as const, label: "CCY", width: widths.ccy, align: "left" as const, currency }] : []),
   ];
-  // Spare cells spread over the columns, so the value column ends at the
+  // Spare cells spread over the columns, so the last column ends at the
   // pane's edge in the terminal as it does on the desktop.
   const used = columns.reduce((sum, column) => sum + column.width + COLUMN_GAP, 0);
   const spare = Math.max(0, available - used);
@@ -222,5 +242,7 @@ export function compareInsiderRows(a: InsiderTableRow, b: InsiderTableRow, colum
     case "shares": return compareNullable(a.shares, b.shares);
     case "price": return compareNullable(a.price, b.price);
     case "value": return compareNullable(a.value, b.value);
+    // Every amount is in one currency: rows with one before filings without, as the CCY cells read.
+    case "ccy": return Number(a.price == null && a.value == null) - Number(b.price == null && b.value == null);
   }
 }

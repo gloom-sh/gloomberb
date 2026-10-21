@@ -213,7 +213,9 @@ function assignDailyChangeFields(
   const referenceProvider = buildDailyReferenceCandidates(candidates, priceProvider)[0];
   if (!referenceProvider) {
     pickField(target, provenance, "previousClose", candidates);
-    pickField(target, provenance, "change", candidates);
+    // A move not from a previous close says what it is from (a coin's 24 hours,
+    // Linear: GLO-1089), and that is said by the source whose move it is.
+    assignField(target, provenance, "changeBasis", pickField(target, provenance, "change", candidates));
     pickField(target, provenance, "changePercent", candidates);
     return;
   }
@@ -222,7 +224,7 @@ function assignDailyChangeFields(
   const price = target.price;
   const previousClose = target.previousClose;
   if (!finitePositiveNumber(price) || !finitePositiveNumber(previousClose)) {
-    pickField(target, provenance, "change", candidates);
+    assignField(target, provenance, "changeBasis", pickField(target, provenance, "change", candidates));
     pickField(target, provenance, "changePercent", candidates);
     return;
   }
@@ -495,6 +497,8 @@ export function resolveCanonicalQuote(
     currency: String(resolved.currency ?? priceProvider?.currency ?? contributions[0]!.currency ?? ""),
     change: resolved.change ?? Number.NaN,
     changePercent: resolved.changePercent ?? Number.NaN,
+    // What that move is from when it is not previousClose; absent when it is.
+    ...(resolved.changeBasis ? { changeBasis: resolved.changeBasis } : {}),
     previousClose: resolved.previousClose as Quote["previousClose"],
     regularClose: priceProvider?.regularClose,
     regularCloseSessionDate: priceProvider?.regularClose != null ? priceProvider.regularCloseSessionDate : undefined,
@@ -536,6 +540,8 @@ export function resolveCanonicalQuote(
     indexSession: priceProvider?.indexSession,
     // A listing that no longer trades: the price is its last trade.
     delisting: priceProvider?.delisting,
+    // A perpetual's funding, open interest and premium are of the reading that gave its price.
+    ...(priceProvider?.perpetual ? { perpetual: priceProvider.perpetual } : {}),
     bid: resolved.bid as Quote["bid"],
     ask: resolved.ask as Quote["ask"],
     bidSize: resolved.bidSize as Quote["bidSize"],

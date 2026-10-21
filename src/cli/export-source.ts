@@ -3,7 +3,7 @@
  * writes CSV or JSON, so an export can go in an audit file as it is: CSV ends
  * with `#` lines and JSON carries a `source` object with the same fields.
  * CSV and NDJSON rows also end with five fixed columns naming what each row
- * is (`EXPORT_IDENTITY_COLUMNS`).
+ * is (`EXPORT_IDENTITY_COLUMNS`), less any the table already has by name.
  */
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { parseReportTime } from "../utils/utc-time";

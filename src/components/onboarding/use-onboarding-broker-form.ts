@@ -1,4 +1,5 @@
 import {
+  createElement,
   useCallback,
   useEffect,
   useMemo,
@@ -16,6 +17,7 @@ import { tf } from "../../i18n";
 import type { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { ListViewItem } from "../ui";
+import { LogoMark } from "../ui/logo-mark";
 import type { PortfolioSub } from "./onboarding-steps";
 import { brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
 import type { useOnboardingBrokerSync } from "./wizard-broker-sync";
@@ -42,14 +44,15 @@ export function useOnboardingBrokerFields({
     (): BrokerOption[] => getConnectableBrokerOptions(buildBrokerDirectory({
       signedIn: signedInBrokers,
       adapters: pluginRegistry.brokers.values(),
-    })),
-    [pluginRegistry.brokers, signedInBrokers],
+    }), pluginRegistry.getBrokerLogo),
+    [pluginRegistry.brokers, pluginRegistry.getBrokerLogo, signedInBrokers],
   );
   const brokerChoices = useMemo<ListViewItem[]>(() => brokerOptions.map((broker) => ({
     id: broker.id,
     label: tf("Connect {broker}", { broker: broker.name }),
     // A broker offered two ways shows which way each choice connects.
     description: broker.methodLabel ?? tf("Import positions from {broker}", { broker: broker.name }),
+    leading: createElement(LogoMark, { src: broker.logo, name: broker.name, size: "lead" }),
   })), [brokerOptions, language]);
   const activeBrokerFields = useMemo((): BrokerConfigField[] => {
     if (!selectedBrokerId) return [];

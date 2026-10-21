@@ -5,6 +5,10 @@ import { t, tf } from "../../../i18n";
 import { getManualPortfolioPositionPrefill, type ManualPortfolioPositionPrefill } from "../../../portfolio/manual-lots";
 import { isManualPortfolio, positionQuantityLabel, resolveManualPositionCurrency } from "../../../portfolio/mutations";
 import { futuresLotCurrency, isFuturesTicker } from "../../../portfolio/futures-positions";
+import { sameCurrency } from "../../../portfolio/position-metrics";
+import { resolvePortfolioTotalsCurrency } from "../../../portfolio/totals-currency";
+import type { TickerPosition } from "../../../types/ticker";
+import { DATE_FIELD_EXAMPLES } from "../../../utils/calendar-date";
 import { US_CENTS } from "../../../utils/currency-units";
 
 export interface SetPortfolioPositionWorkflowState {
@@ -24,12 +28,29 @@ interface ManualPortfolioPositionWorkflowOptions {
   hidePortfolioFieldWhenSingleOption?: boolean;
 }
 
+/**
+ * What the Purchase Date and Cost FX fields start from for a holding: its
+ * date (several lots, their earliest) and the rate its cost was bought at
+ * into the portfolio's currency (several, weighted by cost). Saving them
+ * unchanged keeps what the lots have; a rate into another currency is kept
+ * without being shown.
+ */
+export function positionCostTermsPrefill(position: TickerPosition | null | undefined, portfolioCurrency: string): { dateAcquired: string; costFx: string } {
+  const rate = position?.costFxRate;
+  const shown = typeof rate === "number" && Number.isFinite(rate) && rate > 0 && position?.costFxCurrency?.trim().toUpperCase() === portfolioCurrency;
+  // A cross rate carries float noise (0.012625500000000001): shown to ten digits, kept exact when left as it opened.
+  return { dateAcquired: position?.dateAcquired ?? "", costFx: shown ? String(Number(rate.toPrecision(10))) : "" };
+}
+
 /** Several lots become one position on save: say so, and what the fields hold. */
 function lotsReplacementHint(prefill: ManualPortfolioPositionPrefill, portfolioName: string): string | undefined {
   if (prefill.lotCount < 2) return undefined;
   const params = { count: prefill.lotCount, portfolio: portfolioName };
+  if (prefill.position && prefill.costFxConflict) {
+    return tf("Totals of your {count} lots in \"{portfolio}\", bought at FX rates one position cannot keep: give its Cost FX or Purchase Date. Saving replaces them with one position.", params);
+  }
   if (prefill.position) {
-    return tf("Totals of your {count} lots in \"{portfolio}\". Saving replaces them with one position and clears their acquisition dates.", params);
+    return tf("Totals of your {count} lots in \"{portfolio}\". Saving replaces them with one position, dated by the earliest.", params);
   }
   return prefill.currencies
     ? tf("{count} lots in \"{portfolio}\" are in different currencies ({currencies}), so none is filled in. Saving replaces them with one position.", {
@@ -56,6 +77,13 @@ function buildManualPortfolioPositionWorkflow(
   // A future's cost is typed as it is quoted, which for corn is cents: what a blank currency then saves.
   const contractCurrency = options.ticker && isFuturesTicker(options.ticker)
     && options.quoteCurrency?.trim().toUpperCase() === US_CENTS ? US_CENTS : undefined;
+  // What a blank currency saves, and the currency the portfolio values it in: the rate's units.
+  const blankCurrency = options.ticker
+    ? resolveManualPositionCurrency(undefined, options.ticker, preferredPortfolio, config.baseCurrency, contractCurrency)
+    : undefined;
+  const portfolioCurrency = resolvePortfolioTotalsCurrency(preferredPortfolio, config.baseCurrency);
+  const heldCurrency = (preferredPosition ? futuresLotCurrency(preferredPosition, contractCurrency) : undefined) ?? blankCurrency;
+  const costTerms = positionCostTermsPrefill(preferredPosition, portfolioCurrency);
 
   const fields: CommandBarWorkflowField[] = [
     ...(showPortfolioField ? [{
@@ -98,9 +126,28 @@ function buildManualPortfolioPositionWorkflow(
       type: "text",
       // What a blank field saves: the ticker's own currency before the
       // portfolio's. Without a ticker yet there is nothing true to show.
-      placeholder: options.ticker
-        ? resolveManualPositionCurrency(undefined, options.ticker, preferredPortfolio, config.baseCurrency, contractCurrency)
-        : undefined,
+      placeholder: blankCurrency,
+      required: false,
+    },
+    {
+      id: "dateAcquired",
+      label: "Purchase Date",
+      type: "text",
+      placeholder: DATE_FIELD_EXAMPLES,
+      required: false,
+    },
+    {
+      id: "costFx",
+      label: "Cost FX",
+      type: "number",
+      // What a blank field saves, as `position set` without --cost-fx does.
+      placeholder: t("The purchase date's close, else today's rate"),
+      // The rate's units, in context: the portfolio's currency per unit of the holding's.
+      description: heldCurrency && sameCurrency(heldCurrency, portfolioCurrency)
+        ? t("Only for a holding in another currency than the portfolio's.")
+        : heldCurrency
+          ? tf("{portfolio} per {holding} when bought.", { portfolio: portfolioCurrency, holding: heldCurrency })
+          : tf("{portfolio} per unit of the holding's currency when bought.", { portfolio: portfolioCurrency }),
       required: false,
     },
   ];
@@ -116,6 +163,8 @@ function buildManualPortfolioPositionWorkflow(
         : "",
     // A corn lot saved before contract sizes, in dollars, is read in cents: saving the form unchanged keeps it so.
     currency: (preferredPosition ? futuresLotCurrency(preferredPosition, contractCurrency) : undefined) ?? "",
+    dateAcquired: costTerms.dateAcquired,
+    costFx: costTerms.costFx,
   };
 
   return {

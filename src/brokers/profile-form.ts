@@ -6,6 +6,8 @@ import { t, tf } from "../i18n";
 export interface BrokerProfileDraft {
   label: string;
   enabled: boolean;
+  /** Keep the connection's data on this device, out of Gloom Cloud sync. */
+  localOnly: boolean;
   values: Record<string, string>;
 }
 
@@ -47,6 +49,7 @@ export function createBrokerProfileDraft(
   return {
     label: instance?.label || adapter.name,
     enabled: instance?.enabled !== false,
+    localOnly: instance?.localOnly === true,
     values: flattenBrokerConfigValues(adapter, instance),
   };
 }

@@ -85,16 +85,18 @@ const isTimestamp = (value: number | null | undefined): value is number =>
  * the largest names it holds, the completed regular session it shows outside
  * that session, the time its figures are as of, in New York time, dated when
  * that day is not the session's (or, while the session trades, today's), and
- * when this client last checked, which is a separate figure. A board of a
- * completed session is as of that session's close (`regularSessionClosedAt`);
- * otherwise, or from a server that does not say, the time is when the server
- * put the snapshot together. A footer narrower than `maxWidth` loses the check
+ * when this client last checked, which is a separate figure. A board is as of
+ * when its prices printed (`pricesAsOf`), a board of a completed session from
+ * a server that gives only its close as of that close
+ * (`regularSessionClosedAt`); otherwise the time is when the server put the
+ * snapshot together, at least fifteen minutes after its prices, and says so.
+ * A footer narrower than `maxWidth` loses the check
  * first, then that time, then the session; after a failed refresh (`failed`)
  * the age of the last good check outlasts the time. Null when not even the
  * count fits.
  */
 export function heatmapBoardCaption(
-  board: { topCount: number; fetchedAt: number; regularSessionDate?: string | null; regularSessionClosedAt?: number | null },
+  board: { topCount: number; fetchedAt: number; regularSessionDate?: string | null; regularSessionClosedAt?: number | null; pricesAsOf?: number | null },
   { now, checked = null, failed = false, maxWidth = Number.POSITIVE_INFINITY }:
     { now: number; checked?: string | null; failed?: boolean; maxWidth?: number },
 ): string | null {
@@ -103,12 +105,13 @@ export function heatmapBoardCaption(
   const parts: Array<{ text: string; rank: number }> = [{ text: `top ${board.topCount}`, rank: 0 }];
   if (sessionDate) parts.push({ text: `${dayLabel(sessionDate)} session`, rank: 1 });
   const closedAt = sessionDate && isTimestamp(board.regularSessionClosedAt) ? board.regularSessionClosedAt : null;
-  const time = closedAt ?? (isTimestamp(board.fetchedAt) ? board.fetchedAt : null);
+  const pricedAt = isTimestamp(board.pricesAsOf) ? board.pricesAsOf : closedAt;
+  const time = pricedAt ?? (isTimestamp(board.fetchedAt) ? board.fetchedAt : null);
   if (time != null) {
     const { hour, minute } = zonedDateTimeParts(time, NEW_YORK);
     const clock = `${twoDigits(hour)}:${twoDigits(minute)} ET`;
     const day = zonedDateKey(time, NEW_YORK);
-    const text = `${closedAt != null ? "as of" : "snapshot"} ${day === (sessionDate ?? zonedDateKey(now, NEW_YORK)) ? clock : `${dayLabel(day)} ${clock}`}`;
+    const text = `${pricedAt != null ? "as of" : "snapshot"} ${day === (sessionDate ?? zonedDateKey(now, NEW_YORK)) ? clock : `${dayLabel(day)} ${clock}`}`;
     parts.push({ text, rank: failed ? 3 : 2 });
   }
   if (checked) parts.push({ text: `checked ${checked}`, rank: failed ? 2 : 3 });

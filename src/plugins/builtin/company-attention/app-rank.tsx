@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { AppRankPayload } from "../../../api-client/app-attention";
 import { isAccessDenied } from "../../../api-client/errors";
-import { ChartTableHeader, DataTableView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows, usePaneStatusFooter, usePaneTabs, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { ChartTableHeader, DataTableView, QueryBar, useChartTableSelection, usePagedRows, usePaneStatusFooter, usePaneTabs, useTableLoadMore, type DataTableColumn } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -56,14 +56,14 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
   const tableColumns = tab === "evidence" ? [...columns, { id: "present", label: "In chart", width: 10, align: "left" as const }, { id: "sourceUpdatedAt", label: "Published (UTC)", width: 17, align: "left" as const }, { id: "revisionId", label: "Revision", width: 30, align: "left" as const }] : columns;
   return <Box flexDirection="column" width={width} height={height}>
     {strip}
-    <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="app rank history">
-      <DataTableView columns={tableColumns} items={points} sortColumnId="date" sortDirection="desc" getItemKey={id} rootWidth={width} rootHeight={height - tabRows} focused={focused}
+    {/* A window change reloads under the query bar, which stays. */}
+    <DataTableView columns={tableColumns} items={points} status={data ? undefined : { loading: resource.loading, error: resource.error, subject: "app rank history" }} sortColumnId="date" sortDirection="desc" getItemKey={id} rootWidth={width} rootHeight={height - tabRows} focused={focused}
         scrollRef={scroll} onBodyScrollActivity={more} selection={{ kind: "id", getId: id, selectedId: selected ? id(selected) : null, onChange: setSelected }}
         onActivate={(point) => void host.openExternal(point.sourceUrl)}
         rootBefore={<ChartTableHeader width={width} height={height - tabRows} tableRows={points.length} tableColumns={tableColumns}
           query={<QueryBar width={width} meta={`${focus.country} · ${focus.chart}`} filters={[{ id: "days", label: "Window", value: days, options: ["30", "90", "365", "730"].map((value) => ({ value, label: `${value}D` })), onChange: setDays }]} />}
           figures={points[0] ? [{ label: "Rank", value: count(points[0].rank) }, { label: "Rating", value: points[0].rating?.toFixed(2) ?? "--", detail: "/ 5" }, { label: "Ratings", value: count(points[0].ratingCount) }] : []}
-          chart={tab === "chart" ? { series, ...selection, formatValue: (value) => `#${count(value)}`, empty: series.length ? undefined : focus.chart === "unranked" ? "Rank unavailable for this source" : "Collecting rank history", remoteKind: "app-rank-history" } : null} />}
+          chart={data && tab === "chart" ? { series, ...selection, formatValue: (value) => `#${count(value)}`, empty: series.length ? undefined : focus.chart === "unranked" ? "Rank unavailable for this source" : "Collecting rank history", remoteKind: "app-rank-history" } : null} />}
         renderCell={(point, column) => {
           const value = point[column.id as keyof Point];
           if (value == null) return { text: "--", value: null, color: colors.textMuted };
@@ -74,6 +74,5 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
             color: column.id === "rank" ? colors.textBright : column.id === "revisionId" ? colors.textDim : colors.text };
         }}
         emptyStateTitle="No observations for this app and chart yet." selectedTextOverridesCellColor showHorizontalScrollbar />
-    </PaneStatusBody>
   </Box>;
 }

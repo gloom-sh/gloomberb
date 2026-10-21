@@ -109,7 +109,7 @@ export async function loadInsiderSignals(
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
       throw unavailableOnServer(error, INSIDER_SIGNALS_NOT_AVAILABLE);
     }),
-    { force, validate: validateInsiderSignals },
+    { force, validate: validateInsiderSignals, signal },
   );
 }
 
@@ -187,7 +187,7 @@ export async function loadInsiderCompany(
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
       throw unavailableOnServer(error, INSIDERS_NOT_AVAILABLE);
     }),
-    { force, validate: companyValidator(query.ticker) },
+    { force, validate: companyValidator(query.ticker), signal },
   )));
   return bothSides(buy!, sell!);
 }

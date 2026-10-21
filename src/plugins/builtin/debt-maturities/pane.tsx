@@ -410,8 +410,9 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const detailOpen =
     tab === "maturities" ? !!openBucketRow : tab === "history" && !!openHistoryRow;
   const tabsFocused = focused && !detailOpen;
+  const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(
-    latest
+    symbol && !signInWall
       ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true }
       : null,
   );
@@ -522,7 +523,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         message="Select a ticker to view debt maturities."
       />
     );
-  if (!data && isCloudSessionRequired(resource.error))
+  if (signInWall)
     return (
       <SignInWall
         placement="debt-maturities-signin"
@@ -532,6 +533,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     );
   return (
     <Box width={width} height={height} flexDirection="column">
+      {tabStrip}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}
@@ -542,7 +544,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       >
         {latest ? (
           <>
-            {tabStrip}
             {tab === "filing" ? (
               <FilingDetail latest={latest} quarter={quarter} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (

@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
 import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, SocialMentionsRange } from "../../../api-client/social-mentions";
@@ -56,7 +57,7 @@ export async function fetchSocialMentions(symbol: string, range: SocialMentionsR
   client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient): Promise<SocialMentionsPayload> {
   try { return validateSocialMentions(await client.getCloudSocialMentions(symbol, range), symbol, range); }
   catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Social mentions are not available yet");
+    if (error instanceof ApiRequestError && error.status === 404) throw new Error(unavailableText("social mentions"));
     throw error;
   }
 }

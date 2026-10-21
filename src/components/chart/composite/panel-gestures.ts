@@ -1,4 +1,7 @@
 import type { ChartMouseEvent } from "../core/pointer";
+import type { PanelScale } from "../../../time-series/types";
+import type { CompositeAxisSide, CompositePanelScene } from "./types";
+import type { CompositeValueRange } from "./value-scale";
 import { compositeViewportPositions, type CompositeNavigationFrame, type CompositeViewportRange } from "./interactions";
 
 export const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
@@ -15,6 +18,27 @@ export interface PanGesture {
   frame: CompositeNavigationFrame;
   startViewport: CompositeViewportRange;
   positionsPerCell: number;
+  /** Where the press was, in rows, and the panel's axes scaled by hand then: a drag moves those up and down too. */
+  startCellY?: number;
+  values?: readonly ValueAxisStart[];
+}
+
+/** A value axis as a gesture on it found it. */
+export interface ValueAxisStart {
+  side: CompositeAxisSide;
+  key: string;
+  scale: PanelScale;
+  start: CompositeValueRange;
+}
+
+/** The panel's axes scaled by hand, which a drag on its plot moves up and down. */
+export function manualValueAxes(panel: Pick<CompositePanelScene, "axes">): ValueAxisStart[] {
+  return (["left", "right"] as const).flatMap((side) => {
+    const domain = panel.axes[side];
+    return domain?.manual && domain.scaleKey
+      ? [{ side, key: domain.scaleKey, scale: domain.scale, start: { min: domain.min, max: domain.max } }]
+      : [];
+  });
 }
 
 /**
@@ -46,6 +70,16 @@ export interface PendingWheel {
   zoomLog: number;
   anchorRatio: number;
 }
+
+/** Wheel steps on a value axis since the last frame: the log of the span's factor, around the pointer's height. */
+export interface PendingAxisWheel {
+  side: CompositeAxisSide;
+  spanLog: number;
+  anchorRatio: number;
+}
+
+/** Two presses on an axis closer than this, with no drag between, are a double click where the host does not count clicks. */
+export const AXIS_DOUBLE_PRESS_MS = 400;
 
 /** Blurs a focused text field, the focus change a consumed mousedown prevents. */
 export function releaseEditableFocus(event: ChartMouseEvent): void {

@@ -61,13 +61,15 @@ function GpuView({ width, height, focused }: PaneProps) {
   usePaneFooter("gpu:actions", () => ({ info: data?.access?.preview ? [{ id: "preview", parts: [{ text: "Free preview", tone: "muted" }] }] : [],
     hints: [...(data?.access?.locked ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Unlock full GPU history with Pro", onPress: upgrade }] : []), { id: "buildout", key: "t", label: "BO", title: "Open TheBuildout",
     onPress: () => createPaneFromTemplate("buildout-pane") }] }), [createPaneFromTemplate, data?.access, upgrade]);
-  const { strip, rows: tabRows } = usePaneTabs(data ? { tabs: [...GPU_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
-  const body = { width, height: Math.max(3, height - tabRows), focused };
+  const { strip, rows: tabRows } = usePaneTabs(!signIn ? { tabs: [...GPU_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  // Another GPU's free preview waits in the table under the GPU filter, so picking a model never takes the filter away.
+  const pending = !!previewKey && preview.loading && !preview.data;
+  const body = { width, height: Math.max(3, height - tabRows), focused, pending };
   const reloadBoard = useCallback(() => { void resource.reload(); void preview.reload(); }, [resource.reload, preview.reload]);
   if (signIn) return <SignInWall placement="gpu" width={width} height={height} action="browse GPU rental prices" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={(resource.loading && !data) || (!!previewKey && preview.loading && !preview.data)} error={!data && !notAvailable ? resource.error : null}
+    <PaneStatusBody loading={resource.loading && !data} error={!data && !notAvailable ? resource.error : null}
       empty={notAvailable} emptyTitle={GPU_NOT_AVAILABLE} subject="GPU rental prices">
       {data ? tab === "board" ? <GpuBoard rows={rows} models={models} asOf={data.asOf} model={activeModel} setModel={setModel} selectedId={selectedId} emptyTitle={emptyTitle}
         select={(row, open) => { setSelectedId(row.id); if (open) setTab("history"); }} {...body} />

@@ -9,7 +9,7 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import type { PluginRuntimeAccess } from "../../runtime";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "./calendar-model";
 import { economicCalendarModule } from "./index";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { PaneInViewProvider } from "../../../state/app/activity";
 import { apiClient, type CloudEconEventPayload } from "../../../api-client";
 
@@ -62,9 +62,11 @@ afterEach(() => {
   resetEconCalendarPersistence();
 });
 
-/** `impactFilter` is the filter saved with the pane; without one it opens on its default. */
-async function renderPane(width: number, impactFilter: string | null = "all", inView = true) {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-test"));
+/** `impactFilter` is the filter saved with the pane; without one it opens on its default. `params` are a command's (`ECO MX,BR`). */
+async function renderPane(width: number, impactFilter: string | null = "all", inView = true, params?: Record<string, string>) {
+  const state = createInitialState(params
+    ? createTestPaneConfig("/tmp/gloomberb-econ-test", { instanceId: "econ-calendar", paneId: "econ-calendar", params })
+    : createDefaultConfig("/tmp/gloomberb-econ-test"));
   if (impactFilter) state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter } } };
   await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
@@ -212,6 +214,35 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("23:30");
     if (localClock !== "23:30") expect(frame).not.toContain(localClock);
     expect(frame).toContain(separator);
+  });
+
+  // ECO MX,TR: the countries a command names, a bank that states no time left blank, and a country with nothing said plainly.
+  test("opens on the countries a command names, with a blank time where a bank states none", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const day = Date.UTC(2026, 7, 22);
+    persistence.seedResource("calendar", "global", [
+      { id: "us", date: new Date(day + 12.5 * 3_600_000).toISOString(), time: "12:30", country: "US", event: "Core PCE m/m",
+        impact: "high", actual: null, forecast: null, prior: "0.2%" },
+      { id: "mx", date: new Date(day + 12 * 3_600_000).toISOString(), time: "12:00", country: "MX", event: "Mid-Month CPI",
+        impact: "high", actual: null, forecast: null, prior: null, kind: "statistics-release", localTime: "06:00", timeZone: "America/Mexico_City" },
+      { id: "tr", date: new Date(day).toISOString(), time: "All Day", country: "TR", event: "CBRT Interest Rate Decision",
+        impact: "high", actual: null, forecast: null, prior: "39.50%", kind: "central-bank-decision", localTime: null,
+        timeZone: "Europe/Istanbul", timeNote: "The bank's calendar gives the day, not the time" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110, "all", true, { country: "MX,TR", tabAt: "1" });
+    expect(frame).toContain("MX, TR");
+    expect(frame).toContain("Mid-Month CPI");
+    expect(frame).toMatch(/12:00\s+HIGH\s+MX\s+Mid-Month CPI/);
+    expect(frame).toContain("39.50%");
+    // The decision's row has no time: its line holds the flag, the country and the event, nothing in the time column.
+    expect(frame.split("\n").find((line) => line.includes("CBRT Interest Rate Decision"))).not.toMatch(/\d\d:\d\d/);
+    expect(frame).not.toContain("Core PCE");
+    expect(frame).toContain("next CBRT Interest Rate Decision Sat");
+    expect(frame).not.toMatch(/CBRT Interest Rate Decision in \d/);
+
+    const quiet = await renderPane(110, "all", true, { country: "ZA", tabAt: "2" });
+    expect(quiet).toContain("No scheduled releases for ZA in this window");
   });
 
   // The pane's own refresh follows the global cadence; a print due now cannot wait for it.

@@ -85,9 +85,9 @@ test("every exported board row carries its own observation date, series and unit
   const history = renderReportCsv(headlessReportTables(cdxHeadless, named, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness)
     .split("# section: ")[2]!.split("\n");
   expect(history.slice(1, 4)).toEqual([
-    "Date,Spread (bp),Prints,Contract,Day,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "2026-10-19,64.7,38,2031-12-20,\"so far, 38 prints, last 08:09 UTC\",cdx:main,bp,daily,DTCC,2026-10-19",
-    "2026-10-16,63.28,261,2031-12-20,,cdx:main,bp,daily,DTCC,2026-10-16",
+    "Date,Spread (bp),Prints,Contract,Day,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-19,64.7,38,2031-12-20,\"so far, 38 prints, last 08:09 UTC\",,cdx:main,bp,daily,DTCC,2026-10-19",
+    "2026-10-16,63.28,261,2031-12-20,,,cdx:main,bp,daily,DTCC,2026-10-16",
   ]);
 });
 

@@ -1,5 +1,6 @@
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { SERIES_COLORS } from "../../../theme/series-colors";
+import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { entityTicker } from "./graph-model";
@@ -37,24 +38,46 @@ export function scopeWords(scope: string): string {
     .replace(/^non[\s-]?us$/i, "non-US").trim();
 }
 
+/** A disclosed share and what it is a share of, in words, and the same basis in shorter forms for a column that cannot hold the whole. */
+export interface ShareParts {
+  value: string;
+  basis: string;
+  /** The basis from its whole wording to its bare form, longest first, `basis` first. Never empty: a share always keeps what it is a share of. */
+  forms: readonly string[];
+}
+
 /**
  * A disclosed share and what it is a share of, in words. The denominator is
  * always the reporting company's: a supplier saying the focus company is 91%
  * of its revenue reads "of CRUS revenue", never as the focus company's.
  */
-export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): { value: string; basis: string } | null {
+export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): ShareParts | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
   const reporter = includeReporter || (focusId && row.reportingEntity.id !== focusId) ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
+  const value = `${Number(row.pctOfRevenue.toFixed(1))}%`;
   // XBRL dimensions can qualify the numerator, denominator, or both. NVDA's
   // NonUs fact is a share of total revenue, while TW omits a Data Center qualifier.
   // Neither supports turning its dimensional member into an "of ..." claim.
-  if (row.sourceKind === "xbrl" && scope) return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `${reporter}${basis} · context: ${scope}` };
+  if (row.sourceKind === "xbrl" && scope) return shareWords(value, [`${reporter}${basis} · context: ${scope}`, `${reporter}${basis}`]);
   // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.
   const scoped = scope && scope.toLowerCase().includes(basis) ? scope.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase()) : `${scope ? `${scope} ` : ""}${basis}`;
   // Form alone does not identify a metric's duration: a 10-Q includes YTD facts.
-  return { value: `${Number(row.pctOfRevenue.toFixed(1))}%`, basis: `of ${reporter}${scoped}` };
+  return shareWords(value, [`of ${reporter}${scoped}`, `of ${reporter}${basis}`, `${reporter}${basis}`]);
+}
+const shareWords = (value: string, forms: readonly string[]): ShareParts => {
+  const distinct = forms.filter((form, index) => forms.indexOf(form) === index);
+  return { value, basis: distinct[0]!, forms: distinct };
+};
+
+/**
+ * The longest form of a share's basis that fits `cells`, else its bare form cut
+ * short behind an ellipsis: a share keeps what it is a share of, in whatever
+ * room there is. Empty only when there is no room at all.
+ */
+export function fitShareBasis(share: Pick<ShareParts, "forms">, cells: number): string {
+  return share.forms.find((form) => displayWidth(form) <= cells) ?? clipToDisplayWidth(share.forms[share.forms.length - 1]!, cells);
 }
 /** An XBRL fact's tagged dimensions, as the filing reader stores them in place of a sentence: "ConcentrationRiskByType=CustomerConcentrationRisk;MajorCustomers=StandardChartered;". */
 const TAGGED_DIMENSIONS = /^\s*[A-Za-z][\w.:-]*=[^;=]*(?:;\s*[A-Za-z][\w.:-]*=[^;=]*)*;?\s*$/;

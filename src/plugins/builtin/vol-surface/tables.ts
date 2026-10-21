@@ -1,9 +1,23 @@
 import { findListedExpiry } from "../../../utils/option-expiry";
 import { evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
+import { modelSpotStamp } from "../options/model-spot";
 
 export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(2)}%`;
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 export const expiryLabel = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
+
+/**
+ * The shared stamp for the spot a surface was fitted at (`modelSpotStamp`):
+ * `close Mon 19 Oct` for the official close of the session a closed chain was
+ * quoted in, `pre-market Tue 20 Oct 12:21 UTC` for an extended-session print.
+ * Null for the regular session's price or a bare spot.
+ */
+export function surfaceSpotBasisLabel(snapshot: Pick<SurfaceSnapshot, "spotBasis" | "spotAsOf">): string | null {
+  const basis = snapshot.spotBasis;
+  if (!basis) return null;
+  const observedAt = typeof snapshot.spotAsOf === "number" ? snapshot.spotAsOf : Date.parse(String(snapshot.spotAsOf));
+  return modelSpotStamp({ basis: basis.basis, session: basis.session, observedAt });
+}
 
 /** A one-day front expiry is the noisiest smile on the board; the default selection is the first at least four weeks out. */
 const DEFAULT_EXPIRY_MIN_DAYS = 28;

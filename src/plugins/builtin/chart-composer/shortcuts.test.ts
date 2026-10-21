@@ -35,7 +35,9 @@ describe("resolveChartComposerShortcut", () => {
     expect(resolveChartComposerShortcut(keyEvent("w"), 8)).toBeNull();
     expect(resolveChartComposerShortcut(keyEvent("m"), 8)).toBeNull();
     expect(resolveChartComposerShortcut(keyEvent("r"), 8)).toBe("reload");
-    expect(resolveChartComposerShortcut(keyEvent("t"), 8)).toBe("resolution");
+    expect(resolveChartComposerShortcut(keyEvent("b"), 8)).toBe("resolution");
+    // t is Trade wherever the chart can trade.
+    expect(resolveChartComposerShortcut(keyEvent("t"), 8)).toBeNull();
     expect(resolveChartComposerShortcut(keyEvent("r", { shift: true }), 8)).toBeNull();
     expect(resolveChartComposerShortcut(keyEvent("3"), 8)).toEqual({ type: "range", index: 2 });
     expect(resolveChartComposerShortcut(keyEvent("9"), 8)).toBeNull();

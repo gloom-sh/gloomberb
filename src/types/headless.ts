@@ -103,6 +103,8 @@ export interface HeadlessPaneContext {
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
+  /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
+  resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
   resolvePortfolio?: (id: string) => Promise<{
     portfolio: import("./ticker").Portfolio;
@@ -131,16 +133,27 @@ export interface HeadlessPaneColumn {
   header: string;
   /** Print `header` as written, a field name such as `source`, where reports would otherwise title-case it. */
   literalHeader?: boolean;
+  /**
+   * What the text report heads the column with when it can say more than an
+   * export's header should (`Chg % UTC` over `Chg %`), printed as written;
+   * CSV keeps `header`, so a column read by its name stays where it was.
+   */
+  textHeader?: string;
   align?: "left" | "right" | "center";
   width?: number;
-  /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */
+  /**
+   * A narrow text table never cuts a cell by default: text wraps in its cell
+   * and columns move under their rows. False keeps the column on one line;
+   * true lets the table cut it, for free text that names nothing (a
+   * description), down to `minWidth`.
+   */
   shrink?: boolean;
-  /** The narrowest a text column is cut to in a narrow text table, so it never shrinks to a stub that reads like another row's. */
+  /** The narrowest a text column wraps to, or a `shrink: true` column is cut to, in a narrow text table. */
   minWidth?: number;
   /**
-   * When the text table cannot fit a narrow width even with its text
-   * shortened, columns move to lines under their row: a higher priority moves
-   * sooner, equal ones go rightmost first. The first column stays.
+   * When the text table does not fit a narrow width, columns move to lines
+   * under their row, each value whole: a higher priority moves sooner, then
+   * long text, then rightmost first. The first column stays.
    */
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */
@@ -534,6 +547,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   discovery?: {
     id?: string;
     aliases?: string[];
+    /**
+     * Words that are no function's code but ask for this function's data
+     * (IVOL, IV for implied volatility). They do not open it, since one word
+     * can mean several functions: `fn IVOL` answers with the functions it
+     * means and the commands that run them, and `catalog ivol` lists them first.
+     */
+    suggestFor?: string[];
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];

@@ -26,7 +26,7 @@ async function trending(state: keyof ReturnType<typeof sessionQuotes>) {
   const headless = createMarketMoversHeadless({
     load: (_args, tab, provider) => loadMarketMoverTab(tab, provider, undefined, {
       fetchPreferred: async () => { throw new Error("unused"); },
-      fetchTrending: async () => [{ symbol: "XLK" }, { symbol: "AAPL" }],
+      fetchTrending: async () => ({ data: [{ symbol: "XLK" }, { symbol: "AAPL" }], stale: false }),
     }),
     loadSession: async () => { throw new Error("unused"); },
   });

@@ -51,7 +51,7 @@ async function press(name: string) {
 }
 
 /** The calendar's stack with the release open: the back bar, then the detail one row shorter. */
-async function render(width: number, height: number): Promise<string[]> {
+async function render(width: number, height: number, event: EconEvent = EVENT): Promise<string[]> {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-detail-test"));
   await act(async () => {
     await tui.render(
@@ -60,8 +60,8 @@ async function render(width: number, height: number): Promise<string[]> {
           <DataTableStackView<{ id: string }>
             focused rootWidth={width} rootHeight={height - 1} columns={[{ id: "event", label: "EVENT", width: 10, align: "left" }]} items={[{ id: "unrate" }]}
             getItemKey={(row) => row.id} renderCell={() => ({ text: "" })} selection={{ kind: "none" }} sortColumnId={null} sortDirection="asc"
-            emptyStateTitle="No events" detailOpen onBack={() => {}} detailTitle={EVENT.event}
-            detailContent={<EconDetailView event={EVENT} width={width} height={height - 1} focused />} />
+            emptyStateTitle="No events" detailOpen onBack={() => {}} detailTitle={event.event}
+            detailContent={<EconDetailView event={event} width={width} height={height - 1} focused />} />
         )}</PaneFooterProvider>
       </TestPaneProvider>,
       { width, height },
@@ -100,4 +100,33 @@ test("a short detail keeps the history rows and draws the chart as a strip", asy
   const header = lines.findIndex((line) => line.includes("PERIOD"));
   expect(lines[header - 1]).toMatch(/^ ● Unemployment Rate [⠀-⣿]+ 4\.10%/);
   expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
+});
+
+test("a bank's decision says it has no stated time and why, with the prior's date and a link to the publisher's calendar", async () => {
+  const decision = {
+    id: "cb-cbrt-2026-10-22", date: new Date("2026-10-22T00:00:00Z"), time: "All Day", country: "TR", impact: "high",
+    event: "CBRT Interest Rate Decision", actual: null, forecast: null, prior: "39.50%", priorAsOf: "2026-10-16",
+    kind: "central-bank-decision", localTime: null, timeZone: "Europe/Istanbul", timeNote: "The bank's calendar gives the day, not the time",
+    source: { name: "CBRT", url: "https://www.tcmb.gov.tr/" },
+  } as EconEvent;
+  const lines = await render(98, 12, decision);
+  const text = lines.join("\n");
+  expect(text).toContain("No time stated");
+  expect(text).toContain("The bank's calendar gives the day, not the time");
+  // The prior's date is its own figure, labelled as Central Bank Rates labels it.
+  expect(text).toMatch(/Prior\s+39\.50%/);
+  expect(text).toMatch(/As of\s+2026-10-16/);
+  // The calendar is a named link on the last row, never a bare address.
+  expect(lines.findLast((line) => line.trim())).toMatch(/^ CBRT · meeting calendar\s*$/);
+  expect(text).not.toContain("tcmb.gov.tr");
+  const release = {
+    id: "inegi-10506", date: new Date("2026-10-22T12:00:00Z"), time: "12:00", country: "MX", impact: "high", event: "Mid-Month CPI",
+    actual: null, forecast: null, prior: null, kind: "statistics-release", localTime: "06:00", timeZone: "America/Mexico_City",
+    source: { name: "INEGI", url: "https://www.inegi.org.mx/app/saladeprensa/calendario" },
+  } as EconEvent;
+  const local = (await render(98, 12, release)).join("\n");
+  expect(local).toContain("12:00 UTC");
+  expect(local).toMatch(/12:00 UTC\s+06:00 Mexico City/);
+  expect(local.trimEnd().split("\n").at(-1)).toMatch(/^ INEGI · release calendar\s*$/);
+  expect(local).not.toContain("inegi.org.mx");
 });

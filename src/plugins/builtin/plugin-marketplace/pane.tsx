@@ -31,6 +31,7 @@ import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
 import { requiredGloomberb } from "../../../utils/semver";
+import { logFailure } from "../../../utils/log-failure";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
@@ -423,9 +424,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   // side-loaded install can report an update like every other row.
   const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
   const [checkingRemotes, setCheckingRemotes] = useState(false);
+  const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
+  const [remoteRevision, setRemoteRevision] = useState(0);
   const busyId = busy?.id ?? null;
 
   const refresh = useCallback((force: boolean) => {
+    if (force) setRemoteRevision((value) => value + 1);
     setStatus((current) => (current === "ready" ? current : "loading"));
     void loadRegistry({ force }).then((result) => {
       setRegistry(result.plugins);
@@ -476,24 +480,42 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const unlistedKey = unlistedDirectories.join(",");
 
   useEffect(() => {
+    const directories = unlistedKey ? unlistedKey.split(",") : [];
+    const eligible = new Set(directories);
+    // Forget removed or newly pinned/linked installs, including the last one.
+    setRemoteHeads((previous) => {
+      const retained = Object.entries(previous).filter(([directory]) => eligible.has(directory));
+      return retained.length === Object.keys(previous).length ? previous : Object.fromEntries(retained);
+    });
+    setRemoteCheckError(null);
     const check = manager?.remoteHeads;
-    if (!check || unlistedKey.length === 0) return;
+    if (!check || directories.length === 0) {
+      setCheckingRemotes(false);
+      return;
+    }
     let cancelled = false;
     setCheckingRemotes(true);
-    void check(unlistedKey.split(","))
-      // Offline, or a private repository this machine has no credentials for:
-      // the row keeps whatever it knew, without an error in the way.
-      .catch(() => ({}))
-      .then((heads) => {
+    void (async () => {
+      try {
+        const heads = await check(directories);
         if (cancelled) return;
-        setRemoteHeads(heads);
-        setCheckingRemotes(false);
-      });
-    return () => {
-      cancelled = true;
-      setCheckingRemotes(false);
-    };
-  }, [manager, unlistedKey, localRevision]);
+        // An omitted folder is unanswered, not proof that it is up to date.
+        const answers = directories.filter((directory) => !!heads[directory]);
+        setRemoteHeads((previous) => ({
+          ...previous,
+          ...Object.fromEntries(answers.map((directory) => [directory, heads[directory]!])),
+        }));
+        setRemoteCheckError(answers.length < directories.length ? "Update check incomplete" : null);
+      } catch (error) {
+        if (cancelled) return;
+        logFailure("plugin-marketplace.pane", "Check installed plugin remote heads failed")(error);
+        setRemoteCheckError("Plugin update check failed");
+      } finally {
+        if (!cancelled) setCheckingRemotes(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [manager, unlistedKey, localRevision, remoteRevision]);
 
   const visible = useMemo(
     () => filterEntries(entries, { query, category, showBuiltin }),
@@ -638,15 +660,29 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
     setLastError(null);
-    await host.deactivate(entry.id, entry.directory).catch(() => {});
-    await manager.deactivate?.(entry.id).catch(() => {});
-    const result = await manager.remove(entry.directory!);
-    setBusy(null);
-    bump();
-    if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
-    else {
-      setLastError(result.error);
-      notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
+    let removalStarted = false;
+    try {
+      // Stop the native side first: a successful view stop drops its catalog
+      // entry, so it must remain available if the native stop fails.
+      await manager.deactivate?.(entry.id);
+      await host.deactivate(entry.id, entry.directory);
+      removalStarted = true;
+      const result = await manager.remove(entry.directory!);
+      if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
+      else {
+        setLastError(result.error);
+        notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
+      }
+    } catch (error) {
+      logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
+      const message = removalStarted
+        ? "Removal failed. Restart and try again."
+        : "Plugin could not be stopped. Files kept. Restart before removing it.";
+      setLastError(removalStarted ? "removal failed, restart to retry" : "stop failed, restart to remove");
+      notify({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
+    } finally {
+      setBusy(null);
+      bump();
     }
   }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
 
@@ -735,7 +771,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           }))}
         />
       ),
-    }).catch(() => null);
+    }).catch(logFailure("plugin-marketplace.pane", "Choose starter pack failed", null));
     const pack = STARTER_PACKS.find((candidate) => candidate.id === id);
     if (pack) await applyPack(pack);
   }, [applyPack, currentPack, dialog, disabledPlugins, host]);
@@ -827,6 +863,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const info = loadingErrorFooterInfo(status === "loading", status === "error" ? "catalog unavailable" : null);
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
   if (checkingRemotes) info.push({ id: "remote-check", parts: [{ text: "checking unlisted plugins", tone: "muted" }] });
+  if (remoteCheckError) info.push({ id: "remote-error", parts: [{ text: remoteCheckError, tone: "warning" }] });
   if (busy) {
     const name = entries.find((entry) => entry.id === busy.id)?.name ?? busy.id;
     info.push({ id: "busy", parts: [{ text: `${busy.verb} ${name}`, tone: "muted" }] });

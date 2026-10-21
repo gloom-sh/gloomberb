@@ -184,7 +184,8 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
           const item = await apiClient.putTeamCollectionItem(collection.teamId, collection.id, {
             symbol: entry.symbol,
             exchange: ticker?.metadata.exchange ?? null,
-            ...(collection.kind === "portfolio" ? { quantity: entry.quantity } : {}),
+            // A holding's purchase date and the rate its cost was bought at go with its count.
+            ...(collection.kind === "portfolio" ? { quantity: entry.quantity, ...entry.terms } : {}),
           });
           items.set(item.symbol, item);
         } catch (error) {

@@ -281,7 +281,8 @@ describe("crypto basis against spot", () => {
       expect(header).toContain("ANN BASIS");
       expect(header).not.toContain("PCTL");
       expect(row(lines, "BTCV26.CME")).toMatch(/\+0\.25%\s+\+4\.3%/);
-      expect(lines.join("\n")).not.toContain("…");
+      // The table: the footer's status may end in an ellipsis where it meets the key hints.
+      expect(lines.filter((line) => !line.startsWith("└")).join("\n")).not.toContain("…");
     }
   });
 

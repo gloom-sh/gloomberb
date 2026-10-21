@@ -22,10 +22,10 @@ export interface SelectFieldProps {
   width?: number | string;
   height?: number;
   /**
-   * `field` is the form control used in dialogs. `inline` drops the box so a
-   * dense row reads as text; both open the same Menu.
+   * `field` is the framed form control used in dialogs. `well` uses a quiet
+   * filled surface; `inline` reads as text. All open the same Menu.
    */
-  variant?: "field" | "inline";
+  variant?: "field" | "inline" | "well";
   includeUnsetOption?: boolean;
   /**
    * Return focus to the trigger when the menu closes (inside a dialog). A list

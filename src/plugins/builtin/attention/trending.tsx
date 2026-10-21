@@ -21,18 +21,20 @@ function useTrending(symbol?: string) {
   useAutoRefresh(resource.updatedAt, resource.load);
   return { resource, session, access };
 }
-/** Optional profile context. A failure here never hides or blocks the description. */
+/**
+ * Optional profile context. A failure here never hides or blocks the description,
+ * and a symbol with no published research hours shows no section at all: the
+ * Overview leaves out what it has nothing to say about.
+ */
 export function TrendingSummary({ symbol, onOpen }: { symbol: string; onOpen?: () => void }) {
   const { resource, access } = useTrending(symbol);
   const data = resource.data?.payload;
   const row = data?.rows[0];
-  if (!access.signedIn || !data) return null;
+  if (!access.signedIn || !data || !row) return null;
   return <Box flexDirection="column">
     <SectionHeading title="Gloom Trending" />
-    {row ? <>
-      <KeyValueRow label="Research rank" value={`#${row.rank}`} detail={`Today · ${number(row.researchUnits)} research hours`} />
-      <KeyValueRow label="Latest-hour Z" value={signed(row.zScore)} detail={data.asOf ? date(data.asOf) : undefined} />
-    </> : <EmptyState title={data.status === "ready" ? data.entitlement === "preview" ? "Outside the current preview." : "No published research hours today." : emptyAttention(data)} />}
+    <KeyValueRow label="Research rank" value={`#${row.rank}`} detail={`Today · ${number(row.researchUnits)} research hours`} />
+    <KeyValueRow label="Latest-hour Z" value={signed(row.zScore)} detail={data.asOf ? date(data.asOf) : undefined} />
     {onOpen ? <ActionRow label="Open research attention" onPress={onOpen} /> : null}
   </Box>;
 }

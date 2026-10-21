@@ -14,6 +14,7 @@ import type {
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, resolveAssetDisplayKind, withCurrencyMinorDigits } from "../../market-data/market/format";
 import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { changeBasisJson, changeBasisLabel, changeBasisNote, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -53,7 +54,7 @@ import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshnes
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
-  renderFundamentalsReport,
+  renderFundamentalsReport, writesCurrencyCodes,
 } from "./ticker";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
@@ -80,7 +81,9 @@ import {
   type OptionsChainBasis,
 } from "./options-chain";
 import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../utils/option-expiry";
-import { DATE_OPTION_EXAMPLES } from "../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
+import { apiClient } from "../../api-client";
+import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
@@ -190,7 +193,21 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxRate, formatFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
+import {
+  describeShortRate,
+  formatForwardPoints,
+  formatRatePercent,
+  formatSignedPercent,
+  IMPLIED_FORWARD_LABEL,
+  impliedForward,
+  parseForwardTenor,
+  shortRateFor,
+} from "../fx-forward";
+import { unavailableOnServer } from "../../plugins/builtin/shared/cloud-resource";
+
+/** `fx`'s forward form, for its usage line. */
+const FX_FORWARD_USAGE = "fx <base>/<quote> --forward <tenor>";
 import {
   holderListFacts,
   holderListPeriod,
@@ -215,8 +232,9 @@ import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import { currentReportItemsLabel } from "../../utils/sec-filings";
-import { loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
-import { insiderEmptyNotice } from "../../plugins/builtin/insider/issuer";
+import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
+import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "../../plugins/builtin/insider/issuer";
+import { buildInsiderSummary } from "../../plugins/builtin/insider/model";
 import {
   BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
@@ -287,8 +305,8 @@ function uniqueEntries(entries: readonly string[]): string[] {
 
 /**
  * The symbols to resolve: each entry with a space read as a company's name
- * when search finds one, else as its words, each a symbol (`readNameEntries`),
- * with the repeats that leaves dropped. A name found stays whole.
+ * when search finds one, else as its words when they are symbols
+ * (`readNameEntries`), with the repeats that leaves dropped. A name stays whole.
  */
 async function readSymbols(symbols: readonly string[], dataProvider: Parameters<typeof readNameEntries>[1]): Promise<string[]> {
   return uniqueEntries(await readNameEntries(symbols, dataProvider));
@@ -362,6 +380,28 @@ const QUOTE_LEAD_COLUMNS = [
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
 
+/**
+ * What Chg% is measured from, as every change line says it ("vs Fri 16 Oct
+ * close", "since 00:00 UTC"): the table sets it after Chg% and names the
+ * venue's holidays under it; an export adds it, and the holiday note, after
+ * its existing columns, so a column read by position stays where it was.
+ */
+const CHANGE_BASIS_COLUMN = {
+  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true, format: (value: unknown) => cliStyles.muted(String(value ?? "")),
+};
+const CHANGE_BASIS_EXPORT_COLUMNS = [
+  { key: "changeBasis", header: "Chg Basis" },
+  { key: "changeBasisNote", header: "Chg Basis Note" },
+];
+
+/** The table's columns: Chg Basis follows Chg%, and the note is a line under the table. */
+function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
+  const exported = new Set(CHANGE_BASIS_EXPORT_COLUMNS.map((column) => column.key));
+  const kept = columns.filter((column) => !exported.has(column.key));
+  const at = kept.findIndex((column) => column.key === "changePercent") + 1;
+  return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
+}
+
 /** A Cboe yield index level is a yield: `5.24%`, not a price. */
 function yieldLevelCell(value: unknown, row: QuoteRow): string {
   const text = String(value ?? "");
@@ -418,6 +458,7 @@ function quoteColumns() {
     },
     // In a narrow terminal the closing line's as-of stands in for each row's.
     { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
+    ...CHANGE_BASIS_EXPORT_COLUMNS,
   ];
 }
 
@@ -429,6 +470,7 @@ function compareColumns() {
     { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
     { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
+    ...CHANGE_BASIS_EXPORT_COLUMNS,
   ];
 }
 
@@ -452,6 +494,34 @@ function nearParCoin(quote: QuoteCliRecord["quote"]): boolean {
   if ((quote.currency ?? "USD").trim().toUpperCase() !== "USD") return false;
   const reference = [quote.previousClose, quote.price].find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
   return reference != null && reference >= 0.9 && reference < 1.1;
+}
+
+/** What a row's move is measured from, worded as its Chg Basis cell: empty without a move. */
+function rowChangeBasis(result: Pick<QuoteCliRecord, "quote" | "futuresContract">) {
+  return quoteChangeBasis(result.quote, { terms: result.futuresContract });
+}
+
+function basisLabel(result: Pick<QuoteCliRecord, "quote" | "futuresContract">, now: number): string {
+  const basis = rowChangeBasis(result);
+  return basis ? changeBasisLabel(basis, now) : "";
+}
+
+/**
+ * The lines under the table naming the days a row's venue was closed since
+ * the close its move is from ("HKEX closed Mon 19 Oct, holiday"), once each.
+ */
+function changeBasisNotes(results: QuoteCliRecord[], now = Date.now()): string[] {
+  return [...new Set(results.flatMap((result) => changeBasisNote(rowChangeBasis(result), now) ?? []))];
+}
+
+/** The quote as `--json` gives it: `previousCloseDate`, the exchange-local date of its previous close, follows `previousClose`. */
+function withPreviousCloseDate(quote: Quote | null | undefined): (Quote & { previousCloseDate?: string | null }) | null {
+  if (!quote) return null;
+  const previousCloseDate = quotePreviousCloseDate(quote);
+  const entries = Object.entries(quote);
+  const at = entries.findIndex(([key]) => key === "previousClose");
+  entries.splice(at < 0 ? entries.length : at + 1, 0, ["previousCloseDate", previousCloseDate]);
+  return Object.fromEntries(entries) as Quote & { previousCloseDate?: string | null };
 }
 
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
@@ -513,6 +583,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
       updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       error: result.error ?? "",
+      // Last, so a row read by position keeps every field where it was.
+      changeBasis: basisLabel(result, now),
+      changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
     };
   });
 }
@@ -784,7 +857,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       listing: listingMetadata(listingIdentity(listing, result.quote)),
       // The figures the table shows, beside the quote as the source sent it.
       ...getQuoteSessionFields(result.quote),
-      quote: result.quote,
+      // What `change` is measured from, with the label and holiday note the table shows.
+      changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
+      quote: withPreviousCloseDate(result.quote),
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
@@ -810,6 +885,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
     ];
     const columns = commandName === "compare" ? compareColumns() : quoteColumns();
+    const basisNotes = changeBasisNotes(data, now);
     if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
@@ -827,8 +903,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         currencyOrUnit: row.currency || (row.yieldIndex ? "pct" : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
       }),
       details: quoteDetailsText,
+      ...(basisNotes.length ? { footnote: basisNotes.join("\n") } : {}),
       columns,
-      ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
+      textColumns: quoteTextColumns(yieldsOnly
+        ? columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column)
+        : columns),
     });
     // The table names each symbol it found nothing for; with none found, the exit status says so too.
     if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
@@ -1046,11 +1125,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
     });
     const gaps = historyGapNote(data, traded);
+    const coverage = range === "YTD" ? null : historyCoverageWarning(range, loaded);
     const notes = [
       // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
       ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? []],
+      // ALL says where the source's bars start (BTC-USD's in 2014-09), unless the coverage line does.
+      ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
       // The status line says how far a bar still forming runs; the note is for the bars it does not name.
       gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
       historyBarStatusNote(forming ? served : data) ?? [],
@@ -1211,7 +1292,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         symbol: identity.symbol || listing.key, bond, rates, treasury: await treasury,
         distribution: distributionBasis(priced.fundamentals?.dividendYield, priced.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
       }) : null;
-      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent };
+      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent,
+        // A base currency other than USD reads every amount with its code, as `ticker` does.
+        currencyCodes: writesCurrencyCodes(market.config) };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -1281,9 +1364,9 @@ const NEWS_COLUMNS = [
     header: "Published",
     format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
   },
-  { key: "source", header: "Source", maxWidth: 20 },
+  { key: "source", header: "Source" },
   { key: "title", header: "Title" },
-  { key: "tickers", header: "Tickers", maxWidth: 16 },
+  { key: "tickers", header: "Tickers" },
   { key: "url", header: "URL", optional: true },
 ];
 
@@ -1483,50 +1566,81 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 type Form4Insiders = "available" | "none" | "foreign-private-issuer" | "no-sec-reports";
 
+/** The company's own Form 4 filings as `fn INS` reads them: whether it has any, and its summary of them. */
+interface Form4Report {
+  status: Form4Insiders;
+  /** `fn INS`'s line of the last 90 days' open-market buys and sales in the filings read; null when it has none. */
+  summary: string | null;
+  /** The Form 4 lines in the filings read, and how many filings that was. */
+  lines: number;
+  filings: number;
+  /** The newest filing's date (YYYY-MM-DD), which dates the report. */
+  newestFiled: string | null;
+  /** "Canadian insider reports (SEDI) not covered." beside the reason a company from abroad has none. */
+  home: string | null;
+}
+
 /**
- * Whether the company has Form 4 filings of its own, read as `fn INS` reads
- * them; null when they could not be read. A listing abroad the SEC lists
- * nothing for files no SEC reports at all.
+ * The company's Form 4 filings, read as `fn INS` reads its first page (its
+ * latest 20 of its own) and summed up as it sums them; null when they could
+ * not be read. A listing abroad the SEC lists nothing for files no SEC
+ * reports at all, and a company from abroad with none names its home
+ * market's insider reports as not covered either.
  */
-async function loadForm4Insiders(market: MarketContext, listing: CliListing): Promise<Form4Insiders | null> {
+async function loadForm4Report(market: MarketContext, listing: CliListing): Promise<Form4Report | null> {
+  const { symbol, exchange } = listing.request;
   try {
-    const { parsed, foreignPrivateIssuer, noFilings } = await loadParsedInsiderFilings(market.dataProvider, listing.request.symbol, {
-      limit: 1,
-      exchange: listing.request.exchange,
+    const { parsed, foreignPrivateIssuer, noFilings } = await loadParsedInsiderFilings(market.dataProvider, symbol, {
+      limit: INSIDER_REPORT_FILINGS,
+      exchange,
     });
-    if (parsed.length > 0) return "available";
-    if (noFilings && nonUsSecListingVenue(listing.request.symbol, listing.request.exchange)) return "no-sec-reports";
-    return foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+    if (parsed.length > 0) {
+      const filed = parsed.map(({ filing }) => new Date(filing.filingDate).getTime()).filter(Number.isFinite);
+      return {
+        status: "available",
+        summary: buildInsiderSummary(parsed, Date.now(), parsed),
+        lines: parsed.filter(({ transaction }) => transaction != null).length,
+        filings: new Set(parsed.map(({ filing }) => filing.accessionNumber)).size,
+        newestFiled: filed.length > 0 ? new Date(Math.max(...filed)).toISOString().slice(0, 10) : null,
+        home: null,
+      };
+    }
+    const status: Form4Insiders = noFilings && nonUsSecListingVenue(symbol, exchange) ? "no-sec-reports"
+      : foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+    const home = await loadHomeInsiderReportsNote(market.dataProvider, listing.key, exchange, foreignPrivateIssuer);
+    return { status, summary: null, lines: 0, filings: 0, newestFiled: null, home };
   } catch (error) {
-    logFailure("cli.commands-market", "Read insider filing availability failed")(error);
+    logFailure("cli.commands-market", "Read insider filings failed")(error);
     return null;
   }
 }
 
 /**
- * Holder lists name institutions and funds; individual insiders rarely appear.
- * The insider share of the company is reported either way, so say it. The
- * Form 4 trades are pointed to only when the company has some; otherwise the
- * line says why there are none, in the words `fn INS` uses.
+ * The insider lines under `insider`'s holders. A company's insiders file
+ * Form 4, which 13F holder lists rarely name, so the report leads with
+ * `fn INS`'s summary of the Form 4 filings and points to the transactions;
+ * a company with none says why, in the words `fn INS` uses. The insider share
+ * of the company follows when the holder data reports it.
  */
 function insiderSummary(
   data: HolderData,
-  ownerTypes: Set<string>,
   listing: Pick<CliListing, "key">,
   identity: ListingIdentity,
-  form4: Form4Insiders | null,
+  form4: Form4Report | null,
 ): string {
   const held = data.summary?.insidersPercentHeld;
   const share = held == null || !Number.isFinite(held)
     ? ""
     : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
-  const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
   // The listing as the command read it (CAR:ASX), not the source's spelling of it (CAR.AX), which fn does not take.
-  const transactions = form4 === "available"
-    ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${listing.key}`
-    : form4 === "no-sec-reports" ? noSecReportsNotice(identity)
-    : form4 ? insiderEmptyNotice(form4 === "foreign-private-issuer") : "";
-  return [share, transactions].filter(Boolean).join("\n");
+  const transactions = form4?.status === "available"
+    ? [
+      ...form4.summary ? [form4.summary] : [],
+      `${form4.lines} Form 4 ${form4.lines === 1 ? "line" : "lines"} in the latest ${form4.filings} ${form4.filings === 1 ? "filing" : "filings"}${form4.newestFiled ? `, newest filed ${form4.newestFiled}` : ""}: gloomberb fn INS ${listing.key}`,
+    ].join("\n")
+    : form4?.status === "no-sec-reports" ? [noSecReportsNotice(identity), form4.home].filter(Boolean).join(" ")
+    : form4 ? insiderEmptyNotice(form4.status === "foreign-private-issuer", form4.home) : "";
+  return [transactions, share].filter(Boolean).join("\n");
 }
 
 /** `holders --form 13d|13g|all`: the 13D/13G beneficial owners, joined by name to the 13F holders. */
@@ -1616,7 +1730,7 @@ async function runHolders(
         { command: commandName, noun: "holder data" },
       ),
       loadListingQuote(market.dataProvider, listing),
-      insiderCommand ? loadForm4Insiders(market, listing) : null,
+      insiderCommand ? loadForm4Report(market, listing) : null,
     ]);
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
@@ -1638,7 +1752,9 @@ async function runHolders(
     const markedRows = rows.some((row) => holderShareBasisMarker(row));
     // The heading names the listing; its unit, date and how much of the list follows on the same line.
     // One "as of" only when every row shown is of that date; each row carries its own.
-    const facts = holderListFacts({
+    // An insider list the 13F filings name nobody in is not "none reported": the Form 4 summary under it says what insiders did.
+    const form4Only = insiderCommand && rows.length === 0;
+    const facts = form4Only ? [] : holderListFacts({
       currency: valueCurrency,
       listingCurrency: data.currency,
       period: holderListPeriod(shownRows, data.asOf),
@@ -1649,8 +1765,10 @@ async function runHolders(
     });
     const unvaluedNote = unvaluedHoldersNote(shownRows);
     const columns = holderReportColumns(shownRows, valueCurrency);
-    // Dated as HDS dates it: by the list's as-of.
-    const freshness = rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
+    // Dated as HDS dates it: by the list's as-of; an insider report of Form 4 filings alone as INS dates it, by the newest.
+    const freshness = form4Only
+      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" })
+      : rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
     const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total });
@@ -1672,7 +1790,11 @@ async function runHolders(
         truncated: shown < (total ?? rows.length),
         valueBasis,
         positionsBasis,
-        ...(insiderCommand ? { form4Insiders: form4 } : {}),
+        ...(insiderCommand ? {
+          form4Insiders: form4?.status ?? null,
+          // INS's summary of the latest Form 4 filings, as `fn INS` gives it in its metadata.
+          form4: form4 ? { summary: form4.summary, lines: form4.lines, filings: form4.filings, newestFiled: form4.newestFiled, notCovered: form4.home } : null,
+        } : {}),
       },
       ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
@@ -1706,7 +1828,7 @@ async function runHolders(
       exportIdentity: { symbolOrSeries: listing.key },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
-        insiderCommand ? insiderSummary(data, ownerTypes, listing, identity, form4) : "",
+        insiderCommand ? insiderSummary(data, listing, identity, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });
@@ -1959,14 +2081,132 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 /** What an options chain export's `interval` says: one quote snapshot, not bars. */
 const OPTIONS_EXPORT_INTERVAL = "snapshot";
 
+/** `fx --date`: a past day as YYYY-MM-DD; today's close is not in yet, so it is refused, as is a day ahead. */
+function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
+  let date: string;
+  try {
+    date = isoDateOption(value, "date");
+  } catch (error) {
+    return ctx.fail(error instanceof Error ? error.message : String(error));
+  }
+  if (!date) return ctx.fail("--date takes a day, such as --date 2026-09-02.");
+  const today = isoDateToday();
+  if (date >= today) {
+    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today}).`, "Without --date, fx gives the latest rate.");
+  }
+  return date;
+}
+
+/**
+ * `fx <pair> --date <day>`: the rate at that day's daily FX closes, read as
+ * a position's purchase-date cost reads them (`fxCloseOnDate`): each
+ * currency's USD pair at its close of the day, or of the last trading day
+ * before it, which the answer then says, crossed through USD as the latest
+ * rate is.
+ */
+async function runFxOnDate(
+  parsed: Exclude<ReturnType<typeof parseFxArgs>, { error: string }>,
+  date: string,
+  args: readonly string[],
+  market: MarketContext,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+) {
+  const { request, amount, toUsdByDefault } = parsed;
+  const { currency, baseCurrency } = request;
+  const pair = `${currency}/${baseCurrency}`;
+  const history = market.fxHistory ?? apiClient;
+  const codes = [...new Set([currency, baseCurrency].filter((code) => code !== "USD"))];
+  const legs = new Map<string, FxCloseReading>([["USD", { rate: 1, date }]]);
+  if (currency !== baseCurrency) {
+    for (const code of codes) {
+      const leg = dailyFxLeg(code);
+      if (!leg) return ctx.fail(`${code} has no daily FX closes to read a rate for ${date} from.`);
+      let reading: FxCloseReading | null;
+      try {
+        reading = await fxCloseOnDate(leg, date, history);
+      } catch (error) {
+        return ctx.fail(`The daily ${code} FX closes could not be read.`, error instanceof Error ? error.message : String(error));
+      }
+      if (!reading) {
+        return ctx.fail(`No ${leg.invert ? `USD/${code}` : `${code}/USD`} daily close in the week up to ${date}.`,
+          "Without --date, fx gives the latest rate.");
+      }
+      legs.set(code, reading);
+    }
+  }
+  const from = legs.get(currency), into = legs.get(baseCurrency);
+  const rate = currency === baseCurrency ? 1 : crossRate(from?.rate, into?.rate);
+  // A cross is as old as its older close; a weekend or holiday reads the trading day before it.
+  const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
+  const converted = amount == null ? null : amount * rate;
+  const row = {
+    currency, baseCurrency, rate, asOf: closeDate, stale: false, pair, inverse: 1 / rate, date,
+    ...(amount == null ? {} : { amount, converted }),
+  };
+  const warnings = [
+    ...request.readAs ?? [],
+    ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
+    ...toUsdByDefault && amount != null
+      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --date ${date}.`]
+      : [],
+  ];
+  ctx.printResult({
+    data: [row],
+    // A past close is what was asked for, never stale.
+    freshness: rowsFreshness([], { status: "not-a-feed", basis: "daily FX close", asOf: closeDate }),
+    warnings: warnings.length > 0 ? warnings : undefined,
+  }, {
+    text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
+    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "1day" },
+    columns: [
+      { key: "currency", header: "Currency" },
+      { key: "baseCurrency", header: "Base" },
+      { key: "rate", header: "Rate", align: "right" },
+      { key: "date", header: "Date" },
+      { key: "asOf", header: "Close" },
+      { key: "stale", header: "Stale" },
+      { key: "pair", header: "Pair" },
+      { key: "inverse", header: "Inverse", align: "right" },
+      ...(amount == null ? [] : [
+        { key: "amount", header: "Amount", align: "right" as const },
+        { key: "converted", header: "Converted", align: "right" as const },
+      ]),
+    ],
+  });
+}
+
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  if (rawArgs.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  const args = [...rawArgs];
+  const dateOption = takeOption(args, "--date");
+  const forwardOption = takeOption(args, "--forward");
+  if (args.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  // A forward is implied from today's spot and the latest short rates, which are all Gloom Cloud serves.
+  if (dateOption != null && forwardOption != null) {
+    ctx.fail(
+      "fx --forward does not take --date: the forward is implied from today's spot and the latest short rates, and past short rates are not served.",
+      `For that day's close: gloomberb fx ${args.join(" ")} --date ${dateOption}. For today's forward, drop --date.`,
+    );
+  }
+  const date = dateOption == null ? null : readFxDate(dateOption, ctx);
+  const tenor = forwardOption == null ? null : parseForwardTenor(forwardOption);
+  if (tenor && "error" in tenor) ctx.fail(tenor.error, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
   await withMarketData(ctx, async (market) => {
-    const parsed = parseFxArgs(rawArgs, market.config.baseCurrency);
-    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${FX_USAGE}`);
+    const parsed = parseFxArgs(args, market.config.baseCurrency);
+    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${forwardOption == null ? FX_USAGE : FX_FORWARD_USAGE}`);
+    if (date) return runFxOnDate(parsed, date, args, market, ctx);
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
+    if (tenor) {
+      if (amount != null) ctx.fail("--forward prices a pair, not an amount.", `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+      if (currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+    }
+    // The short rates are read alongside spot. A failed read is held as a value, not left to reject
+    // unobserved while spot loads, and is raised where the forward needs the rates.
+    const shortRates = tenor && !("error" in tenor) ? apiClient.getCloudShortRates().then(
+      (payload) => ({ payload }),
+      (error: unknown) => ({ error: unavailableOnServer(error, "Forwards are not available from Gloom Cloud yet: it serves no short rates.") }),
+    ) : null;
     const reasons = new Map<string, string>();
     const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
       .load({ force: ctx.cliOptions.refresh }).catch((error) => {
@@ -2002,12 +2242,61 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         timing: { asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes },
       }] as const] : [];
     })));
+    if (tenor && shortRates && !("error" in tenor)) {
+      const read = await shortRates;
+      if ("error" in read) throw read.error;
+      const { rates } = read.payload;
+      // BASE/QUOTE: the forward needs the rate of each; a missing one is named, never filled in.
+      const base = shortRateFor(currency, rates);
+      const quote = shortRateFor(baseCurrency, rates);
+      const missing = [base, quote].flatMap((lookup) => "error" in lookup ? [lookup.error] : []);
+      if ("error" in base || "error" in quote) {
+        return ctx.fail(`No ${tenor.label} forward for ${pair}. ${missing.join(" ")}`, "The forward is implied from both currencies' short rates by covered interest parity.");
+      }
+      const implied = impliedForward(rate, tenor.days, base.rate, quote.rate);
+      const forwardDate = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 + tenor.days * 86_400_000).toISOString().slice(0, 10);
+      const rateFields = (short: typeof base.rate) => ({
+        currency: short.currency, name: short.name, tenor: short.tenor, value: short.value, asOf: short.asOf,
+        dayCountBasis: short.dayCountBasis, publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
+      });
+      const staleRates = [base.rate, quote.rate].filter((short) => short.stale)
+        .map((short) => `${short.name} (${short.currency}) is the last copy read, dated ${short.asOf ?? "undated"}; its source could not be read since.`);
+      const forwardRow = {
+        pair, tenor: tenor.label, days: tenor.days, forwardDate, spot: rate, spotAsOf: asOf, forward: implied.forward,
+        points: implied.points, pointSize: implied.pointSize, premiumPercent: implied.premiumPercent, annualizedPercent: implied.annualizedPercent,
+        baseRate: rateFields(base.rate), quoteRate: rateFields(quote.rate), method: "covered interest parity", label: IMPLIED_FORWARD_LABEL,
+      };
+      const growth = (short: typeof base.rate) => `(1 + ${formatRatePercent(short.value)} × ${tenor.days}/${short.dayCountBasis})`;
+      // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
+      const forwardWarnings = [...request.readAs ?? [], ...staleRates];
+      return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
+        text: () => [
+          `${pair} ${tenor.label} forward ${formatFxRate(implied.forward)}, ${IMPLIED_FORWARD_LABEL}`,
+          `Spot ${formatFxRate(rate)} · forward points ${formatForwardPoints(implied.points)} (pips of ${implied.pointSize}) · ${implied.premiumPercent >= 0 ? "premium" : "discount"} ${formatSignedPercent(implied.premiumPercent)} over ${tenor.days} days to ${forwardDate}, ${formatSignedPercent(implied.annualizedPercent, 2)} a year (×360/${tenor.days})`,
+          `${currency} rate: ${describeShortRate(base.rate)}`,
+          `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
+          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
+        ].join("\n"),
+        exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: `forward ${tenor.label}` },
+        columns: [
+          { key: "pair", header: "Pair" },
+          { key: "tenor", header: "Tenor" },
+          { key: "days", header: "Days", align: "right" },
+          { key: "forwardDate", header: "Forward date" },
+          { key: "spot", header: "Spot", align: "right" },
+          { key: "forward", header: "Forward", align: "right" },
+          { key: "points", header: "Points", align: "right" },
+          { key: "premiumPercent", header: "Premium %", align: "right" },
+          { key: "annualizedPercent", header: "Annualized %", align: "right" },
+        ],
+      });
+    }
     // An amount with one currency names no target; the answer says it went to USD.
     const warnings = [
       // A currency typed as its name (yen) says which code it was read as.
       ...request.readAs ?? [],
       ...toUsdByDefault && amount != null
-        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${rawArgs[0]!.trim()} ${currency}/<to>.`]
+        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to>.`]
         : [],
     ];
     ctx.printResult({ data: [row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
@@ -2391,7 +2680,11 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Convert a currency into your base currency, quote a pair such as USD/NGN, or convert an amount such as fx 1234.5 EUR/USD",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>"],
+      usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>", "fx <pair> --date <day>", FX_FORWARD_USAGE],
+      options: [
+        { flags: "--date <day>", description: `The rate at that day's daily FX close, such as a transaction date (${DATE_OPTION_EXAMPLES}); a weekend or holiday reads the trading day before it` },
+        { flags: "--forward <tenor>", description: "The forward implied by both currencies' short rates (covered interest parity), not a dealer quote: 30d, 2w, 3m, up to 1y; today's only, so not with --date" },
+      ],
       sections: [{
         title: "Direction",
         lines: [
@@ -2404,8 +2697,19 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1,234 or 1.234 EUR are thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
         ],
+      }, {
+        title: "A past day",
+        lines: [
+          "--date gives the rate at that day's daily FX close instead of the latest: fx USD/CAD --date 2026-09-02, or with an amount, fx 1250 USD/CAD --date 2026-09-02. Each currency's USD pair is read at its close of that day and crossed through USD, as the latest rate is. A weekend or market holiday has no close: the answer then gives the trading day before it and says so. The source line dates the close; --json adds date (the day asked for) and asOf (the close used).",
+        ],
+      }, {
+        title: "Forwards",
+        lines: [
+          "--forward <tenor> gives the forward implied by covered interest parity: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis), with the forward points (pips of 0.0001, 0.01 against JPY) and the premium over spot for the period and a year. It is implied by rates, not a dealer quote.",
+          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP) and TIIE 28d (MXN), each with its day and publisher. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
+        ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx JPY --json"],
+      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json", "fx USD/MXN --forward 30d", "fx EUR/USD --forward 3m"],
     },
     execute: runFx,
   },

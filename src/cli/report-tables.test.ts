@@ -133,6 +133,51 @@ describe("report tables", () => {
     expect(table.columns).toEqual(["Symbol", "Last", "Last unit", "Time"]);
     expect(table.rows).toEqual([["ES", 7864.25, "", "2026-10-07T15:27:00.000Z"], ["ZC", 480.5, "c", ""]]);
   });
+
+  test("a reason drawn for a missing figure goes to status, and the columns are the same with or without one", () => {
+    const points = (value: unknown, row: Record<string, unknown>) => typeof value === "number" ? (value * 100).toFixed(2) : String(row.gap ?? "--");
+    const iv = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+    const columns = [{ key: "expiry", header: "Expiry" }, { key: "put25", header: "25D put IV", format: iv }, { key: "rr", header: "RR", format: points },
+      { key: "bf", header: "BF", format: points }];
+    const gaps = exportRowsTable("Skew", columns, [
+      { expiry: "2026-10-23", put25: null, rr: null, bf: null, gap: "no 25D quotes" },
+      { expiry: "2026-11-06", put25: 0.155, rr: -0.036, bf: 0.0048, gap: null },
+    ], { status: true });
+    const whole = exportRowsTable("Skew", columns, [{ expiry: "2026-11-06", put25: 0.155, rr: -0.036, bf: 0.0048, gap: null }], { status: true });
+    const none = exportRowsTable("Skew", columns, [], { status: true });
+    expect(gaps.columns).toEqual(["Expiry", "25D put IV (%)", "RR", "BF", "status"]);
+    expect(whole.columns).toEqual(gaps.columns);
+    expect(none.columns).toEqual(gaps.columns);
+    expect(gaps.rows).toEqual([["2026-10-23", "", "", "", "RR, BF: no 25D quotes"], ["2026-11-06", 15.5, -3.6, 0.48, ""]]);
+
+    // Beside a Status of its own the column is value_status; a table with no figures has none.
+    expect(exportRowsTable("Board", [{ key: "status", header: "Status" }, ...columns], [], { status: true }).columns.at(-1)).toBe("value_status");
+    expect(exportRowsTable("Warnings", [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }], [], { status: true }).columns)
+      .toEqual(["Expiry", "Warning"]);
+  });
+
+  test("text a format draws from the rest of the row stays, and the header is the same without rows whatever the format reads", () => {
+    // A range, N/M and ATM come from the row, not from a missing figure: no column draws a number in their place.
+    const range = { key: "range", header: "Range", format: (_: unknown, row: Record<string, unknown>) => `${row.low}-${row.high}` };
+    const pe = { key: "pe", header: "P/E", format: (value: unknown, row: Record<string, unknown>) => row.loss ? "N/M" : `${Number(value).toFixed(1)}x` };
+    const strike = { key: "moneyness", header: "Moneyness", format: (value: unknown, row: Record<string, unknown>) => row.atm ? "ATM" : `${Number(value).toFixed(2)}%` };
+    const kept = exportRowsTable("Kept", [range, pe, strike], [{ low: "2.0", high: "3.0", loss: true, atm: true }], { status: true });
+    expect(kept.rows).toEqual([["2.0-3.0", "N/M", "ATM", ""]]);
+
+    // A format that reads a field an empty row lacks names its unit with no rows as with them, status column and all.
+    const change = { key: "change", header: "Chg", format: (value: unknown, row: Record<string, unknown>) => (
+      typeof value === "number" ? `${(value * 100).toFixed((row.precision as { places: number }).places)} bp` : "no close") };
+    const loaded = exportRowsTable("Moves", [change], [{ change: 0.05, precision: { places: 1 } }, { change: null, precision: { places: 1 } }], { status: true });
+    const none = exportRowsTable("Moves", [change], [], { status: true });
+    expect(loaded.columns).toEqual(["Chg (bp)", "status"]);
+    expect(none.columns).toEqual(loaded.columns);
+    expect(loaded.rows).toEqual([[5, ""], ["", "Chg: no close"]]);
+
+    // A table of text drawn through String() is no table of figures: no status column, with rows or without.
+    const names = [{ key: "name", header: "Name", format: (value: unknown) => String(value ?? "--") }];
+    expect(exportRowsTable("Names", names, [], { status: true }).columns).toEqual(["Name"]);
+    expect(exportRowsTable("Names", names, [{ name: "Apple" }, { name: 42 }], { status: true }).columns).toEqual(["Name"]);
+  });
 });
 
 const freshness: ReportFreshness = {
@@ -179,6 +224,31 @@ describe("report CSV and NDJSON", () => {
       "# incomplete: 19 of 20 available",
       "# error: ^KS11: No quote provider available for ^KS11",
       "# note: Two bars are unavailable.",
+    ]);
+  });
+
+  test("rows end with the fixed identity columns except those a table already has, whose own per-row values stay the only ones", () => {
+    const tables: CliReportTables = {
+      tables: [
+        { title: "Rates", columns: ["Jurisdiction", "source", "as_of"], rows: [["Japan", "BIS", "2026-10-13"], ["United States", "FRED", "2026-10-20"]] },
+        { title: "Indices", columns: ["Index", "Last"], rows: [["DAX", 25087.27]] },
+      ],
+      footer: [],
+    };
+    expect(renderReportCsv(tables, freshness).split("\n")).toEqual([
+      "# section: Rates",
+      "Jurisdiction,source,as_of,symbol_or_series,currency_or_unit,interval",
+      "Japan,BIS,2026-10-13,,,",
+      "United States,FRED,2026-10-20,,,",
+      "",
+      "# section: Indices",
+      "Index,Last,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "DAX,25087.27,,,,Gloom Cloud,2026-10-09T18:28:00.000Z",
+    ]);
+    expect(renderReportNdjson(tables, freshness).split("\n").map((line) => JSON.parse(line))).toEqual([
+      { section: "Rates", Jurisdiction: "Japan", source: "BIS", as_of: "2026-10-13", symbol_or_series: null, currency_or_unit: null, interval: null },
+      { section: "Rates", Jurisdiction: "United States", source: "FRED", as_of: "2026-10-20", symbol_or_series: null, currency_or_unit: null, interval: null },
+      { section: "Indices", Index: "DAX", Last: 25087.27, symbol_or_series: null, currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: "2026-10-09T18:28:00.000Z" },
     ]);
   });
 

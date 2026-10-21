@@ -54,6 +54,7 @@ export type {
   CrashReportSurface,
   CrashReportsPayload,
   FunctionUsageCount,
+  UpdateFailureReport,
   UsageCountsPayload,
   UsageCountsSurface,
 } from "./telemetry";
@@ -774,12 +775,14 @@ class GloomApiClient {
   getCloudTickerChanges = this.data.getCloudTickerChanges.bind(this.data);
   getCloudOrganizationTickers = this.data.getCloudOrganizationTickers.bind(this.data);
   getCloudTickerChangesBatch = this.data.getCloudTickerChangesBatch.bind(this.data);
+  getCloudIssuerListings = this.data.getCloudIssuerListings.bind(this.data);
   searchInstrumentsBatch = this.data.searchInstrumentsBatch.bind(this.data);
   getCloudHistory = this.data.getCloudHistory.bind(this.data);
   getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
   getCloudEconomicCalendarFrom = this.data.getCloudEconomicCalendarFrom.bind(this.data);
   getCloudMacroReleaseDays = this.data.getCloudMacroReleaseDays.bind(this.data);
+  getCloudShortRates = this.data.getCloudShortRates.bind(this.data);
   getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
   getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
   getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);

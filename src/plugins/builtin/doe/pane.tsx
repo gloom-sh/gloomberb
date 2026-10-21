@@ -129,7 +129,7 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === DOE_NOT_AVAILABLE;
-  const { strip, rows: tabRows } = usePaneTabs(data ? { tabs: [...DOE_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: setTab, focused, dense: true });
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,

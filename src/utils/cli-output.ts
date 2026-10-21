@@ -4,20 +4,28 @@ export interface CliTableColumn {
   header: string;
   align?: CliAlign;
   width?: number;
-  /** Cap for this column when the table is fitted to a terminal. Piped output stays whole. */
+  /** Cap for this column when the table is fitted to a terminal: longer cells are cut there. Piped output stays whole. */
   maxWidth?: number;
-  /** The narrowest a text column is cut to, so it never shrinks to a stub that reads like another row's; a narrower table moves columns under their rows. */
+  /** The narrowest a text column wraps to (MIN_WRAPPED_COLUMN_WIDTH unless set), or a `shrink: true` column is cut to; a narrower table moves columns under their rows. */
   minWidth?: number;
-  /** Dropped, rightmost first, before other columns are shortened to fit a terminal. */
+  /** Dropped, rightmost first, before any column is cut or moved to fit a terminal. */
   optional?: boolean;
   /** Among optional columns, a higher priority is dropped sooner; equal ones go rightmost first. */
   dropPriority?: number;
-  /** False keeps the column whole when fitting, for identifiers a user types into the next command. */
+  /**
+   * By default a fitted table never cuts a cell, so a date, a figure, a
+   * symbol or a title stays whole: text wraps in its cell and columns move
+   * under their rows. False keeps the column on one line. True is the
+   * explicit opt-out: the table cuts the column's cells, down to its header
+   * and `minWidth`, before columns move, for free text that names nothing,
+   * such as a description.
+   */
   shrink?: boolean;
   /**
-   * When the table cannot fit even with its text shortened, columns move to
-   * lines under their row, each value after its header: a higher priority
-   * moves sooner, equal ones go rightmost first. The first column stays.
+   * When the table does not fit, columns move to lines under their row, each
+   * value whole after its header: first the ones too wide to sit beside the
+   * first column, then a higher priority sooner, then long text, then
+   * rightmost first. The first column stays.
    */
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out. */
@@ -43,6 +51,8 @@ const COLUMN_GAP = 2;
 const MIN_SHRUNK_COLUMN_WIDTH = 8;
 // Text columns first shrink right to left down to this width, then all shrink together.
 const SOFT_MIN_COLUMN_WIDTH = 20;
+// Text wraps in its cell down to this width, or its longest word, before columns move under the rows.
+const MIN_WRAPPED_COLUMN_WIDTH = 16;
 // Cells that say "no value": a moved column prints nothing for them.
 const EMPTY_CELL = /^(?:|-{1,2}|—|–)$/;
 // A date, or a date and time, as reports print them (`2026-10-09`, `2026-10`, `2026-10-09 20:15 UTC`).
@@ -341,91 +351,127 @@ interface TableEntry {
   column: CliTableColumn;
   index: number;
   width: number;
-  /** The narrowest the column may be cut to. */
+  /** The narrowest the column may get. */
   floor: number;
-  /** Every filled cell is a date or a figure. */
-  figures: boolean;
-}
-
-/** The narrowest a column may get: whole for figures and ids; text keeps its header and its `minWidth`. */
-function columnFloor(column: CliTableColumn, width: number): number {
-  if (column.width != null || column.align === "right" || column.shrink === false) return width;
-  return Math.min(width, Math.max(MIN_SHRUNK_COLUMN_WIDTH, visibleLength(column.header), column.minWidth ?? 0));
+  /** Text that wraps onto more lines of its cell rather than being cut. */
+  wraps: boolean;
+  /** Words rather than dates, figures or fixed-width values. */
+  text: boolean;
 }
 
 /**
- * The columns that stay in the table, at widths that fit `available`, and the
- * ones moved under each row. Text shrinks first, as it always has. A table
- * still too wide keeps every date and figure whole and moves columns under
- * the rows, by `stackPriority`, then rightmost first, until the rest fits.
- * Null when the first column alone does not fit.
+ * How narrow a column may get. Cells are whole by default: a date, a figure,
+ * a symbol, a name or a title cut short reads as another one. Text wraps in
+ * its cell down to its longest word or `minWidth` (MIN_WRAPPED_COLUMN_WIDTH
+ * unless set); `shrink: false` keeps it on one line. Only free text marked
+ * `shrink: true` is cut, to its header and `minWidth`.
  */
-function fitTableLayout(entries: TableEntry[], available: number): { kept: TableEntry[]; stacked: TableEntry[] } | null {
-  const fit = (kept: TableEntry[], wholeFigures: boolean) => fitColumnWidths(
-    kept.map((entry) => entry.width),
-    kept.map((entry) => (wholeFigures && entry.figures ? entry.width : entry.floor)),
-    available,
-  );
-  let kept = entries;
-  const stacked: TableEntry[] = [];
-  let widths = fit(kept, false);
-  if (!widths) widths = fit(kept, true);
-  while (!widths && kept.length > 1) {
-    const moved = kept.slice(1).reduce((pick, entry) => (
-      (entry.column.stackPriority ?? 0) >= (pick.column.stackPriority ?? 0) ? entry : pick
-    ));
-    kept = kept.filter((entry) => entry !== moved);
-    stacked.push(moved);
-    widths = fit(kept, true);
+function columnFloor(column: CliTableColumn, width: number, cells: readonly string[], capped: boolean): Pick<TableEntry, "floor" | "wraps" | "text"> {
+  if (column.width != null || column.align === "right" || isWholeColumn(cells)) return { floor: width, wraps: false, text: false };
+  // Cut at its `maxWidth`, as the column asks.
+  if (capped) return { floor: width, wraps: false, text: true };
+  if (column.shrink === true) {
+    return { floor: Math.min(width, Math.max(MIN_SHRUNK_COLUMN_WIDTH, visibleLength(column.header), column.minWidth ?? 0)), wraps: false, text: true };
   }
-  if (!widths) return null;
-  const fitted = widths;
-  return { kept: kept.map((entry, position) => ({ ...entry, width: fitted[position]! })), stacked };
+  if (column.shrink === false) return { floor: width, wraps: false, text: true };
+  const words = cells.flatMap((cell) => stripAnsi(cell).split(/\s+/));
+  const longestWord = Math.max(visibleLength(column.header), ...words.map((word) => visibleLength(word)));
+  return { floor: Math.min(width, Math.max(longestWord, column.minWidth ?? MIN_WRAPPED_COLUMN_WIDTH)), wraps: true, text: true };
 }
 
-export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
-  const indent = " ".repeat(options.indent ?? 0);
-  const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
-  const available = maxWidth == null ? null : maxWidth - indent.length;
-  let shown = columns.map((column, index) => {
-    const cellWidths = rows.map((row) => visibleLength(row[index] ?? ""));
-    return { column, index, width: column.width ?? Math.max(visibleLength(column.header), ...cellWidths) };
+/** A cell's text wrapped to `width`, each line closing the colour it opens and the next reopening it, so it never bleeds into the next column. */
+function wrapCell(text: string, width: number): string[] {
+  const lines = wrapText(text, width);
+  if (lines.length < 2 || !text.includes("\x1b[")) return lines;
+  let open = "";
+  return lines.map((line) => {
+    const carried = open;
+    for (const code of line.match(ANSI_PATTERN) ?? []) open = code === "\x1b[0m" ? "" : `${open}${code}`;
+    return `${carried}${line}${open ? "\x1b[0m" : ""}`;
   });
-  let stacked: Array<(typeof shown)[number]> = [];
-  // Cells are only cut when the table was fitted to a terminal; piped output keeps them whole.
-  let truncate = false;
-  if (available != null && tableWidth(shown.map((entry) => entry.width)) > available) {
-    while (tableWidth(shown.map((entry) => entry.width)) > available) {
-      const dropped = shown.reduce<(typeof shown)[number] | undefined>((pick, entry) => (
-        entry.column.optional && (!pick || (entry.column.dropPriority ?? 0) >= (pick.column.dropPriority ?? 0)) ? entry : pick
-      ), undefined);
-      if (!dropped) break;
-      shown = shown.filter((entry) => entry !== dropped);
-    }
-    const layout = fitTableLayout(shown.map((entry) => {
-      const width = entry.column.maxWidth == null
-        ? entry.width
-        : Math.min(entry.width, Math.max(entry.column.maxWidth, visibleLength(entry.column.header)));
-      return { ...entry, width, floor: columnFloor(entry.column, width), figures: isWholeColumn(rows.map((row) => row[entry.index] ?? "")) };
-    }), available);
-    // A first column that cannot fit even alone keeps every cell whole rather than losing data and overflowing anyway.
-    if (layout) {
-      shown = layout.kept;
-      stacked = layout.stacked.filter((entry) => entry.column.stackRows !== 0).sort((left, right) => left.index - right.index);
-      truncate = true;
-    }
-  }
+}
 
+interface TableLayout {
+  kept: TableEntry[];
+  stacked: TableEntry[];
+}
+
+/** Which of two columns moves under the rows sooner: by the first value that differs. */
+function movesSooner(left: readonly number[], right: readonly number[]): boolean {
+  const at = left.findIndex((value, index) => value !== right[index]);
+  return at >= 0 && left[at]! > right[at]!;
+}
+
+/**
+ * The ways a table too wide can fit `available`, each moving one more column
+ * under the rows, where its values print whole. In each, text wraps in its
+ * cell and free text marked `shrink: true` is cut, down to their floors.
+ * Columns move in this order: the ones too wide to ever sit beside the first
+ * column (a long headline, a note), then by `stackPriority`, then long text
+ * (a name, a title) before dates and figures, then rightmost first. The
+ * first column stays. The list ends at the first layout that keeps every
+ * column it shows whole on one line: moving more only adds lines.
+ */
+function tableLayouts(entries: TableEntry[], available: number): TableLayout[] {
+  const fit = (kept: TableEntry[]) => fitColumnWidths(kept.map((entry) => entry.width), kept.map((entry) => entry.floor), available);
+  const first = entries[0]!;
+  const room = available - first.floor - COLUMN_GAP;
+  const order = (entry: TableEntry) => [
+    entry.floor > room ? 1 : 0,
+    entry.column.stackPriority ?? 0,
+    entry.text && entry.width > SOFT_MIN_COLUMN_WIDTH ? 1 : 0,
+    entry.index,
+  ];
+  const layouts: TableLayout[] = [];
+  let kept = entries;
+  const stacked: TableEntry[] = [];
+  for (;;) {
+    const widths = fit(kept);
+    if (widths) {
+      layouts.push({ kept: kept.map((entry, position) => ({ ...entry, width: widths[position]! })), stacked: [...stacked] });
+      if (widths.every((width, position) => width >= kept[position]!.width)) break;
+    }
+    if (kept.length === 1) break;
+    const moved = kept.slice(1).reduce((pick, entry) => (movesSooner(order(entry), order(pick)) ? entry : pick));
+    kept = kept.filter((entry) => entry !== moved);
+    stacked.push(moved);
+  }
+  // The first column alone is wider than the table may be: text wraps and free text is cut to the
+  // whole width; a symbol or a figure stays whole.
+  if (layouts.length === 0) layouts.push({ kept: [{ ...first, width: first.wraps || first.column.shrink === true ? available : first.width }], stacked });
+  return layouts;
+}
+
+function renderTableLayout(
+  columns: CliTableColumn[],
+  rows: string[][],
+  options: CliTableOptions,
+  shown: readonly TableEntry[],
+  stacked: readonly TableEntry[],
+  available: number | null,
+  /** Cells wrap or are cut to their column's width: the table was fitted to `available`. */
+  fitted: boolean,
+): string {
+  const indent = " ".repeat(options.indent ?? 0);
   const renderRow = (cells: string[], style?: (text: string) => string) => {
-    const rendered = shown.map(({ column, index, width }, position) => {
-      const cell = truncate ? truncateDisplay(cells[index] ?? "", width) : cells[index] ?? "";
-      // The last left-aligned column is not padded so lines carry no trailing spaces.
-      const padded = position === shown.length - 1 && (column.align ?? "left") === "left"
-        ? cell
-        : padDisplay(cell, width, column.align ?? "left");
-      return style ? style(padded) : padded;
+    const columnLines = shown.map(({ index, width, wraps }) => {
+      const cell = cells[index] ?? "";
+      if (!fitted) return [cell];
+      return wraps ? wrapCell(cell, width) : [truncateDisplay(cell, width)];
     });
-    return `${indent}${rendered.join(" ".repeat(COLUMN_GAP))}`.trimEnd();
+    // A cell that wraps makes its row taller; the other cells sit on the row's first line.
+    const height = Math.max(1, ...columnLines.map((lines) => lines.length));
+    return Array.from({ length: height }, (_, line) => {
+      const rendered = shown.map(({ column, width }, position) => {
+        const cell = columnLines[position]![line] ?? "";
+        // The last left-aligned column is not padded so lines carry no trailing spaces.
+        const padded = position === shown.length - 1 && (column.align ?? "left") === "left"
+          ? cell
+          : padDisplay(cell, width, column.align ?? "left");
+        return style && (line === 0 || cell) ? style(padded) : padded;
+      });
+      return `${indent}${rendered.join(" ".repeat(COLUMN_GAP))}`.trimEnd();
+    }).join("\n");
   };
 
   const header = renderRow(columns.map((column) => column.header), cliStyles.bold);
@@ -464,4 +510,49 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
     return lines.map((text) => `${belowIndent}${text}`.trimEnd());
   };
   return [header, divider, ...rows.flatMap((row, index) => [renderRow(row), ...renderStacked(row, index), ...renderBelow(index)])].join("\n");
+}
+
+/**
+ * A table fitted to the terminal (or `--width`), or whole when output is
+ * piped. A table too wide never cuts a cell short, unless its column is free
+ * text marked `shrink: true`: text wraps in its cell and columns move under
+ * their rows, each value whole after its header. Of the ways that fit, the
+ * one with the fewest lines prints, the one that moves fewer columns on a tie.
+ */
+export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
+  const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
+  const available = maxWidth == null ? null : maxWidth - (options.indent ?? 0);
+  let shown = columns.map((column, index) => {
+    const cellWidths = rows.map((row) => visibleLength(row[index] ?? ""));
+    return { column, index, width: column.width ?? Math.max(visibleLength(column.header), ...cellWidths), floor: 0, wraps: false, text: false };
+  });
+  // Cells are only cut or wrapped when the table is fitted to a terminal; piped output keeps them whole.
+  if (available == null || tableWidth(shown.map((entry) => entry.width)) <= available) {
+    return renderTableLayout(columns, rows, options, shown, [], available, false);
+  }
+  while (tableWidth(shown.map((entry) => entry.width)) > available) {
+    const dropped = shown.reduce<(typeof shown)[number] | undefined>((pick, entry) => (
+      entry.column.optional && (!pick || (entry.column.dropPriority ?? 0) >= (pick.column.dropPriority ?? 0)) ? entry : pick
+    ), undefined);
+    if (!dropped) break;
+    shown = shown.filter((entry) => entry !== dropped);
+  }
+  const entries = shown.map((entry) => {
+    const width = entry.column.maxWidth == null
+      ? entry.width
+      : Math.min(entry.width, Math.max(entry.column.maxWidth, visibleLength(entry.column.header)));
+    return { ...entry, width, ...columnFloor(entry.column, width, rows.map((row) => row[entry.index] ?? ""), width < entry.width) };
+  });
+  let best = "";
+  let bestLines = Infinity;
+  for (const layout of tableLayouts(entries, available)) {
+    const stacked = layout.stacked.filter((entry) => entry.column.stackRows !== 0).sort((left, right) => left.index - right.index);
+    const text = renderTableLayout(columns, rows, options, layout.kept, stacked, available, true);
+    const lines = text.split("\n").length;
+    if (lines < bestLines) {
+      best = text;
+      bestLines = lines;
+    }
+  }
+  return best;
 }

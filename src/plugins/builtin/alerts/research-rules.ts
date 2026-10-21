@@ -230,6 +230,7 @@ export function normalizeResearchRule(
     }
     return JSON.stringify(result)
   } catch {
+    // Intentional ignore: malformed research input is rejected with the null validation result.
     return null
   }
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
-import { modelSpotLabel, optionModelSpot } from "./model-spot";
+import { modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, observedModelSpot, optionModelSpot } from "./model-spot";
 import { chainOpenInterestAsOf, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
 
 // KO before Tuesday's open: Monday's chain from the close, a pre-market print, Monday's official close.
@@ -13,7 +13,9 @@ test("a chain from the close is valued at that close and the chain's time, not a
   const spot = optionModelSpot(preMarket, { asOf: chainAsOf }, tuesdayMorning, "NYSE")!;
   expect(spot).toEqual({ price: 89.79, observedAt: Date.parse("2026-10-12T20:00:00Z"), valuationTime: Date.parse(chainAsOf),
     basis: "close", session: null });
-  expect(modelSpotLabel(spot)).toBe("close Mon 12 Oct 20:00 UTC");
+  // One stamp for every pane: the session's close by its day, with the pre-market print named by its session beside it.
+  expect([modelSpotStamp(spot), modelSpotLabel(spot)]).toEqual(["close Mon 12 Oct", "close Mon 12 Oct"]);
+  expect(modelSpotExtendedPrint({ ...preMarket, preMarketPrice: 90.65 }, spot)).toBe("pre-market 90.65");
   // The same holds after Tuesday's open while the delayed chain still quotes Monday's close.
   const open = { ...preMarket, price: 90.4, marketState: "REGULAR" as const, extendedSessionPrint: undefined };
   expect(optionModelSpot(open, { asOf: chainAsOf }, Date.parse("2026-10-13T13:40:00Z"), "NYSE")?.price).toBe(89.79);
@@ -24,11 +26,24 @@ test("a chain quoted in the session is valued at the latest price, named with it
   const now = Date.parse("2026-10-13T15:05:00Z");
   const spot = optionModelSpot(session, { asOf: "2026-10-13T15:04:30Z" }, now, "NYSE")!;
   expect([spot.price, spot.basis, spot.valuationTime]).toEqual([90.4, "last", now]);
-  expect(modelSpotLabel(spot)).toBe("last Tue 13 Oct 15:00 UTC");
+  expect([modelSpotStamp(spot), modelSpotLabel(spot)]).toEqual([null, "last Tue 13 Oct 15:00 UTC"]);
+  expect(modelSpotExtendedPrint(session, spot)).toBeNull();
   // A quote that carries no close for the chain's session keeps its print, and says which session it is from.
   const noClose = optionModelSpot({ ...preMarket, regularClose: undefined }, { asOf: chainAsOf }, tuesdayMorning, "NYSE")!;
   expect([noClose.price, noClose.valuationTime, modelSpotLabel(noClose)]).toEqual([90.65, Date.parse(chainAsOf), "pre-market Tue 13 Oct 12:21 UTC"]);
   expect(optionModelSpot({ ...preMarket, stale: true }, { asOf: chainAsOf }, tuesdayMorning)).toBeNull();
+});
+
+test("a spot known only by its time is named by the session that time falls in", () => {
+  const stamp = (iso: string) => modelSpotStamp(observedModelSpot(770, Date.parse(iso)));
+  // Tue 13 Oct 2026: pre-market from 08:00 UTC, the session 13:30 to 20:00, after hours to midnight, overnight after.
+  expect(stamp("2026-10-13T07:59:00Z")).toBe("overnight Tue 13 Oct 07:59 UTC");
+  expect(stamp("2026-10-13T09:35:00Z")).toBe("pre-market Tue 13 Oct 09:35 UTC");
+  expect(stamp("2026-10-13T13:30:00Z")).toBeNull();
+  expect(stamp("2026-10-13T20:00:00Z")).toBe("after hours Tue 13 Oct 20:00 UTC");
+  expect(stamp("2026-10-14T00:30:00Z")).toBe("overnight Wed 14 Oct 00:30 UTC");
+  // The day after Thanksgiving closes at 13:00 New York, so its after hours start then.
+  expect(stamp("2026-11-27T18:30:00Z")).toBe("after hours Fri 27 Nov 18:30 UTC");
 });
 
 test("the chain's open interest takes OPX's date only when every count agrees", () => {

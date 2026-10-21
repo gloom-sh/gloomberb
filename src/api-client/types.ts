@@ -500,6 +500,42 @@ export interface CloudEconEventPayload {
   forecast: string | null;
   prior: string | null;
   impact: CloudEconImpact;
+  /** Rows the calendar adds beside its feeds: a central bank's kept decision or a statistics office's listed release. */
+  kind?: "central-bank-decision" | "statistics-release";
+  /** The publisher's own clock time and its IANA zone; null when it states no time. */
+  localTime?: string | null;
+  timeZone?: string;
+  /** Why a row has no time, when its publisher states none. */
+  timeNote?: string | null;
+  priorAsOf?: string | null;
+  referencePeriod?: string | null;
+  source?: { name: string; url: string };
+}
+
+/** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */
+export interface CloudShortRate {
+  currency: string;
+  /** "SOFR", "TIIE 28d". */
+  name: string;
+  /** "overnight" or the term the rate is for. */
+  tenor: string;
+  tenorDays: number;
+  /** Days in the year the rate is quoted over. */
+  dayCountBasis: 360 | 365;
+  publisher: string;
+  sourceUrl: string;
+  /** Percent a year; null when it could not be read. */
+  value: number | null;
+  /** The day the rate is for. */
+  asOf: string | null;
+  fetchedAt: string | null;
+  stale: boolean;
+  unavailableReason: string | null;
+}
+
+export interface CloudShortRatesPayload {
+  generatedAt: string;
+  rates: CloudShortRate[];
 }
 
 /** CPI, payrolls and FOMC statement days as published, as GET /cloud/econ/release-days serves them. */
@@ -2200,6 +2236,15 @@ export interface TeamCollectionItem {
   exchange: string;
   quantity: number | null;
   note: string | null;
+  /**
+   * A portfolio holding's purchase date (YYYY-MM-DD), its currency, and the
+   * rate its cost was bought at (one unit of `currency` in `costFxCurrency`).
+   * Null when no one has sent one; missing from a server that keeps none.
+   */
+  dateAcquired?: string | null;
+  currency?: string | null;
+  costFxRate?: number | null;
+  costFxCurrency?: string | null;
   addedBy: string;
   addedAt: string;
   updatedAt: string;

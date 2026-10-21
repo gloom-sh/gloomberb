@@ -6,8 +6,9 @@ import type {
   HeadlessPaneRow,
 } from "../../../types/plugin";
 import { formatCompact, formatCurrency } from "../../../utils/format";
-import { loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
-import { insiderEmptyNotice } from "./issuer";
+import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
+import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "./issuer";
+import { FORM4_CURRENCY, withInsiderBaseValues } from "./base-values";
 import {
   buildInsiderRows,
   buildInsiderSummary,
@@ -20,7 +21,7 @@ import {
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
 import { SEC_FILINGS } from "../shared/report-freshness";
-import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { InsiderSignalRoleGroup, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
@@ -58,6 +59,7 @@ import {
   insiderUsualRatio,
 } from "./signals-model";
 import { REPORT_ROWS } from "../shared/headless-options";
+import type { FxHistoryClient } from "../../../market-data/fx-closes";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -105,6 +107,20 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   // An amendment's original date, remarks and footnotes, under the amendment's own row.
   { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
 ];
+
+/** With a base currency other than USD, the dollar columns say they are in USD ("Bought (USD)"), as $ alone is several currencies' sign. */
+function labelDollarColumns(columns: HeadlessPaneColumn[], keys: readonly string[], baseCurrency: string): HeadlessPaneColumn[] {
+  if (baseCurrency.trim().toUpperCase() === FORM4_CURRENCY) return columns;
+  return columns.map((column) => keys.includes(column.key) ? { ...column, header: `${column.header} (${FORM4_CURRENCY})` } : column);
+}
+
+/** The trades' columns with the money ones labelled by currency and the converted value and rate after them (`withInsiderBaseValues`). */
+function withMoneyColumns(money: readonly HeadlessPaneColumn[]): HeadlessPaneColumn[] {
+  const byKey = new Map(money.map((column) => [column.key, column]));
+  return INSIDER_COLUMNS.flatMap((column) => column.key === "totalValue"
+    ? money.filter((entry) => entry.key !== "pricePerShare")
+    : [byKey.get(column.key) ?? column]);
+}
 
 const figureOrDash = (value: unknown) => (typeof value === "number" ? value : null);
 
@@ -183,6 +199,7 @@ function insidersRows(activity: InsiderCompanyActivity, side: InsiderSignalSide)
       stakeBothWays: line.buyer.twoWay === true,
       bought: line.bought,
       sold: line.sold,
+      currency: FORM4_CURRENCY,
       shares: line.buyer.shares ?? null,
       last: line.buyer.lastBuy,
     }));
@@ -211,6 +228,7 @@ function signalRows(payload: InsiderSignalsPayload): HeadlessPaneRow[] {
       insiders: row.insiders,
       buys: row.buys,
       value: row.value,
+      currency: FORM4_CURRENCY,
       shares: row.shares,
       firstBuy: row.firstBuy,
       lastBuy: row.lastBuy,
@@ -251,6 +269,8 @@ function amendmentNote(entry: ParsedInsiderFiling): string {
 }
 
 export interface InsiderHeadlessDependencies {
+  /** Daily FX closes for values in a base currency other than USD; the report's API client unless a test stands in. */
+  fxHistory?: FxHistoryClient;
   loadSignals?(query: InsiderSignalsQuery, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
   loadCompany?(query: InsiderCompanyQuery, ctx: HeadlessPaneContext): Promise<InsiderCompanyActivity>;
   loadParsed(
@@ -290,6 +310,20 @@ async function noSecReportsEmpty(ctx: HeadlessPaneContext, key: string): Promise
   return noSecReportsNotice({ symbol: parsePublicTickerKey(key).symbol, exchange: listing.exchange, name: listing.name ?? null });
 }
 
+/**
+ * What INS says for a company with no Form 4 of its own: why there is none,
+ * and for a company from abroad, that its home market's insider reports are
+ * not covered either ("Canadian insider reports (SEDI) not covered.").
+ */
+async function insiderEmpty(ctx: HeadlessPaneContext, key: string, foreignPrivateIssuer: boolean, noFilings: boolean): Promise<string> {
+  const [noReports, { exchange }] = await Promise.all([
+    noFilings ? noSecReportsEmpty(ctx, key) : null,
+    resolveHeadlessInstrument(ctx, key),
+  ]);
+  const home = await loadHomeInsiderReportsNote(ctx.marketData, key, exchange, foreignPrivateIssuer);
+  return noReports ? [noReports, home].filter(Boolean).join(" ") : insiderEmptyNotice(foreignPrivateIssuer, home);
+}
+
 export function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -326,7 +360,7 @@ export function createInsiderHeadless(
         aliases: ["count", "rows"],
         description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
         type: "integer",
-        defaultValue: 20,
+        defaultValue: INSIDER_REPORT_FILINGS,
         minimum: 1,
         maximum: 100,
       },
@@ -441,9 +475,9 @@ export function createInsiderHeadless(
         const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, Number(args.options.limit), ctx);
         const side = payload.side ?? "buy";
         return {
-          columns: signalColumns(side),
+          columns: labelDollarColumns(signalColumns(side), ["value"], ctx.config.baseCurrency),
           // The exports carry each row's insiders; the text leaves them to fn INS <ticker> --view insiders.
-          textColumns: signalColumns(side).filter((column) => column.key !== "buyers"),
+          textColumns: labelDollarColumns(signalColumns(side).filter((column) => column.key !== "buyers"), ["value"], ctx.config.baseCurrency),
           rows: signalRows(payload),
           ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
           metadata: {
@@ -472,7 +506,7 @@ export function createInsiderHeadless(
           .filter((notice): notice is string => !!notice))];
         const rows = insidersRows(activity, side);
         return {
-          columns: INSIDERS_COLUMNS,
+          columns: labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency),
           rows,
           ...(rows.length === 0 ? { empty: insiderActivityEmptyTitle(window) } : {}),
           metadata: {
@@ -490,8 +524,7 @@ export function createInsiderHeadless(
       }
       const limit = Number(args.options.limit);
       const { parsed, foreignPrivateIssuer, noFilings } = await dependencies.loadParsed(symbol, limit, args, ctx);
-      const empty = parsed.length > 0 ? null
-        : (noFilings ? await noSecReportsEmpty(ctx, symbol) : null) ?? insiderEmptyNotice(foreignPrivateIssuer);
+      const empty = parsed.length > 0 ? null : await insiderEmpty(ctx, symbol, foreignPrivateIssuer, noFilings);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
       const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
       const owned = name
@@ -503,12 +536,17 @@ export function createInsiderHeadless(
         .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
         .map((row) => row.accessionNumber))];
       // A filing's lines sit together, so its note goes once, under the last of them.
-      const rows: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
+      const filed: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
         const entry = filtered[index]!;
         const last = filtered[index + 1]?.filing.accessionNumber !== entry.filing.accessionNumber;
         return isAmendedInsiderFiling(entry) && last ? { ...row, note: amendmentNote(entry) || null } : row;
       });
+      // Every value says its currency; a base currency other than USD gets each value converted beside it.
+      const based = await withInsiderBaseValues(filed, ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
+      const rows = based.rows;
       return {
+        ...(based.columns ? { columns: withMoneyColumns(based.columns) } : {}),
+        ...(based.note ? { notes: [based.note] } : {}),
         rows,
         // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
         ...(empty ? { empty, unavailableSymbols: [] } : {}),

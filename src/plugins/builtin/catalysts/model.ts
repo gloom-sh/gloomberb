@@ -1,5 +1,5 @@
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
-import type { DataTableColumn } from "../../../components";
+import type { DataTableColumn, TableSection } from "../../../components";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { humanLabel, type StateTone } from "../shared/research-cells";
 
@@ -13,8 +13,17 @@ export const catalystSymbol = (event: CatalystEvent): string | null => {
   return party?.ticker ? publicTickerKey(party.ticker, party.exchange ?? undefined) : null;
 };
 export const catalystTickers = (event: CatalystEvent) => [...new Set(event.parties.filter((p) => p.ticker).map((p) => publicTickerKey(p.ticker!, p.exchange ?? undefined)))].join(", ");
+/**
+ * A source named the event but withheld its date (a company's PDUFA target
+ * without the day). The filing's date is when it was said, so the row has no
+ * date of its own; only the announcement and observation dates stand.
+ */
+export const catalystDateWithheld = (event: Pick<CatalystEvent, "metadata">, field: CatalystFilters["dateField"] = "any") =>
+  event.metadata?.dateWithheld === true && field !== "announced" && field !== "observed";
+export const CATALYST_DATE_WITHHELD = "Date not disclosed";
 export const catalystDate = (event: CatalystEvent, field: CatalystFilters["dateField"] = "any"): string => {
   if (field === "observed") return event.observedAt.slice(0, 16).replace("T", " ");
+  if (catalystDateWithheld(event, field)) return "--";
   const key = field === "announced" || field === "effective" || field === "deadline" ? field
     : event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
   const value = event[`${key}Date`];
@@ -35,15 +44,22 @@ function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
   let kept = columns;
   const drop = (id: string) => { if (tableNeed(kept) > width) kept = kept.filter((column) => column.id !== id); };
   for (const id of ["country", "agency", "type"]) drop(id);
+  // A long date basis gives up only the cells the table lacks before every column shrinks.
+  const over = tableNeed(kept) - width;
+  if (over > 0) kept = kept.map((column) => column.id === "basis" ? { ...column, width: Math.max(column.min ?? column.width, column.width - over) } : column);
   if (tableNeed(kept) > width) kept = kept.map((column) => ({ ...column, width: column.min ?? column.width }));
   for (const id of ["basis", "parties"]) drop(id);
   return kept.map(({ min: _min, ...column }) => column);
 }
 
-export function catalystColumns(width: number, changes: boolean, litigation: boolean): DataTableColumn[] {
+/** The date basis column as wide as its longest label on screen ("Primary completion (actual)"), never narrower than its heading. */
+export const catalystBasisWidth = (events: readonly CatalystEvent[], field: CatalystFilters["dateField"]) =>
+  Math.min(27, events.reduce((widest, event) => Math.max(widest, catalystDateBasis(event, field).length), 10));
+
+export function catalystColumns(width: number, changes: boolean, litigation: boolean, basisWidth = 10): DataTableColumn[] {
   return fitColumns([
     { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 16 : 10, align: "left" },
-    ...(!changes ? [{ id: "basis", label: "Date basis", width: 10, align: "left" as const }] : []),
+    ...(!changes ? [{ id: "basis", label: "Date basis", width: basisWidth, min: 10, align: "left" as const }] : []),
     ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, min: 10, align: "left" as const }] : []),
     // The entity the event is about, which the title alone buries.
     { id: "parties", label: "Parties", width: Math.max(16, Math.min(28, Math.round(width * 0.16))), min: 14, align: "left" },
@@ -151,9 +167,30 @@ export function catalystChangeText(change: CatalystEvent["changes"][number]): st
   return `${field}: ${changeValue(change.before)} → ${changeValue(change.after)}`;
 }
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/**
+ * Rows under their section headings in the order the server sends them:
+ * upcoming dates first, then past ones. A heading starts wherever the label
+ * changes, so a month today falls in heads its upcoming days and again its
+ * past days, after the later months, never pulling a past day ahead of them.
+ */
+export function catalystSections(rows: readonly CatalystEvent[], field: CatalystFilters["dateField"], changes: boolean): TableSection<CatalystEvent>[] {
+  const sections: TableSection<CatalystEvent>[] = [];
+  const seen = new Map<string, number>();
+  for (const event of rows) {
+    const label = catalystSection(event, field, changes);
+    const last = sections.at(-1);
+    if (last?.label === label) { last.items.push(event); continue; }
+    const repeat = seen.get(label) ?? 0;
+    seen.set(label, repeat + 1);
+    sections.push({ label, key: repeat ? `${label}:${repeat}` : label, items: [event] });
+  }
+  return sections;
+}
+
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
 export function catalystSection(event: CatalystEvent, field: CatalystFilters["dateField"], changes: boolean): string {
   if (changes) return event.observedAt.slice(0, 10);
+  if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const date = catalystDate(event, field);
   if (date === "--") return "Undated";
   return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
@@ -206,10 +243,18 @@ export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | nu
   return `No cases linked to ${query.symbol}.${courts.length ? ` ${courts.join(" and ")} are not collected yet, so only agency and regulator actions show.` : ""}`;
 }
 
+/** "Primary completion (est.)" or "(actual)", as the registry types the date; never a bare "Completion". */
+function primaryCompletionLabel(event: Pick<CatalystEvent, "metadata">): string {
+  const completion = event.metadata?.primaryCompletion;
+  const type = completion && typeof completion === "object" && "type" in completion ? String(completion.type).toUpperCase() : "";
+  return type === "ESTIMATED" ? "Primary completion (est.)" : type === "ACTUAL" ? "Primary completion (actual)" : "Primary completion";
+}
+
 export function catalystDateBasis(event: CatalystEvent, field: CatalystFilters["dateField"] = "any"): string {
+  if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const basis = field === "any" || !field ? event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : event.announcedDate ? "announced" : "undated" : field;
   const meaning = String(event.metadata?.[`${basis}Meaning`] ?? event.metadata?.[`${basis}DateMeaning`] ?? "");
-  if (/primary completion/i.test(meaning)) return "Completion";
+  if (/primary completion/i.test(meaning)) return primaryCompletionLabel(event);
   if (/comment/i.test(meaning)) return "Comments";
   if (/meeting/i.test(meaning)) return "Meeting";
   return catalystLabel(basis);

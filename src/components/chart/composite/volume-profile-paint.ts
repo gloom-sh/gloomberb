@@ -27,7 +27,8 @@ export function paintVolumeProfile(
     row.volume > (profile.rows[best]?.volume ?? -1) ? index : best
   ), 0);
   profile.rows.forEach((row, index) => {
-    if (row.volume <= 0) return;
+    // Rows a hand-scaled axis leaves off the panel are not piled on its edge.
+    if (row.volume <= 0 || row.highRatio > 1 || row.lowRatio < 0) return;
     const top = Math.round(clamp(row.highRatio, 0, 1) * maxY);
     const edge = Math.round(clamp(row.lowRatio, 0, 1) * maxY);
     // A pixel between rows keeps tall bars apart; thin ones would vanish.
@@ -36,7 +37,8 @@ export function paintVolumeProfile(
     const opacity = index === pocRow ? POC_OPACITY : row.valueArea ? VALUE_AREA_OPACITY : OUTSIDE_OPACITY;
     fillRect(data, width, height, width - length, top, width - 1, bottom, color, opacity);
   });
-  const y = Math.round(clamp(profile.pocRatio, 0, 1) * maxY);
+  if (profile.pocRatio < 0 || profile.pocRatio > 1) return;
+  const y = Math.round(profile.pocRatio * maxY);
   for (let x = 0; x < width; x += 5) {
     fillRect(data, width, height, x, y, Math.min(x + 1, width - 1), y, color, 0.7);
   }
@@ -57,13 +59,14 @@ export function writeVolumeProfileText(
   const volumes = new Array<number>(height).fill(0);
   const valueArea = new Array<boolean>(height).fill(false);
   for (const row of profile.rows) {
+    if (row.highRatio > 1 || row.lowRatio < 0) continue;
     const line = clamp(Math.round(((row.highRatio + row.lowRatio) / 2) * (height - 1)), 0, height - 1);
     volumes[line]! += row.volume;
     if (row.valueArea) valueArea[line] = true;
   }
   const peak = Math.max(...volumes);
   if (peak <= 0) return;
-  const pocLine = clamp(Math.round(profile.pocRatio * (height - 1)), 0, height - 1);
+  const pocLine = profile.pocRatio < 0 || profile.pocRatio > 1 ? -1 : Math.round(profile.pocRatio * (height - 1));
   const maxLength = Math.max(1, Math.floor(width * PROFILE_WIDTH_RATIO));
   volumes.forEach((volume, line) => {
     if (volume <= 0) return;

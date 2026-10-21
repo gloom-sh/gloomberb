@@ -48,18 +48,21 @@ export function fundingNote(rows: readonly Funded[], now = Date.now()): string |
 }
 
 /**
- * How current a view of perpetual markets is: each venue's own newest observation, polled rather than streamed and
- * stale after an hour without a poll, and what the funding figures it shows (`funding`) are. The report, the capture
- * and the pane footer all read this, so they end with the same line.
+ * How current a view of perpetual markets is: each venue's own newest observation, read once a minute (live while
+ * every row followed has a price from its venue's socket within the minute) and stale after an hour without a read, and
+ * what the funding figures it shows (`funding`) are. The report, the capture and the pane footer all read this, so they
+ * end with the same line.
  */
-export function perpFreshness(rows: readonly Dated[], { funding = [], venue = "all", now = Date.now() }: {
+export function perpFreshness(rows: readonly Dated[], { funding = [], venue = "all", now = Date.now(), live = false }: {
   funding?: readonly Funded[]; venue?: string; now?: number;
+  /** Every row followed moves with its venue's socket: the view is a live feed, not the minute's read. */
+  live?: boolean;
 } = {}): HeadlessPaneFreshness {
   const sources = venuesOf(rows).map((id) => ({ source: venueName(id), asOf: new Date(Math.max(...rows.filter((row) => row.venue === id)
     .map((row) => Date.parse(row.observedAt)))).toISOString() }));
   const source = sources.length ? sources.map((entry) => entry.source).join(", ") : venue !== "all" ? venueName(venue) : null;
   const note = fundingNote(funding, now);
-  return { ...(source ? { source } : {}), sources, status: "delayed", maxAgeMinutes: 60, ...(note ? { note } : {}) };
+  return { ...(source ? { source } : {}), sources, status: live ? "live" : "delayed", maxAgeMinutes: 60, ...(note ? { note } : {}) };
 }
 
 /** What a capture reads of a row: when it was observed and whether the venue has stopped answering for it. */

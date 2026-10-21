@@ -1,3 +1,4 @@
+import { getExtendedSessionDisplay, type ExtendedSession } from "../../../market-data/market/status";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import type { OptionsChain, Quote } from "../../../types/financials";
 import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
@@ -82,10 +83,75 @@ export function formatSpotTime(time: number): string {
   return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.toISOString().slice(11, 16)} UTC`;
 }
 
-/** How a footer names the spot: `close Mon 12 Oct 20:00 UTC`, `pre-market Tue 13 Oct 12:21 UTC`, `last Tue 13 Oct 14:05 UTC`. */
-export function modelSpotLabel(spot: Pick<OptionModelSpot, "basis" | "session" | "observedAt">): string {
-  const word = spot.basis === "close" ? "close" : spot.session ?? "last";
-  return `${word} ${formatSpotTime(spot.observedAt)}`;
+type SpotStampInput = Pick<OptionModelSpot, "basis" | "session" | "observedAt">;
+
+/**
+ * The stamp every options pane puts beside the spot it priced a chain with
+ * (docs/research-data.md#greeks-spot-and-time): `close Tue 20 Oct` for the
+ * official close of the session the chain was quoted in, `pre-market Wed 21
+ * Oct 09:35 UTC` (`after hours`, `overnight`) for an extended-session print.
+ * Null for the regular session's latest price, which the pane's live or
+ * delayed status already dates.
+ */
+export function modelSpotStamp(spot: SpotStampInput): string | null {
+  const dated = Number.isFinite(spot.observedAt);
+  if (spot.basis === "close") return dated ? `close ${formatCalendarDay(newYorkDate.format(spot.observedAt))}` : "close";
+  return spot.session && dated ? `${spot.session} ${formatSpotTime(spot.observedAt)}` : null;
+}
+
+/**
+ * The stamp's shorter forms, longest first, for a figure with less room
+ * (`StatItem.detailVariants`): `pre-market 09:35 UTC`, then `pre-market`;
+ * `close`. Empty when there is no stamp.
+ */
+export function modelSpotStampVariants(spot: SpotStampInput): string[] {
+  if (!modelSpotStamp(spot)) return [];
+  if (spot.basis === "close") return ["close"];
+  return [`${spot.session} ${new Date(spot.observedAt).toISOString().slice(11, 16)} UTC`, spot.session!];
+}
+
+/** The stamp where a report or footer always dates the spot: `last Wed 21 Oct 14:05 UTC` for the regular session's price. */
+export function modelSpotLabel(spot: SpotStampInput): string {
+  return modelSpotStamp(spot) ?? `last ${formatSpotTime(spot.observedAt)}`;
+}
+
+const HOUR_MS = 60 * 60_000;
+
+/**
+ * A spot known only by its price and when it was observed, such as the one
+ * Gloom Cloud prices dealer gamma at: the session that time falls in on the
+ * listing's calendar. Pre-market from 04:00 New York to the open, after hours
+ * for four hours from the close, overnight between; a day the calendar does
+ * not know reads as the latest price.
+ */
+export function observedModelSpot(price: number, observedAt: number, exchange?: string): OptionModelSpot {
+  const day = Number.isFinite(observedAt) ? getPublishedUsEquitySession(exchange || "NYSE", newYorkDate.format(observedAt)) : null;
+  const session: OptionModelSpot["session"] = day?.kind !== "session" ? null
+    : observedAt < day.open ? (observedAt >= day.open - 5.5 * HOUR_MS ? "pre-market" : "overnight")
+    : observedAt < day.close ? null
+    : observedAt < day.close + 4 * HOUR_MS ? "after hours" : "overnight";
+  return { price, observedAt, valuationTime: observedAt, basis: "last", session };
+}
+
+const EXTENDED_SESSION_WORDS: Record<ExtendedSession, NonNullable<OptionModelSpot["session"]>> = {
+  PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight",
+};
+
+/**
+ * The underlying's extended-session print beside a spot priced at the close,
+ * named by its session as the stamp names it: `pre-market 770.65`, `after
+ * hours mid 771.10`. Null when the spot is not the close, nothing traded
+ * outside the session, or the print is the spot.
+ */
+export function modelSpotExtendedPrint(
+  quote: Quote | null | undefined,
+  spot: Pick<OptionModelSpot, "basis" | "price">,
+  format: (price: number) => string = formatModelSpotPrice,
+): string | null {
+  if (spot.basis !== "close") return null;
+  const print = getExtendedSessionDisplay(quote);
+  if (!print || !positive(print.price) || format(print.price) === format(spot.price)) return null;
+  return `${EXTENDED_SESSION_WORDS[print.session]}${print.mark ? " mid" : ""} ${format(print.price)}`;
 }
 
 /** A price to the cent, or to the tick it was quoted at below a dollar. */

@@ -68,6 +68,8 @@ export interface PluginManifest {
   id: string | null;
   /** The oldest Gloomberb the checkout says it runs on. */
   minGloomberb: string | null;
+  /** gloom.json `icon`: the plugin's logo, a path inside the checkout such as `icon.webp`. */
+  icon: string | null;
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -106,6 +108,7 @@ export function readPluginManifest(pluginDir: string): PluginManifest {
     minGloomberb: versionField(gloom?.minGloom)
       ?? versionField(gloom?.minGloomberb)
       ?? peerRangeMinimum(peers?.gloomberb),
+    icon: typeof gloom?.icon === "string" && gloom.icon.trim() ? gloom.icon.trim() : null,
   };
 }
 

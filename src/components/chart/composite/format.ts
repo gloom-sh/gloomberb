@@ -298,6 +298,14 @@ export function formatChartLegendValue(
   return trimmed && trimmed.length <= 6 ? `${compact}${trimmed.startsWith("/") ? "" : " "}${trimmed}` : compact;
 }
 
+/** compactNumber's scale, with the decimals a tick gap needs at that scale. */
+function preciseCompactNumber(value: number, gap: number): string {
+  const absolute = Math.abs(value);
+  const [divisor, suffix] = ([[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const).find(([scale]) => absolute >= scale) ?? [1, ""];
+  const digits = Math.min(12, Math.max(0, Math.ceil(-Math.log10(gap / divisor) - 1e-9)));
+  return `${(value / divisor).toFixed(digits)}${suffix}`;
+}
+
 const COMPACT_LABEL = /^(-?\d+)(?:\.(\d+))?([KMBT]?)$/;
 
 function trimmedDecimals(label: string): number {
@@ -332,13 +340,17 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
   // Where that happens the axis spends the digits needed to tell them apart,
   // shared across every tick so the column reads as one scale.
   const gap = narrowestAxisTickGap(domain);
+  const prefix = currencyPrefix(domain.unit);
   if (gap !== null && gap < compactResolution(value)) {
     const resolved = formatAxisPriceValue(value, domain, {
       fixedFractionDigits: Math.max(0, Math.ceil(-Math.log10(gap))),
     });
     if (resolved) return resolved;
+    // No currency to format with, such as a price whose quote has not
+    // arrived: the same digits still keep the ticks apart.
+    const precise = preciseCompactNumber(value, gap);
+    return prefix && precise.startsWith("-") ? `-${prefix}${precise.slice(1)}` : `${prefix}${precise}`;
   }
-  const prefix = currencyPrefix(domain.unit);
   return prefix && compact.startsWith("-") ? `-${prefix}${compact.slice(1)}` : `${prefix}${compact}`;
 }
 

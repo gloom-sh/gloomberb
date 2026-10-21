@@ -78,11 +78,14 @@ export function useCapabilityInvoker(): CapabilityInvoker {
   return usePluginRenderContext().runtime;
 }
 
+const noBrokerLogo = (): string | null => null;
+
 export function usePluginBrokerActions() {
   const { runtime } = usePluginRenderContext();
   return {
     getBrokerAdapter: runtime.getBrokerAdapter,
     listBrokerAdapters: runtime.listBrokerAdapters,
+    getBrokerLogo: runtime.getBrokerLogo ?? noBrokerLogo,
     createBrokerInstance: runtime.createBrokerInstance,
     connectBrokerInstance: runtime.connectBrokerInstance,
     updateBrokerInstance: runtime.updateBrokerInstance,

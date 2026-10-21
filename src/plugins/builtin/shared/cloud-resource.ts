@@ -31,18 +31,31 @@ export function cachedCloudResource<T>(
   }
 }
 
+const isAbort = (error: unknown) => !!error && typeof error === "object" && (error as { name?: unknown }).name === "AbortError";
+
 /**
  * Loads through the cache, falling back to the cached copy when a refresh
  * fails. A refused session still throws, so the pane shows its sign-in wall
  * instead of data the account can no longer see.
+ *
+ * Callers of one key share the request in flight, which runs on the first
+ * caller's `signal`. When that caller goes away (a tab left while it loads,
+ * for one that reads the same data), the shared request aborts; a caller
+ * whose own `signal` is still live asks again instead of showing that
+ * cancellation as its failure.
  */
 export async function loadCloudResource<T>(
   cache: CloudCache<T>,
   key: string,
   fetch: () => Promise<T>,
-  { force = false, validate = (payload: T) => payload }: { force?: boolean; validate?: (payload: T) => T } = {},
+  { force = false, validate = (payload: T) => payload, signal }: { force?: boolean; validate?: (payload: T) => T; signal?: AbortSignal } = {},
 ): Promise<CloudResource<T>> {
-  const result = await cache.load(key, fetch, { force });
+  const cancelledByOther = (error: unknown) => !!signal && !signal.aborted && isAbort(error);
+  let result = await cache.load(key, fetch, { force }).catch((error: unknown) => {
+    if (cancelledByOther(error)) return null;
+    throw error;
+  });
+  if (!result || cancelledByOther(result.error)) result = await cache.load(key, fetch, { force });
   if (isAccessDenied(result.error)) throw result.error;
   return { payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null };
 }

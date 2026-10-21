@@ -3,6 +3,11 @@ import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
+import { usePaneAppConfig } from "../../../state/app/context";
+import { usePluginBrokerActions, usePluginTickerActions } from "../../runtime";
+import { brokerCanTrade, brokerCanTradeStrategy, openTradeTicket } from "../broker-trading/command";
+import { MAX_STRATEGY_LEGS, strategyFromLegs } from "../broker-trading/strategy";
+import { optionContractName } from "../../../utils/options";
 import { Box } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
@@ -21,7 +26,7 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, suppliedScenarioInputs,
+import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, scenarioSpotStampVariants, suppliedScenarioInputs,
   type ScenarioMarketSnapshot } from "./client";
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspStatItems, loadNextEarningsDate } from "./csp";
@@ -72,13 +77,16 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [consumedSeed, setConsumedSeed] = usePluginPaneState<string | null>("consumedSeed", null);
   const [localError, setLocalError] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const brokerInstrument = target?.instrument ?? null;
   const explicitSpot = Number(settings.spot);
   const loadMarket = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    return loadScenarioMarket({ instrument: { symbol: underlying, exchange },
-      expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
-  }, [underlying, exchange, expiration]);
+    // The chain OMON reads for this ticker, from its broker when it is linked to one: one chain, one source, one cache entry.
+    return loadScenarioMarket({ instrument: { symbol: underlying, exchange, brokerId: brokerInstrument?.brokerId,
+      brokerInstanceId: brokerInstrument?.brokerInstanceId, instrument: brokerInstrument },
+    expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
+  }, [underlying, exchange, expiration, brokerInstrument]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
   const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
@@ -240,6 +248,32 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   };
   // Freezing keeps the marks shown at this moment as the scenario's inputs.
   const freeze = () => { if (live) setPosition(live.position); setFollow(false); };
+  // With a broker that takes them, the position trades as one order: a
+  // spread on the underlying's Trade tab, or one contract's own ticket. The
+  // live mids, else the entry prices, say whether it opens for a debit or a credit.
+  const { pinTicker } = usePluginTickerActions();
+  const { getBrokerAdapter } = usePluginBrokerActions();
+  const { brokerInstances } = usePaneAppConfig();
+  const tradeIntent = useMemo(() => {
+    const legs = position?.legs ?? [];
+    if (frozen || !underlying || !legs.length || legs.length > MAX_STRATEGY_LEGS || legs.some((leg) => leg.multiplier !== 100 || !legSymbols.get(leg.id))) return null;
+    const intent = strategyFromLegs(legs.map((leg) => {
+      const quote = live?.quotes.get(leg.id);
+      return { contractSymbol: legSymbols.get(leg.id)!, quantity: leg.quantity, price: quote ? optionMid(quote) ?? leg.price : leg.price };
+    }));
+    if (!intent) return null;
+    const tradable = intent.legs.length === 1 ? brokerCanTrade(brokerInstances, getBrokerAdapter, intent.legs[0]!.contractSymbol, "OPT")
+      : brokerCanTradeStrategy(brokerInstances, getBrokerAdapter, underlying, intent.legs.length);
+    return tradable ? intent : null;
+  }, [frozen, underlying, position?.legs, legSymbols, live?.quotes, brokerInstances, getBrokerAdapter]);
+  const trade = () => {
+    if (!tradeIntent) return;
+    const [only] = tradeIntent.legs;
+    if (tradeIntent.legs.length === 1 && only) {
+      openTradeTicket({ pinTicker }, only.contractSymbol, { action: only.action, quantity: tradeIntent.quantity * only.ratio },
+        { instrument: null, listing: { name: optionContractName(only.contractSymbol) ?? only.contractSymbol, exchange: "", currency: position?.currency ?? "USD", type: "OPT" } });
+    } else openTradeTicket({ pinTicker }, symbol ?? underlying, tradeIntent);
+  };
   const hints = detail === "chain" ? [{ id: "expiry", key: "d", label: "ate", onPress: () => chainExpiryControl.current?.open() }] : detail || volActive ? [] : [
     { id: "add", key: "a", label: "dd leg", onPress: addTyped },
     { id: "chain", key: "c", label: "hain", onPress: () => setDetail("chain") },
@@ -250,6 +284,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       { id: "vol", key: "v", label: "ol shift", onPress: () => setVolActive(true) },
       { id: "save", key: "s", label: "ave", onPress: () => setDetail("save") }] : []),
     { id: "load", key: "b", label: "rowse saved", onPress: () => void loadSaved() },
+    ...(tradeIntent ? [{ id: "trade", key: "t", label: "rade", onPress: trade }] : []),
     ...(live ? [{ id: "follow", key: "f", label: "reeze", onPress: freeze }]
       : follow || frozen || frozenMarket || !storedPosition ? [] : [{ id: "follow", key: "f", label: "ollow market", onPress: () => setFollow(true) }]),
   ];
@@ -259,11 +294,15 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const midLegs = live || !position ? 0 : position.legs.filter((leg) => leg.volatilitySource === "mid").length;
   // A seed starts at the spot its quote mids imply, so name the last print when it differs.
   const lastPrint = midLegs && (settings.spot == null || settings.spot === "") && market?.spot != null
-    && money(market.spot) !== money(position!.spot) ? ` · last ${money(market.spot)}` : "";
+    && money(market.spot) !== money(position!.spot)
+    ? ` · ${(market.underlyingQuote ? extendedSession(market.underlyingQuote) : null) ?? "last"} ${money(market.spot)}` : "";
   const midVolatility = !midLegs ? "" : (midLegs === position!.legs.length ? " · IV from quote mid"
     : ` · IV from quote mid on ${midLegs} of ${position!.legs.length} legs`) + lastPrint;
   // The spot every figure is valued at, and when: the live print, the spot the quote mids imply, a typed what-if or the last price.
-  const spotText = position ? `spot ${money(position.spot)}${spotBasis && spotBasis !== "last price" ? ` ${spotBasis}` : ""}` : "";
+  // An extended-session print carries its own time in the stamp.
+  const spotStamp = position && spotBasis && spotBasis !== "last price" ? scenarioSpotStamp(spotBasis, position.asOf) : null;
+  const spotText = position ? `spot ${money(position.spot)}${spotStamp ? ` ${spotStamp}` : ""}` : "";
+  const spotTimed = !!spotStamp && spotStamp !== spotBasis;
   // A narrow row keeps the spot and its time before the rest.
   const shortSpotText = position ? `spot ${money(position.spot)} · ${formatSpotTime(live?.observedAt ?? position.asOf)}` : "";
   usePaneFooter("osa", () => ({ info: [
@@ -272,7 +311,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     ...(hedge.error ? [{ id: "hedge-error", parts: [{ text: hedge.error, tone: "warning" as const }] }] : []),
     ...(live ? splitDelayedStatus({ id: "asof", parts: [{ text: `${live.basis} · ${spotText} · ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" }],
       variants: [[{ text: shortSpotText, tone: "muted" }]] })
-      : position ? [{ id: "asof", parts: [{ text: `${spotText} · ${formatSpotTime(position.asOf)} · ${market?.source ? "market" : "input assumptions"}${midVolatility}`, tone: "muted" as const }],
+      : position ? [{ id: "asof", parts: [{ text: `${spotText}${spotTimed ? "" : ` · ${formatSpotTime(position.asOf)}`} · ${market?.source ? "market" : "input assumptions"}${midVolatility}`, tone: "muted" as const }],
         variants: [[{ text: shortSpotText, tone: "muted" as const }]] }] : []),
   ], hints }), [hints, position, market?.source, resource.loading, error, hedge.error, live?.basis, live?.observedAt, midVolatility, spotText, shortSpotText]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
@@ -302,7 +341,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       tone: cents(scenario.valuation.pnl) >= 0 ? "positive" : "negative" },
     // A spot other than the last price says what it is: the one the quote mids imply, or a typed what-if.
     { id: "spot", label: "Spot", value: money(scenario.position.spot),
-      detail: spotBasis === "implied by option quotes" ? "per share, implied" : spotBasis === "typed" ? "per share, typed" : "per share" },
+      detail: spotBasis === "implied by option quotes" ? "per share, implied" : spotBasis === "typed" ? "per share, typed"
+        : spotTimed ? `per share, ${spotStamp}` : "per share",
+      // The band keeps its columns: the stamp's day, its time, then the stamp give way first.
+      ...(spotTimed ? { detailVariants: [...scenarioSpotStampVariants(spotBasis!, scenario.position.asOf)
+        .map((form) => `per share, ${form}`), "per share"] } : {}) },
     { id: "value", label: "Value", value: money(scenario.valuation.price), detail: valueUnit },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
     { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },

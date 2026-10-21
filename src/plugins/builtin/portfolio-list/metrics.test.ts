@@ -109,7 +109,7 @@ describe("portfolio-metrics", () => {
     const audTotals = calculatePortfolioSummaryTotals([bhp], financials, aud, new Map(), true, "asx");
     expect(audTotals).toMatchObject({ totalMktValue: 60_000, totalCostBasis: 40_000, unrealizedPnl: 20_000, dailyPnl: 1000 });
     expect(audTotals.unavailableConversions).toBeUndefined();
-    expect(summary(audTotals, aud)).toBe("Val A$60.0k Day +A$1.0k (+1.69%) P&L +A$20.0k (+50.00%)");
+    expect(summary(audTotals, aud)).toBe("Val A$60.0k Day +A$1.0k (+1.69%) vs prev close P&L +A$20.0k (+50.00%)");
     const audContext = { ...defaultColumnContext, activeTab: "asx", baseCurrency: aud, exchangeRates: new Map() };
     const mktValue: ColumnConfig = { id: "mkt_value", label: "MKT VAL", width: 10, align: "right" };
     expect(getColumnValue(mktValue, bhp, financials.get("BHP"), audContext).text).toBe("60.0k");
@@ -129,7 +129,7 @@ describe("portfolio-metrics", () => {
     expect(adoptHeldPortfolioCurrencies(config, [bhp, aapl]).portfolios.find((entry) => entry.id === "asx")!.currency).toBe("USD");
     const usdPortfolio = { id: "asx", name: "ASX", currency: "USD" };
     expect(summary(calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "asx"), resolvePortfolioTotalsCurrency(usdPortfolio, "USD")))
-      .toBe("Val 1.2k Day +50.00 (+4.35%) P&L +200.00 (+20.00%)");
+      .toBe("Val 1.2k Day +50.00 (+4.35%) vs prev close P&L +200.00 (+20.00%)");
 
     // A broker portfolio stays in its account currency; a watchlist uses the base currency.
     expect(resolvePortfolioTotalsCurrency({ ...usdPortfolio, brokerId: "ibkr", brokerInstanceId: "ibkr-live" }, "USD")).toBe("USD");
@@ -162,7 +162,7 @@ describe("portfolio-metrics", () => {
     const usdBroker = { id: "broker:ibkr", name: "IBKR", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-live" };
     expect(resolvePortfolioTotalsCurrency(usdBroker, "EUR")).toBe("USD");
     const usdTotals = calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "main");
-    expect(text("USD", usdTotals)).toBe("Val $1.2k Day +$50.00 (+4.35%) P&L +$200.00 (+20.00%)");
+    expect(text("USD", usdTotals)).toBe("Val $1.2k Day +$50.00 (+4.35%) vs prev close P&L +$200.00 (+20.00%)");
   });
 
   test("leaves watchlists unsorted by default and respects persisted overrides", () => {

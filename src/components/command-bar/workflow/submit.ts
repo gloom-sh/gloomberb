@@ -158,8 +158,9 @@ export async function submitCommandBarWorkflow(options: {
           break;
         }
         case "add-portfolio": {
-          const shares = coerceFieldString(route.values.shares).trim();
-          if (!shares) {
+          // A purchase date or rate typed without a size is a position to set, whose missing size is then refused.
+          const position = ["shares", "dateAcquired", "costFx"].some((id) => coerceFieldString(route.values[id]).trim());
+          if (!position) {
             await collectionWorkflowActions.addTickerMembershipFromWorkflow(route.values);
           } else {
             await collectionWorkflowActions.setPortfolioPositionFromWorkflow(route.values);

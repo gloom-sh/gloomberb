@@ -26,14 +26,19 @@ import { seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
+  COUNTRY_FILTER_HINT,
+  countriesWithoutEvents,
   FILTER_CYCLE,
   loadCalendar,
   matchesCountry,
   matchesImpact,
+  noScheduledReleasesMessage,
+  parseCountryFilter,
   shortCalendarEnd,
   type CountryFilter,
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
+import { hasNoStatedTime } from "../../plugins/builtin/econ/types";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
@@ -271,7 +276,14 @@ function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${localTimeSuffix(date.getTime())}`;
 }
 
-const ECON_USAGE = "econ [--country <region>] [--impact <level>] [--from <date>]";
+const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--from <date>]";
+
+/** A publisher's clock for a row it times itself: `13:00 Mexico City` from 13:00 in America/Mexico_City. */
+function publisherClock(localTime: unknown, timeZone: unknown): string {
+  if (typeof localTime !== "string" || !localTime || typeof timeZone !== "string" || !timeZone) return "";
+  const city = timeZone.split("/").at(-1)!.replaceAll("_", " ");
+  return `${localTime} ${city}`;
+}
 const DAY_MS = 86_400_000;
 
 /**
@@ -312,22 +324,24 @@ function parseFilter<T extends string>(value: string | undefined, values: readon
   return match;
 }
 
-/** One of the pane's regions, or any country by its two-letter code (TR, DE), upper-cased. */
+/** The pane's regions and ISO country codes, comma separated (`MX,BR,ZA`, `G7,MX`); upper-cased. */
 function parseCountry(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): CountryFilter {
   if (value == null) return COUNTRY_CYCLE[0]!;
-  const text = value.trim();
-  const region = COUNTRY_CYCLE.find((candidate) => candidate.toLowerCase() === text.toLowerCase());
-  if (region) return region;
-  if (/^[a-z]{2}$/i.test(text)) return text.toUpperCase();
-  return ctx.fail(`Unknown country "${value}".`, `Use ${COUNTRY_CYCLE.join(", ")}, or a two-letter country code such as TR.`);
+  const parsed = parseCountryFilter(value);
+  return "error" in parsed ? ctx.fail(parsed.error, COUNTRY_FILTER_HINT) : parsed.filter;
 }
 
-/** A country the calendar lists nothing for says which ones it does list, so a typo (UK for GB) is not read as a quiet week. */
-function unlistedCountryMessage(country: CountryFilter, events: ReadonlyArray<{ country: string }>): string | null {
-  if ((COUNTRY_CYCLE as readonly string[]).includes(country)) return null;
-  const listed = [...new Set(events.map((event) => event.country).filter((code) => /^[A-Z]{2}$/.test(code)))].sort();
-  if (listed.length === 0 || listed.includes(country)) return null;
-  return `The calendar lists no ${country} events; it lists ${listed.join(", ")}.`;
+/** Blank times, each with why: a bank whose calendar gives the day and not the time. */
+function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; timeNote: string | null }>): string[] {
+  const byNote = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.timeNote) continue;
+    const named = `${row.event} (${row.country})`;
+    const events = byNote.get(row.timeNote) ?? [];
+    if (!events.includes(named)) events.push(named);
+    byNote.set(row.timeNote, events);
+  }
+  return [...byNote].map(([note, events]) => `No time for ${events.join(", ")}: ${note.charAt(0).toLowerCase()}${note.slice(1)}.`);
 }
 
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -359,20 +373,35 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const listedBefore = !startsLater ? null
       : past?.storedFrom ? `The stored calendar starts ${past.storedFrom}; nothing earlier is listed`
       : `No events are stored before ${listedFrom ?? isoDate(new Date(todayStart))}`;
-    const footnote = [listedBefore, listedAfter].filter((note): note is string => !!note).join("\n");
-    const rows = events
-      .filter((event) => event.date.getTime() >= fromTime && matchesCountry(event, country) && matchesImpact(event, impact))
+    // Countries asked for that nothing in the window is for: a quiet week there, not an unknown country.
+    const inWindow = events.filter((event) => event.date.getTime() >= fromTime);
+    const unscheduled = countriesWithoutEvents(country, inWindow);
+    const rows = inWindow
+      .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
       .map((event) => ({
         date: isoDate(event.date),
-        time: event.time,
+        time: hasNoStatedTime(event) ? "" : event.time,
         country: event.country,
         impact: event.impact,
         event: event.event,
         actual: event.actual ?? "",
         forecast: event.forecast ?? "",
         prior: event.prior ?? "",
+        // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
+        localTime: event.localTime ?? null,
+        timeZone: event.timeZone ?? null,
+        timeNote: event.timeNote ?? null,
+        priorAsOf: event.priorAsOf ?? null,
+        referencePeriod: event.referencePeriod ?? null,
+        source: event.source?.name ?? null,
+        sourceUrl: event.source?.url ?? null,
       }));
+    // A filter of countries only, none of which has anything in the window, says so as its empty list.
+    const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
+    const footnote = [listedBefore, listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
+      rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null]
+      .filter((note): note is string => !!note).join("\n");
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
@@ -382,12 +411,14 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     }, {
       dateKey: "date",
       defaultLimit: 50,
-      empty: unlistedCountryMessage(country, events) ?? econEmptyMessage(from, listedThrough, listedAfter != null),
+      empty: allUnscheduled ? noScheduledReleasesMessage(unscheduled) : econEmptyMessage(from, listedThrough, listedAfter != null),
       ...(footnote ? { footnote } : {}),
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
-        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : utcDateTimePart(row.date, "time") },
+        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === "" ? "" : utcDateTimePart(row.date, "time") },
+        // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
+        { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
         { key: "country", header: "Country" },
         { key: "impact", header: "Impact" },
         { key: "event", header: "Event" },
@@ -697,11 +728,11 @@ export const overviewCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.markets,
       usage: [ECON_USAGE],
       options: [
-        { flags: "--country <region>", description: "US, G7, EU, all (default), or one country by its two-letter code, such as TR" },
+        { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
       ],
-      examples: ["econ", "econ --country US --impact high", "econ --country TR", "econ --from 2026-10-12 --country US", "econ --tail 20"],
+      examples: ["econ", "econ --country US --impact high", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US", "econ --tail 20"],
     },
     execute: runEcon,
   },

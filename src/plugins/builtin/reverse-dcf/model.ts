@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
 import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueReconciliationNote, enterpriseValueWithdrawn,
@@ -152,10 +153,10 @@ export function projectReverseDcf(
   }
   // A withdrawn EV is unavailable here as in `valuation`, which says why.
   if (enterpriseValueWithdrawn(fundamentals)) {
-    return { ...empty, error: enterpriseValueReconciliationNote(fundamentals) ?? "Enterprise value unavailable." };
+    return { ...empty, error: enterpriseValueReconciliationNote(fundamentals) ?? unavailableText("Enterprise value") };
   }
-  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: "Enterprise value unavailable." };
-  if (freeCashFlow == null) return { ...empty, error: "Free cash flow unavailable." };
+  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: unavailableText("Enterprise value") };
+  if (freeCashFlow == null) return { ...empty, error: unavailableText("Free cash flow") };
   if (!(freeCashFlow > 0)) return { ...empty, error: "Free cash flow over the last twelve months is negative, so no growth rate prices it." };
   const implied = solveImpliedGrowth(enterpriseValue, freeCashFlow, options.discountRate, TERMINAL_GROWTH);
   return {

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
-import { ChartTableHeader, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, EmptyState, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -170,18 +170,19 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     return { text, value, color: column.id === columns[0]!.id ? colors.textBright : colors.text };
   };
   return <Box width={width} height={height} flexDirection="column">{strip}
-    <PaneStatusBody loading={!available && loading} error={!available && currentError !== CREDIT_UNAVAILABLE ? currentError : null}
-      empty={!available && currentError === CREDIT_UNAVAILABLE} emptyTitle={CREDIT_UNAVAILABLE} subject="credit documents">
-      {available ? <PageStackView focused={focused && !openFactId} detailOpen={!!openInstrument} onBack={() => setOpen(null)} detailTitle={openInstrument?.name}
+    <PageStackView focused={focused && !openFactId} detailOpen={!!openInstrument} onBack={() => setOpen(null)} detailTitle={openInstrument?.name}
         detailContent={openInstrument && activeSymbol ? <CreditInstrumentDetail key={`${activeSymbol}:${openInstrument.id}`} symbol={activeSymbol} instrument={openInstrument} width={width} height={bodyHeight - 1} focused={focused} accessKey={accessKey} view={view} setView={setView} covenant={activeCovenant} openId={openFactId} setOpen={setOpenFact} captured={instrumentSnapshot?.id === openInstrument.id ? instrumentSnapshot : null} pro={data?.access === "full"} onUpgrade={openUpgrade} /> : null}
-        rootContent={<DataTableView<Row> columns={columns} items={items} sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((current) => ({column,direction:current.column === column && current.direction === "asc" ? "desc" : "asc"}))} focused={focused && !openInstrument} rootWidth={width} rootHeight={bodyHeight} rootBefore={rootBefore}
+        rootContent={<DataTableView<Row> columns={columns} items={available ? items : []}
+          // The Screen tab and its thresholds load under the query bar, which stays.
+          status={available ? undefined : { loading, error: currentError !== CREDIT_UNAVAILABLE ? currentError : null,
+            empty: currentError === CREDIT_UNAVAILABLE, emptyTitle: CREDIT_UNAVAILABLE, subject: "credit documents" }}
+          sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((current) => ({column,direction:current.column === column && current.direction === "asc" ? "desc" : "asc"}))} focused={focused && !openInstrument} rootWidth={width} rootHeight={bodyHeight} rootBefore={rootBefore}
           getItemKey={rowId} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }}
           onActivate={(row) => row.locked ? openUpgrade() : setOpen(row.screen ? row.id : row.instrumentId ?? null)}
           renderCell={renderCell}
           emptyStateTitle={tab === "screen" ? "No supported credit signals match these thresholds." : tab === "covenants" ? "No financial maintenance covenants documented." : tab === "maturities" ? "No supported instrument maturity amounts." : CREDIT_UNAVAILABLE}
           emptyStateHint={tab === "screen" && (headroom < 100 || months < 36) ? "Raise either threshold to widen the screen." : undefined}
           selectedTextOverridesCellColor showHorizontalScrollbar freezeFirstColumn resetScrollKey={`${symbol}:${tab}:${selectedCurrency}`}
-          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} /> : null}
-    </PaneStatusBody>
+          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} />
   </Box>;
 }

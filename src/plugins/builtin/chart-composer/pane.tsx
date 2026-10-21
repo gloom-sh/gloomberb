@@ -116,6 +116,7 @@ import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { intradaySessionTimeZone } from "./session-history";
 import { ChartSeriesQuickAdd } from "./quick-add";
+import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
@@ -123,6 +124,7 @@ import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarg
 import { formatAlertDescription } from "../alerts/alert-engine";
 import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { useOptionChartRange } from "./option-range";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
@@ -288,6 +290,7 @@ function ChartComposerSurface({
   onCapture,
   nameSeries = true,
 }: ChartComposerSurfaceProps) {
+  const trade = useResearchTrading();
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const { cellWidthPx = 8 } = useUiCapabilities();
@@ -514,6 +517,7 @@ function ChartComposerSurface({
     return {
       seriesId: listing.seriesId,
       items: [
+        ...(trade && researchTradeMatches(trade, { ...listing.instrument, exchange: listing.target.exchange }) ? trade.levels : []),
         ...stored.map((level) => ({
           id: level.id,
           value: level.price,
@@ -532,7 +536,7 @@ function ChartComposerSurface({
       onEdit: editLevels,
       ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
     };
-  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
+  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing, trade?.levels, trade?.contract]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -1020,13 +1024,15 @@ function ChartComposerSurface({
             : []),
     ],
     hints: [
+      // One key opens the ticket, which chooses Buy or Sell; [s]eries keeps its key with trading on.
+      ...(trade?.available ? [{ id: "trade", key: "t", label: "rade", title: "Open the trade panel", onPress: () => trade.open(), disabled: trade.busy }] : []),
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
-      { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
+      { id: "resolution", key: "b", label: "ars", title: "Bar Size", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
+  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -1107,6 +1113,8 @@ function ChartComposerSurface({
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      {/* Renders nothing: b and s open the trade panel. The query bar keeps the full row. */}
+      <ResearchTradeActions focused={shortcutActive} />
       <QueryBar
         width={width}
         filters={[
@@ -1180,6 +1188,7 @@ function ChartComposerSurface({
           showLatestChangePercent={!spec.viewport.dateWindow && spec.viewport.range === "1D"}
           onViewportChange={handleChartViewportChange}
           onActivate={activatePane}
+          onPress={trade?.focusChart}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           timePick={timePick}
@@ -1296,7 +1305,9 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
 export function ChartComposerResearchTab({ focused, width, height, onCapture }: TickerResearchTabProps) {
   const { symbol: paneSymbol, ticker } = usePaneTicker();
   const symbol = paneSymbol ? publicTickerKey(paneSymbol, ticker?.metadata.exchange) : null;
-  const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol) : buildEmptyChartPreset(), [symbol]);
+  // An option contract opens on the range its own history fills; a chart the researcher set keeps its range.
+  const optionRange = useOptionChartRange(ticker);
+  const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol, optionRange ?? undefined) : buildEmptyChartPreset(), [optionRange, symbol]);
   const [storedSpec, setStoredSpec] = usePaneSettingValue<unknown>(CHART_SPEC_SETTING_KEY, fallback);
   const spec = useMemo(() => parseChartSpecOr(storedSpec, fallback), [fallback, storedSpec]);
   const previousSymbolRef = useRef(symbol);

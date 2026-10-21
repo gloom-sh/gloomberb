@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
+import { centralBankRatesModule } from "../../plugins/builtin/central-bank-rates";
+import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
+import { ivHistoryModule } from "../../plugins/builtin/iv-history";
+import { volSurfaceModule } from "../../plugins/builtin/vol-surface";
 import { earningsCallsHeadless } from "../../plugins/builtin/earnings-calls/headless";
 import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
+import { ratePathModule } from "../../plugins/builtin/rate-path";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
@@ -145,4 +150,52 @@ test("shot hands CDX, SOVR (or its alias WCDS) and IPO their argument as the par
   // WCDS is SOVR's alias, and the country keeps the spelling it was typed in.
   expect(await shot("WCDS", "Ivory Coast")).toEqual({ params: expect.objectContaining({ tab: "credit", view: "sovereign", country: "Ivory Coast" }), binding: { kind: "none" } });
   expect(await shot("IPO", "pending")).toEqual({ params: expect.objectContaining({ search: "pending" }), binding: { kind: "none" } });
+});
+
+test("an implied-vol word that is no code (IVOL, OVOL, IV) names HIVG and OVDV and runs each on the argument", async () => {
+  const modules = [ivHistoryModule, volSurfaceModule];
+  const vol: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const unknown = (args: string[]) => resolvePaneFunction(vol, context, parsePaneFunctionArgs(args))
+    .then(() => null, (error: unknown) => error as UnknownPaneFunctionError);
+  for (const word of ["IVOL", "ovol", "IV"]) {
+    const error = await unknown([word, "SPY"]);
+    expect(error?.message).toBe(`Unknown function or pane "${word}". Did you mean HIVG (Implied Volatility History) or OVDV (Volatility Surface)?`);
+    expect(error?.details.split("\n").slice(0, 2)).toEqual(["Run: gloomberb fn HIVG SPY", "     gloomberb fn OVDV SPY"]);
+  }
+  // With no argument, the one each takes.
+  expect((await unknown(["IVOL"]))?.details).toBe("Run: gloomberb fn HIVG <ticker>\n     gloomberb fn OVDV <ticker>");
+});
+
+test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {
+  const modules = [centralBankRatesModule, ratePathModule];
+  const banks: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const resolve = (args: string[]) => resolvePaneFunction(banks, context, parsePaneFunctionArgs(args));
+  for (const word of ["ECB", "BOJ", "boe", "RBA", "BoC", "SNB", "Bank of Japan", "Federal Reserve"]) {
+    const error = await resolve([word]).then(() => null, (failure: unknown) => failure as UnknownPaneFunctionError);
+    expect(error?.message).toBe(`Unknown function or pane "${word}". Did you mean CBR (Central Bank Rates)?`);
+    expect(error?.details.split("\n")[0]).toBe("Run: gloomberb fn CBR");
+  }
+  // FOMC is one of WIRP's own words, so it opens the rate path as before.
+  expect((await resolve(["FOMC"])).token).toBe("WIRP");
+});
+
+test("CMP of one ticker says it needs two or more and how to ask, before any chart is built", async () => {
+  const charts: PaneFunctionCatalog = {
+    panes: new Map((chartComposerModule.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map((chartComposerModule.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const refusal = (command: "fn" | "shot", args: string[]) => resolvePaneFunction(charts, context, parsePaneFunctionArgs(args), { command })
+    .then(() => null, (error: Error) => error.message);
+  expect(await refusal("fn", ["CMP", "SPY"])).toBe("CMP needs two or more tickers: fn CMP SPY,QQQ");
+  expect(await refusal("shot", ["CMP", "aapl"])).toBe("CMP needs two or more tickers: shot CMP AAPL,SPY");
+  expect(await refusal("fn", ["CMP", "SPY,QQQ"])).toBeNull();
 });

@@ -48,9 +48,10 @@ export interface SelectButtonProps<T extends string = string> {
    * `inline`: the label and the value in a row, in a toolbar. `field`: a
    * bordered field. `form`: a field in a form of text fields; on the desktop
    * and the web its label sits above it, bold, as a TextField's does; the
-   * terminal draws it inline.
+   * terminal draws it inline. `well`: a field without its border, on a
+   * recessed fill, for a dense panel such as the order ticket.
    */
-  variant?: "inline" | "field" | "form";
+  variant?: "inline" | "field" | "form" | "well";
   width?: number;
   onFocus?: () => void;
   /**
@@ -189,8 +190,8 @@ export function SelectButton<T extends string = string>({
   }
 
   // The terminal draws a form select as it draws an inline one.
-  if (variant === "field") {
-    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
+  if (variant === "field" || variant === "well") {
+    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} variant={variant === "well" ? "quiet" : undefined} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
   }
 
   return (

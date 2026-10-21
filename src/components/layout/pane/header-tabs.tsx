@@ -63,10 +63,24 @@ export function NestedPaneTabs({ children }: { children: ReactNode }) {
   return <PaneHeaderTabsContext.Provider value={null}>{children}</PaneHeaderTabsContext.Provider>;
 }
 
+/** One id per artwork element, so a strip redraws when a tab's `leading` is a new element and not otherwise. */
+const leadingIds = new WeakMap<object, number>();
+let nextLeadingId = 1;
+function leadingSignature(leading: ReactNode): string | number {
+  if (leading === undefined || leading === null) return "";
+  if (typeof leading !== "object") return String(leading);
+  let id = leadingIds.get(leading);
+  if (id === undefined) {
+    id = nextLeadingId++;
+    leadingIds.set(leading, id);
+  }
+  return id;
+}
+
 function registrationSignature(registration: PaneHeaderTabsRegistration | null): string {
   if (!registration) return "";
   return JSON.stringify([
-    registration.tabs.map((tab) => [tab.value, tab.label, tab.disabled === true, !!tab.onClose, tab.fg ?? "", tab.reorderable !== false]),
+    registration.tabs.map((tab) => [tab.value, tab.label, tab.disabled === true, !!tab.onClose, tab.fg ?? "", tab.reorderable !== false, leadingSignature(tab.leading)]),
     registration.activeValue,
     registration.focused === true,
     registration.keyboardNavigation !== false,

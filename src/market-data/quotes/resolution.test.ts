@@ -667,6 +667,34 @@ test("canonical quote preserves unavailable day changes while retaining zero and
   expect(resolveCanonicalQuote({ quote: { ...base, previousClose: 10 } }).quote).toMatchObject({ change: 2, changePercent: 20 });
 });
 
+// Linear: GLO-1089. Toncoin as Gloom Cloud served it on 18 Oct 2026: its
+// reported close was weeks old, so the move ran over the board's 24 hours.
+test("a coin's 24-hour move keeps its basis through merging and resolution, and loses it with its next close", () => {
+  const now = Date.parse("2026-10-18T13:50:00Z");
+  const base = { symbol: "TON-USD", providerId: "gloomberb-cloud", dataSource: "delayed" as const,
+    instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC", currency: "USD", lastUpdated: now };
+  const closeDay = { ...base, price: 1.34, previousClose: 1.753636, change: -0.413636, changePercent: -23.59 };
+  const day = { ...base, price: 1.3395, change: -0.0018, changePercent: -0.134, changeBasis: "24h" as const };
+  const resolved = resolveTickerFinancialsQuoteState(null, day)!.quote!;
+  expect(resolved).toMatchObject({ change: -0.0018, changePercent: -0.134, changeBasis: "24h", previousClose: undefined });
+
+  // A 24-hour quote replaces the stale close it no longer moves from, so the close cannot restate its move.
+  const merged = mergeQuoteContribution(normalizeQuoteContribution(closeDay)!, day);
+  expect(merged.changeBasis).toBe("24h");
+  expect(merged.previousClose).toBeUndefined();
+  expect(resolveCanonicalQuote({ cloud: merged }, now).quote).toMatchObject({ changePercent: -0.134, changeBasis: "24h" });
+  // A later quote back on a dated close drops the "24h".
+  const back = mergeQuoteContribution(merged, { ...closeDay, previousClose: 1.341, change: -0.001, changePercent: -0.0746 });
+  expect(back.changeBasis).toBeUndefined();
+  const backQuote = resolveCanonicalQuote({ cloud: back }, now).quote!;
+  expect(backQuote.previousClose).toBe(1.341);
+  expect(backQuote.changeBasis).toBeUndefined();
+  // A coin with no move says so.
+  const none = resolveTickerFinancialsQuoteState(null, { ...day, change: Number.NaN, changePercent: Number.NaN, changeBasis: "none" })!.quote!;
+  expect(none.changeBasis).toBe("none");
+  expect(none.changePercent).toBeNaN();
+});
+
 test("crypto stays open when the tape omits the session or copies an equity close", () => {
   const now = Date.parse("2026-10-09T14:45:00Z");
   const tape = {

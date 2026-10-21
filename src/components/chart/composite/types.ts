@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CompositeChartLevels } from "./levels";
 import type { SeriesLineCue } from "./series-cues";
+import type { CompositeValueScales } from "./value-scale";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -38,6 +39,10 @@ export interface CompositeAxisDomain {
   /** Rows the labels snap to, one per row, in the terminal. Unset where labels
    * sit at their exact heights. */
   tickRows?: number;
+  /** What the axis plots, which a range set by hand holds to (see `valueScaleKey`). */
+  scaleKey?: string;
+  /** The range was stretched or squeezed by hand instead of fitted to the data. */
+  manual?: boolean;
 }
 
 export interface CompositeProjectedPoint {
@@ -203,6 +208,8 @@ export interface BuildCompositeChartSceneOptions {
    * is not time, where the last observation belongs at the right edge.
    */
   rightOffsetRatio?: number;
+  /** Value axes stretched or squeezed by hand, in place of fitting them to the data. */
+  valueScales?: CompositeValueScales;
 }
 
 export interface CompositeChartXMarker {
@@ -315,6 +322,12 @@ export interface CompositeChartProps {
     interaction: "pan" | "reset" | "zoom",
   ) => void;
   onActivate?: () => void;
+  /**
+   * A press on the chart itself (plot, legend or tool bar), not a wheel turn.
+   * The chart consumes the press, so an owner that shares the pane with a
+   * field that takes typed keys hears it here to hand the keyboard back.
+   */
+  onPress?: () => void;
   onToggleSeries?: (seriesId: string) => void;
   isSeriesToggleable?: (series: ResolvedSeries) => boolean;
   /**

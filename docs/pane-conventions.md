@@ -90,7 +90,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Family | The convention (component) |
 |---|---|
 | Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
-| Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Title-bar tabs, sub-tabs and segmented choices are the same. |
+| Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it so it opens into the pane; an inactive one takes the hover fill in that shape. Their labels sit on the title's centre line. |
 | Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
 | Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. |
 | Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
@@ -105,7 +105,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Tooltips (`TOOLTIP_SURFACE_STYLE`) | What the pointer is over on a chart, map or heat map: the floating surface at its small size, raised fill, control border, `lg` radius, the elevation, 4 by 8px inside, 12px text. It never takes the pointer. A key that belongs to a chart (a legend's) is the same surface without the elevation (`FLAT_SURFACE_STYLE`). |
 | Lists (`ListView`) | Rows 18px, `md` radius, 8px padding, hover fill. The chosen row is filled; a list a dialog's keyboard walks also rings it in the accent (`selection="frame"`, the default), one inside the command bar is filled alone, as the command bar's rows are (`selection="fill"`). |
 | States (`EmptyState`, `PaneStatusBody`, `Spinner`, `Notice`, walls) | At the inset (8px from each edge); the message dim, an error in negative, actions under it. Loading is the one spinner and "Loading …". Locked: the lock in the locked colour, the action bright. An `EmptyState` that finds itself flush with its pane's edge (a tab body with no padding of its own) takes the inset itself, so a pane that already pads it is not padded twice. |
-| Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
+| Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused); title-bar tabs are boxes on that rule (see Tabs). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
 | Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
 | Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items a row with 4px above and below (26px), `md` radius, hover fill. |
 | Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14 at line height 1.6, metadata and label and value facts 12. One paragraph gap (0.9em) after every block; a section heading 0.9em of its size above and 0.4em below. Every prose bullet (an article's key facts and lists, markdown and Docs lists) is body text: 14, a dim dot, the text hanging 2ch in, no space between items. The pane chrome check `readers:` holds the three to this. |
@@ -226,7 +226,8 @@ never goes there.
 - Header zone: the top of the body, in this order and nothing else: the
   `QueryBar` (search, filters, view), then a `StatGrid` of summary figures,
   then content. The title-bar tabs, the bar and the figures read as one
-  surface: tabs are text on an underline, the bands share one fill.
+  surface: the active tab opens into the bar under it and takes its fill,
+  the bands share one fill.
   No loose text lines, blank rows or button rows above or between them.
 - Footer, registered with `usePaneFooter`: `info` on the left (changing
   status), `hints` on the right (pane actions with their keys, visible only
@@ -242,7 +243,7 @@ never goes there.
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
 | Data a source delivers late (`15m delayed`, delayed options, a delayed feed) | One yellow clock in the footer, the detail in its tooltip; the terminal draws `◷15m` | `delayedFooterSegment`, `DELAYED_SEGMENT`, `splitDelayedStatus` for a `15m delayed · …` status |
-| Nothing can render yet (first load, hard failure, no data) | Body, replacing content | `PaneStatusBody` |
+| Nothing can render yet (first load, hard failure, no data) | Body, replacing content below the tab strip and query bar, which stay | `PaneStatusBody`, a table's `status` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
 | Refresh failed but last data exists | Keep the data, failure in footer info | `loading={loading && !data}`, `error={!data ? error : null}` |
 | Limitation on content still worth reading | Inline beside that content | `Notice` |
@@ -358,6 +359,24 @@ so the selected row reads in the selection color without each cell checking
 `rowState`. Artwork before a label on the desktop and web, such as a flag,
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
+
+**Broker logos.** Wherever a list names a broker or an account at one (Add
+Broker Account, the Brokers pane's profiles, a portfolio's tab and its
+overflow menu, the first-run guide's brokers), the desktop and the web lead the
+name with the broker's logo: `LogoMark` (`components/ui/logo-mark.tsx`) with
+the image from `brokers/logos.ts`, which takes the icon of the plugin that
+registered the broker and falls back to Gloom's own mark for a broker it
+connects for you, then to the broker's initial on a tile. It goes in a table
+cell's `leading`, a `ListView` item's `leading`, or a tab's or menu item's
+`leading`; the terminal draws none of them and keeps its rows as they were. A
+row tile is one line tall. A choice whose row is two lines (`rowDescriptions`:
+its name, then one muted line under it on how it connects) is drawn by
+`ListRowLines` (`components/ui/list-row-lines.tsx`), and so is any other
+two-line row with a logo (the first-run guide's): each line's box runs from its
+capitals to its baseline, the lines are `--gloom-space-sm` apart, and the
+`lead` tile is a square exactly as tall as the two, so the name's capitals
+start at the logo's top edge and the second line sits on its bottom edge. A
+row does not set its own line gap or tile size.
 
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
 
@@ -514,8 +533,19 @@ header, with the detail's height.
   A pane's primary strip is `usePaneTabs` (above any early return): the
   desktop draws it in the pane title bar and `strip` is null; the terminal
   draws `strip` as the first row of the body. Subtract `rows`. Never in the
-  footer. Register `null` while a sign-in wall or any state makes every tab
-  show the same thing.
+  footer. The strip is chrome: registered from the first frame and drawn
+  above every body state, so a tab switch, a filter change, a refresh, a
+  failed load or an empty answer never takes it away. Register `null` only
+  while there is nothing to choose between: a sign-in or plan wall, no
+  ticker or portfolio yet, or a detail that replaces the tabs by design.
+  A conditional strip is listed with its reason in
+  `src/architecture/pane-tabs-allowlist.json`, which a test holds.
+- A tab or filter change that reloads keeps the query bar and figures where
+  they are; only the body below them waits. Pass the state to the table
+  (`DataTableView`/`DataTableStackView` `status`) instead of wrapping the
+  table, and its `rootBefore`, in `PaneStatusBody`. A pane that keeps the
+  last rows while a search refines (`keepPreviousRows`, `keepPreviousData`)
+  keeps doing so.
 - A chart you pan and draw on sits one level below a tab strip: the strip
   keeps Left, Right, `h` and `l`; Down, Enter, a click or a chart tool moves
   into the chart, and Esc or Up hands the keys back, with `[Esc]tabs` in the

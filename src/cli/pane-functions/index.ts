@@ -37,8 +37,8 @@ import { isNotATickerMessage } from "../not-a-ticker";
 import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
-import { selectReportTables } from "../report-tables";
-import { cliOutputWritten } from "../result";
+import { selectReportTables, type CliReportTables } from "../report-tables";
+import { cliOutputWritten, type CliErrorObject } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import { shotOptionRefusal } from "./shot-options";
@@ -204,6 +204,63 @@ function foundNothing(data: { rowCount: number; unavailableSymbols: readonly str
   return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
 
+/** A listing key as asked or reported (`BHP:XASX`, `fred:DGS10`, `SPY`), in one case. */
+const listingKey = (symbol: string) => symbol.trim().toUpperCase();
+const bareKey = (key: string) => key.split(":")[0]!;
+
+/**
+ * The listings asked that a report has no data for. A report names one by its
+ * full key; one that names it by the bare symbol (`SAN` for `SAN:EPA`), or by
+ * the listing a bare symbol resolved to (`SXR8:XETRA` for `SXR8`), stands for
+ * the one listing asked that way, never for a listing asked by its own key:
+ * with `BHP:XASX` and `BHP` asked, `BHP:XASX` unavailable leaves `BHP`.
+ */
+function missingListings(asked: readonly string[], unavailable: readonly string[]): Set<string> {
+  const keys = asked.map(listingKey);
+  const exact = new Set(keys);
+  const missing = new Set<string>();
+  for (const entry of unavailable.map(listingKey)) {
+    if (exact.has(entry)) {
+      missing.add(entry);
+      continue;
+    }
+    const loose = keys.filter((key) => bareKey(key) === bareKey(entry) && key.includes(":") !== entry.includes(":"));
+    if (loose.length === 1) missing.add(loose[0]!);
+  }
+  return missing;
+}
+
+/** Whether a table holds a value past its first column (a row's label or date) and its reasons: a figure, a time, any text. */
+function tablesHoldValues(tables: CliReportTables): boolean {
+  return tables.tables.some((table) => {
+    const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
+    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && cell !== "" && cell != null));
+  });
+}
+
+/**
+ * Why `fn` fails a report it printed, or null when the report has data. It
+ * fails when it is empty (a pane behind a wall reads nothing), when it has no
+ * data for any listing asked and its tables hold no value either, or when it
+ * is a list (`failsWithoutData`) with no name that has any. A report with data
+ * for some of what was asked, warnings or errors beside it, is a result: a
+ * loss-maker's P/E band without a P/E, or IV history with only realized
+ * volatility, exits 0.
+ */
+export function reportFailure(
+  data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
+  asked: string,
+  { failsWithoutData = false, tables }: { failsWithoutData?: boolean; tables?: CliReportTables } = {},
+): CliErrorObject | null {
+  const missing = missingListings(data.symbols, data.unavailableSymbols);
+  const noListing = data.symbols.length > 0 && data.symbols.every((symbol) => missing.has(listingKey(symbol)));
+  const noValues = tables ? !tablesHoldValues(tables) : false;
+  if (!data.empty && !(noListing && noValues) && !(failsWithoutData && foundNothing(data))) return null;
+  const reasons = [...data.errors ?? [], ...typeof data.reason === "string" ? [data.reason] : []];
+  const unavailable = data.unavailableSymbols.length > 0 ? `no data for ${data.unavailableSymbols.join(", ")}` : "no data";
+  return { code: "no_data", message: `${asked}: ${reasons.length > 0 ? reasons.join("; ") : unavailable}.`.replace(/\.\.$/, ".") };
+}
+
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, registry, resolved }) => {
@@ -277,13 +334,15 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
       const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
+      // A report with no data is printed as it is, and fails: exit 1, and `ok: false` in JSON with the reason.
+      const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), {
+        failsWithoutData: resolved.headless?.failsWithoutData, tables: report.tables });
       // The report states its own freshness in its data and text; JSON cites it as `source` too.
-      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
+      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
-      // The report is printed as it is; a list that found data for none of its names says so in the exit status too.
-      if (resolved.headless?.failsWithoutData && foundNothing(report.data)) process.exitCode = CLI_EXIT_CODES.error;
+      if (failure) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }

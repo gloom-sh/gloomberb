@@ -186,6 +186,30 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
 
+  test("a caller that cannot see a background refresh is not handed a stale stored chain as current", async () => {
+    let online = true;
+    const provider = createTestDataProvider({ id: "provider",
+      getOptionsChain: async () => {
+        if (!online) throw new Error("offline");
+        return { underlyingSymbol: "AAPL", expirationDates: [2], calls: [], puts: [] };
+      },
+    });
+    // A chain stored two hours ago, as a previous session leaves it.
+    const read = async (cacheMode?: "current") => {
+      const persistence = new AppPersistence(":memory:");
+      persistence.resources.set({ namespace: "market", kind: "options-chain", entityKey: "AAPL", sourceKey: "provider:provider" },
+        { underlyingSymbol: "AAPL", expirationDates: [1], calls: [], puts: [] },
+        { schemaVersion: MARKET_METADATA_SCHEMA_VERSION, fetchedAt: Date.now() - 2 * 60 * 60_000, cachePolicy: { staleMs: 5 * 60_000, expireMs: 2 * 86400000 } });
+      try { return (await new AssetDataRouter(provider, [], persistence.resources).getOptionsChain("AAPL", undefined, undefined, cacheMode ? { cacheMode } : undefined)).expirationDates; }
+      finally { await tick(); persistence.close(); }
+    };
+    expect(await read()).toEqual([1]);
+    expect(await read("current")).toEqual([2]);
+    online = false;
+    // The stored chain is still the answer when the source cannot be reached.
+    expect(await read("current")).toEqual([1]);
+  });
+
   test("FX source observation and retrieval times survive cache reload and failed refresh", async () => {
     const now = Date.now();
     const fetchedAt = now - 30 * 60_000;

@@ -1,7 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { UpdateStatusEntry } from "electrobun/bun";
+import type { UpdateFailureReport } from "../../../../api-client";
+import {
+  installUpdateFailureReporter,
+  resetUpdateFailureReporterForTests,
+  type UpdateReportState,
+} from "../../../../telemetry/update-failures";
 import type { UpdateProgress } from "../../../../updater";
-import { createElectrobunDesktopUpdater, type ElectrobunUpdaterApi } from "./update";
+import { createElectrobunDesktopUpdater, removeUpdateAsides, type ElectrobunUpdaterApi } from "./update";
 
 type UpdateInfo = ReturnType<ElectrobunUpdaterApi["updateInfo"]>;
 
@@ -17,14 +26,21 @@ function status(entry: Pick<UpdateStatusEntry, "status"> & Partial<UpdateStatusE
  */
 function createFakeUpdater(options: {
   applyStatuses?: UpdateStatusEntry[];
+  /** Played during the download, before it finishes. */
+  downloadStatuses?: UpdateStatusEntry[];
   downloadReady?: boolean;
   /** What the manifest says: the stable one unless a source is set. */
   manifestVersion?: string;
+  /** A failed manifest fetch: the status Electrobun emits, and the error it returns. */
+  checkFailure?: { status: UpdateStatusEntry | null; error: string };
+  /** What the download throws partway, as Bun's fetch does when the connection drops. */
+  downloadThrows?: Error;
 } = {}) {
   const calls: string[] = [];
   /** Every `setUpdateSource`, in order; the last one is where Electrobun fetches from. */
   const sources: Array<{ channel: string; baseUrl: string } | null> = [];
   let callback: ((entry: UpdateStatusEntry) => void) | null = null;
+  const history: UpdateStatusEntry[] = [];
   const manifest = () => ({
     version: options.manifestVersion ?? "0.18.0",
     hash: "new",
@@ -41,12 +57,18 @@ function createFakeUpdater(options: {
     setUpdateSource: (source) => { sources.push(source); },
     checkForUpdate: async () => {
       calls.push("check");
+      if (options.checkFailure) {
+        if (options.checkFailure.status) history.push(options.checkFailure.status);
+        return { version: "", hash: "", updateAvailable: false, updateReady: false, error: options.checkFailure.error };
+      }
       info = manifest();
       return info;
     },
     downloadUpdate: async () => {
       calls.push("download");
+      for (const entry of options.downloadStatuses ?? []) callback?.(entry);
       callback?.(status({ status: "download-progress", details: { progress: 40 } }));
+      if (options.downloadThrows) throw options.downloadThrows;
       callback?.(status({ status: "download-complete" }));
       info.updateReady = options.downloadReady ?? true;
     },
@@ -55,7 +77,8 @@ function createFakeUpdater(options: {
       for (const entry of options.applyStatuses ?? []) callback?.(entry);
     },
     updateInfo: () => info,
-    clearStatusHistory: () => {},
+    clearStatusHistory: () => { history.length = 0; },
+    getStatusHistory: () => [...history],
     onStatusChange: (next) => { callback = next; },
   };
   return { updater, calls, sources };
@@ -70,6 +93,26 @@ const RELAUNCH = [
 
 /** A release the stable check found, which carries no channel. */
 const STABLE = {};
+
+afterEach(() => {
+  resetUpdateFailureReporterForTests();
+});
+
+/** What the desktop process would send to error tracking. */
+function collectReports() {
+  const reports: UpdateFailureReport[] = [];
+  let state: UpdateReportState = { sent: {} };
+  installUpdateFailureReporter({
+    installKind: "desktop-applications",
+    appVersion: "0.17.0",
+    platform: "darwin",
+    arch: "arm64",
+    load: () => state,
+    save: (next) => { state = next; },
+    send: (report) => { reports.push(report); },
+  });
+  return { reports, state: () => state };
+}
 
 function collect() {
   const progress: UpdateProgress[] = [];
@@ -136,13 +179,33 @@ describe("desktop update flow", () => {
     await desktop.download(STABLE, onProgress);
     await desktop.apply(onProgress);
 
-    expect(progress.at(-2)).toEqual({ phase: "error", error: "Desktop update did not finish downloading." });
-    expect(progress.at(-1)).toEqual({ phase: "error", error: "The downloaded update is no longer available." });
+    expect(progress.at(-2)).toEqual({
+      phase: "error",
+      error: "Desktop update did not finish downloading.",
+      failure: { phase: "download", code: "interrupted" },
+    });
+    expect(progress.at(-1)).toEqual({
+      phase: "error",
+      error: "The downloaded update is no longer available.",
+      failure: { phase: "apply", code: "staged_missing" },
+    });
     expect(calls).not.toContain("apply");
   });
 
+  test("a download cut off partway is interrupted, reported with the version it was for", async () => {
+    const { reports } = collectReports();
+    const { updater } = createFakeUpdater({ downloadThrows: new Error("The socket connection was closed unexpectedly.") });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    const { progress, onProgress } = collect();
+
+    await desktop.download(STABLE, onProgress);
+
+    expect(progress.at(-1)).toMatchObject({ phase: "error", failure: { phase: "download", code: "interrupted" } });
+    expect(reports).toMatchObject([{ phase: "download", code: "interrupted", targetVersion: "0.18.0", channel: "stable" }]);
+  });
+
   test("an apply Electrobun silently gives up on is an error, and a retry downloads again", async () => {
-    // A newer release replaced the downloaded one, so there is nothing to install.
+    // The downloaded files are gone, so there is nothing to install.
     const { updater, calls } = createFakeUpdater({ applyStatuses: [status({ status: "applying" })] });
     const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
     await desktop.download(STABLE, () => {});
@@ -152,7 +215,7 @@ describe("desktop update flow", () => {
     expect(progress).toEqual([
       { phase: "replacing" },
       { phase: "replacing" },
-      { phase: "error", error: "Desktop update could not be installed." },
+      { phase: "error", error: "Desktop update could not be installed.", failure: { phase: "apply", code: "staged_missing" } },
     ]);
 
     const retry = collect();
@@ -162,18 +225,78 @@ describe("desktop update flow", () => {
   });
 
   test("an install error is reported once", async () => {
+    const { reports, state } = collectReports();
     const { updater } = createFakeUpdater({
       applyStatuses: [status({ status: "error", details: { errorMessage: "Failed to replace app: EACCES" } })],
     });
     const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
     await desktop.download(STABLE, () => {});
+    // Waiting for the user's Restart, which the next launch would read as never restarted.
+    expect(state().staged).toMatchObject({ to: "0.18.0" });
     const { progress, onProgress } = collect();
 
     await desktop.apply(onProgress);
 
     expect(progress.filter((entry) => entry.phase === "error")).toEqual([
-      { phase: "error", error: "Failed to replace app: EACCES" },
+      { phase: "error", error: "Failed to replace app: EACCES", failure: { phase: "apply", code: "permission_denied" } },
     ]);
+    expect(reports).toMatchObject([{ phase: "apply", code: "permission_denied", targetVersion: "0.18.0", channel: "stable" }]);
+    // Reported here, so the next launch has nothing left to say about it.
+    expect(state().applying).toBeUndefined();
+    expect(state().staged).toBeUndefined();
+  });
+
+  // App Translocation runs a quarantined app from a read-only copy, and a disk
+  // image is read-only: Electrobun cannot replace the bundle there, and moving
+  // the app to Applications is what fixes it. From Applications, a move across
+  // disks (the update is kept on another one) is its own reason: moving the app
+  // again would not help.
+  test.each([
+    ["desktop-volume", "EROFS: read-only file system, rename", "wrong_location"],
+    ["desktop-volume", "EXDEV: cross-device link not permitted, rename", "wrong_location"],
+    ["desktop-applications", "EXDEV: cross-device link not permitted, rename", "cross_device"],
+  ] as const)("an install from %s that fails with %s says %s", async (installKind, message, code) => {
+    const { updater } = createFakeUpdater({
+      applyStatuses: [status({ status: "error", details: { errorMessage: `Failed to replace app: ${message}` } })],
+    });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0", installKind });
+    await desktop.download(STABLE, () => {});
+    const { progress, onProgress } = collect();
+
+    await desktop.apply(onProgress);
+
+    expect(progress.at(-1)?.failure).toEqual({ phase: "apply", code });
+  });
+
+  // Electrobun emits an error status when a patch does not apply, then falls
+  // back to the full download. That status must not end the flow as failed
+  // while the download carries on to ready.
+  test("an error Electrobun recovers from during a download does not fail it", async () => {
+    const { updater } = createFakeUpdater({
+      downloadStatuses: [status({ status: "error", message: "Cyclical update detected, falling back to full download" })],
+    });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+    const { progress, onProgress } = collect();
+
+    await desktop.download(STABLE, onProgress);
+
+    expect(progress.some((entry) => entry.phase === "error")).toBe(false);
+    expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
+  });
+
+  // Electrobun's check returns one message for every failure; the status it
+  // emitted before says whether the server answered.
+  test.each([
+    [status({ status: "error", message: "Failed to fetch update info (HTTP 404)" }), "not_found"],
+    [status({ status: "error", message: "Failed to fetch update info (HTTP 403)" }), "rate_limited"],
+    [null, "offline"],
+  ] as const)("a failed check is named by the status before it (%#)", async (before, code) => {
+    const { updater } = createFakeUpdater({
+      checkFailure: { status: before, error: "Failed to fetch update info from https://updates.example.test/stable-update.json?x1" },
+    });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" });
+
+    await expect(desktop.check("0.17.0")).resolves.toMatchObject({ kind: "error", failure: { phase: "check", code } });
   });
 });
 
@@ -239,7 +362,7 @@ describe("desktop update channels", () => {
     expect(result.kind === "available" && result.release.channel).toBeFalsy();
     expect(sources.at(-1)).toBeNull();
     await desktop.apply(onProgress);
-    expect(progress.at(-1)).toEqual({ phase: "error", error: "The downloaded update is no longer available." });
+    expect(progress.at(-1)).toMatchObject({ phase: "error", error: "The downloaded update is no longer available." });
     expect(calls).not.toContain("apply");
   });
 
@@ -295,5 +418,43 @@ describe("desktop update channels", () => {
     expect(sources).toEqual([null]);
     // A stable install takes the same manifest as before channels existed.
     await expect(desktop.check("0.17.0", "stable")).resolves.toMatchObject({ kind: "available", release: { version: "0.18.0" } });
+  });
+});
+
+// It deletes folders beside the installed app, so it must take only the
+// copies an install moved aside, never the app or its neighbours.
+describe("old copies of the app at the next start", () => {
+  function folderWith(entries: string[]): string {
+    const folder = mkdtempSync(join(tmpdir(), "gloom-update-asides-"));
+    for (const entry of entries) mkdirSync(join(folder, entry, "Contents"), { recursive: true });
+    return folder;
+  }
+
+  test.each([
+    ["darwin", "Gloomberb.app", "Gloomberb.app/Contents/MacOS/bun"],
+    ["linux", "app", "app/bin/bun"],
+  ])("%s removes %s.previous and the uniquely named ones, and nothing else", async (platform, app, exec) => {
+    const keep = [app, `${app}.previous.bak`, `${app}.previously`, `Other${app}.previous`, `${app}.previous-UPPER`];
+    const folder = folderWith([...keep, `${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
+    try {
+      const removed = await removeUpdateAsides(join(folder, exec), platform);
+      expect(removed.map((path) => path.slice(folder.length + 1)).sort()).toEqual([`${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
+      expect(readdirSync(folder).sort()).toEqual([...keep].sort());
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves everything alone where it cannot tell the app's folder", async () => {
+    const folder = folderWith(["bun.previous", "Gloomberb.previous"]);
+    try {
+      // A bundle path that is not the app's Contents/MacOS, a Linux runtime outside bin/, and Windows.
+      expect(await removeUpdateAsides(join(folder, "Gloomberb.app/bun"), "darwin")).toEqual([]);
+      expect(await removeUpdateAsides(join(folder, "bun"), "linux")).toEqual([]);
+      expect(await removeUpdateAsides(join(folder, "Gloomberb/bin/bun.exe"), "win32")).toEqual([]);
+      expect(existsSync(join(folder, "bun.previous"))).toBe(true);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

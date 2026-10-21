@@ -9,6 +9,7 @@ import {
   formatInsiderPrice,
   formatInsiderShares,
   formatInsiderValue,
+  insiderCurrencyText,
   insiderTypeMarkers,
   insiderTypeText,
   type InsiderColumn,
@@ -72,8 +73,10 @@ export function renderInsiderCell(
     case "shares":
       return { text: formatInsiderShares(row.shares), value: row.shares, color: figureColor };
     case "price":
-      return { text: formatInsiderPrice(row.price), value: row.price, color: figureColor };
+      return { text: formatInsiderPrice(row.price, column.currency), value: row.price, color: figureColor };
     case "value":
-      return { text: formatInsiderValue(row.value), value: row.value, color: figureColor };
+      return { text: formatInsiderValue(row.value, column.currency), value: row.value, color: figureColor };
+    case "ccy":
+      return { text: insiderCurrencyText(row, column.currency ?? ""), color: colors.textMuted };
   }
 }

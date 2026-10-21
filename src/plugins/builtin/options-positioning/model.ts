@@ -1,5 +1,6 @@
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatExpDate } from "../../../utils/options";
+import { modelSpotLabel, modelSpotStamp, modelSpotStampVariants, observedModelSpot } from "../options/model-spot";
 
 export type PositioningTab = "strikes" | "expiries" | "gex";
 export const POSITIONING_TABS: { value: PositioningTab; label: string }[] = [
@@ -66,6 +67,29 @@ export function formatRatio(value: number | null | undefined): string {
 export function formatLevel(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 }
+/**
+ * The spot Gloom Cloud read the distances and dealer gamma at, stamped as
+ * every options pane stamps its spot (`modelSpotStamp`), as a stat cell
+ * carries it: `pre-market Wed 21 Oct 09:35 UTC`, its shorter forms, then
+ * none, so the band keeps the columns it has in regular hours. Nothing for
+ * the regular session's price.
+ */
+export function positioningSpotDetail(spot: number | null | undefined, spotAsOf: string | null | undefined):
+  { detail?: string; detailVariants?: string[] } {
+  const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
+  if (spot == null || !Number.isFinite(at)) return {};
+  const observed = observedModelSpot(spot, at);
+  const stamp = modelSpotStamp(observed);
+  return stamp ? { detail: stamp, detailVariants: [...modelSpotStampVariants(observed), ""] } : {};
+}
+
+/** The spot as a report says it: `770.88 pre-market Wed 21 Oct 09:35 UTC`, `770.10 last Wed 21 Oct 14:05 UTC`. */
+export function formatPositioningSpot(spot: number | null | undefined, spotAsOf: string | null | undefined): string {
+  const at = spotAsOf ? Date.parse(spotAsOf) : Number.NaN;
+  if (spot == null || !Number.isFinite(spot)) return "--";
+  return Number.isFinite(at) ? `${formatLevel(spot)} ${modelSpotLabel(observedModelSpot(spot, at))}` : formatLevel(spot);
+}
+
 /** Where a level sits against spot: +0.6%. */
 export function formatDistance(level: number | null | undefined, spot: number | null | undefined): string {
   if (level == null || spot == null || !(spot > 0)) return "--";

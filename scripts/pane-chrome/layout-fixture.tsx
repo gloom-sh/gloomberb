@@ -65,6 +65,7 @@ function inventedStudy(index: number) {
       statusModule: {
         overallStatus: index % 2 ? "RECRUITING" : "NOT_YET_RECRUITING",
         studyFirstPostDateStruct: { date: "2026-10-09" },
+        lastUpdatePostDateStruct: { date: `2026-10-${String(16 - index).padStart(2, "0")}` },
         startDateStruct: { date: "2026-11-01", type: "ESTIMATED" },
         primaryCompletionDateStruct: { date: "2027-11", type: "ESTIMATED" },
         completionDateStruct: { date: "2028-03", type: "ESTIMATED" },

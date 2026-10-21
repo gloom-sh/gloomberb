@@ -1,11 +1,11 @@
 import type { AppConfig } from "../types/config";
 import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
-import { resolveCurrencyUnit, US_CENTS } from "../utils/currency-units";
+import { normalizeHeldCurrencyCode, resolveCurrencyUnit, US_CENTS } from "../utils/currency-units";
 import { slugifyName } from "../utils/slugify";
 import { parseCollectionRef } from "../team/collections";
 import { findNamedCollection } from "./collection-name";
 import { isFuturesTicker } from "./futures-positions";
-import { manualPortfolioLots } from "./manual-lots";
+import { manualPortfolioLots, mergeLotCostTerms, type LotCostFxConflict } from "./manual-lots";
 
 export interface DeleteWatchlistResult {
   config: AppConfig;
@@ -39,13 +39,39 @@ export interface SetManualPortfolioPositionInput {
    * read does not unsize it.
    */
   multiplier?: number;
-  /** The purchase date, YYYY-MM-DD. Left out, a single manual lot keeps the one it had. */
-  dateAcquired?: string;
+  /**
+   * The purchase date, YYYY-MM-DD. Null clears it; left out, the lots keep
+   * theirs (several, their earliest: mergeLotCostTerms).
+   */
+  dateAcquired?: string | null;
   /**
    * The rate the cost was bought at: one unit of `currency` in `costFx.currency`.
-   * Null clears it; left out, a single manual lot in the same currency keeps the one it had.
+   * Null clears it; left out, manual lots in the same currency keep theirs
+   * (several, weighted by cost), and lots whose rates cannot become one
+   * refuse the set (LotCostFxMergeError).
    */
   costFx?: { rate: number; currency: string } | null;
+}
+
+/**
+ * Several lots replaced by one position whose cost FX rate would be inferred
+ * from theirs, when theirs cannot honestly become one (mergeLotCostTerms):
+ * the set is refused until the position's own rate is given or cleared.
+ */
+export class LotCostFxMergeError extends Error {
+  constructor(readonly lotCount: number, readonly conflict: LotCostFxConflict, ratedCount: number) {
+    super(lotCostFxMergeMessage(lotCount, conflict, ratedCount));
+    this.name = "LotCostFxMergeError";
+  }
+}
+
+function lotCostFxMergeMessage(lotCount: number, conflict: LotCostFxConflict, ratedCount: number): string {
+  if (conflict === "lot-currencies") return `The ${lotCount} lots are in different currencies, so one position cannot keep the FX rate their costs were bought at.`;
+  if (conflict === "rate-currencies") return `The ${lotCount} lots' costs were converted into different currencies, so one position cannot keep their FX rates.`;
+  const rated = ratedCount === 1
+    ? "1 converts its cost at the FX rate it was bought at"
+    : `${ratedCount} convert their cost at the FX rate they were bought at`;
+  return `Of the ${lotCount} lots, ${rated} and ${lotCount - ratedCount} at today's, so one position cannot keep their rates.`;
 }
 
 /** What a position's size counts, as its field and messages name it. */
@@ -112,7 +138,11 @@ export function resolveManualPositionCurrency(
   baseCurrency: string | undefined,
   contractCurrency?: string | null,
 ): string {
-  return (rawCurrency?.trim() || contractCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
+  // Pence typed as GBp stay pence: upper-cased they would read as pounds. A listing's own GBp is
+  // what its quote is shown in once converted, pounds, so a blank currency still saves GBP.
+  const typed = rawCurrency?.trim();
+  if (typed) return normalizeHeldCurrencyCode(typed);
+  return (contractCurrency?.trim() || ticker.metadata.currency || portfolio.currency || baseCurrency || "USD").toUpperCase();
 }
 
 /** A plain ISO code in major units (AUD), else null: pence-type units, US cents and free text never total a portfolio. */
@@ -399,7 +429,7 @@ export function setManualPortfolioPosition(
   portfolioId: string,
   input: SetManualPortfolioPositionInput,
 ): SetManualPortfolioPositionResult {
-  const nextCurrency = input.currency.trim().toUpperCase();
+  const nextCurrency = normalizeHeldCurrencyCode(input.currency);
   const sharesError = validatePositionShares(input.shares, positionQuantityLabel(ticker));
   if (sharesError) throw new Error(sharesError);
   if (!Number.isFinite(input.avgCost)) {
@@ -411,14 +441,18 @@ export function setManualPortfolioPosition(
 
   const replacedPositions = ticker.metadata.positions.filter((position) => position.portfolio === portfolioId);
   const replacedPositionCount = replacedPositions.length;
-  // Editing a single snapshot (for example after a split) does not change its
-  // acquisition date. A consolidated replacement of several lots has no one date.
-  const single = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual" ? replacedPositions[0] : null;
-  const dateAcquired = input.dateAcquired ?? single?.dateAcquired;
-  // The rate the cost was bought at goes with its cost: a lot kept in its currency keeps it unless it is replaced or cleared.
-  const keptCostFx = single && single.currency?.trim().toUpperCase() === nextCurrency
-    && typeof single.costFxRate === "number" && single.costFxCurrency
-    ? { rate: single.costFxRate, currency: single.costFxCurrency } : null;
+  // Editing a snapshot (for example after a split) changes neither its purchase date nor, while its
+  // currency stays, the rate its cost was bought at. Several manual lots keep theirs merged.
+  const manual = replacedPositions.length > 0 && replacedPositions.every((position) => position.broker === "manual");
+  const kept = manual ? mergeLotCostTerms(replacedPositions) : {};
+  const dateAcquired = input.dateAcquired === undefined ? kept.dateAcquired : input.dateAcquired;
+  const keptCostFx = kept.costFx && kept.currency === nextCurrency ? kept.costFx : null;
+  // Lots in this currency with a rate that cannot become the position's: refused rather than dropped or guessed.
+  const ratedHere = replacedPositions.filter((position) =>
+    normalizeHeldCurrencyCode(position.currency) === nextCurrency && position.costFxRate != null && position.costFxCurrency);
+  if (input.costFx === undefined && kept.costFxConflict && ratedHere.length > 0) {
+    throw new LotCostFxMergeError(replacedPositions.length, kept.costFxConflict, replacedPositions.filter((position) => position.costFxRate != null && position.costFxCurrency).length);
+  }
   const costFx = input.costFx === undefined ? keptCostFx : input.costFx;
   if (costFx && !(Number.isFinite(costFx.rate) && costFx.rate > 0)) throw new Error("The cost FX rate must be a positive number.");
   // A contract's size does not change with the count held; one the lots agree on carries over.

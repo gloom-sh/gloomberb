@@ -93,7 +93,7 @@ const POP_OUT = key("p", "op out");
 const STEP = key("←/→", " step");
 /** THEM and MEMB members: open them in RRG, CORR, SIW or RIPL, or save them as a watchlist. */
 const MEMBERS_MENU = key(".", " open members in, save as watchlist");
-const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("t", "imeframe"), key("f", "ormulas")];
+const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("b", "ars"), key("f", "ormulas")];
 
 export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   // Research companies
@@ -1244,6 +1244,30 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("a", "dd"), key("c", "onnect"), key("s", "ync"), key("e", "dit")],
     data: null,
     bloomberg: [],
+  },
+  BUY: {
+    summary: "Open the shared Trade ticket with a buy quantity and optional limit price. Focus starts on Review; choose an account and review the broker preview before confirming.",
+    usage: ["BUY AAPL 10", "BUY AAPL 10 150.25"],
+    keys: [key("r", "eview"), key("o", "rders")],
+    data: same("Broker account and quote"),
+    bloomberg: [],
+    docs: "BR",
+  },
+  SELL: {
+    summary: "Open the shared Trade ticket with a sell quantity and optional limit price. Focus starts on Review; holdings and broker capabilities are checked before confirmation.",
+    usage: ["SELL AAPL 10", "SELL AAPL 10 350.25"],
+    keys: [key("r", "eview"), key("o", "rders")],
+    data: same("Broker account and quote"),
+    bloomberg: [],
+    docs: "BR",
+  },
+  ORD: {
+    summary: "Open orders and recent activity for a selected broker profile and account. Review a modification or confirm cancellation from an open order; uncertain outcomes require reconciliation before another action.",
+    usage: ["ORD"],
+    keys: [key("m", "odify"), key("c", "ancel")],
+    data: same("Broker account snapshot"),
+    bloomberg: [],
+    docs: "BR",
   },
 
   // Layouts and settings

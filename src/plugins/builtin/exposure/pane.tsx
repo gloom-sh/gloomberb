@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
-import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
+import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -251,20 +251,21 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     <PageStackView focused={focused && !editing} detailOpen={detailOpen} onBack={() => { setDetail(null); setEditing(false); }}
       detailTitle={editing ? "Scenario and holdings" : detail ? `${detail.symbol} · ${detail.label}` : "What we could not see"}
       detailContent={editing && !savedSnapshot.error ? <ExposureEditor initial={{ ...inputs, scenario: scenario ?? inputs.scenario }} initialCustom={savedScenario.error ? customSetting : undefined} sources={sources} focused={focused} width={width} onCancel={() => setEditing(false)} onSave={value => { if (repairingCustomSetting.current && customSetting) setCustomSetting(JSON.stringify(value.scenario)); setInputs(value); setScenarioId("custom"); setEditing(false); setDetail(null); }} /> : data ? <ExposureDetail row={detail} data={data} width={width} /> : null}
-      rootContent={<PaneStatusBody loading={!data && resource.loading} error={inputError ?? (!data ? resource.error : null)} subject="exposure analysis"
-        actions={savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
-          : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined}>
-        {data ? <DataTableView<ExposureRow> columns={columns} items={items} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+      rootContent={!data && !resource.loading && !resource.error && !inputError
+        ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} />
+        // A scenario change reloads under the query bar, which stays.
+        : <DataTableView<ExposureRow> columns={columns} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+          status={data && !inputError ? undefined : { loading: !inputError && resource.loading, error: inputError ?? resource.error, subject: "exposure analysis",
+            actions: savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
+              : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined }}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: r => r.id, onChange: (id) => { if (!id.startsWith("locked:")) setSelected(id); } }}
           onActivate={row => row.id.startsWith("locked:") ? upgrade() : setDetail(row.id)} selectedTextOverridesCellColor showHorizontalScrollbar
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={column => setSort(old => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query} figures={figures}
-            chart={tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
+            chart={!data ? null : tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
               : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
           renderCell={renderCell}
           emptyStateTitle={tab === "drivers" ? "No supported company drivers are available for these holdings." : tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
-          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />
-          : !resource.loading && !resource.error ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} /> : null}
-      </PaneStatusBody>} />
+          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />} />
   </Box>;
 }

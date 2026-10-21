@@ -37,6 +37,9 @@ import {
   readOrCreateInstallId,
 } from "../../telemetry/crash-reports-node";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
+import { installUpdateFailureReporter } from "../../telemetry/update-failures";
+import { createNodeUpdateFailureHost } from "../../telemetry/update-failures-node";
+import { terminalInstallKind } from "../../updater";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
 import { starPromptEnvironmentAllows } from "../../app/star-prompt/model";
@@ -116,6 +119,10 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     installCrashReporter(createNodeCrashReporterHost({
       surface: "terminal",
       getConfig: () => ({ dataDir: config.dataDir, telemetry: currentTelemetryConfig(config)?.telemetry }),
+    }));
+    installUpdateFailureReporter(createNodeUpdateFailureHost({
+      installKind: terminalInstallKind(),
+      getDataDir: () => config.dataDir,
     }));
     installUsageCounter({
       surface: "terminal",

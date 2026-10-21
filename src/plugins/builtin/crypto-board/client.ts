@@ -84,7 +84,34 @@ function withValidStablecoinFields(asset: CryptoMarketAsset): CryptoMarketAsset 
   return { ...asset, ...(peg ? { peg: null } : {}), ...(range ? { range24h: null } : {}) };
 }
 
-export function validateCryptoMarkets(data: CryptoMarketsPayload): CryptoMarketsPayload {
+const DAY_MS = 86_400_000;
+/** How many UTC days old a coin's latest daily close may be for its previous close to stand, as Gloom Cloud judges a coin quote's. */
+const PREVIOUS_CLOSE_MAX_AGE_DAYS = 2;
+
+/**
+ * A coin of a board from before Gloom Cloud measured its moves since 00:00
+ * UTC (a server not yet updated, a copy cached from one), whose change runs
+ * over the screener's 24 hours: moved from its previous close instead, the
+ * close of its last UTC day while its daily closes reach the last two days.
+ * Otherwise that close may be weeks old (Toncoin on 18 Oct 2026), and the
+ * coin has no move.
+ */
+function onUtcDayBasis(asset: CryptoMarketAsset, now: number): CryptoMarketAsset {
+  const history = asset.history;
+  const last = history?.closes.findLastIndex((close) => close != null) ?? -1;
+  const lastDay = history && last >= 0 ? Date.parse(`${history.start}T00:00:00Z`) / DAY_MS + last : null;
+  const holds = lastDay != null && asset.previousClose != null && asset.previousClose > 0
+    && Math.floor(now / DAY_MS) - lastDay <= PREVIOUS_CLOSE_MAX_AGE_DAYS;
+  const change = holds ? asset.price - asset.previousClose! : null;
+  return {
+    ...asset,
+    previousClose: holds ? asset.previousClose : null,
+    change,
+    changePercent: change != null ? (change / asset.previousClose!) * 100 : null,
+  };
+}
+
+export function validateCryptoMarkets(data: CryptoMarketsPayload, now = Date.now()): CryptoMarketsPayload {
   if (
     !data
     || data.version !== 1
@@ -103,7 +130,11 @@ export function validateCryptoMarkets(data: CryptoMarketsPayload): CryptoMarkets
   ) {
     throw new Error("The server returned an invalid crypto board");
   }
-  const assets = data.assets.map(withValidStablecoinFields);
+  const legacy = data.dayChangeBasis !== "utc-day";
+  const assets = data.assets.map((asset) => {
+    const valid = withValidStablecoinFields(asset);
+    return legacy ? onUtcDayBasis(valid, now) : valid;
+  });
   return assets.every((asset, index) => asset === data.assets[index]) ? data : { ...data, assets };
 }
 

@@ -4,6 +4,8 @@ import { splitSymbolArgs, splitSymbolWords, stripStrayEdges, uniqueSymbols } fro
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
+/** A header naming a column of company names, read when no column names the symbols. */
+const NAME_HEADERS = new Set(["name", "names", "company", "companies", "companyname", "security", "securityname", "issuer", "issuername"]);
 
 /** One symbol as it can be typed: AAPL, $nvda, TTF.AS, SAN:EPA, BRK-B, 7203.T, ^GSPC, ES=F. */
 const SYMBOL_TOKEN = /^\$?[\p{L}\p{N}^][\p{L}\p{N}.:\-^=/&]{0,23}$/u;
@@ -82,17 +84,32 @@ interface SymbolText {
   symbols: string[];
   /** Cells beside the symbol column of a table with no header, in reading order; empty for a list or a CSV with a header. */
   ignored: string[];
+  /**
+   * The symbols are a list's entries, each a line or a cell of a list split
+   * by semicolons or commas, and are read as typed entries are
+   * (`readNameEntries`): one with spaces is a company's name (`Altria
+   * Group`), or symbols written on one line (`AAPL MSFT`).
+   */
+  entries?: true;
 }
 
 /**
  * The symbols in a file or piped text, in order. A spreadsheet export reads
- * from the column its header names (Symbol, Ticker, Code). Without a header,
+ * from the column its header names (Symbol, Ticker, Code), else from its
+ * Name or Company column, as `entries`. Without a header,
  * every cell is a symbol unless some column after the first holds a name, a
  * price or a weight: that table is read by its first column, and the cells
  * beside it are returned as `ignored` so the command can name them. A list
  * split by commas, spaces or newlines gives every entry, even when a line of
- * it is ragged or carries a stray separator (`"BIMAS ,"`). A byte order mark,
- * Windows line ends, blank lines and lines starting with # or // are ignored.
+ * it is ragged or carries a stray separator (`"BIMAS ,"`). A list of lines
+ * gives each line whole, and a list of names split by semicolons or commas
+ * (one line, or one name a line) each cell, as `entries`: a line with spaces
+ * is a company's name (`Altria Group`) or symbols on one line, which reading
+ * the entries tells apart. Names beside other text (`Apple Inc,Technology`)
+ * are a table read by its first column, its names as `entries`. A list split
+ * by spaces with figures beside the symbols (`AAPL 150.00`) is a table. A
+ * byte order mark, Windows line ends, blank lines and lines starting with #
+ * or // are ignored.
  */
 export function parseSymbolText(text: string): SymbolText {
   const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
@@ -105,13 +122,27 @@ export function parseSymbolText(text: string): SymbolText {
   const exact = header.findIndex((cell) => SYMBOL_HEADERS.has(cell));
   const column = exact >= 0 ? exact : header.findIndex((cell) => cell.includes("symbol") || cell.includes("ticker"));
   if (column >= 0) return { symbols: records.slice(1).map((cells) => cells[column] ?? "").filter(Boolean), ignored: [] };
+  // Without one, a delimited export's Name or Company column holds the companies, read as typed names are.
+  const nameColumn = delimiter ? header.findIndex((cell) => NAME_HEADERS.has(cell)) : -1;
+  if (nameColumn >= 0) return { symbols: records.slice(1).map((cells) => cells[nameColumn] ?? "").filter(Boolean), ignored: [], entries: true };
   // A separator or quote mark stuck to a cell is dropped (and named) when it is read, so it does not make the list a table.
   const cleaned = records.map((cells) => cells.map((cell) => stripStrayEdges(cell).text));
+  const figures = cleaned.some((cells) => cells.some((cell, index) => index > 0 && NUMBER_CELL.test(cell) && /\d/.test(cell)));
+  // Lines split by spaces alone are entries, unless figures sit beside the symbols.
+  if (!delimiter && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true };
   const grid = cleaned.every((cells) => cells.every((cell, index) => !cell || (looksLikeSymbol(cell) && (index === 0 || !NUMBER_CELL.test(cell)))));
   if (grid) return { symbols: records.flat().filter(Boolean), ignored: [] };
+  // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
+  // on it, is a list. A name beside a sector or any other text is a table, read by its first column below.
+  const names = cleaned.some((cells) => /\s/.test(cells[0] ?? ""));
+  if (!figures && (records.length === 1 || (names && cleaned.every((cells) => cells.filter(Boolean).length <= 1)))) {
+    return { symbols: records.flat().filter(Boolean), ignored: [], entries: true };
+  }
   return {
     symbols: records.map((cells) => cells[0] ?? "").filter(Boolean),
     ignored: records.flatMap((cells) => cells.slice(1)).filter(Boolean),
+    // A first column of names (Apple Inc) is read as typed names are.
+    ...names ? { entries: true as const } : {},
   };
 }
 
@@ -151,8 +182,10 @@ export interface SymbolListSource {
   stdinPiped?: boolean;
   /**
    * Reads the typed entries (`splitSymbolArgs`) as symbols, such as
-   * `readNameEntries`, which keeps a company's name whole. Without it every
-   * entry is its words, each a symbol.
+   * `readNameEntries`, which keeps a company's name whole, and then the
+   * entries of each list a file or standard input holds. Called first for
+   * what was typed, even when that is nothing. Without it every entry is its
+   * words, each a symbol.
    */
   readEntries?: (entries: string[]) => Promise<string[]>;
 }
@@ -176,17 +209,20 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   const readStdin = source.readStdin ?? (() => Bun.stdin.text());
   const wantsStdin = source.args.includes("-") || source.file === "-";
   const typedArgs = source.args.filter((arg) => arg !== "-");
+  const readEntries = (entries: string[]) => source.readEntries ? source.readEntries(entries) : Promise.resolve(splitSymbolWords(entries));
   const typed = source.readEntries ? await source.readEntries(splitSymbolArgs(typedArgs)) : splitSymbolWords(typedArgs);
   const collected = [...typed];
   // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
   const ignored: string[] = [];
-  const addCells = ({ symbols, ignored: beside }: SymbolText) => {
-    for (const cell of symbols) {
+  const addCells = async ({ symbols, ignored: beside, entries }: SymbolText) => {
+    const cells = symbols.map((cell) => {
       const cleaned = stripStrayEdges(cell);
       cleaned.notes.forEach((note) => strays.add(note));
-      collected.push(cleaned.text);
-    }
+      return cleaned.text;
+    }).filter(Boolean);
+    // A list's lines and names are read as typed entries are: `Altria Group` stays one company.
+    collected.push(...entries ? await readEntries(cells) : cells);
     ignored.push(...beside);
   };
   if (source.file != null && source.file !== "-") {
@@ -198,10 +234,10 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    addCells(parseSymbolText(text));
+    await addCells(parseSymbolText(text));
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
-    addCells(parseSymbolText(await readStdin()));
+    await addCells(parseSymbolText(await readStdin()));
   }
   const ignoredNote = ignoredCellsNote(ignored);
   return { ...uniqueSymbols(collected), notes: [...strays, ...ignoredNote ? [ignoredNote] : []] };

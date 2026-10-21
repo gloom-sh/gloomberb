@@ -9,7 +9,7 @@ const lot = (shares: number, avgCost: number, currency = "USD"): TickerPosition 
   ({ portfolio: "main", broker: "manual", shares, avgCost, currency });
 const apple = (...positions: TickerPosition[]) => createTestTicker("AAPL", "Apple", { portfolios: ["main"], positions });
 const form = (ticker: ReturnType<typeof apple>) => buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker })!;
-const hints = (workflow: ReturnType<typeof form>) => workflow.fields.flatMap((field) => field.description ?? []);
+const hints = (workflow: ReturnType<typeof form>) => workflow.fields.flatMap((field) => field.id === "costFx" ? [] : field.description ?? []);
 
 describe("position form with several lots", () => {
   test("fills the total shares, the share-weighted cost and the common currency, and says saving replaces the lots", () => {
@@ -19,7 +19,7 @@ describe("position form with several lots", () => {
     ]) {
       expect(workflow.values).toMatchObject({ ticker: "AAPL", shares: "15", currency: "USD" });
       expect(Number(workflow.values.avgCost) * 15).toBeCloseTo(2350, 9);
-      expect(hints(workflow)).toEqual(['Totals of your 2 lots in "Main Portfolio". Saving replaces them with one position and clears their acquisition dates.']);
+      expect(hints(workflow)).toEqual(['Totals of your 2 lots in "Main Portfolio". Saving replaces them with one position, dated by the earliest.']);
     }
   });
 
@@ -36,11 +36,11 @@ describe("position form with several lots", () => {
 
   test("a single lot and no lot fill in as before, the count hinting only at how a short is entered", () => {
     const single = form(apple(lot(10, 150)));
-    expect(single.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "10", avgCost: "150", currency: "USD" });
+    expect(single.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "10", avgCost: "150", currency: "USD", dateAcquired: "", costFx: "" });
     expect(hints(single)).toEqual(["Negative for a short."]);
 
     const empty = buildAddToPortfolioWorkflow(config, { preferredPortfolioId: "main", ticker: apple(), defaultAvgCost: 190 })!;
-    expect(empty.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "", avgCost: "190", currency: "" });
+    expect(empty.values).toEqual({ portfolioId: "main", ticker: "AAPL", shares: "", avgCost: "190", currency: "", dateAcquired: "", costFx: "" });
     expect(hints(empty)).toEqual(["Negative for a short."]);
   });
 

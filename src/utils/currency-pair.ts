@@ -84,3 +84,29 @@ export function looksLikeCurrencyPair(symbol: string): boolean {
   const halves = /^([A-Z]{3})[^A-Z0-9]?([A-Z]{3})(?:=X)?$/.exec(code)?.slice(1) ?? /^([A-Z]{3})=X$/.exec(code)?.slice(1) ?? [];
   return halves.some(isCurrencyCode);
 }
+
+/**
+ * Which currency of a pair markets quote it per: EUR, GBP, AUD and NZD go
+ * before the dollar, the dollar before CAD, CHF and the rest, and the yen goes
+ * last (EUR/USD, USD/CAD, USD/JPY, EUR/CAD, CAD/JPY).
+ */
+const PAIR_BASE_ORDER = ["EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF"];
+
+function pairBaseRank(code: string): number {
+  const at = PAIR_BASE_ORDER.indexOf(code);
+  if (at >= 0) return at;
+  return code === "JPY" ? PAIR_BASE_ORDER.length + 1 : PAIR_BASE_ORDER.length;
+}
+
+/**
+ * A rate of `quote` per unit of `currency`, written the way markets quote
+ * the pair, as `fx` reads a pair: 0.0067 USD per JPY is USD/JPY 149.25, and
+ * 1.4 CAD per USD stays USD/CAD 1.4. Two codes of the same rank keep their
+ * order.
+ */
+export function quotedFxPair(currency: string, quote: string, rate: number): { pair: string; rate: number } {
+  const from = currency.trim().toUpperCase(), into = quote.trim().toUpperCase();
+  return pairBaseRank(into) < pairBaseRank(from)
+    ? { pair: `${into}/${from}`, rate: 1 / rate }
+    : { pair: `${from}/${into}`, rate };
+}

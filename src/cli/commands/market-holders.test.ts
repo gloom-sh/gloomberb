@@ -10,6 +10,7 @@ import { createHoldersHeadless } from "../../plugins/builtin/holders/headless";
 import { createTestHeadlessContext } from "../../test-support/headless";
 
 const holders = marketDataCliCommands.find((command) => command.name === "holders")!;
+const insider = marketDataCliCommands.find((command) => command.name === "insider")!;
 const HOLDER_DATA = { symbol: "CAR", holders: [{ ownerType: "institution", name: "Morgan Stanley", shares: 2_029_978, changeShares: 2_029_978 }] };
 
 afterEach(() => setHttpFetchTransport(null));
@@ -113,3 +114,35 @@ test("holders writes HDS's rows: largest value first, percents in percent, and H
     "Northern Trust Corporation,institution,174942026,12968275,-403588,-3.0182,0.09,2026-06-30,SAN,,,SEC EDGAR,2026-06-30",
   ]);
 });
+
+test("insider leads with INS's Form 4 summary, not a 13F list that names no insider, and dates the report by the newest filing", async () => {
+  // GLO-1105: `insider JNJ` read "none reported" from the 13F list while `fn INS JNJ` summed 42 Form 4 lines.
+  const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
+  const form4 = (date: string, code: string, shares: number, price: number) => `<ownershipDocument><issuer><issuerCik>200406</issuerCik></issuer>`
+    + `<reportingOwner><reportingOwnerId><rptOwnerName>DOE JANE</rptOwnerName></reportingOwnerId></reportingOwner><nonDerivativeTable><nonDerivativeTransaction>`
+    + `<securityTitle><value>Common Stock</value></securityTitle><transactionDate><value>${date}</value></transactionDate>`
+    + `<transactionCoding><transactionCode>${code}</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares>`
+    + `<transactionPricePerShare><value>${price}</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>`;
+  const filings = [[day(3), "S", 1_000, 150], [day(10), "S", 500, 140]] as const;
+  const cli = createTestCliContext({
+    dataProvider: {
+      getHolders: async () => ({ symbol: "JNJ", asOf: "2026-06-30", holders: [{ ownerType: "institution", name: "Vanguard Group Inc", shares: 1 }] }),
+      getSecFilings: async () => filings.map(([date], index) => ({
+        accessionNumber: `f${index}`, form: "4", filingDate: new Date(`${date}T00:00:00Z`), cik: "0000200406", filingUrl: `https://www.sec.gov/f${index}`,
+      })),
+      getSecFilingContent: async (filing: { accessionNumber: string }) => form4(...filings[Number(filing.accessionNumber.slice(1))]!),
+    },
+  });
+  await insider.execute(["JNJ"], cli.context);
+  const { result, options } = cli.printed[0]!;
+  const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options).replace(/\u001b\[[0-9;]*m/g, "");
+  expect(text).not.toContain("none reported");
+  expect(text).toContain("Loaded filings, last 90 days: Common Stock: Sold 1.5k shares ($220,000.00)");
+  expect(text).toContain(`2 Form 4 lines in the latest 2 filings, newest filed ${day(3)}: gloomberb fn INS JNJ`);
+  expect(text).toContain("(Form 4 filings)");
+  expect(result.metadata).toMatchObject({
+    form4Insiders: "available",
+    form4: { lines: 2, filings: 2, newestFiled: day(3), notCovered: null },
+  });
+});
+

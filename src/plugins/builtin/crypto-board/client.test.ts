@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { fetchCryptoMarkets, validateCryptoMarkets, validateStablecoinSupply } from "./client";
-import { cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
+import { CRYPTO_FIXTURE_NOW, cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 test("the Cloud boundary accepts missing history and rejects malformed assets", () => {
   const data = cryptoFixture();
@@ -54,6 +54,28 @@ test("a malformed peg or 24h range is dropped from its coin alone, never the boa
   onlyRange.assets[usdt]!.range24h!.low = -1;
   expect(validateCryptoMarkets(onlyRange).assets[usdt]!.peg).toEqual(data.assets[usdt]!.peg);
   expect(validateCryptoMarkets(data)).toBe(data);
+});
+
+// Linear: GLO-1089. A board from a server before the coin day basis carried
+// the screener's 24-hour change; CRYP and `quote` must both read since 00:00 UTC.
+test("a board from before the since-00:00 UTC basis is moved from each coin's previous close, or not at all", () => {
+  const legacy = cryptoFixture();
+  delete legacy.dayChangeBasis;
+  // BTC: closes run to yesterday, so its previous close is the 00:00 UTC price.
+  legacy.assets[0]!.changePercent = 1.36;
+  const read = validateCryptoMarkets(legacy, CRYPTO_FIXTURE_NOW);
+  expect(read.assets[0]!.change).toBe(2);
+  expect(read.assets[0]!.changePercent).toBeCloseTo(2.0408, 4);
+  // HYPE: no daily closes date its previous close, which may be weeks old.
+  expect(read.assets[1]).toMatchObject({ previousClose: null, change: null, changePercent: null });
+  // Closes that stop four days back: the reported close is not today's base.
+  const stale = cryptoFixture();
+  delete stale.dayChangeBasis;
+  stale.assets[0]!.history = { start: "2026-08-20", closes: Array.from({ length: 30 }, (_, index) => 70 + index) };
+  expect(validateCryptoMarkets(stale, CRYPTO_FIXTURE_NOW).assets[0]!.changePercent).toBeNull();
+  // A current server's board is read as sent.
+  const current = cryptoFixture();
+  expect(validateCryptoMarkets(current, CRYPTO_FIXTURE_NOW)).toBe(current);
 });
 
 test("an absent or failing endpoint has a concise error", async () => {

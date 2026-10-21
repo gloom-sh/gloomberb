@@ -28,6 +28,13 @@ export interface StatItem {
   label: string;
   value: string;
   detail?: string;
+  /**
+   * Shorter forms of `detail`, longest first (an empty one shows none). The
+   * grid sizes its columns by the shortest, so a detail that grows with the
+   * data (a stamp outside regular hours) never takes a column from the band,
+   * and shows the longest form that fits the cell.
+   */
+  detailVariants?: readonly string[];
   tone?: StatTone;
   /** A domain colour (a price change, a series). Wins over `tone`. */
   color?: string;
@@ -55,9 +62,22 @@ function labelChars(items: StatItem[]): number {
   return Math.min(MAX_LABEL_CHARS, Math.max(4, ...items.map((item) => displayWidth(t(item.label)))));
 }
 
+/** The form of the detail the columns are sized by: the shortest. */
+function sizingDetail(item: StatItem): string | undefined {
+  return item.detailVariants?.length ? item.detailVariants[item.detailVariants.length - 1] : item.detail;
+}
+
+/** The longest form of a cell's detail that fits `room` cells, else its shortest. */
+function fittingStatDetail(item: Pick<StatItem, "detail" | "detailVariants">, room: number): string | undefined {
+  if (!item.detail || !item.detailVariants?.length) return item.detail;
+  const forms = [item.detail, ...item.detailVariants];
+  return forms.find((form) => displayWidth(form) <= room) ?? forms[forms.length - 1];
+}
+
 function naturalWidth(item: StatItem, labels: number): number {
   // A split bar takes the room the cell has left and is not counted here.
-  const detail = item.detail ? displayWidth(item.detail) + 2 : 0;
+  const sized = sizingDetail(item);
+  const detail = sized ? displayWidth(sized) + 2 : 0;
   return labels + 1 + displayWidth(item.value) + detail + CELL_GAP;
 }
 
@@ -132,9 +152,14 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
             const barRoom = valueWidth - displayWidth(value) - 1;
             const barCells = !item.split ? 0 : nativePaneChrome ? SPLIT_BAR_CELLS : barRoom >= 4 ? Math.min(SPLIT_BAR_CELLS, barRoom) : 0;
             const detailWidth = valueWidth - displayWidth(value) - (barCells ? barCells + 1 : 0) - 2;
-            const detail = !item.detail
+            // The desktop cell has no gap between cells: its label column, inset and gaps take the room
+            // (measured short, as a cell is wider than a character, so a form that fits is never clipped).
+            const shownDetail = fittingStatDetail(item, nativePaneChrome
+              ? width + (item.wide ? 0 : CELL_GAP) - labels - displayWidth(value) - (barCells ? barCells + 1 : 0) - 4
+              : detailWidth);
+            const detail = !shownDetail
               ? ""
-              : nativePaneChrome ? item.detail : detailWidth > 1 ? truncateToDisplayWidth(item.detail, detailWidth) : "";
+              : nativePaneChrome ? shownDetail : detailWidth > 1 ? truncateToDisplayWidth(shownDetail, detailWidth) : "";
             return (
               <Box
                 key={item.id ?? `${rowIndex}:${index}`}

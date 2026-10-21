@@ -12,6 +12,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
+import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { getPortfolioPositionMetrics, lotCostAtTodaysRate, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
   getPortfolioValuationDisplay,
@@ -486,29 +487,46 @@ export async function valuePortfolioPositions({
 /**
  * The holdings' move over the day of the prices they are valued at, in the
  * portfolio's currency, and that move against their value at the close
- * before. Null when any priced holding's move is unknown, as the pane's Day is.
+ * before, with what it is measured from as the pane's Day says it ("vs Fri 16
+ * Oct close", "vs mixed closes"). Null when any priced holding's move is
+ * unknown, as the pane's Day is.
  */
-export function portfolioDayMove(valuation: Pick<PortfolioValuation, "positions">): { change: number; changePercent: number | null } | null {
+export function portfolioDayMove(
+  valuation: Pick<PortfolioValuation, "positions">,
+  now = Date.now(),
+): { change: number; changePercent: number | null; basis: string | null } | null {
   let change = 0;
   let previousValue = 0;
+  const bases: Array<QuoteChangeBasis | null> = [];
   for (const entry of valuation.positions) {
     if (!entry.position) continue;
     if (!entry.dayMove) return null;
     change += entry.dayMove.change;
     previousValue += entry.dayMove.previousValue;
+    bases.push(quoteChangeBasis(entry.quote, { terms: entry.futures }));
   }
-  return { change, changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null };
+  return {
+    change,
+    changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null,
+    basis: combinedChangeBasisLabel(bases, now),
+  };
 }
 
-/** `Day's move: +$1,165.49 (+0.51%)`, the line a book valued at the close carries; `color` tints the figures by sign. */
+/**
+ * `Day's move: +$1,165.49 (+0.51%) vs Fri 16 Oct close`, the line a book
+ * valued at the close carries; `color` tints the figures by sign, `muted` the
+ * basis.
+ */
 export function dayMoveLine(
   move: ReturnType<typeof portfolioDayMove>,
   currency: string,
   color: (text: string, value: number) => string = (text) => text,
+  muted: (text: string) => string = (text) => text,
 ): string {
   if (!move) return "Day's move: unavailable";
   const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)})` : "";
-  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}`;
+  const basis = move.basis ? ` ${muted(move.basis)}` : "";
+  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}${basis}`;
 }
 
 /**
@@ -899,7 +917,7 @@ async function showCollectionWithMarketData(
         total: allocation.total, cash: cashExport, targetSum: allocation.targetSum,
         // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
         ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
-        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
+        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null } : {}),
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
@@ -1044,7 +1062,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign));
+    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     const notes: string[] = [];
     const weightNote = weightBasisLine(allocation, currency);

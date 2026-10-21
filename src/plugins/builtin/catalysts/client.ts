@@ -23,6 +23,6 @@ export function validateCatalystDetail(payload: CatalystDetail, id?: string): Ca
 export const fetchCatalysts = async (query: CatalystFilters, client: Pick<typeof apiClient, "getCloudCatalysts"> = apiClient, signal?: AbortSignal) => validateCatalysts(await client.getCloudCatalysts(query, signal));
 export const fetchCatalystDetail = async (id: string, client: Pick<typeof apiClient, "getCloudCatalystEvent"> = apiClient, signal?: AbortSignal, query: { offset?: number; limit?: number } = {}) => validateCatalystDetail(await client.getCloudCatalystEvent(id, signal, query), id);
 export const loadCatalysts = (query: CatalystFilters, accessKey: string, force = false, signal?: AbortSignal) =>
-  loadCloudResource(catalystCache, `${accessKey}:${JSON.stringify(query)}`, () => fetchCatalysts(query, apiClient, signal), { force, validate: validateCatalysts });
+  loadCloudResource(catalystCache, `${accessKey}:${JSON.stringify(query)}`, () => fetchCatalysts(query, apiClient, signal), { force, validate: validateCatalysts, signal });
 export const loadCatalystDetail = (id: string, accessKey: string, force = false, offset = 0, signal?: AbortSignal) =>
-  loadCloudResource(catalystDetailCache, `${accessKey}:${id}:${offset}`, () => fetchCatalystDetail(id, apiClient, signal, { offset, limit: 100 }), { force, validate: (payload) => validateCatalystDetail(payload, id) });
+  loadCloudResource(catalystDetailCache, `${accessKey}:${id}:${offset}`, () => fetchCatalystDetail(id, apiClient, signal, { offset, limit: 100 }), { force, validate: (payload) => validateCatalystDetail(payload, id), signal });

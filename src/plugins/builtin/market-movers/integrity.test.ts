@@ -90,7 +90,7 @@ test("Gainers and Losers ask the server for the session they rank by and cache e
       sessions.push(options?.session);
       return { quotes: [], source: "cloud" as const, stale: false };
     },
-    fetchTrending: async () => [],
+    fetchTrending: async () => ({ data: [], stale: false }),
   };
   await loadMarketMoverTab("gainers", null, undefined, dependencies);
   await loadMarketMoverTab("losers", null, { basis: "extended" }, dependencies);
@@ -118,7 +118,7 @@ test("trending has no average-volume source, and missing quotes do not invent ze
   } })) });
   const result = await loadMarketMoverTab("trending", provider, undefined, {
     fetchPreferred: async () => { throw new Error("unused"); },
-    fetchTrending: async () => [{ symbol: "MISSING" }, { symbol: "ZERO" }],
+    fetchTrending: async () => ({ data: [{ symbol: "MISSING" }, { symbol: "ZERO" }], stale: false }),
   });
   expect(result.quotes.map(row => [row.symbol, row.volume, row.avgVolume, row.volumeRatio])).toEqual([["MISSING", null, null, null], ["ZERO", 0, null, null]]);
 });

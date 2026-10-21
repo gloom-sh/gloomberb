@@ -41,3 +41,19 @@ test("content replacing the loading body sits at the pane origin without the sta
   expect(box?.height).toBe(6);
   expect(tui.frame().split("\n")[0]?.startsWith("CONTENT")).toBe(true);
 });
+
+
+test("an unavailable error is shown once while a distinct failure keeps its diagnostic", async () => {
+  let changeError: (value: string) => void = () => {};
+  function Harness() {
+    const [error, setError] = useState("Prices unavailable.");
+    changeError = setError;
+    return <PaneStatusBody subject="Prices" error={error} />;
+  }
+  await tui.render(<Harness />);
+  const unavailable = await tui.waitForFrameToContain("Prices unavailable.");
+  expect(unavailable.match(/Prices unavailable\./g)).toHaveLength(1);
+  await act(async () => { changeError("Request timed out after 30 seconds"); });
+  const failed = await tui.waitForFrameToContain("Request timed out after 30 seconds");
+  expect(failed).toContain("Prices unavailable.");
+});

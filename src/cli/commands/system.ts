@@ -5,6 +5,7 @@ import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
 import { canonicalTimeZone } from "../../utils/utc-time";
+import { readBaseCurrency } from "../../utils/base-currency";
 import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
 import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
@@ -63,6 +64,32 @@ function parseTimezoneSetting(value: string): string | null {
     `"${value.trim()}" is not a time zone name.`,
     `Use an IANA zone name, Region/City, such as Asia/Tokyo, or ${NO_TIMEZONE} for UTC alone.`,
   );
+}
+
+/**
+ * The code `config set baseCurrency` stores (`cad` is CAD); fails on a name
+ * or sign, naming the code it stands for, and on anything that is no code.
+ */
+function parseBaseCurrencySetting(value: string): string {
+  const reading = readBaseCurrency(value);
+  if ("code" in reading) return reading.code;
+  const [first] = reading.suggestions;
+  return fail(reading.error, first
+    ? `baseCurrency takes an ISO 4217 code: gloomberb config set baseCurrency ${first}`
+    : "baseCurrency takes an ISO 4217 code such as USD, EUR or CAD.");
+}
+
+/** A saved base currency that is no code (an older version stored names), with what to set instead; null for a code. */
+function baseCurrencyProblem(value: unknown): string | null {
+  const reading = readBaseCurrency(typeof value === "string" ? value : "");
+  if ("code" in reading) return null;
+  const [first] = reading.suggestions;
+  return `${reading.error} Set one: gloomberb config set baseCurrency ${first ?? "<code>"}`;
+}
+
+function describeBaseCurrency(value: unknown): string {
+  const problem = baseCurrencyProblem(value);
+  return problem ? `${String(value)} ${cliStyles.warning(`(${problem})`)}` : String(value);
 }
 
 function describeTimezone(value: unknown): string {
@@ -189,6 +216,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
           checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
           checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
           checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
+          // Only a saved value no conversion can price is worth a line.
+          const baseCurrencyIssue = baseCurrencyProblem(services.config.baseCurrency);
+          if (baseCurrencyIssue) checks.push({ check: "baseCurrency", status: "warn", detail: baseCurrencyIssue });
           const theme = services.config.theme;
           checks.push({
             check: "theme",
@@ -311,6 +341,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ...(key === KEYBINDINGS_CONFIG_KEY ? { format: summarizeKeybindings } : {}),
               ...(key === "theme" ? { format: (value: unknown) => describeThemeId(String(value)) } : {}),
               ...(key === TIMEZONE_CONFIG_KEY ? { format: describeTimezone } : {}),
+              ...(key === "baseCurrency" ? { format: describeBaseCurrency } : {}),
             })),
           });
           return;
@@ -329,7 +360,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           }
           ctx.printResult({ data: { key, value: safeConfig[key] } }, {
             text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value)
-              : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value) : describeConfigValue(data.value),
+              : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value)
+                : key === "baseCurrency" ? describeBaseCurrency(data.value) : describeConfigValue(data.value),
           });
           return;
         }
@@ -367,6 +399,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           // A display name may come unquoted: config set theme White Phosphor.
           const parsedValue = key === "theme"
             ? requireThemeId(args.slice(2).join(" "))
+            : key === "baseCurrency"
+              ? parseBaseCurrencySetting(args.slice(2).join(" "))
             : key === TIMEZONE_CONFIG_KEY
               ? parseTimezoneSetting(value)
               : key === UPDATE_CHANNEL_CONFIG_KEY
@@ -473,7 +507,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           ],
           textColumns: [
             { key: "capability", header: "Capability", shrink: false },
-            { key: "id", header: "Source", maxWidth: 20 },
+            { key: "id", header: "Source" },
             { key: "kind", header: "Kind", shrink: false },
             { key: "enabled", header: "Enabled" },
             { key: "operations", header: "Operations", format: (value) => String(value).split(",").join(", ") },

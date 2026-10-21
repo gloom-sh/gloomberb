@@ -267,8 +267,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("place", ["Enter", "Arrows"], "With a tool picked, Enter starts it at the cursor, the arrows move its end, and Enter finishes it."),
         entry("drawings", ["[", "]"], "With a drawing tool picked, pick a drawing."),
         entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the picked drawing (the last one while a drawing tool is picked)."),
-        entry("zoom-pointer", ["Ctrl+Scroll"], "Zoom around the pointer."),
-        entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it."),
+        entry("zoom-pointer", shortcutDisplayMode === "terminal" ? ["Ctrl+Scroll"] : ["Ctrl+Scroll", "Pinch"], "Zoom time around the pointer."),
+        entry("time-axis", ["Drag"], "On the time axis, zoom time: left zooms in, right zooms out. Double-click fits it again."),
+        entry("value-axis", ["Drag", "Scroll"], "On a value axis, stretch or squeeze that panel's values. Dragging the plot then moves them too."),
+        entry("value-fit", ["Double-click", "Auto"], "Fit a hand-scaled panel's values again, from its axis or the Auto button at its foot."),
+        entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it, values included."),
       ],
     },
     {

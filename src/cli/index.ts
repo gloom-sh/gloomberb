@@ -190,8 +190,16 @@ export function createCoreCliCommands(
           "fn WEI --csv --section europe > europe.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
+          "fn HIVG SPY --event fomc --offset -6 --lookback ALL --csv",
           "fn AUCT --explain",
         ],
+        sections: [{
+          title: "Exit status",
+          lines: [
+            "0 when the report has data for what was asked, partial data with warnings about the rest included; 1 when it has none (an empty report, or rows with no value for a listing that has nothing) or the input is bad. --json ok is false exactly when the exit status is 1.",
+            "CSV headers are the same for every symbol: a reason a figure is missing goes to the status column, never into a number cell.",
+          ],
+        }],
       },
       execute: async (args, ctx) => {
         requirePaneFunctionTarget(args, "fn", ctx);

@@ -31,7 +31,14 @@ export interface MarketHeatmapBoard extends MarketHeatmapResult {
 const DEFAULT_COUNT = 80;
 /** The most names one board asks for; a server that serves fewer answers with its own maximum. */
 const MAX_MARKET_HEATMAP_COUNT = 500;
-const CACHE_TTL_MS = 60_000;
+/**
+ * How often a board is worth checking again: a real-time board's live read
+ * is renewed every 15 seconds on the server, a delayed board's snapshot is
+ * cached there for a minute.
+ */
+export function heatmapCheckIntervalMs(board: Pick<MarketHeatmapResult, "access"> | null | undefined): number {
+  return board?.access === "realtime" ? 15_000 : 60_000;
+}
 const activeFetches = new Map<string, Promise<MarketHeatmapBoard>>();
 const memoryCache = new Map<string, { expiresAt: number; result: MarketHeatmapBoard }>();
 
@@ -90,7 +97,7 @@ export async function fetchMarketHeatmap(
   const fetchPromise = loadMarketHeatmap(universe, count, sources)
     .then((result) => {
       if (useCache) {
-        memoryCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+        memoryCache.set(cacheKey, { result, expiresAt: Date.now() + heatmapCheckIntervalMs(result) });
       }
       return result;
     })

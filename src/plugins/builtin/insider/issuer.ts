@@ -1,4 +1,7 @@
-import type { SecFilingItem } from "../../../types/data-provider";
+import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { logFailure } from "../../../utils/log-failure";
+import { homeInsiderReportsNote, venueHomeCountry } from "../../../utils/sec";
 import { parseForm4IssuerCik } from "./insider-data";
 
 /**
@@ -40,10 +43,37 @@ export function filesAsForeignPrivateIssuer(filings: readonly SecFilingItem[]): 
 
 /**
  * What the pane, `fn INS` and `insider` say when a company has no Form 4 of
- * its own. Each already names the company above it.
+ * its own, and beside it, for a company from abroad, that its insiders'
+ * reports at home are not covered either (`homeInsiderReportsNote`). Each
+ * already names the company above it.
  */
-export function insiderEmptyNotice(foreignPrivateIssuer: boolean): string {
-  return foreignPrivateIssuer
+export function insiderEmptyNotice(foreignPrivateIssuer: boolean, home: string | null = null): string {
+  const notice = foreignPrivateIssuer
     ? "No Form 4 insiders: foreign private issuers file none."
     : "No Form 4 insider filings.";
+  return home ? `${notice} ${home}` : notice;
+}
+
+/**
+ * `homeInsiderReportsNote` for a listing with no Form 4 of its own, placed by
+ * its company's country where the source knows the company (RY in New York
+ * is Royal Bank of Canada), else by its venue abroad (RY:TSX). A lookup that
+ * fails leaves the venue to say. A US listing of a company filing as a
+ * domestic one has no home market to name, and costs no lookup.
+ */
+export async function loadHomeInsiderReportsNote(
+  provider: Pick<DataProvider, "getIssuerListings">,
+  key: string,
+  exchange: string | undefined,
+  foreignPrivateIssuer: boolean,
+): Promise<string | null> {
+  const parsed = parsePublicTickerKey(key);
+  const venue = parsed.exchange ?? exchange ?? "";
+  if (!foreignPrivateIssuer && !venueHomeCountry(venue)) return null;
+  const { getIssuerListings } = provider;
+  const issuer = getIssuerListings
+    ? await Promise.resolve().then(() => getIssuerListings.call(provider, parsed.symbol, venue))
+      .catch(logFailure("plugins.insider.issuer", "Reading the company's listings failed", null))
+    : null;
+  return homeInsiderReportsNote({ country: issuer?.country, exchange: venue, foreignPrivateIssuer });
 }

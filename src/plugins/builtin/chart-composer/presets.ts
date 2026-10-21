@@ -222,11 +222,11 @@ function placedRegisteredSeries(expression: ParsedSeriesExpression) {
   };
 }
 
-export function buildPriceChartPreset(symbol: string): ChartSpec {
+export function buildPriceChartPreset(symbol: string, range?: TimeRange): ChartSpec {
   const normalized = normalizeInstrument(symbol, true);
   if (!normalized) return buildEmptyChartPreset();
   return setBuiltinStudies(
-    chartSpec([buildSeriesSpec({ kind: "security", ...normalized, fieldId: CHART_FIELD_IDS.price }, 0)]),
+    chartSpec([buildSeriesSpec({ kind: "security", ...normalized, fieldId: CHART_FIELD_IDS.price }, 0)], { range }),
     ["volume"],
   );
 }

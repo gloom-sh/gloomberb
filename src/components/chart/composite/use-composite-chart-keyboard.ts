@@ -83,6 +83,7 @@ export function useCompositeChartKeyboard({
   isSeriesToggleable,
   navigationFrame,
   activeUserViewport,
+  scaledByHand,
   panViewportByRatio,
   zoomViewport,
   setViewportRange,
@@ -113,6 +114,8 @@ export function useCompositeChartKeyboard({
   isSeriesToggleable: CompositeChartProps["isSeriesToggleable"];
   navigationFrame: CompositeNavigationFrame | null;
   activeUserViewport: CompositeViewportRange | null;
+  /** A value axis was stretched or squeezed by hand, which `resetViewport` also fits again. */
+  scaledByHand: boolean;
   panViewportByRatio: (shiftRatio: number) => void;
   zoomViewport: (zoomFactor: number, anchorRatio?: number) => void;
   setViewportRange: (range: CompositeViewportRange) => void;
@@ -424,7 +427,7 @@ export function useCompositeChartKeyboard({
       stepLevel(event.name === "[" ? -1 : 1);
       return;
     }
-    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace")) {
+    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace", "delete")) {
       consume();
       removeSelectedLevel();
       return;
@@ -608,7 +611,7 @@ export function useCompositeChartKeyboard({
   const armedHints = armedTool ? KEYBOARD_TOOL_HINTS[armedTool] : null;
   const placing = !!keyboardPlacement;
   const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
-  const resettable = !!activeUserViewport;
+  const resettable = !!activeUserViewport || scaledByHand;
   const timePickLabel = timePick?.label ?? null;
   const levelActionHint = selectedLevel?.actionable && levels?.action ? levels.action : null;
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
