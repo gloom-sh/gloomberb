@@ -17,6 +17,7 @@ import {
 import { applyPluginToggles } from "../../plugins/ownership";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/marketplace/store";
+import { deactivatePluginForRemoval } from "../../plugins/marketplace/deactivation";
 import type { InstalledPlugin } from "../../plugins/marketplace/model";
 import {
   listExternalPlugins,
@@ -502,7 +503,13 @@ export function bindAppPanePluginRegistry({
         for (const instanceId of orphaned) next = removePane(next, instanceId);
         persistLayout(next);
       }
-      if (pluginRegistry.allPlugins.has(pluginId)) pluginRegistry.unregister(pluginId);
+      try {
+        deactivatePluginForRemoval(pluginRegistry, pluginId);
+      } catch (error) {
+        const entry = listExternalPlugins().find((candidate) => candidate.plugin.id === pluginId);
+        if (entry) upsertExternalPlugin({ ...entry, needsRestart: true });
+        throw error;
+      }
       removeExternalPlugin(pluginId, directory);
     },
     contributions: (pluginId) => {

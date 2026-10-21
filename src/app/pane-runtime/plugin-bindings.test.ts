@@ -338,14 +338,19 @@ describe("switching plugins", () => {
 
 describe("activating an installed plugin", () => {
   /** The registry's listeners redraw while a plugin registers: what they read of its entry then is what shows. */
-  function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[]) {
+  function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[], cleanupFails = false) {
     const iconDuringRegister: Array<string | null> = [];
     const allPlugins = new Map<string, unknown>(externalPlugins.map((entry) => [entry.plugin.id, entry.plugin]));
     const pluginRegistry = {
       panes: new Map(),
       allPlugins,
       getTermSize: () => ({ width: 120, height: 40 }),
-      unregister: (pluginId: string) => { allPlugins.delete(pluginId); },
+      unregister: (pluginId: string) => {
+        allPlugins.delete(pluginId);
+        if (cleanupFails) throw new Error("Cleanup failed after unregistering");
+      },
+      getPluginPaneIds: () => [],
+      isPluginConfigured: () => true,
       register: async (plugin: { id: string }) => {
         iconDuringRegister.push(externalPluginIcon(plugin.id));
         allPlugins.set(plugin.id, plugin);
@@ -397,5 +402,13 @@ describe("activating an installed plugin", () => {
     const updated = bindActivationRuntime([aries("data:image/webp;base64,old")]);
     await updated.host.activate(aries("data:image/webp;base64,newer"));
     expect(updated.iconDuringRegister).toEqual(["data:image/webp;base64,newer"]);
+  });
+
+  test("failed view cleanup retains the installed entry as needing restart and refuses a no-op retry", async () => {
+    const { host } = bindActivationRuntime([aries("data:image/webp;base64/kept")], true);
+    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart Gloomberb");
+    expect(host.listInstalled()).toMatchObject([{ id: "aries", directory: "gloom-aries", needsRestart: true }]);
+    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart Gloomberb");
+    expect(host.listInstalled()).toHaveLength(1);
   });
 });

@@ -639,15 +639,29 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
     setLastError(null);
-    await host.deactivate(entry.id, entry.directory).catch(logFailure("plugin-marketplace.pane", "Deactivate plugin view before removal failed"));
-    await manager.deactivate?.(entry.id).catch(logFailure("plugin-marketplace.pane", "Deactivate plugin host before removal failed"));
-    const result = await manager.remove(entry.directory!);
-    setBusy(null);
-    bump();
-    if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
-    else {
-      setLastError(result.error);
-      notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
+    let removalStarted = false;
+    try {
+      // Stop the native side first: a successful view stop drops its catalog
+      // entry, so it must remain available if the native stop fails.
+      await manager.deactivate?.(entry.id);
+      await host.deactivate(entry.id, entry.directory);
+      removalStarted = true;
+      const result = await manager.remove(entry.directory!);
+      if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
+      else {
+        setLastError(result.error);
+        notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
+      }
+    } catch (error) {
+      logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
+      const message = removalStarted
+        ? "Removal failed. Restart Gloomberb and try again."
+        : "Plugin could not be stopped. Files kept. Restart Gloomberb.";
+      setLastError(message);
+      notify({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
+    } finally {
+      setBusy(null);
+      bump();
     }
   }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
 

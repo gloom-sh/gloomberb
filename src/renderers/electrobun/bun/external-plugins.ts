@@ -14,6 +14,7 @@ import {
   loadExternalPlugin,
 } from "../../../plugins/loader";
 import { createNodePluginManager } from "../../../plugins/manager-node";
+import { deactivatePluginForRemoval } from "../../../plugins/marketplace/deactivation";
 import { readPluginIcon } from "../../../plugins/plugin-icon";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { desktopRendererCapabilityManifests } from "./desktop/initialization";
@@ -209,12 +210,6 @@ export function deactivateExternalPlugin(
   registry: PluginRegistry,
   pluginId: string,
 ): { capabilityManifests: ReturnType<typeof desktopRendererCapabilityManifests> } {
-  if (registry.allPlugins.has(pluginId)) {
-    try {
-      registry.unregister(pluginId);
-    } catch (error) {
-      log.error(`Deactivating ${pluginId} failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  deactivatePluginForRemoval(registry, pluginId);
   return { capabilityManifests: desktopRendererCapabilityManifests(registry.capabilities) };
 }

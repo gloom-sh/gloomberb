@@ -73,6 +73,10 @@ A linked plugin loads like an installed one, shows as `linked` in the Plugins
 pane, is never reported as behind the registry, and is skipped by `update`.
 Removing it removes the link and leaves the checkout alone.
 
+Removal stops the plugin before deleting its files. If cleanup fails, the
+files stay in place and the Plugins pane asks you to restart Gloomberb before
+trying again; restarting is needed when cleanup left background work uncertain.
+
 `doctor` runs the checks that otherwise surface as a `failed` row in the pane
 or as a broken pane on the desktop: the entry file resolves, the Gloomberb the
 plugin declares is not newer than this one, it imports nothing the host has
