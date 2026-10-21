@@ -668,6 +668,8 @@ The expiry window starts a year out. `--min-days` and `--max-days` bound it in c
 
 `portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloomberb plugin disable` also removes its commands.
 
+`gloomberb notes export [dir]` writes readable notes as Markdown and warns about each note or source it could not read. An unreadable local note's file information skips only that note. If quick-note titles cannot be read, their bodies are still exported under `quick/<id>.md`, with one warning for that source. Export Notes in the app reports the same warnings with its file count.
+
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
 `gloomberb fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first, to show what traded through a move: times are New York's clock (`14:30Z` for UTC), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is, `Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to 20:00:00 ET (00:00:00 UTC)`, or to the feed cutoff while the session trades. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.

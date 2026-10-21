@@ -29,9 +29,10 @@ export interface NotesFilesIO {
    * Every note's key (its `.md` file name without the extension) and when it
    * was last written. A folder that does not exist yet, or a note gone before
    * it was looked at, lists nothing. Any other failure is logged and that part
-   * left out, or, with `strict`, rejects.
+   * left out, or, with `strict`, rejects. A `skipped` callback receives an
+   * unreadable note instead of rejecting the whole listing.
    */
-  listKeys(options?: { strict?: boolean }): Promise<Array<[string, number]>>;
+  listKeys(options?: NotesListOptions): Promise<Array<[string, number]>>;
 }
 
 const QUICK_NOTES_INDEX_FILE = "__quick-notes-index__.json";
@@ -108,8 +109,9 @@ export function diskNotesFilesIO(dataDir: string): NotesFilesIO {
         } catch (error) {
           // A note deleted since the folder was listed is simply gone.
           if ((error as NodeJS.ErrnoException)?.code === "ENOENT") continue;
-          if (options?.strict) throw error;
+          if (options?.strict && !options.skipped) throw error;
           logFailure("notes.files", "Read when a note was last written failed")(error);
+          options?.skipped?.(name.slice(0, -3), error);
         }
       }
       return keys;
@@ -200,7 +202,16 @@ export function remoteNotesFilesIO(
     read: async (file) => await invoke("read", { dataDir, file }) as string | null,
     write: async (file, text) => { await invoke("write", { dataDir, file, text }); },
     delete: async (file) => { await invoke("delete", { dataDir, file }); },
-    listKeys: async (options) => await invoke("listKeys", { dataDir, ...(options?.strict ? { strict: true } : {}) }) as Array<[string, number]>,
+    async listKeys(options) {
+      const result = await invoke("listKeys", {
+        dataDir, ...(options?.strict ? { strict: true } : {}),
+        ...(options?.skipped ? { reportSkipped: true } : {}),
+      });
+      if (!options?.skipped) return result as Array<[string, number]>;
+      const { keys, skipped } = result as { keys: Array<[string, number]>; skipped: Array<{ key: string; reason: string }> };
+      for (const { key, reason } of skipped) options.skipped(key, new Error(reason));
+      return keys;
+    },
   };
 }
 
@@ -245,7 +256,7 @@ export class NotesFiles implements NotesStore {
 
   /** Every stored note, ticker notes and quick notes alike, newest first. */
   async list(options: NotesListOptions = {}): Promise<NoteFileEntry[]> {
-    const { entries } = await this.readEach(await this.io.listKeys({ strict: options.strict }), options.skipped);
+    const { entries } = await this.readEach(await this.io.listKeys(options), options.skipped);
     return entries.sort((left, right) => right.updatedAt - left.updatedAt);
   }
 

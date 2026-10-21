@@ -8,6 +8,7 @@ import type { AppServices } from "../../../core/app-services";
 import { diskNotesFilesIO, isNotesFile } from "../../../plugins/builtin/notes/files";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
+import { errorMessage } from "../../../utils/errors";
 
 const DESKTOP_CORE_PLUGIN_ID = "desktop-core";
 
@@ -221,7 +222,14 @@ function createNotesFilesCapability(): PluginCapability {
         await io(input).delete(file(input));
         return null;
       }, "action"),
-      listKeys: op((input: any) => io(input).listKeys({ strict: input.strict === true })),
+      listKeys: op(async (input: any) => {
+        const skipped: Array<{ key: string; reason: string }> = [];
+        const keys = await io(input).listKeys({
+          strict: input.strict === true,
+          ...(input.reportSkipped === true ? { skipped: (key: string, error: unknown) => skipped.push({ key, reason: errorMessage(error) }) } : {}),
+        });
+        return input.reportSkipped === true ? { keys, skipped } : keys;
+      }),
     },
   };
 }
