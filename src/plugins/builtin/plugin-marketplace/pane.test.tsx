@@ -211,8 +211,7 @@ for (const failure of ["reject", "partial", "throw"] as const) {
     await tui.waitForFrameToContain("3333333");
 
     // Refresh retries even when the eligible folders did not change.
-    if (failure === "partial") await tui.clickFrameText("efresh");
-    else await press("r");
+    await press("r");
     await tui.waitForFrameToExclude("3333333");
     expect(checks).toBe(3);
     expect(requests).toEqual(Array.from({ length: 3 }, () => ["alpha", "beta"]));

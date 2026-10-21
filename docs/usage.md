@@ -760,7 +760,6 @@ For a plugin installed outside the registry, a failed or incomplete update check
 | `s` | Open its setup form |
 | `p` | Open a pane it provides |
 | `d` | Open the debug log filtered to it |
-| `r` | Refresh the catalog and check installed plugins for updates |
 | `b` | Show or hide the built-in plugins |
 | `/` | Search |
 

@@ -876,7 +876,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
   if (canRemove) hints.push({ id: "remove", key: "x", label: " remove", onPress: () => { void removeSelected(); } });
   if (host) hints.push({ id: "packs", key: "a", label: "pply pack", title: "Apply a starter pack", onPress: () => { void choosePack(); } });
-  hints.push({ id: "refresh", key: "r", label: "efresh", onPress: () => refresh(true) });
   // A built-in has no repository; its page on gloom.sh shows it at work.
   const seeItUrl = selected?.bundled ? registryPluginUrl(selected.id) : null;
   if (seeItUrl) hints.push({ id: "see-it", key: "o", label: " see it", title: "See it on gloom.sh", onPress: () => openUrl(seeItUrl) });
