@@ -44,6 +44,22 @@ export function isLivePerpQuote(quote: Quote | null | undefined, now = Date.now(
     && now - quote.lastUpdated <= LIVE_FOR_MS;
 }
 
+/**
+ * How long until a view looks again at whether its live rows still are: when the first one's minute runs out, a beat
+ * after, never more than a minute away. A reading stamped ahead of the clock would otherwise ask for a timer past what
+ * `setTimeout` holds, which fires at once, again and again.
+ */
+export function liveRecheckMs(expiresInMs: number): number {
+  return Math.min(LIVE_FOR_MS, Math.max(0, expiresInMs) + 250);
+}
+
+/** The most rows one view follows on the quote stream at once: as many as the app streams (the socket's budget). */
+const LIVE_ROW_LIMIT = 60;
+
+/** The markets of the rows a view follows on the quote stream: the first LIVE_ROW_LIMIT. */
+export const followedPerpMarkets = (rows: readonly Pick<PerpBoardRow, "marketId">[]) =>
+  rows.slice(0, LIVE_ROW_LIMIT).map((row) => row.marketId);
+
 export interface LivePerpRows {
   rows: readonly PerpBoardRow[];
   /** Every row followed is fed by its venue's socket now: the view may call itself live. */
@@ -56,13 +72,13 @@ const NONE: ReadonlySet<string> = new Set();
 
 /**
  * Fetched rows with the quote stream's newer readings laid over them. Only the
- * first `limit` rows are subscribed: a list passes the rows in view.
+ * first LIVE_ROW_LIMIT rows are subscribed: a list passes the rows in view.
  */
 export function useLivePerpRows(
   rows: readonly PerpBoardRow[],
-  { surface = "detail", visible = true, limit = 40, enabled = true }: { surface?: Surface; visible?: boolean; limit?: number; enabled?: boolean } = {},
+  { surface = "detail", visible = true, enabled = true }: { surface?: Surface; visible?: boolean; enabled?: boolean } = {},
 ): LivePerpRows {
-  const marketKey = enabled ? rows.slice(0, limit).map((row) => row.marketId).join("\u001f") : "";
+  const marketKey = enabled ? followedPerpMarkets(rows).join("\u001f") : "";
   const targets = useMemo(() => marketKey ? marketKey.split("\u001f").flatMap((marketId) => {
     const target = perpQuoteTarget(marketId, surface, visible);
     return target ? [target] : [];
@@ -98,7 +114,7 @@ export function useLivePerpRows(
   }, [entries, expired, marketKey, rows, surface, targets, visible]);
   useEffect(() => {
     if (result.expiresAt == null) return;
-    const timer = setTimeout(() => setExpired((count) => count + 1), Math.max(0, result.expiresAt) + 250);
+    const timer = setTimeout(() => setExpired((count) => count + 1), liveRecheckMs(result.expiresAt));
     return () => clearTimeout(timer);
   }, [result]);
   return result;
@@ -132,7 +148,7 @@ export function useLivePerpTableRows<T>(
     }
     return [...rows.values()];
   }, [items, pinned, range, rowOf]);
-  const live = useLivePerpRows(inView, { surface, limit: 60 });
+  const live = useLivePerpRows(inView, { surface });
   const next = useMemo(() => {
     const byMarket = new Map(live.rows.map((row) => [row.marketId, row]));
     return items.map((item) => {

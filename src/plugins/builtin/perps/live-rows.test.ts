@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
-import { isLivePerpQuote, withLiveReading } from "./live-rows";
+import { followedPerpMarkets, isLivePerpQuote, liveRecheckMs, withLiveReading } from "./live-rows";
 import { perpRow } from "./test-fixture";
 
 const quote = (perpetual: Quote["perpetual"]): Quote => ({ symbol: "BTC", price: 1, currency: "USDC", change: 0, changePercent: 0, lastUpdated: 0, perpetual });
@@ -26,4 +26,16 @@ test("a streamed quote reads live only while its venue has priced it within the 
   expect(isLivePerpQuote({ ...streamed, lastUpdated: now - 61_000 }, now)).toBe(false);
   expect(isLivePerpQuote({ ...streamed, stale: true }, now)).toBe(false);
   expect(isLivePerpQuote({ ...streamed, dataSource: "delayed" }, now)).toBe(false);
+});
+
+test("a view looks again at its live rows within a minute, even for a reading stamped far ahead of the clock", () => {
+  expect(liveRecheckMs(30_000)).toBe(30_250);
+  expect(liveRecheckMs(-5_000)).toBe(250);
+  // Past setTimeout's 2^31 - 1 ms the timer fires at once, and again on every render.
+  expect(liveRecheckMs(Date.parse("2100-01-01T00:00:00.000Z") - Date.parse("2026-10-20T00:00:00.000Z"))).toBe(60_000);
+});
+
+test("a view follows as many rows as the app streams, the watchlist's sixty included", () => {
+  const rows = Array.from({ length: 70 }, (_, index) => perpRow({ marketId: `hyperliquid:default:C${index}` }));
+  expect(followedPerpMarkets(rows)).toEqual(rows.slice(0, 60).map((row) => row.marketId));
 });

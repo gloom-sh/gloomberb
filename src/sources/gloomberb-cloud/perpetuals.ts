@@ -121,16 +121,25 @@ export function perpetualQuote(row: PerpBoardRow, listing: PerpetualListing): Qu
   };
 }
 
-const finiteOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
+/** The figures a streamed row is read by: each a finite number, or none. */
+const STREAMED_FIGURES = ["markPrice", "lastPrice", "fundingRate8h", "openInterestUsd", "premium"] as const;
 
-/** A row the market socket carried for this listing's market, readable as a fetched one; null for anything else. */
+/**
+ * A row the market socket carried for this listing's market, readable as a fetched one; null for anything else. A
+ * figure the frame leaves out (a server writes no key for a value it does not have) is none, as null says.
+ */
 function streamedRow(value: unknown, listing: PerpetualListing): PerpBoardRow | null {
   if (!value || typeof value !== "object") return null;
   const row = value as PerpBoardRow;
-  return typeof row.marketId === "string" && row.marketId.toLowerCase() === listing.marketId.toLowerCase()
-    && typeof row.quoteCurrency === "string" && typeof row.observedAt === "string" && Number.isFinite(Date.parse(row.observedAt))
-    && [row.markPrice, row.lastPrice, row.fundingRate8h, row.openInterestUsd, row.premium].every(finiteOrNull)
-    ? row : null;
+  if (typeof row.marketId !== "string" || row.marketId.toLowerCase() !== listing.marketId.toLowerCase()
+    || typeof row.quoteCurrency !== "string" || typeof row.observedAt !== "string" || !Number.isFinite(Date.parse(row.observedAt))) return null;
+  const figures: Partial<Record<(typeof STREAMED_FIGURES)[number], number | null>> = {};
+  for (const field of STREAMED_FIGURES) {
+    const figure: unknown = row[field];
+    if (figure != null && !(typeof figure === "number" && Number.isFinite(figure))) return null;
+    figures[field] = figure ?? null;
+  }
+  return { ...row, ...figures };
 }
 
 /**

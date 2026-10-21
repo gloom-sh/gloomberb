@@ -28,8 +28,6 @@ const rowMarket = (ticker: TickerRecord) => perpetualListing(ticker.metadata.tic
 
 const NO_PERPETUALS: ListPerpetuals = { markets: new Map(), version: 0, stale: false };
 const NO_SYMBOLS: ReadonlySet<string> = new Set();
-/** The most contracts a list follows on the quote stream at once: the rows in view. */
-const LIVE_LIMIT = 60;
 
 export interface ListPerpetuals {
   /** Each row's contract by ticker, null for none; a row is missing while its first answer loads. */
@@ -118,12 +116,13 @@ export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boo
     }
     return { markets, version: 0, stale: !!data?.stale };
   }, [data, enabled, loading, tickers]);
-  // The contracts of the rows in view follow the quote stream; each is subscribed once however many rows share it.
+  // The contracts of the rows in view follow the quote stream, as many as useLivePerpRows follows; each is subscribed
+  // once however many rows share it.
   const liveRows = useMemo(() => {
     const rows = new Map<string, PerpBoardRow>();
     for (const symbol of liveSymbols) {
       const row = fetched.markets.get(symbol);
-      if (row && rows.size < LIVE_LIMIT) rows.set(row.marketId, row);
+      if (row) rows.set(row.marketId, row);
     }
     return [...rows.values()];
   }, [fetched, liveSymbols]);

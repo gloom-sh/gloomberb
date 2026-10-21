@@ -5,7 +5,7 @@ import { perpetualListing } from "../../tickers/perpetual-listing";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { AssetDataRouter } from "../provider-router";
 import { GloomberbCloudProvider } from "./index";
-import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, perpetualQuote, searchPerpetualMarkets } from "./perpetuals";
+import { getPerpetualHistory, PERPETUAL_HISTORY_LOCKED, perpetualQuote, searchPerpetualMarkets, streamedPerpetualQuote } from "./perpetuals";
 
 /** Hyperliquid's Brent contract on its xyz dex, as Gloom Cloud served it on 2026-10-12. */
 function brent(patch: Partial<PerpBoardRow> = {}): PerpBoardRow {
@@ -125,6 +125,15 @@ test("a batched search's perpetual markets are the ones each query's own search 
   expect(batched?.get("BRENT")?.map((row) => row.symbol)).toEqual(["BZUSDT:BINANCE", "XYZ-BRENTOIL:HYPERLIQUID", "BRENT"]);
   expect(batched?.get("NONE")).toEqual([]);
   expect(searchesOfTheBoard).toBe(1);
+});
+
+test("a streamed row that leaves out a figure it does not have still quotes, the figure read as none", () => {
+  const listing = perpetualListing("XYZ-BRENTOIL:HYPERLIQUID")!;
+  const { premium: _premium, fundingRate8h: _funding, ...partial } = brent();
+  const quote = streamedPerpetualQuote({ perpetual: partial, dataSource: "live", delivery: "stream", stale: false }, listing);
+  expect(quote).toMatchObject({ price: 101.43, dataSource: "live", perpetual: { premium: null, fundingRate8h: null } });
+  // A figure that is there but not a number is still refused.
+  expect(streamedPerpetualQuote({ perpetual: brent({ premium: "0.1" as unknown as number }), dataSource: "live" }, listing)).toBeNull();
 });
 
 describe("the quote path", () => {
