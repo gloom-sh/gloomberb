@@ -469,7 +469,9 @@ export function chatLayout(): LayoutConfig {
     const ids = ["chat:a", "table:a", "reader:a"];
     return {
       dockRoot: null, instances: ids.map(instance),
-      floating: ids.map((instanceId, index) => ({ instanceId, x: 4, y: 2, width: 140, height: 42, zIndex: index ? 10 - index : 20 })),
+      // Each cover leaves the chat header exposed for a real click to raise it.
+      floating: ids.map((instanceId, index) => ({ instanceId, x: 4, y: 2 + index * 2,
+        width: 140, height: 42 - index * 8, zIndex: index ? 10 - index : 20 })),
       detached: [],
     };
   }

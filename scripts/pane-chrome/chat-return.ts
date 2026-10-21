@@ -5,8 +5,17 @@ import { transcriptPaint, transcriptView } from "./chat-paint";
 /** Part of chat-latency: real saved-layout clicks and the app's Tab shortcut. */
 export async function checkChatReturn(cdp: PageCommands, out: string, prefix: string, floating: boolean) {
   const states: Array<{ step: string; passed: boolean; [key: string]: unknown }> = [];
-  const next = async (index: number) => {
-    if (floating) {
+  const next = async (index: number, pointer = false) => {
+    if (floating && pointer) {
+      const point = await evaluate<{ x: number; y: number }>(cdp, `(() => {
+        const el=document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-role=pane-header]');
+        const r=el.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+        if(!el.contains(document.elementFromPoint(x,y)))throw Error('Chat header is covered');
+        return {x,y};
+      })()`);
+      await mouse(cdp, "mousePressed", point.x, point.y, true);
+      await mouse(cdp, "mouseReleased", point.x, point.y, false);
+    } else if (floating) {
       await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
       await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
     } else {
@@ -39,7 +48,8 @@ export async function checkChatReturn(cdp: PageCommands, out: string, prefix: st
   await capture("initial");
   for (let cycle = 0; cycle < 10; cycle++) {
     for (const index of [1, 2, 0]) {
-      await next(index);
+      // Alternate real keyboard and pointer returns to the same covered chat.
+      await next(index, floating && index === 0 && cycle % 2 === 1);
       if (floating && index !== 0) {
         const id = index === 1 ? "table:a" : "reader:a";
         // The same ancestor move resets a virtualized table and an ordinary
@@ -47,6 +57,20 @@ export async function checkChatReturn(cdp: PageCommands, out: string, prefix: st
         const scroller = `([...document.querySelectorAll('[data-gloom-pane-id="${id}"] *')]
           .find(el=>el.clientHeight>100 && el.scrollHeight>el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY)))`;
         if (cycle === 0) {
+          if (id === "reader:a") {
+            const point = await evaluate<{ x: number; y: number }>(cdp, `(() => {
+              const el=[...document.querySelectorAll('[data-gloom-pane-id="reader:a"] button')].find(el=>el.textContent.includes('Read more'));
+              const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};
+            })()`);
+            await mouse(cdp, "mousePressed", point.x, point.y, true);
+            await mouse(cdp, "mouseReleased", point.x, point.y, false);
+            await frames(cdp, 4);
+          }
+          if (!await evaluate(cdp, `!!${scroller}`)) {
+            const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+            await Bun.write(join(out, `${prefix}-${id}-missing-scrollport.png`), Buffer.from(data, "base64"));
+            throw new Error(`${id} has no overflowing scrollport`);
+          }
           await wheel(scroller, 500);
           // WebKit's wheel can still be animating after several frames. Record
           // the settled offset, not an intermediate position during that wheel.
