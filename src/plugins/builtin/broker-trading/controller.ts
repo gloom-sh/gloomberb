@@ -150,16 +150,26 @@ export class BrokerTradingController {
       return;
     }
     this.publish({ confirmOrders: true });
-    if (!this.mutationPending) {
-      this.modifyOrder = undefined;
-      this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result ? "Profile, account or connection changed. Review the order again." : undefined });
+    if (this.mutationPending) return;
+    this.modifyOrder = undefined;
+    // An order whose outcome is unknown stays the result through a reconnect or a refresh, until a refresh finds it:
+    // dropping it would let the same draft be reviewed and placed a second time.
+    if (this.uncertain()) {
+      this.publish({ review: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: uncertainMessage });
+      return;
     }
+    this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result ? "Profile, account or connection changed. Review the order again." : undefined });
+  }
+
+  /** The last order action's outcome is unknown: the broker may hold the order. */
+  uncertain(): boolean {
+    return this.snapshot.result?.status.toUpperCase() === "UNKNOWN";
   }
 
   private editable(): void {
     if (this.disposed) throw new Error("This order ticket is closed.");
     if (this.mutationPending) throw new Error("An order action is already pending.");
-    if (this.snapshot.result?.status.toUpperCase() === "UNKNOWN") throw new Error(uncertainMessage);
+    if (this.uncertain()) throw new Error(uncertainMessage);
   }
 
   setDraft(request: BrokerOrderRequest): void {

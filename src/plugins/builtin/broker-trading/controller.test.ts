@@ -481,6 +481,27 @@ describe("modification, cancellation and unknown outcomes", () => {
     expect(count("placeOrder")).toBe(1);
   });
 
+  test("an unknown placement stays the result through a reconnect, a refresh and an account change, and is never placed again", async () => {
+    const { demo, controller, count, setAccount } = setup({ outcome: "unknown" });
+    await controller.review();
+    await controller.confirm();
+    const unknown = controller.getSnapshot().result;
+    expect(unknown?.status).toBe("UNKNOWN");
+    demo.setOutcome("working");
+    demo.setConnected(false);
+    controller.syncContext();
+    demo.setConnected(true);
+    controller.syncContext();
+    await controller.refreshResult();
+    setAccount(DEMO_LIVE_ACCOUNT);
+    controller.syncContext();
+    expect(controller.getSnapshot()).toMatchObject({ phase: "result", result: unknown });
+    await expect(controller.review()).rejects.toThrow("Outcome unknown");
+    await expect(controller.submitFromEntry()).rejects.toThrow("Outcome unknown");
+    expect(count("previewOrder")).toBe(1);
+    expect(count("placeOrder")).toBe(1);
+  });
+
   test("an acknowledgement for another account becomes unknown without another mutation", async () => {
     const { demo, controller } = setup();
     let placements = 0;

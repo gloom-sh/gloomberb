@@ -107,7 +107,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     // An order picked elsewhere (Overview) loads once its account has.
     if (intent.modify) { setPendingModify(intent.modify); return; }
     try {
-      if (controller.getSnapshot().result?.status.toUpperCase() === "UNKNOWN") throw new Error("Refresh and reconcile the unknown order before starting another order.");
+      if (controller.uncertain()) throw new Error("Refresh and reconcile the unknown order before starting another order.");
       const next = newTicketDraft(broker, instance, contract, current.current.accountId, intent.action);
       if (intent.quantity !== undefined) next.quantity = intent.quantity;
       if (intent.limitPrice !== undefined) {
@@ -129,6 +129,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       if (current.current.accountId === id) return;
       throw new Error("Wait for the pending order action before changing accounts.");
     }
+    if (controller.uncertain() && current.current.accountId !== id) throw new Error("Refresh and reconcile the unknown order before changing accounts.");
     // The controller reads this ref synchronously, before React commits the selection.
     const changedAccount = current.current.accountId !== id;
     const before = controller.getSnapshot();
