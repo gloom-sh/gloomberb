@@ -2,7 +2,7 @@ import type { CloudEarningsCallPayload } from "../../../api-client";
 import { formatShortDate } from "../../../utils/datetime-format";
 
 /** "FQ4 26" — fiscal period, compact enough for a table column. */
-export function formatPeriod(
+function formatPeriod(
   fiscalYear: number | null,
   fiscalQuarter: number | null,
 ): string {
