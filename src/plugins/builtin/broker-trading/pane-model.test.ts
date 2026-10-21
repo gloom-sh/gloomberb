@@ -15,12 +15,18 @@ describe("ticket profile and draft resolution", () => {
     expect(resolveTicketContract({ symbol: "AAPL261023C00340000", ticker: option, error: undefined, contract: undefined }, demo.adapter, demo.instance).contract)
       .toMatchObject({ secType: "OPT", currency: "USD", multiplier: "100" });
   });
-  test("a foreign broker or profile contract cannot be relabelled for the selected profile", () => {
+  test("a foreign broker or profile contract trades here by its listing, never by its IDs", () => {
     const demo = createDemoBroker();
     const identity: PaneTickerIdentity = { symbol: "AAPL", ticker: null, error: undefined, contract: demo.draft.contract };
-    for (const contract of [{ ...demo.draft.contract, brokerId: "another-broker", conId: 17 }, { ...demo.draft.contract, brokerInstanceId: "another-profile" }]) {
-      expect(resolveTicketContract({ ...identity, contract }, demo.adapter, demo.instance).contract).toBeUndefined();
+    for (const contract of [{ ...demo.draft.contract, brokerId: "another-broker", conId: 17, localSymbol: "AAPL.X", exchange: "SMART", primaryExchange: "NASDAQ" }, { ...demo.draft.contract, brokerInstanceId: "another-profile", conId: 17 }]) {
+      expect(resolveTicketContract({ ...identity, contract }, demo.adapter, demo.instance).contract).toEqual({
+        brokerId: demo.adapter.id, brokerInstanceId: demo.instance.id, symbol: "AAPL", localSymbol: "AAPL", secType: "STK", currency: "USD", exchange: "NASDAQ" });
     }
+    // Another broker's option keeps its series, so this broker trades the same contract or refuses it.
+    const option = { brokerId: "another-broker", conId: 18, symbol: "AAPL", secType: "OPT", currency: "USD", lastTradeDateOrContractMonth: "20261023", right: "C" as const, strike: 340, multiplier: "100" };
+    expect(resolveTicketContract({ ...identity, contract: option }, demo.adapter, demo.instance).contract)
+      .toMatchObject({ brokerId: demo.adapter.id, secType: "OPT", lastTradeDateOrContractMonth: "20261023", right: "C", strike: 340, multiplier: "100" });
+    expect(resolveTicketContract({ ...identity, contract: { ...option, secType: "BAG" } }, demo.adapter, demo.instance)).toEqual({ error: `${demo.adapter.name} cannot trade AAPL.` });
     const original = { ...demo.draft.contract, conId: 17, brokerInstanceId: undefined };
     expect(resolveTicketContract({ ...identity, contract: original }, demo.adapter, demo.instance).contract).toEqual({ ...original, brokerInstanceId: demo.instance.id });
     expect(original.brokerInstanceId).toBeUndefined();

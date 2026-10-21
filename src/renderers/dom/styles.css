@@ -945,12 +945,14 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
 /* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
-   does, so its label and the controls beside it stay in view. */
+   does, so its label and the controls beside it stay in view. It narrows with
+   its group and has no floor of its own: a floor wider than the room the bar
+   gives it drew its next choice under the control beside it. */
 .gloom-qb-filters[data-strip="true"],
 .gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
   flex: 0 1 auto;
-  min-width: 12ch;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }

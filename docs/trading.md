@@ -4,7 +4,7 @@ Research's Trade tab is the chart with the ticket beside it. Chart is the chart 
 
 The docked quote reads like a broker's: the last price and change, then bid in green and ask in red with their sizes. A delayed quote shows a clock; hover it for the source and its age. A placed order, and every fill seen later, also shows a toast, and a desktop notification when the app is in the background.
 
-The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. SIM and LIVE appear beside the account name. The panel uses a neutral split border.
+The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. An instrument opened from another broker (a search result or position from it) trades by its symbol through the broker you trade with. SIM and LIVE appear beside the account name. The panel uses a neutral split border.
 
 Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens Research with its trade panel (or the narrow Trade fallback), with the side and quantity filled in. An optional fourth argument supplies a limit price, for example `BUY AAPL 10 150`. The ticket focuses the primary Buy or Sell action; the command does not request a preview or submit an order. Without an explicit price, editable price defaults come from the broker's quote.
 

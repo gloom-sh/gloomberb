@@ -1,4 +1,4 @@
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { parseOptionTicker } from "../../../utils/options";
 import type { PaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { BrokerAdapter, BrokerPosition } from "../../../types/broker";
@@ -111,22 +111,31 @@ export function tickerSecType(category: string | undefined, fallback = "STK"): s
   return category ? LISTING_SEC_TYPES[category.toLowerCase()] ?? category.toUpperCase() : fallback;
 }
 
-/** Broker contract IDs are meaningful only inside their original broker profile. */
+/**
+ * Broker contract IDs are meaningful only inside their original broker
+ * profile. A pane on another broker's or profile's contract (a search result
+ * or position from it) trades here by its public listing, as a pane on a plain
+ * listing does: its symbol, type, currency and venue, and an option's series.
+ * The other broker's IDs never carry over.
+ */
 export function resolveTicketContract(identity: PaneTickerIdentity, broker: BrokerAdapter, instance: BrokerInstanceConfig): { contract?: BrokerContractRef; error?: string } {
   if (identity.error) return { error: identity.error };
   if (!identity.symbol) return { error: "Choose a ticker to trade." };
-  if (identity.contract) {
-    if (identity.contract.brokerId !== broker.id || (identity.contract.brokerInstanceId && identity.contract.brokerInstanceId !== instance.id)) {
-      return { error: "Choose the broker profile that owns this instrument, or select a listing from the intended broker." };
-    }
-    return { contract: { ...identity.contract, brokerInstanceId: instance.id } };
+  const held = identity.contract ?? undefined;
+  if (held && held.brokerId === broker.id && (!held.brokerInstanceId || held.brokerInstanceId === instance.id)) {
+    return { contract: { ...held, brokerInstanceId: instance.id } };
   }
   const listing = parsePublicTickerKey(identity.symbol);
-  const secType = tickerSecType(identity.ticker?.metadata.assetCategory);
+  const secType = held?.secType ? tickerSecType(held.secType) : tickerSecType(identity.ticker?.metadata.assetCategory);
+  // A combination is its legs' IDs at the broker that built it, which name nothing here.
+  if (secType === "BAG") return { error: `${broker.name} cannot trade ${listing.symbol}.` };
+  const venue = [listing.exchange, identity.ticker?.metadata.exchange, held?.primaryExchange, held?.exchange].find((value) => !!value && canonicalExchange(value) !== "SMART");
+  const series = secType === "OPT" && held ? Object.fromEntries(Object.entries({ lastTradeDateOrContractMonth: held.lastTradeDateOrContractMonth, right: held.right, strike: held.strike, multiplier: held.multiplier })
+    .filter(([, value]) => value !== undefined)) as Partial<BrokerContractRef> : {};
   return { contract: { brokerId: broker.id, brokerInstanceId: instance.id, symbol: listing.symbol, localSymbol: listing.symbol,
-    secType, currency: identity.ticker?.metadata.currency || "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange,
+    secType, currency: identity.ticker?.metadata.currency || held?.currency || "USD", exchange: venue,
     // A listed option's OCC symbol names a standard contract of 100 shares, which its costs count.
-    ...(secType === "OPT" && parseOptionTicker(listing.symbol) ? { multiplier: "100" } : {}) } };
+    ...(secType === "OPT" && parseOptionTicker(listing.symbol) ? { multiplier: "100" } : {}), ...series } };
 }
 
 export function chooseTicketAccount(accounts: BrokerAccount[], previous?: string): string | undefined {
