@@ -1,7 +1,7 @@
 import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
-import { homeInsiderReportsNote } from "../../../utils/sec";
+import { homeInsiderReportsNote, venueHomeCountry } from "../../../utils/sec";
 import { parseForm4IssuerCik } from "./insider-data";
 
 /**
@@ -58,7 +58,8 @@ export function insiderEmptyNotice(foreignPrivateIssuer: boolean, home: string |
  * `homeInsiderReportsNote` for a listing with no Form 4 of its own, placed by
  * its company's country where the source knows the company (RY in New York
  * is Royal Bank of Canada), else by its venue abroad (RY:TSX). A lookup that
- * fails leaves the venue to say.
+ * fails leaves the venue to say. A US listing of a company filing as a
+ * domestic one has no home market to name, and costs no lookup.
  */
 export async function loadHomeInsiderReportsNote(
   provider: Pick<DataProvider, "getIssuerListings">,
@@ -68,8 +69,11 @@ export async function loadHomeInsiderReportsNote(
 ): Promise<string | null> {
   const parsed = parsePublicTickerKey(key);
   const venue = parsed.exchange ?? exchange ?? "";
-  const issuer = provider.getIssuerListings
-    ? await provider.getIssuerListings(parsed.symbol, venue).catch(logFailure("plugins.insider.issuer", "Reading the company's listings failed", null))
+  if (!foreignPrivateIssuer && !venueHomeCountry(venue)) return null;
+  const { getIssuerListings } = provider;
+  const issuer = getIssuerListings
+    ? await Promise.resolve().then(() => getIssuerListings.call(provider, parsed.symbol, venue))
+      .catch(logFailure("plugins.insider.issuer", "Reading the company's listings failed", null))
     : null;
   return homeInsiderReportsNote({ country: issuer?.country, exchange: venue, foreignPrivateIssuer });
 }

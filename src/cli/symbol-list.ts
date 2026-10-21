@@ -4,6 +4,8 @@ import { splitSymbolArgs, splitSymbolWords, stripStrayEdges, uniqueSymbols } fro
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
+/** A header naming a column of company names, read when no column names the symbols. */
+const NAME_HEADERS = new Set(["name", "names", "company", "companies", "companyname", "security", "securityname", "issuer", "issuername"]);
 
 /** One symbol as it can be typed: AAPL, $nvda, TTF.AS, SAN:EPA, BRK-B, 7203.T, ^GSPC, ES=F. */
 const SYMBOL_TOKEN = /^\$?[\p{L}\p{N}^][\p{L}\p{N}.:\-^=/&]{0,23}$/u;
@@ -93,18 +95,21 @@ interface SymbolText {
 
 /**
  * The symbols in a file or piped text, in order. A spreadsheet export reads
- * from the column its header names (Symbol, Ticker, Code). Without a header,
+ * from the column its header names (Symbol, Ticker, Code), else from its
+ * Name or Company column, as `entries`. Without a header,
  * every cell is a symbol unless some column after the first holds a name, a
  * price or a weight: that table is read by its first column, and the cells
  * beside it are returned as `ignored` so the command can name them. A list
  * split by commas, spaces or newlines gives every entry, even when a line of
  * it is ragged or carries a stray separator (`"BIMAS ,"`). A list of lines
  * gives each line whole, and a list of names split by semicolons or commas
- * (one line, or names in its first column) each cell, as `entries`: a line
- * with spaces is a company's name (`Altria Group`) or symbols on one line,
- * which reading the entries tells apart. A list split by spaces with figures
- * beside the symbols (`AAPL 150.00`) is a table. A byte order mark, Windows
- * line ends, blank lines and lines starting with # or // are ignored.
+ * (one line, or one name a line) each cell, as `entries`: a line with spaces
+ * is a company's name (`Altria Group`) or symbols on one line, which reading
+ * the entries tells apart. Names beside other text (`Apple Inc,Technology`)
+ * are a table read by its first column, its names as `entries`. A list split
+ * by spaces with figures beside the symbols (`AAPL 150.00`) is a table. A
+ * byte order mark, Windows line ends, blank lines and lines starting with #
+ * or // are ignored.
  */
 export function parseSymbolText(text: string): SymbolText {
   const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
@@ -117,6 +122,9 @@ export function parseSymbolText(text: string): SymbolText {
   const exact = header.findIndex((cell) => SYMBOL_HEADERS.has(cell));
   const column = exact >= 0 ? exact : header.findIndex((cell) => cell.includes("symbol") || cell.includes("ticker"));
   if (column >= 0) return { symbols: records.slice(1).map((cells) => cells[column] ?? "").filter(Boolean), ignored: [] };
+  // Without one, a delimited export's Name or Company column holds the companies, read as typed names are.
+  const nameColumn = delimiter ? header.findIndex((cell) => NAME_HEADERS.has(cell)) : -1;
+  if (nameColumn >= 0) return { symbols: records.slice(1).map((cells) => cells[nameColumn] ?? "").filter(Boolean), ignored: [], entries: true };
   // A separator or quote mark stuck to a cell is dropped (and named) when it is read, so it does not make the list a table.
   const cleaned = records.map((cells) => cells.map((cell) => stripStrayEdges(cell).text));
   const figures = cleaned.some((cells) => cells.some((cell, index) => index > 0 && NUMBER_CELL.test(cell) && /\d/.test(cell)));
@@ -124,13 +132,17 @@ export function parseSymbolText(text: string): SymbolText {
   if (!delimiter && !figures) return { symbols: records.map((cells) => cells.join(" ")), ignored: [], entries: true };
   const grid = cleaned.every((cells) => cells.every((cell, index) => !cell || (looksLikeSymbol(cell) && (index === 0 || !NUMBER_CELL.test(cell)))));
   if (grid) return { symbols: records.flat().filter(Boolean), ignored: [] };
-  // Names split by semicolons or commas, with no figures: a pasted line, or names down the first column, is a list, not a table.
-  if (!figures && (records.length === 1 || cleaned.some((cells) => /\s/.test(cells[0] ?? "")))) {
+  // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
+  // on it, is a list. A name beside a sector or any other text is a table, read by its first column below.
+  const names = cleaned.some((cells) => /\s/.test(cells[0] ?? ""));
+  if (!figures && (records.length === 1 || (names && cleaned.every((cells) => cells.filter(Boolean).length <= 1)))) {
     return { symbols: records.flat().filter(Boolean), ignored: [], entries: true };
   }
   return {
     symbols: records.map((cells) => cells[0] ?? "").filter(Boolean),
     ignored: records.flatMap((cells) => cells.slice(1)).filter(Boolean),
+    // A first column of names (Apple Inc) is read as typed names are.
+    ...names ? { entries: true as const } : {},
   };
 }
 

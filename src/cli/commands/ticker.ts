@@ -1377,6 +1377,15 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),
       annual: latestFinancialPeriod(resolvedFinancials.annualStatements, (row) => row.date),
     });
+    // A list holding the company as another of its listings counts (a list of RCI.B:TSX holds RCI); read beside the rest. It never fails.
+    const membershipsLoad = loadCompanyMemberships({
+      config,
+      own: tickerFile,
+      symbol: listing.symbol,
+      exchange: canonicalExchange(listing.exchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange),
+      loadTickers: () => store.loadAllTickers(),
+      dataProvider,
+    });
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
@@ -1410,15 +1419,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const coinNote = listing.exchange ? null
       : notTheCoinNote(listing.symbol, quote ?? (tickerFile ? { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory } : null));
     const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
-    // A list holding the company as another of its listings counts: a list of RCI.B:TSX holds RCI.
-    const memberships = await loadCompanyMemberships({
-      config,
-      own: tickerFile,
-      symbol: listing.symbol,
-      exchange: canonicalExchange(listing.exchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange),
-      loadTickers: () => store.loadAllTickers(),
-      dataProvider,
-    });
+    const memberships = await membershipsLoad;
     if (dependencies.printResult) {
       const warnings = [choiceNote, coinNote, quoteNote].filter((note): note is string => !!note);
       dependencies.printResult({

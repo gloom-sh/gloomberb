@@ -108,13 +108,17 @@ describe("insider client", () => {
   });
 
   test("a foreign private issuer whose Form 4s are all filed as an owner has none, and says why", async () => {
+    let lookups = 0;
     const load = (filings: SecFilingItem[]) => createInsiderHeadless().load(args("", 20), {
       ...createTestHeadlessContext(),
       marketData: createTestDataProvider({
         getSecFilings: async () => filings,
         getSecFilingContent: async (filing) => form4(filing.accessionNumber === "own" ? "2488" : "1580608", "BANCO SANTANDER"),
         // Its listings place the company at home, Spain, whose managers report under MAR.
-        getIssuerListings: async () => ({ issuer: "cik:891478", name: "Banco Santander, S.A.", country: "ES", listings: [] }),
+        getIssuerListings: async () => {
+          lookups += 1;
+          return { issuer: "cik:891478", name: "Banco Santander, S.A.", country: "ES", listings: [] };
+        },
       }),
     });
     const owned = [listed("owned-1", "4", "2022-01-31"), listed("owned-2", "4/A", "2008-05-20")];
@@ -125,8 +129,11 @@ describe("insider client", () => {
     expect(foreign.metadata?.foreignPrivateIssuer).toBe(true);
 
     // A company that moved to domestic reports is not one, though it once filed a 20-F.
+    expect(lookups).toBe(1);
     const domestic = await load([listed("10k", "10-K", "2026-02-01"), ...owned, listed("annual", "20-F", "2020-03-01")]);
     expect(domestic.empty).toBe("No Form 4 insider filings.");
+    // A US listing filing as a domestic company has no home market to look up.
+    expect(lookups).toBe(1);
 
     // Its own Form 4s, from before it reported as a foreign private issuer, are still shown.
     const history = await load([listed("6k", "6-K", "2026-10-08"), ...owned, listed("own", "4", "2005-01-01")]);

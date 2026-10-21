@@ -35,6 +35,18 @@ test("a pasted list of company names keeps each line or semicolon cell one name,
   expect(parseSymbolText("AAPL 150.00\nMSFT 420.10\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["150.00", "420.10"] });
 });
 
+test("names beside other text are a table read by its first column, or by the column a Name header names", async () => {
+  // A sector beside each name is not a symbol: it was added twice as TECHNOLOGY.
+  const sectors = "Apple Inc,Technology\nMicrosoft Corp,Technology\n";
+  expect(parseSymbolText(sectors)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: ["Technology", "Technology"], entries: true });
+  const names = { "apple inc": "AAPL", "microsoft corp": "MSFT" } as Record<string, string>;
+  const read = await readSymbolList({ args: ["-"], readStdin: async () => sectors, readEntries: async (entries) => entries.map((entry) => names[entry.toLowerCase()] ?? entry) });
+  expect(read).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 cells beside it: Technology, Technology."] });
+  // A header is not a company, and names the column to read.
+  expect(parseSymbolText(`Name,Sector\n${sectors}`)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: [], entries: true });
+  expect(parseSymbolText(`Sector;Company\nTechnology;Apple Inc\n`).symbols).toEqual(["Apple Inc"]);
+});
+
 test("one ragged line, or a symbol with a stray separator in its quotes, does not turn a pasted list into a table", async () => {
   // GLO-1044: the quoted "BIMAS ," made the whole paste a table read by its first column, dropping KCHOL.IS, FROTO, JNJ and MSFT unsaid.
   const pasted = "thyao, THYAO.IS\n\"BIMAS ,\"\nasels , KCHOL.IS\nTupRS,froto\nko, JNJ\nbrk-b, MSFT\n";

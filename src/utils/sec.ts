@@ -186,6 +186,11 @@ const HOME_INSIDER_REPORTS: Readonly<Record<string, string>> = {
   AU: "Australian insider reports (Appendix 3Y)",
 };
 
+/** The country of a venue abroad that a company's insiders may report in (TSX is CA); null for a US venue or one not placed. */
+export function venueHomeCountry(exchange: string | null | undefined): string | null {
+  return VENUE_COUNTRY[canonicalExchange(exchange ?? "")] ?? null;
+}
+
 /** A country's English name ("Japan"), or null when the runtime has none. */
 function countryName(code: string): string | null {
   try {
@@ -213,7 +218,7 @@ export function homeInsiderReportsNote({ country, exchange, foreignPrivateIssuer
   exchange?: string | null;
   foreignPrivateIssuer?: boolean;
 }): string | null {
-  const venueHome = VENUE_COUNTRY[canonicalExchange(exchange ?? "")] ?? "";
+  const venueHome = venueHomeCountry(exchange) ?? "";
   if (!venueHome && !foreignPrivateIssuer) return null;
   // ZZ is the service's own word for a country it does not know.
   const given = normalize(country ?? "");

@@ -95,8 +95,9 @@ export async function loadCompanyMemberships({
     .catch(logFailure("cli.issuer-membership", "Reading saved listings failed", [] as TickerRecord[]));
   const listed = saved.filter((ticker) => savedListingName(ticker).key !== ownKey
     && (ticker.metadata.portfolios.length > 0 || ticker.metadata.watchlists.length > 0));
-  if (listed.length === 0 || !dataProvider.getIssuerListings) return companyMemberships(config, own, [], null);
-  const issuer = await dataProvider.getIssuerListings(symbol, exchange)
+  const { getIssuerListings } = dataProvider;
+  if (listed.length === 0 || !getIssuerListings) return companyMemberships(config, own, [], null);
+  const issuer = await Promise.resolve().then(() => getIssuerListings.call(dataProvider, symbol, exchange))
     .catch(logFailure("cli.issuer-membership", "Reading the company's listings failed", null));
   return companyMemberships(config, own, listed, issuer?.listings.map((listing) => issuerListingKey(listing.symbol, listing.exchange)) ?? null);
 }
