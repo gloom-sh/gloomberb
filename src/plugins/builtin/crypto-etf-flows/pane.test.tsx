@@ -35,7 +35,7 @@ function Harness() {
   </TestPaneFrame>;
 }
 
-test("asset controls survive loading, 503 and empty; r retries, stale rows stay visible and cached switches do not blank", async () => {
+test("asset controls survive loading, 503 and empty; r retries, stale rows stay visible and switches reuse cached rows", async () => {
   let mode: "error" | "empty" | "stale" = "error";
   let release!: () => void;
   const pending = new Promise<void>((resolve) => { release = resolve; });
@@ -60,8 +60,9 @@ test("asset controls survive loading, 503 and empty; r retries, stale rows stay 
     expect(failed).toContain("1M");
 
     await tui.clickFrameText("Bitcoin");
-    expect(tui.frame()).toContain("IBIT");
-    expect(tui.frame()).not.toContain("Loading bitcoin");
+    const restored = await tui.waitForFrameToContain("IBIT");
+    expect(restored).not.toContain("Loading bitcoin");
+    expect(calls.filter((asset) => asset === "BTC")).toHaveLength(1);
     await tui.clickFrameText("Ether");
     await tui.waitForFrameToContain("not available yet");
     mode = "empty";
