@@ -819,6 +819,13 @@ export interface CloudEarningsCallPayload {
   sentiment: number | null;
   /** The replay or event page the transcript came from. */
   webcastUrl?: string | null;
+  /**
+   * "other" for an event that is not an earnings call (a deal call, a
+   * conference, an investor day), named by eventLabel and with no fiscal
+   * period; null when unclear. Older servers omit both.
+   */
+  eventKind?: "earnings" | "other" | null;
+  eventLabel?: string | null;
 }
 
 interface CloudJobsSeriesPoint {
@@ -1172,6 +1179,13 @@ export interface CloudEarningsTranscriptPayload {
   companyName: string | null;
   fiscalYear: number | null;
   fiscalQuarter: number | null;
+  /**
+   * "other" for an event that is not an earnings call (a deal call, a
+   * conference, an investor day), named by eventLabel and with no fiscal
+   * period; null when unclear. Older servers omit both.
+   */
+  eventKind?: "earnings" | "other" | null;
+  eventLabel?: string | null;
   callAt: string | null;
   timing: string | null;
   webcastUrl: string | null;

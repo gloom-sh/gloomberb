@@ -3,6 +3,7 @@ import type {
   CloudEarningsTranscriptPayload,
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
+import { eventLabelOf } from "./format";
 import { splitParagraphs } from "./prose";
 
 export type TranscriptSection =
@@ -210,7 +211,11 @@ export function findCallForQuarter(
 ): CloudEarningsCallPayload | null {
   const sorted = sortCallsNewest(calls);
   const token = requestedQuarter.trim().toUpperCase().replace(/[\s_-]+/g, "");
-  if (!token || token === "LATEST") return sorted[0] ?? null;
+  // The latest earnings call: a deal call or an investor day held after it is
+  // not the quarter's call, unless the company has nothing else.
+  if (!token || token === "LATEST") {
+    return sorted.find((call) => !eventLabelOf(call)) ?? sorted[0] ?? null;
+  }
 
   const quarterFirst = token.match(/^(?:F?Q)?([1-4])(?:\/?(\d{2}|\d{4}))?$/);
   if (quarterFirst) {

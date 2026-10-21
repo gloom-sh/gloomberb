@@ -17,6 +17,7 @@ import {
   loadTranscriptWithClient,
   type EarningsCallsResult,
 } from "./data";
+import { eventLabelOf } from "./format";
 import { callsLockNote } from "./lock-note";
 import {
   buildTranscriptSegments,
@@ -32,6 +33,7 @@ const CALL_COLUMNS = [
   { key: "callAt", header: "Call date" },
   { key: "fiscalYear", header: "FY", align: "right" as const },
   { key: "fiscalQuarter", header: "FQ", align: "right" as const },
+  { key: "event", header: "Event" },
   { key: "status", header: "Status" },
   { key: "durationSeconds", header: "Seconds", align: "right" as const },
   { key: "wordCount", header: "Words", align: "right" as const },
@@ -82,6 +84,8 @@ function callRow(call: CloudEarningsCallPayload) {
     callAt: call.callAt,
     fiscalYear: call.fiscalYear,
     fiscalQuarter: call.fiscalQuarter,
+    // A deal call, a conference, an investor day: not a quarter's earnings call.
+    event: eventLabelOf(call),
     status: call.hasTranscript ? "transcribed" : callStatusLabel(call) || call.status,
     durationSeconds: call.durationSeconds,
     wordCount: call.wordCount,
@@ -162,6 +166,7 @@ function transcriptResult(
       company: transcript.companyName,
       fiscalYear: transcript.fiscalYear,
       fiscalQuarter: transcript.fiscalQuarter,
+      event: eventLabelOf(transcript),
       callAt: transcript.callAt,
       durationSeconds: transcript.durationSeconds,
       wordCount: transcript.wordCount,

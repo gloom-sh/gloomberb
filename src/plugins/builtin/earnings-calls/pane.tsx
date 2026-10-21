@@ -44,7 +44,7 @@ import {
   loadTranscript,
   statusOf,
 } from "./data";
-import { callTitle, formatCallDate, formatDuration, formatPeriod, formatSentiment } from "./format";
+import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
@@ -95,7 +95,7 @@ function renderCell(call: CloudEarningsCallPayload, column: CallColumn): DataTab
     case "date":
       return { text: formatCallDate(call.callAt), color: colors.textDim };
     case "period":
-      return { text: formatPeriod(call.fiscalYear, call.fiscalQuarter) };
+      return { text: callPeriod(call) };
     case "length":
       return { text: formatDuration(call.durationSeconds), color: colors.textDim };
     case "sentiment": {
@@ -436,7 +436,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
           [
             call.ticker,
             call.companyName ?? "",
-            formatPeriod(call.fiscalYear, call.fiscalQuarter),
+            callPeriod(call),
+            eventLabelOf(call) ?? "",
             formatCallDate(call.callAt),
           ]
             .join(" ")
@@ -918,7 +919,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         <AudioPlayer
           src={playback.audio.url}
           sourceKey={selected.id}
-          label={`${callTitle(selected)} call recording`}
+          label={`${callTitle(selected)}${eventLabelOf(selected) ? "" : " call"} recording`}
           durationSeconds={playback.audio.durationSeconds}
           rates={PLAYBACK_RATES}
           rate={playback.rate}
