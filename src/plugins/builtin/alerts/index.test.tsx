@@ -13,6 +13,7 @@ import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createManualFrameDriver, DataFrameScheduler } from "../../../market-data/frame-scheduler";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
@@ -369,13 +370,15 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
 test("a streamed tick triggers a price alert once, and the poll leaves streaming symbols alone", async () => {
   let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
   let streamedTargets: QuoteSubscriptionTarget[] = [];
+  const clock = createManualFrameDriver(100);
+  const frames = new DataFrameScheduler(clock.driver);
   const coordinator = new MarketDataCoordinator(createTestDataProvider({
     subscribeQuotes: (targets, onQuote) => {
       streamedTargets = targets;
       emit = onQuote;
       return () => {};
     },
-  }));
+  }), { frames });
   setSharedMarketDataCoordinator(coordinator);
   const store = new Map<string, string>([["alerts", serializeAlerts([
     { ...makeAlert("above", "AAPL", "above", 200), lastCheckedPrice: 195 },
@@ -403,19 +406,18 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
     const healthy = store.get("alerts")!;
     const corrupt = JSON.stringify([...JSON.parse(healthy), null]);
     store.set("alerts", corrupt);
-    await act(async () => { tick(201); await Bun.sleep(5); });
+    await act(async () => { tick(201); clock.advance(1_000); await Bun.sleep(0); });
     expect(notifications).toEqual([]);
     expect(store.get("alerts")).toBe(corrupt);
     store.set("alerts", healthy);
-    await act(async () => { tick(202); await Bun.sleep(5); });
-    await act(async () => { tick(203); await Bun.sleep(5); });
+    await act(async () => { tick(202); clock.advance(1_000); await Bun.sleep(0); });
+    await act(async () => { tick(203); clock.advance(1_000); await Bun.sleep(0); });
     expect(notifications).toHaveLength(1);
     expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 202 });
     // The first poll ran before any tick; nothing streaming is re-quoted after it.
     const before = polled;
     await Bun.sleep(5);
     expect(polled).toBe(before);
-
   } finally {
     alertsPlugin.dispose?.();
     coordinator.destroy();
