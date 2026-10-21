@@ -31,7 +31,7 @@ function desktopNews(getCloudNewsStory: (id: string) => Promise<CloudNewsPayload
   // The view's service has no Cloud capability; this source is all it has.
   const service = new NewsService({ pollIntervalMs: 60_000 });
   service.register(createDesktopNewsSource(
-    { id: "desktop-backend", name: "Gloomberb Backend", getNews: async () => [] },
+    { id: "desktop-backend", name: "Gloomberb Backend", getNews: async () => [], getNewsPage: async () => ({ articles: [] }) },
     { getCloudNews: async () => ({ items: [], nextCursor: null }), getCloudNewsStory },
   ));
   return service;

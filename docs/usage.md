@@ -356,6 +356,10 @@ News rows credit the article's publisher and open its original URL. The managed
 news feed includes only articles whose publisher and original link can be
 verified. Custom RSS and Atom feeds use each item's source when supplied,
 falling back to the name you configured for a direct publisher's feed.
+If a feed fails, News keeps any available stories and shows the failure in
+its footer. This also applies on desktop when the direct news request falls
+back to the app's local feeds; an unavailable feed is not shown as an empty
+successful result.
 
 A story opened from `SRCH` or a news pane is set for reading: the headline,
 its source and time, the tickers it names as chips (click one, or `t`), then
