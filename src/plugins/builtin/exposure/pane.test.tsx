@@ -123,7 +123,8 @@ test("unreadable custom scenario stays intact and blocks analysis through refres
   await tui.emitKeypress({ name: "return" });
   expect(await tui.waitForFrameToContain("Advanced scenario JSON")).toContain(savedCustom);
   await tui.emitKeypress({ name: "escape" });
-  await tui.waitForFrameToContain("Cannot read the custom scenario.");
+  // The error also appears in the editor footer; wait for the reset action to return.
+  expect(await tui.waitForFrameToContain("Reset custom scenario")).toContain("Cannot read the custom scenario.");
   expect(analyze).not.toHaveBeenCalled();
   expect(instance().settings?.customScenario).toBe(savedCustom);
   await tui.clickFrameText("Reset custom scenario");
