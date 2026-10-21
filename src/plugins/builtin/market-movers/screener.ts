@@ -410,19 +410,28 @@ export function parseTrendingResponse(data: unknown): TrendingSymbol[] {
   return data.flatMap(q => q && typeof q.symbol === "string" && q.symbol.trim() ? [{ symbol: q.symbol.trim() }] : []);
 }
 
-export async function fetchTrending(
+export async function fetchTrendingResult(
   count = 25,
   api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
-): Promise<TrendingSymbol[]> {
+): Promise<CachedResult<TrendingSymbol[]>> {
   const load = async () => {
     const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
     if (response.status === "empty") return { data: [], stale: response.stale === true };
     if (!response.data) throw new Error("Market trends unavailable");
     return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };
-  if (!shouldUseCache(api, options)) return (await load()).data;
-  return (await loadCached(`trending:US:count=${count}`, load, options)).data;
+  if (!shouldUseCache(api, options)) return load();
+  return loadCached(`trending:US:count=${count}`, load, options);
+}
+
+/** Array-only reader retained for the overview command. */
+export async function fetchTrending(
+  count = 25,
+  api: MarketScreenerApi = screenerApi,
+  options?: FetchCacheOptions,
+): Promise<TrendingSymbol[]> {
+  return (await fetchTrendingResult(count, api, options)).data;
 }
 
 export const MARKET_SUMMARY_SYMBOLS = ["^GSPC", "^DJI", "^IXIC", "^RUT"] as const;

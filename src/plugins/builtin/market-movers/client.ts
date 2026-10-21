@@ -18,7 +18,8 @@ import {
 } from "./model";
 import {
   fetchPreferredMarketMovers,
-  fetchTrending,
+  fetchTrendingResult,
+  type CachedResult,
   type MarketMoversResult,
   type PreferredMoversOptions,
   type TrendingSymbol,
@@ -30,6 +31,8 @@ export interface MarketMoverTabResult extends MarketMoversResult {
   quotes: MoverQuote[];
   /** What the list is ranked by; absent for trending, which keeps its source's order. */
   rankedBy?: MoverRanking;
+  /** Requested trending names whose quotes did not load. */
+  unavailableSymbols?: string[];
 }
 
 /** Rows a list shows. */
@@ -46,29 +49,31 @@ export interface MarketMoverTabDependencies {
     count: number,
     options?: PreferredMoversOptions,
   ): Promise<MarketMoversResult>;
-  fetchTrending(count: number, options?: { forceRefresh?: boolean }): Promise<TrendingSymbol[]>;
+  fetchTrending(count: number, options?: { forceRefresh?: boolean }): Promise<CachedResult<TrendingSymbol[]>>;
 }
 
 const defaultDependencies: MarketMoverTabDependencies = {
   fetchPreferred: (category, count, options) => fetchPreferredMarketMovers(category, count, options),
-  fetchTrending: (count, options) => fetchTrending(count, undefined, options),
+  fetchTrending: (count, options) => fetchTrendingResult(count, undefined, options),
 };
 
 async function hydrateTrending(
   trending: readonly TrendingSymbol[],
   provider: DataProvider | null,
-): Promise<MoverQuote[]> {
-  const symbols = trending.slice(0, 25).map(({ symbol }) => symbol);
+): Promise<Pick<MarketMoverTabResult, "quotes" | "unavailableSymbols">> {
+  const symbols = trending.slice(0, LIST_ROWS).map(({ symbol }) => symbol);
   const bySymbol = new Map<string, MoverQuote>();
-  if (!provider) return [];
-  if (provider.getQuotesBatch) {
-    const results = await provider.getQuotesBatch(
-      symbols.map((symbol) => ({ symbol, exchange: "" })),
-    ).catch(logFailure("market-movers", "Trending quote batch failed", []));
-    for (const result of results) {
-      if (result.quote) bySymbol.set(result.target.symbol, screenerQuoteFromQuote(result.target.symbol, result.quote));
+  if (symbols.length === 0) return { quotes: [] };
+  if (provider?.getQuotesBatch) {
+    try {
+      const results = await provider.getQuotesBatch(symbols.map((symbol) => ({ symbol, exchange: "" })));
+      for (const result of results) {
+        if (result.quote) bySymbol.set(result.target.symbol, screenerQuoteFromQuote(result.target.symbol, result.quote));
+      }
+    } catch (error) {
+      logFailure("market-movers", "Trending quote batch failed")(error);
     }
-  } else {
+  } else if (provider) {
     await Promise.all(symbols.map(async (symbol) => {
       try {
         const quote = await provider.getQuote(symbol, "");
@@ -78,10 +83,18 @@ async function hydrateTrending(
       }
     }));
   }
-  return symbols.flatMap((symbol) => {
-    const quote = bySymbol.get(symbol);
-    return quote ? [quote] : [];
-  });
+  const unavailableSymbols = [...new Set(symbols.filter((symbol) => !bySymbol.has(symbol)))];
+  return {
+    quotes: symbols.flatMap((symbol) => {
+      const quote = bySymbol.get(symbol);
+      return quote ? [quote] : [];
+    }),
+    ...(unavailableSymbols.length ? { unavailableSymbols } : {}),
+  };
+}
+
+export function marketMoverQuoteError(result: Pick<MarketMoverTabResult, "unavailableSymbols">): string | null {
+  return result.unavailableSymbols?.length ? `Quotes unavailable: ${result.unavailableSymbols.join(", ")}.` : null;
 }
 
 export async function loadMarketMoverTab(
@@ -93,11 +106,12 @@ export async function loadMarketMoverTab(
   const { basis, ...fetchOptions } = options ?? {};
   if (tab === "trending") {
     const trending = await dependencies.fetchTrending(LIST_ROWS, fetchOptions);
+    const hydrated = await hydrateTrending(trending.data, provider);
     return {
       tab,
-      quotes: await hydrateTrending(trending, provider),
+      ...hydrated,
       source: "gloom",
-      stale: false,
+      stale: trending.stale || !!hydrated.unavailableSymbols?.length,
     };
   }
   const category = CATEGORY_MAP[tab];

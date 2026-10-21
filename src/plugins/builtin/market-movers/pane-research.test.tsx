@@ -1,5 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
+import * as autoRefresh from "../../../react/auto-refresh";
 import { marketMoversModule } from "./index";
 import { resetMarketMoversPersistence } from "./screener";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -44,7 +45,7 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
     const runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: provider, tickerRepository: repo, dispatch, pluginRegistry: registry,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: `research:${++sequence}` }),
       persistLayout: layout => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });
-    return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={createTestPluginRuntime({ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } })} width={120} height={18}>
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={createTestPluginRuntime({ getMarketData: () => selectedProvider ?? null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } })} width={120} height={18}>
       {(body, value) => { footer = value; return <Pane paneId={id} paneType={id} focused {...body} />; }}
     </TestPaneFrame>;
   }
@@ -160,5 +161,77 @@ test("signed out during the pre-market, the pane opens the pre-market list as it
     expect(lists).toEqual(["premarket"]);
   } finally {
     Date.now = realNow;
+  }
+});
+
+
+test("trending failures retain only same-list rows and success time, partial refreshes expose gaps, and recovery clears them", async () => {
+  let now = Date.now();
+  Date.now = () => now;
+  let lastSuccessful: number | null = null;
+  const refresh = spyOn(autoRefresh, "useAutoRefresh").mockImplementation((updated) => { lastSuccessful = updated; });
+  let mode: "failed" | "healthy" | "partial" | "pending" = "failed";
+  const pending = Promise.withResolvers<any>();
+  const provider = createTestDataProvider({ getQuotesBatch: async targets => {
+    if (mode === "failed") throw new Error("Controlled quote failure");
+    if (mode === "pending") return pending.promise;
+    return targets.filter(target => mode !== "partial" || target.symbol === "FIRST").map(target => ({ target, quote: {
+      symbol: target.symbol, price: 10, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1_792_505_000_000,
+    } }));
+  } });
+  try {
+    await mount(url => url.pathname.endsWith("/market/trending")
+      ? { status: "success", data: [{ symbol: "FIRST" }, { symbol: "SECOND" }] }
+      : payload([raw("GAINER")]), provider);
+    await clickLabel("Trending");
+    expect(await csv()).not.toContain("GAINER");
+    expect(JSON.stringify(footer)).toContain("Quotes unavailable: FIRST, SECOND.");
+    expect(lastSuccessful).toBeNull();
+
+    mode = "healthy";
+    now += 1_000;
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("SECOND");
+    const successTime = lastSuccessful;
+    expect(successTime).not.toBeNull();
+    expect(JSON.stringify(footer)).not.toContain("unavailable");
+
+    mode = "failed";
+    now += 1_000;
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("Quotes unavailable");
+    expect(await csv()).toContain("FIRST");
+    expect(await csv()).toContain("SECOND");
+    expect(lastSuccessful).toBe(successTime);
+    expect(JSON.stringify(footer)).toContain("stale");
+
+    mode = "partial";
+    now += 1_000;
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("Quotes unavailable: SECOND.");
+    expect(await csv()).toContain("FIRST");
+    expect(await csv()).not.toContain("SECOND");
+    expect(lastSuccessful).toBe(successTime);
+
+    mode = "healthy";
+    now += 1_000;
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("SECOND");
+    expect(JSON.stringify(footer)).not.toContain("unavailable");
+    expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
+    expect(lastSuccessful!).toBeGreaterThan(successTime!);
+
+    mode = "pending";
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await clickLabel("Gainers");
+    await act(async () => { pending.resolve([{ target: { symbol: "FIRST", exchange: "" }, quote: {
+      symbol: "FIRST", price: 99, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1_792_505_000_000,
+    } }]); });
+    await settleFrame(tui.setup(), 4);
+    expect(await csv()).toContain("GAINER");
+    expect(await csv()).not.toContain("FIRST");
+    expect(JSON.stringify(footer)).not.toContain("unavailable");
+  } finally {
+    refresh.mockRestore();
   }
 });
