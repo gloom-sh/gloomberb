@@ -1,4 +1,3 @@
-import type { CloudNewsListResponse } from "../../../api-client";
 import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
@@ -7,8 +6,10 @@ import type {
 } from "../../../types/plugin";
 import type { NewsArticle, NewsQuery } from "../../../news/types";
 import {
-  cloudNewsParams,
+  coinNewsFallbackNotice,
   mapCloudNewsArticle,
+  readCloudNews,
+  type CloudNewsRead,
 } from "../../../sources/gloomberb-cloud/news";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatUtcSeconds } from "../../../utils/utc-time";
@@ -29,14 +30,14 @@ export interface NewsHeadlessDependencies {
   loadNews(
     query: NewsQuery,
     context: HeadlessPaneContext,
-  ): Promise<CloudNewsListResponse>;
+  ): Promise<CloudNewsRead>;
   now(): Date;
   /** Whether the session has real-time news; without it the stories are held back. */
   realtimeAccess?(): Promise<boolean | null>;
 }
 
 const defaultDependencies: NewsHeadlessDependencies = {
-  loadNews: (query, context) => context.apiClient.getCloudNews(cloudNewsParams(query)),
+  loadNews: (query, context) => readCloudNews(context.apiClient, query),
   now: () => new Date(),
   realtimeAccess: cloudRealtimeAccess,
 };
@@ -71,7 +72,7 @@ function selectedSentiment(args: HeadlessPaneLoadArgs): string {
 }
 
 function projectNewsHeadless(
-  response: CloudNewsListResponse,
+  response: CloudNewsRead,
   args: HeadlessPaneLoadArgs,
   now: Date,
   realtime: boolean | null,
@@ -80,7 +81,7 @@ function projectNewsHeadless(
   const minImportance = Number(args.options.minImportance ?? 0);
   const limit = Number(args.options.limit ?? 50);
   const matching = response.items
-    .map((item) => mapCloudNewsArticle(item, args.symbols[0]))
+    .map((item) => mapCloudNewsArticle(item, response.searchedFor ? undefined : args.symbols[0]))
     .filter((article) => sentiment === "any" || article.sentiment === sentiment)
     .filter((article) => article.importance >= minImportance)
     .sort((left, right) => right.publishedAt.getTime() - left.publishedAt.getTime());
@@ -91,6 +92,10 @@ function projectNewsHeadless(
     items,
     // Dated by the newest story, held back for an account without real-time news.
     freshness: cloudNewsFreshness(realtime),
+    // A coin pair no story is filed under shows the stories that mention the coin, and says so.
+    ...(response.searchedFor && args.symbols[0]
+      ? { notes: [coinNewsFallbackNotice(parsePublicTickerKey(args.symbols[0]).symbol, response.searchedFor)] }
+      : {}),
     metadata: {
       nextCursor: response.nextCursor,
       sentiment,
@@ -98,6 +103,7 @@ function projectNewsHeadless(
       total: matching.length,
       returned: items.length,
       truncated: items.length < matching.length || response.nextCursor != null,
+      ...(response.searchedFor ? { searchedFor: response.searchedFor } : {}),
     },
   };
 }

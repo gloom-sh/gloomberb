@@ -170,6 +170,16 @@ const TOPIC_POINTERS: ReadonlyArray<{
     whole: ["borrow", "borrowing", "utilization", "utilisation", "locate", "locates", "htb", "lendable shares"],
     closest: [["SI", "FINRA short interest and days to cover"], ["SIW", "crowded shorts across your names"], ["SIV", "daily short volume"]],
   },
+  {
+    // "exchange reserves" alone reads as crypto's; "foreign exchange reserves" is a central bank's, so only whole.
+    topic: "Crypto exchange reserves and exchange flows",
+    availability: "not covered (no source for coins held on exchanges)",
+    phrases: ["crypto exchange reserves", "bitcoin exchange reserves", "btc exchange reserves", "eth exchange reserves",
+      "ethereum exchange reserves", "exchange inflows", "exchange outflows", "exchange netflow", "exchange netflows", "exchange net flows",
+      "coins on exchanges", "bitcoin on exchanges", "btc on exchanges"],
+    whole: ["exchange reserves", "exchange reserve", "exchange balances", "exchange balance", "exchange flows"],
+    closest: [["CRYP", "DeFi TVL by protocol and chain: gloomberb fn CRYP --list defi; stablecoin supply: --list stablecoin"]],
+  },
 ];
 
 /** The words of a text, lower case: `DoD-budget` and `dod budget` read alike. */
@@ -246,6 +256,12 @@ const COMMAND_POINTERS: ReadonlyArray<{
       "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
     line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d",
   },
+  {
+    names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
+    words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
+      "change", "ranking", "rankings", "dashboard", "lending", "staking"],
+    line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloomberb fn CRYP --list defi (by chain: --by chain)",
+  },
 ];
 
 /** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */
@@ -271,12 +287,19 @@ export function exportCommandPointer(token: string, args: readonly string[]): st
   return exportLine(symbol);
 }
 
+/** A name of several words ("on-chain") names the command when its words run together in the query. */
 function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {
   const asked = words(query);
   if (asked.length === 0) return null;
-  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => asked.some((word) => names.includes(word))
-    && asked.every((word) => names.includes(word) || other.includes(word) || qualifiers.includes(word))
-    && (qualifiers.length === 0 || asked.every((word) => names.includes(word)) || asked.some((word) => qualifiers.includes(word)))) ?? null;
+  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => {
+    const named = new Set(names.flatMap((name) => {
+      const parts = words(name);
+      return containsWords(asked, parts) ? parts : [];
+    }));
+    return named.size > 0
+      && asked.every((word) => named.has(word) || other.includes(word) || qualifiers.includes(word))
+      && (qualifiers.length === 0 || asked.every((word) => named.has(word)) || asked.some((word) => qualifiers.includes(word)));
+  }) ?? null;
 }
 
 /**

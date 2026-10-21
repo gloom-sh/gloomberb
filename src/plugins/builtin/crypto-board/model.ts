@@ -18,9 +18,13 @@ const DAY_MS = 86_400_000;
  */
 export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { maxAgeMinutes: 60, oldestAge: true };
 
-export const CRYPTO_TABS: Array<{ value: CryptoAssetKind; label: string }> = [
+/** A tab of the board: a list of assets, or DeFi's value locked. */
+export type CryptoTab = CryptoAssetKind | "defi";
+
+export const CRYPTO_TABS: Array<{ value: CryptoTab; label: string }> = [
   { value: "coin", label: "Coins" },
   { value: "stablecoin", label: "Stablecoins" },
+  { value: "defi", label: "DeFi" },
 ];
 
 /** A stablecoin's supply as its row shows it; every field is null on the coin tab and for a coin the supply list lacks. */

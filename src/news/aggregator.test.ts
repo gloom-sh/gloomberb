@@ -323,6 +323,19 @@ describe("NewsService", () => {
     expect(state.sourceIds).toEqual(["fallback"]);
   });
 
+  it("replaces a coin's fallback stories once stories are filed under the pair, instead of mixing them", async () => {
+    const searched = makeItem({ url: "https://example.com/mentions-bitcoin", searchedFor: "bitcoin" });
+    const filed = makeItem({ url: "https://example.com/filed", tickers: ["BTC-USD"] });
+    let answer = [searched];
+    agg.register(newsProvider({ id: "cloud", name: "cloud", provider: { fetchNews: async () => answer } }));
+    const query = { feed: "ticker" as const, ticker: "BTC-USD", exchange: "CCC", limit: 10 };
+
+    expect((await agg.load(query)).articles.map((article) => article.searchedFor)).toEqual(["bitcoin"]);
+    answer = [filed];
+    await agg.poll(query);
+    expect(agg.getQueryState(query).articles.map((article) => article.url)).toEqual(["https://example.com/filed"]);
+  });
+
   it("loads story detail and merges source items into existing query state", async () => {
     const listArticle = makeItem({
       id: "story-1",

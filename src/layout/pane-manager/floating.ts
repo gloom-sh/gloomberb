@@ -65,7 +65,38 @@ export function defaultFloatingRect(termWidth: number, termHeight: number, def?:
 }
 
 export function maxFloatingZ(layout: LayoutConfig): number {
-  return layout.floating.reduce((highest, entry) => Math.max(highest, entry.zIndex ?? 50), 50);
+  return layout.floating.reduce((highest, entry) => Math.max(highest, entry.zIndex ?? FLOATING_PANE_BASE_Z), FLOATING_PANE_BASE_Z);
+}
+
+/** Where floating panes stack from, above the docked panes and the dividers between them. */
+export const FLOATING_PANE_BASE_Z = 50;
+
+/**
+ * The highest z a floating pane holds. The shell draws its drag and dock
+ * previews (95 to 98), the window-mode status and the pane menu at fixed
+ * levels above every pane, in the terminal's cells, in the kitty images it
+ * cuts around them and on the desktop alike. Raising a pane adds one to the
+ * top, so a stack that would pass this is renumbered from the base in the
+ * same order; a layout saved with a higher stack is renumbered when it loads.
+ */
+export const FLOATING_PANE_MAX_Z = 94;
+
+/**
+ * The entries with the same front-to-back order and no z above
+ * `FLOATING_PANE_MAX_Z`: the same array when none is, else every entry
+ * renumbered from the base (equal z keep their array order, as they draw).
+ * Past 45 floating panes the numbers cannot fit and the top ones run over.
+ */
+export function compactFloatingZ(entries: FloatingPaneEntry[]): FloatingPaneEntry[] {
+  if (entries.every((entry) => (entry.zIndex ?? FLOATING_PANE_BASE_Z) <= FLOATING_PANE_MAX_Z)) return entries;
+  const order = entries
+    .map((entry, index) => ({ index, z: entry.zIndex ?? FLOATING_PANE_BASE_Z }))
+    .sort((left, right) => left.z - right.z || left.index - right.index);
+  const next = [...entries];
+  order.forEach(({ index }, rank) => {
+    next[index] = { ...entries[index]!, zIndex: FLOATING_PANE_BASE_Z + rank };
+  });
+  return next;
 }
 
 export function updateFloatingPane(
