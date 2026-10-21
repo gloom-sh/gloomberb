@@ -202,7 +202,7 @@ for (const failure of ["reject", "partial", "throw"] as const) {
     expect(failed).toMatch(/beta plugin[^\n]*update/);
     if (failure === "partial") expect(failed).not.toMatch(/alpha plugin[^\n]*update/);
     else expect(failed).toMatch(/alpha plugin[^\n]*update/);
-    expect(failed).toContain(failure === "partial" ? "Some plugin updates could not be checked" : "Plugin update check failed");
+    expect(failed).toContain(failure === "partial" ? "Update check incomplete" : "Plugin update check failed");
     expect(failed).not.toContain("checking unlisted plugins");
     expect(failed).not.toContain("Invented private failure");
     await press("down", "\u001b[B");
@@ -217,7 +217,7 @@ for (const failure of ["reject", "partial", "throw"] as const) {
     expect(checks).toBe(3);
     expect(requests).toEqual(Array.from({ length: 3 }, () => ["alpha", "beta"]));
     expect(tui.frame()).not.toContain("et update");
-    expect(tui.frame()).not.toContain("could not be checked");
+    expect(tui.frame()).not.toContain("Update check incomplete");
     expect(tui.frame()).not.toContain("Plugin update check failed");
   });
 }
@@ -258,9 +258,9 @@ for (const obsolete of ["resolve", "reject"] as const) {
     expect(tui.frame()).not.toContain("3333333");
     expect(tui.frame()).not.toContain("et update");
     await act(async () => { reinstalled.resolve({}); });
-    await tui.waitForFrameToContain("Some plugin updates could not be checked");
+    await tui.waitForFrameToContain("Update check incomplete");
     await setInstalled([{ ...plugin, linked: true }]);
-    await tui.waitForFrameToExclude("could not be checked");
+    await tui.waitForFrameToExclude("Update check incomplete");
     expect(checks).toBe(3);
   });
 }

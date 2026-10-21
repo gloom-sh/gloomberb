@@ -505,7 +505,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           ...previous,
           ...Object.fromEntries(answers.map((directory) => [directory, heads[directory]!])),
         }));
-        setRemoteCheckError(answers.length < directories.length ? "Some plugin updates could not be checked" : null);
+        setRemoteCheckError(answers.length < directories.length ? "Update check incomplete" : null);
       } catch (error) {
         if (cancelled) return;
         logFailure("plugin-marketplace.pane", "Check installed plugin remote heads failed")(error);
