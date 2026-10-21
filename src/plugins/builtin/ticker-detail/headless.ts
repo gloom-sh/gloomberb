@@ -16,7 +16,7 @@ import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
 import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
-import { runwayMethod } from "../../../utils/cash-runway";
+import { reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
 import { logFailure } from "../../../utils/log-failure";
 import {
   RATIO_GAP_TEXT,
@@ -210,7 +210,7 @@ async function loadRatioReport(
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     notes: [
       ...offering ? [offering] : [],
-      ...runwayShown ? [runwayMethod()] : [],
+      ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
     ],
     metadata: {

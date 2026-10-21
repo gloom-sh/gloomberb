@@ -3,7 +3,7 @@ import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
-import { burnsCash, cashRunway, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
+import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
@@ -173,7 +173,7 @@ function cashRunwayText(runway: CashRunway): string {
   if (quarter?.kind === "no-burn" && trailing?.kind === "no-burn") return `no burn (quarter and TTM to ${periodEnd})`;
   const part = (estimate: RunwayEstimate | null, period: string) => estimate
     ? `${estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months)} (${period} to ${periodEnd})` : null;
-  return [part(quarter, "quarter"), part(trailing, "TTM")].filter((text): text is string => !!text).join(" \u00b7 ");
+  return [part(quarter, "quarter"), trailing ? part(trailing, "TTM") : `TTM ${runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "not reported"}`].filter((text): text is string => !!text).join(" \u00b7 ");
 }
 
 function buildStatementMetrics(statement: FinancialStatement, currency?: string, codes = false, runway?: CashRunway | null): Array<[string, string]> {

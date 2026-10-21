@@ -61,7 +61,7 @@ import { describeFundamentalMarketCap } from "../../../utils/market-capitalizati
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
-import { burnsCash, cashRunway } from "../../../utils/cash-runway";
+import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
 
 /** Cells between the Day and 52W ranges when they share a row. */
@@ -189,12 +189,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const enterpriseValueNote = enterpriseValueReconciliationNote(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const runway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
-  const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, burnsCash(runway));
+  const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, runway?.trailing?.kind === "months");
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(runwayOfferingNote ? [runwayOfferingNote] : []),
+      ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live

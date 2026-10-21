@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FinancialStatement } from "../types/financials";
-import { cashRunway, offeringNote, offeringsAfter, trailingOperatingCashFlow } from "./cash-runway";
+import { cashRunway, fetchOfferingFilings, formatRunwayMonths, offeringNote, offeringsAfter, trailingOperatingCashFlow } from "./cash-runway";
 
 const quarter = (date: string, fields: Partial<FinancialStatement>): FinancialStatement => ({ date, currency: "USD", ...fields });
 
@@ -96,4 +96,50 @@ describe("offerings after the balance sheet", () => {
       .toBe("424B5 offering filed 2026-09-23 and 2026-09-25, after the 2026-06-30 balance sheet; cash and runway predate it.");
     expect(offeringNote(offeringsAfter(filings, "2026-09-30"), "2026-09-30")).toBeNull();
   });
+});
+
+
+test("the display caps extreme runway without changing the calculated months", () => {
+  const runway = cashRunway({ quarterlyStatements: [quarter("2026-06-30", {
+    cashAndCashEquivalents: 32_000, operatingCashFlow: -1,
+  })], annualStatements: [] })!;
+  expect(runway.quarter).toMatchObject({ kind: "months", months: 96_000 });
+  expect(formatRunwayMonths(96_000)).toBe("> 120 mo");
+  expect(formatRunwayMonths(120, "mo")).toBe("120.0 mo");
+  expect(formatRunwayMonths(120.01, "")).toBe("> 120 mo");
+});
+
+test("a short trailing history differs from a missing operating cash flow line", () => {
+  expect(cashRunway({ quarterlyStatements: vktx.slice(1), annualStatements: [] }))
+    .toMatchObject({ trailing: null, trailingGap: "short-history" });
+  expect(cashRunway({ quarterlyStatements: vktx.map((row, index) => index === 0 ? { ...row, operatingCashFlow: undefined } : row), annualStatements: [] }))
+    .toMatchObject({ trailing: null, trailingGap: "not-reported" });
+});
+
+test("financial sector or industry suppresses runway despite negative operating cash flow", () => {
+  for (const profile of [{ sector: "Financial Services" }, { sector: "Financials" }, { industry: "Banks - Regional" }, { industry: "Insurance - Life" }, { industry: "Capital Markets" }, { industry: "Brokerage" }]) {
+    expect(cashRunway({ quarterlyStatements: vktx, annualStatements: [], profile })).toBeNull();
+  }
+  expect(cashRunway({ quarterlyStatements: vktx, annualStatements: [], profile: { sector: "Healthcare" } })).not.toBeNull();
+});
+
+test("same-day offerings count, amendments normalize, and truncated dates disclose their count", () => {
+  const filings = ["2026-06-30", "2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"]
+    .map((filed) => ({ form: "424B5", filed }));
+  filings.push({ form: "424B4/A", filed: "2026-07-04" }, { form: "S-3", filed: "2026-07-05" });
+  const after = offeringsAfter(filings, "2026-06-30");
+  expect(after).toHaveLength(6);
+  expect(after[0]).toEqual({ form: "424B5", filed: "2026-06-30" });
+  expect(after.at(-1)?.form).toBe("424B4");
+  expect(offeringNote(after, "2026-06-30")).toBe("424B5/424B4 offering filed 2026-07-02, 2026-07-03 and 2026-07-04 (2 earlier dates omitted), on or after the 2026-06-30 balance sheet; cash and runway predate it.");
+});
+
+test("malformed offering rows are discarded at the server boundary before normalization", async () => {
+  const filings = [null, {}, { form: 42, filingDate: "2026-06-30" }, { form: null, filingDate: "2026-06-30" },
+    { form: "424B5", filingDate: 20260630 }, { form: "424B5", filingDate: "2026-02-30" },
+    { form: "424B5", filingDate: "2026-13-01" }, { form: "424B5", filingDate: "2026-06-30bad" },
+    { form: "424B5", filingDate: "2026-06-30T12:00:00Z", accessionNumber: "valid" }];
+  const client = { getCloudSecFilings: async () => ({ filings }) } as unknown as Parameters<typeof fetchOfferingFilings>[0];
+  const loaded = await fetchOfferingFilings(client, "VKTX");
+  expect(offeringsAfter(loaded, "2026-06-30")).toEqual([{ form: "424B5", filed: "2026-06-30", accessionNumber: "valid" }]);
 });

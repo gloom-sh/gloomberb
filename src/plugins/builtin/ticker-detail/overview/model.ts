@@ -33,7 +33,7 @@ import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
-import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
+import { formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -120,14 +120,14 @@ function runwayText(estimate: RunwayEstimate): string {
  * with the trailing year's after it and the balance sheet's date where it
  * fits (`12.0 mo qtr to 06-30 · TTM 14.4 mo`). It opens Financials, whose
  * Liquidity rows show the cash and the monthly burn. A company whose
- * operations bring cash in on both measures has no row.
+ * trailing operating cash flow is nonnegative or unavailable has no row.
  */
 function runwayStat(runway: CashRunway | null | undefined): StatField | null {
-  if (!burnsCash(runway)) return null;
+  if (runway?.trailing?.kind !== "months") return null;
   const { quarter, trailing, periodEnd } = runway;
   const dates = [periodEnd, periodEnd.slice(5)];
-  if (!quarter) return { label: "Runway", value: runwayText(trailing!), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS };
-  const ttm = trailing ? ` · TTM ${runwayText(trailing)}` : "";
+  if (!quarter) return { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS };
+  const ttm = ` · TTM ${runwayText(trailing)}`;
   return {
     label: "Runway",
     value: runwayText(quarter),

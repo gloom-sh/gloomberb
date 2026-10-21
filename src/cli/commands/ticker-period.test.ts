@@ -60,3 +60,18 @@ test("unqualified or absent periods never become a latest-period report", async 
   const empty = await reports(financials);
   expect(empty.data.latestAnnual).toBeNull(); expect(empty.data.latestQuarter).toBeNull(); expect(empty.text).not.toContain("Latest");
 });
+
+
+test("ticker caps displayed runway while exporting raw months, labels a short TTM and skips financials", async () => {
+  const financials: TickerFinancials = { annualStatements: [], priceHistory: [], quarterlyStatements: [{
+    date: "2026-06-30", cashAndCashEquivalents: 32_000, operatingCashFlow: -1,
+  }] };
+  const { text, data } = await reports(financials);
+  expect(text).toContain("Cash Runway          > 120 mo (quarter to 2026-06-30) · TTM < 4 quarters");
+  expect(text).toContain("cash (no ST investments reported)");
+  expect(data.cashRunway.quarter.months).toBe(96_000);
+  financials.profile = { industry: "Insurance - Life" };
+  const insurer = await reports(financials);
+  expect(insurer.text).not.toContain("Cash Runway");
+  expect(insurer.data.cashRunway).toBeNull();
+});

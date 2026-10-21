@@ -1,4 +1,4 @@
-import type { FinancialStatement } from "../types/financials";
+import type { CompanyProfile, FinancialStatement } from "../types/financials";
 import { formatNumber } from "./format";
 import { latestFinancialPeriod } from "./latest-financial-period";
 
@@ -17,11 +17,18 @@ import { latestFinancialPeriod } from "./latest-financial-period";
 
 export const QUARTER_MONTHS = 3;
 export const YEAR_MONTHS = 12;
+const MAX_DISPLAY_MONTHS = 120;
+export const SHORT_RUNWAY_HISTORY = "< 4 quarters";
+
+/** Financial firms' operating cash flow includes their financing business, not operating burn. */
+export function excludesCashRunway(profile?: Pick<CompanyProfile, "sector" | "industry">): boolean {
+  return /financ|bank|broker|insur|capital markets/i.test(`${profile?.sector ?? ""} ${profile?.industry ?? ""}`);
+}
 
 /** The method, as the reports state it under the figures; cash alone when no short-term investments are reported. */
 export function runwayMethod(includesShortTerm = true): string {
   const cash = includesShortTerm ? "cash + ST investments" : "cash (no ST investments reported)";
-  return `Runway: ${cash} over operating cash burn per month (the quarter's operating cash flow ÷ 3, the trailing year's ÷ 12).`;
+  return `Runway: ${cash} over operating cash burn per month (the quarter's operating cash flow ÷ 3, the trailing year's ÷ 12). Values over ${MAX_DISPLAY_MONTHS} months are shown as > ${MAX_DISPLAY_MONTHS} mo.`;
 }
 
 const DAY_MS = 86_400_000;
@@ -85,31 +92,40 @@ const days = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) /
 /**
  * Operating cash flow over the year to a quarter, as FA's quarterly columns
  * read a trailing flow: the fiscal year when one ends with the quarter,
- * otherwise the four consecutive quarters to it summed. Null when neither is
- * on file, or a quarter of the four has no figure.
+ * otherwise the four consecutive quarters to it summed. Distinguishes a short
+ * history from a missing operating cash flow line.
  */
+function trailingOperatingCashFlowValue(
+  quarter: FinancialStatement,
+  quarterlyStatements: readonly FinancialStatement[],
+  annualStatements: readonly FinancialStatement[],
+): number | "short-history" | "not-reported" {
+  const year = annualStatements.find((candidate) => (
+    Math.abs(days(quarter.date, candidate.date)) <= SAME_PERIOD_END_DAYS
+    && (!candidate.currency || !quarter.currency || candidate.currency === quarter.currency)
+  ));
+  if (year) return finite(year.operatingCashFlow) ? year.operatingCashFlow : "not-reported";
+  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  const index = sorted.findIndex((statement) => statement.date === quarter.date);
+  if (index < 3) return "short-history";
+  const four = sorted.slice(index - 3, index + 1);
+  // Four rows need not cover twelve months: a skipped quarter or a half-year report is not a year.
+  for (let at = 1; at < four.length; at += 1) {
+    const gap = days(four[at - 1]!.date, four[at]!.date);
+    if (!Number.isFinite(gap) || gap < 60 || gap > 120) return "short-history";
+  }
+  if (new Set(four.map((statement) => statement.currency)).size > 1) return "short-history";
+  const flows = four.map((statement) => statement.operatingCashFlow);
+  return flows.every(finite) ? flows.reduce((sum, value) => sum + value, 0) : "not-reported";
+}
+
 export function trailingOperatingCashFlow(
   quarter: FinancialStatement,
   quarterlyStatements: readonly FinancialStatement[],
   annualStatements: readonly FinancialStatement[],
 ): number | null {
-  const year = annualStatements.find((candidate) => (
-    Math.abs(days(quarter.date, candidate.date)) <= SAME_PERIOD_END_DAYS
-    && (!candidate.currency || !quarter.currency || candidate.currency === quarter.currency)
-  ));
-  if (year) return finite(year.operatingCashFlow) ? year.operatingCashFlow : null;
-  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
-  const index = sorted.findIndex((statement) => statement.date === quarter.date);
-  if (index < 3) return null;
-  const four = sorted.slice(index - 3, index + 1);
-  // Four rows need not cover twelve months: a skipped quarter or a half-year report is not a year.
-  for (let at = 1; at < four.length; at += 1) {
-    const gap = days(four[at - 1]!.date, four[at]!.date);
-    if (!Number.isFinite(gap) || gap < 60 || gap > 120) return null;
-  }
-  if (new Set(four.map((statement) => statement.currency)).size > 1) return null;
-  const flows = four.map((statement) => statement.operatingCashFlow);
-  return flows.every(finite) ? flows.reduce((sum, value) => sum + value, 0) : null;
+  const flow = trailingOperatingCashFlowValue(quarter, quarterlyStatements, annualStatements);
+  return typeof flow === "number" ? flow : null;
 }
 
 export interface CashRunway {
@@ -122,6 +138,7 @@ export interface CashRunway {
   quarter: RunwayEstimate | null;
   /** At the trailing year's burn. */
   trailing: RunwayEstimate | null;
+  trailingGap?: "short-history" | "not-reported";
 }
 
 /**
@@ -129,16 +146,19 @@ export interface CashRunway {
  * cash (or its total with short-term investments, for a filer that reports
  * one elsewhere), or any operating cash flow to measure a burn by.
  */
-export function cashRunway({ quarterlyStatements, annualStatements }: {
+export function cashRunway({ quarterlyStatements, annualStatements, profile }: {
   quarterlyStatements: readonly FinancialStatement[];
   annualStatements: readonly FinancialStatement[];
+  profile?: Pick<CompanyProfile, "sector" | "industry">;
 }): CashRunway | null {
+  if (excludesCashRunway(profile)) return null;
   const quarter = latestFinancialPeriod(quarterlyStatements, (row) => row.date);
   if (!quarter) return null;
   const liquidity = cashAndShortTermInvestments(quarter, reportsShortTermTotal([...quarterlyStatements, ...annualStatements]));
   if (!liquidity) return null;
   const quarterly = estimate(liquidity.amount, quarter.operatingCashFlow, QUARTER_MONTHS);
-  const trailing = estimate(liquidity.amount, trailingOperatingCashFlow(quarter, quarterlyStatements, annualStatements) ?? undefined, YEAR_MONTHS);
+  const trailingFlow = trailingOperatingCashFlowValue(quarter, quarterlyStatements, annualStatements);
+  const trailing = estimate(liquidity.amount, typeof trailingFlow === "number" ? trailingFlow : undefined, YEAR_MONTHS);
   if (!quarterly && !trailing) return null;
   return {
     periodEnd: quarter.date,
@@ -147,12 +167,13 @@ export function cashRunway({ quarterlyStatements, annualStatements }: {
     includesShortTerm: liquidity.includesShortTerm,
     quarter: quarterly,
     trailing,
+    ...(typeof trailingFlow === "string" ? { trailingGap: trailingFlow } : {}),
   };
 }
 
 /** "12.0 months", to the tenth FA's runway rows show. */
 export function formatRunwayMonths(months: number, unit = "months"): string {
-  return `${formatNumber(months, 1)} ${unit}`;
+  return months > MAX_DISPLAY_MONTHS ? `> ${MAX_DISPLAY_MONTHS} mo` : `${formatNumber(months, 1)}${unit ? ` ${unit}` : ""}`;
 }
 
 /** Whether either burn measure finds the company using cash. */
@@ -172,13 +193,13 @@ export interface OfferingFiling {
 }
 
 /**
- * Offering prospectuses filed after a balance sheet's date, oldest first:
+ * Offering prospectuses filed on or after a balance sheet's date, oldest first:
  * cash the balance sheet, and a runway on it, do not include yet.
  */
 export function offeringsAfter(filings: readonly OfferingFiling[], periodEnd: string): OfferingFiling[] {
   return filings
     .map((filing) => ({ ...filing, form: filing.form.trim().toUpperCase().replace(/\/A$/, ""), filed: filing.filed.slice(0, 10) }))
-    .filter((filing) => (OFFERING_FORMS as readonly string[]).includes(filing.form) && filing.filed > periodEnd)
+    .filter((filing) => (OFFERING_FORMS as readonly string[]).includes(filing.form) && filing.filed >= periodEnd)
     .sort((a, b) => a.filed.localeCompare(b.filed));
 }
 
@@ -188,9 +209,13 @@ const MAX_NOTED_DATES = 3;
 export function offeringNote(offerings: readonly OfferingFiling[], periodEnd: string): string | null {
   if (offerings.length === 0) return null;
   const forms = [...new Set(offerings.map((filing) => filing.form))].join("/");
-  const dates = [...new Set(offerings.map((filing) => filing.filed))].slice(-MAX_NOTED_DATES);
+  const allDates = [...new Set(offerings.map((filing) => filing.filed))].sort();
+  const dates = allDates.slice(-MAX_NOTED_DATES);
+  const omitted = allDates.length - dates.length;
+  const earlier = omitted ? ` (${omitted} earlier ${omitted === 1 ? "date" : "dates"} omitted)` : "";
+  const relation = allDates.includes(periodEnd) ? "on or after" : "after";
   const when = dates.length === 1 ? dates[0] : `${dates.slice(0, -1).join(", ")} and ${dates.at(-1)}`;
-  return `${forms} offering filed ${when}, after the ${periodEnd} balance sheet; cash and runway predate it.`;
+  return `${forms} offering filed ${when}${earlier}, ${relation} the ${periodEnd} balance sheet; cash and runway predate it.`;
 }
 
 interface OfferingFilingsClient {
@@ -205,7 +230,12 @@ const OFFERING_FILING_LIMIT = 10;
 export async function fetchOfferingFilings(client: OfferingFilingsClient, ticker: string, signal?: AbortSignal): Promise<OfferingFiling[]> {
   const { filings } = await client.getCloudSecFilings({ ticker, forms: OFFERING_FORMS, limit: OFFERING_FILING_LIMIT }, signal ? { signal } : undefined);
   // A server that predates the form filter sends every form: offeringsAfter keeps the offerings.
-  return filings.flatMap((filing) => /^\d{4}-\d{2}-\d{2}/.test(filing.filingDate)
-    ? [{ form: filing.form, filed: filing.filingDate.slice(0, 10), ...filing.accessionNumber ? { accessionNumber: filing.accessionNumber } : {} }]
-    : []);
+  return filings.flatMap((filing) => {
+    if (!filing || typeof filing.form !== "string" || typeof filing.filingDate !== "string"
+      || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(filing.filingDate)) return [];
+    const filed = filing.filingDate.slice(0, 10);
+    const parsed = new Date(filed);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== filed) return [];
+    return [{ form: filing.form, filed, ...(typeof filing.accessionNumber === "string" ? { accessionNumber: filing.accessionNumber } : {}) }];
+  });
 }

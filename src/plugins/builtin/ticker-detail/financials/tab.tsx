@@ -431,10 +431,10 @@ export function ResolvedFinancialsTab({
       return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
     };
     const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
-    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded);
+    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded, financials?.profile);
   }, [
     annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
-    isValuation, quarterlyStatements, ratioTab, resolvedPeriod,
+    isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile,
   ]);
   const ratioColumns = useMemo<RatioTableColumn[]>(() => [
     ratioMetricColumn(),
