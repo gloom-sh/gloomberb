@@ -49,7 +49,7 @@ interface PriceAxisLabelsProps {
 /** The button at the foot of an axis sits this far above its bottom edge (`--gloom-space-xs`). */
 const FOOT_BUTTON_INSET_PX = 4;
 
-export interface PriceAxisGestures {
+interface PriceAxisGestures {
   onMouseDown: (event: ChartMouseEvent) => void;
   onMouseDrag: (event: ChartMouseEvent) => void;
   onMouseUp: (event: ChartMouseEvent) => void;
