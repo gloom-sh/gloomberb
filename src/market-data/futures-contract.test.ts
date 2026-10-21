@@ -67,7 +67,7 @@ test("a price in cents says what it is per, and a dollar price reads as before",
 test("a futures move names what it is measured from, as far as the settlement in the terms shows", () => {
   const tick = { tick: 0.25 };
   const basis = (settlement: { price: number; date: string } | null, price: number, change: number, sessionDate = "2026-10-19") =>
-    futuresChangeBasis({ settlement, spec: tick }, { price, change, sessionDate });
+    futuresChangeBasis({ settlement, spec: tick }, { price, change, sessionDate }, "CME");
   // Monday's move from Friday's settlement, which the terms still carry.
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19)).toEqual({ kind: "settle", session: "2026-10-16" });
   // Once Monday settles the terms no longer hold Friday's settlement: Friday's close, unchecked.
@@ -83,10 +83,10 @@ test("a futures move names what it is measured from, as far as the settlement in
   expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -19.1)?.kind).toBe("settle");
   expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -18.75)?.kind).toBe("last trade");
   // Without a tick, half a basis point of the price: 311.9 - 6.3 is 305.59999999999997.
-  expect(futuresChangeBasis({ settlement: { price: 305.6, date: "2026-10-16" } }, { price: 311.9, change: 6.3, sessionDate: "2026-10-19" })?.kind)
+  expect(futuresChangeBasis({ settlement: { price: 305.6, date: "2026-10-16" } }, { price: 311.9, change: 6.3, sessionDate: "2026-10-19" }, "CBT")?.kind)
     .toBe("settle");
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19, "")).toBeNull();
-  expect(futuresChangeBasis({ settlement: null }, { price: 5626, change: null, sessionDate: "2026-10-19" })).toBeNull();
+  expect(futuresChangeBasis({ settlement: null }, { price: 5626, change: null, sessionDate: "2026-10-19" }, "CME")).toBeNull();
 });
 
 test("on a Saturday the move is Friday's, from Thursday", () => {
@@ -94,7 +94,7 @@ test("on a Saturday the move is Friday's, from Thursday", () => {
   const friday = { price: 314.95, date: "2026-10-16" };
   const move = { price: 314.95, change: 2.55 };
   const coffee = (settlement: { price: number; date: string }, sessionDate: string) =>
-    futuresChangeBasis({ settlement, spec: { tick: 0.05 } }, { ...move, sessionDate });
+    futuresChangeBasis({ settlement, spec: { tick: 0.05 } }, { ...move, sessionDate }, "NYB");
   // Friday not settled yet, or a source that dates the quote by the Saturday it was read: still Thursday's settlement.
   expect(coffee(thursday, "2026-10-16")).toEqual({ kind: "settle", session: "2026-10-15" });
   expect(coffee(thursday, "2026-10-17")).toEqual({ kind: "settle", session: "2026-10-15" });

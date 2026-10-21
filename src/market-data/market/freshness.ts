@@ -2,6 +2,7 @@ import type { MarketState, QuoteIndexSession } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
+import { hasPublishedFuturesCalendar, isPublishedFuturesClosure, isPublishedFuturesVenue } from "../published-futures-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
@@ -275,7 +276,7 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   if (exchange === "JPX") return isPublishedJpxClosure(date);
   if (exchange === "NSE" || exchange === "BSE") return isPublishedNseClosure(date);
   if (exchange === "SSE" || exchange === "SZSE") return isPublishedCnClosure(date);
-  if (isPublishedApacClosure(exchange, date)) return true;
+  if (isPublishedApacClosure(exchange, date) || isPublishedFuturesClosure(exchange, date)) return true;
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
@@ -487,9 +488,13 @@ export function isRegularSessionTime(
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
  * HKEX, SGX, ASX and EGX. Elsewhere a local holiday reads as a trading day.
+ * For the futures venues (CME, CBT, NYM, CMX, NYB) a closure is a weekday
+ * with no trade date, and a day some of a venue's contracts settled and
+ * others did not is unknown.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
+  if (isPublishedFuturesVenue(canonical)) return hasPublishedFuturesCalendar(canonical, date);
   const year = Number(date.slice(0, 4));
   if (canonical === "JPX") return hasPublishedJpxCalendar(year);
   if (canonical === "NSE" || canonical === "BSE") return hasPublishedNseCalendar(year);
@@ -505,17 +510,22 @@ export function hasPublishedSessionCalendar(exchange: string | undefined, date: 
  * Mon 19 Oct 2026 lies between Fri 16 and Tue 20 Oct). A `date` that is no
  * session (a quote dated by when it was read, on a Saturday or a holiday) is
  * the latest session on or before it: Friday's move, read on Saturday, is
- * from Thursday's close. Null for round-the-clock and unknown venues, and
- * when a day the walk passes is in a year whose closures the venue has not
- * published: a holiday there would read as a session.
+ * from Thursday's close. With `closedDayRollsForward`, a `date` the venue had
+ * no session on is instead the next session's: CME Globex trades most US
+ * holidays and books those trades on the next trade date, so a future's move
+ * dated Memorial Day is Tuesday's, from Friday's settlement. Null for
+ * round-the-clock and unknown venues, and when a day the walk passes is in a
+ * year whose closures the venue has not published: a holiday there would
+ * read as a session.
  */
 export function previousPublishedSession(
   exchange: string | undefined,
   date: string,
+  { closedDayRollsForward = false }: { closedDayRollsForward?: boolean } = {},
 ): { date: string; closed: string[] } | null {
   const canonical = canonicalExchange(exchange);
   const day = isoLocalDateToUtcDay(date);
-  if (day == null || ALWAYS_OPEN_EXCHANGES.has(canonical) || !sessionCalendarTimeZone(canonical)) return null;
+  if (day == null || ALWAYS_OPEN_EXCHANGES.has(canonical)) return null;
   let session: number | null = null;
   const closed: string[] = [];
   for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS * 2; offset++) {
@@ -527,6 +537,10 @@ export function previousPublishedSession(
     // First the session the move is from's own day, then the one before it.
     if (session == null) {
       if (open) session = offset;
+      else if (offset === 0 && closedDayRollsForward) {
+        session = offset;
+        closed.push(iso);
+      }
       continue;
     }
     if (offset - session > SESSION_LOOKBACK_DAYS) return null;

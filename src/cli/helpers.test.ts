@@ -15,8 +15,8 @@ const change = (quote: Quote, terms?: Parameters<typeof quoteChangeText>[3]) =>
   quoteChangeText(quote, getRegularSessionDisplay(quote)!, quoteFormatOptions(quote), terms, NOW);
 
 const coffee = createTestQuote({
-  symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", marketState: "REGULAR", price: 316, change: 1.05, changePercent: 0.333,
-  previousClose: 314.95, changeSessionDate: "2026-10-19", lastUpdated: Date.parse("2026-10-19T14:00:00Z"),
+  symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
+  marketState: "REGULAR", price: 316, change: 1.05, changePercent: 0.333, previousClose: 314.95, changeSessionDate: "2026-10-19", lastUpdated: Date.parse("2026-10-19T14:00:00Z"),
 });
 const fridaySettled = { settlement: { price: 314.95, date: "2026-10-16" }, spec: { tick: 0.05 } };
 

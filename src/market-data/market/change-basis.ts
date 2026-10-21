@@ -65,6 +65,30 @@ function quoteVenue(quote: Quote): string {
   return canonicalExchange(quote.listingExchangeName || quote.exchangeName);
 }
 
+/**
+ * The venue whose calendar an index's sessions follow, where its quote names
+ * the index's publisher or feed instead of a venue: the Hang Seng family's
+ * HKSE trades HKEX's days, the Nikkei 225's OSAKA JPX's, and the US
+ * publishers' the US equity calendar. An index quoted under a venue (KRX, NSE,
+ * SSE) is that venue's already.
+ */
+const INDEX_CALENDAR_VENUES: Readonly<Record<string, string>> = {
+  HKSE: "HKEX",
+  OSAKA: "JPX",
+  SNP: "NYSE",
+  DJI: "NYSE",
+  "NASDAQ GIDS": "NASDAQ",
+  "CBOE INDICES": "CBOE",
+  "CHICAGO OPTIONS": "CBOE",
+};
+
+/** The venue whose published calendar dates the quote's sessions. */
+function calendarVenue(quote: Quote): string {
+  const venue = quoteVenue(quote);
+  const index = classifyInstrumentType(quote.instrumentType) === "index" || kindFromListingSyntax(quote.symbol) === "index";
+  return (index && INDEX_CALENDAR_VENUES[venue]) || venue;
+}
+
 function isCurrencyPair(quote: Quote): boolean {
   return classifyInstrumentType(quote.instrumentType) === "currency"
     || kindFromListingSyntax(quote.symbol, quote.listingExchangeName || quote.exchangeName) === "currency";
@@ -93,11 +117,12 @@ function previousIndexSession(quote: Quote, date: string): string | null {
 
 /**
  * The session before the one a move is dated to: from the venue's published
- * calendar, with the closures in between; for an index from its own sessions;
- * for a currency pair the weekday before. Null when nothing dates it.
+ * calendar, with the closures in between (an index's, the venue whose days it
+ * follows); otherwise for an index from its own sessions; for a currency pair
+ * the weekday before. Null when nothing dates it.
  */
 function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
-  const venue = quoteVenue(quote);
+  const venue = calendarVenue(quote);
   const published = previousPublishedSession(venue, sessionDate);
   if (published) return { kind: "close", date: published.date, venue, closed: published.closed };
   const index = previousIndexSession(quote, sessionDate);
@@ -110,7 +135,8 @@ function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | 
  * What the quote's move is measured from. A coin moves from its previous UTC
  * day's close, the price at 00:00 UTC, unless Gloom Cloud says it moves over
  * the last 24 hours; a perpetual always moves over 24 hours. A future's is the
- * settlement or trade its terms name (futuresChangeBasis). Anything else is
+ * settlement or trade its terms name, or the close of the trade date before
+ * on its venue's holiday calendar (futuresChangeBasis). Anything else is
  * the close of the session before the move's, dated by the venue's calendar;
  * a venue without one has a previous close that is left undated, never
  * guessed. Null for a quote with no move: none reported, or a listing that no
@@ -127,7 +153,7 @@ export function quoteChangeBasis(
   if (isSpotCoin(quote)) return { kind: "utc day" };
   const sessionDate = (session === "active" ? quote.changeSessionDate : regularSessionDisplayDate(quote)) ?? quoteTradingDay(quote);
   if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
-    const basis = futuresChangeBasis(terms ?? { settlement: null }, { ...display, sessionDate });
+    const basis = futuresChangeBasis(terms ?? { settlement: null }, { ...display, sessionDate }, quoteVenue(quote));
     return basis ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
   }
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return { kind: "previous close" };
@@ -146,7 +172,9 @@ export function quotePreviousCloseDate(quote: Quote | null | undefined): string 
   const sessionDate = quote.changeSessionDate ?? quoteTradingDay(quote);
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return null;
   if (isSpotCoin(quote)) return dayBefore(sessionDate);
-  if (isFuturesInstrument(quote.symbol, quote.instrumentType)) return futuresChangeBasis({ settlement: null }, { price: quote.price, change: 0, sessionDate })?.session ?? null;
+  if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
+    return futuresChangeBasis({ settlement: null }, { price: quote.price, change: 0, sessionDate }, quoteVenue(quote))?.session ?? null;
+  }
   return previousSession(quote, sessionDate)?.date ?? null;
 }
 

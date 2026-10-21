@@ -6,6 +6,7 @@ import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
 import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
+import { previousPublishedSession } from "./market/freshness";
 import { minorUnitSign } from "../utils/currency-units";
 import { contractPriceUnit } from "../time-series/price-units";
 
@@ -143,13 +144,9 @@ export function minorUnitPricePer(
 const DAY_MS = 86_400_000;
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * The weekday on or before a date (`back` 0) or before it (`back` 1), Saturday
- * and Sunday skipped. Futures venues' holidays are not in the app's calendars,
- * so a holiday reads as a session.
- */
-function weekdayBefore(date: string, back: 0 | 1): string {
-  let at = Date.parse(`${date}T00:00:00Z`) - back * DAY_MS;
+/** The weekday on or before a date, Saturday and Sunday skipped. */
+function weekdayOnOrBefore(date: string): string {
+  let at = Date.parse(`${date}T00:00:00Z`);
   while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
   return new Date(at).toISOString().slice(0, 10);
 }
@@ -179,36 +176,43 @@ export interface FuturesChangeBasis {
 
 /**
  * What the move a futures quote headlines is measured from, for the words
- * after it ("vs Fri 16 Oct settle", quoteChangeBasis). `sessionDate` is the session the move belongs
- * to (regularSessionDisplayDate); a Saturday or Sunday is Friday's, as no
- * session is dated on one. The basis is only what the numbers show, against
- * the one settlement the contract terms carry: a reference (the price less
- * the move) within half a tick of it is that settlement, of whichever session
- * it is. A reference that is not the settlement of the session just before
- * the move's is that session's last trade. Otherwise, when the terms carry no
- * settlement that old or one the reference can be checked against (the move's
- * own session has settled, and the one before is not in the terms), it is the
- * session before's close, left unnamed. Null without a session date, a move
- * or terms.
+ * after it ("vs Fri 16 Oct settle", quoteChangeBasis). `sessionDate` is the
+ * session the move belongs to (regularSessionDisplayDate); a Saturday or
+ * Sunday is Friday's, as no session is dated on one, and a holiday CME Globex
+ * traded is the next trade date's. The basis is only what the numbers show,
+ * against the one settlement the contract terms carry: a reference (the price
+ * less the move) within half a tick of it is that settlement, of whichever
+ * session it is. A reference that is not the settlement of the session just
+ * before the move's is that session's last trade. Otherwise, when the terms
+ * carry no settlement that old or one the reference can be checked against
+ * (the move's own session has settled, and the one before is not in the
+ * terms), it is the session before's close, left unnamed. The session before
+ * is the trade date before the move's on the `exchange`'s published holiday
+ * calendar (previousPublishedSession), so the Tuesday after Memorial Day
+ * moves from Friday. On a venue without one, only a matching settlement is
+ * named, by the date the terms give it. Null without a session date, a move
+ * or terms, or when nothing but the calendar could date the reference and
+ * there is none.
  */
 export function futuresChangeBasis(
   terms: Pick<FuturesContractTermsPayload, "settlement"> & { spec?: Pick<FuturesContractSpec, "tick"> | null } | null | undefined,
   move: { price: number; change?: number | null; sessionDate?: string | null } | null | undefined,
+  exchange: string | null | undefined,
 ): FuturesChangeBasis | null {
   const dated = move?.sessionDate;
   if (!terms || !move || !dated || !isoDate.test(dated) || move.change == null) return null;
   const reference = move.price - move.change;
   if (!Number.isFinite(reference)) return null;
-  const session = weekdayBefore(dated, 0);
-  const previous = weekdayBefore(session, 1);
+  const session = weekdayOnOrBefore(dated);
+  const previous = previousPublishedSession(exchange ?? undefined, dated, { closedDayRollsForward: true })?.date ?? null;
   const settled = terms.settlement;
   if (settled && settled.date <= session) {
     if (Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
       return { kind: "settle", session: settled.date };
     }
-    if (settled.date < session && settled.date >= previous) return { kind: "last trade", session: settled.date };
+    if (settled.date === previous) return { kind: "last trade", session: settled.date };
   }
-  return { kind: "close", session: previous };
+  return previous ? { kind: "close", session: previous } : null;
 }
 
 /** A listed contract as code and month: "NGX26 (Nov 26)". */

@@ -84,7 +84,8 @@ test("a coin moves since 00:00 UTC unless Gloom Cloud says 24 hours, and a perpe
 test("a future's move is from the settlement its terms name, dated by the session the headline holds", () => {
   // Monday 05:00 New York, nothing traded yet: the headline is Friday's close and Friday's move, from Thursday.
   const monday = createTestQuote({
-    symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", marketState: "PRE", price: 314.95, change: 2.55, changePercent: 0.82,
+    symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
+    marketState: "PRE", price: 314.95, change: 2.55, changePercent: 0.82,
     regularClose: 314.95, regularChange: 2.55, regularChangePercent: 0.82, regularCloseSessionDate: "2026-10-16",
     changeSessionDate: "2026-10-19", previousClose: 314.95, lastUpdated: Date.parse("2026-10-16T17:30:00Z"),
   });
@@ -98,6 +99,70 @@ test("a future's move is from the settlement its terms name, dated by the sessio
   const trading = { ...monday, marketState: "REGULAR" as const, price: 316, change: 1.05, lastUpdated: Date.parse("2026-10-19T14:00:00Z") };
   expect(quoteChangeBasis(trading, { terms: { ...terms, settlement: { price: 314.95, date: "2026-10-16" } } }))
     .toEqual({ kind: "settle", date: "2026-10-16" });
+});
+
+// ES=F on Tue 26 May 2026. CME Group set no trade date for Memorial Day:
+// Globex traded Monday for Tuesday's trade date and settled nothing.
+const es = (overrides: Partial<Quote> = {}) => createTestQuote({
+  symbol: "ES=F", instrumentType: "FUTURE", listingExchangeName: "CME", exchangeName: "CME", price: 7420, change: 20, changePercent: 0.27,
+  previousClose: 7400, changeSessionDate: "2026-05-26", marketState: "REGULAR", lastUpdated: Date.parse("2026-05-26T15:00:00Z"), ...overrides,
+});
+const esTerms = (date: string, price = 7400) => ({ settlement: { price, date }, spec: { tick: 0.25 } });
+
+test("a future's move the Tuesday after Memorial Day is from Friday, the trade date before it on CME Group's calendar", () => {
+  const settle = quoteChangeBasis(es(), { terms: esTerms("2026-05-22") });
+  expect(settle).toEqual({ kind: "settle", date: "2026-05-22" });
+  expect(changeBasisLabel(settle!, NOW)).toBe("vs Fri 22 May settle");
+  // Tuesday settled: its own settlement cannot confirm the reference, which is Friday's close, not Monday's.
+  const close = quoteChangeBasis(es(), { terms: esTerms("2026-05-26", 7418) });
+  expect(close).toEqual({ kind: "close", date: "2026-05-22" });
+  expect(changeBasisLabel(close!, NOW)).toBe("vs Fri 22 May close");
+  expect(quotePreviousCloseDate(es())).toBe("2026-05-22");
+  // Monday's abbreviated Globex session is booked on Tuesday's trade date: a move dated Monday is from Friday too.
+  expect(quoteChangeBasis(es({ changeSessionDate: "2026-05-25" }))).toEqual({ kind: "close", date: "2026-05-22" });
+});
+
+test("ICE's softs did not trade Good Friday, so Monday's coffee move is from Thursday", () => {
+  const kc = createTestQuote({
+    symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
+    price: 300, change: 3, changePercent: 1.01, previousClose: 297, changeSessionDate: "2026-04-06", marketState: "REGULAR",
+    lastUpdated: Date.parse("2026-04-06T15:00:00Z"),
+  });
+  const thursday = { settlement: { price: 297, date: "2026-04-02" }, spec: { tick: 0.05 } };
+  expect(quoteChangeBasis(kc, { terms: thursday })).toEqual({ kind: "settle", date: "2026-04-02" });
+  expect(quoteChangeBasis({ ...kc, change: 3.5 }, { terms: thursday })).toEqual({ kind: "last trade", date: "2026-04-02" });
+  expect(quoteChangeBasis(kc, { terms: { ...thursday, settlement: { price: 300.5, date: "2026-04-06" } } }))
+    .toEqual({ kind: "close", date: "2026-04-02" });
+  expect(quotePreviousCloseDate(kc)).toBe("2026-04-02");
+  // CME settled its FX and rate contracts that Good Friday but not its equity index ones, so its calendar
+  // cannot date ES=F's Monday: only a settlement the move matches is named.
+  const monday = es({ changeSessionDate: "2026-04-06" });
+  expect(quoteChangeBasis(monday, { terms: esTerms("2026-04-02") })).toEqual({ kind: "settle", date: "2026-04-02" });
+  expect(quoteChangeBasis(monday)).toEqual({ kind: "previous close" });
+});
+
+test("a future on a venue without a published calendar keeps its previous close undated", () => {
+  const vx = es({ symbol: "VX=F", listingExchangeName: "CFE", exchangeName: "CFE", price: 18.5, change: 0.5, previousClose: 18 });
+  const terms = { settlement: { price: 18, date: "2026-05-22" }, spec: { tick: 0.05 } };
+  // A settlement the move matches is dated by the terms, not by a calendar.
+  expect(quoteChangeBasis(vx, { terms })).toEqual({ kind: "settle", date: "2026-05-22" });
+  expect(quoteChangeBasis(vx, { terms: { ...terms, settlement: { price: 18.4, date: "2026-05-26" } } })).toEqual({ kind: "previous close" });
+  expect(quoteChangeBasis(vx)).toEqual({ kind: "previous close" });
+  expect(quotePreviousCloseDate(vx)).toBeNull();
+});
+
+test("an index quoted under its publisher names the venue whose days it trades in its holiday note", () => {
+  const hsi = createTestQuote({
+    symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    price: 25_800, change: -150, changePercent: -0.58, previousClose: 25_950, changeSessionDate: "2026-10-20",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-10-20T08:10:00Z"),
+  });
+  const basis = quoteChangeBasis(hsi);
+  expect(basis).toEqual({ kind: "close", date: "2026-10-16", venue: "HKEX", closed: ["2026-10-19"] });
+  expect(changeBasisNote(basis, NOW)).toBe("HKEX closed Mon 19 Oct, holiday");
+  expect(quotePreviousCloseDate(hsi)).toBe("2026-10-16");
+  const spx = { ...hsi, symbol: "^GSPC", listingExchangeName: "SNP", exchangeName: "SNP", changeSessionDate: "2026-11-27" };
+  expect(changeBasisNote(quoteChangeBasis(spx), NOW)).toBe("NYSE closed Thu 26 Nov, holiday");
 });
 
 test("a total over moves from different closes says so instead of naming one", () => {
