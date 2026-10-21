@@ -5,6 +5,7 @@ import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/p
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { exportSourceLines } from "../../../cli/export-source";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { reportGlossary } from "../../../cli/glossary";
 import { reportShotCoverage, shotStatusIssues, withReportCoverage, type PaneScreenshotResult } from "../../../cli/pane-functions/screenshot";
 import { createTestHeadlessArgs } from "../../../test-support/headless";
@@ -135,8 +136,10 @@ const bis = (id: string, overrides: Partial<CentralBankRow> = {}) => row({ id, l
 const load = (body: CentralBankRatesPayload, history = false) => centralBankRatesHeadless.load({ rawArgument: "", argument: null, symbols: [], options: { history } },
   { apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext) as Promise<HeadlessBundleResult>;
 const board = (): CentralBankRatesPayload => ({ generatedAt: "2026-10-12T10:00:00Z", status: "available", gaps: [], rows: [
-  row({ asOf: "2026-10-11", notes: ["Change date is the first observed new level, not necessarily the announcement or effective date."],
-    nextMeeting: { date: "2026-10-28", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" }, nextMeetingStatus: "scheduled" }),
+  row({ asOf: "2026-10-11", value: 3.875, range: { lower: 3.75, upper: 4 }, previousValue: 3.625,
+    notes: ["Midpoint of the target range, not the effective federal funds rate.", "Change date is the first observed new level, not necessarily the announcement or effective date."],
+    nextMeeting: { date: "2026-10-28", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" }, nextMeetingStatus: "scheduled",
+    lastDecision: { date: "2026-09-16", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" } }),
   bis("GB", { seriesNotes: ["From 3 Aug 2006 onwards: official bank rate."], notes: ["From 3 Aug 2006 onwards: official bank rate.", "Change date is the first observed new level, not necessarily the announcement or effective date."],
     nextMeeting: { date: "2026-11-05", sourceUrl: "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates", verifiedAt: "2026-10-12", kind: "decision" }, nextMeetingStatus: "scheduled" }),
   bis("CN", { asOf: "2026-07-23", lastChangeDate: "2026-07-01", previousAsOf: "2026-06-30", nextMeeting: { date: "2026-10-20", sourceUrl: "https://www.pbc.gov.cn/en/3688253/3689009/3788480/2025092319423510791/index.html", verifiedAt: "2026-10-12", kind: "fixing" } }),
@@ -158,32 +161,49 @@ describe("citable central bank exports", () => {
       .toEqual({ source: "FRED series ECBDFR", publisher: "European Central Bank" });
   });
 
-  test("CSV keeps the board's columns in order and appends the citation block; JSON leaves history out unless asked", async () => {
+  test("CSV writes the rate as a number with a range's bounds beside it, then the citation block with the last decision and the row's notes", async () => {
     const result = await load(board());
     const freshness = deriveHeadlessFreshness(centralBankRatesHeadless, result, Date.parse("2026-10-12T10:00:00Z"));
-    const [table] = headlessReportTables(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness,
-      { complete: true, unavailableSymbols: [] }).tables;
-    expect(table!.columns).toEqual(["Jurisdiction", "Rate (%)", "Last move (bp)", "Change observed", "Pctl 1Y", "As of", "Status", "Instrument",
-      "central_bank", "source", "series_id", "source_url", "as_of", "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at", "citation",
+    const report = headlessReportTables(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness,
+      { complete: true, unavailableSymbols: [] });
+    const [table] = report.tables;
+    expect(table!.columns).toEqual(["Jurisdiction", "Rate (%)", "Range lower (%)", "Range upper (%)", "Last move (bp)", "Change observed", "Pctl 1Y", "As of", "Status", "Instrument",
+      "central_bank", "source", "series_id", "source_url", "as_of", "last_decision", "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at",
+      "citation", "notes",
       // A reason drawn for a missing figure, beside the board's own Status.
       "value_status"]);
-    const meetings = table!.rows.map((cells) => cells.slice(13, 17));
+    const cell = (cells: readonly unknown[], column: string) => cells[table!.columns.indexOf(column)];
+    // The text draws the US range "3.75-4.00%"; the export gives its midpoint and both bounds as numbers, and a single rate no bounds.
+    expect(table!.rows.map((cells) => [cell(cells, "Rate (%)"), cell(cells, "Range lower (%)"), cell(cells, "Range upper (%)")]).slice(0, 2))
+      .toEqual([[3.875, 3.75, 4], [3.75, "", ""]]);
+    expect(table!.rows.map((cells) => [cell(cells, "last_decision"), cell(cells, "notes")])[0])
+      .toEqual(["2026-09-16", "Midpoint of the target range, not the effective federal funds rate."]);
+    const meetings = table!.rows.map((cells) => cells.slice(16, 20));
+    // Argentina has no policy rate: off the board, as the pane keeps it, and named in a note instead.
     expect(meetings).toEqual([
       ["2026-10-28", "decision", "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "2026-10-12"],
       ["2026-11-05", "decision", "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates", "2026-10-12"],
       ["2026-10-20", "fixing", "https://www.pbc.gov.cn/en/3688253/3689009/3788480/2025092319423510791/index.html", "2026-10-12"],
-      ["not published", "", "", ""], ["not verified", "", "", ""], ["no policy rate", "", "", ""],
+      ["not published", "", "", ""], ["not verified", "", "", ""],
     ]);
+    // The report's own source and as_of columns are each row's, so the export's fixed columns of those names are not added again.
+    const csv = renderReportCsv(report, freshness).split("\n");
+    expect(csv[0]!.split(",").filter((column) => column === "source" || column === "as_of")).toEqual(["source", "as_of"]);
+    expect(csv.filter((line) => line && !line.startsWith("#"))).toHaveLength(1 + result.sections[0]!.rows!.length);
     expect(exportSourceLines(freshness).slice(0, 4)).toEqual([expect.stringContaining("Source: BIS and FRED"),
       "Publisher: each row's central_bank, via BIS and FRED", "Observation date: 2026-10-11", "Oldest observation: 2026-07-23"]);
     const [gb] = result.sections[0]!.rows!.filter((entry) => entry.id === "GB");
     // The BIS series definition goes with the history; the caveat every row shares is said once.
     expect(gb!.notes).toEqual([]);
-    expect(result.notes).toEqual(["Change date is the first observed new level, not necessarily the announcement or effective date."]);
+    expect(result.notes).toEqual(["Change date is the first observed new level, not necessarily the announcement or effective date.",
+      "Argentina is not listed: no adopted policy rate (BIS series D.AR, https://data.bis.org/topics/CBPOL/BIS,WS_CBPOL,1.0/D.AR)."]);
     expect(result.metadata).toEqual({ generatedAt: "2026-10-12T10:00:00Z", status: "available", gaps: [], complete: true });
     expect((await load(board(), true)).metadata!.rows).toEqual(board().rows);
-    expect(renderHeadlessPaneText(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness))
-      .toContain("Bank GB · next decision 2026-11-05, calendar verified 2026-10-12 at https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates");
+    const text = renderHeadlessPaneText(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness);
+    expect(text).toContain("Bank GB · next decision 2026-11-05, calendar verified 2026-10-12 at https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates");
+    expect(text).toContain("Federal Reserve · last decision 2026-09-16 · next decision 2026-10-28");
+    expect(text).toContain("as of 2026-10-11\n  Midpoint of the target range, not the effective federal funds rate.");
+    expect(text).not.toContain("Argentina  ");
   });
 
   test("an older server's null meeting reads as not published, and a field it does not know is dropped, not fatal", async () => {
@@ -191,10 +211,12 @@ describe("citable central bank exports", () => {
     data.rows = data.rows.map(({ nextMeetingStatus: _status, ...entry }) => entry.id === "US" ? entry
       : { ...entry, nextMeeting: null, seriesNotes: undefined });
     (data.rows[0]!.nextMeeting as { kind?: string }).kind = "vote";
+    // A decision dated after the change it is for is no citation.
+    data.rows[1]!.lastDecision = { date: "2026-09-20", sourceUrl: "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates", verifiedAt: "2026-10-12" };
     const result = await load(validateCentralBankRates(data));
-    expect(result.sections[0]!.rows!.map((entry) => [entry.id, entry.next_meeting, entry.next_meeting_kind])).toEqual([
-      ["US", "2026-10-28", "decision"], ["GB", "not published", null], ["CN", "not published", null], ["SA", "not published", null],
-      ["KR", "not published", null], ["AR", "no policy rate", null],
+    expect(result.sections[0]!.rows!.map((entry) => [entry.id, entry.next_meeting, entry.next_meeting_kind, entry.last_decision])).toEqual([
+      ["US", "2026-10-28", "decision", "2026-09-16"], ["GB", "not published", null, null], ["CN", "not published", null, null], ["SA", "not published", null, null],
+      ["KR", "not published", null, null],
     ]);
   });
 });

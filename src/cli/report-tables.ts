@@ -582,7 +582,10 @@ function csvLine(row: readonly unknown[]): string {
 
 /**
  * A table with the fixed columns after its own, every row naming what it is
- * and the source and as-of the footer cites. A table without columns stays empty.
+ * and the source and as-of the footer cites. A fixed column the table already
+ * has under the same name is left out, so its own per-row values stay the
+ * only ones (CBR's `source` and `as_of`) and a reader keyed by name finds one
+ * column. A table without columns stays empty.
  */
 function identifiedTable(table: CliReportTable, report: CliReportTables, freshness: ReportFreshness | undefined): CliReportTable {
   if (!freshness || table.columns.length === 0) return table;
@@ -592,7 +595,16 @@ function identifiedTable(table: CliReportTable, report: CliReportTables, freshne
     const own = table.rowIdentities?.[index];
     return own ? exportIdentityCells(freshness, { ...identity, ...own }) : cells;
   };
-  return { ...table, columns: [...table.columns, ...EXPORT_IDENTITY_COLUMNS], rows: table.rows.map((row, index) => [...row, ...rowCells(index)]) };
+  const added = EXPORT_IDENTITY_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]);
+  if (added.length === 0) return table;
+  return {
+    ...table,
+    columns: [...table.columns, ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!)],
+    rows: table.rows.map((row, index) => {
+      const identityCells = rowCells(index);
+      return [...row, ...added.map((column) => identityCells[column]!)];
+    }),
+  };
 }
 
 /**

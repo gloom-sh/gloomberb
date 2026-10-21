@@ -49,6 +49,11 @@ export function validateCentralBankRates(payload: CentralBankRatesPayload): Cent
     if (row.nextMeeting && row.nextMeeting.kind !== undefined && row.nextMeeting.kind !== "decision" && row.nextMeeting.kind !== "fixing") delete row.nextMeeting.kind;
     if (row.nextMeetingStatus !== undefined && !["scheduled", "not-published", "not-verified", "no-policy-rate"].includes(row.nextMeetingStatus)) delete row.nextMeetingStatus;
     if (row.seriesNotes !== undefined && !strings(row.seriesNotes)) delete row.seriesNotes;
+    // A decision date is a citation: one that is not a real day on or before the change it is for, from an https page, is left out.
+    const decision = row.lastDecision;
+    if (decision !== undefined && decision !== null && (typeof decision !== "object" || decision.date == null || !dateOrNull(decision.date)
+      || row.lastChangeDate == null || decision.date > row.lastChangeDate || decision.sourceUrl == null || !urlOrNull(decision.sourceUrl)
+      || !Number.isFinite(Date.parse(decision.verifiedAt)) || decision.kind !== undefined && decision.kind !== "decision" && decision.kind !== "fixing")) delete row.lastDecision;
   }
   return payload;
 }

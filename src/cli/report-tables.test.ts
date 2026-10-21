@@ -227,6 +227,31 @@ describe("report CSV and NDJSON", () => {
     ]);
   });
 
+  test("rows end with the fixed identity columns except those a table already has, whose own per-row values stay the only ones", () => {
+    const tables: CliReportTables = {
+      tables: [
+        { title: "Rates", columns: ["Jurisdiction", "source", "as_of"], rows: [["Japan", "BIS", "2026-10-13"], ["United States", "FRED", "2026-10-20"]] },
+        { title: "Indices", columns: ["Index", "Last"], rows: [["DAX", 25087.27]] },
+      ],
+      footer: [],
+    };
+    expect(renderReportCsv(tables, freshness).split("\n")).toEqual([
+      "# section: Rates",
+      "Jurisdiction,source,as_of,symbol_or_series,currency_or_unit,interval",
+      "Japan,BIS,2026-10-13,,,",
+      "United States,FRED,2026-10-20,,,",
+      "",
+      "# section: Indices",
+      "Index,Last,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "DAX,25087.27,,,,Gloom Cloud,2026-10-09T18:28:00.000Z",
+    ]);
+    expect(renderReportNdjson(tables, freshness).split("\n").map((line) => JSON.parse(line))).toEqual([
+      { section: "Rates", Jurisdiction: "Japan", source: "BIS", as_of: "2026-10-13", symbol_or_series: null, currency_or_unit: null, interval: null },
+      { section: "Rates", Jurisdiction: "United States", source: "FRED", as_of: "2026-10-20", symbol_or_series: null, currency_or_unit: null, interval: null },
+      { section: "Indices", Index: "DAX", Last: 25087.27, symbol_or_series: null, currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: "2026-10-09T18:28:00.000Z" },
+    ]);
+  });
+
   test("--section picks one table by title or position, and names the sections it has", () => {
     expect(renderReportCsv(selectReportTables(report(), "EUROPE")).split("\n").slice(0, 3)).toEqual([
       "Index,Last",
