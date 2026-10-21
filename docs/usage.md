@@ -747,6 +747,8 @@ Starter packs are built-in templates for the research and markets plugins: Every
 
 Plugin GitHub star counts are currently hidden. The marketplace keeps its curated ordering.
 
+For a plugin installed outside the registry, a failed or incomplete update check keeps the last known update available and shows the check failure in the footer. Press `r` to retry. A successful answer replaces the known version; removing the plugin clears it.
+
 | Key | Action |
 |-----|--------|
 | `i` | Install the selected plugin, after a confirmation that names its source and declared hosts |
@@ -758,6 +760,7 @@ Plugin GitHub star counts are currently hidden. The marketplace keeps its curate
 | `s` | Open its setup form |
 | `p` | Open a pane it provides |
 | `d` | Open the debug log filtered to it |
+| `r` | Refresh the catalog and check installed plugins for updates |
 | `b` | Show or hide the built-in plugins |
 | `/` | Search |
 

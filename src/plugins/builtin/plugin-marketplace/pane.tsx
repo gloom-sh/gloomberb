@@ -424,9 +424,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   // side-loaded install can report an update like every other row.
   const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
   const [checkingRemotes, setCheckingRemotes] = useState(false);
+  const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
+  const [remoteRevision, setRemoteRevision] = useState(0);
   const busyId = busy?.id ?? null;
 
   const refresh = useCallback((force: boolean) => {
+    if (force) setRemoteRevision((value) => value + 1);
     setStatus((current) => (current === "ready" ? current : "loading"));
     void loadRegistry({ force }).then((result) => {
       setRegistry(result.plugins);
@@ -477,24 +480,42 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const unlistedKey = unlistedDirectories.join(",");
 
   useEffect(() => {
+    const directories = unlistedKey ? unlistedKey.split(",") : [];
+    const eligible = new Set(directories);
+    // Forget removed or newly pinned/linked installs, including the last one.
+    setRemoteHeads((previous) => {
+      const retained = Object.entries(previous).filter(([directory]) => eligible.has(directory));
+      return retained.length === Object.keys(previous).length ? previous : Object.fromEntries(retained);
+    });
+    setRemoteCheckError(null);
     const check = manager?.remoteHeads;
-    if (!check || unlistedKey.length === 0) return;
+    if (!check || directories.length === 0) {
+      setCheckingRemotes(false);
+      return;
+    }
     let cancelled = false;
     setCheckingRemotes(true);
-    void check(unlistedKey.split(","))
-      // Offline, or a private repository this machine has no credentials for:
-      // the row keeps whatever it knew, without an error in the way.
-      .catch(logFailure("plugin-marketplace.pane", "Check installed plugin remote heads failed", {}))
-      .then((heads) => {
+    void (async () => {
+      try {
+        const heads = await check(directories);
         if (cancelled) return;
-        setRemoteHeads(heads);
-        setCheckingRemotes(false);
-      });
-    return () => {
-      cancelled = true;
-      setCheckingRemotes(false);
-    };
-  }, [manager, unlistedKey, localRevision]);
+        // An omitted folder is unanswered, not proof that it is up to date.
+        const answers = directories.filter((directory) => !!heads[directory]);
+        setRemoteHeads((previous) => ({
+          ...previous,
+          ...Object.fromEntries(answers.map((directory) => [directory, heads[directory]!])),
+        }));
+        setRemoteCheckError(answers.length < directories.length ? "Some plugin updates could not be checked" : null);
+      } catch (error) {
+        if (cancelled) return;
+        logFailure("plugin-marketplace.pane", "Check installed plugin remote heads failed")(error);
+        setRemoteCheckError("Plugin update check failed");
+      } finally {
+        if (!cancelled) setCheckingRemotes(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [manager, unlistedKey, localRevision, remoteRevision]);
 
   const visible = useMemo(
     () => filterEntries(entries, { query, category, showBuiltin }),
@@ -828,6 +849,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const info = loadingErrorFooterInfo(status === "loading", status === "error" ? "catalog unavailable" : null);
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
   if (checkingRemotes) info.push({ id: "remote-check", parts: [{ text: "checking unlisted plugins", tone: "muted" }] });
+  if (remoteCheckError) info.push({ id: "remote-error", parts: [{ text: remoteCheckError, tone: "warning" }] });
   if (busy) {
     const name = entries.find((entry) => entry.id === busy.id)?.name ?? busy.id;
     info.push({ id: "busy", parts: [{ text: `${busy.verb} ${name}`, tone: "muted" }] });
@@ -854,6 +876,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
   if (canRemove) hints.push({ id: "remove", key: "x", label: " remove", onPress: () => { void removeSelected(); } });
   if (host) hints.push({ id: "packs", key: "a", label: "pply pack", title: "Apply a starter pack", onPress: () => { void choosePack(); } });
+  hints.push({ id: "refresh", key: "r", label: "efresh", onPress: () => refresh(true) });
   // A built-in has no repository; its page on gloom.sh shows it at work.
   const seeItUrl = selected?.bundled ? registryPluginUrl(selected.id) : null;
   if (seeItUrl) hints.push({ id: "see-it", key: "o", label: " see it", title: "See it on gloom.sh", onPress: () => openUrl(seeItUrl) });
