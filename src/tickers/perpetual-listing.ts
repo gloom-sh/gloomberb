@@ -37,6 +37,9 @@ export const PERPETUAL_TYPE = "PERP";
 /** Exchange codes of the perpetual venues, which trade around the clock. */
 export const PERPETUAL_EXCHANGES: readonly string[] = Object.keys(VENUE_BY_EXCHANGE);
 
+/** Venues with no spot market, where a coin pair names a contract. */
+const PERPETUALS_ONLY: ReadonlySet<string> = new Set(["hyperliquid", "dydx"]);
+
 /** A venue symbol: letters (any script), digits, dash, underscore and dot; no colon or space. */
 const VENUE_SYMBOL = /^[\p{L}\p{N}_.-]{1,64}$/u;
 
@@ -96,8 +99,8 @@ export function perpetualListing(symbol: string, exchange?: string | null): Perp
   const venue = VENUE_BY_EXCHANGE[venueCode];
   if (!venue || !VENUE_SYMBOL.test(parsed.symbol) || parsed.symbol.startsWith("-")) return null;
   // A coin pair (BTC-USD, as BTC/USD on Binance is read) is the venue's spot market; contracts there have no dash
-  // before their quote currency. Hyperliquid's dash is its dex.
-  if (venue !== "hyperliquid" && isCryptoPairSymbol(parsed.symbol)) return null;
+  // before their quote currency. Hyperliquid's dash is its dex, and dYdX trades only perpetuals, each named as a pair.
+  if (!PERPETUALS_ONLY.has(venue) && isCryptoPairSymbol(parsed.symbol)) return null;
   const marketId = venue === "hyperliquid"
     ? (() => {
       const dash = parsed.symbol.indexOf("-");
