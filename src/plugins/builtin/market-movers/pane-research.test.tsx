@@ -2,9 +2,10 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import * as autoRefresh from "../../../react/auto-refresh";
 import { marketMoversModule } from "./index";
-import { resetMarketMoversPersistence } from "./screener";
+import { attachMarketMoversPersistence, resetMarketMoversPersistence } from "./screener";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { publicTickerKey } from "../../../utils/exchanges";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -166,6 +167,8 @@ test("signed out during the pre-market, the pane opens the pre-market list as it
 
 
 test("trending failures retain only same-list rows and success time, partial refreshes expose gaps, and recovery clears them", async () => {
+  attachMarketMoversPersistence(new MemoryPluginPersistence());
+  let membershipFails = false;
   let now = Date.now();
   Date.now = () => now;
   let lastSuccessful: number | null = null;
@@ -181,7 +184,7 @@ test("trending failures retain only same-list rows and success time, partial ref
   } });
   try {
     await mount(url => url.pathname.endsWith("/market/trending")
-      ? { status: "success", data: [{ symbol: "FIRST" }, { symbol: "SECOND" }] }
+      ? membershipFails ? Promise.reject(new Error("Controlled membership failure")) : { status: "success", data: [{ symbol: "FIRST" }, { symbol: "SECOND" }] }
       : payload([raw("GAINER")]), provider);
     await clickLabel("Trending");
     expect(await csv()).not.toContain("GAINER");
@@ -220,6 +223,15 @@ test("trending failures retain only same-list rows and success time, partial ref
     expect(JSON.stringify(footer)).not.toContain("unavailable");
     expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
     expect(lastSuccessful!).toBeGreaterThan(successTime!);
+
+    const recoveredAt = lastSuccessful;
+    membershipFails = true;
+    now += 1_000;
+    await tui.emitKeypress({ name: "r", sequence: "r" });
+    await tui.waitForFrameToContain("stale");
+    expect(await csv()).toContain("SECOND");
+    expect(lastSuccessful).toBe(recoveredAt);
+    membershipFails = false;
 
     mode = "pending";
     await tui.emitKeypress({ name: "r", sequence: "r" });

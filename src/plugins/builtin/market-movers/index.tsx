@@ -235,7 +235,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
       }
       setMoversStale(result.stale);
       setLoadError(quoteError);
-      if (!quoteError) setLastSuccess({ tab, at: Date.now() });
+      if (!quoteError && !result.stale) setLastSuccess({ tab, at: Date.now() });
     } catch {
       if (fetchGenRef.current !== gen) return;
       setMoversStale(true);
