@@ -1,4 +1,4 @@
-import { fixedUsdRate, minorUnitSign } from "./currency-units";
+import { fixedUsdRate, heldCurrencyUnit, minorUnitSign } from "./currency-units";
 
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
@@ -407,9 +407,25 @@ export function padTo(str: string, width: number, align: "left" | "right" | "cen
 }
 
 /**
+ * USD per unit of a currency from USD-per-unit rates: the dollar and US cents
+ * (a grain future's USX) at their fixed rates, any other the market's; a
+ * minor unit (GBp, GBX, ZAc) without a rate of its own as its major
+ * currency's over its divisor.
+ */
+function usdPerUnit(currency: string, exchangeRates: Map<string, number>): number | undefined {
+  const own = fixedUsdRate(currency) ?? exchangeRates.get(currency);
+  if (own != null) return own;
+  const unit = heldCurrencyUnit(currency);
+  if (unit.divisor === 1) return undefined;
+  const major = fixedUsdRate(unit.currency) ?? exchangeRates.get(unit.currency);
+  return major == null ? undefined : major / unit.divisor;
+}
+
+/**
  * Convert using USD-per-unit rates. Missing FX remains unavailable (NaN), so
  * totals cannot silently mix source currency with base currency. Numeric
- * formatters render this as a dash and JSON encodes it as null.
+ * formatters render this as a dash and JSON encodes it as null. Pence (GBp,
+ * GBX) count a hundredth of a pound.
  */
 export function convertCurrency(
   value: number,
@@ -419,9 +435,8 @@ export function convertCurrency(
 ): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (fromCurrency === baseCurrency || value === 0) return value;
-  // The dollar and US cents (a grain future's USX) have fixed rates; any other is the market's.
-  const fromRate = fixedUsdRate(fromCurrency) ?? exchangeRates.get(fromCurrency);
-  const baseRate = fixedUsdRate(baseCurrency) ?? exchangeRates.get(baseCurrency);
+  const fromRate = usdPerUnit(fromCurrency, exchangeRates);
+  const baseRate = usdPerUnit(baseCurrency, exchangeRates);
   if (fromRate == null || baseRate == null || !Number.isFinite(fromRate) || !Number.isFinite(baseRate)
     || fromRate <= 0 || baseRate <= 0) return Number.NaN;
   return (value * fromRate) / baseRate;

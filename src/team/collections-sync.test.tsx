@@ -229,11 +229,77 @@ describe("team collections sync", () => {
 
     await settleAfter(() => emitEvent({ change: "item-updated", teamId: "org-a", actorId: "u2", collectionId: "p1", item: item("p1", "AAPL", 20) }));
     expect(store.getState().tickers.get("AAPL")?.metadata.positions).toEqual([
-      { portfolio: localId, shares: 20, avgCost: 156.666666666667, currency: "USD", broker: "manual" },
+      { portfolio: localId, shares: 20, avgCost: 156.666666666667, currency: "USD", broker: "manual", dateAcquired: "2024-01-02" },
     ]);
 
     // Past the outbound debounce: the total already matches the server's, so nothing is sent.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
     expect(pushed).toEqual([]);
+  });
+
+  test("round trip: the purchase date and cost FX rate a teammate set reach the other's lot, and nothing echoes back", async () => {
+    const localId = teamCollectionLocalId("org-a", "p1");
+    const books: TeamCollection[] = [collection("org-a", "p1", "Lira book", { kind: "portfolio", currency: "TRY" })];
+    // The server as the platform keeps it: a field a PUT leaves out stays as it was.
+    const server = new Map<string, TeamCollectionItem>([["BRK.B", { ...item("p1", "BRK.B", 10), exchange: "NYSE",
+      dateAcquired: null, currency: null, costFxRate: null, costFxCurrency: null }]]);
+    const refreshers: Array<() => void> = [];
+    const listeners: Array<(event: TeamCollectionEvent) => void> = [];
+    const pushed: unknown[] = [];
+    spies.push(
+      spyOn(apiClient, "isVerified").mockImplementation(() => true),
+      spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
+        refreshers.push(listener);
+        return () => {};
+      }),
+      spyOn(apiClient, "subscribeCloudEvent").mockImplementation((_type, listener) => {
+        listeners.push((event) => listener(event));
+        return () => {};
+      }),
+      spyOn(apiClient, "listTeamCollections").mockImplementation(async (teamId) => (teamId === "org-a" ? books : [])),
+      spyOn(apiClient, "getTeamCollection").mockImplementation(async () => ({ ...books[0]!, items: [...server.values()] })),
+      spyOn(apiClient, "putTeamCollectionItem").mockImplementation(async (_teamId, collectionId, body) => {
+        pushed.push(body);
+        const stored = { ...server.get(body.symbol)!, ...body, collectionId, exchange: body.exchange ?? "" } as TeamCollectionItem;
+        server.set(body.symbol, stored);
+        queueMicrotask(() => { for (const listener of listeners) listener({ change: "item-updated", teamId: "org-a", actorId: "alice", collectionId, item: stored }); });
+        return stored;
+      }),
+      spyOn(apiClient, "removeTeamCollectionItem").mockResolvedValue(undefined as never),
+    );
+
+    // Alice set BRK.B in USD at the 2024-03-01 close; Bob holds the team's 10 shares from before, with neither.
+    const lot = { portfolio: localId, shares: 10, avgCost: 410, currency: "USD", broker: "manual", dateAcquired: "2024-03-01", costFxRate: 31.3694, costFxCurrency: "TRY" };
+    const record = (positions: TickerRecord["metadata"]["positions"]): TickerRecord =>
+      ({ metadata: { ...blankTickerRecord("BRK.B", "NYSE", "USD").metadata, portfolios: [localId], positions } });
+    const alice = createStore(createDefaultConfig("/tmp/gloomberb-team-terms-alice"));
+    alice.dispatch({ type: "UPDATE_TICKER", ticker: record([lot]) });
+    const bob = createStore(createDefaultConfig("/tmp/gloomberb-team-terms-bob"));
+    bob.dispatch({ type: "UPDATE_TICKER", ticker: record([{ portfolio: localId, shares: 10, avgCost: 0, currency: "USD", broker: "manual" }]) });
+    const repository = {
+      loadAllTickers: async () => [], loadTicker: async () => null, saveTicker: async () => {},
+      createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }), deleteTicker: async () => {},
+    };
+    await tui.render(
+      <>
+        <AppContext value={alice}><Sync persistConfig={() => {}} tickerRepository={repository} /></AppContext>
+        <AppContext value={bob}><Sync persistConfig={() => {}} tickerRepository={repository} /></AppContext>
+      </>,
+      { width: 10, height: 2 },
+    );
+    await settleAfter(() => { for (const refresh of refreshers) refresh(); });
+    // Past the outbound debounce, and the event the push makes.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+
+    expect(pushed).toEqual([{ symbol: "BRK.B", exchange: "NYSE", quantity: 10,
+      dateAcquired: "2024-03-01", currency: "USD", costFxRate: 31.3694, costFxCurrency: "TRY" }]);
+    expect(bob.getState().tickers.get("BRK.B")?.metadata.positions).toEqual([{ portfolio: localId, shares: 10, avgCost: 0, currency: "USD",
+      broker: "manual", dateAcquired: "2024-03-01", costFxRate: 31.3694, costFxCurrency: "TRY" }]);
+    expect(alice.getState().tickers.get("BRK.B")?.metadata.positions).toEqual([lot]);
+
+    // Bob's lot now matches the server: another pass sends nothing more.
+    await settleAfter(() => { for (const refresh of refreshers) refresh(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+    expect(pushed).toHaveLength(1);
   });
 });

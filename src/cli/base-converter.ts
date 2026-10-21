@@ -1,5 +1,5 @@
 import type { DataProvider } from "../types/data-provider";
-import { fixedUsdRate } from "../utils/currency-units";
+import { fixedUsdRate, heldCurrencyUnit } from "../utils/currency-units";
 import { logFailure } from "../utils/log-failure";
 
 /** One rate a converter used: units of `baseCurrency` per unit of `currency`, and when it was observed. */
@@ -56,21 +56,23 @@ export function createBaseConverter(
     return pending;
   };
 
+  // A minor unit converts as its major currency: pence (GBp, GBX) are a hundredth of a pound, and US cents of a dollar.
+  const base = heldCurrencyUnit(baseCurrency);
   const convert = async (value: number, fromCurrency: string): Promise<number> => {
-    const normalizedFrom = fromCurrency.toUpperCase();
-    const normalizedBase = baseCurrency.toUpperCase();
-    if (normalizedFrom === normalizedBase) return value;
+    const from = heldCurrencyUnit(fromCurrency);
+    if (from.currency === base.currency) return from.divisor === base.divisor ? value : (value / from.divisor) * base.divisor;
 
-    const [from, base] = await Promise.all([getRate(normalizedFrom), getRate(normalizedBase)]);
-    if (!Number.isFinite(from.rate) || !Number.isFinite(base.rate) || base.rate <= 0) return Number.NaN;
-    const dates = [from.asOf, base.asOf].filter((time): time is number => time != null);
-    used.set(normalizedFrom, {
-      currency: normalizedFrom,
-      baseCurrency: normalizedBase,
-      rate: from.rate / base.rate,
+    const [fromRate, baseRate] = await Promise.all([getRate(from.currency), getRate(base.currency)]);
+    if (!Number.isFinite(fromRate.rate) || !Number.isFinite(baseRate.rate) || baseRate.rate <= 0) return Number.NaN;
+    const dates = [fromRate.asOf, baseRate.asOf].filter((time): time is number => time != null);
+    // The rate a report states is the major currencies' (GBP/USD), which pence convert at a hundredth of.
+    used.set(from.currency, {
+      currency: from.currency,
+      baseCurrency: base.currency,
+      rate: fromRate.rate / baseRate.rate,
       asOf: dates.length > 0 ? Math.min(...dates) : null,
     });
-    return (value * from.rate) / base.rate;
+    return (value / from.divisor * fromRate.rate) / baseRate.rate * base.divisor;
   };
 
   return Object.assign(convert, { conversions: () => [...used.values()] });

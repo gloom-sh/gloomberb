@@ -23,7 +23,11 @@ export class CloudCollectionsApi {
   async putTeamCollectionItem(
     teamId: string,
     collectionId: string,
-    item: { symbol: string; exchange?: string | null; quantity?: number | null; note?: string | null },
+    item: {
+      symbol: string; exchange?: string | null; quantity?: number | null; note?: string | null;
+      /** Left out, the server keeps what it has. */
+      dateAcquired?: string; currency?: string; costFxRate?: number | null; costFxCurrency?: string | null;
+    },
   ): Promise<TeamCollectionItem> {
     return this.request(`/teams/${encodeURIComponent(teamId)}/collections/${encodeURIComponent(collectionId)}/items`, {
       method: "PUT",

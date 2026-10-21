@@ -2200,6 +2200,15 @@ export interface TeamCollectionItem {
   exchange: string;
   quantity: number | null;
   note: string | null;
+  /**
+   * A portfolio holding's purchase date (YYYY-MM-DD), its currency, and the
+   * rate its cost was bought at (one unit of `currency` in `costFxCurrency`).
+   * Null when no one has sent one; missing from a server that keeps none.
+   */
+  dateAcquired?: string | null;
+  currency?: string | null;
+  costFxRate?: number | null;
+  costFxCurrency?: string | null;
   addedBy: string;
   addedAt: string;
   updatedAt: string;

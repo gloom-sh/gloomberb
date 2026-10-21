@@ -1,12 +1,11 @@
 import type { TickerFinancials } from "../../../../types/financials";
-import type { Portfolio, TickerRecord } from "../../../../types/ticker";
+import type { TickerRecord } from "../../../../types/ticker";
 import { convertCurrency, formatCompactAmount } from "../../../../utils/format";
 import { getCurrencySymbol } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { headlineQuoteDisplay } from "../../../../portfolio/column-values";
-import { isManualPortfolio } from "../../../../portfolio/mutations";
 import type { AllocationHolding } from "../../../../portfolio/allocation";
 import { getPortfolioValuationDisplay, type PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
 import type { PortfolioFuturesTerms } from "../../../../portfolio/futures-positions";
@@ -76,19 +75,7 @@ function currencyCode(value: string | undefined): string | null {
   return CURRENCY_CODE.test(code) ? code : null;
 }
 
-/**
- * The currency a portfolio's totals, market values and P&L are in. A broker
- * portfolio uses its account currency. A manual portfolio uses its stored
- * currency with the default USD base (its first holding sets it, see
- * adoptFirstPositionCurrency); a base currency the user chose is what manual
- * portfolios and watchlists total in.
- */
-export function resolvePortfolioTotalsCurrency(portfolio: Portfolio | null | undefined, baseCurrency: string): string {
-  const base = currencyCode(baseCurrency) ?? "USD";
-  if (!portfolio) return base;
-  if (isManualPortfolio(portfolio) && base !== "USD") return base;
-  return currencyCode(portfolio.currency) ?? base;
-}
+export { resolvePortfolioTotalsCurrency } from "../../../../portfolio/totals-currency";
 
 /**
  * A compact total in the portfolio's currency. Bare when both it and the app's

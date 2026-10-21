@@ -114,6 +114,16 @@ function normalizeExchange(value?: string | null): string {
   return (value ?? "").trim().toUpperCase();
 }
 
+/**
+ * A currency code as a position saves it: upper-cased, except a minor unit
+ * whose code is written in its own case (GBp, ZAc), which stays as typed so
+ * pence are not read as pounds. GBX and gbp read as pence and pounds.
+ */
+export function normalizeHeldCurrencyCode(code: string | null | undefined): string {
+  const raw = (code ?? "").trim();
+  return SUB_UNIT_CURRENCIES[raw] && raw !== raw.toUpperCase() ? raw : raw.toUpperCase();
+}
+
 export function resolveCurrencyUnit(currency?: string | null): CurrencyUnitInfo {
   const raw = (currency ?? "").trim();
   if (!raw) {

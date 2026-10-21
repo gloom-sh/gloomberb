@@ -378,11 +378,14 @@ describe("CommandBar portfolio commands", () => {
       await tui.setup().mockInput.typeText("EUR");
       await tui.setup().renderOnce();
     });
-    await act(async () => {
-      tui.setup().mockInput.pressEnter();
-      await Bun.sleep(0);
-      await tui.setup().renderOnce();
-    });
+    // Enter moves on past the blank Purchase Date and Cost FX, and sends the form from the last field.
+    for (let field = 0; field < 3; field += 1) {
+      await act(async () => {
+        tui.setup().mockInput.pressEnter();
+        await Bun.sleep(0);
+        await tui.setup().renderOnce();
+      });
+    }
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual(["research"]);
     expect(saved.at(-1)?.metadata.positions).toEqual([{
