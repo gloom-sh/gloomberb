@@ -1,0 +1,182 @@
+{
+  "refs": {
+    "baseline": "f3b98364755ed9039d3d7becc98e81732a7a4571",
+    "head": "67ba3db20b35655d21f36c772baa80fdde272a83"
+  },
+  "sources": {
+    "src/plugins/builtin/notes/quick-notes-pane.tsx": {
+      "gitBlobs": {
+        "baseline": "92fd3aa5b7b4ffa343e397b6929faf0fdb1d2571",
+        "head": "92fd3aa5b7b4ffa343e397b6929faf0fdb1d2571"
+      },
+      "unchanged": true
+    },
+    "src/plugins/builtin/notes/test-fixture.ts": {
+      "gitBlobs": {
+        "baseline": "bd0e4b4b9544515edc86e02ed418a006bdf3e7b0",
+        "head": "bd0e4b4b9544515edc86e02ed418a006bdf3e7b0"
+      },
+      "unchanged": true
+    },
+    "src/test-support/pane.tsx": {
+      "gitBlobs": {
+        "baseline": "9d81ad7ff327c442f88b94f5a04d79fa068c078f",
+        "head": "9d81ad7ff327c442f88b94f5a04d79fa068c078f"
+      },
+      "unchanged": true
+    },
+    "src/renderers/dom/toast-host.tsx": {
+      "gitBlobs": {
+        "baseline": "9511f6030f8cffa2746a21d1a1912cb7783100c3",
+        "head": "9511f6030f8cffa2746a21d1a1912cb7783100c3"
+      },
+      "unchanged": true
+    },
+    "src/ui/toast.tsx": {
+      "gitBlobs": {
+        "baseline": "a84ad0374a5a26f664e83e511cf8f0cb3cf0791b",
+        "head": "a84ad0374a5a26f664e83e511cf8f0cb3cf0791b"
+      },
+      "unchanged": true
+    }
+  },
+  "scope": "Actual QuickNotesPane and TestPaneFrame with fixed invented in-memory quick-note state corresponding to the file scenarios; frozen registered Export Notes action notifications from before.json/after.json rendered by shared toast hosts. Not a full desktop shell or execution through the Electrobun transport.",
+  "captures": 16,
+  "comparisons": 8,
+  "browserExternalAttempts": 0,
+  "browserBlockedRequests": 0,
+  "nativeBlockedRequests": 0,
+  "runtimeExceptions": 0,
+  "artifacts": {
+    "before.json": "f7debfc5943ec418237ee32134745ee5015adef4c0d898a84ba4a91c5577cd45",
+    "after.json": "d0479776285c86deed638086b6c4582250a82865a9453981258fe471361db704",
+    "pane-desktop.tsx": "b72c87dcdf28e4603d03c662a5b167c98c829c2317d3ad250374ce6d8d6e479b",
+    "pane-desktop-shots.ts": "dad5a5f1c808ffb5aa2d957d3a98445ac3ad671441f64153821b81e1544b5204",
+    "pane-desktop-shots.json": "cdaa969c5a4e4d61154485c0dea2a2b0dd0a9d9c7a59f145e2601f17391a7d60",
+    "pane-comparisons.json": "20e4979877cfee9451cb5061513a467dea3392ffd75f450e9e76bac5713d5887",
+    "pane-labeled-sheets.json": "f7ca6b7ea8e1ce22c805a7f5bb719b0077380fe43fc2be1b5fc5418024dea408",
+    "labeled-sheets.json": "b0413c693cd50aaf8e84b5a5db5691c9dbf0a4d0c46155ee2900f447704f0e40"
+  },
+  "sheets": [
+    {
+      "image": "desktop-pane-missing-titles-comparison-white-720-labeled.png",
+      "sha256": "b6c90eb83821b6a2484c878dae9033fbb3cd8e63f62be2e30b502235967de335",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-missing-titles-before-white-720.png",
+          "sha256": "1832407e5afd747da123b73d95c279b859c0d78f9ffc332212a42b3fe4599145"
+        },
+        {
+          "name": "desktop-pane-missing-titles-after-white-720.png",
+          "sha256": "0101d03d81fc1a4231e46b863d13095f900aa9a68df670a3f5e169a38c254485"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-missing-titles-comparison-white-1280-labeled.png",
+      "sha256": "5d76e712999ac063ff53e3ee3cce07eee1d92ca3a6af01e3a92f6ae3975d8664",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-missing-titles-before-white-1280.png",
+          "sha256": "f068ba18948df10babd8b920e31f7f91473ee85533e9457d182801e79564bda8"
+        },
+        {
+          "name": "desktop-pane-missing-titles-after-white-1280.png",
+          "sha256": "86cb85ede6ad125583b8175cd18096a8fc9629f9e15577f161d3c615bea39522"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-missing-titles-comparison-paper-720-labeled.png",
+      "sha256": "6d9236e8ee423c9ea7de3101c5845769802157fcb81231416c93e669a8589567",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-missing-titles-before-paper-720.png",
+          "sha256": "94c8fbf57a71a0a400ce88cf2e0a0ba92bf9715b99b3d257206d8988ea2aadca"
+        },
+        {
+          "name": "desktop-pane-missing-titles-after-paper-720.png",
+          "sha256": "858c95018304493a7dfdff38e074fcba026e0a0e3686b4bb43a2f78e0a1d708c"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-missing-titles-comparison-paper-1280-labeled.png",
+      "sha256": "341ac8b0aace4a5b10e088ff57fcb9d20a81bb7d28731be267336addaef2e6b0",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-missing-titles-before-paper-1280.png",
+          "sha256": "4a0daa99b554157e77fa86b0f8d5b45d3798ebd9d6b12fbdcab5e256a69b2a3a"
+        },
+        {
+          "name": "desktop-pane-missing-titles-after-paper-1280.png",
+          "sha256": "534ba2dfd4bfe817e8bb5a31c5be91e7e4693a15cf678f2e3cc24ab5b8b6daa9"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-stat-failure-comparison-white-720-labeled.png",
+      "sha256": "4545cd5d1fb213127ec64cb12409e0ea9220125b7ff260290c5f0dd182a9ac37",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-stat-failure-before-white-720.png",
+          "sha256": "57c51bce3e365251c5b85de969f8822ff4998fab96804274656325317358aab8"
+        },
+        {
+          "name": "desktop-pane-stat-failure-after-white-720.png",
+          "sha256": "35864db138255c3ac83c2168db2d07f9a5874170b008813f0cca83a9d06fc5c8"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-stat-failure-comparison-white-1280-labeled.png",
+      "sha256": "c40a03f51b71764cd37fb39eb4feb44fdc529c29123d95ac948fbfaae1237ccd",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-stat-failure-before-white-1280.png",
+          "sha256": "c7bc55b6c8e50f8293fee82fe3a6790e1fcf6ab87955920ff9cd3fc0d1b44d67"
+        },
+        {
+          "name": "desktop-pane-stat-failure-after-white-1280.png",
+          "sha256": "b036c3d082c4f9d1616438b744c1f6a817981cc7bbc03fcde82b1612dd88f344"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-stat-failure-comparison-paper-720-labeled.png",
+      "sha256": "ce6bfb74c4dd3d4676aafe6de8dfeec1d61e81efaae272ce768ad240678062dd",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-stat-failure-before-paper-720.png",
+          "sha256": "b43b4d6b4f67ee026c17320dda34eb942cba418dc190ed7a4179ebeca4de74ea"
+        },
+        {
+          "name": "desktop-pane-stat-failure-after-paper-720.png",
+          "sha256": "a2b3996aa6725fd0a63738d2e4d44b73043ff7a0ba0ac0d35b20e30e3f19226d"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    },
+    {
+      "image": "desktop-pane-stat-failure-comparison-paper-1280-labeled.png",
+      "sha256": "e0dc369ab199be533febf0577147f5bc75af6e7332164933ae71dfb033b94cbb",
+      "rawInputs": [
+        {
+          "name": "desktop-pane-stat-failure-before-paper-1280.png",
+          "sha256": "e0aa8cf2cd7a1643a5d5524e7091a6eb9d824513d0f9175ec06a2529503435d8"
+        },
+        {
+          "name": "desktop-pane-stat-failure-after-paper-1280.png",
+          "sha256": "3e9f2ef433cbf3bf9a599f3304b55d586ba62baef6d754845dfb0a9729f91334"
+        }
+      ],
+      "scope": "Actual Notes pane fixture with shared footer and toast hosts; not the full desktop shell. Labels are outside the unmodified raw images."
+    }
+  ]
+}

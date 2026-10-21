@@ -1,0 +1,182 @@
+[
+  {
+    "image": "desktop-missing-titles-comparison-white-720-labeled.png",
+    "sha256": "d14b31f3e0600e82fd6a046e785a93ba6a350e20aa2ddb0863432d8b259db8b3",
+    "rawInputs": [
+      {
+        "name": "desktop-missing-titles-before-white-720.png",
+        "sha256": "aab7f839c324396510d5a17279a8091d263afaa3abd414b2fe205e4ec08c6587"
+      },
+      {
+        "name": "desktop-missing-titles-after-white-720.png",
+        "sha256": "f7b7f4905d9ed71920809cdd53867df409814251fad44bd0183fc36ec05d0073"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-missing-titles-comparison-white-1280-labeled.png",
+    "sha256": "a71cb903c92fead118a14a171e71d27c7c62fb99c99358a6612afff937a632d0",
+    "rawInputs": [
+      {
+        "name": "desktop-missing-titles-before-white-1280.png",
+        "sha256": "be2ea3cbf0f233dc2e8e88339408949f20f6d0920e0b0f9cae94c659d51fd0c8"
+      },
+      {
+        "name": "desktop-missing-titles-after-white-1280.png",
+        "sha256": "b12b7e2a91f27c5a6e63530b48585ce79c2fce939d6bf8ae9fea152fea5b19c6"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-missing-titles-comparison-paper-720-labeled.png",
+    "sha256": "ffdf70274f6a3b825741514d424d073c2925e9bb22313b3546d69bf9e2776271",
+    "rawInputs": [
+      {
+        "name": "desktop-missing-titles-before-paper-720.png",
+        "sha256": "e4a2bdfd8d64dacda33ea6697ade4ad0a9ed4b57e906a90f0561ad8d14493874"
+      },
+      {
+        "name": "desktop-missing-titles-after-paper-720.png",
+        "sha256": "9650f993e8ae63858adb174ee823cef8b6730290ac85debeba1442345511010e"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-missing-titles-comparison-paper-1280-labeled.png",
+    "sha256": "760ad0713b88bd21c780876ff1712d5b0533fddf032ae1c9394b676ef9f22da5",
+    "rawInputs": [
+      {
+        "name": "desktop-missing-titles-before-paper-1280.png",
+        "sha256": "deaf2c568107425cebe7c7c8786c5a3d70bfc50ef1665ee350bcbcb897dc1577"
+      },
+      {
+        "name": "desktop-missing-titles-after-paper-1280.png",
+        "sha256": "2b3076cfe8ca598dc8d573991ea01c40451863af157e58ba55b332492ccd009e"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-stat-failure-comparison-white-720-labeled.png",
+    "sha256": "8d61ee98cf860052f3694c38d259fa0779cef968ee44c35e175f6c665dd6cb16",
+    "rawInputs": [
+      {
+        "name": "desktop-stat-failure-before-white-720.png",
+        "sha256": "bbb21afc1c2e2ba6724702d5fa631e7aa615ff5fa8e0f8fa37cfd91807a29ca6"
+      },
+      {
+        "name": "desktop-stat-failure-after-white-720.png",
+        "sha256": "d1f0c3a0c87474f6419c3afd636e4e0fa80190e4c709c35ecd5b15bb3cdf94b0"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-stat-failure-comparison-white-1280-labeled.png",
+    "sha256": "383075936f59792264f2607b3066749b13967cf87a84323662146f41dce9c5f8",
+    "rawInputs": [
+      {
+        "name": "desktop-stat-failure-before-white-1280.png",
+        "sha256": "dbdc021e121df4f1a0af748eebdb22ddf8e72ce78864b1207cbb14fe71fd4552"
+      },
+      {
+        "name": "desktop-stat-failure-after-white-1280.png",
+        "sha256": "f3c00866498fbde6aec881983a9970a4ed8b0e83074c2779236ddcfcb35d0a73"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-stat-failure-comparison-paper-720-labeled.png",
+    "sha256": "6f4c959cdfe145678aed7b2a0a13700d8bced205c3674b004bc8cc842497ae37",
+    "rawInputs": [
+      {
+        "name": "desktop-stat-failure-before-paper-720.png",
+        "sha256": "520fb62d2a8bec07281762621226c20a72f9b5800cedd7d9f4dff5078498e388"
+      },
+      {
+        "name": "desktop-stat-failure-after-paper-720.png",
+        "sha256": "3bcb57e20672ef7b7a2b329ef90ec4349362c2da4fa5c564d3cfcc4a61182853"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "desktop-stat-failure-comparison-paper-1280-labeled.png",
+    "sha256": "133dc9d4c7b38642342cb3e3bd711a242fc2f3852cfe4abff4175abc801aa499",
+    "rawInputs": [
+      {
+        "name": "desktop-stat-failure-before-paper-1280.png",
+        "sha256": "ebc6e49ecb87e6f10edc9bff41475a44e1ab2dbb6682901047d2a962588adaf7"
+      },
+      {
+        "name": "desktop-stat-failure-after-paper-1280.png",
+        "sha256": "d18a97f15fa204c2f589a72569a59eaa67c3af2ff9702a7c70f8fec60196bf82"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "terminal-missing-titles-comparison-white-labeled.png",
+    "sha256": "f0dab1b334379f4947b02b69863012f45ff3af68e2441def08a902d1868b2e92",
+    "rawInputs": [
+      {
+        "name": "terminal-missing-titles-before-white.png",
+        "sha256": "c95c3a6bb0fd12419155a2b308083d1801c5aef5f0cb6089f933b4c30c39523e"
+      },
+      {
+        "name": "terminal-missing-titles-after-white.png",
+        "sha256": "18f1127af4b72c838c8f8cb98a6d7523652eee9316cf05fcf558426969345e0a"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "terminal-missing-titles-comparison-paper-labeled.png",
+    "sha256": "1c4f28a9a836a06b037b3bb1c3f26b8a2b3e07e88ab6448ea53120e9ea045de0",
+    "rawInputs": [
+      {
+        "name": "terminal-missing-titles-before-paper.png",
+        "sha256": "2837fd38ef76e087644fe29172cd7bb70ae71209d7a84609f91f6d7b2495a098"
+      },
+      {
+        "name": "terminal-missing-titles-after-paper.png",
+        "sha256": "afb554331fe46104389e4696852ad53bb9d07713084b62aec880d66b00f18dab"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "terminal-stat-failure-comparison-white-labeled.png",
+    "sha256": "c57076d0c793f1e51c3020525591b27c867017ceb028dd0e06786c22eac05590",
+    "rawInputs": [
+      {
+        "name": "terminal-stat-failure-before-white.png",
+        "sha256": "b551fc08c3f8e9d3c05e08f444c5022b3fa5601b6c6e5bfa5a23b69858216beb"
+      },
+      {
+        "name": "terminal-stat-failure-after-white.png",
+        "sha256": "8b9a3d1c1fc834368e3b1ee6afa99236c7620a61af53a5e064fc1aeaf5f074dc"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  },
+  {
+    "image": "terminal-stat-failure-comparison-paper-labeled.png",
+    "sha256": "f6de932ab9921c8824ccbe7547ebb4df9973f55385cb5556af44b895c73c943e",
+    "rawInputs": [
+      {
+        "name": "terminal-stat-failure-before-paper.png",
+        "sha256": "5f46aeb8aacf32515656c9b34a4a60350991073b08aac3db89c693e92742acb0"
+      },
+      {
+        "name": "terminal-stat-failure-after-paper.png",
+        "sha256": "7ba09313d55efa2317ca97748530c80b4430b51745500b9ceb1eca6d8551fb88"
+      }
+    ],
+    "scope": "Controlled shared-toast fixture; no pane body or full application shell is pictured. Labels are outside the unmodified raw images."
+  }
+]

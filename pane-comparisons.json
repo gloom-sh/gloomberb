@@ -1,0 +1,170 @@
+[
+  {
+    "scenario": "missing-titles",
+    "theme": "white",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-pane-missing-titles-before-white-720.png",
+      "desktop-pane-missing-titles-after-white-720.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "missing-titles",
+    "theme": "white",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-pane-missing-titles-before-white-1280.png",
+      "desktop-pane-missing-titles-after-white-1280.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "missing-titles",
+    "theme": "paper",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-pane-missing-titles-before-paper-720.png",
+      "desktop-pane-missing-titles-after-paper-720.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "missing-titles",
+    "theme": "paper",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-pane-missing-titles-before-paper-1280.png",
+      "desktop-pane-missing-titles-after-paper-1280.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "stat-failure",
+    "theme": "white",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-pane-stat-failure-before-white-720.png",
+      "desktop-pane-stat-failure-after-white-720.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "stat-failure",
+    "theme": "white",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-pane-stat-failure-before-white-1280.png",
+      "desktop-pane-stat-failure-after-white-1280.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "stat-failure",
+    "theme": "paper",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-pane-stat-failure-before-paper-720.png",
+      "desktop-pane-stat-failure-after-paper-720.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "stat-failure",
+    "theme": "paper",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-pane-stat-failure-before-paper-1280.png",
+      "desktop-pane-stat-failure-after-paper-1280.png"
+    ],
+    "scope": "Actual QuickNotesPane and shared TestPaneFrame, with fixed invented note data; real registered-command notices rendered by the shared toast host; not the full desktop shell or native RPC transport."
+  }
+]
