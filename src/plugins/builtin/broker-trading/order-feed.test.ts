@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { BrokerAdapter, BrokerConnectionStatus, BrokerOrderListener } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { AppNotificationRequest } from "../../../types/plugin";
-import type { BrokerOrder } from "../../../types/trading";
+import type { BrokerOrder, BrokerTradingCapabilities } from "../../../types/trading";
 import { BrokerOrderFeed } from "./order-feed";
 
 const instance: BrokerInstanceConfig = { id: "synthetic-profile", brokerType: "synthetic", label: "Synthetic", config: {} };
@@ -22,12 +22,14 @@ function setup(options: { stream?: boolean } = {}) {
   let open: BrokerOrder[] = [order()];
   let status: BrokerOrder | null = null;
   let stream: BrokerOrderListener | undefined;
+  let failing = false, trading = true;
   const calls: string[] = [];
   const connected: BrokerConnectionStatus = { state: "connected", updatedAt: 0 };
   const broker: BrokerAdapter = {
     id: "synthetic", name: "Synthetic", configSchema: [], validate: async () => true, importPositions: async () => [],
     getStatus: () => connected, subscribeStatus: () => () => {},
-    listOpenOrders: async () => { calls.push("listOpenOrders"); return open; },
+    listOpenOrders: async () => { calls.push("listOpenOrders"); if (failing) throw new Error("synthetic outage"); return open; },
+    getTradingCapabilities: () => ({ enabled: trading }) as BrokerTradingCapabilities,
     getOrderStatus: async () => { calls.push("getOrderStatus"); return status; },
     ...(options.stream ? { subscribeOrders: (_profile: BrokerInstanceConfig, listener: BrokerOrderListener) => { stream = listener; return () => { stream = undefined; }; } } : {}),
   };
@@ -38,6 +40,7 @@ function setup(options: { stream?: boolean } = {}) {
   return {
     feed, broker, calls, toasts, push: (value: BrokerOrder) => stream!.order(value), live: (value: boolean) => stream!.live?.(value),
     setOpen: (value: BrokerOrder[]) => { open = value; }, setStatus: (value: BrokerOrder | null) => { status = value; },
+    setFailing: (value: boolean) => { failing = value; }, setTrading: (value: boolean) => { trading = value; },
   };
 }
 
@@ -98,4 +101,43 @@ test("an order the broker cannot confirm stays, unconfirmed, until its status an
   await settle();
   expect(f.feed.snapshot(instance.id).orders.map((value) => value.status)).toEqual(["FILLED"]);
   release();
+});
+
+test("failed reads back off to a minute, and a profile with trading off is read but not polled", async () => {
+  const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
+  const timers: Array<{ delay: number; run: () => void }> = [];
+  // The feed's timers are recorded, never armed; their handles are objects no real timer can be mistaken for.
+  globalThis.setTimeout = ((run: () => void, delay: number) => { const timer = { delay, run }; timers.push(timer); return timer; }) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = ((handle: unknown) => { if (!timers.includes(handle as never)) realClearTimeout(handle as never); }) as typeof clearTimeout;
+  try {
+    const f = setup();
+    const release = f.feed.hold(f.broker, instance);
+    await settle();
+    const next = async () => { timers.at(-1)!.run(); await settle(); return timers.at(-1)!.delay; };
+    expect(timers.at(-1)!.delay).toBe(5_000);
+    f.setFailing(true);
+    const delays = [];
+    for (let index = 0; index < 6; index++) delays.push(await next());
+    expect(delays).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
+    f.setFailing(false);
+    expect(await next()).toBe(5_000);
+    f.setTrading(false);
+    const scheduled = timers.length;
+    timers.at(-1)!.run();
+    await settle();
+    expect(timers).toHaveLength(scheduled);
+    f.feed.refresh(instance.id);
+    await settle();
+    expect(timers).toHaveLength(scheduled);
+    expect(f.calls.filter((call) => call === "listOpenOrders")).toHaveLength(10);
+    // Turning trading on edits the profile, which the plugin holds again: polling resumes.
+    f.setTrading(true);
+    const again = f.feed.hold(f.broker, instance);
+    expect(timers).toHaveLength(scheduled + 1);
+    again();
+    release();
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
 });

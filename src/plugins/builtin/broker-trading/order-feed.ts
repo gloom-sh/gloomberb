@@ -11,6 +11,9 @@ const LIVE_RECONCILE_MS = 60_000;
 /** Without pushes: poll this often while an order works, and this often otherwise. */
 const WORKING_POLL_MS = 5_000;
 const IDLE_POLL_MS = 30_000;
+/** After failed reads: wait this long, doubling each time, up to the cap. */
+const FAILED_READ_MS = 5_000;
+const FAILED_READ_MAX_MS = 60_000;
 /** An order that ended stays in the feed this long, so a ticket and the drawer can show how. */
 const DONE_RETENTION_MS = 10 * 60_000;
 /** An order first seen already ended is news only if it ended this recently. */
@@ -75,7 +78,8 @@ export function orderToastBody(order: BrokerOrder): string {
  * reconcile, or by polling open orders when it has none or the stream is
  * quiet. An order that leaves the open list is asked for by `getOrderStatus`,
  * since absence alone proves neither a fill nor a cancel; one the broker
- * cannot confirm stays, as UNKNOWN.
+ * cannot confirm stays, as UNKNOWN. A profile with trading off is read when
+ * it connects and on refresh, never polled.
  */
 class ProfileOrderFeed {
   private orders = new Map<string, BrokerOrder>();
@@ -87,6 +91,7 @@ class ProfileOrderFeed {
   private rereadAfter = false;
   private baselined = false;
   private generation = 0;
+  private failures = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private stopStatus?: () => void;
   private stopStream?: () => void;
@@ -101,7 +106,11 @@ class ProfileOrderFeed {
 
   retain(instance: BrokerInstanceConfig): void {
     this.instance = instance;
-    if (this.holders++ > 0) return;
+    if (this.holders++ > 0) {
+      // Trading turned on (a new profile config) starts the polling it stopped.
+      if (this.timer === undefined && !this.reading) this.schedule();
+      return;
+    }
     this.stopStatus = this.broker.subscribeStatus?.(this.instance, () => this.observe()) ?? undefined;
     this.observe();
   }
@@ -142,6 +151,7 @@ class ProfileOrderFeed {
     this.connected = connected;
     if (!connected) { this.disconnect(); this.publish(); return; }
     this.baselined = false;
+    this.failures = 0;
     if (this.broker.subscribeOrders) {
       try {
         this.stopStream = this.broker.subscribeOrders(this.instance, {
@@ -170,11 +180,16 @@ class ProfileOrderFeed {
   private schedule(): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
-    if (!this.connected || this.holders === 0) return;
+    if (!this.connected || this.holders === 0 || !this.tradingOn()) return;
     // An unconfirmed order is asked about again at the idle pace, not every few seconds.
     const working = [...this.orders.values()].some((order) => !brokerOrderDone(order.status) && brokerOrderStatus(order.status) !== "UNKNOWN");
-    const delay = this.live ? LIVE_RECONCILE_MS : working ? WORKING_POLL_MS : IDLE_POLL_MS;
-    this.timer = setTimeout(() => { this.timer = undefined; void this.read(); }, delay);
+    const cadence = this.live ? LIVE_RECONCILE_MS : working ? WORKING_POLL_MS : IDLE_POLL_MS;
+    const backoff = this.failures ? Math.min(FAILED_READ_MAX_MS, FAILED_READ_MS * 2 ** (this.failures - 1)) : 0;
+    this.timer = setTimeout(() => { this.timer = undefined; void this.read(); }, Math.max(cadence, backoff));
+  }
+
+  private tradingOn(): boolean {
+    try { return this.broker.getTradingCapabilities?.(this.instance)?.enabled === true; } catch { return false; }
   }
 
   private async read(): Promise<void> {
@@ -203,11 +218,12 @@ class ProfileOrderFeed {
         // so the next read that lists it or a status that answers replaces it.
         else if (status === null && brokerOrderStatus(order.status) !== "UNKNOWN") this.apply({ ...order, status: "UNKNOWN" }, baseline ? "baseline" : "poll", false);
       }
+      this.failures = 0;
       this.baselined = true;
       this.prune();
       this.publish({ failed: false, loaded: true });
     } catch {
-      if (generation === this.generation) this.publish({ failed: true, loaded: true });
+      if (generation === this.generation) { this.failures++; this.publish({ failed: true, loaded: true }); }
     } finally {
       this.reading = false;
       if (generation === this.generation) {
