@@ -20,7 +20,7 @@ import { listingCell, toneColor } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystQuery, catalystSection, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
+import { catalystAgency, catalystBasisWidth, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystQuery, catalystSections, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
 
 type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
 const rowKey = (row: Row) => row.key;
@@ -81,12 +81,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const lockedRows = Math.min(3, data?.access?.lockedRows ?? 0);
   // Grouped by month on the calendar and by day in the change feed, in the order the server sends them.
   const items = useMemo<Row[]>(() => {
-    const groups = new Map<string, CatalystEvent[]>();
-    for (const event of rows) {
-      const label = catalystSection(event, query.dateField, tab === "changes");
-      groups.set(label, [...(groups.get(label) ?? []), event]);
-    }
-    return [...buildSectionedRows([...groups].map(([label, events]) => ({ label, items: events })), (event) => event.id),
+    return [...buildSectionedRows(catalystSections(rows, query.dateField, tab === "changes"), (event) => event.id),
       ...Array.from({ length: lockedRows }, (_, index): Row => ({ kind: "locked", key: `locked:${index}` }))];
   }, [rows, query.dateField, tab, lockedRows]);
   const listedOpen = rows.find((event) => event.id === openId) ?? null;
@@ -124,7 +119,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     ...(tab === "calendar" ? [{ id: "upcoming", kind: "toggle" as const, label: "Upcoming", value: filters.upcoming === true, onChange: (value: boolean) => changeFilter("upcoming", value) },
       { id: "date", label: "Date", value: String(filters.dateField ?? "any"), options: [{ value: "any", label: "Any date" }, { value: "announced", label: "Announced" }, { value: "effective", label: "Effective" }, { value: "deadline", label: "Deadlines" }], onChange: (value: string) => changeFilter("dateField", value) }] : []),
   ]} />;
-  const columns = catalystColumns(width, tab === "changes", litigation);
+  const columns = catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query.dateField));
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
       if (!desktop && column.id === "title" && row.key === "locked:0") return { text: "Upgrade for every catalyst and its history", content: <UpgradeLabel text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };

@@ -1,7 +1,7 @@
 import { enrollmentSeries } from "./history";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture, catalystPayload } from "./test-fixture";
-import { catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystEmptyTitle, catalystParties, catalystQuery, catalystStatusTone } from "./model";
+import { catalystBasisWidth, catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystParties, catalystQuery, catalystSection, catalystSections, catalystStatusTone } from "./model";
 import { validateCatalystDetail, validateCatalysts } from "./client";
 import { catalystMatches } from "../alerts/catalysts";
 import { createEventAlert, readEventAlerts } from "../alerts/events";
@@ -61,6 +61,42 @@ describe("catalyst provenance and dates", () => {
     expect(catalystDate(event, "effective")).toBe("--");
     expect(catalystDate(event, "observed")).toBe("2026-10-04 12:00");
     expect(catalystQuery({ tab: "changes", upcoming: true, country: "EU" }, "NOVN:SIX")).toEqual({ symbol: "NOVN:SIX", country: "EU", changed: true, dateField: "observed" });
+  });
+  // GLO-1130: VKTX's NCT07846033 read "Completion" for the sponsor's estimated primary completion.
+  test("a trial's date says primary completion, estimated or actual, as the registry types it", () => {
+    const trial = (type?: string) => ({ ...event, metadata: { deadlineMeaning: "Primary completion date, actual or estimated as reported by sponsor",
+      ...type ? { primaryCompletion: { date: "2027-04", type } } : {} } });
+    expect(catalystDateBasis(trial("ESTIMATED"))).toBe("Primary completion (est.)");
+    expect(catalystDateBasis(trial("ACTUAL"))).toBe("Primary completion (actual)");
+    expect(catalystDateBasis(trial())).toBe("Primary completion");
+    // The column widens to the longest label on screen, and gives up only what a narrow pane lacks.
+    expect(catalystBasisWidth([event], "any")).toBe(10);
+    expect(catalystBasisWidth([event, trial("ACTUAL")], "any")).toBe(27);
+    const basis = (width: number) => catalystColumns(width, false, false, 27).find((column) => column.id === "basis")?.width;
+    expect(basis(158)).toBe(27);
+    expect(basis(130)).toBe(26);
+    expect(basis(110)).toBe(10);
+  });
+  // GLO-1130: CRMD's PDUFA without its day was dated by the 8-K that mentioned it.
+  test("a withheld date reads as not disclosed, never as the announcement", () => {
+    const withheld = { ...event, type: "pdufa" as const, deadlineDate: null, datePrecision: { announced: "day" as const }, announcedDate: "2026-10-19",
+      metadata: { dateWithheld: true, deadlineMeaning: "Company-reported FDA PDUFA target date" } };
+    expect(catalystDate(withheld)).toBe("--");
+    expect(catalystDateBasis(withheld)).toBe("Date not disclosed");
+    expect(catalystSection(withheld, "any", false)).toBe("Date not disclosed");
+    expect(catalystDate(withheld, "announced")).toBe("2026-10-19");
+    expect(catalystDateBasis(withheld, "announced")).toBe("Announced");
+  });
+  // GLO-1130: the server sends upcoming dates first, then past ones; grouping by month kept a past day ahead of later months.
+  test("sections keep the server's order, heading a month today splits twice", () => {
+    const on = (id: string, deadlineDate: string) => ({ ...event, id, deadlineDate });
+    const rows = [on("a", "2026-10-24"), on("b", "2029-03-31"), on("c", "2026-10-02"), on("d", "2026-09-23"), on("e", "2026-09-01")];
+    expect(catalystSections(rows, "any", false).map((section) => [section.key, section.label, section.items.map((item) => item.id).join("")])).toEqual([
+      ["October 2026", "October 2026", "a"],
+      ["March 2029", "March 2029", "b"],
+      ["October 2026:1", "October 2026", "c"],
+      ["September 2026", "September 2026", "de"],
+    ]);
   });
   test("rejects cross-event history, duplicate event IDs and unsafe document URLs", () => {
     expect(() => validateCatalystDetail({ event, history: [{ ...event, id: "other" }], asOf: event.observedAt })).toThrow("invalid event history");

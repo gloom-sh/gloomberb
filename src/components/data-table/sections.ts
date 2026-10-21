@@ -12,6 +12,8 @@ import type { DataTableSectionHeader } from "../ui/data-table";
 
 export interface TableSection<T> {
   label: string;
+  /** Tells apart two sections under one label (a month split by today); the label by default. */
+  key?: string;
   items: T[];
   /** Kept even with no items, to show the section exists. */
   emptyLabel?: string;
@@ -32,9 +34,9 @@ export function buildSectionedRows<T>(
   return sections.flatMap((section) => {
     if (section.items.length === 0 && !section.emptyLabel) return [];
     return [
-      { kind: "section" as const, key: `section:${section.label}`, label: section.label, count: section.items.length },
+      { kind: "section" as const, key: `section:${section.key ?? section.label}`, label: section.label, count: section.items.length },
       ...(section.items.length === 0
-        ? [{ kind: "empty" as const, key: `empty:${section.label}`, label: section.emptyLabel! }]
+        ? [{ kind: "empty" as const, key: `empty:${section.key ?? section.label}`, label: section.emptyLabel! }]
         : section.items.map((item) => ({ kind: "item" as const, key: getItemKey(item), item }))),
     ];
   });

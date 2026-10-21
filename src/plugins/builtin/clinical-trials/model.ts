@@ -228,7 +228,7 @@ export const TRIAL_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [
   },
 ];
 
-type TrialColumnId = "time" | "phase" | "status" | "title" | "sponsor" | "ticker";
+type TrialColumnId = "updated" | "phase" | "status" | "title" | "sponsor" | "ticker";
 export type TrialColumn = DataTableColumn & { id: TrialColumnId };
 
 export interface TrialLayout {
@@ -251,12 +251,12 @@ const TABLE_CHROME = 1 + 2;
 export function trialLayout(width: number): TrialLayout {
   const compact = width < 90;
   const wide = width >= 140;
-  // Narrower than a terminal, the posting age gives way to the title: the list
+  // Narrower than a terminal, the update date gives way to the title: the list
   // is newest first and the detail has the date.
   const timed = width >= 76;
   const fixed: TrialColumn[] = [
-    // "10/15/26" once a study is a week old.
-    ...(timed ? [{ id: "time" as const, label: "Time", width: 8, align: "left" as const }] : []),
+    // An ISO day, as every date column reads.
+    ...(timed ? [{ id: "updated" as const, label: "Updated", width: 10, align: "left" as const }] : []),
     { id: "phase", label: "Phase", width: compact ? 7 : 9, align: "left" },
     { id: "status", label: "Status", width: wide ? 23 : 11, align: "left" },
     { id: "sponsor", label: "Sponsor", width: wide ? 30 : compact ? 15 : 22, align: "left" },
@@ -266,4 +266,13 @@ export function trialLayout(width: number): TrialLayout {
   const title: TrialColumn = { id: "title", label: "Title", width: Math.max(12, width - used - 1), align: "left", flexGrow: 1 };
   const statusAt = fixed.findIndex((column) => column.id === "status") + 1;
   return { compact, showVenue: wide, columns: [...fixed.slice(0, statusAt), title, ...fixed.slice(statusAt)] };
+}
+
+/**
+ * A search typed as a ticker (`TRIAL VKTX`): one to five letters, with a
+ * share class. The registry knows sponsors by name, so a symbol no study
+ * mentions is looked up as its company.
+ */
+export function looksLikeTicker(term: string): boolean {
+  return /^[A-Za-z]{1,5}(?:[.-][A-Za-z])?$/.test(term.trim());
 }
