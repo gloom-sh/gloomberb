@@ -174,9 +174,11 @@ describe("the position form's Purchase Date and Cost FX, as position set --date 
 
   test("the form opens on the lot's date and rate: saved unchanged it keeps them, emptied it clears them", async () => {
     const history = spyOn(apiClient, "getCloudHistory");
-    const held = aapl({ portfolio: "main", shares: 10, avgCost: 410, currency: "USD", broker: "manual", dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" });
+    // A cross rate as loadCostFxRate returns it, float noise included: shown rounded, kept exact.
+    const rate = 31.370000000000005;
+    const held = aapl({ portfolio: "main", shares: 10, avgCost: 410, currency: "USD", broker: "manual", dateAcquired: "2024-03-01", costFxRate: rate, costFxCurrency: "TRY" });
     expect(open(held).values).toMatchObject({ dateAcquired: "2024-03-01", costFx: "31.37" });
-    expect(await save(held, { shares: "12" })).toMatchObject({ shares: 12, dateAcquired: "2024-03-01", costFxRate: 31.37 });
+    expect(await save(held, { shares: "12" })).toMatchObject({ shares: 12, dateAcquired: "2024-03-01", costFxRate: rate });
     expect(history).not.toHaveBeenCalled();
     const cleared = await save(held, { costFx: "", dateAcquired: "" });
     expect(cleared.costFxRate).toBeUndefined();

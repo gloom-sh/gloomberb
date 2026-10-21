@@ -38,7 +38,8 @@ interface ManualPortfolioPositionWorkflowOptions {
 export function positionCostTermsPrefill(position: TickerPosition | null | undefined, portfolioCurrency: string): { dateAcquired: string; costFx: string } {
   const rate = position?.costFxRate;
   const shown = typeof rate === "number" && Number.isFinite(rate) && rate > 0 && position?.costFxCurrency?.trim().toUpperCase() === portfolioCurrency;
-  return { dateAcquired: position?.dateAcquired ?? "", costFx: shown ? String(rate) : "" };
+  // A cross rate carries float noise (0.012625500000000001): shown to ten digits, kept exact when left as it opened.
+  return { dateAcquired: position?.dateAcquired ?? "", costFx: shown ? String(Number(rate.toPrecision(10))) : "" };
 }
 
 /** Several lots become one position on save: say so, and what the fields hold. */
