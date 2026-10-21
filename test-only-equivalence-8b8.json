@@ -1,0 +1,20 @@
+{
+  "previousHead": "3b5fbf33b8d43ed1ce1e19283fca23fd649ce86d",
+  "finalHead": "8b8c6170195a176da3a1c52dd3bdddb8af2248b0",
+  "changedFiles": [
+    "src/plugins/builtin/alerts/index.test.tsx"
+  ],
+  "productionAndDocsBlobsIdentical": true,
+  "change": "The notification test fixture now returns void instead of the unused Array.push count.",
+  "testDiff": "diff --git a/src/plugins/builtin/alerts/index.test.tsx b/src/plugins/builtin/alerts/index.test.tsx\nindex 0057d4d13..f2cdc72e1 100644\n--- a/src/plugins/builtin/alerts/index.test.tsx\n+++ b/src/plugins/builtin/alerts/index.test.tsx\n@@ -510,7 +510,7 @@ for (const action of [\"d\", \"e\"] as const) {\n     const alerts = [makeAlert(\"old\", \"AAPL\", \"above\", 200)];\n     const notifications: any[] = [];\n     let writes = 0;\n-    const runtime = makeRuntime({ notify: (value: unknown) => notifications.push(value), setConfigState: async () => { writes++; } });\n+    const runtime = makeRuntime({ notify: (value: unknown) => { notifications.push(value); }, setConfigState: async () => { writes++; } });\n     await tui.render(<AlertsHarness alerts={alerts} runtime={runtime} />, { width: 110, height: 18 });\n     await renderSettled();\n     await act(async () => { await tui.setup().mockInput.typeText(action); await tui.setup().renderOnce(); });",
+  "focusedResult": {
+    "pass": 80,
+    "fail": 0,
+    "assertions": 342,
+    "log": "focused-notify-final.log"
+  },
+  "screenshotSource": "6578fe82660f7d7d1ecdfab8cec97b6f13f28d3c",
+  "earlierErasedAnnotationProof": "type-only-equivalence.json",
+  "earlierProofSha256": "575b9b2882ee8b903729869bb15b2ae297fbe03310f285a85754fe95cccce4a4",
+  "note": "Earlier screenshots and captures retain actual source labels. Final production execution is unchanged through the erased annotation and this test-only change."
+}
