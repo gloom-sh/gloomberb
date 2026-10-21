@@ -5,10 +5,16 @@ import { useThemeColors } from "../../theme/theme-context";
 /** Between a two-line row's name and the line under it, from the name's baseline to the next line's capitals. */
 const LINE_GAP = "var(--gloom-space-sm)";
 
+/** Room above the capitals and below the baseline for ascenders, accents and descenders. */
+const INK_ROOM = "0.3em";
+
 /**
  * Each line's box runs from its capitals to its baseline, so the block's top
- * and bottom are where its letters start and sit. Only the sides clip, for
- * the ellipsis: ascenders and descenders draw past the box, uncut.
+ * and bottom are where its letters start and sit. The line clips for the
+ * ellipsis, and WebKit clips both ways whatever the other axis says, so the
+ * clip box reaches past the capitals and the baseline by padding, and an equal
+ * negative margin keeps the line where it was: ascenders and descenders draw
+ * uncut, and the row does not move.
  */
 const LINE_STYLE = {
   display: "block",
@@ -16,8 +22,9 @@ const LINE_STYLE = {
   maxWidth: "100%",
   lineHeight: 1,
   textBox: "trim-both cap alphabetic",
-  overflowX: "clip",
-  overflowY: "visible",
+  overflow: "hidden",
+  paddingBlock: INK_ROOM,
+  marginBlock: `calc(-1 * ${INK_ROOM})`,
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 } as CSSProperties;
