@@ -47,11 +47,21 @@ export const HEADER_UPDATE_STATES: Record<string, HeaderUpdateState> = {
   downloading: { updateAvailable: RELEASE, updateProgress: { phase: "downloading", percent: 42 } },
   installing: { updateAvailable: RELEASE, updateProgress: { phase: "replacing" } },
   ready: { updateAvailable: RELEASE, updateProgress: { phase: "ready", canRestart: true } },
+  // The reason in a few words; the whole error stays in the command bar.
   failed: {
+    updateAvailable: RELEASE,
+    updateProgress: {
+      phase: "error",
+      error: "Desktop update did not finish downloading.",
+      failure: { phase: "download", code: "interrupted" },
+    },
+  },
+  // An error from a desktop process older than the reasons: the error itself, cut to its room.
+  "failed without a reason": {
     updateAvailable: RELEASE,
     updateProgress: { phase: "error", error: "the download stopped at 61% (connection reset by peer)" },
   },
-  notice: { updateNotice: "Update check failed: fetch failed (network is unreachable)" },
+  notice: { updateNotice: "Update check failed: no connection" },
 };
 
 export interface HeaderFixtureHandle {

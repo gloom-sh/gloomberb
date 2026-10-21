@@ -6,6 +6,7 @@ import type { AppAction, AppState } from "../../state/app/context";
 import {
   applyUpdate,
   canRestartToApply,
+  canRetryUpdate,
   canSelfUpdate,
   checkForUpdateDetailed,
   discardStagedUpdate,
@@ -15,6 +16,8 @@ import {
   type UpdateProgress,
 } from "../../updater";
 import { resolveUpdateChannel, stagedUpdateFitsChannel } from "../../updater/channel";
+import { updateFailureReason } from "../../updater/failure";
+import { t, tf } from "../../i18n";
 import type { UpdateChannel } from "../../types/config";
 import { VERSION } from "../../version";
 import { debugLog } from "../../utils/debug-log";
@@ -27,11 +30,14 @@ const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
 const updateLog = debugLog.createLogger("update");
 
 /**
- * The header and the command bar show a failed update's message, and the header
- * cuts it to its room: the log keeps what the updater actually said.
+ * The header says why an update failed in a few words and the command bar
+ * shows the whole error: the log keeps what the updater actually said, with
+ * the step and the reason.
  */
 function logUpdateFailure(progress: UpdateProgress): void {
-  if (progress.phase === "error") updateLog.error("update failed", { error: progress.error });
+  if (progress.phase === "error") {
+    updateLog.error("update failed", { error: progress.error, phase: progress.failure?.phase, code: progress.failure?.code });
+  }
 }
 
 /** An update is being downloaded, applied, or is downloaded and waiting for a restart. */
@@ -127,7 +133,9 @@ export function useAppUpdateRuntime({
       return { kind: "error", error: message || "Update check failed" };
     });
 
-    if (result.kind === "error") updateLog.warn("update check failed", { error: result.error });
+    if (result.kind === "error") {
+      updateLog.warn("update check failed", { error: result.error, code: result.failure?.code });
+    }
 
     if (!manual) {
       if (result.kind === "available" && result.release.tagName !== declinedTagRef.current) {
@@ -154,13 +162,25 @@ export function useAppUpdateRuntime({
       return;
     }
 
-    dispatch({ type: "SET_UPDATE_NOTICE", notice: `Update check failed: ${result.error}` });
+    // The reason in a few words, as the failed banner gives it; the log has the error.
+    const reason = result.failure ? t(updateFailureReason(result.failure)) : result.error;
+    dispatch({ type: "SET_UPDATE_NOTICE", notice: tf("Update check failed: {reason}", { reason }) });
   }, [dispatch, stateRef]);
 
   const runUpdateCommand = useCallback(() => {
-    if (canRestartToApply(stateRef.current.updateProgress)) restartToApplyUpdate();
-    else void runUpdateCheck(true);
-  }, [restartToApplyUpdate, runUpdateCheck, stateRef]);
+    const state = stateRef.current;
+    if (canRestartToApply(state.updateProgress)) {
+      restartToApplyUpdate();
+      return;
+    }
+    // After a failed download or install, the command tries again, as the key does.
+    if (canRetryUpdate(state)) {
+      startUpdate(state.updateAvailable!);
+      return;
+    }
+    if (state.updateProgress?.phase === "error") dispatch({ type: "SET_UPDATE_PROGRESS", progress: null });
+    void runUpdateCheck(true);
+  }, [dispatch, restartToApplyUpdate, runUpdateCheck, startUpdate, stateRef]);
 
   useEffect(() => {
     if (!enabled || isDetachedWindow) return;

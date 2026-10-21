@@ -15,6 +15,8 @@ import { startRemoteControlServer, type RemoteControlServer } from "../../../../
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../../remote/types";
 import { installCrashReporter } from "../../../../telemetry/crash-reports";
 import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports-node";
+import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
+import { createNodeUpdateFailureHost } from "../../../../telemetry/update-failures-node";
 import type { AppConfig } from "../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import type {
@@ -37,6 +39,7 @@ import {
 } from "../external-plugins";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { handleDesktopBackendRequest } from "./backend-requests";
+import { detectDesktopInstallKind } from "./update";
 import { DesktopCapabilityBridge } from "./capability-bridge";
 import { DesktopDetachedWindowManager } from "./detached-windows";
 import { handleDesktopHostRequest } from "./host-requests";
@@ -138,6 +141,12 @@ export class DesktopBackend {
     if (!this.crashReporterInstalled) {
       this.crashReporterInstalled = true;
       installCrashReporter(createNodeCrashReporterHost({ surface: "desktop", getConfig: () => this.config }));
+      // This process runs the desktop update, so it reports how the last one ended and any that fail.
+      installUpdateFailureReporter(createNodeUpdateFailureHost({
+        installKind: detectDesktopInstallKind(),
+        getDataDir: () => this.config?.dataDir ?? null,
+      }));
+      reviewLastUpdateAttempt();
     }
     // The native menu shows the same accelerators the keys use, so a rebind
     // rebuilds it.

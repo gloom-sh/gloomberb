@@ -5,6 +5,7 @@ import {
   type CrashReportKind,
   type CrashReportSurface,
   type CrashReportsPayload,
+  type UpdateFailureReport,
 } from "../api-client";
 import type { TelemetryConfig } from "../types/config";
 import { isSleepRpcTimeout } from "../utils/rpc-timeout-error";
@@ -68,6 +69,8 @@ export interface CrashReportContext {
   pane?: string;
   /** React's component stack for a render crash; appended to the stack. */
   componentStack?: string | null;
+  /** A failed update step (update-failures.ts), sent as it is: it holds no free text. */
+  update?: UpdateFailureReport;
 }
 
 interface PendingError {
@@ -167,6 +170,7 @@ function toReportError(error: unknown, context: CrashReportContext): PendingErro
       ...(stack ? { stack } : {}),
       ...(context.plugin ? { plugin: clip(context.plugin, MAX_LABEL_LENGTH) } : {}),
       ...(context.pane ? { pane: clip(context.pane, MAX_LABEL_LENGTH) } : {}),
+      ...(context.update ? { update: context.update } : {}),
     },
   };
 }

@@ -15,6 +15,19 @@ import {
   type GitHubReleaseListing,
 } from "../../../../updater/github-releases";
 import { stagedUpdateFitsChannel } from "../../../../updater/channel";
+import {
+  classifyUpdateError,
+  httpStatusFailureCode,
+  type UpdateFailure,
+  type UpdateFailureCode,
+} from "../../../../updater/failure";
+import {
+  forgetStagedUpdate,
+  noteUpdateApplying,
+  noteUpdateStaged,
+  reportUpdateFailure,
+  type UpdateInstallKind,
+} from "../../../../telemetry/update-failures";
 import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
 
@@ -27,7 +40,14 @@ type ElectrobunUpdater = typeof Electrobun.Updater;
  */
 export type ElectrobunUpdaterApi = Pick<
   ElectrobunUpdater,
-  "checkForUpdate" | "downloadUpdate" | "applyUpdate" | "updateInfo" | "clearStatusHistory" | "onStatusChange" | "setUpdateSource"
+  | "checkForUpdate"
+  | "downloadUpdate"
+  | "applyUpdate"
+  | "updateInfo"
+  | "clearStatusHistory"
+  | "getStatusHistory"
+  | "onStatusChange"
+  | "setUpdateSource"
 > & {
   localInfo: Pick<ElectrobunUpdater["localInfo"], "channel" | "baseUrl">;
 };
@@ -37,12 +57,74 @@ type ListReleases = () => Promise<GitHubReleaseListing[]>;
 
 const NIGHTLY_RELEASE_WINDOW = 30;
 
+/** A step that failed for a reason known where it was thrown. */
+class DesktopUpdateError extends Error {
+  constructor(message: string, readonly code: UpdateFailureCode) {
+    super(message);
+    this.name = "DesktopUpdateError";
+  }
+}
+
+/**
+ * Where the running app sits, for update failure reports and for what an
+ * install that cannot replace it means. Electrobun replaces the macOS bundle
+ * the app runs from; on Windows and Linux it always installs into its own
+ * folder under the user's app data.
+ */
+export function detectDesktopInstallKind(
+  execPath: string = process.execPath,
+  platform: string = process.platform,
+  homeDir: string = process.env.HOME ?? "",
+): UpdateInstallKind {
+  if (platform !== "darwin") return platform === "win32" || platform === "linux" ? "desktop-app-data" : "unknown";
+  const bundle = /^(.*?\.app)\/Contents\//.exec(execPath)?.[1];
+  if (!bundle) return "unknown";
+  if (bundle.includes("/AppTranslocation/")) return "desktop-translocated";
+  if (bundle.startsWith("/Volumes/")) return "desktop-volume";
+  if (bundle.startsWith("/Applications/") || (homeDir && bundle.startsWith(`${homeDir}/Applications/`))) return "desktop-applications";
+  return "desktop-elsewhere";
+}
+
+/**
+ * On macOS a bundle that cannot be replaced where it runs (a disk image, the
+ * read-only copy App Translocation runs, another volume) is fixed by moving
+ * the app to Applications, which is what the header then says.
+ */
+function installFailureCode(code: UpdateFailureCode, installKind: UpdateInstallKind): UpdateFailureCode {
+  const movable = installKind === "desktop-translocated" || installKind === "desktop-volume";
+  if (movable && (code === "permission_denied" || code === "read_only" || code === "wrong_location")) return "wrong_location";
+  return code;
+}
+
+/**
+ * Why Electrobun's check failed. It returns one message for every failure, so
+ * the status it emitted just before says whether the server answered (with
+ * which status) or could not be reached.
+ */
+function checkFailureCode(error: string, history: UpdateStatusEntry[]): UpdateFailureCode {
+  const last = history.at(-1);
+  const status = last?.status === "error" ? /HTTP (\d{3})/.exec(last.message)?.[1] : undefined;
+  if (status) return httpStatusFailureCode(Number(status));
+  if (/Invalid update\.json/i.test(error)) return "bad_response";
+  const code = classifyUpdateError(error);
+  // "Failed to fetch update info" with no status before it: the request itself threw.
+  return code === "unknown" ? "offline" : code;
+}
+
+/** Why a download that Electrobun returned from did not leave an update ready. */
+function downloadFailureCode(error: string, lastErrorStatus: UpdateStatusEntry | null): UpdateFailure {
+  if (/zstd/i.test(error)) return { phase: "verify", code: "corrupt" };
+  if (lastErrorStatus?.message.startsWith("Failed to download:")) return { phase: "download", code: "http_error" };
+  const code = classifyUpdateError(error);
+  return { phase: "download", code: code === "unknown" ? "interrupted" : code };
+}
+
 async function listGitHubReleases(): Promise<GitHubReleaseListing[]> {
   const response = await fetch(`${GITHUB_RELEASES_API_URL}?per_page=${NIGHTLY_RELEASE_WINDOW}`, {
     headers: { Accept: "application/vnd.github+json" },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+  if (!response.ok) throw new DesktopUpdateError(`GitHub returned ${response.status}`, httpStatusFailureCode(response.status));
   const data: unknown = await response.json();
   if (!Array.isArray(data)) throw new Error("GitHub returned an unexpected releases payload");
   return data as GitHubReleaseListing[];
@@ -88,6 +170,12 @@ function hasDesktopManifest(release: GitHubReleaseListing): boolean {
   return release.assets?.some((asset) => asset.name === manifest) === true;
 }
 
+/**
+ * The progress an Electrobun status means. An `error` status is left to the
+ * caller: during a download Electrobun emits some it recovers from (a patch
+ * that does not apply falls back to the full download), so only the outcome
+ * says whether the download failed.
+ */
 function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null {
   const progress = entry.details?.progress;
   switch (entry.status) {
@@ -120,11 +208,6 @@ function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null
     // once `updateInfo().updateReady` confirms it.
     case "complete":
       return { phase: "done", message: "Update installed, restarting..." };
-    case "error":
-      return {
-        phase: "error",
-        error: entry.details?.errorMessage || entry.message,
-      };
     default:
       return null;
   }
@@ -133,9 +216,12 @@ function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null
 export function createElectrobunDesktopUpdater(
   updater: ElectrobunUpdaterApi,
   {
+    installKind = detectDesktopInstallKind(),
     listReleases = listGitHubReleases,
     runningVersion = VERSION,
   }: {
+    /** Where the app runs from, which an install that cannot replace it is blamed on. */
+    installKind?: UpdateInstallKind;
     listReleases?: ListReleases;
     /** The version of the installed app, which a download checks as. */
     runningVersion?: string;
@@ -152,6 +238,15 @@ export function createElectrobunDesktopUpdater(
   /** An apply is under way, or finished and the app is quitting. */
   let applyInProgress = false;
 
+  /** The error progress for a failed step, reported to error tracking on the way. */
+  function failed(failure: UpdateFailure, error: string, release?: { version?: string; channel?: UpdateChannel } | null): UpdateProgress {
+    reportUpdateFailure(failure, {
+      targetVersion: release?.version,
+      channel: release?.channel === "nightly" ? "nightly" : "stable",
+    });
+    return { phase: "error", error, failure };
+  }
+
   /**
    * Forgets a downloaded update `updateChannel` does not allow: a nightly
    * build staged before the switch back to stable. Electrobun's own ready
@@ -159,7 +254,10 @@ export function createElectrobunDesktopUpdater(
    * a restart cannot install it, and its files go with the next download.
    */
   function dropStagedMisfit(updateChannel: UpdateChannel): void {
-    if (readyRelease && !applyInProgress && !stagedUpdateFitsChannel(readyRelease, updateChannel)) readyRelease = null;
+    if (readyRelease && !applyInProgress && !stagedUpdateFitsChannel(readyRelease, updateChannel)) {
+      readyRelease = null;
+      forgetStagedUpdate();
+    }
   }
 
   async function releaseInfo(updateInfo: { version?: string; hash?: string }, currentVersion: string): Promise<ReleaseInfo> {
@@ -177,6 +275,13 @@ export function createElectrobunDesktopUpdater(
     };
   }
 
+  /** Electrobun's check, with the failure it ended in named. */
+  async function checkElectrobun(): Promise<Awaited<ReturnType<ElectrobunUpdaterApi["checkForUpdate"]>> | { error: string; code: UpdateFailureCode }> {
+    const info = await updater.checkForUpdate();
+    if (!info.error) return info;
+    return { error: info.error, code: checkFailureCode(info.error, updater.getStatusHistory()) };
+  }
+
   /**
    * Nightly: the highest version among the newest releases that has this
    * platform's desktop manifest, nightly or stable, fetched from that release's
@@ -192,8 +297,8 @@ export function createElectrobunDesktopUpdater(
     const baseUrl = githubReleaseDownloadBaseUrl(target.tag_name);
     updater.setUpdateSource({ channel: filesChannel, baseUrl });
 
-    const info = await updater.checkForUpdate();
-    if (info.error) return { kind: "error", error: info.error };
+    const info = await checkElectrobun();
+    if ("code" in info) throw new DesktopUpdateError(info.error, info.code);
     // The same build as the one installed.
     if (!info.updateAvailable) return { kind: "current" };
 
@@ -210,7 +315,11 @@ export function createElectrobunDesktopUpdater(
     };
   }
 
-  async function check(currentVersion: string, updateChannel: UpdateChannel = "stable"): Promise<UpdateCheckResult> {
+  /**
+   * The check, without reporting: a download runs it first and reports what
+   * went wrong itself.
+   */
+  async function checkQuietly(currentVersion: string, updateChannel: UpdateChannel): Promise<UpdateCheckResult> {
     dropStagedMisfit(updateChannel);
     // A downloaded update the channel still allows stays the answer until the
     // user restarts into it, and asking Electrobun again would discard its
@@ -229,9 +338,9 @@ export function createElectrobunDesktopUpdater(
 
       // Stable is the release version.json names, as it always was.
       updater.setUpdateSource(null);
-      const info = await updater.checkForUpdate();
-      if (info.error) {
-        return { kind: "error", error: info.error };
+      const info = await checkElectrobun();
+      if ("code" in info) {
+        return { kind: "error", error: info.error, failure: { phase: "check", code: info.code } };
       }
       if (!info.updateAvailable) {
         return { kind: "current" };
@@ -247,11 +356,19 @@ export function createElectrobunDesktopUpdater(
         release: await releaseInfo(info, currentVersion),
       };
     } catch (error) {
+      const code = error instanceof DesktopUpdateError ? error.code : classifyUpdateError(error);
       return {
         kind: "error",
         error: error instanceof Error ? error.message : "Desktop update check failed",
+        failure: { phase: "check", code },
       };
     }
+  }
+
+  async function check(currentVersion: string, updateChannel: UpdateChannel = "stable"): Promise<UpdateCheckResult> {
+    const result = await checkQuietly(currentVersion, updateChannel);
+    if (result.kind === "error" && result.failure) reportUpdateFailure(result.failure, { channel: updateChannel });
+    return result;
   }
 
   async function download(
@@ -277,17 +394,23 @@ export function createElectrobunDesktopUpdater(
     }
 
     downloadInProgress = true;
+    /** The last error Electrobun emitted on the way, which may or may not have ended the download. */
+    let lastErrorStatus: UpdateStatusEntry | null = null;
     updater.clearStatusHistory();
     updater.onStatusChange((entry) => {
+      if (entry.status === "error") {
+        lastErrorStatus = entry;
+        return;
+      }
       const progress = mapDesktopUpdateStatus(entry);
       if (progress) onProgress(progress);
     });
 
     try {
       onProgress({ phase: "downloading", percent: 0 });
-      const result = await check(runningVersion, updateChannel);
+      const result = await checkQuietly(runningVersion, updateChannel);
       if (result.kind === "error") {
-        onProgress({ phase: "error", error: result.error });
+        onProgress(failed(result.failure ?? { phase: "check", code: "unknown" }, result.error, { channel: updateChannel }));
         return;
       }
       if (result.kind !== "available") {
@@ -301,23 +424,26 @@ export function createElectrobunDesktopUpdater(
       await updater.downloadUpdate();
       const updateInfo = updater.updateInfo();
       if (updateInfo?.error) {
-        onProgress({ phase: "error", error: updateInfo.error });
+        onProgress(failed(downloadFailureCode(updateInfo.error, lastErrorStatus), updateInfo.error, result.release));
         return;
       }
       if (!updateInfo?.updateReady) {
-        onProgress({ phase: "error", error: "Desktop update did not finish downloading." });
+        onProgress(failed({ phase: "download", code: "interrupted" }, "Desktop update did not finish downloading.", result.release));
         return;
       }
 
       // Downloaded, not installed: applying relaunches the app, and that waits
       // for the user's explicit request (`apply`).
       readyRelease = result.release;
+      noteUpdateStaged(result.release.version, updateChannel);
       onProgress({ phase: "ready", canRestart: true });
     } catch (error) {
-      onProgress({
-        phase: "error",
-        error: error instanceof Error ? error.message : "Desktop update failed",
-      });
+      const code = classifyUpdateError(error);
+      onProgress(failed(
+        { phase: "download", code: code === "unknown" ? "interrupted" : code },
+        error instanceof Error ? error.message : "Desktop update failed",
+        { channel: updateChannel },
+      ));
     } finally {
       downloadInProgress = false;
       updater.onStatusChange(null);
@@ -327,11 +453,13 @@ export function createElectrobunDesktopUpdater(
   async function apply(onProgress: (progress: UpdateProgress) => void): Promise<void> {
     if (applyInProgress || downloadInProgress) return;
     if (!readyRelease || !updater.updateInfo()?.updateReady) {
+      const missing = readyRelease;
       readyRelease = null;
-      onProgress({ phase: "error", error: "The downloaded update is no longer available." });
+      onProgress(failed({ phase: "apply", code: "staged_missing" }, "The downloaded update is no longer available.", missing));
       return;
     }
 
+    const target = readyRelease;
     applyInProgress = true;
     let relaunching = false;
     let reportedError = false;
@@ -339,7 +467,19 @@ export function createElectrobunDesktopUpdater(
       if (progress.phase === "error") reportedError = true;
       onProgress(progress);
     };
+    const installFailed = (error: unknown, message: string) => {
+      // Electrobun names the system error in its message ("Failed to replace app: EACCES: ...").
+      const code = installFailureCode(classifyUpdateError(error), installKind);
+      report(failed({ phase: relaunching ? "relaunch" : "apply", code }, message, target));
+    };
+    // Kept before Electrobun quits the app, so the next launch can tell whether it took.
+    noteUpdateApplying(target.version, target.channel === "nightly" ? "nightly" : "stable");
     updater.onStatusChange((entry) => {
+      if (entry.status === "error") {
+        const message = entry.details?.errorMessage || entry.message;
+        installFailed(message, message);
+        return;
+      }
       if (entry.status === "launching-new-version" || entry.status === "complete") relaunching = true;
       const progress = mapDesktopUpdateStatus(entry);
       if (progress) report(progress);
@@ -348,16 +488,13 @@ export function createElectrobunDesktopUpdater(
     try {
       report({ phase: "replacing" });
       await updater.applyUpdate();
-      // Electrobun returns without a status when it cannot install, for example
-      // when a newer release replaced the one that was downloaded.
+      // Electrobun returns without a status when it finds nothing to install:
+      // the downloaded files are gone, or hold no app.
       if (!relaunching && !reportedError) {
-        report({ phase: "error", error: "Desktop update could not be installed." });
+        report(failed({ phase: "apply", code: "staged_missing" }, "Desktop update could not be installed.", target));
       }
     } catch (error) {
-      report({
-        phase: "error",
-        error: error instanceof Error ? error.message : "Desktop update failed",
-      });
+      installFailed(error, error instanceof Error ? error.message : "Desktop update failed");
     } finally {
       updater.onStatusChange(null);
     }

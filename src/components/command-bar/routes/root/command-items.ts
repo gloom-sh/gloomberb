@@ -3,10 +3,25 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import type { Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
-import { canRestartToApply } from "../../../../updater";
+import { canRestartToApply, type UpdateProgress } from "../../../../updater";
 import { NIGHTLY_CHANNEL_SUMMARY, resolveUpdateChannel } from "../../../../updater/channel";
+import { updateFailureReason } from "../../../../updater/failure";
+import { t, tf } from "../../../../i18n";
 import { isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
+
+/** "Update failed: download interrupted", as the header says it. */
+function failedUpdateLabel(progress: UpdateProgress): string {
+  const reason = progress.failure ? t(updateFailureReason(progress.failure)) : (progress.error ?? "").replace(/\s+/g, " ").trim();
+  return tf("Update failed: {error}", { error: reason });
+}
+
+/** The whole error under the failed update's row, unless the label already says all of it. */
+function failedUpdateLines(progress: UpdateProgress): ResultItem["lines"] {
+  const error = (progress.error ?? "").replace(/\s+/g, " ").trim();
+  if (!progress.failure || !error) return undefined;
+  return [{ segments: [{ text: error, emphasis: "muted" }] }];
+}
 
 interface RootCommandItemBuilderOptions {
   activeCollectionId: string | null;
@@ -88,9 +103,12 @@ export function createRootCommandItemBuilder({
         return activeTickerSymbol ? `Remove ${activeTickerSymbol} from Portfolio` : command.label;
       case "set-portfolio-position":
         return activeTickerSymbol ? `Set Position for ${activeTickerSymbol}` : command.label;
-      // The row only shows its label, so a downloaded update is announced there.
+      // The row only shows its label, so a downloaded update is announced there,
+      // and a failed one with its reason; Enter restarts into the one and retries the other.
       case "check-for-updates":
-        return state.updateProgress?.phase === "ready" ? "Update ready, restart to apply" : command.label;
+        if (state.updateProgress?.phase === "ready") return "Update ready, restart to apply";
+        if (state.updateProgress?.phase === "error") return failedUpdateLabel(state.updateProgress);
+        return command.label;
       default:
         return command.label;
     }
@@ -140,7 +158,7 @@ export function createRootCommandItemBuilder({
           return state.updateProgress.message ?? "Update ready, restart to apply";
         }
         if (state.updateProgress?.phase === "error") {
-          return `Update failed: ${state.updateProgress.error}`;
+          return `${failedUpdateLabel(state.updateProgress)}. ${state.updateProgress.error ?? ""}`.trim();
         }
         if (state.updateCheckInProgress) return "Checking releases now";
         if (state.updateAvailable) {
@@ -218,9 +236,14 @@ export function createRootCommandItemBuilder({
       right: smartRight(command, arg),
       shortcutQuery: command.prefix || undefined,
       searchText: smartSearchText(command),
+      ...(command.id === "check-for-updates" && state.updateProgress?.phase === "error"
+        ? { lines: failedUpdateLines(state.updateProgress) }
+        : {}),
+      // Busy while it checks, downloads or installs; a failed update is retried from here.
       disabled:
         command.id === "check-for-updates" &&
-        (state.updateCheckInProgress || (!!state.updateProgress && !canRestartToApply(state.updateProgress))),
+        (state.updateCheckInProgress
+          || (!!state.updateProgress && !canRestartToApply(state.updateProgress) && state.updateProgress.phase !== "error")),
       action: () => runDirectCommand(command, arg),
     };
   };

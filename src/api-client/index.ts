@@ -54,6 +54,7 @@ export type {
   CrashReportSurface,
   CrashReportsPayload,
   FunctionUsageCount,
+  UpdateFailureReport,
   UsageCountsPayload,
   UsageCountsSurface,
 } from "./telemetry";

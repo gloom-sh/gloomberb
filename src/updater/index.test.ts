@@ -354,6 +354,7 @@ describe("checkForUpdateDetailed", () => {
       await expect(checkForUpdateDetailed("0.3.1")).resolves.toEqual({
         kind: "error",
         error: "GitHub returned 503",
+        failure: { phase: "check", code: "server_error" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -384,6 +385,7 @@ describe("checkForUpdateDetailed", () => {
       await expect(checkForUpdateDetailed("0.3.1")).resolves.toEqual({
         kind: "error",
         error: expect.stringContaining("valid SHA-256 digest"),
+        failure: { phase: "check", code: "no_build" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -534,6 +536,7 @@ describe("performUpdate", () => {
       expect(progress.at(-1)).toEqual({
         phase: "error",
         error: "Self-update requires a valid SHA-256 checksum.",
+        failure: { phase: "verify", code: "no_build" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -664,6 +667,7 @@ describe("performUpdate", () => {
       expect(progress.at(-1)).toEqual(expect.objectContaining({
         phase: "error",
         error: expect.stringContaining("Checksum mismatch"),
+        failure: { phase: "verify", code: "corrupt" },
       }));
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });

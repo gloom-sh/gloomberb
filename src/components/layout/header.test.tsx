@@ -5,7 +5,6 @@ import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
 import { Header } from "./header";
-import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { publishCommandBarPrompt } from "../command-bar/panel/prompt-binding";
 
 const tui = createOpenTuiTestHarness();
@@ -122,22 +121,26 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
 });
 
 /**
- * A failed update's message can be as long as whatever the updater threw. In the
- * terminal the header counts its columns, so the banner is cut to what the Help
- * pill and the market cluster leave it; it must never reach into either, at any
- * width, and the retry key stays while the message still has room.
+ * The terminal header at 80 to 160 columns left the update status under a
+ * dozen columns, so a failed update said nothing at all (GLO-720). The closed
+ * prompt now gives the status its empty room, down to its placeholder, and the
+ * banner says the reason in a few words. It must never reach into the prompt's
+ * placeholder, the Help pill or the market cluster, at any width.
  */
-test("cuts a failed update to the room the Help pill and the market summary leave it", async () => {
-  const error = "Desktop update did not finish downloading because the release server answered with an unexpected response while verifying the signature of the package";
+test("gives a failed update room at common terminal widths and keeps it clear of its neighbours", async () => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
   const state = {
     ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
     updateAvailable: release,
-    updateProgress: { phase: "error" as const, error },
+    updateProgress: {
+      phase: "error" as const,
+      error: "Failed to download latest version from https://example.test/releases/latest/download/stable-macos-arm64-Gloomberb.app.tar.zst",
+      failure: { phase: "download" as const, code: "interrupted" as const },
+    },
   };
   const seen = new Map<number, string>();
   // 60 is the narrowest header that still shows the whole Help pill.
-  for (const width of [60, 70, 80, 100, 120, 160, 200, 240, 300]) {
+  for (const width of [60, 70, 80, 100, 120, 160, 200, 300]) {
     await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <Header onOpenHelp={() => {}} />
@@ -148,49 +151,82 @@ test("cuts a failed update to the room the Help pill and the market summary leav
     const frame = tui.frame().split("\n")[0]!;
     seen.set(width, frame);
 
-    const prompt = resolveHeaderPromptGeometry({ termWidth: width });
     const helpX = frame.indexOf("Help ?");
     expect(helpX).toBeGreaterThanOrEqual(0);
-    // Whatever sits between the prompt and the Help pill is the banner: it starts
-    // as the message, stops short of the pill, and its cut ends in an ellipsis.
-    const slot = frame.slice(prompt.left + prompt.width, helpX);
-    expect(slot.length).toBeGreaterThan(0);
+    // The placeholder stays whole; the banner sits between it and the pill, a cell clear of the pill.
+    const placeholderEnd = frame.indexOf("Search or run a command") + "Search or run a command".length;
+    expect(placeholderEnd).toBeGreaterThan(0);
+    const slot = frame.slice(placeholderEnd, helpX);
     expect(slot.endsWith(" ")).toBe(true);
-    const banner = slot.trim();
-    if (banner) {
-      expect(banner.startsWith("Update f")).toBe(true);
-      expect(banner).toContain("...");
-    }
-    // Nothing of it leaks into the prompt on its left or the cluster on its right.
-    expect(frame.slice(0, prompt.left + prompt.width)).not.toMatch(/Update|retry/);
+    // Only the prompt's key hint, when it still has room for it, comes before the banner.
+    expect(slot.trim()).toMatch(/^(?:\S+\s+)?Update failed/);
     expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
     // The market summary is right of the pill, whole, and not pushed off the row.
     if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — USD/);
+    // The raw error, with its URL, stays out of the header.
+    expect(frame).not.toContain("example.test");
   }
 
-  // Narrow: the slot is a few columns, so the banner keeps the message and drops the key.
-  expect(seen.get(70)).toContain("Update fa...");
-  expect(seen.get(70)).not.toContain("retry");
-  // Wide: the message is cut and the retry key stays after it.
-  expect(seen.get(240)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
-  expect(seen.get(300)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
-  // The longer window shows more of the same message.
-  expect(seen.get(300)!.indexOf("...")).toBeGreaterThan(seen.get(240)!.indexOf("..."));
+  // 80 columns: no room for the reason, so the banner says it failed and how to retry.
+  expect(seen.get(80)).toMatch(/Update failed {2}\S+ retry/);
+  // 100: as much of the reason as reads.
+  expect(seen.get(100)).toContain("Update failed: download inte");
+  // 120: the reason whole; 160 and wider: with the retry key after it.
+  expect(seen.get(120)).toContain("Update failed: download interrupted");
+  for (const width of [160, 200, 300]) expect(seen.get(width)).toMatch(/Update failed: download interrupted {2}\S+ retry/);
 });
 
-test("shows a short failed update whole, on one line", async () => {
+/**
+ * Before GLO-720 every other line in the slot (a passing notice, a download's
+ * progress, a ready update) was drawn whole and ran into the Help pill.
+ */
+test("cuts every update line to its slot, keeping a download's percent", async () => {
+  const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
+  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  for (const extra of [
+    { updateNotice: "Update check failed: no connection, and some more words than fit" },
+    { updateAvailable: release, updateProgress: { phase: "downloading" as const, percent: 42 } },
+    { updateAvailable: release, updateProgress: { phase: "ready" as const } },
+  ]) {
+    for (const width of [60, 70, 80]) {
+      await tui.render(
+        <AppContext value={createStaticAppStore({ ...createInitialState(config), ...extra })}>
+          <Header onOpenHelp={() => {}} />
+        </AppContext>,
+        { width, height: 1 },
+      );
+      await tui.setup().renderOnce();
+      const frame = tui.frame().split("\n")[0]!;
+      const helpX = frame.indexOf("Help ?");
+      expect(helpX).toBeGreaterThan(0);
+      expect(frame[helpX - 1]).toBe(" ");
+      if (extra.updateProgress?.phase === "downloading") expect(frame).toContain("42%");
+    }
+  }
+});
+
+/** The banner says why in a few words for every step that can fail; the command bar has the whole error. */
+test.each([
+  [{ phase: "download", code: "interrupted" }, "Update failed: download interrupted"],
+  [{ phase: "download", code: "rate_limited" }, "Update failed: GitHub rate limit"],
+  [{ phase: "verify", code: "corrupt" }, "Update failed: download corrupted"],
+  [{ phase: "apply", code: "permission_denied" }, "Update failed: no permission to replace the app"],
+  [{ phase: "apply", code: "wrong_location" }, "Update failed: move the app to Applications"],
+  [{ phase: "relaunch", code: "unknown" }, "Update failed: could not restart"],
+] as const)("says why a %o failed", async (failure, banner) => {
   const state = {
     ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
-    updateProgress: { phase: "error" as const, error: "Checksum\n  mismatch" },
+    updateProgress: { phase: "error" as const, error: "EACCES: permission denied, rename '/Users/someone/Gloomberb.app'", failure },
   };
   await tui.render(
     <AppContext value={createStaticAppStore(state)}>
       <Header onOpenHelp={() => {}} />
     </AppContext>,
-    { width: 200, height: 1 },
+    { width: 240, height: 1 },
   );
   await tui.setup().renderOnce();
-  expect(tui.frame()).toContain("Update failed: Checksum mismatch");
+  expect(tui.frame()).toContain(banner);
+  expect(tui.frame()).not.toContain("someone");
 });
 
 /**
