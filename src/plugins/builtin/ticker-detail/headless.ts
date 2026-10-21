@@ -15,6 +15,9 @@ import {
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
+import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
+import { runwayMethod } from "../../../utils/cash-runway";
+import { logFailure } from "../../../utils/log-failure";
 import {
   RATIO_GAP_TEXT,
   findRatioTab,
@@ -110,11 +113,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         },
       })),
     ];
+    // The balance sheet's cash, when an offering since is not in it yet.
+    const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
       // The report closes with how far back its periods go, and how to read further.
-      notes: statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol),
+      notes: [...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -130,6 +135,19 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
 };
 
 const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
+
+/** The note that an offering filed after the latest balance sheet is not in its cash yet; a failed read leaves it out. */
+async function reportOfferingNote(
+  ctx: Parameters<typeof financialStatementsHeadless.load>[1],
+  symbol: string,
+  financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+): Promise<string | null> {
+  const periodEnd = latestBalanceSheetDate(financials);
+  if (!periodEnd) return null;
+  return resolveHeadlessInstrument(ctx, symbol)
+    .then((listing) => loadOfferingNote(ctx.apiClient, listing, periodEnd, ctx.signal))
+    .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", null));
+}
 
 /** A ratio tab as a report: each ratio, then its inputs, per period. */
 async function loadRatioReport(
@@ -181,11 +199,20 @@ async function loadRatioReport(
       format: (_value: unknown, row: Record<string, unknown>) => (row.cells as Array<{ formatted: string }>)[index]!.formatted,
     })),
   ];
+  // Liquidity's runway says how it counts months, and that the cash predates an offering since.
+  const liquidity = tab.key === "liquidity" && table;
+  const runwayShown = liquidity && table.ratios.some((def) => def.format === "months"
+    && table.cells.get(def.id)!.some((cell) => typeof cell.value === "number"));
+  const offering = liquidity ? await reportOfferingNote(ctx, symbol, financials) : null;
   return {
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
     ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
-    notes: statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
+    notes: [
+      ...offering ? [offering] : [],
+      ...runwayShown ? [runwayMethod()] : [],
+      ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
+    ],
     metadata: {
       symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
       quoteCurrency: financials.quote?.currency ?? null,

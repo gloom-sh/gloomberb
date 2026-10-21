@@ -20,6 +20,7 @@ The ratio tabs use the Income statement's columns: the latest fiscal years, with
 
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
 - `< 4 quarters`: a quarterly ratio on the trailing year has none to read, because fewer than four consecutive quarters are on file and no fiscal year ends with the quarter. A short history is never annualized.
+- `no burn`: a [cash runway](#cash-runway) whose operating cash flow over the period is zero or positive, so the operations used no cash to run out of.
 - `N/M`: the denominator is zero or negative, where the ratio means nothing: negative equity under ROE or P/B, a loss under P/E, negative EBITDA or enterprise value under EV/EBITDA, no interest expense under coverage. ROE is also `N/M` on [near-zero equity](#roe-on-near-zero-equity).
 - `no price`: there is no daily close in the week before the period end, or the quote currency differs from the reporting currency (the footer warning names both).
 
@@ -57,6 +58,8 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 | Liquidity | Current ratio | Current assets ÷ current liabilities |
 | | Quick ratio | (Cash and short-term investments + receivables) ÷ current liabilities |
 | | Cash ratio | Cash and short-term investments ÷ current liabilities |
+| | Runway, quarter burn | Cash and short-term investments ÷ (the quarter's operating cash outflow ÷ 3), in months; quarterly view only |
+| | Runway, TTM burn | Cash and short-term investments ÷ (the trailing year's operating cash outflow ÷ 12), in months |
 | Efficiency | DSO | Average receivables ÷ revenue per day |
 | | DIO | Average inventory ÷ cost of revenue (COGS) per day |
 | | DPO | Average payables ÷ cost of revenue per day |
@@ -78,6 +81,16 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 - **Free cash flow** is the reported figure, or operating cash flow plus (negative) capital expenditure.
 - **EBITDA** is the statements' line; in SEC-derived periods it is operating income plus depreciation and amortization.
 - **Enterprise value** is market cap + total debt − cash and short-term investments. Minority interest and preferred equity are not added.
+
+## Cash runway
+
+Liquidity's two runway rows say how many months the cash and short-term investments at a period end last at the rate the operations used cash. The burn is operating cash flow as the cash flow statement reports it: the quarter's over 3 months, and the trailing year's over 12 (the fiscal year when one ends with the quarter, otherwise the four quarters to it, as the other `TTM` inputs read it). The inputs show the monthly burn (`÷ Op Burn/Mo`), so the rows read as the formula.
+
+- **Both burns.** A company paid in lumps, such as a biotech with collaboration revenue, has quarters that swing: Arrowhead's operating cash flow ran +20.5M, +13.5M and +84.4M, then -177.5M in the quarter to June 2026, so its 1.60bn lasts 27.1 months at that quarter's burn and 325.5 months at the year's. Neither is a forecast; read them together.
+- **What it leaves out.** Capital expenditure, debt repayments and financing are not burn: an offering is cash in, and it is in the next balance sheet, not in a lower burn. Operating cash flow at or above zero reads `no burn`.
+- **Missing lines.** Cash and short-term investments falls back to cash alone when the filer reports no total, as the other Liquidity rows do; `ticker` then says the runway is on cash alone. Without operating cash flow the runway reads `not reported`.
+- **An offering since.** When the company has filed a 424B5 (a shelf takedown) or a 424B4 (an underwritten offering) prospectus after the latest balance sheet, the Balance Sheet and Liquidity views add a footer warning, and `fn FA` a note, with the filing dates: the cash shown does not include what it raised.
+- **Elsewhere.** `ticker` prints the same months under Latest Quarter (`Cash Runway 12.0 months (quarter to 2026-06-30) · 14.4 months (TTM to 2026-06-30)`), with the method and any offering note under them, and `DES` adds a Runway figure for a company that burns cash on either measure (`12.0 mo quarter · TTM 14.4 mo`). All three read one computation.
 
 ## Valuation at the period end
 

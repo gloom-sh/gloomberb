@@ -51,9 +51,12 @@ import {
   ratioPeriodEnd,
   ratioPeriods,
   resolveFinancialSectionKey,
+  visibleRatios,
   type RatioAmount,
 } from "./ratios";
 import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import { latestBalanceSheetDate, useOfferingNote } from "./offerings";
+import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 
 const RATIOS_SEGMENT = "ratios";
@@ -127,9 +130,11 @@ export function ResolvedFinancialsTab({
   const ratioTab = section.kind === "ratio" ? section.tab : null;
   // A ratio tab builds its own rows; the statement rows below idle on Income.
   const subTab = section.kind === "statement" ? section.tab : FINANCIAL_SUB_TABS[0]!;
+  // A ratio read over one quarter is not on the annual view, so its state does not count there.
+  const quarterlyView = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements) === "quarterly";
   const currentGroupIds = useMemo(
-    () => ratioTab ? ratioTab.ratios.map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
-    [ratioTab, subTab],
+    () => ratioTab ? visibleRatios(ratioTab, quarterlyView).map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
+    [quarterlyView, ratioTab, subTab],
   );
   const hasCollapsedCurrentGroup = currentGroupIds.some((id) => collapsedGroups.has(id));
   const hasExpandedCurrentGroup = currentGroupIds.some((id) => !collapsedGroups.has(id));
@@ -436,10 +441,16 @@ export function ResolvedFinancialsTab({
     ...columns.flatMap((column, index) => column.kind === "statement" ? [{ ...column, index: index - 1 }] : []),
   ], [columns]);
 
+  // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
+  const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
+  const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
+    !!financials && (section.key === "balance" || section.key === "liquidity"));
+
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
       ...financialStatementLimitations(financials),
+      ...(offeringNote ? [offeringNote] : []),
       ...(isValuation && history.error && !history.data ? ["Period-end prices are unavailable, so valuation ratios are too."] : []),
       ...(isValuation ? [currencies?.warning(displayStatements) ?? ""] : []),
     ],

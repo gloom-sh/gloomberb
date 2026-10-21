@@ -33,6 +33,7 @@ import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
+import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -108,6 +109,28 @@ function positionAccountLabel(position: TickerPosition, names: PositionAccountNa
   return `${positionAccountName(position, names)}${suffix}`;
 }
 
+/** A runway measure as the grid reads it: `12.0 mo`, or `no burn`. */
+function runwayText(estimate: RunwayEstimate): string {
+  return estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months, "mo");
+}
+
+/**
+ * Months of cash for a company that burns it, at the latest quarter's burn
+ * with the trailing year's after it (`12.0 mo quarter · TTM 14.4 mo`). A
+ * company whose operations bring cash in on both measures has no row.
+ */
+function runwayStat(runway: CashRunway | null | undefined): StatField | null {
+  if (!burnsCash(runway)) return null;
+  const { quarter, trailing } = runway;
+  if (!quarter) return { label: "Runway", value: runwayText(trailing!), detail: "TTM" };
+  const ttm = trailing ? runwayText(trailing) : null;
+  return {
+    label: "Runway",
+    value: runwayText(quarter),
+    detail: ttm ? [`quarter · TTM ${ttm}`, `qtr · TTM ${ttm}`, `TTM ${ttm}`] : ["quarter", "qtr"],
+  };
+}
+
 export function buildOverviewStats({
   quote,
   fundamentals,
@@ -120,6 +143,7 @@ export function buildOverviewStats({
   today,
   dividend,
   bond = null,
+  runway = null,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -141,6 +165,8 @@ export function buildOverviewStats({
    * distribution yield, not its SEC yield, which follows it with its date.
    */
   bond?: FundBondFacts | null;
+  /** Months of cash at the latest balance sheet (utils/cash-runway); shown when the company burns cash. */
+  runway?: CashRunway | null;
 }): StatField[] {
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
@@ -239,6 +265,8 @@ export function buildOverviewStats({
   if (fundamentals?.freeCashFlow != null) {
     stats.push({ label: "FCF", value: money(fundamentals.freeCashFlow) });
   }
+  const runwayField = runwayStat(runway);
+  if (runwayField) stats.push(runwayField);
   if (fundamentals?.operatingMargin != null) {
     stats.push({ label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
   }
