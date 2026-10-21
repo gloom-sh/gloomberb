@@ -193,6 +193,9 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   // A sector word ("defense") is answered by the funds that track it before the small companies whose names
   // contain it; the server's own order of those funds is the best signal of their size.
   const themeWord = themeQueryWord(items, query);
+  // The rows the server sent for the whole query as a kind of fund ("spot bitcoin ETF" is IBIT, FBTC, ...)
+  // carry it as a keyword: they answer it more than a fund whose name happens to hold the words.
+  const categoryKeyword = assetClass ? normalizeSearchText(rawQuery) : "";
 
   const ranked = (assetClass
     ? items.filter((item) => assetClassKeeps(assetClass.code, instrumentClassCode({
@@ -261,6 +264,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
           ? getIssuerGroupKey(item.detail)
           : null,
         explicitIntentScore,
+        categoryFund: categoryKeyword && item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === categoryKeyword) ? 1 : 0,
         themeFund: themeWord != null && isThemeFund(item, themeWord) ? 1 : 0,
         themeCompany: themeWord != null && isThemeCompany(item, themeWord) ? 1 : 0,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
@@ -392,13 +396,20 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   }
 
   filtered.sort((a, b) => {
-    // Precedence is exact symbol, explicit query hints, a sector word's funds
+    // Precedence is exact symbol, the funds of a kind named in full, explicit query hints, a sector word's funds
     // and then the companies sent with it, each in the server's order, whole-word company relevance, issuer relevance, provider order within that issuer, partial
     // symbol, saved relevance, then stable source order.
     const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
     const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
     if (bExactSymbolRank !== aExactSymbolRank) return bExactSymbolRank - aExactSymbolRank;
     if (aExactSymbolRank === BENCHMARK_FUTURE_RANK) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+    }
+    // The funds of a kind named in full lead in the server's order, ahead of any venue or asset hint.
+    if (b.categoryFund !== a.categoryFund) return b.categoryFund - a.categoryFund;
+    if (a.categoryFund) {
       const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;

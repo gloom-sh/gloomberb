@@ -1,5 +1,5 @@
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
-import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CompanyProfile, CorporateActionsData, FinancialStatement, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
@@ -51,6 +51,19 @@ function isFundFinancials(financials: Pick<TickerFinancials, "quote" | "quoteMet
   return ["etf", "exchangetradedfund", "mutualfund", "fund"].includes(researchInstrumentType(financials) ?? "");
 }
 
+/**
+ * What a fund's profile keeps: its description, and where a quoted one is
+ * from with the fund's own page beside it. A provider's website for a fund is
+ * its manager's, not the fund's.
+ */
+function fundProfile(profile: CompanyProfile): CompanyProfile {
+  const source = profile.descriptionSource;
+  return {
+    description: profile.description,
+    ...(source ? { descriptionSource: source, ...(profile.website ? { website: profile.website } : {}) } : {}),
+  };
+}
+
 function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinancials {
   const type = researchInstrumentType(financials);
   if (!type || !["etf", "exchangetradedfund", "mutualfund", "fund", "index", "currency", "forex", "fx", "future", "futures", "cryptocurrency", "crypto", "digitalcurrency"].includes(type)) return financials;
@@ -71,7 +84,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
       fetchedAt: statistics.fetchedAt,
       stale: statistics.stale,
     } : undefined,
-    profile: fund && financials.profile?.description ? { description: financials.profile.description } : undefined,
+    profile: fund && financials.profile?.description ? fundProfile(financials.profile) : undefined,
     nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],

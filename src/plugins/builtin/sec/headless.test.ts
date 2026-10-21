@@ -293,3 +293,40 @@ test("the filings-only view still says what a trust files", () => {
     .toBe("IBIT files none of the fund forms ETF lists (prospectus, shareholder reports, N-CEN, N-PORT). Its other filings: fn SEC IBIT.");
   expect(fundFilingsEmpty("IBIT", { count: 0, complete: true })).toBe("No SEC filings found for IBIT.");
 });
+
+test("ETF for a fund listed abroad says what ticker says, with its issuer's page, and asks the SEC nothing", async () => {
+  let asked = 0;
+  const headless = createFundHeadless({
+    loadFacts: async () => { asked++; return SPY_FACTS; },
+    loadFilings: async () => { asked++; return []; },
+    loadAbroadProfile: async (key) => ({
+      name: `${key} fund`,
+      page: "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT",
+      descriptionSource: { publisher: "ChinaAMC (Hong Kong), Product Key Facts on HKEXnews", url: "https://www1.hkexnews.hk/a.pdf" },
+    }),
+  });
+  for (const key of ["3042.HK", "3042:HKEX"]) {
+    const result = await headless.load(fundArgs(key), createTestHeadlessContext());
+    expect(result.sections[0]).toMatchObject({ title: "Fund facts", rows: [], empty: "Fund facts (fee, NAV, premium) cover US-listed funds only." });
+    expect(result.sections[1]!.entries!.map((entry) => [entry.label, entry.value])).toEqual([
+      ["Name", `${key} fund`],
+      ["Issuer page", "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT"],
+      ["Description from", "ChinaAMC (Hong Kong), Product Key Facts on HKEXnews: https://www1.hkexnews.hk/a.pdf"],
+    ]);
+    expect(result.metadata).toMatchObject({ venue: "HKEX", usListedOnly: true });
+  }
+  expect(asked).toBe(0);
+  // Without a profile the sentence stands alone.
+  const bare = await createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => [], loadAbroadProfile: async () => null })
+    .load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
+  expect(bare.sections).toHaveLength(1);
+  expect(bare.complete).toBe(true);
+  const failed = await createFundHeadless({
+    loadFacts: async () => { throw new Error("Must not read US facts"); },
+    loadFilings: async () => { throw new Error("Must not read SEC filings"); },
+    loadAbroadProfile: async () => { throw new Error("Profile outage"); },
+  }).load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
+  expect(failed.sections).toEqual(bare.sections);
+  expect(failed.complete).toBe(false);
+  expect(failed.errors).toEqual(["Fund profile unavailable: Profile outage"]);
+});

@@ -30,6 +30,7 @@ import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
@@ -829,6 +830,14 @@ export class CloudDataApi {
   async getCloudStablecoinSupplyHistory(symbol: string): Promise<StablecoinSupplyHistoryPayload> {
     return this.request<StablecoinSupplyHistoryPayload>(
       `/cloud/crypto/stablecoins/supply/${encodeURIComponent(symbol)}`,
+      { signal: AbortSignal.timeout(30_000) },
+    );
+  }
+
+  /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */
+  async getCloudCryptoEtfFlows(asset: CryptoEtfFlowAsset): Promise<CryptoEtfFlowsPayload> {
+    return this.request<CryptoEtfFlowsPayload>(
+      `/cloud/crypto/etf-flows?asset=${asset.toLowerCase()}`,
       { signal: AbortSignal.timeout(30_000) },
     );
   }

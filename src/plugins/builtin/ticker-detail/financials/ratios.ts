@@ -1,9 +1,10 @@
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
-import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../../types/financials";
+import type { CompanyProfile, FinancialStatement, PricePoint, TickerFinancials } from "../../../../types/financials";
 import { formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { cashAndShortTermInvestments, excludesCashRunway, formatRunwayMonths, SHORT_RUNWAY_HISTORY, monthlyOperatingBurn, QUARTER_MONTHS, reportsShortTermTotal, runwayMonths, YEAR_MONTHS } from "../../../../utils/cash-runway";
 import {
   buildPreviousStatementMap,
   trailingFourQuarters,
@@ -21,21 +22,23 @@ import {
  * Why a ratio or one of its inputs has no number: a line the statements do
  * not carry for the period, a ratio whose denominator makes it meaningless
  * (a loss under P/E, negative equity under ROE), no close at the period end,
- * a close still loading, or a quarter with fewer than four quarters to sum
- * for a trailing flow.
+ * a close still loading, a quarter with fewer than four quarters to sum
+ * for a trailing flow, or operations that brought cash in, where a runway
+ * has no burn to divide by.
  */
-export type RatioGap = "not-reported" | "short-history" | "not-meaningful" | "no-price" | "loading";
+export type RatioGap = "not-reported" | "short-history" | "no-burn" | "not-meaningful" | "no-price" | "loading";
 export type RatioAmount = number | RatioGap;
 
 export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   "not-reported": "not reported",
-  "short-history": "< 4 quarters",
+  "short-history": SHORT_RUNWAY_HISTORY,
+  "no-burn": "no burn",
   "not-meaningful": "N/M",
   "no-price": "no price",
   loading: "--",
 };
 
-export type RatioFormat = "percent" | "multiple" | "days";
+export type RatioFormat = "percent" | "multiple" | "days" | "months";
 export type RatioInputFormat = "money" | "perShare" | "days";
 
 /** One column of a ratio tab: a period's statement and what its ratios also need. */
@@ -53,6 +56,8 @@ export interface RatioPeriod {
   trailing?: FinancialTableStatement | null;
   /** The close at the period end in the statement's currency. */
   price: RatioAmount;
+  /** The filer reports cash and short-term investments as a total in some period on file (utils/cash-runway). */
+  shortTermTotalOnFile?: boolean;
 }
 
 interface RatioInputDef {
@@ -79,6 +84,8 @@ export interface RatioDef {
   format: RatioFormat;
   /** The sign carries meaning (a loss, a negative return), so the value takes the sign colour. */
   signed?: boolean;
+  /** Read over one quarter, so the annual view, whose columns are years, leaves it out. */
+  quarterlyOnly?: boolean;
   inputs: RatioInputDef[];
   /** From the inputs after annualization. */
   compute: (values: number[], period: RatioPeriod) => RatioAmount;
@@ -277,6 +284,26 @@ const DPO: RatioDef = {
   compute: ([balance, daily]) => over(balance!, daily!),
 };
 
+/** Cash used by operations per month: a quarter's operating cash flow over 3 months, a year's over 12. */
+const monthlyBurn = (months: number) => ({ statement }: RatioPeriod): RatioAmount => (
+  monthlyOperatingBurn(finite(statement.operatingCashFlow), months) ?? "not-reported"
+);
+
+/** Cash alone for a filer that reports no total with short-term investments, never for one missing it in a period. */
+const runwayCash = ({ statement, shortTermTotalOnFile }: RatioPeriod): RatioAmount => (
+  cashAndShortTermInvestments(statement, shortTermTotalOnFile)?.amount ?? "not-reported"
+);
+
+/** Months of cash and short-term investments at a monthly operating burn (utils/cash-runway, as `ticker` reads it). */
+const runway = (id: string, label: string, burn: RatioInputDef, quarterlyOnly = false): RatioDef => ({
+  id,
+  label,
+  format: "months",
+  ...(quarterlyOnly ? { quarterlyOnly } : {}),
+  inputs: [{ label: "Cash + ST Inv", format: "money", value: runwayCash }, burn],
+  compute: ([cash, perMonth]) => runwayMonths(cash!, perMonth!),
+});
+
 const dayCount = (label: string, def: RatioDef, operator?: RatioInputDef["operator"]): RatioInputDef => ({
   label, operator, format: "days", value: (period) => evaluateRatio(def, period).value,
 });
@@ -440,6 +467,11 @@ export const RATIO_TABS: RatioTabDef[] = [
         ],
         compute: ([cash, liabilities]) => over(cash!, liabilities!),
       },
+      // Both burns, as a quarter swings for a company paid in lumps; the trailing one reads the year in annual columns.
+      runway("runway-quarter", "Runway, Qtr Burn (mo)",
+        { label: "Op Burn/Mo", operator: "÷", format: "money", value: monthlyBurn(QUARTER_MONTHS) }, true),
+      runway("runway-ttm", "Runway, TTM Burn (mo)",
+        { label: "Op Burn/Mo", operator: "÷", format: "money", trailing: true, value: monthlyBurn(YEAR_MONTHS) }),
     ],
   },
   {
@@ -527,7 +559,7 @@ export const RATIO_TAB_KEYS = new Set(RATIO_TABS.map((tab) => tab.key));
  * report explains more than a missing close, and a close still loading may
  * yet arrive.
  */
-const GAP_ORDER: RatioGap[] = ["not-reported", "short-history", "not-meaningful", "no-price", "loading"];
+const GAP_ORDER: RatioGap[] = ["not-reported", "short-history", "no-burn", "not-meaningful", "no-price", "loading"];
 
 function inputAmount(input: RatioInputDef, period: RatioPeriod): RatioAmount {
   if (!input.trailing || !period.quarterly) return input.value(period);
@@ -556,6 +588,7 @@ function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
 export function formatRatioValue(format: RatioFormat, amount: RatioAmount): string {
   if (isGap(amount)) return RATIO_GAP_TEXT[amount];
   if (format === "percent") return `${formatNumber(amount * 100, 1)}%`;
+  if (format === "months") return formatRunwayMonths(amount, "");
   if (format === "days") return formatNumber(amount, 1);
   return `${formatNumber(amount, Math.abs(amount) < 10 ? 2 : 1)}x`;
 }
@@ -668,6 +701,7 @@ export function ratioPeriods(
   /** Every statement on file, not only the columns shown, for quarterly columns' trailing years. */
   onFile: { annual: readonly FinancialStatement[]; quarterly: readonly FinancialStatement[] } = { annual: [], quarterly: [] },
 ): RatioPeriod[] {
+  const shortTermTotalOnFile = reportsShortTermTotal([...onFile.annual, ...onFile.quarterly, ...statements]);
   return statements.map((statement) => {
     const quarterly = period === "quarterly" && statement.date !== "TTM";
     return {
@@ -676,6 +710,7 @@ export function ratioPeriods(
       quarterly,
       ...(quarterly ? { trailing: trailingYear(statement, onFile.annual, onFile.quarterly) } : {}),
       price: price(statement),
+      shortTermTotalOnFile,
     };
   });
 }
@@ -700,6 +735,8 @@ export type RatioTableRow =
 
 export interface RatioTableModel {
   tab: RatioTabDef;
+  /** The tab's ratios the period shows: a quarterly-only one is left out of years. */
+  ratios: RatioDef[];
   periods: RatioPeriod[];
   /** Each ratio's cell per period, by ratio id. */
   cells: Map<string, RatioCell[]>;
@@ -708,14 +745,26 @@ export interface RatioTableModel {
 
 const UNIT_WORDS: Record<string, string> = { K: "k", M: "mn", B: "bn", T: "tn" };
 
+/** The ratios a tab shows for quarterly or annual columns. */
+export function visibleRatios(tab: RatioTabDef, quarterly: boolean): RatioDef[] {
+  return quarterly ? tab.ratios : tab.ratios.filter((def) => !def.quarterlyOnly);
+}
+
 export function buildRatioTableModel(
   tab: RatioTabDef,
   periods: RatioPeriod[],
   expandedRatioIds: ReadonlySet<string> | "all",
+  profile?: CompanyProfile,
 ): RatioTableModel {
   const quarterly = periods.some((period) => period.quarterly);
-  const cells = new Map(tab.ratios.map((def) => [def.id, periods.map((period) => evaluateRatio(def, period))]));
-  const inputs = tab.ratios.flatMap((def) => def.inputs.map((input, index) => {
+  const totalOnFile = periods.some((period) => period.shortTermTotalOnFile);
+  const ratios = visibleRatios(tab, quarterly)
+    .filter((def) => def.format !== "months" || !excludesCashRunway(profile))
+    .map((def) => def.format === "months" && !totalOnFile
+      ? { ...def, inputs: def.inputs.map((input, index) => index === 0 ? { ...input, label: "Cash" } : input) }
+      : def);
+  const cells = new Map(ratios.map((def) => [def.id, periods.map((period) => evaluateRatio(def, period))]));
+  const inputs = ratios.flatMap((def) => def.inputs.map((input, index) => {
     const values = cells.get(def.id)!.map((cell) => cell.inputs[index]).filter((value) => typeof value === "number");
     const { suffix, divisor } = input.format === "money" ? pickUnit(values) : { suffix: "", divisor: 1 };
     const unit = UNIT_WORDS[suffix] ?? suffix;
@@ -733,12 +782,12 @@ export function buildRatioTableModel(
   // Each money input names its unit: a ratio tab has few of them, and a unit
   // stated once in the query bar is the first thing a narrow pane cuts.
   const rows: RatioTableRow[] = [];
-  for (const def of tab.ratios) {
+  for (const def of ratios) {
     const expanded = expandedRatioIds === "all" || expandedRatioIds.has(def.id);
     rows.push({ kind: "ratio", id: def.id, def, label: def.label, expanded });
     if (expanded) rows.push(...inputs.filter((row) => row.def === def));
   }
-  return { tab, periods, cells, rows };
+  return { tab, ratios, periods, cells, rows };
 }
 
 export const findRatioTab = (key: string) => RATIO_TABS.find((tab) => tab.key === key);
@@ -777,5 +826,5 @@ export function ratioTableForFinancials(
     const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;
     return (close === undefined ? null : currencies.priceInStatementUnits(statement, close)) ?? "no-price";
   };
-  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all");
+  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all", financials.profile);
 }

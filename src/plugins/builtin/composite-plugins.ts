@@ -9,6 +9,7 @@ import { exposureModule } from "./exposure";
 import { supplyChainModule } from "./supply-chain";
 import { awardsModule } from "./awards";
 import { cryptoBoardModule } from "./crypto-board";
+import { cryptoEtfFlowsModule } from "./crypto-etf-flows";
 import { portfolioAnalyticsModule } from "./analytics";
 import { brokerTradingModule } from "./broker-trading";
 import { brokerManagerModule } from "./broker-manager";
@@ -221,7 +222,7 @@ export const futuresCommoditiesPlugin = composeBuiltinPlugin({
 
 export const cryptoPlugin = composeBuiltinPlugin({
   ...cryptoPluginMeta,
-  modules: [cryptoBoardModule, perpsModule],
+  modules: [cryptoBoardModule, cryptoEtfFlowsModule, perpsModule],
 });
 
 export const altDataPlugin = composeBuiltinPlugin({

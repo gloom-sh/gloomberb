@@ -523,6 +523,67 @@ describe("ticker-search utilities", () => {
     expect(symbols("Fund ETF")).toEqual(["XLK"]);
   });
 
+  test("words before ETF also ask the whole query, whose funds of that kind lead in the server's order", async () => {
+    const asked: string[] = [];
+    const fund = (symbol: string, name: string, exchange: string, keyword?: string) => makeSearchResult(symbol, name, {
+      exchange, type: "ETF", ...(keyword ? { searchKeywords: [keyword] } : {}),
+    });
+    // The whole query answers slower than the name: its rows still lead.
+    const dataProvider = createTestDataProvider({
+      search: async (query) => {
+        asked.push(query);
+        if (query === "spot bitcoin ETF") {
+          await Bun.sleep(5);
+          return [
+            fund("IBIT", "iShares Bitcoin Trust ETF", "NASDAQ", "spot bitcoin etf"),
+            fund("FBTC", "Fidelity Wise Origin Bitcoin Fund", "BATS", "spot bitcoin etf"),
+            fund("3042", "ChinaAMC Bitcoin ETF (HKD counter)", "HKEX", "spot bitcoin etf"),
+            fund("BTCK", "Spot Bitcoin", "ARCA"),
+          ];
+        }
+        return [fund("BTCK", "Spot Bitcoin", "ARCA"), makeSearchResult("SPOT", "Spotify Technology", { exchange: "NYSE" })];
+      },
+    });
+    const candidates = await searchTickerCandidates({
+      query: "spot bitcoin ETF", tickers: new Map(), dataProvider, includeOptionContracts: false, totalLimit: 10,
+    });
+    expect(asked[0]).toBe("spot bitcoin ETF");
+    expect(asked).toContain("spot bitcoin");
+    // The funds of the words before ETF are the whole query's answer: asked once, not again as a theme.
+    expect(asked.filter((query) => query.toLowerCase() === "spot bitcoin etf")).toHaveLength(1);
+    expect(candidates.map((item) => item.symbol)).toEqual(["IBIT", "FBTC", "3042", "BTCK"]);
+
+    // A symbol before ETF still finds itself first; a code with no words before it asks nothing whole.
+    asked.length = 0;
+    await searchTickerCandidates({ query: "ES FUT", tickers: new Map(), dataProvider, includeOptionContracts: false });
+    expect(asked).not.toContain("ES FUT");
+  });
+
+  test.each(["ETF", "FUND"])("untagged whole-query rows cannot reorder exact IBIT listings with %s", async (suffix) => {
+    const fund = (symbol: string, exchange: string) => makeSearchResult(symbol, "iShares Bitcoin Trust ETF", { exchange, type: "ETF" });
+    const primary = fund("IBIT", "NASDAQ");
+    const foreign = fund("IBIT", "ASX");
+    const dataProvider = createTestDataProvider({
+      search: async (query) => query.toUpperCase() === `IBIT ${suffix}`
+        ? [fund("IBIT.XA", "CXA"), foreign]
+        : [primary, foreign, fund("IBIT", "NEO")],
+    });
+    const found = await searchTickerCandidates({ query: `ibit ${suffix}`, tickers: new Map(), dataProvider, totalLimit: 20 });
+    expect(found[0]?.result).toMatchObject({ symbol: "IBIT", exchange: "NASDAQ" });
+    expect(found.filter((item) => item.symbol === "IBIT").map((item) => item.exchangeLabel)).toEqual(["NASDAQ", "ASX", "NEO"]);
+  });
+
+  test.each([['spy', 'ARCA', 'YSPY'], ['QQQ', 'NASDAQ', 'TQQY'], ['QQQ', 'NASDAQ', 'QBIG']])(
+    "loose %s ETF matches such as %s %s follow its exact listing", async (symbol, exchange, other) => {
+      const dataProvider = createTestDataProvider({ search: async (query) => query.toLowerCase().endsWith(" etf")
+        ? [makeSearchResult(other, `${symbol} ETF strategy`, { exchange: "NASDAQ", type: "ETF" })]
+        : [makeSearchResult(symbol.toUpperCase(), `${symbol} fund`, { exchange, type: "ETF" })],
+      });
+      const found = await searchTickerCandidates({ query: `${symbol} ETF`, tickers: new Map(), dataProvider });
+      expect(found[0]?.result).toMatchObject({ symbol: symbol.toUpperCase(), exchange });
+    },
+  );
+
   test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {
     const lookalike = makeSearchResult("ESF", "Eurotech", { exchange: "MTA" });
     const quoteCalls: string[] = [];
@@ -1039,7 +1100,8 @@ describe("ticker-search utilities", () => {
       const calls: string[] = [];
       const dataProvider = createTestDataProvider({
         id: "test",
-        search: async (query) => { calls.push(query); return query === "defense" ? names : query === "defense ETF" ? funds : []; },
+        // The server's search ignores case: "defense etf" is "defense ETF".
+        search: async (query) => { calls.push(query); return query === "defense" ? names : query.toLowerCase() === "defense etf" ? funds : []; },
       });
       const listed = await searchTickerCandidates({ query: "defense", tickers: new Map(), dataProvider, totalLimit: 10 });
       // Five US-listed funds in the server's order lead, then the companies sent with the word; the sixth fund and other
@@ -1049,15 +1111,15 @@ describe("ticker-search utilities", () => {
       ]);
       expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
       // "defense etf" asks for the funds by name: the name search alone holds only the tagged PPA, so the ETF search's
-      // funds lead in its order, ITA first.
+      // funds lead in its order, ITA first. The query asked whole is that search: asked once.
       calls.length = 0;
       const etfs = await searchTickerCandidates({ query: "defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
       expect(etfs.slice(0, 5).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual(["ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA"]);
-      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
+      expect(calls.filter((call) => / etf$/i.test(call))).toEqual(["defense etf"]);
       // So does a phrase no symbol is; a word no row is tagged with is a name or a symbol: no second search.
       calls.length = 0;
       await searchTickerCandidates({ query: "aerospace defense etf", tickers: new Map(), dataProvider, totalLimit: 10 });
-      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["aerospace defense ETF"]);
+      expect(calls.filter((call) => / etf$/i.test(call))).toEqual(["aerospace defense etf"]);
       calls.length = 0;
       await searchTickerCandidates({ query: "kratos", tickers: new Map(), dataProvider, totalLimit: 10 });
       await searchTickerCandidates({ query: "kratos etf", tickers: new Map(), dataProvider, totalLimit: 10 });

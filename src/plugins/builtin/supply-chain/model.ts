@@ -216,6 +216,31 @@ export function flowGroups(rows: readonly SupplyRow[]): SupplyRow[] {
     .sort((a, b) => (b.pctOfRevenue ?? -1) - (a.pctOfRevenue ?? -1));
 }
 
+export interface ConcentrationPoint { period: string; date: Date; pct: number; rowId: string }
+/**
+ * The largest single customer's share of the focus company's receivables at
+ * each period end it disclosed, oldest first. Receivables are a balance at a
+ * date, so periods compare; revenue shares are not trended, because a period
+ * label does not establish whether a share covers a quarter, a half or a year.
+ * Only exact period-end dates count, and a share above 100% is not a share. Fewer than three periods is no trend, and none is returned.
+ */
+export function receivablesConcentration(rows: readonly SupplyRow[], focusId: string | null | undefined): ConcentrationPoint[] {
+  if (!focusId) return [];
+  const largest = new Map<string, ConcentrationPoint>();
+  for (const row of rows) {
+    if (row.role !== "customer" || row.pctBasis !== "receivables" || row.pctScope !== null || row.pctOfRevenue === null || !Number.isFinite(row.pctOfRevenue) || row.pctOfRevenue < 0 || row.pctOfRevenue > 100 || row.counterparty.aggregate || row.entityScope === "group"
+      || !PERIOD_END.test(row.period) || row.reportingEntity.id !== focusId || !shareParts(row, focusId)) continue;
+    const date = new Date(`${row.period}T00:00:00Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== row.period) continue;
+    const held = largest.get(row.period);
+    if (!held || row.pctOfRevenue > held.pct) largest.set(row.period, { period: row.period, date, pct: row.pctOfRevenue, rowId: row.id });
+  }
+  const points = [...largest.values()].filter((point) => Number.isFinite(point.date.getTime())).sort((a, b) => a.period.localeCompare(b.period));
+  return points.length >= 3 ? points : [];
+}
+/** "2026-Q1", "FY2025", "2026" or "ongoing" name no balance-sheet date. */
+const PERIOD_END = /^\d{4}-\d{2}-\d{2}$/;
+
 export type FlowBand = "suppliers" | "customers" | "related";
 export interface FlowNode { id: string; label: string; row: SupplyRow | null; band: FlowBand; more: number; weight: number | null; weightScope: string | null; weightBasis: "revenue" | "usd" | null; }
 const revenueKey = (row: SupplyRow) => JSON.stringify([row.reportingEntity.id, row.period, row.pctScope]);

@@ -18,6 +18,7 @@ import { commandRequestParams } from "../shared/command-tab";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
+import { formatCountdown } from "../../../utils/datetime-format";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
@@ -38,7 +39,6 @@ import {
   dateKey,
   dayLabel,
   filteredEmptyTitle,
-  formatCountdown,
   formatStaleness,
   getCalendarCache,
   subscribeCalendar,

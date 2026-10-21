@@ -40,15 +40,16 @@ function noMoveNotice(symbols: readonly string[], names: number): string {
 }
 
 /**
- * When the board's figures are from, and whose sessions they follow: outside
+ * When the board's figures are from, and whose sessions they follow: when its
+ * prices printed, from a server that says (`pricesAsOf`). Otherwise, outside
  * the regular session the tiles are the completed session's, so the board is
  * as of that session's close (its date, from a server that does not send the
- * close), not when the snapshot was put together; while it trades, the
- * snapshot time.
+ * close); while it trades, the snapshot time, which is later than its prices.
  */
-function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regularSessionDate" | "regularSessionClosedAt">) {
+function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regularSessionDate" | "regularSessionClosedAt" | "pricesAsOf">) {
   const closedAt = board.regularSessionDate ? board.regularSessionClosedAt : null;
-  const asOf = typeof closedAt === "number" && closedAt > 0 ? new Date(closedAt).toISOString()
+  const pricedAt = typeof board.pricesAsOf === "number" && board.pricesAsOf > 0 ? board.pricesAsOf : closedAt;
+  const asOf = typeof pricedAt === "number" && pricedAt > 0 ? new Date(pricedAt).toISOString()
     : board.regularSessionDate || new Date(board.fetchedAt).toISOString();
   return { asOf, sessionExchange: "NYSE" };
 }
@@ -101,7 +102,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["HM", "heatmap"],
     dataRequirements: ["Gloom Cloud market heatmap snapshot"],
     limitations: [
-      "The snapshot the pane starts from, refreshed about once a minute; the pane's live-streamed colors are not in the report.",
+      "The snapshot the pane starts from: real-time with Pro, fifteen minutes behind otherwise; the pane's live-streamed colors are not in the report.",
       "Sizes, shares and the weighted move use market cap (net assets for ETFs), not the pane's tile area, which follows its Size by setting (the day's move by default).",
     ],
   },
@@ -129,6 +130,8 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: columns(universe, groupBy, flat),
       rows: groups.map((summary) => projectRow(summary, groupBy, flat)),
       complete: !result.stale && covered,
+      // A Pro account's board is priced from a live read.
+      freshness: { status: result.access === "realtime" ? "live" : "delayed", tradingDayMarket: "US" },
       unavailableSymbols: covered ? [] : noMove,
       metadata: {
         universe,

@@ -1125,11 +1125,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
     });
     const gaps = historyGapNote(data, traded);
+    const coverage = range === "YTD" ? null : historyCoverageWarning(range, loaded);
     const notes = [
       // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
       ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? []],
+      // ALL says where the source's bars start (BTC-USD's in 2014-09), unless the coverage line does.
+      ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
       // The status line says how far a bar still forming runs; the note is for the bars it does not name.
       gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
       historyBarStatusNote(forming ? served : data) ?? [],

@@ -33,6 +33,7 @@ import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
+import { formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -42,6 +43,7 @@ const SHORT_INTEREST: OverviewFunctionLink = { name: "Short Interest", tabId: "s
 const EARNINGS: OverviewFunctionLink = { name: "Earnings", templateId: "earnings-calendar-pane" };
 const DIVIDENDS: OverviewFunctionLink = { name: "Dividends", tabId: "dividend-yield", templateId: "dividend-yield-pane" };
 const FUND_FACTS: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
+const FINANCIALS: OverviewFunctionLink = { name: "Financials", tabId: "financials", templateId: "financial-analysis-pane" };
 
 /** A bond fund's sponsor figures in a narrow grid: `SEC Yield 4.04% 2026-10-15`. */
 const BOND_STAT_LABELS = { secYield: "SEC Yield", yieldToWorst: "Yld to Worst" } as const;
@@ -108,6 +110,33 @@ function positionAccountLabel(position: TickerPosition, names: PositionAccountNa
   return `${positionAccountName(position, names)}${suffix}`;
 }
 
+/** A runway measure as the grid reads it: `12.0 mo`, or `no burn`. */
+function runwayText(estimate: RunwayEstimate): string {
+  return estimate.kind === "no-burn" ? "no burn" : formatRunwayMonths(estimate.months, "mo");
+}
+
+/**
+ * Months of cash for a company that burns it, at the latest quarter's burn
+ * with the trailing year's after it and the balance sheet's date where it
+ * fits (`12.0 mo qtr to 06-30 · TTM 14.4 mo`). It opens Financials, whose
+ * Liquidity rows show the cash and the monthly burn. A company whose
+ * trailing operating cash flow is nonnegative or unavailable has no row.
+ */
+function runwayStat(runway: CashRunway | null | undefined): StatField | null {
+  if (runway?.trailing?.kind !== "months") return null;
+  const { quarter, trailing, periodEnd } = runway;
+  const dates = [periodEnd, periodEnd.slice(5)];
+  if (!quarter) return { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS };
+  const ttm = ` · TTM ${runwayText(trailing)}`;
+  return {
+    label: "Runway",
+    value: runwayText(quarter),
+    // "12.0 mo TTM 14.4 mo" would read as one figure: a narrow column keeps "qtr" alone.
+    detail: [...dates.map((date) => `qtr to ${date}${ttm}`), `qtr${ttm}`, "qtr"],
+    link: FINANCIALS,
+  };
+}
+
 export function buildOverviewStats({
   quote,
   fundamentals,
@@ -120,6 +149,7 @@ export function buildOverviewStats({
   today,
   dividend,
   bond = null,
+  runway = null,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -141,6 +171,8 @@ export function buildOverviewStats({
    * distribution yield, not its SEC yield, which follows it with its date.
    */
   bond?: FundBondFacts | null;
+  /** Months of cash at the latest balance sheet (utils/cash-runway); shown when the company burns cash. */
+  runway?: CashRunway | null;
 }): StatField[] {
   const stats: StatField[] = [];
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
@@ -239,6 +271,8 @@ export function buildOverviewStats({
   if (fundamentals?.freeCashFlow != null) {
     stats.push({ label: "FCF", value: money(fundamentals.freeCashFlow) });
   }
+  const runwayField = runwayStat(runway);
+  if (runwayField) stats.push(runwayField);
   if (fundamentals?.operatingMargin != null) {
     stats.push({ label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
   }

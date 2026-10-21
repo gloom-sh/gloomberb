@@ -67,7 +67,7 @@ function ratioShot(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPaylo
   return { symbol, financials, tab, period, model: ratioTableForFinancials(financials, tab, period, history) };
 }
 
-const hasRatio = ({ model, tab }: RatioShot, index: number) => tab.ratios.some((def) => (
+const hasRatio = ({ model }: RatioShot, index: number) => model.ratios.some((def) => (
   typeof model.cells.get(def.id)?.[index]?.value === "number"
 ));
 
@@ -106,7 +106,7 @@ export function financialRatioShotEvidence(
       date: statement.date,
       periodEnd: ratioPeriodEnd(statement),
       price: typeof price === "number" ? price : null,
-      ratios: shot.tab.ratios.flatMap((def) => {
+      ratios: shot.model.ratios.flatMap((def) => {
         const value = shot.model.cells.get(def.id)![index]!.value;
         return typeof value === "number" ? [{ id: def.id, label: def.label, value }] : [];
       }),

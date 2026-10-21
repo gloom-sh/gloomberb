@@ -219,6 +219,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     date: new Date(Date.UTC(1977, 9 + month, 1)), close: Number((0.0015 + month * 0.0034 / 33).toFixed(4)),
   }));
   const shekels = [2.763, 2.762].map((close, month) => ({ date: new Date(Date.UTC(1992, 11 + month, 1)), close }));
+  setSystemTime(new Date("2026-10-21T12:00:00Z"));
   const run = async (format: "json" | "csv" | "text", served: Omit<PriceHistoryResult, "resolution">) => {
     const cli = createTestCliContext({
       config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
@@ -231,22 +232,28 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const [{ result, options }] = cli.printed;
     return { result, text: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options) };
   };
-  const warnings = ["No bars for 1980-08 to 1992-11 (148 months)", "Close rises 564x from 0.0049 on 1980-07-01 to 2.763 on 1992-12-01"];
-  const json = JSON.parse((await run("json", { points: [...old, ...shekels] })).text);
-  expect(json.warnings).toEqual(warnings);
-  expect(json.metadata).toMatchObject({ firstDate: "1977-10-01", unbrokenFrom: "1992-12-01", bars: 36 });
-  expect(json.data[34]).toMatchObject({ date: "1992-12-01", close: 2.763, flag: "gap,jump" });
-  const csv = await run("csv", { points: [...old, ...shekels] });
-  expect(csv.result.warnings).toEqual(warnings);
-  // Dated by the January bar's last session, not the day it opens.
-  expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
-  const text = await run("text", { points: [...old, ...shekels] });
-  expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
-  // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
-  const clipped = JSON.parse((await run("json", {
-    points: shekels, coverageStart: "1992-12-01", coverageNote: "old-shekel quotes before 1992 are not served",
-  })).text);
-  expect(clipped.warnings).toEqual(["Price history starts 1992-12-01; old-shekel quotes before 1992 are not served."]);
-  expect(clipped.metadata.unbrokenFrom).toBe("1992-12-01");
-  expect(clipped.data.map((row: { flag: string | null }) => row.flag)).toEqual([null, null]);
+  // ALL reaches back to 1976-10; the source's first bar is from a year later.
+  const warnings = ["ALL starts 1977-10; the source has no earlier bar", "No bars for 1980-08 to 1992-11 (148 months)",
+    "Close rises 564x from 0.0049 on 1980-07-01 to 2.763 on 1992-12-01"];
+  try {
+    const json = JSON.parse((await run("json", { points: [...old, ...shekels] })).text);
+    expect(json.warnings).toEqual(warnings);
+    expect(json.metadata).toMatchObject({ firstDate: "1977-10-01", unbrokenFrom: "1992-12-01", bars: 36 });
+    expect(json.data[34]).toMatchObject({ date: "1992-12-01", close: 2.763, flag: "gap,jump" });
+    const csv = await run("csv", { points: [...old, ...shekels] });
+    expect(csv.result.warnings).toEqual(warnings);
+    // Dated by the January bar's last session, not the day it opens.
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    const text = await run("text", { points: [...old, ...shekels] });
+    expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
+    // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
+    const clipped = JSON.parse((await run("json", {
+      points: shekels, coverageStart: "1992-12-01", coverageNote: "old-shekel quotes before 1992 are not served",
+    })).text);
+    expect(clipped.warnings).toEqual(["Price history starts 1992-12-01; old-shekel quotes before 1992 are not served."]);
+    expect(clipped.metadata.unbrokenFrom).toBe("1992-12-01");
+    expect(clipped.data.map((row: { flag: string | null }) => row.flag)).toEqual([null, null]);
+  } finally {
+    setSystemTime();
+  }
 });

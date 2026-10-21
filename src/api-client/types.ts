@@ -855,6 +855,11 @@ export interface CloudEarningsCallPayload {
   sentiment: number | null;
   /** The replay or event page the transcript came from. */
   webcastUrl?: string | null;
+  /**
+   * Whether `callAt` is the call's start or its day alone (00:00 UTC of that
+   * New York day). Absent from a server that predates it.
+   */
+  callTimeKnown?: boolean;
 }
 
 interface CloudJobsSeriesPoint {

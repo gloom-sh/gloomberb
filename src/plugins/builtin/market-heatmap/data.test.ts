@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { dedupeHeatmapAssets, fetchMarketHeatmap, resetMarketHeatmapCache } from "./data";
 let restore: (() => void) | undefined;
@@ -15,6 +15,28 @@ test("concurrent requests share the backend snapshot and force refresh replaces 
   expect(api).toHaveBeenCalledTimes(1);
   await fetchMarketHeatmap("us-etf", { forceRefresh: true });
   expect(api).toHaveBeenCalledTimes(2);
+});
+test("a real-time board is checked again after 15 seconds, a delayed one after a minute", async () => {
+  const board = (access?: "realtime" | "delayed") => ({ status: "success" as const,
+    data: { universe: "us-equity" as const, source: "gloom" as const, fetchedAt: 123, ...(access ? { access } : {}), assets: [] } });
+  for (const [access, ttl] of [["realtime", 15_000], ["delayed", 60_000], [undefined, 60_000]] as const) {
+    resetMarketHeatmapCache();
+    const start = Date.parse("2026-10-21T15:00:00Z");
+    setSystemTime(start);
+    const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue(board(access));
+    try {
+      await fetchMarketHeatmap("us-equity");
+      setSystemTime(start + ttl - 1);
+      await fetchMarketHeatmap("us-equity");
+      expect(api).toHaveBeenCalledTimes(1);
+      setSystemTime(start + ttl);
+      await fetchMarketHeatmap("us-equity");
+      expect(api).toHaveBeenCalledTimes(2);
+    } finally {
+      api.mockRestore();
+      setSystemTime();
+    }
+  }
 });
 test("backend failures do not cache an empty success and later requests recover", async () => {
   const api = spyOn(apiClient, "getMarketHeatmap").mockRejectedValueOnce(new Error("Unavailable"))

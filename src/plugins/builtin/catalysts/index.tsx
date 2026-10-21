@@ -23,7 +23,7 @@ export const catalystsModule: PluginModule = {
       instruments: ["equity", "fund"], tableExport: true, headless: litigationHeadless },
   ],
   paneTemplates: [
-    { id: "catalysts-pane", paneId: "catalysts", label: "Catalysts", description: "Pro regulatory, clinical, legal and trade-policy calendar with source evidence and revision history.", keywords: ["catalysts", "calendar", "FDA", "clinical", "regulatory", "deadlines", "antitrust", "sanctions"],
+    { id: "catalysts-pane", paneId: "catalysts", label: "Catalysts", description: "Pro regulatory, clinical, legal and trade-policy calendar with source evidence and revision history.", keywords: ["catalysts", "calendar", "FDA", "clinical", "regulatory", "deadlines", "antitrust", "sanctions", "PDUFA", "FDA decision", "approval", "approvals"],
       shortcut: { prefix: "CATL", argKind: "ticker", argPlaceholder: "ticker", argOptional: true, openWithoutArg: true }, headless: catalystsHeadless,
       createInstance: (_context, options) => { const symbol = (options?.symbol ?? options?.arg ?? "").trim().toUpperCase(); const event = options?.values?.event; const open = event && /^[a-zA-Z0-9:_-]{1,160}$/.test(event) ? event : undefined; return { title: symbol ? `CATL ${symbol}` : "Catalysts", placement: "floating", ...(symbol ? { binding: { kind: "fixed" as const, symbol } } : {}), settings: { symbol, ...(open ? { open } : {}) } }; } },
     { ...createTickerSurfacePaneTemplate({ id: "litigation-pane", paneId: "litigation", label: "Litigation", description: "Pro company litigation, enforcement and antitrust dockets with dated source evidence.", keywords: ["litigation", "legal", "docket", "court", "enforcement", "antitrust"], shortcut: "LITI" }), headless: litigationHeadless },

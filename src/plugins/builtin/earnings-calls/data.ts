@@ -9,6 +9,8 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
+import { shortDate } from "../earnings/format";
+import { callCountdown, callDay, callTimeKnown, isUpcomingCall } from "./upcoming";
 
 type EarningsCallsApiClient = Pick<
   HeadlessPaneApiClient,
@@ -54,8 +56,9 @@ export interface EarningsCallsResult {
   sourceLimitReached?: boolean;
 }
 
-/** Short label for the state of a call without a transcript. */
-export function callStatusLabel(call: CloudEarningsCallPayload): string {
+/** Short label for the state of a call without a transcript; "upcoming" for one still to come. */
+export function callStatusLabel(call: CloudEarningsCallPayload, now = Date.now()): string {
+  if (isUpcomingCall(call, now)) return "upcoming";
   switch (call.status) {
     case "available":
       return "on request";
@@ -71,7 +74,61 @@ export function callStatusLabel(call: CloudEarningsCallPayload): string {
   }
 }
 
+/** How long after its start a call not yet transcribed reads as started rather than queued. */
+const STARTED_FOR_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * What the IN column says: how far away a call still to come is, and for one
+ * over, where its transcript is.
+ */
+export function calendarAway(call: CloudEarningsCallPayload, now: number): string {
+  if (isUpcomingCall(call, now)) return callCountdown(call, now);
+  if (call.hasTranscript) return "transcribed";
+  const label = callStatusLabel(call, now);
+  if (label === "in progress") return label;
+  const started = callTimeKnown(call) ? now - Date.parse(call.callAt!) : Number.POSITIVE_INFINITY;
+  return started < STARTED_FOR_MS ? "started" : label;
+}
+
+/** What the pane's notice and `fn CALLS` say when the calendar may be cut. */
+export function upcomingCutNotice(calls: readonly CloudEarningsCallPayload[]): string {
+  // The server answers earliest first, so the cut is late on the last day it reached.
+  const last = calls.length > 0 ? callDay(calls[calls.length - 1]!) : null;
+  return `The calendar stops at ${UPCOMING_LIMIT.toLocaleString("en-US")} calls${last ? `: later calls from ${shortDate(last)} on may be missing` : ""}.`;
+}
+
+const UPCOMING_KIND = "upcoming";
+const UPCOMING_CACHE_SCHEMA_VERSION = 1;
+/** The calendar moves as calls are found ahead and transcribed after; a day-old one is no calendar. */
+const UPCOMING_CACHE_POLICY = {
+  staleMs: 5 * 60 * 1000,
+  expireMs: 24 * 60 * 60 * 1000,
+} as const;
+/**
+ * The most calls one calendar asks for, the server's own cap. A peak week of
+ * the reporting season holds about 600, so a week is never cut; a calendar
+ * that gets this many says it may be (`truncated`).
+ */
+export const UPCOMING_LIMIT = 1500;
+
+/** Every company's calls on New York days `from` to `to`, earliest first. */
+export interface UpcomingCallsResult {
+  calls: CloudEarningsCallPayload[];
+  fetchedAt: number;
+  stale: boolean;
+  /** The server answered its limit's worth: calls later on these days may be missing. */
+  truncated?: boolean;
+  refreshError?: string;
+  errorStatus?: number;
+}
+
+export interface UpcomingDays {
+  from: string;
+  to: string;
+}
+
 let persistence: PluginPersistence | null = null;
+const activeUpcomingFetches = new Map<string, Promise<UpcomingCallsResult>>();
 const activeListFetches = new Map<string, Promise<EarningsCallsResult>>();
 const activeTranscriptFetches = new Map<string, Promise<CloudEarningsTranscriptPayload>>();
 
@@ -81,6 +138,7 @@ export function attachEarningsCallsPersistence(value: PluginPersistence): void {
 
 export function resetEarningsCallsPersistence(): void {
   persistence = null;
+  activeUpcomingFetches.clear();
   activeListFetches.clear();
   activeTranscriptFetches.clear();
   heldAudio.clear();
@@ -238,6 +296,92 @@ export function cachedEarningsCalls(
     fetchedAt: cached.fetchedAt,
     stale: cached.stale === true,
   };
+}
+
+/**
+ * A server from before the calendar answers the shelf of transcripts, whatever
+ * the days: only calls on those days are the calendar's.
+ */
+function onDays(calls: CloudEarningsCallPayload[], days: UpcomingDays): CloudEarningsCallPayload[] {
+  return calls.filter((call) => {
+    const day = callDay(call);
+    return day !== null && day >= days.from && day <= days.to;
+  });
+}
+
+type UpcomingCallsClient = Pick<HeadlessPaneApiClient, "getCloudEarningsCalls">;
+type UpcomingCacheValue = { calls: CloudEarningsCallPayload[]; truncated?: boolean };
+
+function upcomingFromCache(value: UpcomingCacheValue, fetchedAt: number, stale: boolean): UpcomingCallsResult {
+  return { calls: value.calls, fetchedAt, stale, ...(value.truncated ? { truncated: true } : {}) };
+}
+
+export async function loadUpcomingCallsWithClient(
+  client: UpcomingCallsClient,
+  days: UpcomingDays,
+  options: { force?: boolean } = {},
+): Promise<UpcomingCallsResult> {
+  const key = JSON.stringify([days.from, days.to]);
+  const store = persistence;
+  const read = (allowExpired: boolean) => store?.getResource<UpcomingCacheValue>(UPCOMING_KIND, key, {
+    sourceKey: CACHE_SOURCE,
+    schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
+    ...(allowExpired ? { allowExpired: true } : {}),
+  });
+  const cached = read(false);
+  if (!options.force && cached && !cached.stale) return upcomingFromCache(cached.value, cached.fetchedAt, false);
+  const active = activeUpcomingFetches.get(key);
+  if (active && !options.force) return active;
+
+  const request = client
+    .getCloudEarningsCalls({ upcoming: days, limit: UPCOMING_LIMIT })
+    .then((payload) => {
+      const answered = payload.calls ?? [];
+      const value: UpcomingCacheValue = {
+        calls: onDays(answered, days),
+        // A full answer may stop partway through the last day it reaches.
+        ...(answered.length >= UPCOMING_LIMIT ? { truncated: true } : {}),
+      };
+      if (activeUpcomingFetches.get(key) === request && persistence === store) {
+        store?.setResource(UPCOMING_KIND, key, value, {
+          sourceKey: CACHE_SOURCE,
+          schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
+          cachePolicy: UPCOMING_CACHE_POLICY,
+        });
+      }
+      return upcomingFromCache(value, Date.now(), false);
+    })
+    .catch((error: unknown) => {
+      const errorStatus = statusOf(error);
+      // Losing Pro access re-gates the calendar, as it does the list.
+      const expired = read(true);
+      if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
+        return {
+          ...upcomingFromCache(expired.value, expired.fetchedAt, true),
+          refreshError: error instanceof Error ? error.message : String(error),
+          errorStatus,
+        };
+      }
+      throw error;
+    })
+    .finally(() => {
+      if (activeUpcomingFetches.get(key) === request) activeUpcomingFetches.delete(key);
+    });
+  activeUpcomingFetches.set(key, request);
+  return request;
+}
+
+export function loadUpcomingCalls(days: UpcomingDays, options?: { force?: boolean }): Promise<UpcomingCallsResult> {
+  return loadUpcomingCallsWithClient(apiClient, days, options);
+}
+
+export function cachedUpcomingCalls(days: UpcomingDays): UpcomingCallsResult | null {
+  const cached = persistence?.getResource<UpcomingCacheValue>(UPCOMING_KIND, JSON.stringify([days.from, days.to]), {
+    sourceKey: CACHE_SOURCE,
+    schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
+    allowExpired: true,
+  });
+  return cached ? upcomingFromCache(cached.value, cached.fetchedAt, cached.stale === true) : null;
 }
 
 /**

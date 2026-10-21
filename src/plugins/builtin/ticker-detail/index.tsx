@@ -9,6 +9,7 @@ import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import { ReturnsPane } from "./data-panes/returns-pane";
 import { TickerResearchPane } from "./pane";
 import { futuresContractCache } from "./overview/futures-contract";
+import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
@@ -27,11 +28,15 @@ import {
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
     futuresContractCache.attach(ctx.persistence);
+    offeringFilingsCache.attach(ctx.persistence);
     for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
       ctx.registerTickerResearchTab(tab);
     }
   },
-  dispose() { futuresContractCache.reset(); },
+  dispose() {
+    futuresContractCache.reset();
+    offeringFilingsCache.reset();
+  },
 
   panes: [
     {
@@ -114,7 +119,7 @@ export const tickerDetailModule: PluginModule = {
       paneId: TICKER_RESEARCH_PANE_ID,
       label: "Ticker Research",
       description: "Open another research pane for the selected ticker or current collection",
-      keywords: ["new", "ticker", "research", "detail", "pane", "inspector"],
+      keywords: ["new", "ticker", "research", "detail", "pane", "inspector", "runway", "cash runway", "burn", "cash burn", "months of cash"],
       shortcut: { prefix: "T", aliases: ["DES"], argPlaceholder: "ticker", argKind: "ticker" },
       canCreate: (context) => context.activeTicker !== null || context.activeCollectionId !== null,
       createInstance: (context) => (
@@ -205,7 +210,7 @@ export const tickerDetailModule: PluginModule = {
         paneId: "financial-analysis",
         label: "Financial Analysis",
         description: "Open financial statements for a ticker.",
-        keywords: ["fa", "financial", "analysis", "statements"],
+        keywords: ["fa", "financial", "analysis", "statements", "runway", "cash runway", "burn", "cash burn", "months of cash"],
         shortcut: "FA",
         publicShare: true,
         titlePrefix: "FA",

@@ -40,6 +40,8 @@ export const es: Record<string, string> = {
   "Name": "Nombre",
   "Title": "Título",
   "Source": "Fuente",
+  "Issuer page": "Página del emisor",
+  "Description from": "Descripción de",
   "Headline": "Titular",
   "Symbol": "Símbolo",
   "Price": "Precio",
