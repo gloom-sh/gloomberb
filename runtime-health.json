@@ -1,0 +1,7 @@
+{
+  "records": 36,
+  "externalRequests": 0,
+  "runtimeWarnings": [],
+  "terminalSessions": 12,
+  "scope": "Actual registered panes and shared host/footer in deterministic fixtures; not full app shell; short smoke cannot establish long-term leak absence."
+}

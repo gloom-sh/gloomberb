@@ -1,0 +1,254 @@
+[
+  {
+    "scenario": "initial",
+    "theme": "white",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-initial-before-white-720.png",
+      "desktop-initial-after-white-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "initial",
+    "theme": "white",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-initial-before-white-1280.png",
+      "desktop-initial-after-white-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "initial",
+    "theme": "paper",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-initial-before-paper-720.png",
+      "desktop-initial-after-paper-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "initial",
+    "theme": "paper",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-initial-before-paper-1280.png",
+      "desktop-initial-after-paper-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "partial",
+    "theme": "white",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-partial-before-white-720.png",
+      "desktop-partial-after-white-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "partial",
+    "theme": "white",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-partial-before-white-1280.png",
+      "desktop-partial-after-white-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "partial",
+    "theme": "paper",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-partial-before-paper-720.png",
+      "desktop-partial-after-paper-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "partial",
+    "theme": "paper",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-partial-before-paper-1280.png",
+      "desktop-partial-after-paper-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "retained",
+    "theme": "white",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-retained-before-white-720.png",
+      "desktop-retained-after-white-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "retained",
+    "theme": "white",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-retained-before-white-1280.png",
+      "desktop-retained-after-white-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "retained",
+    "theme": "paper",
+    "width": 720,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 368,
+      "y": 16,
+      "width": 336,
+      "height": 528,
+      "top": 16,
+      "right": 704,
+      "bottom": 544,
+      "left": 368
+    },
+    "inputs": [
+      "desktop-retained-before-paper-720.png",
+      "desktop-retained-after-paper-720.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  },
+  {
+    "scenario": "retained",
+    "theme": "paper",
+    "width": 1280,
+    "controlChangedPixels": 0,
+    "controlRect": {
+      "x": 648,
+      "y": 16,
+      "width": 616,
+      "height": 528,
+      "top": 16,
+      "right": 1264,
+      "bottom": 544,
+      "left": 648
+    },
+    "inputs": [
+      "desktop-retained-before-paper-1280.png",
+      "desktop-retained-after-paper-1280.png"
+    ],
+    "scope": "Actual registered MarketMoversPane with shared TestPaneFrame and runtime; invented list and quote transport; retained scenario uses actual refresh shortcut; not the full desktop shell or native RPC transport."
+  }
+]

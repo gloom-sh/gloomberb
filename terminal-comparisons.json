@@ -1,0 +1,68 @@
+[
+  {
+    "scenario": "initial",
+    "theme": "white",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-initial-before-white.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-initial-after-white.png"
+    ],
+    "width": 1920,
+    "height": 672
+  },
+  {
+    "scenario": "initial",
+    "theme": "paper",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-initial-before-paper.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-initial-after-paper.png"
+    ],
+    "width": 1920,
+    "height": 672
+  },
+  {
+    "scenario": "partial",
+    "theme": "white",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-partial-before-white.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-partial-after-white.png"
+    ],
+    "width": 1920,
+    "height": 672
+  },
+  {
+    "scenario": "partial",
+    "theme": "paper",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-partial-before-paper.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-partial-after-paper.png"
+    ],
+    "width": 1920,
+    "height": 672
+  },
+  {
+    "scenario": "retained",
+    "theme": "white",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-retained-before-white.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-retained-after-white.png"
+    ],
+    "width": 1920,
+    "height": 672
+  },
+  {
+    "scenario": "retained",
+    "theme": "paper",
+    "controlChangedPixels": 0,
+    "files": [
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-retained-before-paper.png",
+      "/home/vince/.cache/gloom-review/arch/plugin-catches-mpashc-evidence/glo-1163/ui/terminal-retained-after-paper.png"
+    ],
+    "width": 1920,
+    "height": 672
+  }
+]
