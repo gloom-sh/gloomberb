@@ -49,9 +49,14 @@ export interface QuoteChangeBasisOptions {
 
 const dayBefore = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
 
-/** The weekday before `date`, Saturday and Sunday skipped: a currency pair's week. */
+/**
+ * The weekday before the one a move is dated to, Saturday and Sunday skipped:
+ * a currency pair's week. A move dated on a weekend is Friday's, from Thursday.
+ */
 function weekdayBefore(date: string): string {
-  let at = Date.parse(`${date}T00:00:00Z`) - DAY_MS;
+  let at = Date.parse(`${date}T00:00:00Z`);
+  while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
+  at -= DAY_MS;
   while (new Date(at).getUTCDay() % 6 === 0) at -= DAY_MS;
   return new Date(at).toISOString().slice(0, 10);
 }
@@ -71,14 +76,19 @@ function isSpotCoin(quote: Quote): boolean {
 }
 
 /**
- * The index session before `date`, from the regular sessions an index quote
- * carries (indexSession): the latest one that opened on an earlier local day.
+ * The index session before the one a move is dated to, from the regular
+ * sessions an index quote carries (indexSession): the latest one on or before
+ * `date` is the move's (a quote read on a Saturday has Friday's), and the one
+ * before that is what it moves from.
  */
 function previousIndexSession(quote: Quote, date: string): string | null {
   const session = quote.indexSession;
   if (!session?.timeZone) return null;
-  const days = session.regular.map((window) => zonedDateKey(window.start, session.timeZone)).filter((day) => day < date);
-  return days.length ? days.sort().at(-1)! : null;
+  const windows = [...session.regular, ...(session.current ? [session.current] : [])];
+  const days = [...new Set(windows.map((window) => zonedDateKey(window.start, session.timeZone)))]
+    .filter((day) => day <= date)
+    .sort();
+  return days.length >= 2 ? days.at(-2)! : null;
 }
 
 /**

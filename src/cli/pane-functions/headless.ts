@@ -498,7 +498,7 @@ function renderRows(
   };
   return renderTable(
     columns.map((column) => ({
-      header: displayedHeader(column),
+      header: column.textHeader ?? displayedHeader(column),
       align: column.align,
       width: column.width,
       shrink: column.shrink,

@@ -132,6 +132,8 @@ export function mapQuote(
       divisor,
     ),
     extendedSessionPrint: typeof quote.extendedSessionPrint === "boolean" ? quote.extendedSessionPrint : undefined,
+    // A coin's move over 24 hours, or none, when its previous close is undatable.
+    changeBasis: quote.changeBasis === "24h" || quote.changeBasis === "none" ? quote.changeBasis : undefined,
     overnightPrice: normalizePriceValueByDivisor(quote.overnightPrice, divisor),
     overnightChange: normalizePriceValueByDivisor(quote.overnightChange, divisor),
     overnightPriceKind: quote.overnightPriceKind === "trade" || quote.overnightPriceKind === "mark"

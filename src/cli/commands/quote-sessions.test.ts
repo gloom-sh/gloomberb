@@ -224,6 +224,34 @@ test("quote gives the overnight session its own column and names it, saying when
   expect(text).not.toMatch(/After Hours|Pre-Market/);
 });
 
+// Linear: GLO-1089. The table sets what Chg% is from beside it; an export adds it after the columns it had.
+test("quote's change basis follows Chg% in the table, with the holiday under it, and comes last in CSV and NDJSON rows", async () => {
+  const hk: Quote = { symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF", currency: "HKD", price: 9.88, change: -0.06, changePercent: -0.6,
+    previousClose: 9.94, changeSessionDate: "2026-10-20", marketState: "CLOSED", listingExchangeName: "HKEX", exchangeName: "HKEX",
+    lastUpdated: Date.parse("2026-10-20T08:08:00Z") };
+  setSystemTime(new Date("2026-10-21T00:30:00Z"));
+  try {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => [{ target: { symbol: hk.symbol, exchange: "" }, quote: hk }],
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute([hk.symbol], cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+    expect(text).toMatch(/Chg% +Chg Basis +Session/);
+    expect(text).toMatch(/-0\.60% +vs Fri 16 Oct close +CLOSED/);
+    expect(text).toContain("\nHKEX closed Mon 19 Oct, holiday");
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    expect(csv[0]).toContain(",Chg%,Pre-Market,");
+    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,symbol_or_series,");
+    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",3042.HK,");
+    const row = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n")[0]!);
+    const keys = Object.keys(row);
+    expect(keys.slice(keys.indexOf("error"), keys.indexOf("error") + 3)).toEqual(["error", "changeBasis", "changeBasisNote"]);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a pre-market nothing has traded in reads as the close it stands at in quote, QQ, the boards and the watchlist, and exports keep the state", async () => {
   // PLTR on Fri 16 Oct 2026 at 08:14 UTC: no pre-market trade; the price is Thursday's last after-hours print at 23:59 UTC.
   const waiting: Quote = {

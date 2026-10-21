@@ -353,9 +353,6 @@ const QUOTE_LEAD_COLUMNS = [
     align: "right" as const,
     format: (value: unknown, row: QuoteRow) => row.yieldIndex ? yieldChangeCell(row) : formatChangePercentCell(value),
   },
-  // What Chg% is measured from, as every change line says it: "vs Fri 16 Oct close", "since 00:00 UTC".
-  // A narrow terminal drops it last of the optional columns; the export keeps the words.
-  { key: "changeBasis", header: "Chg Basis", shrink: false, optional: true, format: (value: unknown) => cliStyles.muted(String(value ?? "")) },
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
   extendedColumn("POST"),
@@ -365,6 +362,28 @@ const QUOTE_LEAD_COLUMNS = [
 ];
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
+
+/**
+ * What Chg% is measured from, as every change line says it ("vs Fri 16 Oct
+ * close", "since 00:00 UTC"): the table sets it after Chg% and names the
+ * venue's holidays under it; an export adds it, and the holiday note, after
+ * its existing columns, so a column read by position stays where it was.
+ */
+const CHANGE_BASIS_COLUMN = {
+  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true, format: (value: unknown) => cliStyles.muted(String(value ?? "")),
+};
+const CHANGE_BASIS_EXPORT_COLUMNS = [
+  { key: "changeBasis", header: "Chg Basis" },
+  { key: "changeBasisNote", header: "Chg Basis Note" },
+];
+
+/** The table's columns: Chg Basis follows Chg%, and the note is a line under the table. */
+function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
+  const exported = new Set(CHANGE_BASIS_EXPORT_COLUMNS.map((column) => column.key));
+  const kept = columns.filter((column) => !exported.has(column.key));
+  const at = kept.findIndex((column) => column.key === "changePercent") + 1;
+  return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
+}
 
 /** A Cboe yield index level is a yield: `5.24%`, not a price. */
 function yieldLevelCell(value: unknown, row: QuoteRow): string {
@@ -422,6 +441,7 @@ function quoteColumns() {
     },
     // In a narrow terminal the closing line's as-of stands in for each row's.
     { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
+    ...CHANGE_BASIS_EXPORT_COLUMNS,
   ];
 }
 
@@ -433,6 +453,7 @@ function compareColumns() {
     { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
     { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
+    ...CHANGE_BASIS_EXPORT_COLUMNS,
   ];
 }
 
@@ -519,7 +540,6 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       instrumentType: quote?.instrumentType ?? null,
       change: display?.change ?? null,
       changePercent: roundedPercent(display?.changePercent),
-      changeBasis: basisLabel(result, now),
       // A Cboe yield index is read as a yield in percent and moves in basis points.
       yieldIndex,
       changeBasisPoints: yieldIndex && display?.change != null ? toBasisPoints(display.change, 1) : null,
@@ -546,6 +566,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
       updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       error: result.error ?? "",
+      // Last, so a row read by position keeps every field where it was.
+      changeBasis: basisLabel(result, now),
+      changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
     };
   });
 }
@@ -865,7 +888,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       details: quoteDetailsText,
       ...(basisNotes.length ? { footnote: basisNotes.join("\n") } : {}),
       columns,
-      ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
+      textColumns: quoteTextColumns(yieldsOnly
+        ? columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column)
+        : columns),
     });
     // The table names each symbol it found nothing for; with none found, the exit status says so too.
     if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;

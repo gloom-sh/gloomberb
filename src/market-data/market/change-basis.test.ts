@@ -9,6 +9,7 @@ import {
   quoteChangeBasis,
   quotePreviousCloseDate,
 } from "./change-basis";
+import { previousPublishedSession } from "./freshness";
 
 // Linear: GLO-1089. Wed 21 Oct 2026, 01:30 UTC.
 const NOW = Date.parse("2026-10-21T01:30:00Z");
@@ -41,6 +42,22 @@ test("a move skipping a venue holiday names the close it is from and the day the
   expect(changeBasisNote({ kind: "close", date: "2026-02-11", venue: "TWSE", closed: ["2026-02-12", "2026-02-13", "2026-02-16"] }, NOW))
     .toBe("TWSE closed Thu 12 Feb to Mon 16 Feb, holidays");
   expect(changeBasisLabel({ kind: "close", date: "2025-12-31" }, NOW)).toBe("vs Wed 31 Dec 2025 close");
+});
+
+test("a quote dated by when it was read, on a weekend or a holiday, holds the last session's move, from the session before", () => {
+  // Read on Saturday 17 Oct with no session date: Friday's move, from Thursday's close.
+  const saturday = Date.parse("2026-10-17T10:00:00Z");
+  const aapl = createTestQuote({ symbol: "AAPL", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", price: 251.5, change: -1.5,
+    changePercent: -0.59, previousClose: 253, marketState: "CLOSED", lastUpdated: saturday });
+  expect(quoteChangeBasis(aapl)).toEqual({ kind: "close", date: "2026-10-15", venue: "NASDAQ", closed: [] });
+  expect(quotePreviousCloseDate(aapl)).toBe("2026-10-15");
+  // A currency pair a source dates by the Saturday it was read.
+  const eurusd = createTestQuote({ symbol: "EURUSD=X", instrumentType: "CURRENCY", listingExchangeName: "CCY", price: 1.16, change: 0.002,
+    changePercent: 0.17, previousClose: 1.158, changeSessionDate: "2026-10-17", lastUpdated: saturday });
+  expect(quoteChangeBasis(eurusd)).toEqual({ kind: "close", date: "2026-10-15" });
+  // HKEX's Monday holiday: a quote read that day holds Friday's move, from Thursday.
+  expect(previousPublishedSession("HKEX", "2026-10-19")).toEqual({ date: "2026-10-15", closed: [] });
+  expect(previousPublishedSession("HKEX", "2026-10-20")).toEqual({ date: "2026-10-16", closed: ["2026-10-19"] });
 });
 
 test("a venue without a published calendar keeps its previous close undated, never guessed", () => {

@@ -131,6 +131,12 @@ export interface HeadlessPaneColumn {
   header: string;
   /** Print `header` as written, a field name such as `source`, where reports would otherwise title-case it. */
   literalHeader?: boolean;
+  /**
+   * What the text report heads the column with when it can say more than an
+   * export's header should (`Chg % UTC` over `Chg %`), printed as written;
+   * CSV keeps `header`, so a column read by its name stays where it was.
+   */
+  textHeader?: string;
   align?: "left" | "right" | "center";
   width?: number;
   /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */
