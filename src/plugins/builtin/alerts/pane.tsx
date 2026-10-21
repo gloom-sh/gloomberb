@@ -365,6 +365,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       selectedTextOverridesCellColor
       status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}
+      emptyStateTitle="No alerts"
       emptyContent={
         <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
       }
