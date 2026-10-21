@@ -1,0 +1,26 @@
+[
+  {
+    "theme": "white",
+    "session": "glo-1165-white-3477188",
+    "rss": [
+      233967616,
+      239042560,
+      234110976
+    ],
+    "captures": 3,
+    "networkRequests": 0,
+    "sessionRemoved": true
+  },
+  {
+    "theme": "paper",
+    "session": "glo-1165-paper-3477188",
+    "rss": [
+      232390656,
+      233377792,
+      242429952
+    ],
+    "captures": 3,
+    "networkRequests": 0,
+    "sessionRemoved": true
+  }
+]

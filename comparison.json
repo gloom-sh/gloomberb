@@ -1,0 +1,452 @@
+{
+  "pairs": 12,
+  "changed": 8,
+  "unchangedNeighbours": 12,
+  "noNetworkRequests": true,
+  "results": [
+    {
+      "file": "healthy-paper-1280.png",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      }
+    },
+    {
+      "file": "healthy-paper-640.png",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      }
+    },
+    {
+      "file": "healthy-white-1280.png",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      }
+    },
+    {
+      "file": "healthy-white-640.png",
+      "changedPixels": 0,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": false,
+        "files": false
+      }
+    },
+    {
+      "file": "native-paper-1280.png",
+      "changedPixels": 14246,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      }
+    },
+    {
+      "file": "native-paper-640.png",
+      "changedPixels": 7203,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      }
+    },
+    {
+      "file": "native-white-1280.png",
+      "changedPixels": 14227,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      }
+    },
+    {
+      "file": "native-white-640.png",
+      "changedPixels": 7192,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": false,
+        "native": true,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": true,
+        "files": true
+      }
+    },
+    {
+      "file": "view-paper-1280.png",
+      "changedPixels": 1380,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      }
+    },
+    {
+      "file": "view-paper-640.png",
+      "changedPixels": 1228,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      }
+    },
+    {
+      "file": "view-white-1280.png",
+      "changedPixels": 1378,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      }
+    },
+    {
+      "file": "view-white-640.png",
+      "changedPixels": 1225,
+      "neighbourPixels": 0,
+      "interaction": "keyboard",
+      "baseline": {
+        "calls": [
+          "view.stop",
+          "native.stop",
+          "files.remove"
+        ],
+        "notes": [
+          {
+            "body": "Removed Fixture Tools.",
+            "type": "success"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": false
+      },
+      "head": {
+        "calls": [
+          "native.stop",
+          "view.stop"
+        ],
+        "notes": [
+          {
+            "body": "Could not remove Fixture Tools. Plugin could not be stopped. Files kept. Restart Gloomberb.",
+            "type": "error"
+          }
+        ],
+        "view": true,
+        "native": false,
+        "files": true
+      }
+    }
+  ]
+}
