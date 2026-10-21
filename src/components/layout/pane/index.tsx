@@ -119,6 +119,7 @@ export function PaneWrapper({
           showActions={showActions}
           quickSettings={quickSettings}
           tabs={headerTabs}
+          bodyBackground={bg}
           topRule={topRule}
           onHeaderMouseMove={onHeaderMouseMove}
           onHeaderMouseDown={onHeaderMouseDown}

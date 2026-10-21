@@ -507,6 +507,45 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="tab-button"][data-active="true"]::after { opacity: 1; }
 [data-gloom-role="tab-button"]:disabled { color: var(--gloom-text-muted); cursor: default; }
 [data-gloom-role="tab-button"]:focus-visible { outline: none; }
+/* Title-bar tabs: the same text, sizes and colours, drawn as raised boxes
+   instead of underlines. The active tab is a box with rounded top corners,
+   open at the bottom: its top and sides in the header rule's colour (the
+   accent while the pane is focused), its fill the surface under it, laid over
+   the rule so it opens into the pane. An inactive tab takes the hover fill in
+   the same shape. The pane header sets the colours (pane/header.tsx). */
+[data-gloom-role="tab-list"][data-gloom-variant="header"] {
+  /* Header colour left above a box, and the box's line: the header rule's width. */
+  --pane-tab-top-gap: 2px;
+  --pane-tab-rule: 1px;
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"] {
+  height: calc(100% - var(--pane-tab-top-gap));
+  /* The sides take their line from the padding, so a label sits where it
+     would without the box. The gap and the top line push the label down; the
+     bottom padding lifts it back onto the header's centre line, halfway
+     between its top rule (a divider or a floating border, when there is one)
+     and its bottom rule, where the title sits. */
+  padding: 0 calc(var(--gloom-space-sm) - var(--pane-tab-rule)) calc(var(--pane-tab-top-gap) + 2 * var(--pane-tab-rule) - var(--pane-tab-top-inset, 0px));
+  border: var(--pane-tab-rule) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--gloom-radius-md) var(--gloom-radius-md) 0 0;
+  /* The line lies on the bar, as the rule does, so a translucent hairline is
+     the same colour on both. */
+  background-clip: padding-box;
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"]::after { content: none; }
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"][data-active="true"] {
+  background-color: var(--pane-tab-active-bg, var(--gloom-bg));
+  border-color: var(--pane-tab-border, var(--gloom-hairline));
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"]:not([data-active="true"]):not(:disabled):is(:hover, :focus-visible, [data-drag-target="true"]) {
+  background-color: var(--gloom-hover-fill);
+}
+/* A tab's close mark stays inside the box: in a 20px title bar the box is
+   shorter than the icon button, whose fill would cover the box's top line. */
+[data-gloom-role="tab-list"][data-gloom-variant="header"] [data-gloom-role="tab-close"] {
+  max-height: 100%;
+}
 /* A tab's close mark and a strip's plus are the icon button: 20 by 18, the control radius, the hover fill. */
 [data-gloom-role="tab-add"] {
   border: 0;

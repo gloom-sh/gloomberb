@@ -10,7 +10,6 @@ import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
 const PANE_HEADER_HEIGHT = 1;
-/** Space above desktop title-bar tabs, in px. */
 const PANE_HEADER_GRIP = ":: ";
 export const PANE_HEADER_ACTION = " ... ";
 /** The pane's docs: the same width shown or blank, so the title never shifts. */
@@ -38,6 +37,8 @@ interface PaneHeaderProps {
   quickSettings?: PaneHeaderQuickSetting[];
   /** Desktop only: the pane's primary tab strip, drawn as title-bar tabs. */
   tabs?: PaneHeaderTabsRegistration | null;
+  /** The body colour the active title-bar tab opens into. */
+  bodyBackground?: string;
   /**
    * Desktop: a 1px line is drawn over the header's first row (a dock divider
    * above it, or a floating pane's border). The header mirrors it with padding
@@ -131,6 +132,7 @@ export function PaneHeader({
   showActions = false,
   quickSettings = [],
   tabs = null,
+  bodyBackground,
   topRule = false,
   titleBar = null,
   onHeaderMouseMove,
@@ -262,9 +264,14 @@ export function PaneHeader({
               marginTop: -topInset,
               marginBottom: -1,
               marginLeft: "var(--gloom-space-sm)",
-              // Undoes the negative top margin for controls centred in the
-              // strip (the overflow chevron).
+              // Undoes the negative top margin for what is centred in the strip:
+              // the overflow chevron, and the tab labels (styles.css).
               "--pane-tab-top-inset": `${topInset}px`,
+              // The active tab's box opens into the pane over the bottom rule
+              // (styles.css), drawn in the rule's colour so the two are one line.
+              "--pane-tab-border": ruleColor,
+              // Until the strip has measured the surface under the tab (top-surface.ts).
+              "--pane-tab-active-bg": bodyBackground ?? colors.bg,
               // The active tab reads as active whenever the pane is focused, even
               // while a detail or field inside the pane owns the keyboard.
               "--pane-tab-active-fg": visuallyFocused ? colors.textBright : colors.text,

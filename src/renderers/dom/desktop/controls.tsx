@@ -670,7 +670,7 @@ export function WebPageStackView({
   return (
     <Box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0} minHeight={0} overflow="hidden">
       {!headerAttached && (
-        <div className="gloom-stack-bar" data-gloom-role="page-stack-header">
+        <div className="gloom-stack-bar" data-gloom-role="page-stack-header" data-gloom-top-surface="">
           <button
             type="button"
             className="gloom-stack-back"

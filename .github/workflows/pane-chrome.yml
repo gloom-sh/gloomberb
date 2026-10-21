@@ -110,9 +110,11 @@ jobs:
       # (docked, tabbed, failed, floating, fullscreen, popped out), when tabs
       # stop selecting or reordering or start moving their pane, or when the
       # resize corner or edges, a dock divider or a sidebar divider stop
-      # working or stop following the pointer during the drag, or when an
+      # working or stop following the pointer during the drag, when an
       # item of the app's top bar paints over another or is cut at some
-      # window width. The summary names the step.
+      # window width, or when a title-bar tab stops being a box open into
+      # its pane with its label on the title's centre line. The summary
+      # names the step.
       - name: Move panes with real pointer input
         run: bun run check:pane-chrome
 

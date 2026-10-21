@@ -290,6 +290,8 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
       ref={rootRef}
       className="gloom-qb"
       data-gloom-role="query-bar"
+      // The active title-bar tab above takes this band's colour (top-surface.ts).
+      data-gloom-top-surface=""
       // A search with nothing beside it may take the room the filters would.
       data-search-only={search && items.length === 0 && !view ? "true" : undefined}
     >
