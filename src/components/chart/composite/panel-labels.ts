@@ -63,7 +63,8 @@ export function resolveSeriesAxisTags(
     const domain = panel.axes[source.axis];
     if (source.hidden || !domain || cursor?.value == null) return [];
     const yRatio = projectCompositeValue(cursor.value, domain);
-    if (yRatio === null) return [];
+    // An axis scaled by hand tags only the values it shows.
+    if (yRatio === null || (domain.manual && (yRatio < 0 || yRatio > 1))) return [];
     return [{
       seriesId: source.id,
       seriesLabel: source.label,

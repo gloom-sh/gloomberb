@@ -54,6 +54,36 @@ function resolveScroll(event: MouseLikeEvent) {
   };
 }
 
+/** WebKit's trackpad pinch: the scale since the pinch began, at the pointer. */
+export interface PinchGestureEvent extends Event {
+  scale: number;
+  clientX: number;
+  clientY: number;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}
+
+/** Chromium sends a trackpad pinch as Ctrl+wheel with `deltaY = -100 ln(scale step)`. */
+const PINCH_WHEEL_PIXELS_PER_E = 100;
+
+/**
+ * One step of a WebKit pinch (`step`, the scale since the last one) as the
+ * Ctrl+wheel event Chromium sends for it, so one handler serves both. Null
+ * for a step that zooms nothing.
+ */
+export function pinchWheelEvent(event: PinchGestureEvent, step: number): CellMouseEvent | null {
+  if (!(step > 0) || !Number.isFinite(step) || step === 1) return null;
+  const deltaY = -PINCH_WHEEL_PIXELS_PER_E * Math.log(step);
+  const base = cellMouseEvent(event as unknown as MouseLikeEvent, "scroll");
+  return {
+    ...base,
+    modifiers: { shift: event.shiftKey === true, alt: event.altKey === true, ctrl: true },
+    scroll: { direction: deltaY > 0 ? "down" : "up", delta: Math.abs(deltaY), deltaX: 0, deltaY },
+  };
+}
+
 /**
  * `ahead` is where the browser predicts the pointer will be a moment later
  * (`getPredictedEvents`), for drawing what follows it; hit tests and releases

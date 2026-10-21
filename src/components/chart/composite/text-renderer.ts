@@ -13,6 +13,7 @@ import type {
   CompositeProjectedSeries,
 } from "./types";
 import { clamp } from "../../../utils/math";
+import { clipSegmentToBand } from "./value-scale";
 
 function setCell(rows: string[][], x: number, y: number, value: string): void {
   const row = rows[y];
@@ -43,16 +44,40 @@ function drawLine(rows: string[][], x0: number, y0: number, x1: number, y1: numb
   }
 }
 
-function cellPoint(point: CompositeProjectedPoint, width: number, height: number): { x: number; y: number } {
+/**
+ * The cell a point falls in. An axis scaled by hand can put it past the top or
+ * bottom row, where `keepY` leaves it for the drawing to clip.
+ */
+function cellPoint(point: CompositeProjectedPoint, width: number, height: number, keepY = false): { x: number; y: number } {
+  const y = Math.round(point.yRatio * Math.max(height - 1, 0));
   return {
     x: clamp(Math.round(point.xRatio * Math.max(width - 1, 0)), 0, Math.max(width - 1, 0)),
-    y: clamp(Math.round(point.yRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0)),
+    y: keepY ? y : clamp(y, 0, Math.max(height - 1, 0)),
   };
 }
 
 function valueRow(value: number, domain: CompositeAxisDomain, height: number): number | null {
   const ratio = projectCompositeValue(value, domain);
-  return ratio === null ? null : clamp(Math.round(ratio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
+  if (ratio === null) return null;
+  const row = Math.round(ratio * Math.max(height - 1, 0));
+  return domain.manual ? row : clamp(row, 0, Math.max(height - 1, 0));
+}
+
+/** A line between two cells, the part outside the rows (a hand-scaled axis) left off. */
+function drawRowsLine(rows: string[][], x0: number, y0: number, x1: number, y1: number, mark: string): void {
+  const last = rows.length - 1;
+  if (y0 >= 0 && y0 <= last && y1 >= 0 && y1 <= last) {
+    drawLine(rows, x0, y0, x1, y1, mark);
+    return;
+  }
+  const clipped = clipSegmentToBand(x0, y0, x1, y1, -0.49, last + 0.49);
+  if (!clipped) return;
+  drawLine(rows, Math.round(clipped[0]), Math.round(clipped[1]), Math.round(clipped[2]), Math.round(clipped[3]), mark);
+}
+
+/** Rows from `from` to `to`, both ends kept to the rows there are. */
+function rowSpan(from: number, to: number, height: number): [number, number] {
+  return [Math.max(0, Math.min(from, to)), Math.min(height - 1, Math.max(from, to))];
 }
 
 function renderLineLike(
@@ -61,8 +86,9 @@ function renderLineLike(
   width: number,
   height: number,
   cue?: SeriesLineCue,
+  keepY = false,
 ): void {
-  const points = series.points.map((point) => ({ ...cellPoint(point, width, height), point }));
+  const points = series.points.map((point) => ({ ...cellPoint(point, width, height, keepY), point }));
   if (points.length === 0) return;
   const step = series.source.style === "step" || series.source.interpolation === "step-after";
   // Beside other lines, each line keeps its own mark the whole way, steps
@@ -73,10 +99,10 @@ function renderLineLike(
     const current = points[index]!;
     if (current.point.breakBefore) continue;
     if (step) {
-      drawLine(rows, previous.x, previous.y, current.x, previous.y, mark ?? "─");
-      drawLine(rows, current.x, previous.y, current.x, current.y, mark ?? "│");
+      drawRowsLine(rows, previous.x, previous.y, current.x, previous.y, mark ?? "─");
+      drawRowsLine(rows, current.x, previous.y, current.x, current.y, mark ?? "│");
     } else {
-      drawLine(rows, previous.x, previous.y, current.x, current.y, mark ?? "•");
+      drawRowsLine(rows, previous.x, previous.y, current.x, current.y, mark ?? "•");
     }
   }
   for (let index = 0; index < points.length; index += 1) {
@@ -94,9 +120,10 @@ function renderPoints(
   series: CompositeProjectedSeries,
   width: number,
   height: number,
+  keepY: boolean,
 ): void {
   for (const point of series.points) {
-    const cell = cellPoint(point, width, height);
+    const cell = cellPoint(point, width, height, keepY);
     setCell(rows, cell.x, cell.y, "●");
   }
 }
@@ -109,14 +136,14 @@ function renderArea(
   height: number,
   cue?: SeriesLineCue,
 ): void {
+  const keepY = domain.manual === true;
   const baseline = valueRow(0, domain, height) ?? height - 1;
-  const points = series.points.map((point) => cellPoint(point, width, height));
+  const points = series.points.map((point) => cellPoint(point, width, height, keepY));
   for (const point of points) {
-    const top = Math.min(point.y, baseline);
-    const bottom = Math.max(point.y, baseline);
+    const [top, bottom] = rowSpan(point.y, baseline, height);
     for (let row = top; row <= bottom; row += 1) setCell(rows, point.x, row, "░");
   }
-  renderLineLike(rows, series, width, height, cue);
+  renderLineLike(rows, series, width, height, cue, keepY);
 }
 
 /** A band's range as shade between its points' low and high rows, under its line. */
@@ -138,7 +165,7 @@ function renderBand(
       : { x: cellPoint(projected, width, height).x, top: Math.min(top, bottom), bottom: Math.max(top, bottom) };
   });
   const shade = (x: number, top: number, bottom: number) => {
-    for (let row = Math.round(top); row <= Math.round(bottom); row += 1) {
+    for (let row = Math.max(0, Math.round(top)); row <= Math.min(height - 1, Math.round(bottom)); row += 1) {
       const current = rows[row]?.[x];
       if (current === " " || current === "·") setCell(rows, x, row, "░");
     }
@@ -157,7 +184,7 @@ function renderBand(
       shade(x, previous.top + (current.top - previous.top) * t, previous.bottom + (current.bottom - previous.bottom) * t);
     }
   }
-  renderLineLike(rows, series, width, height, cue);
+  renderLineLike(rows, series, width, height, cue, domain.manual === true);
 }
 
 function renderColumns(
@@ -170,7 +197,7 @@ function renderColumns(
 ): void {
   const baseline = valueRow(0, domain, height) ?? height - 1;
   for (const point of series.points) {
-    const cell = cellPoint(point, width, height);
+    const cell = cellPoint(point, width, height, domain.manual);
     const group = layout.groupByPoint.get(point) ?? {
       index: 0,
       count: 1,
@@ -194,8 +221,7 @@ function renderColumns(
         : Math.round(group.index * (groupWidth - 1) / (group.count - 1));
       cell.x = groupStart + slot;
     }
-    const top = Math.min(cell.y, baseline);
-    const bottom = Math.max(cell.y, baseline);
+    const [top, bottom] = rowSpan(cell.y, baseline, height);
     for (let row = top; row <= bottom; row += 1) setCell(rows, cell.x, row, "█");
   }
 }
@@ -221,9 +247,10 @@ function renderOhlc(
     const highRow = valueRow(high, domain, height);
     const lowRow = valueRow(low, domain, height);
     if (closeRow === null || highRow === null || lowRow === null) continue;
-    drawLine(rows, x, highRow, x, lowRow, "│");
+    drawRowsLine(rows, x, highRow, x, lowRow, "│");
     if (series.source.style === "candles" && openRow !== null) {
-      for (let row = Math.min(openRow, closeRow); row <= Math.max(openRow, closeRow); row += 1) {
+      const [bodyTop, bodyBottom] = rowSpan(openRow, closeRow, height);
+      for (let row = bodyTop; row <= bodyBottom; row += 1) {
         for (let offset = -halfCandleWidth; offset <= halfCandleWidth; offset += 1) {
           setCell(rows, x + offset, row, "█");
         }
@@ -292,10 +319,10 @@ export function renderCompositePanelText(
         break;
       case "line":
       case "step":
-        renderLineLike(rows, series, plotWidth, height, cue);
+        renderLineLike(rows, series, plotWidth, height, cue, domain.manual === true);
         break;
       case "points":
-        renderPoints(rows, series, plotWidth, height);
+        renderPoints(rows, series, plotWidth, height, domain.manual === true);
         break;
     }
   }

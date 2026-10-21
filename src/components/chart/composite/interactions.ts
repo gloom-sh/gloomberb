@@ -31,8 +31,13 @@ export type CompositeChartInteraction =
 
 export const COMPOSITE_ZOOM_STEP_FACTOR = 1.2;
 export const COMPOSITE_KEYBOARD_PAN_RATIO = 0.02;
-/** Pixels of trackpad or wheel travel that zoom the viewport by a factor of e. */
-const WHEEL_ZOOM_PIXELS_PER_E = 160;
+/**
+ * Pixels of trackpad or wheel travel that zoom the viewport by a factor of e.
+ * Chromium sends a trackpad pinch as Ctrl+wheel with `deltaY = -100 ln(scale)`
+ * (the desktop host turns WebKit's pinch into the same), so at 100 the bars
+ * follow the fingers.
+ */
+const WHEEL_ZOOM_PIXELS_PER_E = 100;
 /** Bound on one wheel event so a coarse mouse notch cannot zoom by more than this. */
 const WHEEL_ZOOM_STEP_LIMIT = 1.5;
 

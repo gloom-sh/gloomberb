@@ -233,7 +233,8 @@ describe("composite chart interactions", () => {
   });
 
   test("zooms continuously from pinch deltas and by fixed steps from notches", () => {
-    expect(resolveCompositeWheelZoom({ direction: "up", delta: 16, deltaX: 0, deltaY: -16 })).toBeCloseTo(Math.exp(0.1), 6);
+    // A pinch's Ctrl+wheel (deltaY = -100 ln(scale)) zooms by the pinch's own scale.
+    expect(resolveCompositeWheelZoom({ direction: "up", delta: 16, deltaX: 0, deltaY: -100 * Math.log(1.2) })).toBeCloseTo(1.2, 6);
     expect(resolveCompositeWheelZoom({ direction: "down", delta: 1_000, deltaX: 0, deltaY: 1_000 })).toBeCloseTo(1 / 1.5, 6);
     expect(resolveCompositeWheelZoom({ direction: "up", delta: 4 })).toBeCloseTo(1.16, 6);
     expect(resolveCompositeWheelZoom({ direction: "down", delta: 100 })).toBeCloseTo(1 / 1.32, 6);

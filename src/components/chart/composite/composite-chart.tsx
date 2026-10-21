@@ -3,7 +3,7 @@ import { useCompositeChartKeyboard } from "./use-composite-chart-keyboard";
 import { useCompositeViewport } from "./use-composite-viewport";
 import { CompositePanelSurface } from "./panel-surface";
 import { MINIMUM_AXIS_LABEL_WIDTH, compositeAxisLabelWidth } from "./panel-labels";
-import { isVerticalWheelDirection } from "./panel-gestures";
+import { AXIS_DOUBLE_PRESS_MS, isVerticalWheelDirection } from "./panel-gestures";
 import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
@@ -27,7 +27,14 @@ import { useChartViewResetListener } from "../core/view-reset";
 import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import { StaticXAxisLabels, StaticXMarkerLabels, StaticXMarkerOverlay } from "./axis-overlays";
 import { formatCompositeCursorAxisDate } from "./format";
-import { resolveCompositeWheelPan, resolveCompositeWheelZoom } from "./interactions";
+import {
+  resolveCompositeWheelPan,
+  resolveCompositeWheelZoom,
+  type CompositeNavigationFrame,
+  type CompositeViewportRange,
+} from "./interactions";
+import { NO_VALUE_SCALES, resolveAxisDragSpanFactor } from "./value-scale";
+import { useCompositeValueScales } from "./use-composite-value-scales";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 import {
   allocateCompositePanelHeights,
@@ -81,6 +88,8 @@ const holdsNothing = () => false;
  */
 const DESKTOP_FULL_ROW = { width: "100%" } as const;
 const DESKTOP_PLOT_COLUMN = { flex: "1 1 0px", width: "auto", minWidth: 0 } as const;
+/** The time axis row where a drag on it zooms time. */
+const TIME_AXIS_ROW = { ...DESKTOP_FULL_ROW, cursor: "ew-resize" } as const;
 
 /** Default-palette series in the theme's own palette, where it has one; the same list otherwise. */
 function useThemedSeriesList(list: ResolvedSeries[], themeId: string): ResolvedSeries[];
@@ -235,14 +244,24 @@ function ThemedCompositeChart({
     return assignSeriesLineCues(cueSourceRef.current);
   }, [cueKey]);
   const {
-    navigationFrame, activeUserViewport, effectiveViewport,
+    navigationFrame, activeUserViewport, effectiveViewport, authoredViewportChanged, authoredGeneration,
     panViewport, panViewportByRatio, zoomViewport, setViewportRange, resetViewport,
   } = useCompositeViewport({
     viewport, viewportResetKey, visibleSeries, marketTimelineSeries,
     allowHistoricalBackfill, onViewportChange,
   });
+  // Values scaled by hand belong to the view they were scaled in: a new
+  // authored view (another range, another listing) fits them again.
+  const { valueScales: heldValueScales, setValueScale, resetPanelValueScale, resetValueScales } = useCompositeValueScales(authoredGeneration);
+  const valueScales = authoredViewportChanged ? NO_VALUE_SCALES : heldValueScales;
+  const scaledByHand = valueScales !== NO_VALUE_SCALES && Object.keys(valueScales).length > 0;
+  // `0`, Reset Zoom and choosing the range again put both axes back.
+  const resetView = useCallback(() => {
+    resetViewport();
+    resetValueScales();
+  }, [resetValueScales, resetViewport]);
   // The pane's range control asks for this when its selected range is chosen again.
-  useChartViewResetListener(resetViewport, interactive && navigable);
+  useChartViewResetListener(resetView, interactive);
   const timeAxisRows = showTimeAxis ? 1 : 0;
   const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
   const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
@@ -284,6 +303,7 @@ function ThemedCompositeChart({
       clipToViewport,
       timelineSeries: marketTimelineSeries,
       rightOffsetRatio,
+      valueScales,
     });
   }, [
     clipToViewport,
@@ -294,6 +314,7 @@ function ThemedCompositeChart({
     panelSeries,
     panels,
     rightOffsetRatio,
+    valueScales,
   ]);
   // Gutters follow the axes the scene actually built. Reading the series list
   // instead drops a gutter the moment its series has no observation in view,
@@ -516,10 +537,11 @@ function ThemedCompositeChart({
     isSeriesToggleable,
     navigationFrame,
     activeUserViewport,
+    scaledByHand,
     panViewportByRatio,
     zoomViewport,
     setViewportRange,
-    resetViewport,
+    resetViewport: resetView,
     drawings,
     selectedDrawingId,
     setSelectedDrawingId,
@@ -561,6 +583,61 @@ function ThemedCompositeChart({
     resetViewport,
     zoomViewport,
   ]);
+
+  // The time axis under the pointer: a drag zooms time from the newest bar
+  // in view, in (left) or out (right), as +/- do; a double click resets it.
+  const timeScalable = interactive && navigable && !!navigationFrame && !xAxis;
+  const timeAxisGestureRef = useRef<{
+    startColumn: number;
+    frame: CompositeNavigationFrame;
+    from: CompositeViewportRange;
+    moved: boolean;
+  } | null>(null);
+  const lastTimeAxisPressRef = useRef<number | null>(null);
+  const latestTimeAxisRef = useRef({ navigationFrame, effectiveViewport, resetViewport, zoomViewport, activateFromPointer, cellWidthPx });
+  latestTimeAxisRef.current = { navigationFrame, effectiveViewport, resetViewport, zoomViewport, activateFromPointer, cellWidthPx };
+  const timeAxisGestures = useMemo(() => {
+    if (!timeScalable) return undefined;
+    const column = (event: ChartMouseEvent) => typeof event.preciseX === "number" ? event.preciseX : event.x;
+    const release = () => {
+      timeAxisGestureRef.current = null;
+    };
+    return {
+      onMouseDown: (event: ChartMouseEvent) => {
+        const latest = latestTimeAxisRef.current;
+        latest.activateFromPointer();
+        consumeChartMouseEvent(event);
+        const now = Date.now();
+        const last = lastTimeAxisPressRef.current;
+        const double = typeof event.detail === "number"
+          ? event.detail >= 2
+          : last !== null && now - last < AXIS_DOUBLE_PRESS_MS;
+        if (double) {
+          lastTimeAxisPressRef.current = null;
+          timeAxisGestureRef.current = null;
+          latest.resetViewport();
+          return;
+        }
+        lastTimeAxisPressRef.current = now;
+        timeAxisGestureRef.current = latest.navigationFrame && latest.effectiveViewport
+          ? { startColumn: column(event), frame: latest.navigationFrame, from: latest.effectiveViewport, moved: false }
+          : null;
+      },
+      onMouseDrag: (event: ChartMouseEvent) => {
+        const gesture = timeAxisGestureRef.current;
+        if (!gesture) return;
+        consumeChartMouseEvent(event);
+        const latest = latestTimeAxisRef.current;
+        const deltaPx = (column(event) - gesture.startColumn) * latest.cellWidthPx;
+        if (!gesture.moved && Math.abs(deltaPx) < 1) return;
+        gesture.moved = true;
+        lastTimeAxisPressRef.current = null;
+        latest.zoomViewport(1 / resolveAxisDragSpanFactor(deltaPx), 1, { frame: gesture.frame, from: gesture.from });
+      },
+      onMouseUp: release,
+      onMouseDragEnd: release,
+    };
+  }, [timeScalable]);
 
   const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
   const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
@@ -797,6 +874,9 @@ function ThemedCompositeChart({
           levels={levelHost?.panel.id === panel.id ? levels ?? null : null}
           selectedLevelId={selectedLevelId}
           onSelectLevel={setSelectedLevelId}
+          valueScalable={interactive}
+          onSetValueScale={setValueScale}
+          onResetValueScale={resetPanelValueScale}
         />
       ))}
       {watermarkScale ? (
@@ -836,7 +916,15 @@ function ThemedCompositeChart({
         </Box>
       ) : null}
       {timeAxisLayout ? (
-        <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
+        <Box
+          flexDirection="row"
+          width={totalWidth}
+          height={1}
+          style={isDesktopWeb ? timeAxisGestures ? TIME_AXIS_ROW : DESKTOP_FULL_ROW : undefined}
+          {...timeAxisGestures}
+          data-gloom-interactive={timeAxisGestures ? "true" : undefined}
+          data-gloom-role="composite-chart-time-scale"
+        >
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXAxisLabels
             labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}

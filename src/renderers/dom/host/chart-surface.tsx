@@ -285,6 +285,8 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
     return (
       <WebBox
         {...props}
+        // A pinch over a chart zooms it in WebKit as it does in Chromium.
+        pinchAsWheel
         ref={ref as Ref<HTMLDivElement>}
         data-gloom-role={(props["data-gloom-role"] as string | undefined) ?? "chart-surface"}
         style={{

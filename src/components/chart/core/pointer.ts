@@ -21,6 +21,8 @@ export interface ChartMouseEvent {
   y: number;
   /** DOM target on the desktop host; absent in the terminal. */
   target?: { closest?: (selector: string) => unknown } | null;
+  /** The press's click count on the desktop host (2 on a double click); absent in the terminal. */
+  detail?: number;
   preciseX?: number;
   preciseY?: number;
   pixelX?: number;

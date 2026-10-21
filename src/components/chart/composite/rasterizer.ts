@@ -27,6 +27,7 @@ import type {
   CompositeProjectedSeries,
 } from "./types";
 import { clamp } from "../../../utils/math";
+import { clipSegmentToBand } from "./value-scale";
 
 interface RenderCompositePanelBitmapOptions {
   pixelWidth: number;
@@ -45,17 +46,28 @@ const PRIOR_CLOSE_DOT_PIXELS = 2;
 const PRIOR_CLOSE_GAP_PIXELS = 3;
 const PRIOR_CLOSE_OPACITY = 0.7;
 
-function pixelPoint(point: CompositeProjectedPoint, width: number, height: number): { x: number; y: number } {
+/**
+ * Where a point falls in the bitmap. An axis fitted to the data holds every
+ * point; one scaled by hand can put points past the edges, which `keepY` keeps
+ * there for the drawing to clip, rather than flattening them onto the edge.
+ */
+function pixelPoint(point: CompositeProjectedPoint, width: number, height: number, keepY = false): { x: number; y: number } {
+  const y = point.yRatio * Math.max(height - 1, 0);
   return {
     x: clamp(point.xRatio * Math.max(width - 1, 0), 0, Math.max(width - 1, 0)),
-    y: clamp(point.yRatio * Math.max(height - 1, 0), 0, Math.max(height - 1, 0)),
+    y: keepY ? y : clamp(y, 0, Math.max(height - 1, 0)),
   };
 }
 
 function pixelY(value: number, domain: CompositeAxisDomain, height: number): number | null {
   const ratio = projectCompositeValue(value, domain);
-  return ratio === null ? null : clamp(ratio * Math.max(height - 1, 0), 0, Math.max(height - 1, 0));
+  if (ratio === null) return null;
+  const y = ratio * Math.max(height - 1, 0);
+  return domain.manual ? y : clamp(y, 0, Math.max(height - 1, 0));
 }
+
+/** Rows past the bitmap's edges a clipped stroke still reaches, so its end is not cut square. */
+const CLIP_MARGIN_PIXELS = 4;
 
 const AREA_FILL_MAX_OPACITY = 0.3;
 const AREA_FILL_MIN_OPACITY = 0.02;
@@ -270,7 +282,8 @@ function drawConnectedSeries(
   area: boolean,
   cue?: SeriesLineCue,
 ): void {
-  const points = series.points.map((point) => pixelPoint(point, width, height));
+  const manual = domain.manual === true;
+  const points = series.points.map((point) => pixelPoint(point, width, height, manual));
   if (points.length === 0) return;
   const baseline = pixelY(0, domain, height) ?? height - 1;
   const step = series.source.style === "step" || series.source.interpolation === "step-after";
@@ -278,22 +291,23 @@ function drawConnectedSeries(
   if (area) fillAreaGradient(data, width, height, series, points, baseline, step, color);
 
   const stroke = cue ? new DashedStroke(data, width, height, color, cue) : null;
+  // A hand-scaled axis can send a segment far past the plot: only the part
+  // near it is stroked, so a dash pattern never walks the rest.
+  const segment = (x0: number, y0: number, x1: number, y1: number, thickness: number) => {
+    const clipped = manual ? clipSegmentToBand(x0, y0, x1, y1, -CLIP_MARGIN_PIXELS, height - 1 + CLIP_MARGIN_PIXELS) : [x0, y0, x1, y1] as const;
+    if (!clipped) return;
+    if (stroke) stroke.segment(clipped[0], clipped[1], clipped[2], clipped[3]);
+    else drawLine(data, width, height, clipped[0], clipped[1], clipped[2], clipped[3], color, thickness);
+  };
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1]!;
     const current = points[index]!;
     if (series.points[index]?.breakBefore) continue;
-    if (stroke) {
-      if (step) {
-        stroke.segment(previous.x, previous.y, current.x, previous.y);
-        stroke.segment(current.x, previous.y, current.x, current.y);
-      } else {
-        stroke.segment(previous.x, previous.y, current.x, current.y);
-      }
-    } else if (step) {
-      drawLine(data, width, height, previous.x, previous.y, current.x, previous.y, color, 1.4);
-      drawLine(data, width, height, current.x, previous.y, current.x, current.y, color, 1.4);
+    if (step) {
+      segment(previous.x, previous.y, current.x, previous.y, 1.4);
+      segment(current.x, previous.y, current.x, current.y, 1.4);
     } else {
-      drawLine(data, width, height, previous.x, previous.y, current.x, current.y, color, 1.5);
+      segment(previous.x, previous.y, current.x, current.y, 1.5);
     }
   }
 
@@ -429,7 +443,7 @@ function drawColumns(
   const baseline = pixelY(0, domain, height) ?? height - 1;
   for (const projected of series.points) {
     const fill = projected.value < 0 ? negativeColor : color;
-    const point = pixelPoint(projected, width, height);
+    const point = pixelPoint(projected, width, height, domain.manual);
     const geometry = columnPixelGeometry(projected, width, layout, widthByFamily);
     fillRect(
       data,
@@ -585,7 +599,7 @@ export function renderCompositePanelBitmap(
         break;
       case "points":
         for (const point of series.points) {
-          const projected = pixelPoint(point, width, height);
+          const projected = pixelPoint(point, width, height, domain.manual);
           drawCircle(data, width, height, projected.x, projected.y, 2.4, color);
         }
         break;

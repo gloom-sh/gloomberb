@@ -13,11 +13,13 @@ import {
 import {
   type CellMouseEvent,
   type MouseLikeEvent,
+  type PinchGestureEvent,
   callCellMouseHandler,
   callMouseHandler,
   cancelWebFrame,
   cellBoundsForElement,
   cellMouseEvent,
+  pinchWheelEvent,
   requestWebFrame,
 } from "./mouse";
 import { hideDragShield, showDragShield } from "./drag-shield";
@@ -212,15 +214,54 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
     }, []);
 
     const handlesWheel = typeof props.onMouseScroll === "function";
+    const pinchAsWheel = handlesWheel && props.pinchAsWheel === true;
     useEffect(() => {
       const element = elementRef.current;
       if (!element || !handlesWheel) return;
+      // WebKit pinches with gesture events; with `pinchAsWheel` they reach the
+      // handler as the Ctrl+wheel Chromium sends for one. The wheel events a
+      // newer WebKit adds for the same pinch are dropped, so it zooms once.
+      let pinching = false;
+      let pinchScale = 1;
       const handleWheel = (event: WheelEvent) => {
+        if (pinching && event.ctrlKey) {
+          event.preventDefault();
+          return;
+        }
+        // A plain scroll means the pinch is over, whatever became of its end.
+        pinching = false;
         callMouseHandler(propsRef.current.onMouseScroll, event, "scroll");
       };
+      const startPinch = (event: Event) => {
+        event.preventDefault();
+        pinching = true;
+        pinchScale = (event as PinchGestureEvent).scale || 1;
+      };
+      const changePinch = (event: Event) => {
+        event.preventDefault();
+        const scale = (event as PinchGestureEvent).scale;
+        const step = pinchScale > 0 && scale > 0 ? scale / pinchScale : 1;
+        if (scale > 0) pinchScale = scale;
+        const wheel = pinchWheelEvent(event as PinchGestureEvent, step);
+        if (wheel) callCellMouseHandler(propsRef.current.onMouseScroll, wheel);
+      };
+      const endPinch = (event: Event) => {
+        event.preventDefault();
+        pinching = false;
+      };
       element.addEventListener("wheel", handleWheel, { passive: false });
-      return () => element.removeEventListener("wheel", handleWheel);
-    }, [handlesWheel]);
+      if (pinchAsWheel) {
+        element.addEventListener("gesturestart", startPinch);
+        element.addEventListener("gesturechange", changePinch);
+        element.addEventListener("gestureend", endPinch);
+      }
+      return () => {
+        element.removeEventListener("wheel", handleWheel);
+        element.removeEventListener("gesturestart", startPinch);
+        element.removeEventListener("gesturechange", changePinch);
+        element.removeEventListener("gestureend", endPinch);
+      };
+    }, [handlesWheel, pinchAsWheel]);
 
     const handleMouseDown = (event: MouseEvent) => {
       const hasSyntheticDrag = typeof propsRef.current.onMouse === "function";

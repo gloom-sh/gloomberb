@@ -26,6 +26,7 @@ import { isFiniteNumber } from "../../../utils/guards";
 import { volumeProfile } from "../../../time-series/trader-studies";
 import { extendedHoursSpans, isIntradaySeries } from "./session-shading";
 import { listingTimeZone } from "../../../market-data/market/trading-sessions";
+import { manualValueRangeApplies, valueScaleKey, valueScaleSlot, type CompositeManualValueScale } from "./value-scale";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -328,11 +329,19 @@ function buildAxisDomain(
   series: ResolvedSeries[],
   scale: PanelScale,
   rows: number,
+  manualScale?: CompositeManualValueScale,
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
   const values = axisSeries.flatMap(seriesDomainValues);
-  const { min, max } = paddedDomain([...values, ...priorCloseInReach(axisSeries, values)], scale);
+  const fitted = paddedDomain([...values, ...priorCloseInReach(axisSeries, values)], scale);
+  const scaleKey = valueScaleKey(scale, axisSeries);
+  // A range set by hand holds while the axis plots the same series and some
+  // of their data is in it; otherwise the axis fits the data again.
+  const manual = manualScale && manualScale.key === scaleKey && manualValueRangeApplies(manualScale, fitted, scale)
+    ? manualScale
+    : null;
+  const { min, max } = manual ?? fitted;
   const first = axisSeries[0]!;
   return {
     side,
@@ -346,6 +355,8 @@ function buildAxisDomain(
     seriesIds: axisSeries.map((entry) => entry.id),
     maxTicks: compositeAxisMaxTicks(rows),
     tickRows: rows,
+    scaleKey,
+    ...(manual ? { manual: true } : {}),
   };
 }
 
@@ -510,7 +521,8 @@ function attachLastPriceMarker(
   const value = lastCloseOf(projected.points);
   if (value === null) return;
   const yRatio = projectCompositeValue(value, domain);
-  if (yRatio === null) return;
+  // An axis scaled by hand can leave the last close off the panel.
+  if (yRatio === null || (domain.manual && (yRatio < 0 || yRatio > 1))) return;
   panel.lastPrice = {
     seriesId: primary.id,
     color: primary.color,
@@ -837,8 +849,8 @@ export function buildCompositeChartScene(
       ? dataSeries.filter((entry) => entry.panelId === panel.id)
       : panelSeries;
     const rows = panelHeights.get(panel.id) ?? 1;
-    const left = buildAxisDomain("left", domainSeries, scale, rows);
-    const right = buildAxisDomain("right", domainSeries, scale, rows);
+    const left = buildAxisDomain("left", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "left")]);
+    const right = buildAxisDomain("right", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "right")]);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
     return {
       id: panel.id,
