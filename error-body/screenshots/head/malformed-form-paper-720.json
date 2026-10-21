@@ -1,0 +1,42 @@
+{
+  "outcome": {
+    "raw": "[{broken",
+    "notifications": [],
+    "error": "Saved price alerts could not be read: JSON Parse error: Expected '}'",
+    "nativeTraffic": []
+  },
+  "text": "Alerts\nPrices\nEvents\nHistory\nprice alerts unavailable.\nSaved price alerts could not be read: Expected property name or '}' in JSON at position 2 (line 1 column 3)\nSaved price alerts could not be read: Expected property name or '}' in JSON at position 2 (line 1 column 3)\n[a]dd alert\nThematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.\nAdd Alert\nCreate a price alert from a symbol, condition, and target price\nSymbol\nAAPL  AAPL  195\nCondition\nAbove\nTarget Price\nCurrent price 195; edit to set the target.\nSaved price alerts could not be read: JSON Parse error: Expected '}'\nCancel\nAdd Alert",
+  "traffic": [],
+  "panes": [
+    {
+      "id": "alerts",
+      "text": "Alerts\nPrices\nEvents\nHistory\nprice alerts unavailable.\nSaved price alerts could not be read: Expected property name or '}' in JSON at position 2 (line 1 column 3)\nSaved price alerts could not be read: Expected property name or '}' in JSON at position 2 (line 1 column 3)\n[a]dd alert",
+      "rect": {
+        "x": 8,
+        "y": 8,
+        "width": 348,
+        "height": 604,
+        "top": 8,
+        "right": 356,
+        "bottom": 612,
+        "left": 8
+      }
+    },
+    {
+      "id": "themes",
+      "text": "Thematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+      "rect": {
+        "x": 364,
+        "y": 8,
+        "width": 348,
+        "height": 604,
+        "top": 8,
+        "right": 712,
+        "bottom": 612,
+        "left": 364
+      }
+    }
+  ],
+  "errors": [],
+  "blocked": []
+}

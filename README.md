@@ -1,15 +1,15 @@
-# GLO-1164 alert storage failure evidence
+# GLO-1164 refreshed alert error-body evidence
 
-Baseline: `0568f95db049dccad254c672c2c8d284bbe6a586`. Application head: `6578fe82660f7d7d1ecdfab8cec97b6f13f28d3c`.
+Application head: `40b68e5d0b03132dd7156a90460dc07ec6a07e2c`. Frozen main: `0568f95db049dccad254c672c2c8d284bbe6a586`.
 
-The actual Add Alert command is submitted through the shared form in the desktop renderer and through a real OpenTUI/tmux session. Malformed JSON and a mixed valid/null list reproduce overwritten saved data before the change; the fixed command retains exact raw data, reports the failure in the shared form, and sends no success notification. Healthy controls behave identically.
+The review correction uses the shared error body: one red “price alerts unavailable.” title and the read-error detail once in the body. The footer retains the active error. Partially readable rows remain visible.
 
-Desktop: white/paper, 720/1280, malformed/partial/healthy. Each submitted-form comparison has a corresponding pane comparison after closing the form and dismissing any notification. All12 unobstructed neighboring Themes error-pane regions are pixel-identical; all4 healthy full pane screenshots are identical. Form comparisons intentionally include the dialog backdrop or original false-success toast. The underlying neighboring pane remains in the same saved-data error state.
+Fresh desktop captures are in `error-body/screenshots/head/`. Comparison sheets against retained actual main captures are in `error-body/screenshots/main/`; the correction-only sheets against actual6578 captures (runtime-equivalent to the previous8b head) are in `error-body/screenshots/correction/`. The unchanged fixture and retained baseline sources are documented in `source-provenance.json`.
 
-Terminal: white/paper,120x34, actual Add Alert submitted with Ctrl+S. Form and pane-after-Escape comparisons are retained. No external network requests or runtime exceptions. Four owned tmux sessions and their profiles were removed.
+There are24 desktop pairs per comparison: malformed/partial/healthy storage, form/pane, white/paper,720/1280. All12 unobstructed neighboring Thematic baskets error-pane crops match; all4 healthy pane controls match. The correction changes only the8 malformed-state images. One partial form pair has an additional14-pixel blinking input caret difference (1×14 at421,234), documented and preserved without normalization. Partial pane controls are identical.
 
-This branch contains focused evidence only. The all-pane UI benchmark is tracked independently on the PR; these captures do not substitute for it. Full raw captures, outcomes, tests and replay provenance are retained in the local GLO-1148 evidence directory.
+Eight fresh real tmux sessions cover malformed/partial, white/paper, main/final head at120×34. Eight terminal comparison sheets cover submitted forms and panes afterEscape. Main overwrites unreadable storage; the final head preserves the exact raw bytes and reports refusal. Neighboring Thematic baskets stays in the same error state. Its unobstructed content above y=720 matches; the baseline false-success toast covers the footer, so full terminal-neighbor pixel identity is not claimed. Runtime/network and cleanup checks are retained in the terminal audit. All owned sessions and scratch profiles are removed.
 
-## Final typecheck correction
+The final head passes80 focused tests/342assertions. Its exact unchanged regression files have19pass/11intendedfail on frozen main. The fresh original150-case replay preserves750artifactpairs and298persisted-filepairs, except the declared `alerts-invalid-prices.stdout` read-error wording. An independent audit rehashed all1049savedfiles per side.
 
-Final PR head: `3b5fbf33b8d43ed1ce1e19283fca23fd649ce86d`. The screenshots above keep their actual `6578fe8` source labels. The only later source change annotates the saved-alert updater argument as `unknown`. `type-only-equivalence.json` and its reproducible script prove identical Bun1.3.11 executable output. Fresh final-head CLI replay and all six CI workflows are tracked independently on the PR.
+These are focused review sheets, not the all-pane benchmark. Exact-head CI and its broad artifact audit are linked separately on PR#2072. Earlier root-level images keep their actual source labels and are retained as historical evidence.

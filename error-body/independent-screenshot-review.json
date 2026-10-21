@@ -1,0 +1,452 @@
+{
+  "head": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "checkedAt": "2026-10-21T15:12:33.639966+00:00",
+  "captureRerun": false,
+  "desktopComparisons": [
+    {
+      "comparison": "main",
+      "pairs": 24,
+      "unobstructedNeighborPairs": 12,
+      "records": [
+        {
+          "case": "healthy-form-paper-1280",
+          "changedPixels": 0,
+          "beforeSha256": "b429258e31cdb65fa335451da8f4224049568262f01078e4766ea564bba15d31",
+          "afterSha256": "b429258e31cdb65fa335451da8f4224049568262f01078e4766ea564bba15d31"
+        },
+        {
+          "case": "healthy-form-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "0d11c8775ec1e725497bb36987ecaad98b9fc9546d425243e7625c3b93094fcd",
+          "afterSha256": "0d11c8775ec1e725497bb36987ecaad98b9fc9546d425243e7625c3b93094fcd"
+        },
+        {
+          "case": "healthy-form-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "8a0a21ef9ab3bd920ef6a1e484c8bd3aa41c6db58f8eef2735fafe2f65a46828",
+          "afterSha256": "8a0a21ef9ab3bd920ef6a1e484c8bd3aa41c6db58f8eef2735fafe2f65a46828"
+        },
+        {
+          "case": "healthy-form-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "dd862d452a142226b44b5184b3252ad06b6046b9f7e8811f2034de42185dad11",
+          "afterSha256": "dd862d452a142226b44b5184b3252ad06b6046b9f7e8811f2034de42185dad11"
+        },
+        {
+          "case": "healthy-pane-paper-1280",
+          "changedPixels": 0,
+          "beforeSha256": "ba5713d41a592fb91128ac0f73a760b9a1e22fe68add2f02f6218c2a514770a0",
+          "afterSha256": "ba5713d41a592fb91128ac0f73a760b9a1e22fe68add2f02f6218c2a514770a0",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "15ca2dae333c9fbf3b0ded43105914f97a906ac4ab1050d34e0e7aefc03aa4ef",
+          "afterSha256": "15ca2dae333c9fbf3b0ded43105914f97a906ac4ab1050d34e0e7aefc03aa4ef",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "52738407256463a1fc45ecb56978387a0144b58518ecab508a8efe81bedbc8fa",
+          "afterSha256": "52738407256463a1fc45ecb56978387a0144b58518ecab508a8efe81bedbc8fa",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "8df75cf7e191fa6e2a86f98a53a5d05da6bcac775645cb8a2defa511f99c0e9c",
+          "afterSha256": "8df75cf7e191fa6e2a86f98a53a5d05da6bcac775645cb8a2defa511f99c0e9c",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "malformed-form-paper-1280",
+          "changedPixels": 280455,
+          "beforeSha256": "384c977ec17ebe6034bb6e90fb1806fe2df0e504b40ea93863ecb734ab8473ee",
+          "afterSha256": "959095b3e60c50f0be85bd2c9eca24ddc64881b707bed7d979e7004f6252e29a"
+        },
+        {
+          "case": "malformed-form-paper-720",
+          "changedPixels": 260111,
+          "beforeSha256": "0c88ac2d14c0693ccb43c69f31dcfafd6d86794c375478b61e57d8ccc5f3f79a",
+          "afterSha256": "b7cf7d601abe5735795925df90561e7849621a0ea15b4646b7ae4f6f5c0c9622"
+        },
+        {
+          "case": "malformed-form-white-1280",
+          "changedPixels": 231601,
+          "beforeSha256": "58d9bdd9fe10aa876dd860168942ab0f888a63a362e1c6efe41f9af1411054e6",
+          "afterSha256": "d4152401320ced083e0ab8da4c32db0e2698c29f379edb4409e94f4043531232"
+        },
+        {
+          "case": "malformed-form-white-720",
+          "changedPixels": 208959,
+          "beforeSha256": "44d892d096122c014f5675d0e8521f40204f4ea2ffa4f0efa82e7a584a41d4e4",
+          "afterSha256": "00d7fa827320fd07171b477e5547416225717c88e19f1c8376fdf6454c8b8e54"
+        },
+        {
+          "case": "malformed-pane-paper-1280",
+          "changedPixels": 27318,
+          "beforeSha256": "e60158b84b754de3ee819e90cf61d9042deb2fa5191029134bb5ddc34795fda8",
+          "afterSha256": "f5b34b63e5faa0525228cbce2f9c409c29476217ad20d034efc281d83ae38df9",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-paper-720",
+          "changedPixels": 25278,
+          "beforeSha256": "8be9364b24b47fea1fe8575866fd8dc55431611079e9d9b3c54b665e70f0a88f",
+          "afterSha256": "6eb93b3322f4444e2b0b2e5938e8331c7836610b2b93eafee0d7593c3de1e316",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-white-1280",
+          "changedPixels": 27284,
+          "beforeSha256": "5430432c6f0c5105dc696039bb022322a4a24d68e38c6aa0f77ea30b28deacf3",
+          "afterSha256": "e0b84cd262fff0fa9ed5f1b3466ceb04a91fce5b8aff0d8bc8cfada879f72998",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-white-720",
+          "changedPixels": 16560,
+          "beforeSha256": "a9cc454e72c3e758de4b30f29d7b30f58900abdd677efce1bda8b2ec459911b2",
+          "afterSha256": "6d93c4be555be10be14514eef4fed528ed09a1b122b5f2733cbb13df634f8afb",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "partial-form-paper-1280",
+          "changedPixels": 291286,
+          "beforeSha256": "b429258e31cdb65fa335451da8f4224049568262f01078e4766ea564bba15d31",
+          "afterSha256": "0f47333bf28791b778151530e04279e5645a4aef2d1cd516a9962d1d531cb85d"
+        },
+        {
+          "case": "partial-form-paper-720",
+          "changedPixels": 268922,
+          "beforeSha256": "0d11c8775ec1e725497bb36987ecaad98b9fc9546d425243e7625c3b93094fcd",
+          "afterSha256": "06222378319deca6b2604331a3967f848f3b5e7e23c9cc66fc4acdbfc9c21701"
+        },
+        {
+          "case": "partial-form-white-1280",
+          "changedPixels": 241620,
+          "beforeSha256": "8a0a21ef9ab3bd920ef6a1e484c8bd3aa41c6db58f8eef2735fafe2f65a46828",
+          "afterSha256": "5ac8ec52079f69ac161a95649c8ac70eb1df2976ad76831f5d730ede2484f407"
+        },
+        {
+          "case": "partial-form-white-720",
+          "changedPixels": 217733,
+          "beforeSha256": "dd862d452a142226b44b5184b3252ad06b6046b9f7e8811f2034de42185dad11",
+          "afterSha256": "5a3154848d2dba30f36b99927f139873516c6a202339311352edc7d9ffb02688"
+        },
+        {
+          "case": "partial-pane-paper-1280",
+          "changedPixels": 5434,
+          "beforeSha256": "ba5713d41a592fb91128ac0f73a760b9a1e22fe68add2f02f6218c2a514770a0",
+          "afterSha256": "0c5a2c490dc51b0faea1f6f81259a62af1ffe3b159b627a8b8b1478bb511dbfd",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-paper-720",
+          "changedPixels": 3529,
+          "beforeSha256": "15ca2dae333c9fbf3b0ded43105914f97a906ac4ab1050d34e0e7aefc03aa4ef",
+          "afterSha256": "d1b5dd18f09f973565f587c21a1551577b47636d66d6c433b084c9fda4844f02",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-white-1280",
+          "changedPixels": 5420,
+          "beforeSha256": "52738407256463a1fc45ecb56978387a0144b58518ecab508a8efe81bedbc8fa",
+          "afterSha256": "22b58146f25c193ae6bceb5c19db2cba0e3bbe9527307f84f8f2efb2ea6d8778",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-white-720",
+          "changedPixels": 3522,
+          "beforeSha256": "8df75cf7e191fa6e2a86f98a53a5d05da6bcac775645cb8a2defa511f99c0e9c",
+          "afterSha256": "11c35c31bb135af5557133cef4fb918e0ff3364c2ad4e252e1be0aeb544add75",
+          "unobstructedNeighborChangedPixels": 0
+        }
+      ]
+    },
+    {
+      "comparison": "correction",
+      "pairs": 24,
+      "unobstructedNeighborPairs": 12,
+      "records": [
+        {
+          "case": "healthy-form-paper-1280",
+          "changedPixels": 0,
+          "beforeSha256": "b429258e31cdb65fa335451da8f4224049568262f01078e4766ea564bba15d31",
+          "afterSha256": "b429258e31cdb65fa335451da8f4224049568262f01078e4766ea564bba15d31"
+        },
+        {
+          "case": "healthy-form-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "0d11c8775ec1e725497bb36987ecaad98b9fc9546d425243e7625c3b93094fcd",
+          "afterSha256": "0d11c8775ec1e725497bb36987ecaad98b9fc9546d425243e7625c3b93094fcd"
+        },
+        {
+          "case": "healthy-form-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "8a0a21ef9ab3bd920ef6a1e484c8bd3aa41c6db58f8eef2735fafe2f65a46828",
+          "afterSha256": "8a0a21ef9ab3bd920ef6a1e484c8bd3aa41c6db58f8eef2735fafe2f65a46828"
+        },
+        {
+          "case": "healthy-form-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "dd862d452a142226b44b5184b3252ad06b6046b9f7e8811f2034de42185dad11",
+          "afterSha256": "dd862d452a142226b44b5184b3252ad06b6046b9f7e8811f2034de42185dad11"
+        },
+        {
+          "case": "healthy-pane-paper-1280",
+          "changedPixels": 0,
+          "beforeSha256": "ba5713d41a592fb91128ac0f73a760b9a1e22fe68add2f02f6218c2a514770a0",
+          "afterSha256": "ba5713d41a592fb91128ac0f73a760b9a1e22fe68add2f02f6218c2a514770a0",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "15ca2dae333c9fbf3b0ded43105914f97a906ac4ab1050d34e0e7aefc03aa4ef",
+          "afterSha256": "15ca2dae333c9fbf3b0ded43105914f97a906ac4ab1050d34e0e7aefc03aa4ef",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "52738407256463a1fc45ecb56978387a0144b58518ecab508a8efe81bedbc8fa",
+          "afterSha256": "52738407256463a1fc45ecb56978387a0144b58518ecab508a8efe81bedbc8fa",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "healthy-pane-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "8df75cf7e191fa6e2a86f98a53a5d05da6bcac775645cb8a2defa511f99c0e9c",
+          "afterSha256": "8df75cf7e191fa6e2a86f98a53a5d05da6bcac775645cb8a2defa511f99c0e9c",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "malformed-form-paper-1280",
+          "changedPixels": 18763,
+          "beforeSha256": "7700c29983720186d2654341a4ab073d9928db41a916023050d796fcd411619a",
+          "afterSha256": "959095b3e60c50f0be85bd2c9eca24ddc64881b707bed7d979e7004f6252e29a"
+        },
+        {
+          "case": "malformed-form-paper-720",
+          "changedPixels": 13796,
+          "beforeSha256": "9b0959fae621ee7ac58f693258e87f1d8a4774846177811ff5384808fea5b3e3",
+          "afterSha256": "b7cf7d601abe5735795925df90561e7849621a0ea15b4646b7ae4f6f5c0c9622"
+        },
+        {
+          "case": "malformed-form-white-1280",
+          "changedPixels": 18475,
+          "beforeSha256": "cc0f4516d11cc01cd834539b3cd7ee534b90a907de2e38b87900460579768227",
+          "afterSha256": "d4152401320ced083e0ab8da4c32db0e2698c29f379edb4409e94f4043531232"
+        },
+        {
+          "case": "malformed-form-white-720",
+          "changedPixels": 11932,
+          "beforeSha256": "a2ebc0d44fd557298642ed67b00b87d818468cd0ec39d42493dc2d2432bbc82f",
+          "afterSha256": "00d7fa827320fd07171b477e5547416225717c88e19f1c8376fdf6454c8b8e54"
+        },
+        {
+          "case": "malformed-pane-paper-1280",
+          "changedPixels": 18765,
+          "beforeSha256": "b9f838f2c7d22bc189698306c13f4010db0b78f11c11a0e394e00ffa4cc413b3",
+          "afterSha256": "f5b34b63e5faa0525228cbce2f9c409c29476217ad20d034efc281d83ae38df9",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-paper-720",
+          "changedPixels": 21121,
+          "beforeSha256": "41719c24756c2c94a91d9efbe021a86619eea103f1161e3664b65276f5de603f",
+          "afterSha256": "6eb93b3322f4444e2b0b2e5938e8331c7836610b2b93eafee0d7593c3de1e316",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-white-1280",
+          "changedPixels": 18701,
+          "beforeSha256": "fa30768c5127f3170d53921c343fa876da1ba9005ec1f0eb1eb8a4a273bf8151",
+          "afterSha256": "e0b84cd262fff0fa9ed5f1b3466ceb04a91fce5b8aff0d8bc8cfada879f72998",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "malformed-pane-white-720",
+          "changedPixels": 12125,
+          "beforeSha256": "28770bcd833d969f2678c9bbeb6148eae0bae8a0493b98b1dc3f58166a0395df",
+          "afterSha256": "6d93c4be555be10be14514eef4fed528ed09a1b122b5f2733cbb13df634f8afb",
+          "unobstructedNeighborChangedPixels": 0,
+          "sharedErrorTitleOnce": true,
+          "errorDetailOccurrencesBodyPlusFooter": 2
+        },
+        {
+          "case": "partial-form-paper-1280",
+          "changedPixels": 14,
+          "beforeSha256": "dfbdab3088835c8195c2b1cc73495fbb91961a15cfa2317b9d0842172db40a93",
+          "afterSha256": "0f47333bf28791b778151530e04279e5645a4aef2d1cd516a9962d1d531cb85d",
+          "exception": {
+            "kind": "Blinking input caret",
+            "changedPixels": 14,
+            "boundingBox": "1x14+421+234",
+            "manualCrop": "screenshots/caret-comparison.png",
+            "scope": "Only the Symbol input caret; raw originals and full-image difference are preserved."
+          }
+        },
+        {
+          "case": "partial-form-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "06222378319deca6b2604331a3967f848f3b5e7e23c9cc66fc4acdbfc9c21701",
+          "afterSha256": "06222378319deca6b2604331a3967f848f3b5e7e23c9cc66fc4acdbfc9c21701"
+        },
+        {
+          "case": "partial-form-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "5ac8ec52079f69ac161a95649c8ac70eb1df2976ad76831f5d730ede2484f407",
+          "afterSha256": "5ac8ec52079f69ac161a95649c8ac70eb1df2976ad76831f5d730ede2484f407"
+        },
+        {
+          "case": "partial-form-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "5a3154848d2dba30f36b99927f139873516c6a202339311352edc7d9ffb02688",
+          "afterSha256": "5a3154848d2dba30f36b99927f139873516c6a202339311352edc7d9ffb02688"
+        },
+        {
+          "case": "partial-pane-paper-1280",
+          "changedPixels": 0,
+          "beforeSha256": "0c5a2c490dc51b0faea1f6f81259a62af1ffe3b159b627a8b8b1478bb511dbfd",
+          "afterSha256": "0c5a2c490dc51b0faea1f6f81259a62af1ffe3b159b627a8b8b1478bb511dbfd",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-paper-720",
+          "changedPixels": 0,
+          "beforeSha256": "d1b5dd18f09f973565f587c21a1551577b47636d66d6c433b084c9fda4844f02",
+          "afterSha256": "d1b5dd18f09f973565f587c21a1551577b47636d66d6c433b084c9fda4844f02",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-white-1280",
+          "changedPixels": 0,
+          "beforeSha256": "22b58146f25c193ae6bceb5c19db2cba0e3bbe9527307f84f8f2efb2ea6d8778",
+          "afterSha256": "22b58146f25c193ae6bceb5c19db2cba0e3bbe9527307f84f8f2efb2ea6d8778",
+          "unobstructedNeighborChangedPixels": 0
+        },
+        {
+          "case": "partial-pane-white-720",
+          "changedPixels": 0,
+          "beforeSha256": "11c35c31bb135af5557133cef4fb918e0ff3364c2ad4e252e1be0aeb544add75",
+          "afterSha256": "11c35c31bb135af5557133cef4fb918e0ff3364c2ad4e252e1be0aeb544add75",
+          "unobstructedNeighborChangedPixels": 0
+        }
+      ]
+    }
+  ],
+  "terminalAudit": "terminal-audit.json",
+  "desktopRuntimeErrors": 0,
+  "desktopBlockedRequests": 0,
+  "desktopExternalRequests": 0,
+  "desktopNativeTraffic": 0,
+  "terminalExternalRequests": 0,
+  "terminalKnownRuntimeWarnings": 0,
+  "ownedTmuxSessionsAndProfilesRemoved": true,
+  "desktopFixturesHashesVerified": [
+    {
+      "path": "../capture-ui.ts",
+      "sha256": "6ca96c8fcac808f78221e425edab668fd354d07ff808bc0b16ec179db3d86fd8",
+      "identicalToPublishedFixture": true
+    },
+    {
+      "path": "../ui-fixture.tsx",
+      "sha256": "26c6cf9333ff6f6afb05ad400e2c1a0dc603d7cb7cafad85f600a4b503bdcfd8",
+      "identicalToPublishedFixture": true
+    }
+  ],
+  "sourceProvenanceSha256": "99ecfb6ff754c67791a53b71cb4cd1260672f2d716130da0717b4510f45dc9fd",
+  "manualReview": {
+    "completedAt": "2026-10-21T15:13:47.125781+00:00",
+    "reviewer": "audit_three",
+    "terminalComparisonSheetsViewed": [
+      "screenshots/terminal/malformed-form-paper.png",
+      "screenshots/terminal/malformed-form-white.png",
+      "screenshots/terminal/malformed-pane-paper.png",
+      "screenshots/terminal/malformed-pane-white.png",
+      "screenshots/terminal/partial-form-paper.png",
+      "screenshots/terminal/partial-form-white.png",
+      "screenshots/terminal/partial-pane-paper.png",
+      "screenshots/terminal/partial-pane-white.png"
+    ],
+    "desktopHeadCasesViewed": [
+      "healthy-form-paper-1280",
+      "healthy-form-paper-720",
+      "healthy-form-white-1280",
+      "healthy-form-white-720",
+      "healthy-pane-paper-1280",
+      "healthy-pane-paper-720",
+      "healthy-pane-white-1280",
+      "healthy-pane-white-720",
+      "malformed-form-paper-1280",
+      "malformed-form-paper-720",
+      "malformed-form-white-1280",
+      "malformed-form-white-720",
+      "malformed-pane-paper-1280",
+      "malformed-pane-paper-720",
+      "malformed-pane-white-1280",
+      "malformed-pane-white-720",
+      "partial-form-paper-1280",
+      "partial-form-paper-720",
+      "partial-form-white-1280",
+      "partial-form-white-720",
+      "partial-pane-paper-1280",
+      "partial-pane-paper-720",
+      "partial-pane-white-1280",
+      "partial-pane-white-720"
+    ],
+    "desktopViewMethod": "All 24 final-head images inspected in four six-image contact sheets, plus full malformed-white-1280 correction sheet and enlarged caret before/after crop.",
+    "contactSheets": [
+      {
+        "path": "review/desktop-paper-1280.png",
+        "sha256": "5c9538a75e392b3b9106269bce0665237b5b5a97322c80766535aa317aede9ba"
+      },
+      {
+        "path": "review/desktop-paper-720.png",
+        "sha256": "11ecd13b11aa0ea349157e96e46258055a4809a982e76b5a43f7b0764d4b94b5"
+      },
+      {
+        "path": "review/desktop-white-1280.png",
+        "sha256": "073f1a176ea08787e8142df41c1eefb4a3ec3b2609f8d1ee00bd247f073aa2cf"
+      },
+      {
+        "path": "review/desktop-white-720.png",
+        "sha256": "626c1606253f0ca3401e0aab9812afe5549371232166d2084bf41f7022ce00d6"
+      }
+    ],
+    "findings": [
+      "Malformed storage shows one red shared error title and its detail, matching the neighboring pane pattern; the existing footer retains error status.",
+      "Partial corruption keeps the readable MSFT row and rejects the new save; the failed form remains open.",
+      "Healthy desktop output is pixel-identical to both preserved comparison revisions.",
+      "No unexpected clipping or layout displacement was observed in the reviewed states.",
+      "The 14-pixel correction comparison exception is solely a 1x14 blinking Symbol input caret at x421,y234.",
+      "Terminal baseline success-toast overlays account for the differing neighbor footer; all four unobstructed neighbor content regions are pixel-identical."
+    ]
+  },
+  "limitations": [
+    "The before images for desktop comparisons are retained captures from their explicitly recorded baseline/previous revisions.",
+    "Desktop unobstructed pane frames establish full-neighbor invariance. Terminal baseline success toasts cover the neighbor footer, so terminal invariance applies only to its unobstructed content above y=720.",
+    "The captured error detail remains once in the body and again in the existing footer; the body has one shared error title.",
+    "Runtime scans cover eight finite terminal smoke logs, not long-term leak absence."
+  ],
+  "desktopAllSidesRuntimeMetadataFilesChecked": 72
+}

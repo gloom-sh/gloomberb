@@ -1,0 +1,45 @@
+{
+  "passed": true,
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "head": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "bun": "1.3.11",
+  "orderedCases": 150,
+  "artifactPairs": 750,
+  "rawFilePairs": 298,
+  "allSavedFilesPerSide": 1049,
+  "artifactDifferences": [
+    "alerts-invalid-prices.stdout"
+  ],
+  "derivedManifestDifference": [
+    {
+      "name": "alerts-invalid-prices",
+      "fields": [
+        "stdoutBytes",
+        "stdoutSha256"
+      ]
+    }
+  ],
+  "stdoutJsonChanges": [
+    {
+      "path": "$.error.message",
+      "before": "fn ALRT: JSON Parse error: Expected '}'.",
+      "after": "fn ALRT: Saved price alerts could not be read: JSON Parse error: Expected '}'."
+    },
+    {
+      "path": "$.data.errors[0]",
+      "before": "JSON Parse error: Expected '}'",
+      "after": "Saved price alerts could not be read: JSON Parse error: Expected '}'"
+    }
+  ],
+  "rawSavedFileHashesVerified": true,
+  "originalHarnessAndFixturesVerified": true,
+  "scratchRemoved": true,
+  "normalizedArtifacts": false,
+  "captureRerun": false,
+  "earlierAuditRetained": "All earlier audits retain their original head labels. This is a fresh 150-case original-matrix replay of40b; the earlier18-case supplemental replay is not relabelled.",
+  "wrapperHashMatchesCurrentDisk": "bc336ce4692a6716f10492d3a9351a28fe3e5b3fd8eae6fa7b3b4916f5c246bc",
+  "wrapperProvenanceLimit": "runnerSha256 is the completion-time file hash; the wrapper does not save an executed-source snapshot. Original harness and fixture hashes are captured before execution and verified unchanged.",
+  "exactSavedArtifactInventoryVerified": true,
+  "scratchParentRemoved": true,
+  "baselineReuse": false
+}

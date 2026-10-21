@@ -1,0 +1,13 @@
+{
+  "head": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "reviewedAt": "2026-10-21T15:13:03.641966+00:00",
+  "images": [
+    "screenshots/correction/malformed-pane-white-1280.png"
+  ],
+  "findings": [
+    "One red price alerts unavailable. title in the shared error style, matching neighboring Thematic baskets.",
+    "Read-error detail appears once in the body; active footer error remains allowed.",
+    "Repeated grey empty-state title and irrelevant table header are removed in this zero-readable-row state."
+  ],
+  "method": "Root visually inspected raw comparison sheet; independent full matrix/terminal audit retained separately."
+}

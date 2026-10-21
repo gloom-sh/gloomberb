@@ -1,0 +1,42 @@
+{
+  "outcome": {
+    "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},null]",
+    "notifications": [],
+    "error": "Saved price alerts contain an unreadable entry. Original data has been kept.",
+    "nativeTraffic": []
+  },
+  "text": "Alerts\nPrices\nEvents\nHistory\nSTATE\nSYMBOL\nCURRENT\nTARGET\nAWAY\nTRIGGER\nQUOTE\nALERTED\nTriggered\nMSFT\n-\n300.00\n-\nAbove\n-\n1m ago\nSaved price alerts contain an unreadable entry. Original data has been kept.\nMore\nThematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.\nAdd Alert\nCreate a price alert from a symbol, condition, and target price\nSymbol\nAAPL  AAPL  195\nCondition\nAbove\nTarget Price\nCurrent price 195; edit to set the target.\nSaved price alerts contain an unreadable entry. Original data has been kept.\nCancel\nAdd Alert",
+  "traffic": [],
+  "panes": [
+    {
+      "id": "alerts",
+      "text": "Alerts\nPrices\nEvents\nHistory\nSTATE\nSYMBOL\nCURRENT\nTARGET\nAWAY\nTRIGGER\nQUOTE\nALERTED\nTriggered\nMSFT\n-\n300.00\n-\nAbove\n-\n1m ago\nSaved price alerts contain an unreadable entry. Original data has been kept.\nMore",
+      "rect": {
+        "x": 8,
+        "y": 8,
+        "width": 348,
+        "height": 604,
+        "top": 8,
+        "right": 356,
+        "bottom": 612,
+        "left": 8
+      }
+    },
+    {
+      "id": "themes",
+      "text": "Thematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+      "rect": {
+        "x": 364,
+        "y": 8,
+        "width": 348,
+        "height": 604,
+        "top": 8,
+        "right": 712,
+        "bottom": 612,
+        "left": 364
+      }
+    }
+  ],
+  "errors": [],
+  "blocked": []
+}
