@@ -218,8 +218,9 @@ import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import { currentReportItemsLabel } from "../../utils/sec-filings";
-import { loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
-import { insiderEmptyNotice } from "../../plugins/builtin/insider/issuer";
+import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
+import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "../../plugins/builtin/insider/issuer";
+import { buildInsiderSummary } from "../../plugins/builtin/insider/model";
 import {
   BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
@@ -290,8 +291,8 @@ function uniqueEntries(entries: readonly string[]): string[] {
 
 /**
  * The symbols to resolve: each entry with a space read as a company's name
- * when search finds one, else as its words, each a symbol (`readNameEntries`),
- * with the repeats that leaves dropped. A name found stays whole.
+ * when search finds one, else as its words when they are symbols
+ * (`readNameEntries`), with the repeats that leaves dropped. A name stays whole.
  */
 async function readSymbols(symbols: readonly string[], dataProvider: Parameters<typeof readNameEntries>[1]): Promise<string[]> {
   return uniqueEntries(await readNameEntries(symbols, dataProvider));
@@ -1549,50 +1550,81 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 
 type Form4Insiders = "available" | "none" | "foreign-private-issuer" | "no-sec-reports";
 
+/** The company's own Form 4 filings as `fn INS` reads them: whether it has any, and its summary of them. */
+interface Form4Report {
+  status: Form4Insiders;
+  /** `fn INS`'s line of the last 90 days' open-market buys and sales in the filings read; null when it has none. */
+  summary: string | null;
+  /** The Form 4 lines in the filings read, and how many filings that was. */
+  lines: number;
+  filings: number;
+  /** The newest filing's date (YYYY-MM-DD), which dates the report. */
+  newestFiled: string | null;
+  /** "Canadian insider reports (SEDI) not covered." beside the reason a company from abroad has none. */
+  home: string | null;
+}
+
 /**
- * Whether the company has Form 4 filings of its own, read as `fn INS` reads
- * them; null when they could not be read. A listing abroad the SEC lists
- * nothing for files no SEC reports at all.
+ * The company's Form 4 filings, read as `fn INS` reads its first page (its
+ * latest 20 of its own) and summed up as it sums them; null when they could
+ * not be read. A listing abroad the SEC lists nothing for files no SEC
+ * reports at all, and a company from abroad with none names its home
+ * market's insider reports as not covered either.
  */
-async function loadForm4Insiders(market: MarketContext, listing: CliListing): Promise<Form4Insiders | null> {
+async function loadForm4Report(market: MarketContext, listing: CliListing): Promise<Form4Report | null> {
+  const { symbol, exchange } = listing.request;
   try {
-    const { parsed, foreignPrivateIssuer, noFilings } = await loadParsedInsiderFilings(market.dataProvider, listing.request.symbol, {
-      limit: 1,
-      exchange: listing.request.exchange,
+    const { parsed, foreignPrivateIssuer, noFilings } = await loadParsedInsiderFilings(market.dataProvider, symbol, {
+      limit: INSIDER_REPORT_FILINGS,
+      exchange,
     });
-    if (parsed.length > 0) return "available";
-    if (noFilings && nonUsSecListingVenue(listing.request.symbol, listing.request.exchange)) return "no-sec-reports";
-    return foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+    if (parsed.length > 0) {
+      const filed = parsed.map(({ filing }) => new Date(filing.filingDate).getTime()).filter(Number.isFinite);
+      return {
+        status: "available",
+        summary: buildInsiderSummary(parsed, Date.now(), parsed),
+        lines: parsed.filter(({ transaction }) => transaction != null).length,
+        filings: new Set(parsed.map(({ filing }) => filing.accessionNumber)).size,
+        newestFiled: filed.length > 0 ? new Date(Math.max(...filed)).toISOString().slice(0, 10) : null,
+        home: null,
+      };
+    }
+    const status: Form4Insiders = noFilings && nonUsSecListingVenue(symbol, exchange) ? "no-sec-reports"
+      : foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+    const home = await loadHomeInsiderReportsNote(market.dataProvider, listing.key, exchange, foreignPrivateIssuer);
+    return { status, summary: null, lines: 0, filings: 0, newestFiled: null, home };
   } catch (error) {
-    logFailure("cli.commands-market", "Read insider filing availability failed")(error);
+    logFailure("cli.commands-market", "Read insider filings failed")(error);
     return null;
   }
 }
 
 /**
- * Holder lists name institutions and funds; individual insiders rarely appear.
- * The insider share of the company is reported either way, so say it. The
- * Form 4 trades are pointed to only when the company has some; otherwise the
- * line says why there are none, in the words `fn INS` uses.
+ * The insider lines under `insider`'s holders. A company's insiders file
+ * Form 4, which 13F holder lists rarely name, so the report leads with
+ * `fn INS`'s summary of the Form 4 filings and points to the transactions;
+ * a company with none says why, in the words `fn INS` uses. The insider share
+ * of the company follows when the holder data reports it.
  */
 function insiderSummary(
   data: HolderData,
-  ownerTypes: Set<string>,
   listing: Pick<CliListing, "key">,
   identity: ListingIdentity,
-  form4: Form4Insiders | null,
+  form4: Form4Report | null,
 ): string {
   const held = data.summary?.insidersPercentHeld;
   const share = held == null || !Number.isFinite(held)
     ? ""
     : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
-  const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
   // The listing as the command read it (CAR:ASX), not the source's spelling of it (CAR.AX), which fn does not take.
-  const transactions = form4 === "available"
-    ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${listing.key}`
-    : form4 === "no-sec-reports" ? noSecReportsNotice(identity)
-    : form4 ? insiderEmptyNotice(form4 === "foreign-private-issuer") : "";
-  return [share, transactions].filter(Boolean).join("\n");
+  const transactions = form4?.status === "available"
+    ? [
+      ...form4.summary ? [form4.summary] : [],
+      `${form4.lines} Form 4 ${form4.lines === 1 ? "line" : "lines"} in the latest ${form4.filings} ${form4.filings === 1 ? "filing" : "filings"}${form4.newestFiled ? `, newest filed ${form4.newestFiled}` : ""}: gloomberb fn INS ${listing.key}`,
+    ].join("\n")
+    : form4?.status === "no-sec-reports" ? [noSecReportsNotice(identity), form4.home].filter(Boolean).join(" ")
+    : form4 ? insiderEmptyNotice(form4.status === "foreign-private-issuer", form4.home) : "";
+  return [transactions, share].filter(Boolean).join("\n");
 }
 
 /** `holders --form 13d|13g|all`: the 13D/13G beneficial owners, joined by name to the 13F holders. */
@@ -1682,7 +1714,7 @@ async function runHolders(
         { command: commandName, noun: "holder data" },
       ),
       loadListingQuote(market.dataProvider, listing),
-      insiderCommand ? loadForm4Insiders(market, listing) : null,
+      insiderCommand ? loadForm4Report(market, listing) : null,
     ]);
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
@@ -1704,7 +1736,9 @@ async function runHolders(
     const markedRows = rows.some((row) => holderShareBasisMarker(row));
     // The heading names the listing; its unit, date and how much of the list follows on the same line.
     // One "as of" only when every row shown is of that date; each row carries its own.
-    const facts = holderListFacts({
+    // An insider list the 13F filings name nobody in is not "none reported": the Form 4 summary under it says what insiders did.
+    const form4Only = insiderCommand && rows.length === 0;
+    const facts = form4Only ? [] : holderListFacts({
       currency: valueCurrency,
       listingCurrency: data.currency,
       period: holderListPeriod(shownRows, data.asOf),
@@ -1715,8 +1749,10 @@ async function runHolders(
     });
     const unvaluedNote = unvaluedHoldersNote(shownRows);
     const columns = holderReportColumns(shownRows, valueCurrency);
-    // Dated as HDS dates it: by the list's as-of.
-    const freshness = rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
+    // Dated as HDS dates it: by the list's as-of; an insider report of Form 4 filings alone as INS dates it, by the newest.
+    const freshness = form4Only
+      ? rowsFreshness(form4?.newestFiled ? [{ filingDate: form4.newestFiled }] : [], { ...SEC_FILINGS, basis: "Form 4 filings", observedKey: "filingDate" })
+      : rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
     const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total });
@@ -1738,7 +1774,11 @@ async function runHolders(
         truncated: shown < (total ?? rows.length),
         valueBasis,
         positionsBasis,
-        ...(insiderCommand ? { form4Insiders: form4 } : {}),
+        ...(insiderCommand ? {
+          form4Insiders: form4?.status ?? null,
+          // INS's summary of the latest Form 4 filings, as `fn INS` gives it in its metadata.
+          form4: form4 ? { summary: form4.summary, lines: form4.lines, filings: form4.filings, newestFiled: form4.newestFiled, notCovered: form4.home } : null,
+        } : {}),
       },
       ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
@@ -1772,7 +1812,7 @@ async function runHolders(
       exportIdentity: { symbolOrSeries: listing.key },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
-        insiderCommand ? insiderSummary(data, ownerTypes, listing, identity, form4) : "",
+        insiderCommand ? insiderSummary(data, listing, identity, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });

@@ -30,6 +30,7 @@ import { parseHistorySession } from "../../market-data/history-session";
 import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerChanges } from "../../types/ticker-changes";
+import type { IssuerListings } from "../../types/issuer-listings";
 import {
   apiClient,
   type CloudAnalystResearchPayload,
@@ -716,6 +717,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   getTickerChangesBatch(symbols: string[], options: { signal?: AbortSignal } = {}): Promise<Map<string, TickerChanges | null> | null> {
     return cloudTickerChangesBatch(symbols, options);
+  }
+
+  async getIssuerListings(symbol: string, exchange = "", options: { signal?: AbortSignal } = {}): Promise<IssuerListings | null> {
+    const response = await apiClient.getCloudIssuerListings(symbol, exchange, options);
+    // "empty" is an answer: the service holds no company for the listing.
+    return response.status === "success" || response.status === "partial" ? response.data : null;
   }
 
   async searchBatch(queries: string[], options: { limit?: number; signal?: AbortSignal } = {}): Promise<Map<string, InstrumentSearchResult[]> | null> {

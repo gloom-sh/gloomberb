@@ -69,6 +69,7 @@ import {
   resultFields,
   SIGN_COLORED,
   screenColumnLabel,
+  screenCurrencyEmpty,
   screenLabel,
   screenRowId,
   screenYtdBase,
@@ -354,6 +355,8 @@ function EquityScreenView({
   const extendedSessions = screenExtendedSessions(rows);
   // YTD names the close it is measured from, `31 Dec`.
   const ytdBase = screenYtdBase(snapshotRows, data?.snapshot?.assembledAt);
+  // A screen its currency emptied says so, not that no company matches.
+  const currencyEmpty = data && data.rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
   const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions, ytdBase);
   const apply = (next: ScreenDefinition) => {
     try {
@@ -1012,7 +1015,8 @@ function EquityScreenView({
                 },
               });
             }}
-            emptyStateTitle="No equities match this screen."
+            emptyStateTitle={currencyEmpty?.title ?? "No equities match this screen."}
+            emptyStateHint={currencyEmpty ? `${currencyEmpty.detail} Choose ${currencyEmpty.base.currency} to screen in the base currency.` : undefined}
           />
         </PaneStatusBody>
       </>

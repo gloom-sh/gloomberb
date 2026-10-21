@@ -30,7 +30,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { mayBeSecEquityListing, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue } from "../../../utils/sec";
+import { homeInsiderReportsNote, mayBeSecEquityListing, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -483,9 +483,12 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   if (loading && allFilings.length === 0) return underBar(<Spinner label="Loading insider filings..." />);
   if (error && allFilings.length === 0) return underBar(<EmptyState title="Insider filings unavailable." message={error} />);
   if (noOwnFilings) {
+    // A company from abroad also says its home market's insider reports are not covered (RY:TSX: SEDI).
+    const foreignPrivateIssuer = filesAsForeignPrivateIssuer(allFilings);
+    const home = homeInsiderReportsNote({ exchange: abroadVenue, foreignPrivateIssuer });
     return underBar(renderFilingNotice(abroadVenue && allFilings.length === 0
-      ? noSecReportsNotice({ symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: abroadVenue, name: ticker.metadata.name ?? null })
-      : insiderEmptyNotice(filesAsForeignPrivateIssuer(allFilings))));
+      ? [noSecReportsNotice({ symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: abroadVenue, name: ticker.metadata.name ?? null }), home].filter(Boolean).join(" ")
+      : insiderEmptyNotice(foreignPrivateIssuer, home)));
   }
 
   // Until a filing is read there is nothing to say; after that the empty

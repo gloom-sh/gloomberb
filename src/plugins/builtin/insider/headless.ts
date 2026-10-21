@@ -6,8 +6,8 @@ import type {
   HeadlessPaneRow,
 } from "../../../types/plugin";
 import { formatCompact, formatCurrency } from "../../../utils/format";
-import { loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
-import { insiderEmptyNotice } from "./issuer";
+import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
+import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "./issuer";
 import { FORM4_CURRENCY, withInsiderBaseValues } from "./base-values";
 import {
   buildInsiderRows,
@@ -21,7 +21,7 @@ import {
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
 import { SEC_FILINGS } from "../shared/report-freshness";
-import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { InsiderSignalRoleGroup, InsiderSignalSide, InsiderSignalsPayload } from "../../../api-client/insider-signals";
@@ -310,6 +310,20 @@ async function noSecReportsEmpty(ctx: HeadlessPaneContext, key: string): Promise
   return noSecReportsNotice({ symbol: parsePublicTickerKey(key).symbol, exchange: listing.exchange, name: listing.name ?? null });
 }
 
+/**
+ * What INS says for a company with no Form 4 of its own: why there is none,
+ * and for a company from abroad, that its home market's insider reports are
+ * not covered either ("Canadian insider reports (SEDI) not covered.").
+ */
+async function insiderEmpty(ctx: HeadlessPaneContext, key: string, foreignPrivateIssuer: boolean, noFilings: boolean): Promise<string> {
+  const [noReports, { exchange }] = await Promise.all([
+    noFilings ? noSecReportsEmpty(ctx, key) : null,
+    resolveHeadlessInstrument(ctx, key),
+  ]);
+  const home = await loadHomeInsiderReportsNote(ctx.marketData, key, exchange, foreignPrivateIssuer);
+  return noReports ? [noReports, home].filter(Boolean).join(" ") : insiderEmptyNotice(foreignPrivateIssuer, home);
+}
+
 export function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -346,7 +360,7 @@ export function createInsiderHeadless(
         aliases: ["count", "rows"],
         description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
         type: "integer",
-        defaultValue: 20,
+        defaultValue: INSIDER_REPORT_FILINGS,
         minimum: 1,
         maximum: 100,
       },
@@ -510,8 +524,7 @@ export function createInsiderHeadless(
       }
       const limit = Number(args.options.limit);
       const { parsed, foreignPrivateIssuer, noFilings } = await dependencies.loadParsed(symbol, limit, args, ctx);
-      const empty = parsed.length > 0 ? null
-        : (noFilings ? await noSecReportsEmpty(ctx, symbol) : null) ?? insiderEmptyNotice(foreignPrivateIssuer);
+      const empty = parsed.length > 0 ? null : await insiderEmpty(ctx, symbol, foreignPrivateIssuer, noFilings);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
       const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
       const owned = name

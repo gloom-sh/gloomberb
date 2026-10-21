@@ -16,6 +16,7 @@ import type { BrokerContractRef, InstrumentSearchResult } from "./instrument";
 import type { CachePolicyMap } from "./persistence";
 import type { CachedQueryHandle } from "../data/cached-query";
 import type { TickerChanges } from "./ticker-changes";
+import type { IssuerListings } from "./issuer-listings";
 
 export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
   | "getOptionsChain" | "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
@@ -252,6 +253,11 @@ export interface AssetDataProvider {
    * answer for is left out; null when the source cannot answer a batch at all.
    */
   getTickerChangesBatch?(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, TickerChanges | null> | null>;
+  /**
+   * Every listing of the company a listing belongs to (RCI and RCI.B:TSX are
+   * Rogers). Null when the source does not hold the company.
+   */
+  getIssuerListings?(symbol: string, exchange?: string, options?: { signal?: AbortSignal }): Promise<IssuerListings | null>;
   /**
    * Several searches in a few requests, each answered with the rows `search`
    * gives it from this source (up to `limit`), by query as asked. A query the

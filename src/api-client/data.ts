@@ -27,6 +27,7 @@ import {
 import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
+import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
@@ -468,6 +469,20 @@ export class CloudDataApi {
     const answers = new Map<string, InstrumentSearchResult[]>();
     for (const [query, rows] of batchAnswers(response, "query")) answers.set(query, rows ?? []);
     return answers;
+  }
+
+  /** Every listing of the company a listing belongs to (RCI and RCI.B:TSX are Rogers); empty for one the service does not hold. */
+  async getCloudIssuerListings(
+    symbol: string,
+    exchange = "",
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CloudMarketResponse<IssuerListings>> {
+    const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase() });
+    if (exchange.trim()) params.set("exchange", exchange.trim().toUpperCase());
+    return this.request<CloudMarketResponse<IssuerListings>>(
+      `/market/issuer-listings?${params}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
   }
 
   /** The listed company each organization name resolves to, if any: a trial's lead sponsors, a page at a time. */

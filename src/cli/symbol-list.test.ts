@@ -15,9 +15,24 @@ test("a spreadsheet export reads its symbol column, or its first column, past BO
 });
 
 test("a plain list gives every symbol, whether on its own line, split by spaces or by commas", () => {
-  expect(symbolsOf("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual(["AAPL", "msft", "nvda", "XOM"]);
+  // Lines are entries, read as typed entries are: a line with spaces is a name or symbols on one line.
+  expect(parseSymbolText("AAPL\nmsft  nvda\n\n// later\nXOM\n")).toEqual({ symbols: ["AAPL", "msft nvda", "XOM"], ignored: [], entries: true });
   expect(symbolsOf("AAPL, MSFT\nNVDA, XOM")).toEqual(["AAPL", "MSFT", "NVDA", "XOM"]);
   expect(symbolsOf("Symbol\nAAPL\nMSFT\n")).toEqual(["AAPL", "MSFT"]);
+});
+
+test("a pasted list of company names keeps each line or semicolon cell one name, and a line of tickers stays tickers", async () => {
+  // GLO-1105: "Altria Group" was the symbols ALTRIA and GROUP, and "philip morris intl" added INTL, a fund.
+  const names = { "altria group": "MO", "philip morris intl": "PM", "lockheed martin": "LMT" } as Record<string, string>;
+  const readEntries = async (entries: string[]) => entries.flatMap((entry) => names[entry.toLowerCase()] ?? entry.split(/\s+/));
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text, readEntries });
+  expect((await read("Altria Group\nphilip morris intl\nLockheed Martin\n")).symbols).toEqual(["MO", "PM", "LMT"]);
+  expect((await read("Altria Group; Lockheed Martin; philip morris intl\n")).symbols).toEqual(["MO", "LMT", "PM"]);
+  expect((await read("Altria Group;\nLockheed Martin\n")).symbols).toEqual(["MO", "LMT"]);
+  expect(await read("AAPL MSFT NVDA\n")).toEqual({ symbols: ["AAPL", "MSFT", "NVDA"], repeated: 0, notes: [] });
+  expect((await read("MO;PM;LMT")).symbols).toEqual(["MO", "PM", "LMT"]);
+  // Figures beside the symbols, split by spaces or by commas, still make a table read by its first column.
+  expect(parseSymbolText("AAPL 150.00\nMSFT 420.10\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["150.00", "420.10"] });
 });
 
 test("one ragged line, or a symbol with a stray separator in its quotes, does not turn a pasted list into a table", async () => {

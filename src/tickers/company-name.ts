@@ -56,6 +56,49 @@ export function companyNameExtraWords(typed: string, name: string | null | undef
   return words.size - wanted.size;
 }
 
+/**
+ * Whether a typed word is a short form of a name's word, as a list writes
+ * one: its first letter and the rest in order, at least three letters
+ * (`intl` for international, `hldgs` for holdings, `grp` for group).
+ */
+function abbreviates(short: string, word: string): boolean {
+  if (short.length < 3 || short.length >= word.length || short[0] !== word[0] || !/^\p{L}+$/u.test(short)) return false;
+  let at = 0;
+  for (const char of word) {
+    if (char === short[at]) at += 1;
+    if (at === short.length) return true;
+  }
+  return false;
+}
+
+/**
+ * `companyNameExtraWords` for a name typed with short forms, as a list or a
+ * spreadsheet writes it ("philip morris intl" for Philip Morris
+ * International Inc.): each typed word is one of the name's, or a short form
+ * of another of its words (`abbreviates`). `extra` counts the name's words
+ * left unmatched, `abbreviated` the typed words read as short forms, so an
+ * exact name ranks before one only a short form reaches. Null when a typed
+ * word is in the name neither way, or nothing was typed.
+ */
+export function companyNameMatch(typed: string, name: string | null | undefined): { extra: number; abbreviated: number } | null {
+  const wanted = companyWords(typed);
+  const words = companyWords(name);
+  if (wanted.size === 0) return null;
+  const matched = new Set<string>();
+  let abbreviated = 0;
+  for (const word of wanted) {
+    if (words.has(word)) {
+      matched.add(word);
+      continue;
+    }
+    const long = [...words].find((candidate) => !matched.has(candidate) && !wanted.has(candidate) && abbreviates(word, candidate));
+    if (!long) return null;
+    matched.add(long);
+    abbreviated += 1;
+  }
+  return { extra: words.size - matched.size, abbreviated };
+}
+
 /** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
 export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
   const groups: T[][] = [];

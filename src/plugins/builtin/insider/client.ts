@@ -7,6 +7,9 @@ import { filesAsForeignPrivateIssuer } from "./issuer";
 // this many filings or the company's history ends.
 const SEC_FILING_SCAN_LIMIT = 20_000;
 
+/** The company's own filings `fn INS` reads by default, and `insider` sums up as it does. */
+export const INSIDER_REPORT_FILINGS = 20;
+
 export interface InsiderFilingsLoad {
   /** The rows of the company's own Form 4 filings, newest first. */
   parsed: ParsedInsiderFiling[];

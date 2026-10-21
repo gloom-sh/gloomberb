@@ -2,7 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
-import { companyNameExtraWords, shortCompanyName } from "./company-name";
+import { companyNameMatch, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { classifyInstrumentKind } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
@@ -28,10 +28,12 @@ export function isCompanyNameInput(input: string): boolean {
 /**
  * The listing a company's name stands for when it is typed where a symbol
  * goes, as an entry of a comma list ("Whirlpool Corporation" is WHR on
- * NYSE). Of search's listings whose names have every word of it (the name is
- * also searched without its legal form, which can find more), the company
+ * NYSE). Of search's listings whose names have every word of it, or a word
+ * it shortens ("philip morris intl" is Philip Morris International; the name
+ * is also searched without its legal form, which can find more), the company
  * whose name says no more than the one typed goes first, so a subsidiary that
- * shares the word (Whirlpool of India) does not; then its line on a US
+ * shares the word (Whirlpool of India) does not, and of those a name matched
+ * word for word before one a short form matched; then its line on a US
  * exchange, then a plain line before a depositary receipt, the shortest
  * symbol (WHR before WHR-A) and search's order. Contracts, preferred shares
  * and notes are never the listing. Null when none matches; when none does
@@ -55,10 +57,10 @@ export async function findListingOfCompanyName(
   const ranked = results.flatMap((result, order) => {
     const exchange = canonicalExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange);
     const type = result.brokerContract?.secType || result.type || "";
-    const extra = companyNameExtraWords(name, result.name);
-    if (!exchange || extra == null || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
+    const match = companyNameMatch(name, result.name);
+    if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
       || parsePublicTickerKey(result.symbol).exchange) return [];
-    return [{ result, exchange, rank: [extra, isUsListingExchange(exchange) ? 0 : 1, RECEIPT.test(type) ? 1 : 0, result.symbol.length, order] }];
+    return [{ result, exchange, rank: [match.extra, match.abbreviated, isUsListingExchange(exchange) ? 0 : 1, RECEIPT.test(type) ? 1 : 0, result.symbol.length, order] }];
   }).sort((left, right) => {
     const at = left.rank.findIndex((value, index) => value !== right.rank[index]);
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;

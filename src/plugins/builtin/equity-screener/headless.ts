@@ -21,6 +21,7 @@ import {
   parseScreenDefinition,
   screenColumnLabel,
   screenDefinitionSyntax,
+  screenCurrencyEmpty,
   screenLabel,
   screenYtdBase,
   withheldMetricNote,
@@ -141,6 +142,14 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const kpiGaps = !withheld && missing > 0 && (KPI_FIELDS as readonly string[]).includes(metric)
       ? [`${missing} of ${rows.length} ${rows.length === 1 ? "row has" : "rows have"} no ${screenLabel(metric)}. ${KPI_COVERAGE_NOTE}`]
       : [];
+    // A CAD screen of listings quoted in USD is empty for its currency, not for want of companies: say so, and give the screen in USD.
+    const currencyEmpty = rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
+    const empty = currencyEmpty
+      ? [
+        `${currencyEmpty.title} ${currencyEmpty.detail}`,
+        `In the base currency, ${currencyEmpty.base.currency}: gloomberb fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
+      ].join("\n")
+      : null;
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {
@@ -151,6 +160,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [
         {
           title: "Matching equities",
+          ...(empty ? { empty } : {}),
           columns: [
             { key: "symbol", header: "Symbol" },
             { key: "exchange", header: "Exchange" },

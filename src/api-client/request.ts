@@ -413,9 +413,10 @@ export class CloudApiRequestTransport {
     // change lookup: a note beside a quote, never one of the refused market
     // requests a lookup of many symbols waits out and retries. Nor the
     // tickers beside a list of organization names, which say so in place,
-    // or a 13F filer's EDGAR filing list, whose report says it went unchecked.
-    // Nor the batched searches and ticker changes a list of symbols starts
-    // with: a service without them answers 404, and whatever they leave
+    // or a 13F filer's EDGAR filing list, whose report says it went unchecked,
+    // or a company's other listings, beside a list check that still answers
+    // for the listing itself. Nor the batched searches and ticker changes a
+    // list of symbols starts with: a service without them answers 404, and whatever they leave
     // unanswered is looked up one symbol at a time, which is tracked.
     if (
       path.startsWith("/telemetry/")
@@ -423,6 +424,7 @@ export class CloudApiRequestTransport {
       || path === "/cloud/geo/layers"
       || path.startsWith("/cloud/sec/13f/filer?")
       || path.startsWith("/market/ticker-changes?")
+      || path.startsWith("/market/issuer-listings?")
       || path === "/market/ticker-changes/batch"
       || path === "/market/search/batch"
       || path === "/market/organization-tickers"

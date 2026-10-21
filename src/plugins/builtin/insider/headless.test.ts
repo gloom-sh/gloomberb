@@ -113,13 +113,15 @@ describe("insider client", () => {
       marketData: createTestDataProvider({
         getSecFilings: async () => filings,
         getSecFilingContent: async (filing) => form4(filing.accessionNumber === "own" ? "2488" : "1580608", "BANCO SANTANDER"),
+        // Its listings place the company at home, Spain, whose managers report under MAR.
+        getIssuerListings: async () => ({ issuer: "cik:891478", name: "Banco Santander, S.A.", country: "ES", listings: [] }),
       }),
     });
     const owned = [listed("owned-1", "4", "2022-01-31"), listed("owned-2", "4/A", "2008-05-20")];
 
     const foreign = await load([listed("6k", "6-K", "2026-10-08"), ...owned, listed("annual", "20-F", "2026-03-01"), listed("old", "10-K", "2001-03-01")]);
     expect(foreign.rows).toEqual([]);
-    expect(foreign.empty).toBe("No Form 4 insiders: foreign private issuers file none.");
+    expect(foreign.empty).toBe("No Form 4 insiders: foreign private issuers file none. European insider reports (MAR managers' transactions) not covered.");
     expect(foreign.metadata?.foreignPrivateIssuer).toBe(true);
 
     // A company that moved to domestic reports is not one, though it once filed a 20-F.
@@ -141,7 +143,7 @@ describe("insider client", () => {
         getQuote: async (_symbol, exchange) => createTestQuote({ symbol: "CAR.AX", name: "CAR Group Limited", currency: "AUD", listingExchangeName: exchange }),
       }),
     });
-    expect((await load("CAR:ASX")).empty).toBe("CAR Group (ASX) files no SEC reports.");
+    expect((await load("CAR:ASX")).empty).toBe("CAR Group (ASX) files no SEC reports. Australian insider reports (Appendix 3Y) not covered.");
     // A US symbol the SEC lists nothing for has no Form 4, which is all the report knows.
     expect((await load("ZZZZ")).empty).toBe("No Form 4 insider filings.");
   });

@@ -192,6 +192,34 @@ export const DEFAULT_SCREEN: ScreenDefinition = {
   criteria: [{ field: "marketCap", op: "gte", value: 10_000_000_000 }],
   sort: { field: "marketCap", direction: "desc" },
 };
+
+/**
+ * Why a screen with a currency found nothing, when the currency may be why:
+ * `currency` keeps the listings quoted in it and converts nothing, so a CAD
+ * screen of listings quoted in USD reads as no company at all. `title` says
+ * which listings it kept, `detail` that it converts nothing and what the
+ * covered listings are quoted in, and `base` is the same screen in the base
+ * currency the default screen uses (USD), to run instead. Null for a screen
+ * in that currency or with none.
+ */
+export function screenCurrencyEmpty(
+  definition: ScreenDefinition,
+  universe: Pick<ScreenPayload["universe"], "covered" | "currencies">,
+): { title: string; detail: string; base: ScreenDefinition } | null {
+  const currency = definition.currency;
+  const baseCurrency = DEFAULT_SCREEN.currency!;
+  if (!currency || currency === baseCurrency) return null;
+  const quoted = universe.currencies.filter(Boolean);
+  const none = quoted.length > 0 && !quoted.includes(currency);
+  return {
+    title: none
+      ? `None of the ${universe.covered.toLocaleString("en-US")} covered listings is quoted in ${currency}.`
+      : `No listing quoted in ${currency} matches.`,
+    detail: `Currency ${currency} keeps only the listings quoted in ${currency} and converts nothing${none ? `; the covered listings are quoted in ${quoted.join(", ")}` : ""}.`,
+    base: { ...definition, currency: baseCurrency },
+  };
+}
+
 export const screenRowId = (row: Pick<ScreenRow, "symbol" | "exchange">) =>
   `${canonicalExchange(row.exchange)}:${row.symbol}`;
 export const screenLabel = (field: string) =>

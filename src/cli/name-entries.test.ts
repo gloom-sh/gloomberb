@@ -21,6 +21,25 @@ test("an entry with spaces is a company's name when search finds one, else the s
   expect(await readNameEntries(splitSymbolArgs([`"AAPL" "MSFT", NVDA`]), { search })).toEqual(["AAPL", "MSFT", "NVDA"]);
 });
 
+test("a pasted line search finds no company for is its words only when they are written as symbols or each has a quote", async () => {
+  // GLO-1105: a misspelt "phillip morris intl" added INTL, a fund, and its other words came back not found.
+  const quoted = new Set(["AAPL", "MSFT", "INTL"]);
+  const batches: string[][] = [];
+  const provider = {
+    search: async (): Promise<InstrumentSearchResult[]> => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => {
+      batches.push(targets.map(({ symbol }) => symbol));
+      return targets.map((target) => quoted.has(target.symbol)
+        ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+        : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) });
+    },
+  };
+  expect(await readNameEntries(["phillip morris intl", "aapl msft", "BRK.B bf-b", "2222 aapl"], provider))
+    .toEqual(["phillip morris intl", "aapl", "msft", "BRK.B", "bf-b", "2222", "aapl"]);
+  // Words written as symbols cost no quote.
+  expect(batches.flat().sort()).toEqual(["AAPL", "AAPL", "INTL", "MORRIS", "MSFT", "PHILLIP"]);
+});
+
 test("one quoted argument with spaces is a company, a line of tickers, or a phrase never quoted word by word", async () => {
   expect(quotedPhrase(["10 year yield"])).toBe("10 year yield");
   expect(quotedPhrase([` "AAPL  MSFT" `])).toBe("AAPL MSFT");
@@ -62,7 +81,7 @@ test("a Bloomberg code is one entry when search lists its root as a US ticker; w
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => ({ target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) })),
   };
   expect(await readNameEntries(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global US Equity"], provider))
-    .toEqual(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global", "US", "Equity"]);
+    .toEqual(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global US Equity"]);
   expect(await readPhraseArgument("jpm us equity", provider)).toEqual({ kind: "symbols", symbols: ["jpm us equity"] });
   expect(await readPhraseArgument("Putnam US Equity", provider)).toEqual({ kind: "name", name: "Putnam US Equity" });
   expect(await readPhraseArgument("Global US Equity", provider)).toEqual({ kind: "phrase", phrase: "Global US Equity" });

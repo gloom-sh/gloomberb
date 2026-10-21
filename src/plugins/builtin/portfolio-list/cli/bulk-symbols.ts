@@ -37,7 +37,7 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas or newlines that has spaces in it is a company's name when search finds one, read as its US listing first with a line under it saying which, and otherwise the symbols it holds. A CSV is read from its Symbol, Ticker or Code column. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Quote a list name with spaces.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
     "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
     "add --dry-run looks every symbol up and prints the same lines without saving.",
@@ -218,15 +218,18 @@ export async function requireSymbolList(
   readEntries?: (entries: string[]) => Promise<string[]>,
 ): Promise<{ symbols: string[]; repeated: number; notes: string[]; single: string | null }> {
   try {
-    let typed: string[] = [];
+    // The first entries read are what was typed; a file's and standard input's come after.
+    let typed: string[] | null = null;
     const list = await readSymbolList({ args, file, readEntries: async (entries) => {
-      typed = readEntries ? await readEntries(entries) : splitSymbolWords(entries);
-      return typed;
+      const read = readEntries ? await readEntries(entries) : splitSymbolWords(entries);
+      typed ??= read;
+      return read;
     } });
     if (list.symbols.length === 0) ctx.fail(usage);
     // One symbol typed alone keeps the single-symbol output and errors. It goes as typed, so a separator
     // left on it (`UPST;`) is named by the listing it resolves to.
-    const single = file == null && !args.includes("-") && typed.length === 1 ? (args.length === 1 ? args[0]!.trim() : typed[0]!) : null;
+    const entries: string[] = typed ?? [];
+    const single = file == null && !args.includes("-") && entries.length === 1 ? (args.length === 1 ? args[0]!.trim() : entries[0]!) : null;
     return { ...list, single };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
