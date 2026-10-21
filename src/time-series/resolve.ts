@@ -65,7 +65,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
-import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, priceObservationWindowFilter, resolvePriceComparison, type PriceComparison } from "./price-comparison";
+import { bufferPriceComparison, clipPriceComparison, comparedBufferPoints, priceComparisonBoundsForSeries, priceComparisonSeriesIds, priceObservationWindowFilter, resolvePriceComparison, type PriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource, compareChartQuoteRecency } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
@@ -756,8 +756,8 @@ export function seedChartResolutionResult(
   const axisWarnings: string[] = [];
   const bufferedSeries = assignAxes([
     ...baseSeries,
-    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds, undefined, priceComparison),
-  ], [...spec.series, ...spec.studies], axisWarnings).map((entry) => clipPriceComparison(entry, priceComparison));
+    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds, undefined, priceComparison, bounds),
+  ], [...spec.series, ...spec.studies], axisWarnings).map((entry) => bufferPriceComparison(entry, priceComparison, bounds));
   const visible = bufferedSeries.map((entry) => {
     const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);
     const clipped = entryBounds.start !== null && entryBounds.end !== null
@@ -1516,6 +1516,7 @@ function applyStudyPresentationTransforms(
   visibleBounds: DateBounds,
   fallbackBaselineBounds?: DateBounds,
   priceComparison?: PriceComparison | null,
+  view: DateBounds = visibleBounds,
 ): ResolvedSeries[] {
   const rawById = new Map(rawSeries.map((series) => [series.id, series] as const));
   return outputs.map((output) => {
@@ -1531,7 +1532,7 @@ function applyStudyPresentationTransforms(
       : undefined;
     const transformed = applyResolvedSeriesTransform(output, input.transform, { baseline });
     const inputBounds = priceComparison?.sourceBounds?.[input.id];
-    return inputBounds ? { ...transformed, points: filterPoints(transformed.points, inputBounds) } : transformed;
+    return inputBounds ? { ...transformed, points: comparedBufferPoints(transformed.points, inputBounds, view) } : transformed;
   });
 }
 
@@ -2332,6 +2333,7 @@ async function resolveChartSpecPass(
         comparisonBounds,
         priceComparison ? undefined : requestVisibleBounds,
         priceComparison,
+        bounds,
       ),
     ];
     warnings.push(...studyResult.warnings);
@@ -2339,7 +2341,7 @@ async function resolveChartSpecPass(
   }
 
   const bufferedSeries = assignAxes(adoptPriceUnits(resolved, spec.series), [...spec.series, ...spec.studies], warnings)
-    .map((entry) => clipPriceComparison(entry, priceComparison));
+    .map((entry) => bufferPriceComparison(entry, priceComparison, bounds));
   resolved = bufferedSeries.map((entry) => {
     const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);
     return entryBounds.start !== null && entryBounds.end !== null

@@ -123,6 +123,41 @@ export function resolvePriceComparison(
   };
 }
 
+/**
+ * The bars a compared leg pans and zooms over: inside the view only its shared
+ * dates, as the chart shows them, and every loaded bar past either edge of the
+ * view. Clipping the whole buffer to the view left a pan or a zoom out nothing
+ * to move into until the next fetch, and none at all toward newer bars.
+ */
+export function comparedBufferPoints(
+  points: readonly TimeSeriesPoint[],
+  shared: { start: number | null; end: number | null },
+  view: { start: number | null; end: number | null },
+): TimeSeriesPoint[] {
+  const { start, end } = shared;
+  if (start === null || end === null) return [];
+  const before = view.start === null ? Number.NEGATIVE_INFINITY : Math.min(start, view.start);
+  const after = view.end === null ? Number.POSITIVE_INFINITY : Math.max(end, view.end);
+  return points.filter((point) => {
+    const time = point.date.getTime();
+    return time < before || time > after || (time >= start && time <= end);
+  });
+}
+
+/** A compared leg's pan buffer around `view`; see comparedBufferPoints. */
+export function bufferPriceComparison(
+  series: ResolvedSeries,
+  comparison: PriceComparison | null,
+  view: { start: number | null; end: number | null },
+): ResolvedSeries {
+  if (!comparison?.seriesIds.includes(series.id)) return series;
+  return {
+    ...series,
+    latestChangePercent: undefined,
+    points: comparedBufferPoints(series.points, priceComparisonBoundsForSeries(series, comparison)!, view),
+  };
+}
+
 /** Clip only compared legs; raw observations and study inputs stay available in the source cache. */
 export function clipPriceComparison(series: ResolvedSeries, comparison: PriceComparison | null): ResolvedSeries {
   if (!comparison?.seriesIds.includes(series.id)) return series;
