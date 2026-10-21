@@ -1,0 +1,13 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+const root=process.argv[2]!;
+const before='6578fe82660f7d7d1ecdfab8cec97b6f13f28d3c',file='src/plugins/builtin/alerts/pane.tsx';
+const old=execFileSync('git',['show',`${before}:${file}`],{cwd:root,encoding:'utf8'}),current=readFileSync(`${root}/${file}`,'utf8');
+const transpiler=new Bun.Transpiler({loader:'tsx',target:'bun'}),a=transpiler.transformSync(old),b=transpiler.transformSync(current);
+if(a!==b)throw new Error('Executable output differs');
+const sha=(s:string)=>createHash('sha256').update(s).digest('hex');
+const after=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+const files=execFileSync('git',['diff','--name-only',before,after],{cwd:root,encoding:'utf8'}).trim().split('\n');
+if(files.length!==1||files[0]!==file)throw new Error('Unexpected changed files '+files);
+writeFileSync(`${import.meta.dir}/type-only-equivalence.json`,JSON.stringify({before,after,files,sourceBeforeSha256:sha(old),sourceAfterSha256:sha(current),executableSha256:sha(a),executableBytes:a.length,executableIdentical:true,bun:Bun.version,change:'Explicit unknown annotation on config updater argument; erased by transpilation',evidence:'Earlier focused screenshots/terminal and local all-pane build retain their actual6578 source head; runtime output matches this final head. Exact-head CI and CLI replay are rerun separately.'},null,2)+'\n');

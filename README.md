@@ -9,3 +9,7 @@ Desktop: white/paper, 720/1280, malformed/partial/healthy. Each submitted-form c
 Terminal: white/paper,120x34, actual Add Alert submitted with Ctrl+S. Form and pane-after-Escape comparisons are retained. No external network requests or runtime exceptions. Four owned tmux sessions and their profiles were removed.
 
 This branch contains focused evidence only. The all-pane UI benchmark is tracked independently on the PR; these captures do not substitute for it. Full raw captures, outcomes, tests and replay provenance are retained in the local GLO-1148 evidence directory.
+
+## Final typecheck correction
+
+Final PR head: `3b5fbf33b8d43ed1ce1e19283fca23fd649ce86d`. The screenshots above keep their actual `6578fe8` source labels. The only later source change annotates the saved-alert updater argument as `unknown`. `type-only-equivalence.json` and its reproducible script prove identical Bun1.3.11 executable output. Fresh final-head CLI replay and all six CI workflows are tracked independently on the PR.

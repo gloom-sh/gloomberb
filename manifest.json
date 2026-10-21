@@ -1,5 +1,5 @@
 {
-  "README.md": "8f2565edc6e7fe7139a11e81fc5407876b1567d2840fb30dd43c4d7fc07f43b0",
+  "README.md": "c798bf05e7a3f6842c4a99d1c856054ded7f0ddb79df1d7ae29f56fcabb58a09",
   "capture-terminal.py": "355dc9b1d40892d93a845412077ddc717784bc8a6cca551a3e77c03e3c33c9f3",
   "capture-ui.ts": "6ca96c8fcac808f78221e425edab668fd354d07ff808bc0b16ec179db3d86fd8",
   "compare-ui.py": "66450dac3acf84de34fe1d52d2f5a83b2a77b0860dcda3ca6a6e8a9d3b756c15",
@@ -28,11 +28,13 @@
   "partial-pane-paper-720.png": "8e9d376e1482f82c42dd9f964155a606235f3c99d04db4b11889f141570cb9e6",
   "partial-pane-white-1280.png": "2fa708b7e313bf7cee816da6556a16370e1d1dc74efbbc2773dffab0dd5cf341",
   "partial-pane-white-720.png": "81d6b1944e920c2547712b87c03c5166f5c01995d88c42cd622ee1630b0bad00",
+  "prove-type-only.ts": "71aadb78e4dd11eb0053671fe33aeda6d54cc898f307f624f6f08f2c8ef215e3",
   "terminal-captures.json": "4ba865b0a43d0191292da99801a0beb03bb871bd8db852dbc5713ed1e757f6de",
   "terminal-fixture.tsx": "8a9e7f25644f62ab2fa1641b1bfcbe6174ecc7db31de276fdf3bb8864b2312a3",
   "terminal-partial-paper-pane.png": "02970afe33f6e5aade19bbb88f66e79160f84fae910c6b325cc2c0989784d45e",
   "terminal-partial-paper.png": "c07f250aca1851b0c115b25573b6a1c5636549959f8c387ba1c98e6e758cd5ca",
   "terminal-partial-white-pane.png": "6d2354061b088be5a60e803f2291cd36d6385c78fb3d48519a7c4c225c94c90c",
   "terminal-partial-white.png": "f62a04f266a253c28fc246a275900754b33e69082a07a4bdef9f096280bbf958",
+  "type-only-equivalence.json": "575b9b2882ee8b903729869bb15b2ae297fbe03310f285a85754fe95cccce4a4",
   "ui-fixture.tsx": "26c6cf9333ff6f6afb05ad400e2c1a0dc603d7cb7cafad85f600a4b503bdcfd8"
 }

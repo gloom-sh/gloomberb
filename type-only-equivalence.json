@@ -1,0 +1,15 @@
+{
+  "before": "6578fe82660f7d7d1ecdfab8cec97b6f13f28d3c",
+  "after": "3b5fbf33b8d43ed1ce1e19283fca23fd649ce86d",
+  "files": [
+    "src/plugins/builtin/alerts/pane.tsx"
+  ],
+  "sourceBeforeSha256": "656735a6a98557520cd4cfa8996f66591e4b90d1c0643546ba91ffdac5bf0e8b",
+  "sourceAfterSha256": "fe4132ec15cff8c0c7f67b5a233c49652fa7f7a1823980d1c15fb9c9ed8d374c",
+  "executableSha256": "a4debd39fddd41270d328d628aef27fa293ed3bcce58dea311899c437754d9c8",
+  "executableBytes": 12216,
+  "executableIdentical": true,
+  "bun": "1.3.11",
+  "change": "Explicit unknown annotation on config updater argument; erased by transpilation",
+  "evidence": "Earlier focused screenshots/terminal and local all-pane build retain their actual6578 source head; runtime output matches this final head. Exact-head CI and CLI replay are rerun separately."
+}
