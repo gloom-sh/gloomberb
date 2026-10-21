@@ -46,11 +46,16 @@ const HOP_SEPARATOR = " › ";
 
 /**
  * Holding to via, then via to the company that reports. The first hop is
- * padded with no-break spaces, which the desktop does not collapse.
+ * padded with no-break spaces, which the desktop does not collapse. A column
+ * too narrow for the route keeps each share whole or leaves it out (`8% of
+ * NVDA purchases › …`), never a figure cut off from whose it is.
  */
-function shareText(row: SecondHopRow, firstHopWidth: number) {
-  const first = hopLabel(row.hops[0]);
-  return `${first}${"\u00a0".repeat(Math.max(0, firstHopWidth - displayWidth(first)))}${HOP_SEPARATOR}${hopLabel(row.hops[1])}`;
+function shareText(row: SecondHopRow, firstHopWidth: number, cells = Infinity) {
+  const first = hopLabel(row.hops[0]), second = hopLabel(row.hops[1]);
+  const lined = `${first}${"\u00a0".repeat(Math.max(0, firstHopWidth - displayWidth(first)))}${HOP_SEPARATOR}${second}`;
+  if (displayWidth(lined) <= cells) return lined;
+  const whole = `${first}${HOP_SEPARATOR}${second}`;
+  return displayWidth(whole) <= cells ? whole : `${first}${HOP_SEPARATOR}…`;
 }
 
 /**
@@ -113,7 +118,7 @@ function renderSecondHopCell(row: SecondHopRow, column: DataTableColumn, firstHo
     case "link": return { text: row.link === "customer" ? "customer's customer" : "supplier's supplier" };
     case "via": return { text: row.via };
     case "holding": return { text: row.holding };
-    case "shares": return { text: shareText(row, firstHopWidth), value: shareText(row, 0) };
+    case "shares": return { text: shareText(row, firstHopWidth, column.width), value: shareText(row, 0) };
     case "move": return move(row);
     default: return { text: row.holdingDate ?? "--" };
   }

@@ -3,7 +3,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyLabel, counterpartyName, disclosedValue, flowBands, percentage, shareParts, sortRows, supplyRoleCounts } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, fitShareBasis, flowBands, percentage, shareParts, sortRows, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -159,18 +159,30 @@ test("revenue ribbons share exact scope and period while dollar scales remain st
 
 test("shares retain the reporter and distinguish tagged context from a prose denominator", () => {
   const reverse = supplyRow("crus", { role: "supplier", direction: "in", reportingEntity: entity("CRUS"), pctOfRevenue: 91 });
-  expect(shareParts(reverse, "AAPL")).toEqual({ value: "91%", basis: "of CRUS revenue" });
-  expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toEqual({ value: "22%", basis: "of revenue" });
+  expect(shareParts(reverse, "AAPL")).toMatchObject({ value: "91%", basis: "of CRUS revenue" });
+  expect(shareParts(supplyRow("own", { pctOfRevenue: 22.04 }), "FOCUS")).toMatchObject({ value: "22%", basis: "of revenue" });
   expect(shareParts(supplyRow("seg", { sourceKind: "filing_text", pctOfRevenue: 14, pctScope: "Compute And Networking Segment" }), "FOCUS")?.basis).toBe("of Compute & Networking revenue");
   expect(shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")?.basis).toBe("of vendor non-trade receivables");
   expect(shareParts(supplyRow("none", { pctOfRevenue: null, pctBasis: null }), "FOCUS")).toBeNull();
   // A multi-hop disclosure always names its reporter, even when it is the focus company.
   expect(shareParts(supplyRow("path", { pctOfRevenue: 22.04, pctBasis: "revenue" }), "FOCUS", { includeReporter: true }))
-    .toEqual({ value: "22%", basis: "of FOCUS revenue" });
+    .toMatchObject({ value: "22%", basis: "of FOCUS revenue" });
   expect(shareParts(supplyRow("no-basis", { pctOfRevenue: 22, pctBasis: null }), undefined, { includeReporter: true })).toBeNull();
   expect(shareParts(supplyRow("no-pct", { pctOfRevenue: null, pctBasis: "revenue" }), undefined, { includeReporter: true })).toBeNull();
   const group = supplyRow("group", { counterparty: { ...entity("group", "United States And Europe Based End Customers"), aggregate: true, ticker: null } });
   expect(counterpartyLabel(group)).toBe("United States and Europe based end customers");
+});
+
+test("a share's basis gives way to a shorter form and an ellipsis, never to nothing", () => {
+  const prose = shareParts(supplyRow("ar", { sourceKind: "filing_text", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")!;
+  expect(prose.forms).toEqual(["of vendor non-trade receivables", "of receivables", "receivables"]);
+  expect([31, 14, 13, 11].map((cells) => fitShareBasis(prose, cells))).toEqual(["of vendor non-trade receivables", "of receivables", "receivables", "receivables"]);
+  expect([10, 4, 1].map((cells) => fitShareBasis(prose, cells))).toEqual(["receivabl…", "rec…", "…"]);
+  // A tagged fact's context is dropped whole rather than cut: "context: T…" would claim a different context.
+  const tagged = shareParts(supplyRow("tagged", { sourceKind: "xbrl", pctOfRevenue: 47, pctBasis: "receivables", pctScope: "Vendor non-trade receivables" }), "FOCUS")!;
+  expect(tagged.forms).toEqual(["receivables · context: Vendor non-trade receivables", "receivables"]);
+  expect(fitShareBasis(tagged, 30)).toBe("receivables");
+  expect(shareParts(supplyRow("plain", { pctOfRevenue: 22 }), "FOCUS")!.forms).toEqual(["of revenue", "revenue"]);
 });
 
 test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
@@ -178,7 +190,7 @@ test("NVDA geographic XBRL facts do not invent a denominator or quarterly durati
   // total revenue from non-US customers over six months. Tags omit this prose.
   for (const [pctOfRevenue, pctScope, form] of [[76, "TW", "10-K"], [86, "TW", "10-Q"], [30, "Non Us", "10-Q"]] as const) {
     const row = supplyRow("nvda", { sourceKind: "xbrl", pctOfRevenue, pctScope, form });
-    expect(shareParts(row, "FOCUS")).toEqual({ value: `${pctOfRevenue}%`, basis: `revenue · context: ${pctScope === "TW" ? "TW" : "non-US"}` });
+    expect(shareParts(row, "FOCUS")).toMatchObject({ value: `${pctOfRevenue}%`, basis: `revenue · context: ${pctScope === "TW" ? "TW" : "non-US"}` });
     expect(shareParts(row, "OTHER")?.basis).toStartWith("FOCUS revenue · context:");
   }
   expect(shareParts(supplyRow("ytd", { form: "10-Q" }), "FOCUS")?.basis).toBe("of revenue");
