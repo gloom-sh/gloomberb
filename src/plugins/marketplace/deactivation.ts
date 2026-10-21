@@ -7,7 +7,7 @@ import { logFailure } from "../../utils/log-failure";
 const failedStops = new WeakMap<PluginRegistry, Set<string>>();
 
 export function deactivatePluginForRemoval(registry: PluginRegistry, pluginId: string): void {
-  const failure = "Plugin could not be stopped. Restart Gloomberb before removing it.";
+  const failure = "Plugin could not be stopped. Restart before removing it.";
   if (failedStops.get(registry)?.has(pluginId)) throw new Error(failure);
   if (!registry.allPlugins.has(pluginId)) return;
   try {

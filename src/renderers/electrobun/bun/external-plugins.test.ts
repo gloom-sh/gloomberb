@@ -15,9 +15,9 @@ test("native cleanup failure is rejected on retries after unregister dropped the
       cleanupCalls++;
       throw new Error("Cleanup did not finish");
     } });
-    expect(() => deactivateExternalPlugin(registry, "cleanup-fixture")).toThrow("Restart Gloomberb");
+    expect(() => deactivateExternalPlugin(registry, "cleanup-fixture")).toThrow("Restart before removing it.");
     expect(registry.allPlugins.has("cleanup-fixture")).toBe(false);
-    expect(() => deactivateExternalPlugin(registry, "cleanup-fixture")).toThrow("Restart Gloomberb");
+    expect(() => deactivateExternalPlugin(registry, "cleanup-fixture")).toThrow("Restart before removing it.");
     expect(cleanupCalls).toBe(1);
 
     await restarted.register({ id: "cleanup-fixture", name: "Cleanup fixture", version: "1.0.0", dispose() { cleanupCalls++; } });

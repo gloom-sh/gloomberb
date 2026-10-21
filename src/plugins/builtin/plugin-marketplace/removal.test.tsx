@@ -91,8 +91,7 @@ for (const failure of ["view", "native"] as const) {
     const run = await mount(failure);
     const initialReads = run.reads();
     await run.remove();
-    const frame = await tui.waitForFrameToContain("Restart Gloomberb");
-    expect(frame).toContain("Plugin could not be stopped. Files kept.");
+    const frame = await tui.waitForFrameToContain("stop failed, restart to remove");
     expect(frame).not.toContain("removing Fixture Plugin");
     expect(frame).toContain("[x] remove");
     expect(run.calls).toEqual(failure === "native" ? ["native.stop"] : ["native.stop", "view.stop"]);
@@ -106,16 +105,16 @@ for (const failure of ["view", "native"] as const) {
     expect(run.calls.slice(-3)).toEqual(["native.stop", "view.stop", "files.remove"]);
     expect(run.active).toEqual({ view: false, native: false, files: false });
     expect(run.notes.at(-1)).toMatchObject({ body: "Removed Fixture Plugin.", type: "success" });
-    expect(tui.frame()).not.toContain("Restart Gloomberb");
+    expect(tui.frame()).not.toContain("stop failed, restart to remove");
   });
 }
 
 test("a thrown file-removal request clears the busy state and reports failure", async () => {
   const run = await mount("remove");
   await run.remove();
-  const frame = await tui.waitForFrameToContain("Removal failed.");
+  const frame = await tui.waitForFrameToContain("removal failed, restart to retry");
   expect(frame).not.toContain("removing Fixture Plugin");
-  expect(frame).not.toContain("Plugin could not be stopped");
+  expect(frame).not.toContain("stop failed, restart to remove");
   expect(run.active.files).toBe(true);
   expect(run.notes.map((note) => note.type)).toEqual(["error"]);
 });

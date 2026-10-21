@@ -406,9 +406,9 @@ describe("activating an installed plugin", () => {
 
   test("failed view cleanup retains the installed entry as needing restart and refuses a no-op retry", async () => {
     const { host } = bindActivationRuntime([aries("data:image/webp;base64/kept")], true);
-    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart Gloomberb");
+    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart before removing it.");
     expect(host.listInstalled()).toMatchObject([{ id: "aries", directory: "gloom-aries", needsRestart: true }]);
-    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart Gloomberb");
+    await expect(host.deactivate("aries", "gloom-aries")).rejects.toThrow("Restart before removing it.");
     expect(host.listInstalled()).toHaveLength(1);
   });
 });

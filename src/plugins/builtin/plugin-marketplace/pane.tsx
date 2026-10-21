@@ -655,9 +655,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     } catch (error) {
       logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
       const message = removalStarted
-        ? "Removal failed. Restart Gloomberb and try again."
-        : "Plugin could not be stopped. Files kept. Restart Gloomberb.";
-      setLastError(message);
+        ? "Removal failed. Restart and try again."
+        : "Plugin could not be stopped. Files kept. Restart before removing it.";
+      setLastError(removalStarted ? "removal failed, restart to retry" : "stop failed, restart to remove");
       notify({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
     } finally {
       setBusy(null);
