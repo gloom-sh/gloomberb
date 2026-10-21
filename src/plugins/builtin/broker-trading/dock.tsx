@@ -70,9 +70,10 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
     if (visible || intent) { setMounted(true); setPanelFocused(true); }
     if (intent && !visible) { if (locked) setLockedOpen(true); else selectTab(TRADE_TAB); }
   }, [intent, visible, locked, selectTab]);
-  const openTicket = useCallback((side: "BUY" | "SELL") => {
+  const openTicket = useCallback((side?: "BUY" | "SELL") => {
     if (projection.busy) return;
-    setIntent(createTradeIntent({ action: side })); setMounted(true); setPanelFocused(true);
+    if (side) setIntent(createTradeIntent({ action: side }));
+    setMounted(true); setPanelFocused(true);
     if (locked) setLockedOpen(true); else selectTab(TRADE_TAB);
   }, [projection.busy, locked, selectTab, setIntent]);
   // Overview's order opens Trade with that order in the ticket, as the drawer's edit button does.

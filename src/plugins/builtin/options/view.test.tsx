@@ -202,7 +202,7 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
-test("Enter opens the cursor's contract on its broker, and with trading b and s open its Trade while v opens the surface", async () => {
+test("Enter opens the cursor's contract on its broker, and with trading t opens its Trade while s still opens the surface", async () => {
   const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101, 102], 101) });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
@@ -225,12 +225,13 @@ test("Enter opens the cursor's contract on its broker, and with trading b and s 
   const contract = { brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", localSymbol: "AAPL260619C00100000", secType: "OPT", currency: "USD",
     lastTradeDateOrContractMonth: "20260619", right: "C" as const, strike: 100, multiplier: "100" };
   expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL Jun 19 '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
-  await act(async () => { await tui.emitKeypress({ name: "s" }); });
+  await act(async () => { await tui.emitKeypress({ name: "t" }); });
   expect(pinned[1]).toMatchObject({ symbol: "AAPL260619C00100000", options: { instrument: contract, tabId: "broker-trade" } });
-  expect(takeTradeIntent(pinned[1]!.options!.tabState!.brokerTradeIntent as string)).toEqual({ action: "SELL" });
+  // The ticket opens on Buy and chooses the side itself.
+  expect(takeTradeIntent(pinned[1]!.options!.tabState!.brokerTradeIntent as string)).toEqual({ action: "BUY" });
   await act(async () => { await tui.emitKeypress({ name: "S", shift: true }); });
   expect(templates).toEqual([]);
-  await act(async () => { await tui.emitKeypress({ name: "v" }); });
+  await act(async () => { await tui.emitKeypress({ name: "s" }); });
   expect(templates).toEqual(["vol-surface-pane"]);
   expect(pinned).toHaveLength(2);
 });

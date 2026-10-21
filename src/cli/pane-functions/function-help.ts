@@ -93,7 +93,7 @@ const POP_OUT = key("p", "op out");
 const STEP = key("←/→", " step");
 /** THEM and MEMB members: open them in RRG, CORR, SIW or RIPL, or save them as a watchlist. */
 const MEMBERS_MENU = key(".", " open members in, save as watchlist");
-const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("t", "imeframe"), key("f", "ormulas")];
+const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("b", "ars"), key("f", "ormulas")];
 
 export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   // Research companies

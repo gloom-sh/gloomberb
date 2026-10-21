@@ -71,12 +71,15 @@ async function mount(outcome: "working" | "unknown" = "working", initialWidth = 
 
 test("Research opens beside either chart surface, falls back at 90 columns, and never submits on open", async () => {
   const f = await mount();
-  await tui.emitKeypress({ name: "b" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
   await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
   await tui.waitForFrameToContain("PRICE CONTEXT 140");
   await tui.emitKeypress({ name: "h" }, { trackPropagation: true });
+  // One key opens the ticket from Overview too; the side is chosen in it.
+  await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Buy 1 AAPL");
   await tui.emitKeypress({ name: "s" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Sell 1 AAPL");
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
@@ -88,7 +91,7 @@ test("Research opens beside either chart surface, falls back at 90 columns, and 
 
 test("a locked Chart pane still replaces the chart with the narrow fallback and restores it on Escape", async () => {
   const f = await mount("working", 90, true);
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   expect(tui.frame()).not.toContain("PRICE CONTEXT");
   await tui.emitKeypress({ name: "escape" });
@@ -98,7 +101,7 @@ test("a locked Chart pane still replaces the chart with the narrow fallback and 
 
 test("the dock keeps long time-in-force choices identifiable at 34 columns", async () => {
   await mount();
-  await tui.emitKeypress({ name: "b" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   await tui.emitKeypress({ name: "t" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Good til cancelled");
@@ -110,9 +113,9 @@ test("the dock keeps long time-in-force choices identifiable at 34 columns", asy
 
 test("F6 releases a numeric field to the chart and Escape closes without a mutation", async () => {
   const f = await mount();
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
-  // b again selects the side, and two tabs from it reach Quantity.
+  // b selects the side in the ticket, and two tabs from it reach Quantity.
   await tui.emitKeypress({ name: "b" });
   for (let index = 0; index < 2; index++) await tui.emitKeypress({ name: "tab" });
   await tui.waitForFrameToContain("> Quantity");
@@ -124,11 +127,11 @@ test("F6 releases a numeric field to the chart and Escape closes without a mutat
 
 test("chart keys the ticket leaves still reach the chart, but not while a ticket field takes typing", async () => {
   await mount();
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   await tui.emitKeypress({ name: "+" });
   await tui.waitForFrameToContain("ZOOMS 1");
-  // b selects the side inside the ticket; it does not reopen the panel.
+  // s selects the side inside the ticket; it opens no series editor.
   await tui.emitKeypress({ name: "s" });
   await tui.waitForFrameToContain("Sell 1 AAPL");
   // Two tabs from the side reach Quantity, which takes typing, so + stays in it.
@@ -145,7 +148,7 @@ test("chart keys the ticket leaves still reach the chart, but not while a ticket
 
 test("docked open orders stay hidden without orders, and o shows them from the ticket and hides them again", async () => {
   await mount("working", 140, false, false);
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   expect(tui.frame()).not.toContain("Open Orders");
   await tui.emitKeypress({ name: "o" });
@@ -225,7 +228,7 @@ test("a placed order and its later fill each say so once in a toast", async () =
 test("Chart stays the chart alone, Trade puts the ticket beside it, and the divider drags", async () => {
   await mount();
   expect(tui.frame()).not.toContain("Buy 1 AAPL");
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
   const mouse = tui.setup().mockMouse;
@@ -235,7 +238,7 @@ test("Chart stays the chart alone, Trade puts the ticket beside it, and the divi
   await tui.emitKeypress({ name: "f6" });
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("PRICE CONTEXT 140");
-  await tui.emitKeypress({ name: "b" });
+  await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("PRICE CONTEXT 96");
 });
 

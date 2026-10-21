@@ -16,13 +16,14 @@ export interface ResearchTradeProjection {
 }
 export interface ResearchTrading extends ResearchTradeProjection {
   symbol: string;
-  /** A trading-capable broker profile is enabled, so b and s lead somewhere. */
+  /** A trading-capable broker profile is enabled, so t leads somewhere. */
   available?: boolean;
   docked: boolean;
   visible: boolean;
   /** The docked ticket holds focus; the chart beside it only sees keys the ticket leaves. */
   ticketFocused?: boolean;
-  open(side: "BUY" | "SELL"): void;
+  /** Opens the ticket; without a side it keeps its draft, and Buy or Sell is chosen in it. */
+  open(side?: "BUY" | "SELL"): void;
   close(): void;
   /** This ticker's working orders and latest fills, for Overview; absent without a trading profile. */
   orders?(width: number): ReactNode;
@@ -45,18 +46,17 @@ export function researchTradeMatches(trade: ResearchTradeProjection | null, list
   return !venue || !exchange || venue === exchange;
 }
 
-/** Trading actions stay in the pane menu and keyboard, not the range toolbar. */
+/** Trade stays in the pane menu and keyboard, not the range toolbar: one key, and the ticket picks the side. */
 export function ResearchTradeActions({ focused }: { focused: boolean }) {
   const trade = useResearchTrading();
   const dialog = useDialogState((state) => state.isOpen);
   useShortcut((event) => {
     if (!trade || trade.ticketFocused || event.defaultPrevented || event.propagationStopped || event.targetEditable || event.ctrl || event.alt || event.meta || event.shift || event.super || event.repeat) return;
-    if (event.name !== "b" && event.name !== "s") return;
-    event.preventDefault(); event.stopPropagation(); trade.open(event.name === "b" ? "BUY" : "SELL");
+    if (event.name !== "t") return;
+    event.preventDefault(); event.stopPropagation(); trade.open();
   }, { enabled: focused && !!trade && !dialog, phase: "before", scope: "research:trade-open" });
   usePaneMenuItems("research:trade-open", () => trade ? [
-    { id: "trade-buy", label: "Buy", accelerator: "b", enabled: !trade.busy, onSelect: () => trade.open("BUY") },
-    { id: "trade-sell", label: "Sell", accelerator: "s", enabled: !trade.busy, onSelect: () => trade.open("SELL") },
+    { id: "trade-open", label: "Trade", accelerator: "t", enabled: !trade.busy, onSelect: () => trade.open() },
   ] : null, [trade]);
   return null;
 }

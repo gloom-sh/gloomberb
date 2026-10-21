@@ -706,10 +706,11 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     pinTicker(symbol, selection);
   }, [contractListing, pinTicker]);
   const tradable = !!scenarioContract && brokerCanTrade(appConfig.brokerInstances, getBrokerAdapter, scenarioContract.contractSymbol.trim().toUpperCase(), "OPT");
-  const tradeContract = useCallback((action: "BUY" | "SELL") => {
+  const tradeContract = useCallback(() => {
     if (!scenarioContract || !tradable) return;
     const { symbol, selection } = contractListing(scenarioContract);
-    openTradeTicket({ pinTicker }, symbol, { action }, selection);
+    // A new contract's ticket starts on Buy; b and s choose the side in it.
+    openTradeTicket({ pinTicker }, symbol, { action: "BUY" }, selection);
   }, [contractListing, pinTicker, scenarioContract, tradable]);
 
   const openSurface = useCallback(() => {
@@ -743,18 +744,14 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     setCalcSide(sideTarget);
   }, [selectContract, selectedRow, selectedStrikeIdx, sideTarget]);
 
-  // With a broker that trades the contract, b and s trade it and the surface takes [v]ol surface: no key needs Shift.
-  const surfaceKey = tradable ? "v" : "s";
+  // With a broker that trades the contract, [t]rade opens its ticket on Buy, and Sell is chosen there.
   const footerHints = useMemo(() => [
     ...(sideTarget ? [{ id: "side", key: SIDE_KEY, label: ` ${sideTarget}`, title: sideTarget === "put" ? "Select Put" : "Select Call", onPress: switchSide }] : []),
-    ...(tradable ? [
-      { id: "buy-contract", key: "b", label: "uy", onPress: () => tradeContract("BUY") },
-      { id: "sell-contract", key: "s", label: "ell", onPress: () => tradeContract("SELL") },
-    ] : []),
+    ...(tradable ? [{ id: "trade-contract", key: "t", label: "rade", title: "Trade Contract", onPress: tradeContract }] : []),
     ...(calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : []),
     ...(scenarioAvailable ? [{ id: "scenario", key: "a", label: "dd to OSA", onPress: openScenario }] : []),
-    ...(ticker && selectedExpiration != null ? [{ id: "surface", key: surfaceKey, label: tradable ? "ol surface" : "urface", onPress: openSurface }] : []),
-  ], [sideTarget, switchSide, tradable, tradeContract, calcParams, openCalculator, scenarioAvailable, openScenario, ticker, selectedExpiration, surfaceKey, openSurface]);
+    ...(ticker && selectedExpiration != null ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
+  ], [sideTarget, switchSide, tradable, tradeContract, calcParams, openCalculator, scenarioAvailable, openScenario, ticker, selectedExpiration, openSurface]);
 
   // Back to where the chain opens: the held contract's strike, else the money.
   const defaultStrikeIndex = strikes.length === 0 ? -1 : (() => {
@@ -779,10 +776,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       enabled: defaultStrikeIndex >= 0, onSelect: goToDefaultStrike },
     ...(enrichment?.asOf && dialog ? [{ id: "analytics-as-of", label: "Analytics As Of…", onSelect: showAnalyticsAsOf }] : []),
     { id: "open-contract", label: "Open Contract", accelerator: "Enter", enabled: !!scenarioContract, onSelect: () => openContract(scenarioContract) },
-    ...(tradable ? [
-      { id: "buy-contract", label: "Buy Contract", accelerator: "b", onSelect: () => tradeContract("BUY") },
-      { id: "sell-contract", label: "Sell Contract", accelerator: "s", onSelect: () => tradeContract("SELL") },
-    ] : []),
+    ...(tradable ? [{ id: "trade-contract", label: "Trade Contract", accelerator: "t", onSelect: tradeContract }] : []),
   ], [defaultStrikeIndex, dialog, enrichment?.asOf, expirationDates.length, goToDefaultStrike, parsed,
     selectAdjacentExpiration, selectedExpirationIndex, showAnalyticsAsOf, scenarioContract, openContract, tradable, tradeContract]);
 
@@ -842,7 +836,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
     if (event.ctrl || event.meta || event.alt) return;
-    const surface = isPlainKey(event, surfaceKey);
+    const surface = isPlainKey(event, "s");
     if (surface && ticker && selectedExpiration != null) {
       event.preventDefault();
       event.stopPropagation();
@@ -850,10 +844,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       return;
     }
     if (event.shift) return;
-    if (tradable && (isPlainKey(event, "b") || isPlainKey(event, "s"))) {
+    if (tradable && isPlainKey(event, "t") && !event.repeat) {
       event.preventDefault();
       event.stopPropagation();
-      tradeContract(isPlainKey(event, "b") ? "BUY" : "SELL");
+      tradeContract();
       return;
     }
 

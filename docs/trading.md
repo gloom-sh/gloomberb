@@ -45,12 +45,11 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 
 | Screen | Key | Action |
 |---|---|---|
-| Chart or Overview | `b`, `s` | Open Trade with a Buy or Sell ticket, without submitting |
-| Options chain with trading available | `b`, `s` | Open the selected contract's Trade with a Buy or Sell ticket (`v` opens the vol surface) |
+| Chart or Overview with trading available | `t` | Open Trade, without submitting; choose Buy or Sell in the ticket |
+| Options chain with trading available | `t` | Open the selected contract's Trade on a Buy ticket; choose the side in it |
 | Options chain | Enter | Open the selected contract's quote, chart and Trade |
 | Docked Research | F6 | Move focus between chart and ticket, including from a text field |
 | Docked Research | `<`, `>` | Widen or narrow the ticket beside the chart |
-| Research Chart with trading available | `a` | Add or edit chart series (`s` opens Sell) |
 | Ticket editing | `b`, `s` | Buy, Sell |
 | Ticket editing | `r` | Open review, even when SIM one-click is enabled |
 | Numeric field | Up/Down | Increase/decrease by one editing step |

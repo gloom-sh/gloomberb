@@ -60,7 +60,7 @@ Dated missing closing prices remain gaps through history caching and chart extra
 
 Contradictory OHLC bars are unavailable rather than silently repaired. Charts leave gaps and dependent risk calculations can be unavailable. These are current data problems and remain visible in the terminal.
 
-Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. In a narrow legend, scroll over the row or use `[` / `]` to reveal each series; Space toggles the selected series. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
+Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. In a narrow legend, scroll over the row or use `[` / `]` to reveal each series; Space toggles the selected series. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `b` opens the bar size picker (the interval), and with a broker that trades the symbol `t` opens Trade. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
 
 ## Seasonality
 
