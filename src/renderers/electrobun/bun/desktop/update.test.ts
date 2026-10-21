@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { UpdateStatusEntry } from "electrobun/bun";
 import type { UpdateFailureReport } from "../../../../api-client";
 import {
@@ -7,7 +10,7 @@ import {
   type UpdateReportState,
 } from "../../../../telemetry/update-failures";
 import type { UpdateProgress } from "../../../../updater";
-import { createElectrobunDesktopUpdater, type ElectrobunUpdaterApi } from "./update";
+import { createElectrobunDesktopUpdater, removeUpdateAsides, type ElectrobunUpdaterApi } from "./update";
 
 type UpdateInfo = ReturnType<ElectrobunUpdaterApi["updateInfo"]>;
 
@@ -245,18 +248,24 @@ describe("desktop update flow", () => {
 
   // App Translocation runs a quarantined app from a read-only copy, and a disk
   // image is read-only: Electrobun cannot replace the bundle there, and moving
-  // the app to Applications is what fixes it.
-  test("an install that cannot replace an app run from a disk image says to move it", async () => {
+  // the app to Applications is what fixes it. From Applications, a move across
+  // disks (the update is kept on another one) is its own reason: moving the app
+  // again would not help.
+  test.each([
+    ["desktop-volume", "EROFS: read-only file system, rename", "wrong_location"],
+    ["desktop-volume", "EXDEV: cross-device link not permitted, rename", "wrong_location"],
+    ["desktop-applications", "EXDEV: cross-device link not permitted, rename", "cross_device"],
+  ] as const)("an install from %s that fails with %s says %s", async (installKind, message, code) => {
     const { updater } = createFakeUpdater({
-      applyStatuses: [status({ status: "error", details: { errorMessage: "Failed to replace app: EROFS: read-only file system, rename" } })],
+      applyStatuses: [status({ status: "error", details: { errorMessage: `Failed to replace app: ${message}` } })],
     });
-    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0", installKind: "desktop-volume" });
+    const desktop = createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0", installKind });
     await desktop.download(STABLE, () => {});
     const { progress, onProgress } = collect();
 
     await desktop.apply(onProgress);
 
-    expect(progress.at(-1)?.failure).toEqual({ phase: "apply", code: "wrong_location" });
+    expect(progress.at(-1)?.failure).toEqual({ phase: "apply", code });
   });
 
   // Electrobun emits an error status when a patch does not apply, then falls
@@ -409,5 +418,43 @@ describe("desktop update channels", () => {
     expect(sources).toEqual([null]);
     // A stable install takes the same manifest as before channels existed.
     await expect(desktop.check("0.17.0", "stable")).resolves.toMatchObject({ kind: "available", release: { version: "0.18.0" } });
+  });
+});
+
+// It deletes folders beside the installed app, so it must take only the
+// copies an install moved aside, never the app or its neighbours.
+describe("old copies of the app at the next start", () => {
+  function folderWith(entries: string[]): string {
+    const folder = mkdtempSync(join(tmpdir(), "gloom-update-asides-"));
+    for (const entry of entries) mkdirSync(join(folder, entry, "Contents"), { recursive: true });
+    return folder;
+  }
+
+  test.each([
+    ["darwin", "Gloomberb.app", "Gloomberb.app/Contents/MacOS/bun"],
+    ["linux", "app", "app/bin/bun"],
+  ])("%s removes %s.previous and the uniquely named ones, and nothing else", async (platform, app, exec) => {
+    const keep = [app, `${app}.previous.bak`, `${app}.previously`, `Other${app}.previous`, `${app}.previous-UPPER`];
+    const folder = folderWith([...keep, `${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
+    try {
+      const removed = await removeUpdateAsides(join(folder, exec), platform);
+      expect(removed.map((path) => path.slice(folder.length + 1)).sort()).toEqual([`${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
+      expect(readdirSync(folder).sort()).toEqual([...keep].sort());
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves everything alone where it cannot tell the app's folder", async () => {
+    const folder = folderWith(["bun.previous", "Gloomberb.previous"]);
+    try {
+      // A bundle path that is not the app's Contents/MacOS, a Linux runtime outside bin/, and Windows.
+      expect(await removeUpdateAsides(join(folder, "Gloomberb.app/bun"), "darwin")).toEqual([]);
+      expect(await removeUpdateAsides(join(folder, "bun"), "linux")).toEqual([]);
+      expect(await removeUpdateAsides(join(folder, "Gloomberb/bin/bun.exe"), "win32")).toEqual([]);
+      expect(existsSync(join(folder, "bun.previous"))).toBe(true);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

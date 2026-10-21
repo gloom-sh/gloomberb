@@ -39,7 +39,7 @@ import {
 } from "../external-plugins";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { handleDesktopBackendRequest } from "./backend-requests";
-import { detectDesktopInstallKind } from "./update";
+import { detectDesktopInstallKind, removeUpdateAsides } from "./update";
 import { DesktopCapabilityBridge } from "./capability-bridge";
 import { DesktopDetachedWindowManager } from "./detached-windows";
 import { handleDesktopHostRequest } from "./host-requests";
@@ -147,6 +147,7 @@ export class DesktopBackend {
         getDataDir: () => this.config?.dataDir ?? null,
       }));
       reviewLastUpdateAttempt();
+      void removeUpdateAsides();
     }
     // The native menu shows the same accelerators the keys use, so a rebind
     // rebuilds it.

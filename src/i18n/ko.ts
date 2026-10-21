@@ -1030,6 +1030,7 @@ export const ko: Record<string, string> = {
   "download corrupted": "다운로드 손상됨",
   "no permission to replace the app": "앱을 교체할 권한 없음",
   "move the app to Applications": "앱을 응용 프로그램 폴더로 옮기세요",
+  "app and update on different disks": "앱과 업데이트가 서로 다른 디스크에 있습니다",
   "install folder is read-only": "설치 폴더가 읽기 전용임",
   "disk full": "디스크 공간 부족",
   "app files in use": "앱 파일이 사용 중임",

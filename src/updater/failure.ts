@@ -29,6 +29,8 @@ const UPDATE_FAILURE_CODES = [
   "permission_denied",
   /** The macOS app runs from where it cannot be replaced: a disk image, App Translocation, another volume. */
   "wrong_location",
+  /** The downloaded update and the installed app are on different disks, so the one cannot be moved onto the other. */
+  "cross_device",
   "read_only",
   "disk_full",
   /** Another process holds the files being replaced. */
@@ -98,7 +100,7 @@ export function classifyUpdateError(error: unknown): UpdateFailureCode {
     case "ETXTBSY":
       return "file_in_use";
     case "EXDEV":
-      return "wrong_location";
+      return "cross_device";
     case "ETIMEDOUT":
       return "timeout";
   }
@@ -113,7 +115,7 @@ export function classifyUpdateError(error: unknown): UpdateFailureCode {
   if (/timed? ?out/i.test(message)) return "timeout";
   if (/rate limit/i.test(message)) return "rate_limited";
   if (/read-only file system/i.test(message)) return "read_only";
-  if (/cross-device/i.test(message)) return "wrong_location";
+  if (/cross-device/i.test(message)) return "cross_device";
   if (/permission denied|operation not permitted|access is denied/i.test(message)) return "permission_denied";
   if (/no space left|disk full/i.test(message)) return "disk_full";
   if (/resource busy|text file busy|being used by another process/i.test(message)) return "file_in_use";
@@ -145,6 +147,7 @@ const CODE_REASONS: Partial<Record<UpdateFailureCode, string>> = {
   corrupt: "download corrupted",
   permission_denied: "no permission to replace the app",
   wrong_location: "move the app to Applications",
+  cross_device: "app and update on different disks",
   read_only: "install folder is read-only",
   disk_full: "disk full",
   file_in_use: "app files in use",

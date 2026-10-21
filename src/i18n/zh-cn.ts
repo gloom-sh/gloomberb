@@ -1032,6 +1032,7 @@ export const zhCN: Record<string, string> = {
   "download corrupted": "下载已损坏",
   "no permission to replace the app": "没有替换应用的权限",
   "move the app to Applications": "请将应用移到“应用程序”文件夹",
+  "app and update on different disks": "应用与更新位于不同的磁盘",
   "install folder is read-only": "安装文件夹为只读",
   "disk full": "磁盘已满",
   "app files in use": "应用文件正在使用",

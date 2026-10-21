@@ -74,7 +74,7 @@ index cdaa2bca0fabe577cb667056aa6f8f84211189c2..3839e5232742c2467180c344f51a30f1
  
  // Encrypt function
 diff --git a/dist/api/bun/core/Updater.ts b/dist/api/bun/core/Updater.ts
-index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a6af232b2 100644
+index 39daf6d341780af8e30c2c50327162863f5977ec..0174d2ce1a9a4fa8ae0fd97367293fc5a794286a 100644
 --- a/dist/api/bun/core/Updater.ts
 +++ b/dist/api/bun/core/Updater.ts
 @@ -132,6 +132,19 @@ let updateInfo: {
@@ -97,7 +97,62 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  function cleanupExtractionFolder(
  	extractionFolder: string,
  	keepTarHash: string,
-@@ -176,6 +189,12 @@ const Updater = {
+@@ -158,6 +171,54 @@ function cleanupExtractionFolder(
+ 	}
+ }
+ 
++/**
++ * Where the running app goes while the new one moves in: `<app>.previous`, or,
++ * when an older one is still there and cannot be removed (a bundle another
++ * user owns), a name of its own, so a copy left behind once never blocks
++ * every later update. The app removes the copies it left at its next start.
++ */
++function updateAsidePath(appPath: string): string {
++	const previous = `${appPath}.previous`;
++	if (!statSync(previous, { throwIfNoEntry: false })) return previous;
++	try {
++		rmSync(previous, { recursive: true, force: true });
++	} catch (e) {
++		// Left for the next start to remove; this update takes another name.
++	}
++	if (!statSync(previous, { throwIfNoEntry: false })) return previous;
++	for (let attempt = 0; ; attempt += 1) {
++		const unique = `${previous}-${Date.now().toString(36)}${attempt ? `-${attempt}` : ""}`;
++		if (!statSync(unique, { throwIfNoEntry: false })) return unique;
++	}
++}
++
++/**
++ * Puts the new app where the running one is. The running app is moved aside
++ * rather than deleted first, so a move that fails (another volume, a
++ * read-only one, no permission) puts it back instead of leaving no app at all.
++ * The copy moved aside is removed when it can be; one that cannot goes at the
++ * app's next start.
++ */
++function replaceAppBundle(runningAppPath: string, newAppPath: string) {
++	const hadRunningApp = !!statSync(runningAppPath, { throwIfNoEntry: false });
++	const asidePath = hadRunningApp ? updateAsidePath(runningAppPath) : null;
++	if (asidePath) renameSync(runningAppPath, asidePath);
++
++	emitStatus("replacing-app", "Installing new version...");
++	try {
++		renameSync(newAppPath, runningAppPath);
++	} catch (error) {
++		if (asidePath) renameSync(asidePath, runningAppPath);
++		throw error;
++	}
++	if (!asidePath) return;
++	try {
++		rmSync(asidePath, { recursive: true, force: true });
++	} catch (e) {
++		// The new app is in place; the app removes the old copy at its next start.
++	}
++}
++
+ const Updater = {
+ 	updateInfo: () => {
+ 		return updateInfo;
+@@ -176,6 +237,12 @@ const Updater = {
  		onStatusChangeCallback = callback;
  	},
  
@@ -110,7 +165,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  	// todo: allow switching channels, by default will check the current channel
  	checkForUpdate: async () => {
  		emitStatus("checking", "Checking for updates...");
-@@ -196,11 +215,11 @@ const Updater = {
+@@ -196,11 +263,11 @@ const Updater = {
  
  		const cacheBuster = Math.random().toString(36).substring(7);
  		const platformPrefix = getPlatformPrefix(
@@ -124,7 +179,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  
  		try {
  			const updateInfoResponse = await fetch(updateInfoUrl);
-@@ -329,11 +348,11 @@ const Updater = {
+@@ -329,11 +396,11 @@ const Updater = {
  
  				// check if there's a patch file for it
  				const platformPrefix = getPlatformPrefix(
@@ -138,7 +193,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  				emitStatus(
  					"fetching-patch",
  					`Checking for patch: ${currentHash.slice(0, 8)}`,
-@@ -612,12 +631,12 @@ const Updater = {
+@@ -612,12 +679,12 @@ const Updater = {
  
  				const cacheBuster = Math.random().toString(36).substring(7);
  				const platformPrefix = getPlatformPrefix(
@@ -153,7 +208,7 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  				const prevVersionCompressedTarballPath = join(
  					appDataFolder,
  					"self-extraction",
-@@ -760,7 +779,12 @@ const Updater = {
+@@ -760,7 +827,12 @@ const Updater = {
  				mkdirSync(extractionFolder, { recursive: true });
  			}
  
@@ -167,40 +222,38 @@ index 39daf6d341780af8e30c2c50327162863f5977ec..13344a95f69c883bb27a4f2fe395666a
  			const latestTarPath = join(extractionFolder, `${latestHash}.tar`);
  
  			let appBundleSubpath: string = "";
-@@ -894,14 +918,29 @@ const Updater = {
+@@ -894,14 +966,7 @@ const Updater = {
  					emitStatus("replacing-app", "Removing old version...");
  
  					if (currentOS === "macos") {
 -						// Remove existing app before installing the new one
 -						if (statSync(runningAppBundlePath, { throwIfNoEntry: false })) {
 -							rmSync(runningAppBundlePath, { recursive: true });
-+						// Move the running app aside rather than delete it first, so
-+						// a move that fails (a read-only or another volume) leaves it
-+						// where it was instead of leaving no app at all.
-+						const previousAppBundlePath = `${runningAppBundlePath}.previous`;
-+						if (statSync(previousAppBundlePath, { throwIfNoEntry: false })) {
-+							rmSync(previousAppBundlePath, { recursive: true, force: true });
- 						}
-+						const hadRunningApp = !!statSync(runningAppBundlePath, { throwIfNoEntry: false });
-+						if (hadRunningApp) renameSync(runningAppBundlePath, previousAppBundlePath);
- 
- 						emitStatus("replacing-app", "Installing new version...");
- 						// Move new app to running location
+-						}
+-
+-						emitStatus("replacing-app", "Installing new version...");
+-						// Move new app to running location
 -						renameSync(newAppBundlePath, runningAppBundlePath);
-+						try {
-+							renameSync(newAppBundlePath, runningAppBundlePath);
-+						} catch (error) {
-+							if (hadRunningApp) renameSync(previousAppBundlePath, runningAppBundlePath);
-+							throw error;
-+						}
-+						try {
-+							rmSync(previousAppBundlePath, { recursive: true, force: true });
-+						} catch (e) {
-+							// The new app is in place; the old copy goes with the next update.
-+						}
++						replaceAppBundle(runningAppBundlePath, newAppBundlePath);
  
  						// Remove quarantine extended attributes to prevent "damaged" error
  						// The inner bundle is already signed/notarized, but macOS applies
+@@ -918,14 +983,7 @@ const Updater = {
+ 						// On Linux, we now have directory bundles instead of AppImage files
+ 						// The app is stored in {appDataFolder}/app/
+ 						const appBundleDir = join(appDataFolder, "app");
+-						
+-						// Remove existing app directory if it exists
+-						if (statSync(appBundleDir, { throwIfNoEntry: false })) {
+-							rmSync(appBundleDir, { recursive: true });
+-						}
+-
+-						// Move new app bundle directory to app location
+-						renameSync(newAppBundlePath, appBundleDir);
++						replaceAppBundle(appBundleDir, newAppBundlePath);
+ 
+ 						// Ensure launcher binary is executable
+ 						const launcherPath = join(appBundleDir, "bin", "launcher");
 diff --git a/dist/api/bun/preload/.generated/compiled.ts b/dist/api/bun/preload/.generated/compiled.ts
 index 3ab1d7d8de8938ae60823650fd3a29b952a76cb6..e0e841e6a87ce41533c6bdda8d29400aaf478e31 100644
 --- a/dist/api/bun/preload/.generated/compiled.ts

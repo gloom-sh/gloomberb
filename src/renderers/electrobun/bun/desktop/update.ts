@@ -1,3 +1,5 @@
+import { readdir, rm } from "fs/promises";
+import { basename, dirname, join } from "path";
 import type Electrobun from "electrobun/bun";
 import type { UpdateStatusEntry } from "electrobun/bun";
 import type { UpdateChannel } from "../../../../types/config";
@@ -28,6 +30,7 @@ import {
   reportUpdateFailure,
   type UpdateInstallKind,
 } from "../../../../telemetry/update-failures";
+import { logFailure } from "../../../../utils/log-failure";
 import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
 
@@ -65,6 +68,41 @@ class DesktopUpdateError extends Error {
   }
 }
 
+/** `<app>.previous` and `<app>.previous-<suffix>`: what an install moves the old app to. */
+function isUpdateAside(entry: string, appName: string): boolean {
+  if (!entry.startsWith(`${appName}.previous`)) return false;
+  const rest = entry.slice(appName.length + ".previous".length);
+  return rest === "" || /^-[0-9a-z]+(?:-\d+)?$/.test(rest);
+}
+
+/**
+ * Removes the copies of the app an install moved aside and could not remove
+ * then (the Electrobun patch's `replaceAppBundle`), from beside the app this
+ * process runs from: starting from it means the install that left them worked.
+ * macOS keeps the app in its bundle, Linux in `<app data>/app` (`bin/bun`
+ * inside it); Windows installs through its own script and leaves none.
+ * Resolves to the paths it removed.
+ */
+export async function removeUpdateAsides(
+  execPath: string = process.execPath,
+  platform: string = process.platform,
+): Promise<string[]> {
+  const app = platform === "darwin"
+    ? /^(.*?\.app)\/Contents\/MacOS\/[^/]+$/.exec(execPath)?.[1]
+    : platform === "linux" && basename(dirname(execPath)) === "bin" ? dirname(dirname(execPath)) : undefined;
+  if (!app) return [];
+  const folder = dirname(app);
+  const removed: string[] = [];
+  for (const entry of await readdir(folder).catch(() => [] as string[])) {
+    if (!isUpdateAside(entry, basename(app))) continue;
+    const path = join(folder, entry);
+    // One that still cannot be removed (another user's) is tried again at the next start.
+    const done = await rm(path, { recursive: true, force: true }).then(() => true, logFailure("desktop-update", "Could not remove an old copy of the app", false));
+    if (done) removed.push(path);
+  }
+  return removed;
+}
+
 /**
  * Where the running app sits, for update failure reports and for what an
  * install that cannot replace it means. Electrobun replaces the macOS bundle
@@ -88,11 +126,13 @@ export function detectDesktopInstallKind(
 /**
  * On macOS a bundle that cannot be replaced where it runs (a disk image, the
  * read-only copy App Translocation runs, another volume) is fixed by moving
- * the app to Applications, which is what the header then says.
+ * the app to Applications, which is what the header then says. Anywhere else
+ * a move across disks keeps its own reason: from Applications, moving the app
+ * again would not help.
  */
 function installFailureCode(code: UpdateFailureCode, installKind: UpdateInstallKind): UpdateFailureCode {
   const movable = installKind === "desktop-translocated" || installKind === "desktop-volume";
-  if (movable && (code === "permission_denied" || code === "read_only" || code === "wrong_location")) return "wrong_location";
+  if (movable && (code === "permission_denied" || code === "read_only" || code === "wrong_location" || code === "cross_device")) return "wrong_location";
   return code;
 }
 

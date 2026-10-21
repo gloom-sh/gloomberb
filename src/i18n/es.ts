@@ -1018,6 +1018,7 @@ export const es: Record<string, string> = {
   "download corrupted": "descarga dañada",
   "no permission to replace the app": "sin permiso para reemplazar la app",
   "move the app to Applications": "mueve la app a Aplicaciones",
+  "app and update on different disks": "la app y la actualización están en discos distintos",
   "install folder is read-only": "la carpeta de instalación es de solo lectura",
   "disk full": "disco lleno",
   "app files in use": "archivos de la app en uso",

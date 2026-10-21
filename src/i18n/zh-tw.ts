@@ -1032,6 +1032,7 @@ export const zhTW: Record<string, string> = {
   "download corrupted": "下載已損毀",
   "no permission to replace the app": "沒有取代應用程式的權限",
   "move the app to Applications": "請將應用程式移到「應用程式」資料夾",
+  "app and update on different disks": "應用程式與更新位於不同的磁碟",
   "install folder is read-only": "安裝資料夾為唯讀",
   "disk full": "磁碟已滿",
   "app files in use": "應用程式檔案正在使用中",

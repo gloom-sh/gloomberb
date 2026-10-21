@@ -1032,6 +1032,7 @@ export const ja: Record<string, string> = {
   "download corrupted": "ダウンロードが破損しています",
   "no permission to replace the app": "アプリを置き換える権限がありません",
   "move the app to Applications": "アプリをアプリケーションフォルダに移動してください",
+  "app and update on different disks": "アプリとアップデートが別のディスクにあります",
   "install folder is read-only": "インストール先が読み取り専用です",
   "disk full": "ディスクがいっぱいです",
   "app files in use": "アプリのファイルが使用中です",
