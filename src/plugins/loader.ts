@@ -1,15 +1,23 @@
 import { logFailure } from "../utils/log-failure";
 import { readdir } from "fs/promises";
-import { basename, join } from "path";
-import { existsSync, lstatSync, readFileSync, statSync } from "fs";
+import { basename, dirname, join } from "path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { getGloomberbDirs } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
+import { VERSION } from "../version";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
-import { installPluginDependencies, missingPluginDependencies } from "./dependencies";
-import { isLinkedPeerModule, linkHostPackages } from "./host-link";
+import {
+  describeDependencyInstalls,
+  installPluginDependencies,
+  missingPluginDependencies,
+  settleDependencyInstalls,
+} from "./dependencies";
+import { declaredPeerPlugins, describePeerLink, isLinkedPeerModule, linkHostPackages, relinkPeerPlugin } from "./host-link";
+import { refreshResolverFolders, rekeyedEntry } from "./peer-retry";
+import { pluginDirectoryNames } from "./plugin-names";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
 const loaderLog = debugLog.createLogger("plugin-loader");
@@ -244,6 +252,116 @@ function hasStaleModules(pluginDir: string, commit: string | null): boolean {
 }
 
 /**
+ * The entry a plugin was imported from on a retry, by plugin folder. A later
+ * load of the same plugin that is not fresh imports it from there again, so
+ * it gets the modules that loaded instead of the failed ones.
+ */
+const retriedEntries = new Map<string, string>();
+
+/** Plugin folders whose recovery this process already reported; once is enough to explain it. */
+const reportedRecoveries = new Set<string>();
+
+/** Loads running now, which a crash report counts: two at once share the links they rewrite. */
+let loadsInFlight = 0;
+
+/**
+ * Whether this process is the first to load plugins since this version was
+ * installed, null until the first full load records it. Read from a marker
+ * in the plugin cache, which every startup load rewrites.
+ */
+let firstLaunchOfVersion: boolean | null = null;
+
+function recordLaunchedVersion(): void {
+  if (firstLaunchOfVersion !== null) return;
+  const marker = join(PLUGIN_CACHE_DIR, "loaded-version");
+  try {
+    const previous = existsSync(marker) ? readFileSync(marker, "utf-8").trim() : null;
+    firstLaunchOfVersion = previous !== VERSION;
+    if (firstLaunchOfVersion) {
+      mkdirSync(PLUGIN_CACHE_DIR, { recursive: true });
+      writeFileSync(marker, VERSION);
+    }
+  } catch (error) {
+    logFailure("plugin-loader", "Recording the loaded version failed")(error);
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** The sibling plugin a failed import named, when the plugin declares it as a peer. */
+function failedPeer(pluginDir: string, specifier: string | undefined): string | null {
+  if (!specifier) return null;
+  return declaredPeerPlugins(pluginDir).find((peer) => specifier === peer || specifier.startsWith(`${peer}/`)) ?? null;
+}
+
+/**
+ * The state of the link to `peer` and around it, for the crash report of an
+ * import that failed on it: whether the sibling's folder is there, what the
+ * link is and where it points, whether the retry rewrote it, how often this
+ * process wrote it before, which `bun install` runs this process made, how
+ * many loads ran at once, and whether this is the first launch of the version.
+ */
+function describePeerFailure(pluginDir: string, peer: string, relinked: string, retry: string): string {
+  const link = describePeerLink(pluginDir, peer);
+  const now = Date.now();
+  const installs = describeDependencyInstalls(now);
+  const fields = [
+    `retry=${retry}`,
+    `peer=${peer}`,
+    `dir=${link.directory ?? "missing"}`,
+    `link=${link.link}${link.target ? `->${link.target}` : ""}${link.linked ? "" : "(not-resolving)"}`,
+    `relinked=${relinked}`,
+    `link-writes=${link.writes}${link.lastWriteAt ? `@${((now - link.lastWriteAt) / 1000).toFixed(1)}s` : ""}`,
+    ...(link.lastError ? [`link-error=${link.lastError}`] : []),
+    `installs=${installs.length > 0 ? installs.slice(0, 4).join(",") : "none"}`,
+    `loads=${loadsInFlight}`,
+    `first-launch=${firstLaunchOfVersion === null ? "unknown" : firstLaunchOfVersion ? "yes" : "no"}`,
+    ...(typeof Bun !== "undefined" ? [`bun=${Bun.version}`] : []),
+  ];
+  return fields.join(" ");
+}
+
+type PeerRetry =
+  | { module: unknown; detail: string }
+  | { error: unknown; detail: string };
+
+/**
+ * The import that failed on `peer`, once more after linking the sibling
+ * again: past Bun's cached view of the plugin's folders and under new module
+ * keys (see peer-retry.ts), so it really resolves the sibling again rather
+ * than replaying the failure.
+ */
+async function retryPeerImport(pluginDir: string, entryFile: string, peer: string): Promise<PeerRetry> {
+  // A `bun install` still running in the plugin or the sibling prunes the
+  // link it is about to need.
+  const peerDirs = pluginDirectoryNames(peer).map((name) => join(dirname(pluginDir), name));
+  await settleDependencyInstalls([pluginDir, ...peerDirs], 60_000);
+  // Windows refuses a new junction where one is still being deleted until
+  // every handle on the old one closes; that passes in moments.
+  const attempts = [relinkPeerPlugin(pluginDir, peer)];
+  for (const delayMs of [250, 1_000]) {
+    if (!attempts.at(-1)!.startsWith("failed")) break;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    attempts.push(relinkPeerPlugin(pluginDir, peer));
+  }
+  const relinked = attempts.join(",");
+  refreshResolverFolders(pluginDir, [peer]);
+  const specifier = rekeyedEntry(entryFile, pluginDir);
+  if (!specifier) {
+    return { error: new Error("This process cannot import a plugin again."), detail: describePeerFailure(pluginDir, peer, relinked, "unavailable") };
+  }
+  try {
+    const module = await import(specifier);
+    retriedEntries.set(pluginDir, specifier);
+    return { module, detail: describePeerFailure(pluginDir, peer, relinked, "loaded") };
+  } catch (error) {
+    return { error, detail: describePeerFailure(pluginDir, peer, relinked, "failed") };
+  }
+}
+
+/**
  * Loads one plugin directory. Never throws: a broken plugin comes back with
  * `error` set. Null for a folder that is not a plugin, and for a leftover
  * checkout of a plugin that is built in now, which would only fail on the
@@ -253,6 +371,19 @@ export async function loadExternalPlugin(
   pluginDir: string,
   target: PluginTarget = "cli",
   options: LoadExternalPluginOptions = {},
+): Promise<LoadedExternalPlugin | null> {
+  loadsInFlight += 1;
+  try {
+    return await loadPluginDirectory(pluginDir, target, options);
+  } finally {
+    loadsInFlight -= 1;
+  }
+}
+
+async function loadPluginDirectory(
+  pluginDir: string,
+  target: PluginTarget,
+  options: LoadExternalPluginOptions,
 ): Promise<LoadedExternalPlugin | null> {
   const directory = basename(pluginDir);
   missingHostExportFailures.delete(directory);
@@ -303,9 +434,66 @@ export async function loadExternalPlugin(
   const restart = hasStaleModules(pluginDir, commit) ? { needsRestart: true } : {};
   if (!importedCommits.has(pluginDir)) importedCommits.set(pluginDir, commit);
 
+  const failed = (err: unknown, retry?: Extract<PeerRetry, { error: unknown }>): LoadedExternalPlugin => {
+    const message = errorMessage(err);
+    let detail: string | undefined;
+    if (retry) {
+      const retryMessage = errorMessage(retry.error);
+      detail = retryMessage === message ? retry.detail : `${retry.detail} retry-error=${JSON.stringify(retryMessage.slice(0, 200))}`;
+      // The sibling is installed and linked, and a second import that
+      // looked again still failed. A new process imports everything fresh,
+      // so the plugin asks for a restart, and the report says why it got here.
+      const unresolved = unresolvedSpecifier(err, message);
+      if (unresolved && isLinkedPeerModule(pluginDir, unresolved)) {
+        loaderLog.info(`${directory} loads after a restart: ${message} [${detail}]`);
+        reportCrash(err, { kind: "plugin", plugin: directory, detail });
+        return { ...base, plugin: placeholder, needsRestart: true };
+      }
+    }
+    // An update that links against modules this process imported at the old
+    // commit, which Bun keeps until a restart. The row already asks for one,
+    // and the next launch imports everything fresh; a plugin that is really
+    // broken fails there, and is reported there. A host export the running
+    // Gloomberb lacks is a different failure and stays one.
+    if (restart.needsRestart && !findMissingHostExport(message) && STALE_LINK_FAILURE.test(message)) {
+      loaderLog.info(`${directory} loads after a restart: ${message}`);
+      return { ...base, plugin: placeholder, needsRestart: true };
+    }
+    loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}${detail ? ` [${detail}]` : ""}`);
+    reportCrash(err, { kind: "plugin", plugin: directory, ...(detail ? { detail } : {}) });
+    if (findMissingHostExport(message)) missingHostExportFailures.add(directory);
+    return {
+      ...base,
+      ...restart,
+      plugin: placeholder,
+      error: explainPluginLoadError(message),
+    };
+  };
+
+  let module: unknown;
   try {
-    const specifier = options.fresh ? `${entryFile}?reload=${Date.now()}` : entryFile;
-    const plugin = pluginFromModule(await import(specifier));
+    const retried = options.fresh ? undefined : retriedEntries.get(pluginDir);
+    module = await import(retried ?? (options.fresh ? `${entryFile}?reload=${Date.now()}` : entryFile));
+  } catch (err) {
+    // A sibling plugin it imports that did not resolve: not linked yet, or
+    // its link was being rewritten. Bun keeps that failure for the process,
+    // so the plugin is linked and imported again in a way that looks again.
+    const peer = failedPeer(pluginDir, unresolvedSpecifier(err, errorMessage(err)));
+    if (!peer) return failed(err);
+    const retry = await retryPeerImport(pluginDir, entryFile, peer);
+    if ("error" in retry) return failed(err, retry);
+    // Loaded, but the failure it recovered from is still a bug somewhere:
+    // the report carries the link state that explains it.
+    loaderLog.info(`Loaded ${directory} on a second import: ${errorMessage(err)} [${retry.detail}]`);
+    if (!reportedRecoveries.has(pluginDir)) {
+      reportedRecoveries.add(pluginDir);
+      reportCrash(err, { kind: "plugin", plugin: directory, detail: retry.detail });
+    }
+    module = retry.module;
+  }
+
+  try {
+    const plugin = pluginFromModule(module);
     if (!plugin) {
       const error = "Plugin did not export a valid GloomPlugin (missing id or name).";
       reportCrash(error, { kind: "plugin", plugin: directory });
@@ -325,33 +513,7 @@ export async function loadExternalPlugin(
     loaderLog.info(`Loaded external plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);
     return { ...base, ...restart, plugin };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // A sibling plugin it imports that is linked now but was not when this
-    // process first resolved it. Bun keeps that failure until a restart, which
-    // is all the plugin needs: not a crash.
-    const unresolved = unresolvedSpecifier(err, message);
-    if (unresolved && isLinkedPeerModule(pluginDir, unresolved)) {
-      loaderLog.info(`${directory} loads after a restart: ${message}`);
-      return { ...base, plugin: placeholder, needsRestart: true };
-    }
-    // An update that links against modules this process imported at the old
-    // commit, which Bun keeps until a restart. The row already asks for one,
-    // and the next launch imports everything fresh; a plugin that is really
-    // broken fails there, and is reported there. A host export the running
-    // Gloomberb lacks is a different failure and stays one.
-    if (restart.needsRestart && !findMissingHostExport(message) && STALE_LINK_FAILURE.test(message)) {
-      loaderLog.info(`${directory} loads after a restart: ${message}`);
-      return { ...base, plugin: placeholder, needsRestart: true };
-    }
-    loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
-    reportCrash(err, { kind: "plugin", plugin: directory });
-    if (findMissingHostExport(message)) missingHostExportFailures.add(directory);
-    return {
-      ...base,
-      ...restart,
-      plugin: placeholder,
-      error: explainPluginLoadError(message),
-    };
+    return failed(err);
   }
 }
 
@@ -382,6 +544,7 @@ export async function listPluginDirectories(pluginsDir: string = PLUGINS_DIR): P
 }
 
 export async function loadExternalPlugins(target: PluginTarget = "cli"): Promise<LoadedExternalPlugin[]> {
+  recordLaunchedVersion();
   const results: LoadedExternalPlugin[] = [];
   for (const pluginDir of await listPluginDirectories()) {
     const loaded = await loadExternalPlugin(pluginDir, target);

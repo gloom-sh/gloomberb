@@ -5,7 +5,7 @@ import { execFile as execFileCallback, execFileSync, spawn } from "child_process
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./marketplace/store";
-import { bunCommand } from "./dependencies";
+import { bunCommand, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import {
   findAbsorbedCheckout,
@@ -252,7 +252,8 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   const output = quiet ? "pipe" : "inherit";
   const bun = bunCommand();
   const result = bun
-    ? await run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env).catch(logFailure("plugin-installer", "Plugin dependency installation failed", null))
+    ? await recordDependencyInstall(targetDir, () => run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env)
+      .catch(logFailure("plugin-installer", "Plugin dependency installation failed", null)))
     : null;
   if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
 
