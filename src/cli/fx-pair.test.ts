@@ -29,3 +29,34 @@ test("an amount in front converts from the first currency to the second, read wi
   expect(parseFxArgs(["100"], "USD")).toEqual({ error: "fx 100 names no currency; convert an amount as fx 100 EUR/USD." });
   expect(parseFxArgs(["100", "EUR", "USD", "GBP"], "USD")).toMatchObject({ error: expect.stringContaining("fx 1234.5 EUR/USD") });
 });
+
+test("a currency's name reads as its code, and a name several currencies share lists them", () => {
+  // One currency's name, in any case, plural or with its country, is its code, and the answer says which it read.
+  expect(parseFxRequest("yen", "USD")).toEqual({ currency: "JPY", baseCurrency: "USD", readAs: ["Read yen as JPY."] });
+  expect(parseFxRequest("Rand", "USD")).toMatchObject({ currency: "ZAR" });
+  expect(parseFxRequest("real", "USD")).toMatchObject({ currency: "BRL" });
+  expect(parseFxRequest("lira", "USD")).toMatchObject({ currency: "TRY" });
+  expect(parseFxRequest("won", "USD")).toMatchObject({ currency: "KRW" });
+  expect(parseFxRequest("krona", "USD")).toMatchObject({ error: expect.stringContaining("SEK (Swedish), ISK (Icelandic)") });
+  expect(parseFxRequest("krone", "USD")).toMatchObject({ error: expect.stringContaining("NOK (Norwegian), DKK (Danish)") });
+  expect(parseFxRequest("Swiss Franc", "USD")).toMatchObject({ currency: "CHF" });
+  expect(parseFxRequest("franc", "USD")).toMatchObject({ error: expect.stringContaining("CHF (Swiss)") });
+  expect(parseFxRequest("rupees", "USD")).toMatchObject({ error: expect.stringContaining("INR (Indian)") });
+  expect(parseFxRequest("EUR/yen", "USD")).toMatchObject({ currency: "EUR", baseCurrency: "JPY" });
+
+  // Peso is not one currency: it lists the candidates instead of "PESO is not a currency code", and says how to write one.
+  const peso = parseFxRequest("peso", "USD");
+  expect(peso).toEqual({
+    error: "peso names several currencies: MXN (Mexican), ARS (Argentine), COP (Colombian), CLP (Chilean), PHP (Philippine), UYU (Uruguayan), DOP (Dominican). Write one as its code, such as fx MXN.",
+  });
+  expect(parseFxRequest("USD/peso", "USD")).toMatchObject({ error: expect.stringContaining("such as fx USD/MXN") });
+  expect(parseFxRequest("dollar", "USD")).toMatchObject({ error: expect.stringContaining("USD (US), CAD (Canadian), AUD (Australian)") });
+
+  // A code stays a code: a name never takes the place of three letters that are one, and anything else is still no currency.
+  expect(parseFxRequest("NGN", "USD")).toEqual({ currency: "NGN", baseCurrency: "USD" });
+  expect(parseFxRequest("SHELLS", "USD")).toEqual({ error: "SHELLS is not a currency code; use three letters such as NGN." });
+
+  // A name of several words is one argument, with or without an amount in front.
+  expect(parseFxArgs(["hong", "kong", "dollar"], "USD")).toMatchObject({ request: { currency: "HKD" } });
+  expect(parseFxArgs(["100", "swiss", "franc"], "GBP")).toMatchObject({ request: { currency: "CHF", baseCurrency: "USD" }, amount: 100, toUsdByDefault: true });
+});

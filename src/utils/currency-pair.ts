@@ -26,7 +26,8 @@ const NON_CURRENCY_CODES = new Set([
   "XAU", "XAG", "XPT", "XPD", "XDR", "XSU", "XUA", "XBA", "XBB", "XBC", "XBD", "XTS", "XXX", "XEU", "XFO", "XFU", "XRE",
 ]);
 
-function isCurrencyCode(code: string): boolean {
+/** Whether `code` is a currency code a pair can be written with: ISO 4217, less metals, drawing rights and testing codes. */
+export function isCurrencyCode(code: string): boolean {
   return !NON_CURRENCY_CODES.has(code) && isIsoCurrencyCode(code);
 }
 

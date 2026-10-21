@@ -145,10 +145,7 @@ import {
   showsEpsBasis,
 } from "../../plugins/builtin/shared/earnings-report";
 import {
-  tradingBoardNote,
   EXCHANGE_OPTION,
-  futuresTryLine,
-  isNoProviderError,
   listingHeading,
   listingIdentity,
   listingTitle,
@@ -156,48 +153,43 @@ import {
   listingChoiceNotes,
   listingReadNotes,
   loadBareVenues,
-  type ListingVenue,
   loadForListing,
   loadListingQuote,
   listingFateLoader,
   movedSymbolLine,
-  notTradedMessage,
-  quoteBareListing,
   requireCliListing,
   type CliListing,
-  type ListingDataRequest,
   type ListingIdentity,
 } from "../listing-arg";
 import { bareListingNote, listingFateNotes, noLongerTradingNote, tradingListing } from "../../tickers/listing-fate";
-import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
-import { treasuryYieldLine, treasuryYieldTenor } from "../treasury-yields";
+import { isYieldIndexSymbol } from "../index-roots";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
-import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
+import { providerMissReason } from "../../sources/provider-errors";
+import { isNotATickerMessage } from "../not-a-ticker";
 import { primeBoardCoins } from "../board-coins";
-import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
+import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { readSymbolList, SymbolListError } from "../symbol-list";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { knownGapForTicker, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
-import { looksLikeCurrencyPair } from "../../utils/currency-pair";
-import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { isUsListingExchange } from "../../utils/exchanges";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
+import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
 import { crossRate, describeFxConversion, describeFxRate, FX_USAGE, isUsableRate, parseFxArgs } from "../fx-pair";
 import {
   holderListFacts,
@@ -438,11 +430,6 @@ function compareColumns() {
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
     { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
   ];
-}
-
-function errorMessage(error: unknown): string | null {
-  if (error == null) return null;
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** What the Feed cell says: stale wins over the feed's own live or delayed, as the closing line counts it. */
@@ -878,15 +865,11 @@ function quoteDetailsText(data: QuoteCliRecord[]): string {
 
 /**
  * "APPL is not a US ticker: it is Aptus Pharma Limited on BSE (INR). Did you
- * mean AAPL (Apple Inc.)?", for a symbol read on a listing abroad that is one
- * slip from a US ticker, worded as the not-a-ticker answers word it.
+ * mean AAPL (Apple Inc.)?" in the warning colour, for a row that has one.
  */
-function notUsTickerLine({ target, quote, listing, usSuggestion }: QuoteCliRecord): string | null {
-  if (!quote || !usSuggestion) return null;
-  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  const name = quote.name || listing?.name;
-  const what = `${name ? `${name} on ` : ""}${venue}${quote.currency ? ` (${quote.currency})` : ""}`;
-  return cliStyles.warning(`${target.symbol} is not a US ticker: it is ${what}. Did you mean ${describeSuggestion(usSuggestion)}?`);
+function notUsTickerLine(row: QuoteCliRecord): string | null {
+  const sentence = notUsTickerSentence(row);
+  return sentence && cliStyles.warning(sentence);
 }
 
 /** Each futures row's front contract quote, when its terms name a front other than its own contract; null otherwise. */
@@ -940,91 +923,6 @@ function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeB
   if (!isYieldIndexSymbol(result.target.symbol)) return {};
   const change = getRegularSessionDisplay(result.quote)?.change;
   return { unit: "percent", ...(change == null ? {} : { changeBasisPoints: toBasisPoints(change, 1) }) };
-}
-
-interface QuoteAnswer {
-  result: QuoteBatchResult;
-  /** The listing the row is: the one asked for, or the venue a bare symbol was quoted on. */
-  listing: CliListing;
-  /** Why there is no quote, when there is more to say than the source's own error. */
-  failure?: { message: string; details?: string; oneLine: string };
-  notes: string[];
-}
-
-/**
- * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
- * is not listed on says so. A bare symbol the data service read on its home
- * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
- * quoted on its listings (`quoteBareListing`), else names them, or asks for an
- * exchange when several companies list it (2222); a bare index root (VIX) also
- * names its index (^VIX), and a futures board code a security keeps (GC) its
- * future (GC=F). Venues are only looked up for a
- * symbol with no quote, so a request that succeeds costs no search.
- */
-async function answerQuote(
-  result: QuoteBatchResult,
-  listing: CliListing,
-  market: MarketContext,
-  request: ListingDataRequest,
-  refresh: boolean,
-  venues: Promise<ListingVenue[]> | null,
-): Promise<QuoteAnswer> {
-  const root = listing.exchange ? null : indexRootFor(listing.symbol);
-  // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
-  const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
-    ? [indexRootAlsoLine(root, request.command)] : [];
-  if (result.quote) {
-    // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
-    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : listingReadNotes(listing);
-    const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
-    // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
-    const board = tradingBoardNote(listing, result.quote);
-    return { result, listing, notes: [...choice, venue ?? [], board ?? [], also(result.quote)].flat() };
-  }
-  const notTraded = await notTradedMessage(listing, market);
-  if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
-  if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
-  const other = await quoteBareListing(listing, market, request, { refresh });
-  if (other?.kind === "quoted") {
-    return {
-      result: { target: other.listing.request, quote: other.quote },
-      listing: other.listing,
-      notes: [other.note, ...also(other.quote)],
-    };
-  }
-  // Other listings already name a futures board code's future (GC=F); with none, it is named here.
-  // A Treasury yield's root (TNX) names its FRED series and the curve beside its index.
-  const yieldTenor = root ? treasuryYieldTenor(listing.symbol) : null;
-  const tryLines = [
-    yieldTenor ? treasuryYieldLine(yieldTenor) : root ? indexRootTryLine(root, request.command) : null,
-    other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
-    // BDI asks which exchange (Black Diamond Group) and says nowhere that the Baltic Dry Index is not here.
-    listing.exchange ? null : knownGapForTicker(listing.symbol),
-  ].filter((line): line is string => !!line);
-  if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
-  const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
-  const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
-  const oneLine = [
-    message,
-    other ? `${other.heading}: ${other.listings.join(", ")}.` : "",
-    ...tryLines,
-  ].filter(Boolean).join(" ");
-  return { result, listing, failure: { message, details, oneLine }, notes: [] };
-}
-
-/**
- * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
- * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
- * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
- * Naira)?". When search finds nothing near, the row keeps its own error and its
- * search hint.
- */
-async function withCurrencyPairHint(result: QuoteBatchResult, market: MarketContext): Promise<QuoteBatchResult> {
-  const message = errorMessage(result.error);
-  const symbol = message ? notATickerSymbol(message) : null;
-  if (!message || !symbol || !looksLikeCurrencyPair(symbol)) return result;
-  const suggestion = await suggestListing(symbol, market);
-  return suggestion ? { ...result, error: withListingSuggestion(message, describeSuggestion(suggestion)) } : result;
 }
 
 /** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
@@ -2105,10 +2003,14 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       }] as const] : [];
     })));
     // An amount with one currency names no target; the answer says it went to USD.
-    const warnings = toUsdByDefault && amount != null
-      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${rawArgs[0]!.trim()} ${currency}/<to>.`]
-      : undefined;
-    ctx.printResult({ data: [row], freshness, warnings }, {
+    const warnings = [
+      // A currency typed as its name (yen) says which code it was read as.
+      ...request.readAs ?? [],
+      ...toUsdByDefault && amount != null
+        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${rawArgs[0]!.trim()} ${currency}/<to>.`]
+        : [],
+    ];
+    ctx.printResult({ data: [row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
       text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
@@ -2494,6 +2396,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Direction",
         lines: [
           "A bare code is one unit of it in your base currency. A pair reads as markets quote it: USD/NGN is how many NGN one USD buys. Two codes neither of which is USD, such as ZAR/NGN, cross through their USD rates.",
+          "A currency's name stands for its code: fx yen is JPY, fx rand ZAR, fx Swiss franc CHF, and the answer says which it read. A name several currencies share (peso, dollar, franc, krona, rupee) lists them: write one as its code.",
           "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39). --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf and stale.",
         ],
       }, {
@@ -2502,7 +2405,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
           "An amount in front converts it from the first currency to the second: fx 1234.5 EUR/USD, or fx 1234,5 EUR USD. It takes either decimal mark (1.234,5 and 1,234.5 are 1234.5) and reads as an amount of the first currency: 1,234 or 1.234 EUR are thousands, a third decimal being below a cent, while in a currency with three decimals (KWD) fx asks which. An amount and one currency converts to USD. The answer gives the converted amount, then the rate it used, dated by the source line; --json adds amount and converted.",
         ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx JPY --json"],
+      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx JPY --json"],
     },
     execute: runFx,
   },

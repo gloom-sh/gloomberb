@@ -1,5 +1,6 @@
 import { currencyMinorDigits } from "../market-data/market/format";
 import { parseTypedNumber, readCurrencyAmount } from "../utils/decimal-comma";
+import { currenciesNamed } from "./currency-names";
 
 /**
  * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
@@ -12,6 +13,8 @@ export interface FxRequest {
   currency: string;
   /** The currency the price is in: the base currency for a bare code, the quote of a pair. */
   baseCurrency: string;
+  /** Each currency typed as its name (`yen`) and the code it was read as, said beside the answer. */
+  readAs?: string[];
 }
 
 const CURRENCY_CODE = /^[A-Z]{3}$/;
@@ -30,19 +33,45 @@ function isKnownCurrency(code: string): boolean {
   return knownCurrencies.has(code);
 }
 
+/**
+ * A currency typed as its name: the code a name that is one currency's reads
+ * as, or the sentence listing the currencies a name several share (`peso`),
+ * with `retry` the argument that asks for the first of them. Null for text
+ * that names none.
+ */
+function readCurrencyName(typed: string, retry: (code: string) => string): { code: string } | { error: string } | null {
+  const named = currenciesNamed(typed);
+  if (named.length === 0) return null;
+  if (named.length === 1) return { code: named[0]!.code };
+  const choices = named.map(({ code, qualifier }) => (qualifier ? `${code} (${qualifier})` : code)).join(", ");
+  return { error: `${typed} names several currencies: ${choices}. Write one as its code, such as fx ${retry(named[0]!.code)}.` };
+}
+
 /** The request, or the sentence saying what is wrong with the argument. */
 export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | { error: string } {
+  const typed = raw.trim().split("/").map((part) => part.trim());
   const text = raw.trim().toUpperCase();
-  const parts = text.split("/").map((part) => part.trim());
+  const parts = typed.map((part) => part.toUpperCase());
   if (parts.length > 2 || parts.some((part) => !part)) return { error: `"${raw}" is not a currency or a pair such as USD/NGN.` };
   // EURUSD is the pair typed without its slash: say how to write it.
   const joined = parts.length === 1 && /^[A-Z]{6}$/.test(text) && isKnownCurrency(text.slice(0, 3)) && isKnownCurrency(text.slice(3));
   if (joined) return { error: `${text} is not a currency code; write the pair as ${text.slice(0, 3)}/${text.slice(3)}.` };
+  // A name (peso, yen, Swiss franc) is a currency's code. Three letters that are a code stay one: only a name that is no code reads as one.
+  const readAs: string[] = [];
+  for (const [index, part] of parts.entries()) {
+    if (isKnownCurrency(part)) continue;
+    const named = readCurrencyName(typed[index]!, (code) => parts.map((other, at) => at === index ? code : other).join("/"));
+    if (!named) continue;
+    if ("error" in named) return named;
+    readAs.push(`Read ${typed[index]} as ${named.code}.`);
+    parts[index] = named.code;
+  }
   const bad = parts.filter((part) => !CURRENCY_CODE.test(part));
   if (bad.length > 0) return { error: `${bad.join(" and ")} ${bad.length > 1 ? "are not currency codes" : "is not a currency code"}; use three letters such as NGN.` };
-  return parts.length === 2
+  const request = parts.length === 2
     ? { currency: parts[0]!, baseCurrency: parts[1]! }
     : { currency: parts[0]!, baseCurrency: baseCurrency.trim().toUpperCase() };
+  return readAs.length > 0 ? { ...request, readAs } : request;
 }
 
 /** What `gloomberb fx` is asked for, with the amount to convert when one comes first. */
@@ -57,6 +86,13 @@ export interface FxArgs {
 /** Every form `fx` takes, for its usage line. */
 export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to>";
 
+/** A currency's name of several words (`hong kong dollar`, `100 swiss franc`) as the one argument it is. */
+function joinNameWords(args: readonly string[]): readonly string[] {
+  const amount = args.length > 2 && parseTypedNumber(args[0]).kind !== "invalid" ? 1 : 0;
+  const name = args.slice(amount).join(" ");
+  return args.length - amount > 1 && currenciesNamed(name).length > 0 ? [...args.slice(0, amount), name] : args;
+}
+
 /**
  * `fx` arguments: a currency or a pair (`EUR`, `USD/NGN`), or an amount and
  * what to convert it from and to (`1234.5 EUR/USD`, `1234,5 EUR USD`). The
@@ -66,7 +102,8 @@ export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/
  * refused naming both readings. An amount and one currency converts to USD
  * (`toUsdByDefault`). The error sentence otherwise.
  */
-export function parseFxArgs(args: readonly string[], baseCurrency: string): FxArgs | { error: string } {
+export function parseFxArgs(words: readonly string[], baseCurrency: string): FxArgs | { error: string } {
+  const args = joinNameWords(words);
   if (args.length === 1) {
     const request = parseFxRequest(args[0]!, baseCurrency);
     if (!("error" in request)) return { request };

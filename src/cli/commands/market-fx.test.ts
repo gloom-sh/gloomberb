@@ -148,3 +148,15 @@ test("the text line states both directions in figures that survive tiny and larg
   expect(formatFxRate(16.497)).toBe("16.497");
   expect(formatFxRate(1)).toBe("1");
 });
+
+test("a currency typed as its name is asked for by its code and says so; a name several currencies share fails listing them, asking for nothing", async () => {
+  const run = harness("USD", { JPY: 0.0063, MXN: 0.054 });
+  await fx.execute(["yen"], run.context);
+  expect(run.requests).toEqual(["JPY"]);
+  expect(run.rows()).toEqual([[expect.objectContaining({ currency: "JPY", baseCurrency: "USD", pair: "JPY/USD" })]]);
+  expect(run.output("json")[0]).toContain("Read yen as JPY.");
+
+  const peso = harness("USD", { MXN: 0.054 });
+  await expect(fx.execute(["peso"], peso.context)).rejects.toThrow("peso names several currencies: MXN (Mexican), ARS (Argentine), COP (Colombian), CLP (Chilean), PHP (Philippine)");
+  expect(peso.requests).toEqual([]);
+});

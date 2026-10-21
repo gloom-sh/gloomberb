@@ -342,7 +342,7 @@ export function listingChoiceNote(
 }
 
 // Quotes of these never name a company's listing, so they are never a choice between companies.
-const UNLISTED_TYPES = new Set(["FUTURE", "INDEX", "CURRENCY", "CRYPTOCURRENCY", "OPTION"]);
+export const UNLISTED_TYPES = new Set(["FUTURE", "INDEX", "CURRENCY", "CRYPTOCURRENCY", "OPTION"]);
 
 /** Whether the data service chose the listing: a bare symbol, with no venue named and none saved. */
 function isBareListing(listing: Pick<CliListing, "exchange" | "saved">): boolean {

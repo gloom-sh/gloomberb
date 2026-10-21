@@ -2,11 +2,12 @@ import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, type ListingArg } from "../../../cli/listing-arg";
+import { requireQuotedListing } from "../../../cli/quote-answer";
+import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
-import type { CliCommandContext, CliCommandDef } from "../../../types/plugin";
+import type { CliCommandDef } from "../../../types/plugin";
+import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
-import { settleWithin } from "../../../utils/async-deadline";
 import { cliStyles } from "../../../utils/cli-output";
 import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
@@ -37,6 +38,15 @@ import {
 import { scheduledEventSources } from "./scheduled-sources";
 import { readAlertStores } from "./storage";
 import type { AlertCondition, AlertRule } from "./types";
+
+/**
+ * What delivers a price alert, as docs/usage.md states it: the app checks it on
+ * every tick while it runs. Signed in with Cloud sync on, Gloom Cloud also
+ * pushes the trigger to a registered phone, and emails it once no app has
+ * synced the account for a while, so a rule the app has synced reaches you
+ * with the app closed. Signed out, only the running app does.
+ */
+const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
 const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n>], or alerts add <CPI|FOMC> [--days <n>]";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
@@ -112,19 +122,13 @@ function retypeCommand(symbol: string, condition: AlertCondition, price: number,
   return `gloomberb alerts add ${symbol} ${condition} ${price}${exchange ? ` --exchange ${exchange}` : ""}`;
 }
 
-const LAST_PRICE_TIMEOUT_MS = 10_000;
-
 /**
  * The listing's last price, as the alert will check it, for telling 81.000
  * typed for 81000 from 81; null when there is none, and the price is then
  * read as written.
  */
-async function lastPrice(listing: ListingArg, ctx: Pick<CliCommandContext, "initMarketData">): Promise<number | null> {
-  const quote = await settleWithin(
-    withMarketData(ctx, (market) => market.dataProvider.getQuote(listing.key.toUpperCase(), listing.exchange)),
-    LAST_PRICE_TIMEOUT_MS,
-  );
-  const price = quote ? getActiveQuoteDisplay(quote)?.price ?? quote.price : null;
+function lastPrice(quote: Quote): number | null {
+  const price = getActiveQuoteDisplay(quote)?.price ?? quote.price;
   return price != null && Number.isFinite(price) && price !== 0 ? price : null;
 }
 
@@ -271,13 +275,17 @@ export const alertsCliCommand: CliCommandDef = {
       }
     };
     const request = action === "add" ? parseAdd() : null;
-    const priceListing = request?.kind === "price" ? await requireListingArg(request.symbol, exchangeOption, ctx) : null;
-    if (request?.kind === "price" && request.thousandsDot && priceListing) {
-      const question = thousandsDotMessage(request, priceListing.key, await lastPrice(priceListing, ctx), exchangeOption);
+    // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing.
+    const priced = request?.kind === "price"
+      ? await withMarketData(ctx, (market) => requireQuotedListing(request.symbol, exchangeOption, market, ctx, "alerts add"))
+      : null;
+    const priceListing = priced?.listing ?? null;
+    if (request?.kind === "price" && request.thousandsDot && priced) {
+      const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
       if (question) ctx.fail(question);
     }
-    // What a typed listing was read as (7203:TSE as 7203:JPX), said beside what was added.
-    let read = priceListing ? listingReadNotes(priceListing) : [];
+    // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
+    let read = priced?.notes ?? [];
     let newEventRule: EventAlertRule | null = null;
     if (request && request.kind !== "price") {
       const target: ScheduledEventTarget = request.kind === "macro"
@@ -356,8 +364,8 @@ export const alertsCliCommand: CliCommandDef = {
         const alert = createAlert(symbol, condition, price, priceListing?.exchange);
         await save({ alerts: [...alerts, alert] });
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          // No full stop after the price, which would read as part of it (below 81.).
-          text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price}${dryRunNote(data.dryRun)}`,
+          // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
+          text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }
