@@ -57,6 +57,9 @@ describe("fn HM report", () => {
     const trading = await load(board(0, 40), false, { fetchedAt: MON - 60_000, session: "REGULAR", regularSessionDate: null });
     expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, trading, MON)))
       .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:41 UTC · delayed · markets open");
+    // A server that dates its prices: as of the oldest print, not the snapshot.
+    const printed = await load(board(0, 40), false, { fetchedAt: MON - 60_000, session: "REGULAR", regularSessionDate: null, pricesAsOf: MON - 22 * 60_000 });
+    expect(printed.metadata?.asOf).toBe("2026-10-12T15:20:00.000Z");
   });
 
   test("sizes, shares and the weighted move stay market cap, whatever the pane's tiles are sized by", async () => {

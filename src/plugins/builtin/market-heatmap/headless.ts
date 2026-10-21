@@ -40,15 +40,16 @@ function noMoveNotice(symbols: readonly string[], names: number): string {
 }
 
 /**
- * When the board's figures are from, and whose sessions they follow: outside
+ * When the board's figures are from, and whose sessions they follow: when its
+ * prices printed, from a server that says (`pricesAsOf`). Otherwise, outside
  * the regular session the tiles are the completed session's, so the board is
  * as of that session's close (its date, from a server that does not send the
- * close), not when the snapshot was put together; while it trades, the
- * snapshot time.
+ * close); while it trades, the snapshot time, which is later than its prices.
  */
-function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regularSessionDate" | "regularSessionClosedAt">) {
+function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regularSessionDate" | "regularSessionClosedAt" | "pricesAsOf">) {
   const closedAt = board.regularSessionDate ? board.regularSessionClosedAt : null;
-  const asOf = typeof closedAt === "number" && closedAt > 0 ? new Date(closedAt).toISOString()
+  const pricedAt = typeof board.pricesAsOf === "number" && board.pricesAsOf > 0 ? board.pricesAsOf : closedAt;
+  const asOf = typeof pricedAt === "number" && pricedAt > 0 ? new Date(pricedAt).toISOString()
     : board.regularSessionDate || new Date(board.fetchedAt).toISOString();
   return { asOf, sessionExchange: "NYSE" };
 }

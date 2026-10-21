@@ -72,6 +72,14 @@ export interface MarketHeatmapResult {
    * leaves it out.
    */
   regularSessionClosedAt?: number | null;
+  /**
+   * When the prices the board's moves are read at were printed, in epoch
+   * milliseconds, never later than any of them: the oldest delayed print
+   * while the session trades, that session's close outside it. `fetchedAt`
+   * is when the server put the snapshot together, at least fifteen minutes
+   * later. Null when a print is unknown; an older server leaves it out.
+   */
+  pricesAsOf?: number | null;
   assets: MarketHeatmapAsset[];
 }
 
