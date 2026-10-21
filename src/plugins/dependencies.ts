@@ -77,7 +77,10 @@ export async function recordDependencyInstall<T extends { code?: number | null }
   install: () => Promise<T>,
 ): Promise<T> {
   const done = install();
-  const entry: DependencyInstall = { directory: basename(pluginDir), startedAt: Date.now(), done: done.catch(() => {}) };
+  const settled = done.catch(() => {
+    // Intentional ignore: the caller awaits this same promise and handles its failure.
+  });
+  const entry: DependencyInstall = { directory: basename(pluginDir), startedAt: Date.now(), done: settled };
   installs.set(pluginDir, entry);
   try {
     const result = await done;
