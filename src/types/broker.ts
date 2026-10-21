@@ -69,6 +69,11 @@ export interface BrokerConfigField {
 export interface BrokerConnectionStatus {
   state: "disconnected" | "connecting" | "connected" | "error";
   message?: string;
+  /**
+   * With `error`: only a new sign-in, to Gloom or the broker, gets the profile
+   * going again, so Brokers says "Sign-in needed" rather than "Error".
+   */
+  needsSignIn?: boolean;
   mode?: string;
   /**
    * Timeliness of the quotes this session streams, when the broker knows it.

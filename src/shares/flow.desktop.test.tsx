@@ -54,5 +54,5 @@ test("a pane of the person's own data asks once on the desktop: Enter, Esc and a
 
   await answer([["y"]]);
   expect(f.copied).toEqual([SHARE_LINK]);
-  expect(f.toasts).toEqual([{ body: "Link copied", type: "success", paneId: "test:1" }]);
+  expect(f.toasts).toEqual([{ body: "Link copied", type: "success" }]);
 });

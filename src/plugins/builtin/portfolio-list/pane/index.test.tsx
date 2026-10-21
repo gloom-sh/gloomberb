@@ -736,7 +736,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(connected).not.toContain("IBKR disconnected");
   });
 
-  test("a disabled broker is never synced: the pane says so, b enables then syncs it, and a failure stays in the pane", async () => {
+  test("a disabled broker is never synced: the pane says so, and b enables then syncs it, naming the step that failed", async () => {
     const portfolioId = "broker:ibkr-live:DU12345";
     const config = createPortfolioConfig(portfolioId, [{ ...createBrokerInstance("gateway", "ibkr-live"), enabled: false }]);
     const syncedAt = new Date(2025, 9, 17, 14, 2).getTime();
@@ -750,7 +750,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       getStatus: () => ({ state: "connected", mode: "gateway", updatedAt: 0 }),
     };
     const calls: string[] = [];
-    const notifications: Array<{ type?: string; body: string; paneId?: string }> = [];
+    const notifications: Array<{ type?: string; body: string }> = [];
     const runtime = createTestPluginRuntime({
       getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? broker : null,
       connectBrokerInstance: async (instanceId) => { calls.push(`connect ${instanceId}`); },
@@ -784,8 +784,8 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
     expect(calls).toEqual(["update ibkr-live enabled=true", "sync ibkr-live"]);
-    // About this pane's profile, so it is said in this pane, never as an app toast.
-    expect(notifications).toEqual([{ type: "error", body: "Gateway is not running.", paneId: TEST_PANE_ID }]);
+    // The enabling worked; the sync after it did not.
+    expect(notifications).toEqual([{ type: "error", body: "Enabled IBKR, but it did not sync: Gateway is not running." }]);
     const enabled = await tui.waitForFrameToExclude("[b] enable");
     expect(enabled).not.toContain("IBKR disabled");
   });

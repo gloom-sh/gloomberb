@@ -6,7 +6,7 @@ import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { usePaneNotify, usePluginPaneState } from "../../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
@@ -26,7 +26,7 @@ import { logFailure } from "../../../../utils/log-failure";
 export function ThesisTickerTab({ focused, width, height }: TickerResearchTabProps) {
   const { ticker } = usePaneTickerIdentity();
   const dialog = useDialog();
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
   const openUpgrade = useCloudUpgradeAction("thesis-tab");
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());

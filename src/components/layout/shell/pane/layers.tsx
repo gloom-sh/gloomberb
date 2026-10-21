@@ -21,7 +21,6 @@ import type { PaneHeaderQuickSetting } from "../../pane/header";
 import { hasPaneFooterContent, PaneFooterKeys, PaneFooterProvider } from "../../pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "../../pane/sizing";
 import { captureStampFooter, usePaneCaptureStamp } from "../../pane/capture-stamp";
-import { usePaneMessage, withPaneMessage } from "../../pane/message";
 
 type ShellMouseHandler = (event: any) => void;
 
@@ -185,7 +184,6 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     : null), [nativePaneChrome, paneId]);
   const liveFrame = useLivePaneFrame(live, rect, sizeOf);
   const captureStamp = usePaneCaptureStamp(paneId);
-  const message = usePaneMessage(paneId, !hidden);
   return (
     <Box
       ref={boxRef}
@@ -198,9 +196,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     >
       <PaneFooterProvider>
         {(registeredFooter) => {
-          // A picture of the pane leaves out a passing message, as it leaves out the keys.
-          const paneFooter = withPaneMessage(registeredFooter, captureStamp ? null : message, paneId);
-          const footer = captureStampFooter(paneFooter, captureStamp);
+          const footer = captureStampFooter(registeredFooter, captureStamp);
           const showFooter = hasPaneFooterContent(footer);
           const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
           const bodyFrame = resolvePaneBodyFrame({
@@ -236,7 +232,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               fullscreen={fullscreen}
               onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             >
-              <PaneFooterKeys paneId={paneId} footer={paneFooter} focused={focused} />
+              <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
               <LivePaneFrameContext.Provider value={liveFrame}>
                 <PaneContent
                   component={pane.def.component}
@@ -286,12 +282,10 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
   const captureStamp = usePaneCaptureStamp(paneId);
-  const message = usePaneMessage(paneId, !hidden);
   return (
     <PaneFooterProvider>
       {(registeredFooter) => {
-        const paneFooter = withPaneMessage(registeredFooter, captureStamp ? null : message, paneId);
-        const footer = captureStampFooter(paneFooter, captureStamp);
+        const footer = captureStampFooter(registeredFooter, captureStamp);
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const bodyFrame = resolvePaneBodyFrame({
@@ -334,7 +328,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             onResizeMouseDragEnd={nativeMove ? actions.drag : undefined}
             frameRef={frameRef}
           >
-            <PaneFooterKeys paneId={paneId} footer={paneFooter} focused={focused} />
+            <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
             <PaneContent
               component={pane.def.component}
               paneId={paneId}

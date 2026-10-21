@@ -83,7 +83,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
     await tui.waitForFrameToContain("Remove Fixture Plugin?");
     await press("return", "\r");
   };
-  return { active, calls, notes, remove, reads: () => reads, recover: () => { failure = null; } };
+  return { active, calls, notes, press, remove, reads: () => reads, recover: () => { failure = null; } };
 }
 
 for (const failure of ["view", "native"] as const) {
@@ -91,13 +91,17 @@ for (const failure of ["view", "native"] as const) {
     const run = await mount(failure);
     const initialReads = run.reads();
     await run.remove();
-    const frame = await tui.waitForFrameToContain("stop failed, restart to remove");
-    expect(frame).not.toContain("removing Fixture Plugin");
+    // Said on the plugin's row, and in full in its detail, not as a toast.
+    const frame = await tui.waitForFrameToContain("stop failed");
+    expect(frame).not.toContain("removing");
     expect(frame).toContain("[x] remove");
     expect(run.calls).toEqual(failure === "native" ? ["native.stop"] : ["native.stop", "view.stop"]);
     expect(run.active).toEqual({ view: true, native: failure === "native", files: true });
     expect(run.reads()).toBeGreaterThan(initialReads);
-    expect(run.notes.map((note) => note.type)).toEqual(["error"]);
+    expect(run.notes).toEqual([]);
+    await run.press("return", "\r");
+    await tui.waitForFrameToContain("Plugin could not be stopped. Files kept.");
+    await run.press("escape", "\u001b");
 
     run.recover();
     await run.remove();
@@ -105,18 +109,18 @@ for (const failure of ["view", "native"] as const) {
     expect(run.calls.slice(-3)).toEqual(["native.stop", "view.stop", "files.remove"]);
     expect(run.active).toEqual({ view: false, native: false, files: false });
     expect(run.notes.at(-1)).toMatchObject({ body: "Removed Fixture Plugin.", type: "success" });
-    expect(tui.frame()).not.toContain("stop failed, restart to remove");
+    expect(tui.frame()).not.toContain("stop failed");
   });
 }
 
 test("a thrown file-removal request clears the busy state and reports failure", async () => {
   const run = await mount("remove");
   await run.remove();
-  const frame = await tui.waitForFrameToContain("removal failed, restart to retry");
-  expect(frame).not.toContain("removing Fixture Plugin");
-  expect(frame).not.toContain("stop failed, restart to remove");
+  // Stopped, the plugin has left the list, so the failure is a toast.
+  await tui.waitForFrameToExclude("removing");
+  expect(tui.frame()).not.toContain("stop failed");
   expect(run.active.files).toBe(true);
-  expect(run.notes.map((note) => note.type)).toEqual(["error"]);
+  expect(run.notes).toMatchObject([{ type: "error", body: "Could not remove Fixture Plugin. Removal failed. Restart and try again." }]);
 });
 
 test("terminal removal works without a separate native host", async () => {

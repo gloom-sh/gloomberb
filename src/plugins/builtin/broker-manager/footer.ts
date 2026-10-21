@@ -17,6 +17,7 @@ interface BrokerManagerFooterActions {
 export function useBrokerManagerFooter({
   actions,
   busy,
+  paneBusy,
   canOpenSelectedAction,
   canRemoveSelected,
   canUseSelectedBroker,
@@ -27,6 +28,8 @@ export function useBrokerManagerFooter({
   actions: BrokerManagerFooterActions;
   /** What is running right now, or null. */
   busy: string | null;
+  /** What is running that has no row to show it on: adding a profile. */
+  paneBusy: string | null;
   canOpenSelectedAction: boolean;
   canRemoveSelected: boolean;
   canUseSelectedBroker: boolean;
@@ -37,7 +40,7 @@ export function useBrokerManagerFooter({
   disabledSelected: string | null;
   /** Editing a profile or adding one. */
   editing: boolean;
-  /** The last result of an action, or null. */
+  /** The last result that is the whole pane's, or null. */
   message: BrokerManagerMessage | null;
 }) {
   const actionsRef = useRef(actions);
@@ -72,12 +75,12 @@ export function useBrokerManagerFooter({
     return hints;
   }, [busy, canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, disabledSelected, editing]);
 
-  // The pane's rows already say which profiles exist and how they are doing,
-  // so the footer carries only what changes: the running action and its result.
+  // An action on one profile, and what it came to, is said on that profile's
+  // row. The footer carries only the pane's own: adding a profile.
   const info = useMemo<PaneFooterSegment[]>(() => [
-    ...(busy ? [{ id: "busy", parts: [{ text: busy, tone: "muted" as const }] }] : []),
+    ...(paneBusy ? [{ id: "busy", parts: [{ text: paneBusy, tone: "muted" as const }] }] : []),
     ...(message ? [{ id: "message", parts: [{ text: message.text, tone: message.tone === "error" ? "negative" as const : "muted" as const }] }] : []),
-  ], [busy, message]);
+  ], [message, paneBusy]);
 
   usePaneFooter("broker-manager", () => ({
     info,

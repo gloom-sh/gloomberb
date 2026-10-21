@@ -214,8 +214,7 @@ bar prompt, update notices and the market summary; the status bar at the
 bottom holds layout tabs, Tidy Windows, the version chip and the
 `status:widget` slot. A plugin puts a widget there only for app-wide state
 that matters outside its pane (unread count, account verification). Pane data
-never goes there, and neither does a message about one pane: see
-[Pane messages](#pane-messages).
+never goes there.
 
 **Pane chrome**, one per instance:
 
@@ -240,6 +239,7 @@ never goes there, and neither does a message about one pane: see
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
+| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages) |
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
@@ -252,9 +252,7 @@ never goes there, and neither does a message about one pane: see
 | Plan gating that only degrades the pane (delayed data, upgrade hint) | Footer, shared wording | `useCloudAccessFooter` (`shared/cloud-upgrade.ts`) |
 | Retry (or look again) from an empty or failed state | Inside that state, first, so it answers Enter | `PaneStatusBody`/`EmptyState` `retry` |
 | Upgrade or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
-| A pane's own action finished or failed (saved, exported, could not add), or a passing word about its data or broker profile | That pane's footer, for a few seconds | `usePaneNotify` (`notify({ ..., paneId })` outside the pane's tree) |
-| A standing state of one pane's broker profile (offline, disabled) | Footer info, with the key that fixes it | `useOfflineBrokerFooter`, `enableBrokerHint` (`shared/broker-reconnect.ts`) |
-| An app-wide event (layout saved, signed in, update ready, connectivity, an alert firing, an order filled) | Toast | `notify` |
+| An operation finished (saved, exported, failed), with no row to say it on | Toast | `notify` |
 | Destructive or irreversible decision | Dialog | `ConfirmDialog`, `tone: "danger"` |
 | Per-instance configuration | Pane settings via the `...` menu | `settings` on the pane def, `usePaneSettingValue` |
 | Methodology, assumptions, how to use the pane | `docs/*.md` | never body text or an info button |
@@ -304,59 +302,12 @@ the origin of a number. The one count the kit draws is the
 - Forms leave the footer alone. When the form shows Save and Cancel, the
   footer does not repeat them; Enter submits, Esc cancels. It keeps `saving`
   and the last result message.
-- A message about the pane leads the info for a few seconds, then goes:
-  see Pane messages, below.
 - No toolbars in the body. A row of buttons above a table is a set of footer
   hints. Query controls are the exception: search, filters and sort go in one
   `QueryBar` in `rootBefore` (chart range and interval pickers sit above the
   plot). A body `Button` belongs only to a form (Save, Cancel) or to an empty
   or failed state's `actions`; never full width, never beside a heading. A
   toggle that acts on click looks like one (`Checkbox`, a query bar toggle).
-
-### Pane messages
-
-A message about one pane instance is said in that pane, never in the app's
-status bar or toasts, which every pane shares. The status bar and toasts keep
-app-wide events only.
-
-- **In the pane**: the pane's own action finished or failed (saved, removed,
-  exported, published, could not add, a bad date typed in its field), its
-  data (saved alerts could not be read), its broker profile (offline,
-  disabled, could not reconnect), a refusal of its pane chrome (locked, a
-  screenshot of it copied, a setting it could not change).
-- **App-wide, a toast**: a layout saved, created or deleted; sign-in,
-  sign-up and a verified email; an app or plugin update and a restart it
-  needs; connectivity and data sources for the whole app; alerts that fire
-  (price, catalyst, economic print, breaking news, government award); an
-  order placed, filled or rejected, which matters wherever you are; anything
-  done from the command bar, a global key or a menu not tied to one pane.
-
-Test: if the pane were closed, would the message still mean something? Then
-it is app-wide. If it only makes sense next to that pane, it is the pane's.
-
-How:
-
-- A passing message (a result, a failure): `usePaneNotify()` from
-  `gloomberb/react` returns `notify` for this pane. It takes the same request
-  as `notify` and shows it first in the footer info: an error in the error
-  colour for 10 seconds, a success or info for 5 (`duration`, `persistent`
-  as for a toast). A newer one replaces it. An `action` becomes a press on
-  the footer and an entry in the pane menu. Code outside the pane's tree that
-  knows the pane (the pane menu, a shell action) passes `paneId` to `notify`.
-  A message for a pane no frame shows (closed, or in another layout) is a
-  toast instead, so it is not lost. A long one is cut behind an ellipsis a
-  column short of the hints, its full text in the tooltip; a status segment
-  of any length (a broker's own words) sets `clip` on its segment for the
-  same. One the footer already says (a failed sync whose error is now the
-  broker's status) is not shown twice.
-- A standing state (a broker profile offline or disabled, a load that
-  failed): footer info for as long as it holds, with the key that fixes it,
-  or the pane's error state when nothing can render. A disabled broker
-  profile is never synced or reconnected; the pane that shows it says
-  `IBKR disabled` and offers `[b] enable` (`useOfflineBrokerFooter`,
-  `enableBrokerHint`), which turns it on and syncs it.
-- Never both: a result the footer already holds as status (a pane's own
-  `message` or last error segment) is not also a toast.
 
 ## 4. Information density
 
@@ -377,6 +328,32 @@ How:
 - Empty states are one line plus an optional `hint`.
 
 ## 5. Lists and tables
+
+### Row messages
+
+What concerns one row of a list is said on that row, not in the pane's
+footer and not as a toast: the footer is for the whole pane, and a toast
+for the app. A broker profile that is turned off, needs a new sign-in or
+failed to sync, a plugin that failed to install, an alert that got no quote:
+each is that row's.
+
+- The status cell gets a short state in a warning or error tone: `Disabled`,
+  `Sign-in needed`, `Sync failed`, `install failed`. While an action runs on
+  the row, the cell says so (`Syncing…`, `removing`).
+- The full reason goes in the row's own detail, where the app already shows
+  the row (the stack detail Enter opens, the inspector): the broker's words,
+  the step that failed. Name the step that failed, not the action the user
+  asked for: enabling a profile that then fails to sync says it was enabled
+  and that the sync failed.
+- The state stands until the next action on the row, or until the row's own
+  status moves on past it. A success the row's cells already show (Connected,
+  synced now) needs no message.
+- Only when the row is gone (removed, left the list) is what became of it a
+  toast. When every row fails the same way (no quotes at all), that is the
+  pane's, in its footer.
+
+Reference: Brokers (`broker-manager/pane-actions.tsx`, `table.ts`
+`brokerRowStatus`) and Plugins (`plugin-marketplace/pane.tsx` `rowStatus`).
 
 Table header labels are uppercased by the kit; write them in any case.
 Section headings read in title case, bright and bold: the kit capitalises
@@ -818,11 +795,11 @@ template, or add it with its reason.
 1. The title is the only place the pane names itself; the body starts with the header zone (query bar, figures) or content.
 2. Every pane action is a footer hint with a key (or a `usePaneMenuItems` entry) and works by mouse; no button row in the body; nothing is mouse-only.
 3. Footer info is changing state only: no labels, counts, generic hints, `r`.
-4. Warnings via `usePaneNoticeFooter`; blocking states via `PaneStatusBody`/`EmptyState`; refresh failures keep the last data. What the pane says about itself (its action's result or failure, its data, its broker profile) goes through `usePaneNotify`, never a toast.
+4. Warnings via `usePaneNoticeFooter`; blocking states via `PaneStatusBody`/`EmptyState`; refresh failures keep the last data.
 5. Lists use the kit tables; details open in the stack, keyed by a stable id, persisted with `usePluginPaneState`.
 6. Paged sources load more on scroll, abort stale pages, reset on a new query.
 7. Tabs use `Tabs`, persist the active tab, scope their footers, mount lazily.
-8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed.
+8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed. What concerns one row of a list is said on that row ([Row messages](#row-messages)).
 9. Per-instance configuration is a pane setting; important toggles are `quickSettings`.
 10. Methodology and usage text is in `docs/`.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.

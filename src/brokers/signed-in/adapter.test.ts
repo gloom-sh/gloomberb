@@ -31,18 +31,18 @@ function adapterAnswering(answer: (path: string) => unknown, brokers: SignedInBr
 
 describe("signedInBrokerAdapter", () => {
   test("says what to do for each failure and keeps the last result as the profile's status", async () => {
-    const cases: Array<[number, string]> = [
-      [401, "Sign in to Gloom first, then connect Interactive Brokers."],
-      [404, "Interactive Brokers needs you to sign in again. Press Connect in Brokers."],
-      [502, "Interactive Brokers is not responding. Try again shortly."],
+    const cases: Array<[number, string, { needsSignIn?: true }]> = [
+      [401, "Sign in to Gloom first, then connect Interactive Brokers.", { needsSignIn: true }],
+      [404, "Interactive Brokers needs you to sign in again. Press Connect in Brokers.", { needsSignIn: true }],
+      [502, "Interactive Brokers is not responding. Try again shortly.", {}],
     ];
-    for (const [status, message] of cases) {
+    for (const [status, message, signIn] of cases) {
       const { adapter, requests } = adapterAnswering(() => new ApiRequestError("upstream", status));
       let notified = 0;
       adapter.subscribeStatus!(instance, () => { notified += 1; });
       await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow(message);
       expect(requests).toEqual(["ibkr/snapshot"]);
-      expect(adapter.getStatus!(instance)).toEqual({ state: "error", message, mode: "Sign in", updatedAt: 1_000 });
+      expect(adapter.getStatus!(instance)).toEqual({ state: "error", message, mode: "Sign in", ...signIn, updatedAt: 1_000 });
       expect(notified).toBe(1);
     }
   });
@@ -57,7 +57,7 @@ describe("signedInBrokerAdapter", () => {
     for (const error of shapes) {
       const { adapter } = adapterAnswering(() => error);
       await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow(message);
-      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message, needsSignIn: true });
     }
 
     // A 409 that says nothing keeps the app's own guidance.
@@ -76,7 +76,7 @@ describe("signedInBrokerAdapter", () => {
     for (const [answer, message] of reasons) {
       const { adapter } = adapterAnswering(() => answer);
       await expect(adapter.connect!(instance)).rejects.toThrow(message);
-      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message, needsSignIn: true });
     }
   });
 

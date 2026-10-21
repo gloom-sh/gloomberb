@@ -15,7 +15,7 @@ import { colors } from "../../../theme/colors";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { usePaneNotify, usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { PaneTemplateInputStep } from "../../../components/pane-template-wizard";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
@@ -108,8 +108,7 @@ function buildColumns(width: number, showGroup: boolean): CatalogColumn[] {
 }
 
 export function DataCatalogPane({ focused, width, height }: PaneProps) {
-  const { createPaneFromTemplate } = usePluginAppActions();
-  const notify = usePaneNotify();
+  const { createPaneFromTemplate, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [seedQuery] = usePaneSettingValue("query", "");
   const [searchQuery, setSearchQuery] = useState(seedQuery);

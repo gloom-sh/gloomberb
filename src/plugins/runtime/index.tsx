@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import type { CapabilityInvoker } from "../../capabilities";
-import type { AppNotificationRequest } from "../../types/plugin";
 import { useOptionalPaneInstanceId } from "../../state/app/context";
 import {
   usePluginRenderContext,
@@ -56,20 +55,6 @@ export function usePluginAppActions() {
     openPluginCommandWorkflow: runtime.openPluginCommandWorkflow,
     notify: runtime.notify,
   };
-}
-
-/**
- * `notify` for what one pane says about itself: an action of its own that
- * finished or failed, its data, its broker profile. It shows in this pane's
- * footer, not in the app's toasts, which are for app-wide events. Outside a
- * pane it is the app's `notify`.
- */
-export function usePaneNotify(): (notification: AppNotificationRequest) => void {
-  const { runtime } = usePluginRenderContext();
-  const paneId = useOptionalPaneInstanceId();
-  return useCallback((notification: AppNotificationRequest) => {
-    runtime.notify(paneId ? { ...notification, paneId } : notification);
-  }, [paneId, runtime]);
 }
 
 /** The active asset-data client, or null before the app has one. */

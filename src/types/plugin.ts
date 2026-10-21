@@ -865,7 +865,6 @@ export type AppNotificationType = "info" | "success" | "error";
 type AppDesktopNotificationMode = "never" | "when-inactive" | "always";
 
 export interface AppNotificationDelivery {
-  /** Seen in the app: a toast, or the footer of the pane it names. */
   toastVisible: boolean;
   desktopRequested: boolean;
 }
@@ -897,13 +896,6 @@ export interface AppNotificationRequest {
     label: string;
     onClick: () => void;
   };
-  /**
-   * The pane instance this is about (its action, its data, its broker
-   * profile). It shows in that pane's footer instead of a toast while the
-   * pane is on screen, and as a toast once it is not. In a pane, call
-   * `usePaneNotify` from `gloomberb/react`, which sets it.
-   */
-  paneId?: string;
 }
 
 export interface BrokerInstanceUpdateOptions {

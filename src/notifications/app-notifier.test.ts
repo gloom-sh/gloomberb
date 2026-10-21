@@ -159,30 +159,6 @@ describe("app notifier", () => {
   });
 });
 
-test("a notification about a pane shows in that pane while it is on screen, and as a toast once it is not", () => {
-  const toasts: string[] = [];
-  const shownPanes = new Set(["portfolio:1"]);
-  const inPanes: Array<[string, string]> = [];
-  const notifier = createAppNotifier({
-    isAppActive: () => true,
-    renderToast: (notification) => { toasts.push(notification.body); },
-    desktop: null,
-    showInPane: (paneId, notification) => {
-      if (!shownPanes.has(paneId)) return false;
-      inPanes.push([paneId, notification.body]);
-      return true;
-    },
-  });
-
-  expect(notifier.notify({ body: "Broker profile disabled", type: "error", paneId: "portfolio:1" }))
-    .toEqual({ toastVisible: true, desktopRequested: false });
-  notifier.notify({ body: "Closed pane's result", type: "error", paneId: "portfolio:2" });
-  notifier.notify({ body: "Layout saved", type: "success" });
-
-  expect(inPanes).toEqual([["portfolio:1", "Broker profile disabled"]]);
-  expect(toasts).toEqual(["Closed pane's result", "Layout saved"]);
-});
-
 describe("desktop notifier", () => {
   test("stops retrying a missing desktop notification command", () => {
     const calls: string[] = [];

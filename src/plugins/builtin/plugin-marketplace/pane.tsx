@@ -37,7 +37,7 @@ import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-targe
 import { pluginSetupCommandId } from "../../registry/setup-command";
 import { useAppSelector } from "../../../state/app/context";
 import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
-import { usePaneNotify, usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID } from "../debug/template";
 import { loadRegistry, registryPluginUrl } from "../../marketplace/feed";
 import { highlightedCodes, pluginFunctions, proFunctionCount, type PluginFunction } from "../../plugin-functions";
@@ -68,6 +68,7 @@ import {
   versionLabel,
   type MarketplaceEntry,
   type MarketplaceRow,
+  type MarketplaceStatus,
   type MarketplaceStatusKind,
   type RegistryPlugin,
 } from "../../marketplace/model";
@@ -165,7 +166,7 @@ function renderCell(
   row: MarketplaceRow,
   column: Column,
   rowState: { selected: boolean },
-  busyId: string | null,
+  rowStatus: (entry: MarketplaceEntry) => MarketplaceStatus,
   facts: (entry: MarketplaceEntry) => EntryFacts,
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
@@ -192,8 +193,7 @@ function renderCell(
     case "tagline":
       return { text: entry.tagline, color: selected ?? colors.textDim };
     case "status": {
-      if (busyId === entry.id) return { text: "working", color: selected ?? colors.textDim };
-      const status = statusOf(entry);
+      const status = rowStatus(entry);
       return { text: status.text, color: selected ?? STATUS_COLORS[status.kind] };
     }
   }
@@ -212,14 +212,21 @@ function describeContributions(entry: MarketplaceEntry, host: MarketplaceHost | 
   return parts;
 }
 
-function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: number; host: MarketplaceHost | null }) {
+function EntryDetail({ entry, width, host, status, failure }: {
+  entry: MarketplaceEntry;
+  width: number;
+  host: MarketplaceHost | null;
+  /** The row's STATUS. */
+  status: MarketplaceStatus;
+  /** What the last install, update or removal of this plugin ran into, in full. */
+  failure: string | null;
+}) {
   const contributes = describeContributions(entry, host);
   const live = entry.installed && host ? host.contributions(entry.id) : null;
   const opensWith = live
     ? live.templates.map((template) => template.prefix ?? template.label).filter(Boolean)
     : [];
   const rowWidth = Math.max(1, width - 2);
-  const status = statusOf(entry);
 
   return (
     <ScrollBox flexDirection="column" width={width} flexGrow={1} flexBasis={0} minHeight={0} paddingLeft={1} paddingRight={1} scrollY focusable={false}>
@@ -233,6 +240,12 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
       {entry.description ? (
         <Box paddingTop={1} flexDirection="column">
           <Text fg={colors.text}>{entry.description}</Text>
+        </Box>
+      ) : null}
+
+      {failure ? (
+        <Box paddingTop={1} flexDirection="column">
+          <Text fg={colors.negative} wrapText>{failure}</Text>
         </Box>
       ) : null}
 
@@ -400,11 +413,18 @@ function PackChangeBody({ change, name }: { change: PackChange; name: (id: strin
 
 type Busy = { id: string; verb: "installing" | "updating" | "removing" } | null;
 
+/**
+ * What the last install, update or removal of one plugin ran into, said on its
+ * row: `status` in STATUS, `text` in its detail.
+ */
+interface ActionFailure {
+  status: string;
+  text: string;
+}
+
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const { createPaneFromTemplate, showPane, openPluginCommandWorkflow, notify } = usePluginAppActions();
-  // What became of an install, update or removal is this pane's; only a restart the whole app needs is a toast.
-  const notifyPane = usePaneNotify();
   const [query, setQuery] = useState("");
   const [category, setCategory] = usePluginPaneState<string | null>("category", null);
   // Built-ins are what Gloomberb is made of, so they show unless filtered out.
@@ -421,14 +441,21 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   // Bumped after any local change so the list is re-read from the host.
   const [localRevision, setLocalRevision] = useState(0);
   const [busy, setBusy] = useState<Busy>(null);
-  const [lastError, setLastError] = useState<string | null>(null);
+  // By plugin id, until the next action on the plugin.
+  const [failures, setFailures] = useState<Readonly<Record<string, ActionFailure>>>({});
+  const setFailure = useCallback((id: string, failure: ActionFailure | null) => {
+    setFailures((current) => {
+      if (!failure && !current[id]) return current;
+      const { [id]: _previous, ...rest } = current;
+      return failure ? { ...rest, [id]: failure } : rest;
+    });
+  }, []);
   // Remote heads for plugins the registry does not pin, so a private or
   // side-loaded install can report an update like every other row.
   const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
   const [checkingRemotes, setCheckingRemotes] = useState(false);
   const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
   const [remoteRevision, setRemoteRevision] = useState(0);
-  const busyId = busy?.id ?? null;
 
   const refresh = useCallback((force: boolean) => {
     if (force) setRemoteRevision((value) => value + 1);
@@ -466,12 +493,18 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       return facts;
     };
   }, [entries, host]);
+  // What an action on one plugin is doing, or ran into, is said on its row.
+  const rowStatus = useCallback((entry: MarketplaceEntry): MarketplaceStatus => {
+    if (busy?.id === entry.id) return { kind: "none", text: busy.verb };
+    const failure = failures[entry.id];
+    return failure ? { kind: "failed", text: failure.status } : statusOf(entry);
+  }, [busy, failures]);
   const renderRow = useCallback((
     row: MarketplaceRow,
     column: Column,
     _index: number,
     rowState: { selected: boolean },
-  ) => renderCell(row, column, rowState, busyId, factsFor), [busyId, factsFor]);
+  ) => renderCell(row, column, rowState, rowStatus, factsFor), [factsFor, rowStatus]);
 
   // Keyed by the folders themselves: the entries array is rebuilt whenever an
   // answer lands, and re-running the check on its own result would never stop.
@@ -549,7 +582,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (added.broker) parts.push("a broker");
     const firstTemplate = added.templates[0];
     const firstPane = added.panes[0];
-    notifyPane({
+    notify({
       body: parts.length > 0 ? `${verb} ${name}: ${parts.join(", ")}.` : `${verb} ${name}.`,
       type: "success",
       ...(firstTemplate || firstPane
@@ -564,21 +597,19 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         }
         : {}),
     });
-  }, [createPaneFromTemplate, notifyPane, showPane]);
+  }, [createPaneFromTemplate, notify, showPane]);
 
   /**
    * The registry's code for this plugin needs a newer Gloomberb. Installing or
-   * updating would land it anyway and it would then fail to compile, so say
-   * what to do instead. Also leaves a working older checkout alone, and does
-   * not update one that already needs a newer Gloomberb: updates only move
-   * forward, so that would not help either.
+   * updating would land it anyway and it would then fail to compile, so the
+   * keys do nothing: the row's STATUS and its detail say what it needs. Also
+   * leaves a working older checkout alone, and does not update one that
+   * already needs a newer Gloomberb: updates only move forward, so that would
+   * not help either.
    */
-  const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => {
-    const required = requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb;
-    if (!required) return false;
-    notifyPane({ body: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`, type: "error" });
-    return true;
-  }, [notifyPane]);
+  const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => (
+    !!(requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb)
+  ), []);
 
   const installSelected = useCallback(async () => {
     if (!selected || !isInstallable(selected) || !manager || !host || busy) return;
@@ -600,12 +631,11 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
     const entry = selected;
     setBusy({ id: entry.id, verb: "installing" });
-    setLastError(null);
+    setFailure(entry.id, null);
     const result = await manager.install(repo, pin);
     if (!result.ok) {
       setBusy(null);
-      // The footer keeps the failure until the next operation.
-      setLastError(`Could not install ${entry.name}: ${result.error}`);
+      setFailure(entry.id, { status: "install failed", text: `Could not install ${entry.name}: ${result.error}` });
       return;
     }
     const activated = await activateInstall(result, host, manager);
@@ -613,8 +643,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     bump();
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
     else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
-    else notifyPane({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, notifyPane, refuseTooNew, selected]);
+    else setFailure(entry.id, { status: "load failed", text: `${entry.name} installed but did not load: ${activated.error}` });
+  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, refuseTooNew, selected, setFailure]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
@@ -623,16 +653,16 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const entry = selected;
     const reinstall = !!entry.loadError;
     setBusy({ id: entry.id, verb: "updating" });
-    setLastError(null);
+    setFailure(entry.id, null);
     const result = await manager.update(directory, registryPin(entry));
     if (!result.ok) {
       setBusy(null);
-      setLastError(`Could not update ${entry.name}: ${result.error}`);
+      setFailure(entry.id, { status: "update failed", text: `Could not update ${entry.name}: ${result.error}` });
       return;
     }
     if (result.kept) {
       setBusy(null);
-      notifyPane({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
+      notify({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
       return;
     }
     const activated = await activateInstalledPlugin(directory, host, manager);
@@ -643,9 +673,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     } else if (activated.ok) {
       announceAdded(activated.pluginId, activated.name, reinstall ? "Reloaded" : "Updated", host);
     } else {
-      notifyPane({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
+      setFailure(entry.id, { status: "load failed", text: `${entry.name} updated but did not load: ${activated.error}` });
     }
-  }, [announceAdded, bump, busy, host, manager, notify, notifyPane, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected, setFailure]);
 
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
@@ -660,7 +690,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     });
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
-    setLastError(null);
+    setFailure(entry.id, null);
     let removalStarted = false;
     try {
       // Stop the native side first: a successful view stop drops its catalog
@@ -668,22 +698,19 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       await manager.deactivate?.(entry.id);
       await host.deactivate(entry.id, entry.directory);
       removalStarted = true;
+      // Stopped, the plugin has left the list: what removing it came to has no row to go on.
       const result = await manager.remove(entry.directory!);
-      if (result.ok) notifyPane({ body: `Removed ${entry.name}.`, type: "success" });
-      else setLastError(`Could not remove ${entry.name}: ${result.error}`);
+      if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
+      else notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
     } catch (error) {
       logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
-      const message = removalStarted
-        ? "Removal failed. Restart and try again."
-        : "Plugin could not be stopped. Files kept. Restart before removing it.";
-      // The footer keeps the short form until the next operation; the message says the rest for a while.
-      setLastError(removalStarted ? "removal failed, restart to retry" : "stop failed, restart to remove");
-      notifyPane({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
+      if (removalStarted) notify({ body: `Could not remove ${entry.name}. Removal failed. Restart and try again.`, type: "error" });
+      else setFailure(entry.id, { status: "stop failed", text: `Could not remove ${entry.name}. Plugin could not be stopped. Files kept. Restart before removing it.` });
     } finally {
       setBusy(null);
       bump();
     }
-  }, [bump, busy, confirmWidth, dialog, host, manager, notifyPane, selected]);
+  }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected, setFailure]);
 
   const toggleSelected = useCallback(async () => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;
@@ -716,7 +743,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const change = packChange(previous, pack);
     const toggles = packToggles(change);
     if (Object.keys(toggles).length === 0) {
-      notifyPane({ body: tf("{name} is already what you have on.", { name: pack.name }), type: "info" });
+      notify({ body: tf("{name} is already what you have on.", { name: pack.name }), type: "info" });
       return;
     }
     const confirmed = await confirmDialog(dialog, {
@@ -733,7 +760,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       ...(change.turnOff.length > 0 ? [tf("{count} off", { count: change.turnOff.length })] : []),
       ...(change.turnOn.length > 0 ? [tf("{count} back on", { count: change.turnOn.length })] : []),
     ];
-    notifyPane({
+    notify({
       body: tf("{name} applied: {changes}.", { name: pack.name, changes: parts.join(", ") }),
       type: "success",
       // Long enough to reach for Undo after looking at the list.
@@ -746,7 +773,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         },
       },
     });
-  }, [bump, confirmWidth, dialog, disabledPlugins, host, notifyPane, pluginName]);
+  }, [bump, confirmWidth, dialog, disabledPlugins, host, notify, pluginName]);
 
   /**
    * The packs as templates to apply: each with its tagline and what it would
@@ -863,11 +890,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
   if (checkingRemotes) info.push({ id: "remote-check", parts: [{ text: "checking unlisted plugins", tone: "muted" }] });
   if (remoteCheckError) info.push({ id: "remote-error", parts: [{ text: remoteCheckError, tone: "warning" }] });
-  if (busy) {
-    const name = entries.find((entry) => entry.id === busy.id)?.name ?? busy.id;
-    info.push({ id: "busy", parts: [{ text: `${busy.verb} ${name}`, tone: "muted" }] });
-  }
-  if (lastError && !busy) info.push({ id: "op-error", parts: [{ text: lastError, tone: "warning" }] });
   const restartCount = entries.filter((entry) => entry.needsRestart).length;
   if (restartCount > 0 && !busy) {
     info.push({ id: "restart", parts: [{ text: "restart to finish loading", tone: "warning" }] });
@@ -904,8 +926,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const fit = useMemo(() => ({
     functions: Math.min(16, Math.max(9, ...visible.map((entry) => factsFor(entry).codes.join(" ").length))),
-    status: Math.min(14, Math.max(7, ...visible.map((entry) => statusOf(entry).text.length))),
-  }), [factsFor, visible]);
+    status: Math.min(14, Math.max(7, ...visible.map((entry) => rowStatus(entry).text.length))),
+  }), [factsFor, rowStatus, visible]);
   const columns = useMemo(() => buildColumns(width, fit), [fit, width]);
   // The pick is saved with the pane, so keep it listed (and resettable) even
   // when the catalog no longer has plugins in it.
@@ -953,7 +975,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         detailContent={selected
           ? selected.bundled
             ? <BuiltinDetail entry={selected} width={width} facts={factsFor(selected)} scrollRef={detailScrollRef} />
-            : <EntryDetail entry={selected} width={width} host={host} />
+            : <EntryDetail entry={selected} width={width} host={host} status={rowStatus(selected)} failure={failures[selected.id]?.text ?? null} />
           : null}
         detailTitle={selected?.name}
         rootBefore={(

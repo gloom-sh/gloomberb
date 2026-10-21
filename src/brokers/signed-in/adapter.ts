@@ -47,16 +47,25 @@ function brokerReason(lastError: string | null | undefined): string | null {
   return described.replace(/[\s.]+$/, "").slice(0, 200) || null;
 }
 
-/** What to tell the user when Gloom answers a broker call with an error. */
-function describeSignedInBrokerError(error: unknown, brokerName: string): string {
+/** Gloom holds no live sign-in for the broker: only connecting again helps. */
+class SignInNeededError extends Error {}
+
+/**
+ * What to tell the user when Gloom answers a broker call with an error, and
+ * whether only a new sign-in, to Gloom or the broker, gets the profile going.
+ */
+function describeSignedInBrokerError(error: unknown, brokerName: string): { message: string; needsSignIn: boolean } {
   const status = error instanceof ApiRequestError ? error.status : undefined;
-  if (status === 401) return `Sign in to Gloom first, then connect ${brokerName}.`;
+  if (status === 401) return { message: `Sign in to Gloom first, then connect ${brokerName}.`, needsSignIn: true };
   const signInAgain = `${brokerName} needs you to sign in again. Press Connect in Brokers.`;
   // A sign-in the broker ended says why, in Gloom's words.
-  if (status === 409) return (error instanceof ApiRequestError && writtenMessage(error)) || signInAgain;
-  if (status === 404) return signInAgain;
-  if (status === 502) return `${brokerName} is not responding. Try again shortly.`;
-  return error instanceof Error && error.message ? error.message : String(error);
+  if (status === 409) return { message: (error instanceof ApiRequestError && writtenMessage(error)) || signInAgain, needsSignIn: true };
+  if (status === 404) return { message: signInAgain, needsSignIn: true };
+  if (status === 502) return { message: `${brokerName} is not responding. Try again shortly.`, needsSignIn: false };
+  return {
+    message: error instanceof Error && error.message ? error.message : String(error),
+    needsSignIn: error instanceof SignInNeededError,
+  };
 }
 
 /** The broker does not offer this. A broker tool that failed is also a 422, but a failure. */
@@ -99,8 +108,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
   const brokerName = (instance: BrokerInstanceConfig) =>
     deps.findBroker(signedInBrokerId(instance))?.name ?? instance.label;
 
-  const setStatus = (instance: BrokerInstanceConfig, state: "connected" | "error", message?: string) => {
-    statuses.set(instance.id, { state, message, mode: METHOD, updatedAt: deps.now() });
+  const setStatus = (instance: BrokerInstanceConfig, state: "connected" | "error", message?: string, needsSignIn = false) => {
+    statuses.set(instance.id, { state, message, mode: METHOD, ...(needsSignIn ? { needsSignIn } : {}), updatedAt: deps.now() });
     for (const listener of listeners.get(instance.id) ?? []) listener();
   };
 
@@ -111,8 +120,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       setStatus(instance, "connected");
       return result;
     } catch (error) {
-      const message = describeSignedInBrokerError(error, brokerName(instance));
-      setStatus(instance, "error", message);
+      const { message, needsSignIn } = describeSignedInBrokerError(error, brokerName(instance));
+      setStatus(instance, "error", message, needsSignIn);
       throw new Error(message);
     }
   };
@@ -244,7 +253,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
         if (connection.status !== "connected") {
           const name = brokerName(instance);
           const reason = brokerReason(connection.lastError);
-          throw new Error(reason
+          throw new SignInNeededError(reason
             ? `${name} needs you to sign in again: ${reason}. Press Connect in Brokers.`
             : `Press Connect in Brokers to sign in to ${name}.`);
         }

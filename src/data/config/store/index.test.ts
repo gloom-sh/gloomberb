@@ -76,6 +76,18 @@ test("parallel saves land one after another, in the same millisecond too", async
   expect(await readdir(dataDir)).toEqual(["config.json"]);
 });
 
+test("a config in memory is never written, so no :memory: folder lands in the working directory", async () => {
+  const cwd = process.cwd();
+  const dir = await createTempConfigDir();
+  process.chdir(dir);
+  try {
+    await saveConfig({ ...(await loadConfig(dir)), dataDir: ":memory:" });
+    expect(await readdir(dir)).toEqual([]);
+  } finally {
+    process.chdir(cwd);
+  }
+});
+
 test("a failed save rejects its caller, leaves no temp file and does not block the next save", async () => {
   const dataDir = await createTempConfigDir();
   const loaded = await loadConfig(dataDir);

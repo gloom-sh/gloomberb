@@ -54,6 +54,7 @@ function Harness({
   app,
   detached = false,
   beforeCreate,
+  syncFails,
 }: {
   instance?: BrokerInstanceConfig;
   instances?: BrokerInstanceConfig[];
@@ -67,6 +68,8 @@ function Harness({
   detached?: boolean;
   /** Holds a new profile's creation until it resolves. */
   beforeCreate?: () => Promise<void>;
+  /** Why every sync fails, if it does. */
+  syncFails?: string;
 }) {
   // Pane state (the open profile) lives in the app state, so it needs a real reducer.
   const [state, dispatch] = useReducer(appReducer, instances, (instances) => {
@@ -105,7 +108,10 @@ function Harness({
     openCommandBar: (query) => calls.push(`command:${query ?? ""}`),
     showPane: (paneId) => calls.push(`pane:${paneId}`),
     connectBrokerInstance: async (instanceId) => { calls.push(`connect:${instanceId}`); },
-    syncBrokerInstance: async (instanceId) => { calls.push(`sync:${instanceId}`); },
+    syncBrokerInstance: async (instanceId) => {
+      calls.push(`sync:${instanceId}`);
+      if (syncFails) throw new Error(syncFails);
+    },
     updateBrokerInstance: async (instanceId, config, options) => {
       // Turning a profile back on changes nothing else.
       if (options?.enabled === true && Object.keys(config).length === 0) {
@@ -228,6 +234,7 @@ describe("BrokersPane", () => {
     const calls: string[] = [];
     await tui.render(<Harness calls={calls} instance={{ ...createGatewayInstance(), enabled: false }} height={35} />, { width: 92, height: 35 });
     await settle();
+    expect(frameLine("IBKR Paper")).toContain("Disabled");
     expect(frame()).toContain("[b] enable");
     expect(frame()).not.toContain("[c]onnect");
     expect(frame()).not.toContain("[s]ync");
@@ -239,9 +246,35 @@ describe("BrokersPane", () => {
     await pressKey("b");
     await settle();
     expect(calls).toEqual(["enable:ibkr-paper", "sync:ibkr-paper"]);
-    expect(frame()).toContain("Enabled IBKR Paper.");
+    expect(frameLine("IBKR Paper")).not.toContain("Disabled");
     expect(frame()).toContain("[s]ync");
     expect(frame()).not.toContain("[b] enable");
+  });
+
+  test("what an action on a profile came to is said on its row and in its detail, not in the footer", async () => {
+    const calls: string[] = [];
+    const reason = "Gateway refused the session.";
+    await tui.render(
+      <Harness calls={calls} instance={{ ...createGatewayInstance(), enabled: false }} syncFails={reason} height={35} />,
+      { width: 92, height: 35 },
+    );
+    await settle();
+
+    // Enabling worked and the sync after it did not: the row names the sync.
+    await pressKey("b");
+    await settle();
+    expect(calls).toEqual(["enable:ibkr-paper", "sync:ibkr-paper"]);
+    expect(frameLine("IBKR Paper")).toContain("Sync failed");
+    expect(frame()).not.toContain(reason);
+    expect(frame()).not.toContain("Could not enable");
+    await pressKey("RETURN");
+    expect(frame()).toContain(`Enabled IBKR Paper, but it did not sync: ${reason}`);
+
+    // The next action on the profile starts over.
+    await pressKey("s");
+    await settle();
+    expect(frame()).toContain(reason);
+    expect(frame()).not.toContain("Enabled IBKR Paper");
   });
 
   test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
@@ -308,9 +341,10 @@ describe("BrokersPane", () => {
       await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
       await act(async () => { await Bun.sleep(5); });
       await tui.setup().renderOnce();
-      // Said in the pane's footer, not as a toast.
-      expect(calls).toEqual(["remove:signed-in-ibkr"]);
-      expect(tui.frame()).toContain("Removed Interactive Brokers.");
+      expect(calls).toEqual([
+        "remove:signed-in-ibkr",
+        "notify:Removed Interactive Brokers. Interactive Brokers is still connected to your Gloom account.",
+      ]);
       expect(tui.frame()).not.toContain("Disconnect broker?");
 
       // Enter opens the selected profile: the one after the removed row.
@@ -335,8 +369,7 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("Disconnect broker?");
     await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
     await settle();
-    expect(calls).toEqual(["remove:ibkr-paper"]);
-    expect(frame()).toContain("Removed IBKR Paper.");
+    expect(calls).toEqual(["remove:ibkr-paper", "notify:Removed IBKR Paper."]);
     expect(frame()).not.toContain("Disconnect broker?");
   });
 
@@ -415,8 +448,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:simplefin:SimpleFIN:{"token":"tok-1"}',
       "sync:simplefin-new",
+      "notify:Connected! Positions will sync automatically.",
     ]);
-    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect SimpleFIN");
     // The new profile is the selected row.
     await pressKey("RETURN");
@@ -452,8 +485,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:simplefin:SimpleFIN:{"token":"tok-1"}',
       "sync:simplefin-new",
+      "notify:Connected! Positions will sync automatically.",
     ]);
-    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect SimpleFIN");
     await pressKey("RETURN");
     expect(frame()).toContain("simplefin-new");
@@ -483,8 +516,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:signed-in:Robinhood:{"connectionMode":"robinhood","broker":"robinhood"}',
       "sync:signed-in-new",
+      "notify:Connected! Positions will sync automatically.",
     ]);
-    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect Robinhood");
     await pressKey("RETURN");
     expect(frame()).toContain("signed-in-new");
@@ -523,6 +556,8 @@ describe("BrokersPane", () => {
       await pressKey("c");
       await settle();
       expect(asked).toEqual([{ renew: renews }]);
+      // Said in the profile's detail; nothing on the row changed.
+      await pressKey("RETURN");
       expect(frame()).toContain(renews ? "sign-in was not renewed." : "was not connected.");
     }
   });

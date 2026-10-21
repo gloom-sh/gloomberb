@@ -7,7 +7,7 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { displayWidth, truncateToDisplayWidth } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { usePaneNotify } from "../../../runtime";
+import { usePluginAppActions } from "../../../runtime";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
 import { teamStore } from "../../../../team/store";
@@ -147,7 +147,7 @@ export interface ThesisDetailProps {
 
 export function ThesisDetail({ thesis, width, height, focused, footerId, onDeleted }: ThesisDetailProps) {
   const dialog = useDialog();
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const plan = usePlanAccess();
   const openUpgrade = useCloudUpgradeAction("thesis-detail");
   const [signals, setSignals] = useState<ThesisSignal[]>([]);

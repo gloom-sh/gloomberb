@@ -118,7 +118,7 @@ import { intradaySessionTimeZone } from "./session-history";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { usePaneNotify, usePluginConfigState } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
 import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarget } from "../alerts/levels";
 import { formatAlertDescription } from "../alerts/alert-engine";
@@ -460,7 +460,7 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const { runtime } = usePluginRenderContext();
   const [levelStore, setLevelStore] = usePluginConfigState<unknown>(PRICE_LEVELS_KEY, null);
   const alertsJson = useAppSelector((state) => state.config.pluginConfig[PRICE_ALERTS_STORE.pluginId]?.[PRICE_ALERTS_STORE.key]);

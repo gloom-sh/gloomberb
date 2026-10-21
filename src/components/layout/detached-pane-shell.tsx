@@ -42,7 +42,6 @@ import { menuItemsForFallback, paneFooterMenuItems, REPORT_BUG_MENU_LABEL } from
 import { canReportPaneBug } from "../../shares/bug-report-flow";
 import { useShellPaneCapture } from "./shell/pane/capture";
 import { captureStampFooter, usePaneCaptureStamp } from "./pane/capture-stamp";
-import { usePaneMessage, withPaneMessage } from "./pane/message";
 import { pluginContextMenuSlot, withPluginContextMenuItems } from "../../ui/context-menu";
 import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./shell/action-menu-overlay";
 import { getPaneFooter } from "./pane/footer";
@@ -165,7 +164,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
 
   const closePane = useCallback(() => {
     if (locked) {
-      pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info", paneId: desktopWindowBridge.paneId });
+      pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
       return;
     }
     fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
@@ -198,7 +197,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     screenRects: emptyRects,
   });
   const captureStamp = usePaneCaptureStamp(desktopWindowBridge.paneId);
-  const message = usePaneMessage(desktopWindowBridge.paneId);
 
   const togglePaneLock = useCallback(() => {
     void pluginRegistry.applyPaneSettingValue(
@@ -209,7 +207,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       pluginRegistry.notify({
         body: error instanceof Error ? error.message : "Could not update pane setting.",
         type: "error",
-        paneId: desktopWindowBridge.paneId,
       });
     });
   }, [desktopWindowBridge.paneId, locked, pluginRegistry]);
@@ -220,7 +217,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       pluginRegistry.notify({
         body: error instanceof Error ? error.message : "Could not update pane setting.",
         type: "error",
-        paneId: desktopWindowBridge.paneId,
       });
     });
   }, [desktopWindowBridge.paneId, focusPane, pluginRegistry]);
@@ -398,8 +394,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   return (
     <PaneFooterProvider>
       {(registeredFooter) => {
-        const paneFooter = withPaneMessage(registeredFooter, captureStamp ? null : message, desktopWindowBridge.paneId);
-        const footer = captureStampFooter(paneFooter, captureStamp);
+        const footer = captureStampFooter(registeredFooter, captureStamp);
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const renderFooter = reserveFooter || showFooter;
@@ -477,7 +472,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
               </PaneHeaderTabsProvider>
             </PaneBodyFrame>
             {renderFooter && <PaneFooterBar footer={footer} focused={focused} width={width} />}
-            <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={paneFooter} focused={focused} />
+            <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={registeredFooter} focused={focused} />
             <ShellActionMenuOverlay
               menuState={menuState}
               hoveredMenuItemId={null}

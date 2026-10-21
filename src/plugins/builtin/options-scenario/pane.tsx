@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
-  usePaneNotify, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
+  usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
 import { usePaneAppConfig } from "../../../state/app/context";
 import { usePluginBrokerActions, usePluginTickerActions } from "../../runtime";
 import { brokerCanTrade, brokerCanTradeStrategy, openTradeTicket } from "../broker-trading/command";
@@ -52,7 +52,7 @@ const money = (value: number | null) => value == null || !Number.isFinite(value)
 export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const dialog = useDialog();
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const { symbol, ticker } = usePaneTicker();
   const instance = usePaneInstance();
   const settings = instance?.settings ?? {};

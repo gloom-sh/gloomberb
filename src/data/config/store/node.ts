@@ -125,11 +125,19 @@ async function writeConfigFile(configPath: string, contents: string): Promise<vo
 }
 
 /**
+ * The data directory of a config that lives in memory only, as the tests'
+ * configs do. It has no folder: a save a test leaves scheduled lands after the
+ * test, and it must not write `:memory:/config.json` into the working tree.
+ */
+const IN_MEMORY_DATA_DIR = ":memory:";
+
+/**
  * Saves to one file run one after another in call order, so the last call is
  * the one on disk and none is lost. A failed save rejects only its own caller
  * and the next one still runs.
  */
 export async function saveConfig(config: AppConfig): Promise<void> {
+  if (config.dataDir === IN_MEMORY_DATA_DIR) return;
   const configPath = configFileFor(config.dataDir);
   // Written as it was when called, however the caller's object changes while
   // earlier saves are still running.

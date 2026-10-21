@@ -7,7 +7,7 @@ import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { confirmDialog, EmptyState, TextField, usePaneFooter, usePaneTabs } from "../../../components";
 import { useDialog } from "../../../ui/dialog";
-import { usePaneNotify, usePluginPaneState } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { debugLog } from "../../../utils/debug-log";
 import { logFailure } from "../../../utils/log-failure";
 import { MarkdownNotePreview } from "./markdown-note-preview";
@@ -31,7 +31,7 @@ interface OwnedQuickNote extends QuickNoteEntry {
 export function createQuickNotesPane(registry: NotesStoreRegistry) {
   return function QuickNotesPane({ focused, width }: PaneProps) {
     const dialog = useDialog();
-    const notify = usePaneNotify();
+    const { notify } = usePluginAppActions();
     const teams = useNoteTeams();
     const teamKey = teams.map((team) => team.id).join(",");
     const owners = useMemo<NoteOwner[]>(

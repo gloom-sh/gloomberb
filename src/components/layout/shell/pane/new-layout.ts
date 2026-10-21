@@ -62,8 +62,7 @@ export function useShellPaneLayoutMoves({
     if (block === "missing" || block === "detached") return false;
     const blockMessage = block ? BLOCK_MESSAGES[block] : undefined;
     if (blockMessage) {
-      // Why this pane cannot move is said in the pane.
-      pluginRegistry.notify({ body: blockMessage, type: "info", paneId });
+      pluginRegistry.notify({ body: blockMessage, type: "info" });
       return true;
     }
     const state = stateRef.current;

@@ -13,9 +13,9 @@ import { formatRelativeAge } from "../../../utils/datetime-format";
 import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
-import type { BrokerManagerMessage } from "./pane-actions";
+import type { BrokerRowActivity } from "./pane-actions";
 import { signInEndNote } from "./sign-in-end";
-import { stateColor } from "./table";
+import { brokerRowStatus } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | "localOnly" | string;
 
@@ -230,7 +230,7 @@ export function BrokerDetailContent({
   activeEditKey,
   editKeys,
   busy,
-  message,
+  activity,
   width,
   editScope,
   paneFocused,
@@ -250,7 +250,8 @@ export function BrokerDetailContent({
   /** The edit form's fields in Tab order. */
   editKeys: readonly BrokerEditKey[];
   busy: string | null;
-  message: BrokerManagerMessage | null;
+  /** The pane's action running on this profile, and what the last one came to. */
+  activity: BrokerRowActivity;
   width: number;
   /** The edit form's shortcut scope, shared with the pane's field ring. */
   editScope: string;
@@ -279,26 +280,30 @@ export function BrokerDetailContent({
 
   if (!row) return <Box flexGrow={1} />;
 
-  // A failed action outranks the profile's own status until the next action.
-  const actionError = message?.tone === "error" ? message.text : null;
-  const detailStatusMessage = actionError ?? (row.message || t("No status message."));
+  // The row's STATUS, and in full what the last action on the profile came to,
+  // which outranks the profile's own status message until it is news no more.
+  // The sign-in's end has a line of its own below.
+  const status = brokerRowStatus({ ...row, signInEndsAt: null }, activity);
+  const note = activity.note ?? null;
+  const detailStatusMessage = note?.text ?? (row.message || t("No status message."));
+  const statusMessageColor = note
+    ? note.tone === "error" ? colors.negative : colors.textDim
+    : row.state === "error" ? colors.negative
+      : row.state === "sign-in" || row.state === "disabled" ? colors.warning
+        : colors.textDim;
   const editAdapter = row.adapter;
 
   return (
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
-        <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
-          {truncateToDisplayWidth(row.stateLabel, width)}
+        <Text fg={status.color} attributes={TextAttributes.BOLD}>
+          {truncateToDisplayWidth(status.text, width)}
         </Text>
         <Text fg={colors.textDim}>
           {truncateToDisplayWidth(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
         </Text>
-        <Text
-          fg={actionError || row.state === "error" ? colors.negative : colors.textDim}
-          width={width}
-          wrapText
-        >
+        <Text fg={statusMessageColor} width={width} wrapText>
           {detailStatusMessage}
         </Text>
         {row.signInEndsAt !== null && (

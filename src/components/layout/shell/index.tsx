@@ -534,7 +534,6 @@ export function Shell({
       pluginRegistry.notify({
         body: error instanceof Error ? error.message : "Could not update pane setting.",
         type: "error",
-        paneId,
       });
     });
   }, [focusPane, pluginRegistry]);

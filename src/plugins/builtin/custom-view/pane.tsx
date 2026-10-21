@@ -18,7 +18,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { usePaneNotify, usePluginPaneActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneActions } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -95,7 +95,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance();
   const config = usePaneAppConfig();
   const { selectTicker } = usePluginPaneActions();
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const dialog = useDialog();
   const rawSpec = instance?.settings?.[CUSTOM_VIEW_SPEC_SETTING];
   const parsed = useMemo(() => (rawSpec ? parseViewSpecOr(rawSpec) : null), [rawSpec]);

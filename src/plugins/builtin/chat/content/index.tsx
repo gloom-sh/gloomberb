@@ -54,7 +54,7 @@ import {
 } from "../direct-messages";
 import type { ChatUserAnchor, ChatUserContextMenuEvent } from "../message/types";
 import type { ContextMenuItem } from "../../../../types/context-menu";
-import { usePaneNotify, usePluginAppActions } from "../../../runtime";
+import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../../../team/pane-request";
 import { openChatPaneLink } from "../pane-links/open";
 import type { ChatMessagePaneLink } from "../pane-links/model";
@@ -98,14 +98,11 @@ export function ChatContent({
   onTargetMessageHandled,
 }: ChatContentProps) {
   const dispatch = useAppDispatch();
-  const { showPane, createPaneFromTemplate } = usePluginAppActions();
-  const notify = usePaneNotify();
+  const { showPane, createPaneFromTemplate, notify } = usePluginAppActions();
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const channelId = normalizeChannelId(rawChannelId);
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
-  // A send, edit or image that fails in this channel is said in this pane.
-  useEffect(() => controller.attachChannelNotifier?.(channelId, notify), [channelId, controller, notify]);
   const initialSnapshot = controller.getSnapshot(channelId);
   const { nativePaneChrome } = useUiCapabilities();
   const rendererHost = useRendererHost();

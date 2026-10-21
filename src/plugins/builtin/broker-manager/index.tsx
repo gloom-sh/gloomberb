@@ -118,9 +118,12 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   const {
     busy,
+    paneBusy,
     message,
+    rowActivity,
     setBusy,
     setMessage,
+    setRowNote,
     startEdit,
     saveEdit,
     connectSelected,
@@ -144,7 +147,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     setEditDraft(null);
     setDetailOpen(false);
   }, [setDetailOpen, setSelectedId]);
-  const addFlow = useBrokerAddFlow({ setBusy, setMessage, onProfileAdded: selectAddedProfile });
+  const addFlow = useBrokerAddFlow({ setBusy, setMessage, setRowNote, onProfileAdded: selectAddedProfile });
   const adding = addFlow.flow !== null;
   const { start: startAddFlow } = addFlow;
   const startAdd = useCallback(() => {
@@ -185,6 +188,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   useBrokerManagerFooter({
     busy,
+    paneBusy,
     message,
     actions: {
       connectSelected,
@@ -234,8 +238,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
   const renderCell = useCallback(
-    (row: BrokerProfileRow, column: BrokerColumn) => renderBrokerCell(row, column, desktop),
-    [desktop],
+    (row: BrokerProfileRow, column: BrokerColumn) => renderBrokerCell(row, column, desktop, rowActivity(row)),
+    [desktop, rowActivity],
   );
 
   const openSelectedDetail = useCallback((_index: number, row: BrokerProfileRow) => {
@@ -294,7 +298,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       activeEditKey={activeEditKey}
       editKeys={editKeys}
       busy={busy}
-      message={message}
+      activity={selectedRow ? rowActivity(selectedRow) : {}}
       width={detailContentWidth}
       editScope={editScope}
       paneFocused={focused}

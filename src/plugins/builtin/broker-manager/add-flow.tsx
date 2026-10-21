@@ -36,10 +36,10 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
-import { usePluginBrokerActions } from "../../runtime";
+import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
-import type { BrokerManagerMessage } from "./pane-actions";
+import type { BrokerManagerMessage, BrokerRowNote } from "./pane-actions";
 
 /**
  * Adding a profile, one step at a time in the pane's detail: the broker, how
@@ -84,16 +84,20 @@ let attemptSequence = 0;
 export function useBrokerAddFlow({
   setBusy,
   setMessage,
+  setRowNote,
   onProfileAdded,
 }: {
   setBusy: (busy: string | null) => void;
   setMessage: (message: BrokerManagerMessage | null) => void;
+  /** Says on the new profile's row why its first sync failed. */
+  setRowNote: (profileId: string, note: Omit<BrokerRowNote, "at"> | null) => void;
   /** Lands the pane on the profile the flow made, with the flow closed. */
   onProfileAdded: (instanceId: string) => void;
 }) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const getState = useAppGetState();
+  const { notify } = usePluginAppActions();
   const { listBrokerAdapters, createBrokerInstance, updateBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
   const [flow, setFlowState] = useState<BrokerAddFlowState | null>(null);
   // Async work reads the flow as it is now, not as it was when it started.
@@ -162,15 +166,15 @@ export function useBrokerAddFlow({
       const state = getState();
       const portfolio = state.config.portfolios.find((entry) => entry.brokerInstanceId === instanceId);
       if (portfolio) showCollectionInPortfolioPane(state, dispatch, portfolio.id);
-      setMessage({ tone: "info", text: t("Connected! Positions will sync automatically.") });
+      notify({ body: t("Connected! Positions will sync automatically."), type: "success" });
     } catch (error) {
-      // The profile stays: its detail and the footer say why it did not sync.
+      // The profile stays: its row says why it did not sync.
       land();
-      setMessage({ tone: "error", text: errorText(error, tf("Failed to sync {label}.", { label })) });
+      setRowNote(instanceId, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
     } finally {
       setBusy(null);
     }
-  }, [dispatch, getState, onProfileAdded, setBusy, setFlow, setMessage, syncBrokerInstance]);
+  }, [dispatch, getState, notify, onProfileAdded, setBusy, setFlow, setRowNote, syncBrokerInstance]);
 
   const connectDevice = useCallback(async () => {
     const current = flowRef.current;

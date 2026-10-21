@@ -10,6 +10,8 @@ export type BrokerDisplayState =
   | "disabled"
   | "unavailable"
   | "configured"
+  /** An error only a new sign-in clears. */
+  | "sign-in"
   | BrokerConnectionStatus["state"];
 
 export interface BrokerProfileRow {
@@ -78,7 +80,12 @@ function resolveState(
   status: BrokerConnectionStatus | null,
 ): { state: BrokerDisplayState; label: string; message: string; updatedAt: number } {
   if (instance.enabled === false) {
-    return { state: "disabled", label: t("Disabled"), message: t("Profile is disabled"), updatedAt: 0 };
+    return {
+      state: "disabled",
+      label: t("Disabled"),
+      message: t("Gloom does not connect or sync this profile while it is disabled."),
+      updatedAt: 0,
+    };
   }
   if (!adapter) {
     return { state: "unavailable", label: t("Unavailable"), message: t("Broker plugin is not available"), updatedAt: 0 };
@@ -95,6 +102,9 @@ function resolveState(
     return { state: "configured", label: t("Configured"), message: t("Ready to test or sync"), updatedAt: 0 };
   }
 
+  if (status.state === "error" && status.needsSignIn) {
+    return { state: "sign-in", label: t("Sign-in needed"), message: status.message || "", updatedAt: status.updatedAt };
+  }
   const labels: Record<BrokerConnectionStatus["state"], string> = {
     disconnected: t("Disconnected"),
     connecting: t("Connecting"),
@@ -148,7 +158,7 @@ export function buildBrokerProfileRows(
       accountSummary: summarizeBrokerAccounts(accounts),
       accountIds: accounts.map((account) => account.accountId),
       // Say nothing next to a failure or a profile that does not connect.
-      signInEndsAt: state.state === "error" || state.state === "disabled" || state.state === "unavailable"
+      signInEndsAt: state.state === "error" || state.state === "sign-in" || state.state === "disabled" || state.state === "unavailable"
         ? null
         : signInEnds.get(instance.id) ?? null,
       logo: brokerProfileLogo(instance, adapter, pluginLogo),

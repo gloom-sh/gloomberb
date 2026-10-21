@@ -9,7 +9,7 @@ import { deriveHeadlessFreshness, paneStatusLineVariants } from "../../../cli/pa
 import { openFormModal } from "../../../components/form-modal";
 import { tf } from "../../../i18n";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneNotify, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useAgeClock } from "../../../react/auto-refresh";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -370,8 +370,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "preview"}`;
-  const { createPaneFromTemplate } = usePluginAppActions();
-  const notify = usePaneNotify();
+  const { createPaneFromTemplate, notify } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const upgrade = useCloudUpgradeAction("perp");
   const [openingMarket] = usePaneSettingValue("market", "");

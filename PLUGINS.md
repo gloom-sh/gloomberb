@@ -1272,25 +1272,9 @@ ctx.notify({
   desktop: "when-inactive", // desktop only when the terminal loses focus
 });
 
-ctx.notify({ body: "Plugin data refreshed", type: "success" });
+ctx.notify({ body: "Saved successfully", type: "success" });
+ctx.notify({ body: "Something went wrong", type: "error", duration: 5000 });
 ctx.notify({ body: "FYI..." }); // defaults to an in-app info toast
-```
-
-A toast is for an app-wide event. What one pane says about itself (an action
-of its own that finished or failed, its data, its broker profile) goes in that
-pane's footer, not a toast: in a pane, call `usePaneNotify` from
-`gloomberb/react`. It takes the same request as `notify`, shows it in the
-pane's footer while the pane is on screen, and falls back to a toast once the
-pane is gone. Code outside the pane's tree passes the pane's id instead:
-`ctx.notify({ ..., paneId })`. See "Pane messages" in
-[docs/pane-conventions.md](docs/pane-conventions.md#pane-messages).
-
-```typescript
-import { usePaneNotify } from "gloomberb/react";
-
-const notify = usePaneNotify();
-notify({ body: "Saved", type: "success" });
-notify({ body: "Something went wrong", type: "error" }); // stays 10s, a success 5s
 ```
 
 ### Floating panes
@@ -1580,14 +1564,11 @@ import {
   usePluginConfigState,
   usePluginTickerActions,
   usePluginAppActions,
-  usePaneNotify,
 } from "gloomberb/react";
 
 const assetData = useAssetData();
 const { navigateTicker, pinTicker } = usePluginTickerActions();
-const { openCommandBar, showPane, hidePane } = usePluginAppActions();
-// What this pane says about itself: shown in its footer, not as a toast.
-const notify = usePaneNotify();
+const { openCommandBar, showPane, hidePane, notify } = usePluginAppActions();
 
 // Per-pane layout state (scoped to the current pane instance)
 const [expanded, setExpanded] = usePluginPaneState("expanded", false);
@@ -1908,4 +1889,4 @@ A broker whose terms restrict redistributing its market data sets `localMarketDa
 - The terminal renderer is backed by [OpenTUI](https://opentui.com/) packages such as `@opentui/core` and `@opentui/react`; plugin UI should stay on `gloomberb/ui` and `gloomberb/components`
 - Use `ctx.persistence` for cached resources, `ctx.resume` for state panes render, `ctx.configState` for configuration, and `ctx.teamState` for data shared with a team
 - Use `ctx.on()` to react to app events without polling
-- Use `ctx.notify()` for app-wide feedback and desktop notifications, and `usePaneNotify()` for what one pane says about itself
+- Use `ctx.notify()` for non-intrusive user feedback and desktop notifications

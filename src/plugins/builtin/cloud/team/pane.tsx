@@ -206,7 +206,7 @@ function InvitationBanner({
 }
 
 export function TeamPane({ focused, width, height, close }: PaneProps) {
-  const { createPaneFromTemplate } = usePluginAppActions();
+  const { createPaneFromTemplate, notify } = usePluginAppActions();
   const rendererHost = useRendererHost();
   const openUpgrade = useCloudUpgradeAction("team");
   const plan = usePlanAccess();
@@ -338,11 +338,12 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     return afterLayout(() => revealInScrollBox(bodyScrollRef.current, nodes.current.get(activeField) ?? null));
   }, [activeField]);
 
-  // A result is said in this pane's footer, never as a toast, and stays there
-  // until the next action or view change.
+  // Each result is a toast, and the last one stays in the footer until the
+  // next action or view change.
   const report = useCallback((result: Message) => {
     setMessage(result);
-  }, []);
+    if (result) notify({ body: result.text, type: result.tone });
+  }, [notify]);
 
   const run = useCallback(async (key: string, work: () => Promise<Message>) => {
     if (busy) return;

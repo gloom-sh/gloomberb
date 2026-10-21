@@ -17,7 +17,6 @@ import { useLinkedLayoutSync } from "./layout-marketplace/linked-sync";
 import { useTeamCollectionsSync } from "./team/collections-sync";
 import { Shell } from "./components/layout/shell";
 import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
-import { showPaneMessage } from "./components/layout/pane/message";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
@@ -229,7 +228,6 @@ function AppInner({
       else toastId = toast.info(notification.body, options);
     },
     desktop: rendererHost.supportsNativeDesktopNotifications ? rendererHost : undefined,
-    showInPane: showPaneMessage,
   }), [rendererHost, toast]);
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });

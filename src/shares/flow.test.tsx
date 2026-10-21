@@ -15,7 +15,7 @@ test("Share copies the pane's link with no dialog, then says so", async () => {
   expect(f.questions).toEqual([]);
   expect(f.created).toEqual([f.payload]);
   expect(f.copied).toEqual([SHARE_LINK]);
-  expect(f.toasts).toEqual([{ body: "Link copied", type: "success", paneId: "test:1" }]);
+  expect(f.toasts).toEqual([{ body: "Link copied", type: "success" }]);
 });
 
 let dialog: DialogApi | null = null;
@@ -52,47 +52,45 @@ test("a pane of the person's own data asks once in the terminal: Enter, Esc and 
 
   await answer([{ name: "y", sequence: "y" }]);
   expect(f.copied).toEqual([SHARE_LINK]);
-  expect(f.toasts).toEqual([{ body: "Link copied", type: "success", paneId: "test:1" }]);
+  expect(f.toasts).toEqual([{ body: "Link copied", type: "success" }]);
 });
 
-test("a link that cannot be made says why in the pane and copies nothing", async () => {
+test("a link that cannot be made says why in a toast and copies nothing", async () => {
   const none = shareFlowFixture({ sharePayload: null, personalData: "holdings" });
   await sharePaneLink(none.host, "test:1");
   // No question about a link that will not exist.
   expect(none.questions).toEqual([]);
   expect(none.created).toEqual([]);
-  expect(none.toasts).toEqual([{ body: "A public link is unavailable for this pane.", type: "error", paneId: "test:1" }]);
+  expect(none.toasts).toEqual([{ body: "A public link is unavailable for this pane.", type: "error" }]);
 
-  // The browser and Bun word a dropped connection differently; the message says the same.
+  // The browser and Bun word a dropped connection differently; the toast says the same.
   for (const dropped of [new TypeError("Failed to fetch"), new Error("Unable to connect. Is the computer able to access the url?")]) {
     const offline = shareFlowFixture();
     offline.createShare = async () => { throw dropped; };
     await sharePaneLink(offline.host, "test:1");
     expect(offline.copied).toEqual([]);
-    expect(offline.toasts).toEqual([{ body: "Couldn't reach Gloom Cloud. Check your connection and try again.", type: "error", paneId: "test:1" }]);
+    expect(offline.toasts).toEqual([{ body: "Couldn't reach Gloom Cloud. Check your connection and try again.", type: "error" }]);
   }
   // Anything else is no reason to blame the connection.
   const broken = shareFlowFixture();
   broken.createShare = async () => { throw new TypeError("undefined is not an object (evaluating 'payload.data')"); };
   await sharePaneLink(broken.host, "test:1");
-  expect(broken.toasts).toEqual([{ body: "Could not create share.", type: "error", paneId: "test:1" }]);
+  expect(broken.toasts).toEqual([{ body: "Could not create share.", type: "error" }]);
 
   const signedOut = shareFlowFixture({}, { signedIn: false });
   await sharePaneLink(signedOut.host, "test:1");
   expect(signedOut.reads).toBe(0);
   expect(signedOut.toasts).toHaveLength(1);
-  // What the account lacks is the app's to say, not the pane's.
   expect(signedOut.toasts[0]).toMatchObject({ body: "Sign in to share.", type: "info", action: { label: "Sign in" } });
-  expect(signedOut.toasts[0]!.paneId).toBeUndefined();
 });
 
-test("a copy the browser refuses after the link is made keeps the link in the pane, and its Copy link copies it", async () => {
+test("a copy the browser refuses after the link is made keeps the link on a toast, and its Copy link copies it", async () => {
   const f = shareFlowFixture();
   const refused = Object.assign(new Error("The request is not allowed by the user agent or the platform in the current context."), { name: "NotAllowedError" });
   f.copyText = async () => { throw refused; };
   await sharePaneLink(f.host, "test:1");
   expect(f.created).toHaveLength(1);
-  expect(f.toasts).toEqual([{ body: "Link ready", type: "info", persistent: true, paneId: "test:1", action: { label: "Copy link", onClick: expect.any(Function) } }]);
+  expect(f.toasts).toEqual([{ body: "Link ready", type: "info", persistent: true, action: { label: "Copy link", onClick: expect.any(Function) } }]);
 
   // Refused again: said once more, with the link still there.
   f.toasts[0]!.action!.onClick();
@@ -103,7 +101,7 @@ test("a copy the browser refuses after the link is made keeps the link in the pa
   f.toasts[1]!.action!.onClick();
   await Bun.sleep(0);
   expect(f.copied).toEqual([SHARE_LINK]);
-  expect(f.toasts[2]).toEqual({ body: "Link copied", type: "success", paneId: "test:1" });
+  expect(f.toasts[2]).toEqual({ body: "Link copied", type: "success" });
   // One link: the button copies it, it does not make another.
   expect(f.created).toHaveLength(1);
 });

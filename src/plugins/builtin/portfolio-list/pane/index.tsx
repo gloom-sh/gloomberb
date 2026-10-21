@@ -71,7 +71,7 @@ import { PortfolioGrid } from "../grid";
 import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
 import { getSharedRegistry } from "../../../registry";
-import { usePaneNotify, usePluginBrokerActions } from "../../../runtime";
+import { usePluginAppActions, usePluginBrokerActions } from "../../../runtime";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   cursorAfterRemoval,
@@ -607,7 +607,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const dispatch = useAppDispatch();
   const dialog = useDialog();
   const appStateRef = useAppStateRef();
-  const notify = usePaneNotify();
+  const { notify } = usePluginAppActions();
   const removalCollection = useMemo(
     () => removableCollection(config, activeCollectionId),
     [activeCollectionId, config],

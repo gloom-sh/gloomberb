@@ -5,7 +5,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import type { TickerResearchTabProps } from "../../../types/plugin";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { EmptyState, usePaneFooter } from "../../../components";
-import { usePaneNotify, usePluginPaneState } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { debugLog } from "../../../utils/debug-log";
 import { useDialog } from "../../../ui/dialog";
 import { MarkdownNotePreview } from "./markdown-note-preview";
@@ -25,7 +25,7 @@ const notesLog = debugLog.createLogger("notes");
 export function createNotesTab(registry: NotesStoreRegistry) {
   return function NotesTab({ focused, width, onCapture }: TickerResearchTabProps) {
     const { ticker } = usePaneTickerIdentity();
-    const notify = usePaneNotify();
+    const { notify } = usePluginAppActions();
     const dialog = useDialog();
     const teams = useNoteTeams();
     // The fallback is read once, so it keeps one identity for the whole life

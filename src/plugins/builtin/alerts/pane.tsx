@@ -18,7 +18,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { TextAttributes } from "../../../ui";
 import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
-import { usePaneNotify, usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
   editAlert,
@@ -108,9 +108,7 @@ export function AlertsPane(props: PaneProps) {
 
 function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<unknown>(ALERTS_KEY, "[]");
-  const { openPluginCommandWorkflow } = usePluginAppActions();
-  // A delete or re-arm that could not be saved is this pane's to say; the footer already holds an unreadable store.
-  const notify = usePaneNotify();
+  const { openPluginCommandWorkflow, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
@@ -123,10 +121,15 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       .filter((a) => a.status === "triggered")
       .sort((a, b) => (b.triggeredAt ?? 0) - (a.triggeredAt ?? 0));
 
+    // A quote one alert could not get is said on its row ("No quote"). Only
+    // when none came is it the whole pane's, in its footer.
+    const failed = activeAlerts.flatMap((alert) => alert.lastCheckError ? [alert.lastCheckError] : []);
+    const reasons = [...new Set(failed)];
+    const noQuotes = activeAlerts.length > 0 && failed.length === activeAlerts.length;
     return {
       alerts: parsed,
       rows: [...activeAlerts, ...triggeredAlerts],
-      quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
+      quoteError: !noQuotes ? null : reasons.length === 1 ? reasons[0]! : "quotes unavailable",
     };
   }, [alertsJson]);
 

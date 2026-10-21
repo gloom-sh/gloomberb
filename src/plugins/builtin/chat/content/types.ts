@@ -32,4 +32,4 @@ export type ChatContentController = Pick<
   | "retryChannelMessage"
   | "refreshChannelImageLinks"
   | "toggleChannelReaction"
-> & Partial<Pick<ChatController, "attachChannelNotifier">>;
+>;
