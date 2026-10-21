@@ -1,0 +1,46 @@
+[
+  {
+    "side": "baseline",
+    "theme": "white",
+    "result": {
+      "outcome": {
+        "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574100000},{\"id\":\"alert-mvhwc3s0-erxu\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792574100000,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792574100000,\"lastQuoteUpdatedAt\":1792574100000}]",
+        "error": null
+      },
+      "network": []
+    }
+  },
+  {
+    "side": "baseline",
+    "theme": "paper",
+    "result": {
+      "outcome": {
+        "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574100000},{\"id\":\"alert-mvhwc3s0-8w0q\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792574100000,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792574100000,\"lastQuoteUpdatedAt\":1792574100000}]",
+        "error": null
+      },
+      "network": []
+    }
+  },
+  {
+    "side": "head",
+    "theme": "white",
+    "result": {
+      "outcome": {
+        "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574100000},null]",
+        "error": "Saved price alerts contain an unreadable entry. Original data has been kept."
+      },
+      "network": []
+    }
+  },
+  {
+    "side": "head",
+    "theme": "paper",
+    "result": {
+      "outcome": {
+        "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574100000},null]",
+        "error": "Saved price alerts contain an unreadable entry. Original data has been kept."
+      },
+      "network": []
+    }
+  }
+]

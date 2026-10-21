@@ -1,0 +1,322 @@
+[
+  {
+    "case": "healthy-pane-paper-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 0,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39v1q-f0kg\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585752686,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585752686,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi3azbr-i6k3\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585804887,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585804887,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "healthy-pane-paper-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 0,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39rj6-tca0\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585748130,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585748130,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi3awiq-7x4t\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585801250,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585801250,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "healthy-pane-white-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 0,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39ole-78co\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585744322,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585744322,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi3atks-gpeo\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585797436,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585797436,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "healthy-pane-white-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 0,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39l8b-y5l7\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585739963,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585739963,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi3aqhl-pzai\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585793433,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585793433,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "malformed-pane-paper-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 17809,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"alert-mvi394ky-8xgv\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585718386,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585718386,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{broken",
+      "notifications": [],
+      "error": "Saved price alerts could not be read: JSON Parse error: Expected '}'",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "malformed-pane-paper-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 10861,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"alert-mvi3918z-cbxz\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585714067,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585714067,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{broken",
+      "notifications": [],
+      "error": "Saved price alerts could not be read: JSON Parse error: Expected '}'",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "malformed-pane-white-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 17765,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"alert-mvi38y4g-ff8j\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585710016,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585710016,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{broken",
+      "notifications": [],
+      "error": "Saved price alerts could not be read: JSON Parse error: Expected '}'",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "malformed-pane-white-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 10819,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"alert-mvi38v0k-oz4o\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585705988,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585705989,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{broken",
+      "notifications": [],
+      "error": "Saved price alerts could not be read: JSON Parse error: Expected '}'",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "partial-pane-paper-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 5434,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39i5m-72mw\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585735978,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585735978,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},null]",
+      "notifications": [],
+      "error": "Saved price alerts contain an unreadable entry. Original data has been kept.",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "partial-pane-paper-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 3529,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39e8t-vhdj\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585730909,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585730909,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},null]",
+      "notifications": [],
+      "error": "Saved price alerts contain an unreadable entry. Original data has been kept.",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "partial-pane-white-1280",
+    "neighborChangedPixels": 0,
+    "changedPixels": 5420,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi39aze-k312\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585726682,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585726682,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},null]",
+      "notifications": [],
+      "error": "Saved price alerts contain an unreadable entry. Original data has been kept.",
+      "nativeTraffic": []
+    }
+  },
+  {
+    "case": "partial-pane-white-720",
+    "neighborChangedPixels": 0,
+    "changedPixels": 3522,
+    "runtimeErrors": [],
+    "blocked": [],
+    "network": [],
+    "before": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi397xy-2fqa\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792585722742,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792585722742,\"lastQuoteUpdatedAt\":1792574100000}]",
+      "notifications": [
+        {
+          "body": "Alert set: AAPL > 200 (current 195.00)",
+          "type": "success"
+        }
+      ],
+      "error": null,
+      "nativeTraffic": []
+    },
+    "after": {
+      "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},null]",
+      "notifications": [],
+      "error": "Saved price alerts contain an unreadable entry. Original data has been kept.",
+      "nativeTraffic": []
+    }
+  }
+]
