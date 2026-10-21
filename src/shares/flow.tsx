@@ -46,20 +46,21 @@ async function confirmPersonalLink(host: PaneShareHost, kind: PanePersonalData):
 /**
  * A browser can refuse to copy once the press that asked for it is past: Safari
  * after the wait for the link, any browser when Share carries on by itself
- * after a sign-in. The link stays on a toast until it is copied or dismissed,
- * and its Copy link is a fresh press, which the browser lets copy.
+ * after a sign-in. The link stays in the pane's footer until it is copied or
+ * replaced, and its Copy link is a fresh press, which the browser lets copy.
  */
-function offerLinkCopy(host: PaneShareHost, url: string, refused = false): void {
+function offerLinkCopy(host: PaneShareHost, paneId: string, url: string, refused = false): void {
   host.notify({
     body: refused ? "Couldn't copy the link." : "Link ready",
     type: refused ? "error" : "info",
     persistent: true,
+    paneId,
     action: {
       label: "Copy link",
       onClick: () => {
         void host.copyText(url).then(
-          () => host.notify({ body: "Link copied", type: "success" }),
-          () => offerLinkCopy(host, url, true),
+          () => host.notify({ body: "Link copied", type: "success", paneId }),
+          () => offerLinkCopy(host, paneId, url, true),
         );
       },
     },
@@ -67,10 +68,11 @@ function offerLinkCopy(host: PaneShareHost, url: string, refused = false): void 
 }
 
 /**
- * Share: copies the pane's public link and says so in a toast, with no dialog
- * in between. A pane that shows the person's own data asks once first. No
- * link is made when the pane has no public view, the account cannot share
- * yet, or the question is declined; each says why in a toast.
+ * Share: copies the pane's public link and says so in the pane's footer, with
+ * no dialog in between. A pane that shows the person's own data asks once
+ * first. No link is made when the pane has no public view, the account cannot
+ * share yet, or the question is declined; each says why. What the account
+ * lacks (a sign-in, a verified email) is a toast; the rest is the pane's.
  */
 export async function sharePaneLink(host: PaneShareHost, paneId: string): Promise<void> {
   // One at a time, Report a Bug's included.
@@ -86,12 +88,12 @@ export async function sharePaneLink(host: PaneShareHost, paneId: string): Promis
     try {
       await host.copyText(url);
     } catch {
-      offerLinkCopy(host, url);
+      offerLinkCopy(host, paneId, url);
       return;
     }
-    host.notify({ body: "Link copied", type: "success" });
+    host.notify({ body: "Link copied", type: "success", paneId });
   } catch (error) {
-    host.notify({ body: error instanceof Error && error.message ? error.message : "Could not share this pane.", type: "error" });
+    host.notify({ body: error instanceof Error && error.message ? error.message : "Could not share this pane.", type: "error", paneId });
   } finally {
     release();
   }

@@ -52,7 +52,7 @@ import { useUiHost } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { detectShortcutPlatform, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
-import { usePluginAppActions } from "../../runtime";
+import { usePaneNotify, usePluginAppActions } from "../../runtime";
 import { badgeCell, badgeColumnWidth, mutedCell } from "./table-cells";
 
 const CAPTURE_SCOPE = "help-keybinding-capture";
@@ -130,7 +130,8 @@ export function KeybindingsEditor({
   const uiHost = useUiHost();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
-  const { openCommandBar, notify } = usePluginAppActions();
+  const { openCommandBar } = usePluginAppActions();
+  const notify = usePaneNotify();
   const keybindingsConfig = useAppSelector((state) => state.config.keybindings);
   const disabledPlugins = useAppSelector((state) => state.config.disabledPlugins);
   const isDesktop = uiHost.kind === "desktop-web";

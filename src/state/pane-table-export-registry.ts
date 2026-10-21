@@ -39,12 +39,13 @@ export async function exportPaneTable(paneId: string, filename: string): Promise
 export async function exportPaneTableCsv(
   paneId: string,
   title: string,
-  notify: (notification: { body: string; type: "success" | "error" }) => void,
+  notify: (notification: { body: string; type: "success" | "error"; paneId: string }) => void,
 ): Promise<void> {
+  // What the export came to is said in the pane it exported.
   try {
     const location = await exportPaneTable(paneId, createCsvExportFilename(title));
-    notify({ body: `Exported to ${location}`, type: "success" });
+    notify({ body: `Exported to ${location}`, type: "success", paneId });
   } catch {
-    notify({ body: "Failed to export CSV", type: "error" });
+    notify({ body: "Failed to export CSV", type: "error", paneId });
   }
 }

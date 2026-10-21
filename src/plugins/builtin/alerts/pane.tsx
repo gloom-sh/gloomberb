@@ -18,7 +18,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { TextAttributes } from "../../../ui";
 import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
-import { usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePaneNotify, usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
   editAlert,
@@ -108,7 +108,9 @@ export function AlertsPane(props: PaneProps) {
 
 function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<unknown>(ALERTS_KEY, "[]");
-  const { openPluginCommandWorkflow, notify } = usePluginAppActions();
+  const { openPluginCommandWorkflow } = usePluginAppActions();
+  // A delete or re-arm that could not be saved is this pane's to say; the footer already holds an unreadable store.
+  const notify = usePaneNotify();
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;

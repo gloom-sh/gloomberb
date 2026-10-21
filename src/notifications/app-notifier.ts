@@ -38,6 +38,11 @@ interface CreateAppNotifierOptions {
   isAppActive: () => boolean;
   renderToast: (notification: AppNotificationRequest) => void;
   desktop?: DesktopNotificationSink | null;
+  /**
+   * Shows a notification that names a pane (`paneId`) in that pane's footer.
+   * False when no frame shows the pane, and the notification is a toast.
+   */
+  showInPane?: (paneId: string, notification: AppNotificationRequest) => boolean;
 }
 
 function escapeAppleScriptString(value: string): string {
@@ -242,6 +247,7 @@ export function createAppNotifier({
   isAppActive,
   renderToast,
   desktop = typeof Bun !== "undefined" ? createDesktopNotifier() : null,
+  showInPane,
 }: CreateAppNotifierOptions): AppNotifier {
   return {
     notify(request) {
@@ -267,7 +273,9 @@ export function createAppNotifier({
       let desktopRequested = false;
 
       if (toastEnabled) {
-        renderToast(notification);
+        // About one pane: said in that pane while it is on screen, never in the app's toasts.
+        const inPane = !!notification.paneId && showInPane?.(notification.paneId, notification) === true;
+        if (!inPane) renderToast(notification);
         toastRendered = true;
       }
 

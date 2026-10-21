@@ -1,7 +1,7 @@
 import { ChoiceDialog, TextPromptDialog, usePaneMenuItems } from "../../../components";
 import { createFormCollectionActions } from "../../../components/form-modal/deps";
 import { t, tf } from "../../../i18n";
-import { usePluginAppActions } from "../../../public/react";
+import { usePaneNotify, usePluginAppActions } from "../../../public/react";
 import { useAppDispatch, useAppGetState, useAppSelector } from "../../../state/app/context";
 import { formatTickerListInput, MAX_TICKER_LIST_SIZE } from "../../../tickers/list";
 import type { TickerMetadata, TickerRecord } from "../../../types/ticker";
@@ -172,7 +172,8 @@ export function planMemberWatchlist(
  */
 export function useMembersMenu(registrationId: string, list: MemberList | null) {
   const dialog = useOptionalDialog();
-  const { createPaneFromTemplate, notify } = usePluginAppActions();
+  const { createPaneFromTemplate } = usePluginAppActions();
+  const notify = usePaneNotify();
   const dispatch = useAppDispatch();
   const getState = useAppGetState();
   const disabledPlugins = useAppSelector((state) => state.config.disabledPlugins);

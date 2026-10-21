@@ -124,6 +124,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     startEdit,
     saveEdit,
     connectSelected,
+    enableSelected,
     syncSelected,
     selectedProfileActions,
     openProfileAction,
@@ -187,6 +188,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     message,
     actions: {
       connectSelected,
+      enableSelected,
       openProfileAction,
       removeSelected,
       saveEdit,
@@ -197,6 +199,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     canOpenSelectedAction,
     canRemoveSelected,
     canUseSelectedBroker,
+    disabledSelected: selectedRow?.instance.enabled === false ? selectedRow.brokerName : null,
     editing: !!editDraft || adding,
   });
 

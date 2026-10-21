@@ -16,6 +16,7 @@ import type { BrokerProfileAction } from "../../../types/broker";
 import { useDialog } from "../../../ui/dialog";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
+import { enableBrokerProfile } from "../shared/broker-reconnect";
 import type { BrokerEditKey } from "./detail";
 import { neighbourBrokerProfileId, type BrokerProfileRow } from "./model";
 
@@ -52,7 +53,7 @@ export function useBrokerManagerActions({
 }) {
   const getState = useAppGetState();
   const dialog = useDialog();
-  const { notify, showPane } = usePluginAppActions();
+  const { showPane } = usePluginAppActions();
   const {
     connectBrokerInstance,
     updateBrokerInstance,
@@ -153,6 +154,21 @@ export function useBrokerManagerActions({
     }
   }, [connectBrokerInstance, refreshStatuses, selectedRow, syncBrokerInstance]);
 
+  // A disabled profile is never connected or synced; b turns it back on, then syncs it.
+  const enableSelected = useCallback(async () => {
+    if (!selectedRow || selectedRow.instance.enabled !== false) return;
+    try {
+      setBusy(t("Enabling…"));
+      await enableBrokerProfile({ updateBrokerInstance, syncBrokerInstance }, selectedRow.id, { sync: !!selectedRow.adapter });
+      refreshStatuses();
+      setMessage(infoMessage(tf("Enabled {label}.", { label: selectedRow.label })));
+    } catch (error) {
+      setMessage(errorMessage(error, tf("Could not enable {broker}.", { broker: selectedRow.label })));
+    } finally {
+      setBusy(null);
+    }
+  }, [refreshStatuses, selectedRow, syncBrokerInstance, updateBrokerInstance]);
+
   const syncSelected = useCallback(async () => {
     if (!selectedRow) return;
     try {
@@ -197,8 +213,7 @@ export function useBrokerManagerActions({
         setEditDraft(null);
         setDetailOpen(false);
         setSelectedId(nextSelectedId);
-        setMessage(null);
-        notify({ body: removal.message, type: removal.accountKept ? "info" : "success" });
+        setMessage(infoMessage(removal.message));
       } finally {
         setBusy(null);
       }
@@ -219,7 +234,7 @@ export function useBrokerManagerActions({
         setMessage(errorMessage(error, tf("Failed to remove {label}.", { label })));
       }
     })();
-  }, [dialog, getState, notify, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);
+  }, [dialog, getState, removeBrokerInstance, selectedRow, setDetailOpen, setEditDraft, setSelectedId]);
 
   return {
     busy,
@@ -229,6 +244,7 @@ export function useBrokerManagerActions({
     startEdit,
     saveEdit,
     connectSelected,
+    enableSelected,
     syncSelected,
     selectedProfileActions,
     primaryProfileAction,

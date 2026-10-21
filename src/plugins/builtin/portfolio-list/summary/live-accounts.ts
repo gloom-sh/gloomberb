@@ -98,9 +98,10 @@ export interface PortfolioAccountStateResult {
 
 /**
  * The broker behind a portfolio while Gloom cannot reach it: disconnected,
- * failing, or without the plugin that connects it. Null while it is connected
- * or connecting, before it reports a status, for a profile turned off, and for
- * one that only syncs on demand (IBKR Flex), which is never connected.
+ * failing, without the plugin that connects it, or turned off (`disabled`),
+ * which nothing syncs until it is enabled. Null while it is connected or
+ * connecting, before it reports a status, and for one that only syncs on
+ * demand (IBKR Flex), which is never connected.
  */
 export function resolveOfflineBroker(
   portfolio: Portfolio | null,
@@ -108,16 +109,20 @@ export function resolveOfflineBroker(
   broker: BrokerAdapter | null | undefined,
   status: BrokerConnectionStatus | null,
 ): OfflineBroker | null {
-  if (!portfolio || !brokerInstance || brokerInstance.enabled === false) return null;
+  if (!portfolio || !brokerInstance) return null;
   const syncedAt = portfolio.lastSyncedAt ?? brokerInstance.lastSyncedAt ?? null;
+  // A profile signed in through Gloom names its broker, not the adapter it needs.
+  const brokerName = broker
+    ? broker.describeInstance?.(brokerInstance).brokerName ?? broker.name
+    : (isSignedInBrokerProfile(brokerInstance) ? signedInBrokerId(brokerInstance) : brokerInstance.brokerType).toUpperCase();
+  if (brokerInstance.enabled === false) {
+    return { instance: brokerInstance, brokerName, syncedAt, reason: tf("{broker} disabled", { broker: brokerName }), reconnectable: !!broker, disabled: true };
+  }
   if (!broker) {
-    // A profile signed in through Gloom names its broker, not the adapter it needs.
-    const brokerName = (isSignedInBrokerProfile(brokerInstance) ? signedInBrokerId(brokerInstance) : brokerInstance.brokerType).toUpperCase();
     return { instance: brokerInstance, brokerName, syncedAt, reason: tf("{broker} unavailable", { broker: brokerName }), reconnectable: false };
   }
   if (!status || status.state === "connected" || status.state === "connecting") return null;
   if (status.mode?.toLowerCase() === "flex") return null;
-  const brokerName = broker.describeInstance?.(brokerInstance).brokerName ?? broker.name;
   const reason = status.state === "error"
     ? status.message?.trim() || tf("{broker} unavailable", { broker: brokerName })
     : tf("{broker} disconnected", { broker: brokerName });

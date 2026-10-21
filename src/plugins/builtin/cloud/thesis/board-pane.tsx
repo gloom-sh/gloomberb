@@ -20,7 +20,7 @@ import { Box, TextAttributes } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { formatCompactAmount } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { usePluginAppActions } from "../../../runtime";
+import { usePaneNotify } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
@@ -121,7 +121,7 @@ function pct(value: number): string {
 
 export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
-  const { notify } = usePluginAppActions();
+  const notify = usePaneNotify();
   const plan = usePlanAccess();
   const openUpgrade = useCloudUpgradeAction("thesis-board");
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());

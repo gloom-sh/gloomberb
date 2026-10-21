@@ -106,7 +106,16 @@ function Harness({
     showPane: (paneId) => calls.push(`pane:${paneId}`),
     connectBrokerInstance: async (instanceId) => { calls.push(`connect:${instanceId}`); },
     syncBrokerInstance: async (instanceId) => { calls.push(`sync:${instanceId}`); },
-    updateBrokerInstance: async (instanceId, config) => { calls.push(`update:${instanceId}:${String(config.connectionMode)}`); },
+    updateBrokerInstance: async (instanceId, config, options) => {
+      // Turning a profile back on changes nothing else.
+      if (options?.enabled === true && Object.keys(config).length === 0) {
+        calls.push(`enable:${instanceId}`);
+        const current = stateRef.current.config;
+        dispatch({ type: "SET_CONFIG", config: { ...current, brokerInstances: current.brokerInstances.map((entry) => entry.id === instanceId ? { ...entry, enabled: true } : entry) } });
+        return;
+      }
+      calls.push(`update:${instanceId}:${String(config.connectionMode)}`);
+    },
     removeBrokerInstance: async (instanceId) => {
       calls.push(`remove:${instanceId}`);
       const { config } = stateRef.current;
@@ -215,6 +224,26 @@ describe("BrokersPane", () => {
     expect(calls).toEqual(["connect:ibkr-paper", "sync:ibkr-paper", "pane:ibkr-trading"]);
   });
 
+  test("a disabled profile is never connected or synced: b enables it, then syncs it", async () => {
+    const calls: string[] = [];
+    await tui.render(<Harness calls={calls} instance={{ ...createGatewayInstance(), enabled: false }} height={35} />, { width: 92, height: 35 });
+    await settle();
+    expect(frame()).toContain("[b] enable");
+    expect(frame()).not.toContain("[c]onnect");
+    expect(frame()).not.toContain("[s]ync");
+
+    await pressKey("c");
+    await pressKey("s");
+    expect(calls).toEqual([]);
+
+    await pressKey("b");
+    await settle();
+    expect(calls).toEqual(["enable:ibkr-paper", "sync:ibkr-paper"]);
+    expect(frame()).toContain("Enabled IBKR Paper.");
+    expect(frame()).toContain("[s]ync");
+    expect(frame()).not.toContain("[b] enable");
+  });
+
   test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
     const calls: string[] = [];
     const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "A1" } } };
@@ -279,10 +308,9 @@ describe("BrokersPane", () => {
       await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
       await act(async () => { await Bun.sleep(5); });
       await tui.setup().renderOnce();
-      expect(calls).toEqual([
-        "remove:signed-in-ibkr",
-        "notify:Removed Interactive Brokers. Interactive Brokers is still connected to your Gloom account.",
-      ]);
+      // Said in the pane's footer, not as a toast.
+      expect(calls).toEqual(["remove:signed-in-ibkr"]);
+      expect(tui.frame()).toContain("Removed Interactive Brokers.");
       expect(tui.frame()).not.toContain("Disconnect broker?");
 
       // Enter opens the selected profile: the one after the removed row.
@@ -307,7 +335,8 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("Disconnect broker?");
     await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
     await settle();
-    expect(calls).toEqual(["remove:ibkr-paper", "notify:Removed IBKR Paper."]);
+    expect(calls).toEqual(["remove:ibkr-paper"]);
+    expect(frame()).toContain("Removed IBKR Paper.");
     expect(frame()).not.toContain("Disconnect broker?");
   });
 
@@ -386,8 +415,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:simplefin:SimpleFIN:{"token":"tok-1"}',
       "sync:simplefin-new",
-      "notify:Connected! Positions will sync automatically.",
     ]);
+    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect SimpleFIN");
     // The new profile is the selected row.
     await pressKey("RETURN");
@@ -423,8 +452,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:simplefin:SimpleFIN:{"token":"tok-1"}',
       "sync:simplefin-new",
-      "notify:Connected! Positions will sync automatically.",
     ]);
+    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect SimpleFIN");
     await pressKey("RETURN");
     expect(frame()).toContain("simplefin-new");
@@ -454,8 +483,8 @@ describe("BrokersPane", () => {
     expect(calls).toEqual([
       'create:signed-in:Robinhood:{"connectionMode":"robinhood","broker":"robinhood"}',
       "sync:signed-in-new",
-      "notify:Connected! Positions will sync automatically.",
     ]);
+    expect(frame()).toContain("Connected! Positions will sync automatically.");
     expect(frame()).not.toContain("Connect Robinhood");
     await pressKey("RETURN");
     expect(frame()).toContain("signed-in-new");

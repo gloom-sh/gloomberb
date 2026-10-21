@@ -8,7 +8,7 @@ import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
 import { useAppInputCapture } from "../../../../state/app/input-capture";
 import { t, tf } from "../../../../i18n";
 import { getSharedRegistry } from "../../../registry";
-import { usePluginAppActions } from "../../../runtime";
+import { usePaneNotify } from "../../../runtime";
 import { isDialogOpen } from "../../../../ui/dialog-stack";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
@@ -129,7 +129,7 @@ export function QuickAddTickerInput({
   focusRequest?: number;
 }) {
   const dispatch = useAppDispatch();
-  const { notify } = usePluginAppActions();
+  const notify = usePaneNotify();
   const tickers = useAppSelector((state) => state.tickers);
   const financials = useAppSelector((state) => state.financials);
   const inputRef = useRef<InputRenderable | null>(null);

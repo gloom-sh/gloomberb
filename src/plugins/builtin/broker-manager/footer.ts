@@ -1,9 +1,11 @@
 import { useMemo, useRef } from "react";
 import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "../../../components";
+import { enableBrokerHint } from "../shared/broker-reconnect";
 import type { BrokerManagerMessage } from "./pane-actions";
 
 interface BrokerManagerFooterActions {
   connectSelected: () => Promise<void>;
+  enableSelected: () => Promise<void>;
   startAdd: () => void;
   openProfileAction: () => void;
   removeSelected: () => void;
@@ -18,6 +20,7 @@ export function useBrokerManagerFooter({
   canOpenSelectedAction,
   canRemoveSelected,
   canUseSelectedBroker,
+  disabledSelected,
   editing,
   message,
 }: {
@@ -27,6 +30,11 @@ export function useBrokerManagerFooter({
   canOpenSelectedAction: boolean;
   canRemoveSelected: boolean;
   canUseSelectedBroker: boolean;
+  /**
+   * The selected profile is turned off, so it is never connected or synced:
+   * its broker's name for `[b] enable`, which turns it back on.
+   */
+  disabledSelected: string | null;
   /** Editing a profile or adding one. */
   editing: boolean;
   /** The last result of an action, or null. */
@@ -44,11 +52,16 @@ export function useBrokerManagerFooter({
       { id: "add", key: "a", label: "dd", onPress: () => actionsRef.current.startAdd() },
     ];
     if (canUseSelectedBroker) {
-      hints.push(
-        { id: "edit", key: "e", label: "dit", onPress: () => actionsRef.current.startEdit() },
-        { id: "connect", key: "c", label: "onnect", onPress: () => actionsRef.current.connectSelected().catch(() => {}) },
-        { id: "sync", key: "s", label: "ync", onPress: () => actionsRef.current.syncSelected().catch(() => {}) },
-      );
+      hints.push({ id: "edit", key: "e", label: "dit", onPress: () => actionsRef.current.startEdit() });
+      if (disabledSelected === null) {
+        hints.push(
+          { id: "connect", key: "c", label: "onnect", onPress: () => actionsRef.current.connectSelected().catch(() => {}) },
+          { id: "sync", key: "s", label: "ync", onPress: () => actionsRef.current.syncSelected().catch(() => {}) },
+        );
+      }
+    }
+    if (disabledSelected !== null && !busy) {
+      hints.push(enableBrokerHint(disabledSelected, () => { void actionsRef.current.enableSelected(); }));
     }
     if (canOpenSelectedAction) {
       hints.push({ id: "open", key: "o", label: "pen", onPress: () => actionsRef.current.openProfileAction() });
@@ -57,7 +70,7 @@ export function useBrokerManagerFooter({
       hints.push({ id: "disconnect", key: "d", label: "isconnect", onPress: () => actionsRef.current.removeSelected() });
     }
     return hints;
-  }, [canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, editing]);
+  }, [busy, canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, disabledSelected, editing]);
 
   // The pane's rows already say which profiles exist and how they are doing,
   // so the footer carries only what changes: the running action and its result.

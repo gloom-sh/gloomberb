@@ -22,6 +22,7 @@ export {
   usePluginAppActions,
   usePluginBrokerActions,
   usePluginConfigState,
+  usePaneNotify,
   usePluginPaneActions,
   usePluginPaneState,
   usePluginState,

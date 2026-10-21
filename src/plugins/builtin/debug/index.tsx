@@ -15,7 +15,7 @@ import {
   type SelectControl,
 } from "../../../components";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { usePluginAppActions } from "../../runtime";
+import { usePaneNotify } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID, DEBUG_PANE_ID, DEBUG_SOURCE_SETTING } from "./template";
 import { colors } from "../../../theme/colors";
 import { debugLog, type LogEntry, type LogLevel } from "../../../utils/debug-log";
@@ -104,7 +104,7 @@ function DebugEntryDetail({ entry, scrollRef }: { entry: LogEntry; scrollRef: Re
 }
 
 function DebugPane({ focused, width, height }: PaneProps) {
-  const { notify } = usePluginAppActions();
+  const notify = usePaneNotify();
   const [entries, setEntries] = useState<LogEntry[]>(() => debugLog.getEntries());
   const [sources, setSources] = useState<string[]>(() => debugLog.getSources());
   const [filterLevel, setFilterLevel] = useState<LogLevel | null>(null);

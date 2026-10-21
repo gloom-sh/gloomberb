@@ -53,6 +53,12 @@ export interface PaneFooterSegment {
   shortcut?: string;
   onPress?: () => void;
   disabled?: boolean;
+  /**
+   * Text of any length, such as a pane's message: when the row is too narrow
+   * it is cut behind an ellipsis a column short of the hints, wherever it
+   * sits, and keeps its full text as its title.
+   */
+  clip?: boolean;
 }
 
 /** The terminal's mark for data that arrives late, as quote ages carry it (`◷15s`). */
@@ -211,13 +217,25 @@ export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { be
   // (a pane picture's footer), the row clips it, so a frame that fits its own status line sees it overflow.
   while (besideHints && fitted.length > 1 && infoTextWidth(fitted) > width) {
     const last = fitted.at(-1)!;
-    if (last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
+    if (last.clip || last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
     const room = width - infoTextWidth(fitted.slice(0, -1)) - 2;
     if (room * 2 >= infoTextWidth([last])) return [...fitted.slice(0, -1), clipSegment(last, room)];
     fitted = fitted.slice(0, -1);
   }
+  // Segments of any length give way, the last first, never to less than a few words.
+  for (let clipAt = fitted.length - 1; besideHints && clipAt >= 0 && infoTextWidth(fitted) > width; clipAt -= 1) {
+    const segment = fitted[clipAt]!;
+    if (!segment.clip) continue;
+    const rest = fitted.filter((_, index) => index !== clipAt);
+    const room = width - infoTextWidth(rest) - (rest.length > 0 ? 1 : 0) - 1;
+    const cut = clipSegment(segment, Math.max(Math.min(CLIP_FLOOR_CHARS, infoTextWidth([segment])), room));
+    fitted = fitted.map((entry, index) => index === clipAt ? cut : entry);
+  }
   return fitted;
 }
+
+/** The least of a clipped segment that still shows: a few words. */
+const CLIP_FLOOR_CHARS = 16;
 
 /** A segment cut to `width` behind an ellipsis, each part keeping its tone; the full text stays as its title. */
 function clipSegment(segment: PaneFooterSegment, width: number): PaneFooterSegment {
@@ -406,6 +424,7 @@ export function samePaneFooterRegistration(
         && segment.shortcut === other.shortcut
         && !!segment.onPress === !!other.onPress
         && segment.disabled === other.disabled
+        && segment.clip === other.clip
         && sameFooterParts(segment.parts, other.parts)
         && (segment.variants?.length ?? 0) === (other.variants?.length ?? 0)
         && (segment.variants ?? []).every((variant, variantIndex) => sameFooterParts(variant, other.variants![variantIndex]!));

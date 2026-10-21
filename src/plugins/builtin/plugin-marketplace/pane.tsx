@@ -37,7 +37,7 @@ import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-targe
 import { pluginSetupCommandId } from "../../registry/setup-command";
 import { useAppSelector } from "../../../state/app/context";
 import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
-import { usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { usePaneNotify, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID } from "../debug/template";
 import { loadRegistry, registryPluginUrl } from "../../marketplace/feed";
 import { highlightedCodes, pluginFunctions, proFunctionCount, type PluginFunction } from "../../plugin-functions";
@@ -403,6 +403,8 @@ type Busy = { id: string; verb: "installing" | "updating" | "removing" } | null;
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const { createPaneFromTemplate, showPane, openPluginCommandWorkflow, notify } = usePluginAppActions();
+  // What became of an install, update or removal is this pane's; only a restart the whole app needs is a toast.
+  const notifyPane = usePaneNotify();
   const [query, setQuery] = useState("");
   const [category, setCategory] = usePluginPaneState<string | null>("category", null);
   // Built-ins are what Gloomberb is made of, so they show unless filtered out.
@@ -547,7 +549,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (added.broker) parts.push("a broker");
     const firstTemplate = added.templates[0];
     const firstPane = added.panes[0];
-    notify({
+    notifyPane({
       body: parts.length > 0 ? `${verb} ${name}: ${parts.join(", ")}.` : `${verb} ${name}.`,
       type: "success",
       ...(firstTemplate || firstPane
@@ -562,7 +564,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         }
         : {}),
     });
-  }, [createPaneFromTemplate, notify, showPane]);
+  }, [createPaneFromTemplate, notifyPane, showPane]);
 
   /**
    * The registry's code for this plugin needs a newer Gloomberb. Installing or
@@ -574,9 +576,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => {
     const required = requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb;
     if (!required) return false;
-    notify({ body: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`, type: "error" });
+    notifyPane({ body: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`, type: "error" });
     return true;
-  }, [notify]);
+  }, [notifyPane]);
 
   const installSelected = useCallback(async () => {
     if (!selected || !isInstallable(selected) || !manager || !host || busy) return;
@@ -602,8 +604,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const result = await manager.install(repo, pin);
     if (!result.ok) {
       setBusy(null);
-      setLastError(result.error);
-      notify({ body: `Could not install ${entry.name}: ${result.error}`, type: "error" });
+      // The footer keeps the failure until the next operation.
+      setLastError(`Could not install ${entry.name}: ${result.error}`);
       return;
     }
     const activated = await activateInstall(result, host, manager);
@@ -611,8 +613,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     bump();
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
     else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
-    else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, refuseTooNew, selected]);
+    else notifyPane({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
+  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, notifyPane, refuseTooNew, selected]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
@@ -625,13 +627,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const result = await manager.update(directory, registryPin(entry));
     if (!result.ok) {
       setBusy(null);
-      setLastError(result.error);
-      notify({ body: `Could not update ${entry.name}: ${result.error}`, type: "error" });
+      setLastError(`Could not update ${entry.name}: ${result.error}`);
       return;
     }
     if (result.kept) {
       setBusy(null);
-      notify({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
+      notifyPane({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
       return;
     }
     const activated = await activateInstalledPlugin(directory, host, manager);
@@ -642,9 +643,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     } else if (activated.ok) {
       announceAdded(activated.pluginId, activated.name, reinstall ? "Reloaded" : "Updated", host);
     } else {
-      notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
+      notifyPane({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
     }
-  }, [announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, host, manager, notify, notifyPane, refuseTooNew, selected]);
 
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
@@ -668,23 +669,21 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       await host.deactivate(entry.id, entry.directory);
       removalStarted = true;
       const result = await manager.remove(entry.directory!);
-      if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
-      else {
-        setLastError(result.error);
-        notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
-      }
+      if (result.ok) notifyPane({ body: `Removed ${entry.name}.`, type: "success" });
+      else setLastError(`Could not remove ${entry.name}: ${result.error}`);
     } catch (error) {
       logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
       const message = removalStarted
         ? "Removal failed. Restart and try again."
         : "Plugin could not be stopped. Files kept. Restart before removing it.";
+      // The footer keeps the short form until the next operation; the message says the rest for a while.
       setLastError(removalStarted ? "removal failed, restart to retry" : "stop failed, restart to remove");
-      notify({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
+      notifyPane({ body: `Could not remove ${entry.name}. ${message}`, type: "error" });
     } finally {
       setBusy(null);
       bump();
     }
-  }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
+  }, [bump, busy, confirmWidth, dialog, host, manager, notifyPane, selected]);
 
   const toggleSelected = useCallback(async () => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;
@@ -717,7 +716,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const change = packChange(previous, pack);
     const toggles = packToggles(change);
     if (Object.keys(toggles).length === 0) {
-      notify({ body: tf("{name} is already what you have on.", { name: pack.name }), type: "info" });
+      notifyPane({ body: tf("{name} is already what you have on.", { name: pack.name }), type: "info" });
       return;
     }
     const confirmed = await confirmDialog(dialog, {
@@ -734,7 +733,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       ...(change.turnOff.length > 0 ? [tf("{count} off", { count: change.turnOff.length })] : []),
       ...(change.turnOn.length > 0 ? [tf("{count} back on", { count: change.turnOn.length })] : []),
     ];
-    notify({
+    notifyPane({
       body: tf("{name} applied: {changes}.", { name: pack.name, changes: parts.join(", ") }),
       type: "success",
       // Long enough to reach for Undo after looking at the list.
@@ -747,7 +746,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         },
       },
     });
-  }, [bump, confirmWidth, dialog, disabledPlugins, host, notify, pluginName]);
+  }, [bump, confirmWidth, dialog, disabledPlugins, host, notifyPane, pluginName]);
 
   /**
    * The packs as templates to apply: each with its tagline and what it would

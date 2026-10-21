@@ -736,6 +736,60 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(connected).not.toContain("IBKR disconnected");
   });
 
+  test("a disabled broker is never synced: the pane says so, b enables then syncs it, and a failure stays in the pane", async () => {
+    const portfolioId = "broker:ibkr-live:DU12345";
+    const config = createPortfolioConfig(portfolioId, [{ ...createBrokerInstance("gateway", "ibkr-live"), enabled: false }]);
+    const syncedAt = new Date(2025, 9, 17, 14, 2).getTime();
+    config.portfolios = config.portfolios.map((portfolio) => portfolio.id === portfolioId ? { ...portfolio, lastSyncedAt: syncedAt } : portfolio);
+    const broker: BrokerAdapter = {
+      id: "ibkr",
+      name: "IBKR",
+      configSchema: [],
+      validate: async () => true,
+      importPositions: async () => [],
+      getStatus: () => ({ state: "connected", mode: "gateway", updatedAt: 0 }),
+    };
+    const calls: string[] = [];
+    const notifications: Array<{ type?: string; body: string; paneId?: string }> = [];
+    const runtime = createTestPluginRuntime({
+      getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? broker : null,
+      connectBrokerInstance: async (instanceId) => { calls.push(`connect ${instanceId}`); },
+      updateBrokerInstance: async (instanceId, _values, options) => {
+        calls.push(`update ${instanceId} enabled=${String(options?.enabled)}`);
+        const current = harnessState!.config;
+        harnessDispatch!({ type: "SET_CONFIG", config: { ...current, brokerInstances: current.brokerInstances.map((entry) => entry.id === instanceId ? { ...entry, enabled: options?.enabled ?? entry.enabled } : entry) } });
+      },
+      syncBrokerInstance: async (instanceId) => {
+        calls.push(`sync ${instanceId}`);
+        throw new Error("Gateway is not running.");
+      },
+      notify: (notification) => { notifications.push(notification); },
+    });
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness config={config} collectionId={portfolioId} runtime={runtime} paneHeight={11} />
+      <PaneFooterBar footer={footer} focused width={100} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 24 });
+    await flushFrame();
+
+    const frame = await tui.waitForFrameToContain("[b] enable");
+    expect(frame).toContain("AAPL");
+    expect(frame).toContain("as of Oct 17 14:02");
+    expect(frame).toContain("IBKR disabled");
+    expect(calls).toEqual([]);
+
+    await act(async () => {
+      tui.setup().mockInput.pressKey("b");
+      await Promise.resolve();
+    });
+    await flushFrame();
+    expect(calls).toEqual(["update ibkr-live enabled=true", "sync ibkr-live"]);
+    // About this pane's profile, so it is said in this pane, never as an app toast.
+    expect(notifications).toEqual([{ type: "error", body: "Gateway is not running.", paneId: TEST_PANE_ID }]);
+    const enabled = await tui.waitForFrameToExclude("[b] enable");
+    expect(enabled).not.toContain("IBKR disabled");
+  });
+
   const teamConfig = createManualCollectionConfig("team:t1:w1");
   teamConfig.watchlists = [{ id: "team:t1:w1", name: "Desk", teamId: "t1" }];
   for (const [name, collectionId, config] of [

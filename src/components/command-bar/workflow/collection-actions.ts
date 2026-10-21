@@ -135,6 +135,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
       const connected = await connectSignedInBrokerProfile(broker, {
         getConfig: () => pluginRegistry.getConfig(),
         createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+        enableBrokerInstance: (instanceId) => pluginRegistry.updateBrokerInstance(instanceId, {}, { enabled: true }),
         syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
         requestSignIn: requestBrokerSignIn,
       });

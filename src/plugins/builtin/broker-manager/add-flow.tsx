@@ -36,7 +36,7 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
-import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
+import { usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
 import type { BrokerManagerMessage } from "./pane-actions";
@@ -94,8 +94,7 @@ export function useBrokerAddFlow({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const getState = useAppGetState();
-  const { notify } = usePluginAppActions();
-  const { listBrokerAdapters, createBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
+  const { listBrokerAdapters, createBrokerInstance, updateBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
   const [flow, setFlowState] = useState<BrokerAddFlowState | null>(null);
   // Async work reads the flow as it is now, not as it was when it started.
   const flowRef = useRef<BrokerAddFlowState | null>(null);
@@ -163,7 +162,7 @@ export function useBrokerAddFlow({
       const state = getState();
       const portfolio = state.config.portfolios.find((entry) => entry.brokerInstanceId === instanceId);
       if (portfolio) showCollectionInPortfolioPane(state, dispatch, portfolio.id);
-      notify({ body: t("Connected! Positions will sync automatically."), type: "success" });
+      setMessage({ tone: "info", text: t("Connected! Positions will sync automatically.") });
     } catch (error) {
       // The profile stays: its detail and the footer say why it did not sync.
       land();
@@ -171,7 +170,7 @@ export function useBrokerAddFlow({
     } finally {
       setBusy(null);
     }
-  }, [dispatch, getState, notify, onProfileAdded, setBusy, setFlow, setMessage, syncBrokerInstance]);
+  }, [dispatch, getState, onProfileAdded, setBusy, setFlow, setMessage, syncBrokerInstance]);
 
   const connectDevice = useCallback(async () => {
     const current = flowRef.current;
@@ -240,6 +239,7 @@ export function useBrokerAddFlow({
         connected = await connectSignedInBrokerProfile(broker, {
           getConfig: () => getState().config,
           createBrokerInstance,
+          enableBrokerInstance: (instanceId) => updateBrokerInstance(instanceId, {}, { enabled: true }),
           // The first sync runs below, with its progress in the pane.
           syncBrokerInstance: async () => {},
           // Gloom's sign-in over the pane when needed, again after a session Gloom refused.

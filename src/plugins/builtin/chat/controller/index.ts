@@ -117,6 +117,8 @@ export class ChatController {
     apiClient.uploadChatAttachment(channelId, upload, options)
   );
   private notifyFn: (notification: AppNotificationRequest) => AppNotificationDelivery | void = () => {};
+  /** Panes showing a channel, newest last: what fails in the channel is said in the pane, not as a toast. */
+  private readonly channelNotifiers = new Map<string, Array<(notification: AppNotificationRequest) => void>>();
   private openMessageFn: ((channelId: string, messageId: string) => void) | undefined;
   private readonly alerts = new ChatNotificationAlerts({
     getAppActive: () => this.appActive,
@@ -216,6 +218,33 @@ export class ChatController {
   ): void {
     this.notifyFn = notify;
     this.openMessageFn = openMessage;
+  }
+
+  /**
+   * While a pane shows the channel, a send, edit, reaction, image or
+   * notification setting that fails there is said in that pane (the newest
+   * one to show it); with none, it is a toast.
+   */
+  attachChannelNotifier(channelId: string, notify: (notification: AppNotificationRequest) => void): () => void {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const list = this.channelNotifiers.get(normalizedChannelId) ?? [];
+    list.push(notify);
+    this.channelNotifiers.set(normalizedChannelId, list);
+    return () => {
+      const current = this.channelNotifiers.get(normalizedChannelId);
+      if (!current) return;
+      const index = current.lastIndexOf(notify);
+      if (index >= 0) current.splice(index, 1);
+      if (current.length === 0) this.channelNotifiers.delete(normalizedChannelId);
+    };
+  }
+
+  private notifyChannel(channelId: string): (notification: AppNotificationRequest) => void {
+    return (notification) => {
+      const pane = this.channelNotifiers.get(channelId)?.at(-1);
+      if (pane) pane(notification);
+      else this.notifyFn(notification);
+    };
   }
 
   /**
@@ -465,7 +494,7 @@ export class ChatController {
       applyChannelState: (state) => this.applyChannelState(state),
       ensureOpenChannelConnections: () => this.ensureOpenChannelConnections(),
       emit: () => this.emit(),
-      notify: this.notifyFn,
+      notify: this.notifyChannel(normalizedChannelId),
     });
   }
 
@@ -598,7 +627,7 @@ export class ChatController {
       persistChannelState: () => this.storage.persistChannelState(normalizedChannelId),
       emit: () => this.emit(normalizedChannelId),
       mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
-      notify: this.notifyFn,
+      notify: this.notifyChannel(normalizedChannelId),
     });
   }
 
@@ -648,7 +677,7 @@ export class ChatController {
       channelId,
       upload: this.uploadAttachment,
       emit: () => this.emit(channelId),
-      notify: (notification: AppNotificationRequest) => this.notifyFn(notification),
+      notify: this.notifyChannel(channelId),
       nextLocalId: () => `draft-image:${this.draftAttachmentSeq += 1}`,
     };
   }
@@ -705,7 +734,7 @@ export class ChatController {
       ensureConnection: () => this.ensureConnection(normalizedChannelId),
       emit: () => this.emit(normalizedChannelId),
       mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
-      notify: this.notifyFn,
+      notify: this.notifyChannel(normalizedChannelId),
     });
   }
 
@@ -723,16 +752,17 @@ export class ChatController {
       ));
     // The images stay with an edit, so a message that has them may lose its text.
     if (!messageContent && !(latestOwnMessage?.id === messageId && latestOwnMessage.attachments?.length)) return false;
+    const notify = this.notifyChannel(normalizedChannelId);
     if (!latestOwnMessage || latestOwnMessage.id !== messageId) {
-      this.notifyFn({ body: "Only your latest sent message can be edited.", type: "error" });
+      notify({ body: "Only your latest sent message can be edited.", type: "error" });
       return false;
     }
     if (!isEditableOnGloom(latestOwnMessage)) {
-      this.notifyFn({ body: DISCORD_MESSAGE_EDIT_NOTICE, type: "error" });
+      notify({ body: DISCORD_MESSAGE_EDIT_NOTICE, type: "error" });
       return false;
     }
     if (!isWithinChatMessageEditWindow(latestOwnMessage)) {
-      this.notifyFn({ body: `Messages can only be edited within ${CHAT_MESSAGE_EDIT_WINDOW_LABEL}.`, type: "error" });
+      notify({ body: `Messages can only be edited within ${CHAT_MESSAGE_EDIT_WINDOW_LABEL}.`, type: "error" });
       return false;
     }
     if (latestOwnMessage.content === messageContent) return true;
@@ -745,7 +775,7 @@ export class ChatController {
       const errorMessage = error instanceof Error && error.message
         ? error.message
         : "Failed to edit message.";
-      this.notifyFn({ body: errorMessage, type: "error" });
+      notify({ body: errorMessage, type: "error" });
       return false;
     }
   }
@@ -772,7 +802,7 @@ export class ChatController {
       // Only this change is undone; what others did meanwhile stays.
       this.replaceMessageReactions(normalizedChannelId, messageId, (current) => withOwnReaction(current, emoji, !reacted, self));
       const body = error instanceof Error && error.message ? error.message : "Failed to react.";
-      this.notifyFn({ body, type: "error" });
+      this.notifyChannel(normalizedChannelId)({ body, type: "error" });
       return false;
     }
   }

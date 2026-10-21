@@ -14,7 +14,7 @@ import type { BrokerAccount, BrokerExecution, BrokerOrder, BrokerOrderType } fro
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogState } from "../../../ui/dialog";
 import { BrokerTradingController, type BrokerOrderOutcome, type BrokerTradingContext } from "./controller";
-import { usePluginAppActions } from "../../runtime";
+import { usePaneNotify, usePluginAppActions } from "../../runtime";
 import { BrokerAccountPicker } from "./account-picker";
 import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, ticketEditingPriceStep, withLatestOrder, formatOrderPrice as price, formatOrderQuantity as quantity, isBuySide, loadBrokerOrdersSnapshot, type BrokerOrdersSnapshot } from "./orders-data";
 import { accountModeLabel } from "./account-picker";
@@ -152,6 +152,7 @@ export function BrokerOrdersView({
   const context = useRef<BrokerTradingContext>({ adapter: broker, instance, accounts, accountId, connection });
   context.current = { adapter: broker, instance, accounts, accountId, connection };
   const { notify } = usePluginAppActions();
+  const notifyPane = usePaneNotify();
   // What a refused cancel came to, said once: the order feed records it quietly and reads the list again.
   const onOutcome = useRef<(outcome: BrokerOrderOutcome) => void>(() => {});
   onOutcome.current = (outcome) => {
@@ -160,7 +161,8 @@ export function BrokerOrdersView({
     notify({ type: outcome.type, title: outcome.title, body: orderToastBody(outcome.order) });
   };
   const controller = useMemo(() => new BrokerTradingController({ getContext: () => context.current, onOutcome: (outcome) => onOutcome.current(outcome) }), [broker, instance.id]);
-  const failed = useCallback((error: unknown, fallback: string) => notify({ type: "error", body: error instanceof Error && error.message ? error.message : fallback }), [notify]);
+  // An action of this pane that failed is said here; what became of an order is the account's, so it stays a toast.
+  const failed = useCallback((error: unknown, fallback: string) => notifyPane({ type: "error", body: error instanceof Error && error.message ? error.message : fallback }), [notifyPane]);
   const trading = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => { controller.syncContext(); }, [controller, instance, accountId, accounts, connection.state]);

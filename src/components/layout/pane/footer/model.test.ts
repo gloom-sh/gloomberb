@@ -54,6 +54,24 @@ describe("footer hint row", () => {
     expect(fitPaneFooterInfo([contract, stale], 20).map((segment) => segment.id)).toEqual(["contract", "stale"]);
   });
 
+  test("a pane's message is cut behind an ellipsis a column short of the hints, wherever it sits, and keeps a few words", () => {
+    const message: PaneFooterSegment = { id: "pane-message", clip: true, parts: [{ text: "No saved strategies for this ticker.", tone: "muted" }] };
+    const icon: PaneFooterSegment = { id: "warning", icon: "warning", parts: [] };
+    const fitted = fitPaneFooterInfo([message, icon], 24);
+    expect(fitted.map((segment) => segment.id)).toEqual(["pane-message", "warning"]);
+    expect(fitted[0]!.parts).toEqual([{ text: "No saved strategies f…", tone: "muted" }]);
+    expect(fitted[0]!.title).toBe("No saved strategies for this ticker.");
+    // Beside a long warning it still shows a few words; the row clips the rest.
+    const status: PaneFooterSegment = { id: "status", parts: [{ text: "Interactive Brokers disabled", tone: "warning" }] };
+    expect(fitPaneFooterInfo([message, status], 30)[0]!.parts[0]!.text).toBe("No saved strate…");
+    expect(fitPaneFooterInfo([message, icon], 80)[0]).toBe(message);
+    // Two of them: the last gives way first, and the row fits.
+    const reason: PaneFooterSegment = { id: "broker-status", clip: true, parts: [{ text: "Sign in to Gloom first, then connect Interactive Brokers.", tone: "warning" }] };
+    const both = fitPaneFooterInfo([message, reason], 40);
+    expect(both.map((segment) => segment.parts[0]!.text)).toEqual(["No saved strategies f…", "Sign in to Gloo…"]);
+    expect(both[1]!.title).toBe("Sign in to Gloom first, then connect Interactive Brokers.");
+  });
+
   test("a failure keeps more of its sentence than a status word does", () => {
     const failure = "Cloud chart data is unavailable for AAPL";
     const row = layoutPaneFooterHintRow(footer([{ id: "error", parts: [{ text: failure, tone: "warning" }] }]), 64);

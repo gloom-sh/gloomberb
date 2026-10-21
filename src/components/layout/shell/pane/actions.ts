@@ -21,8 +21,9 @@ import {
   hasPaneTableExporter,
 } from "../../../../state/pane-table-export-registry";
 
-function notifyPaneLocked(pluginRegistry: PluginRegistry): void {
-  pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
+/** Said in the locked pane when there is one, as a toast when the refusal covers several. */
+function notifyPaneLocked(pluginRegistry: PluginRegistry, paneId?: string): void {
+  pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info", ...(paneId ? { paneId } : {}) });
 }
 
 function removedFocusRestoreOptions(
@@ -86,10 +87,10 @@ export function useShellPaneActions({
       }
       const screenshot = await capturePaneScreenshotPngBase64(paneId);
       await rendererHost.copyPngImage(screenshot.pngBase64);
-      pluginRegistry.notify({ body: "Pane screenshot copied", type: "success" });
+      pluginRegistry.notify({ body: "Pane screenshot copied", type: "success", paneId });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not copy pane screenshot.";
-      pluginRegistry.notify({ body: message, type: "error" });
+      pluginRegistry.notify({ body: message, type: "error", paneId });
     } finally {
       shot.end();
     }
@@ -127,7 +128,7 @@ export function useShellPaneActions({
   const closeFocusedPane = useCallback(() => {
     if (!focusedPaneId || !isPaneInLayout(visibleLayout, focusedPaneId)) return false;
     if (isPaneLockedInLayout(visibleLayout, focusedPaneId)) {
-      notifyPaneLocked(pluginRegistry);
+      notifyPaneLocked(pluginRegistry, focusedPaneId);
       // Handled, so the keypress never reaches the host's own close shortcut.
       return true;
     }

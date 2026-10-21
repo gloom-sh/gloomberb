@@ -27,8 +27,8 @@ import {
 import {
   useAsyncResource,
   useAutoRefresh,
+  usePaneNotify,
   usePaneSettingValue,
-  usePluginAppActions,
   usePluginPaneState,
   useShortcut,
 } from "../../../public/react";
@@ -242,7 +242,7 @@ function EquityScreenView({
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
-  const { notify } = usePluginAppActions();
+  const notify = usePaneNotify();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession(),
     access = usePlanAccess();
