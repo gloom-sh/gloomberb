@@ -341,8 +341,8 @@ describe("registered series that say where they are drawn", () => {
 
     const overPrice = appendCatalogSuggestion(chart, { ...suggestion, placement: "price" }).spec;
     expect(overPrice.series.slice(2).map((series) => series.panelId)).toEqual(["main", "main"]);
-    expect(() => appendCatalogSuggestion(buildCustomChartPreset("A, B, C, D, E, F, G, H, I"), { ...suggestion, placement: "panel" }))
-      .toThrow(/up to 10 base series/);
+    expect(() => appendCatalogSuggestion(buildCustomChartPreset("ABCDEFGHIJKLMNOPQRS".split("").join(", ")), { ...suggestion, placement: "panel" }))
+      .toThrow(/up to 20 base series/);
   });
 
   test("a chart that follows another ticker takes a registered series of the ticker along", () => {

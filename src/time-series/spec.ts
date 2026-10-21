@@ -85,7 +85,7 @@ export function coerceSeriesInterpolationForStyle(
   return style === "step" ? "step-after" : "none";
 }
 
-export const MAX_CHART_SERIES = 10;
+export const MAX_CHART_SERIES = 20;
 
 export const DEFAULT_CHART_SPEC: ChartSpec = Object.freeze({
   version: CHART_SPEC_VERSION,

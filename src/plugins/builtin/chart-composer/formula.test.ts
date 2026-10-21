@@ -120,8 +120,8 @@ describe("series formulas", () => {
     expect(formulas[0]!.inputSeriesIds).toEqual([chart.spec.series[2]!.id, chart.spec.series[3]!.id]);
     expect(chart.series).toBe(chart.spec.series[3]!);
     expect(chart.spec.studies.some(({ kind }) => kind === "volume")).toBe(true);
-    // Its legs count toward the chart's ten series.
-    expect(() => appendCatalogSuggestion(buildCustomChartPreset("SPY, QQQ, IWM, DIA, TLT, GLD, SLV, USO, UNG"), wti))
-      .toThrow("Charts support up to 10 base series.");
+    // Its legs count toward the chart's twenty series.
+    expect(() => appendCatalogSuggestion(buildCustomChartPreset("ABCDEFGHIJKLMNOPQRS".split("").join(", ")), wti))
+      .toThrow("Charts support up to 20 base series.");
   });
 });

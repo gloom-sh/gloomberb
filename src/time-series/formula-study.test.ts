@@ -119,7 +119,7 @@ describe("formula studies", () => {
     });
     expect(validateChartSpec(spec(["HO=F", "RB=F", "CL=F"])).errors).toEqual([]);
     expect(validateChartSpec({ ...spec(["HO=F"]), studies: [formula([], {})] }).errors)
-      .toEqual([expect.objectContaining({ code: "wrong-input-count", message: "formula requires 1 to 10 input series." })]);
+      .toEqual([expect.objectContaining({ code: "wrong-input-count", message: "formula requires 1 to 20 input series." })]);
   });
 });
 

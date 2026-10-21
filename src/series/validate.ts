@@ -14,8 +14,8 @@ const DRAW_STYLES: readonly SeriesDrawStyle[] = ["line", "area", "step", "column
 const PLACEMENTS: readonly SeriesPlacement[] = ["price", "panel"];
 const LINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
-/** A chart holds ten series: the ticker's price and the lines, with one to spare. */
-const MAX_SERIES_LINES = 8;
+/** A chart holds twenty series: the ticker's price and up to sixteen lines, with room for a few more. */
+const MAX_SERIES_LINES = 16;
 
 /** Units with no scale: a percentage of something, not a quantity of it. */
 const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as const;
