@@ -56,6 +56,7 @@ import {
 } from "./model";
 import { formatInsiderName } from "./display";
 import { insiderHeadless } from "./headless";
+import { FORM4_CURRENCY } from "./base-values";
 import { isInsiderForm } from "./insider-data";
 import { filesAsForeignPrivateIssuer, insiderEmptyNotice, isOtherIssuerFiling } from "./issuer";
 import { relevantInsiderAmendments } from "./amendments";
@@ -116,9 +117,10 @@ const TYPE_FILTER_LABELS: Record<InsiderTypeFilter, string> = {
  * security when there are several. A side with no trades shows 0 shares,
  * muted. Buys read in the gain colour and sales in the loss colour, as in
  * the table; when the Type filter hides open-market trades the figures dim
- * and say so.
+ * and say so. With `currency` the dollars read with its code (1.2M USD), as
+ * the table's CCY column names them.
  */
-function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter): StatItem[] {
+function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter, currency?: string): StatItem[] {
   const securities = new Set(figures.totals.map((total) => total.security));
   const hidden = typeFilter === "other";
   const items: StatItem[] = [];
@@ -132,7 +134,8 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
         label,
         value: total.unreconciled ? "Unavailable" : `${formatCompact(total.shares)} shares`,
         detail: [
-          total.unreconciled ? "amended" : total.knownValue ? `$${formatCompact(total.value)}` : "value unavailable",
+          total.unreconciled ? "amended" : !total.knownValue ? "value unavailable"
+            : currency ? `${formatCompact(total.value)} ${currency}` : `$${formatCompact(total.value)}`,
           securities.size > 1 ? total.security : null,
           hidden ? "not in this view" : null,
         ].filter(Boolean).join(" · "),
@@ -337,7 +340,10 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
     const order = new Map(rows.map((row, index) => [row.id, index]));
     return sortStackItems(rows, sort, compareInsiderRows, (a, b) => order.get(a.id)! - order.get(b.id)!);
   }, [rows, sort]);
-  const columns = useMemo(() => buildInsiderColumns(width, rows), [rows, width]);
+  // Form 4 amounts are dollars: a reader whose base currency is another one gets them named, as PF names a holding's.
+  const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const amountCurrency = baseCurrency.trim().toUpperCase() === FORM4_CURRENCY ? undefined : FORM4_CURRENCY;
+  const columns = useMemo(() => buildInsiderColumns(width, rows, amountCurrency), [amountCurrency, rows, width]);
 
   // A narrowed list that cannot scroll cannot ask for older filings, so they
   // load here until it fills a page, back to a year at most.
@@ -358,7 +364,7 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   const lastSummaryRef = useRef<{ scope: string; figures: InsiderSummaryFigures } | null>(null);
   if (summary) lastSummaryRef.current = { scope: summaryScope, figures: summary };
   const shownSummary = summary ?? (lastSummaryRef.current?.scope === summaryScope ? lastSummaryRef.current.figures : null);
-  const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary, typeFilter) : [], [shownSummary, typeFilter]);
+  const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary, typeFilter, amountCurrency) : [], [amountCurrency, shownSummary, typeFilter]);
   // The totals miss window filings only when the window passes the cap.
   const windowPartial = shownCount < windowCount;
   const insiderOptions = useMemo(() => {

@@ -836,6 +836,13 @@ export async function loadSavedListing(store: ListingStore, listing: ListingArg)
   return null;
 }
 
+/** A row saved under a vendor's suffixed key (RY.TO) for the listing it was read as: on that venue, or on none it names. */
+async function loadSuffixedRow(store: ListingStore, key: string, exchange: string): Promise<TickerRecord | null> {
+  const ticker = await store.loadTicker(key);
+  const savedExchange = canonicalExchange(ticker?.metadata.exchange);
+  return ticker && (!savedExchange || savedExchange === exchange) ? ticker : null;
+}
+
 export interface CliListing extends ListingArg {
   saved: TickerRecord | null;
   /**
@@ -895,7 +902,11 @@ export async function resolveCliListing(
   deps: ListingDeps,
   options: {
     ownExchangeWins?: boolean;
-    /** Read a venue suffix (RY.TO) as the listing its quote names (RY:TSX): `fn` and `shot`, whose functions read data by venue. */
+    /**
+     * Read a venue suffix (RY.TO) as the listing its quote names (RY:TSX).
+     * Only pane functions ask for it (`applyListingArgument`, which `fn` and
+     * `shot` run through), as their data is read by venue.
+     */
     venueSuffix?: boolean;
   } = {},
 ): Promise<CliListing> {
@@ -913,6 +924,8 @@ export async function resolveCliListing(
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
   const suffixed = pair || named || !options.venueSuffix ? null : await readVenueSuffix(parsed, deps);
+  // The row may be saved under the suffixed key itself: a link or a layout's key is kept as it came.
+  const typedKey = suffixed ? parsed.symbol : null;
   if (suffixed) parsed = parsed.readAs ? { ...suffixed, readAs: `${parsed.readAs} ${suffixed.readAs}` } : suffixed;
   try {
     await checkListingExchange(parsed, deps);
@@ -922,7 +935,7 @@ export async function resolveCliListing(
     parsed = market;
   }
   let listing = await settleSharedCode(parsed, deps);
-  const saved = await loadSavedListing(deps.store, listing);
+  const saved = await loadSavedListing(deps.store, listing) ?? (typedKey ? await loadSuffixedRow(deps.store, typedKey, listing.exchange) : null);
   // A code nothing could read stays the venue it is saved on.
   const savedExchange = canonicalExchange(saved?.metadata.exchange);
   if (listing.sharedCode && savedExchange) listing = { symbol: listing.symbol, exchange: savedExchange, key: `${listing.symbol}:${savedExchange}` };

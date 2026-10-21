@@ -36,7 +36,8 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
-import { currencyCodeLabel } from "../../utils/currency-units";
+import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
+import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
 import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
@@ -301,7 +302,7 @@ function shouldFetchSecFilings(
 }
 
 async function appendTickerPositions(lines: string[], tickerFile: TickerRecord | null, quote: TickerFinancials["quote"],
-  config: AppConfig, toBase: ReportBaseConverter): Promise<void> {
+  config: AppConfig, toBase: ReportBaseConverter, rates: ReportRateNotes): Promise<void> {
   const quoteCurrency = quote?.currency?.trim() || tickerFile?.metadata.currency?.trim() || "";
   const codes = writesCurrencyCodes(config);
   const money = codes ? formatCurrencyCode : formatCurrency;
@@ -324,9 +325,10 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
       if (quoteCurrency && currentPrice != null) converted.add(quoteCurrency.toUpperCase());
       const baseMetrics = getPortfolioPositionMetrics({ ...tickerFile, metadata: { ...tickerFile.metadata, positions: [position] } }, undefined, quoteCurrency,
         { currency: config.baseCurrency, convert: value => value * positionRate }, quote);
-      // A cost bought at an entered rate into the base currency converts at it, as its P&L does; any other at today's.
+      // A cost bought at an entered rate into the base currency converts at it, as its P&L does, and says so; any other at today's.
+      const boughtRate = positionCurrency ? lotCostFxRate(position, positionCurrency, config.baseCurrency) : null;
       const costBasisBase = !positionCurrency ? Number.NaN
-        : lotCostFxRate(position, positionCurrency, config.baseCurrency) !== null ? baseMetrics.signedCost
+        : boughtRate !== null ? baseMetrics.signedCost
         : await toBase(metrics.signedCost, positionCurrency);
       const marketValueBase = resolvePortfolioMarketValue(baseMetrics, currentPriceBase)?.net ?? Number.NaN;
       const selectedPnl = resolvePortfolioPositionPnl(baseMetrics, currentPriceBase);
@@ -339,7 +341,8 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
           "Position",
           `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : contracts ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, currencyCode: codes }) : "—"}`,
         ],
-        ["Cost Basis", money(costBasisBase, config.baseCurrency)],
+        ["Cost Basis", `${money(costBasisBase, config.baseCurrency)}${boughtRate !== null
+          ? ` (${formatFxRate(boughtRate)} ${config.baseCurrency.trim().toUpperCase()} per ${positionCurrency} when bought)` : ""}`],
         ["Market Value", money(marketValueBase, config.baseCurrency)],
         [
           selectedPnl.basis === "broker-snapshot" ? "Broker P&L" : "P&L",
@@ -354,7 +357,7 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
         lines.push("");
       }
     }
-    for (const note of conversionNotes(toBase, converted)) lines.push(cliStyles.muted(note));
+    for (const note of conversionNotes(toBase, converted, rates)) lines.push(cliStyles.muted(note));
   }
 }
 
@@ -372,14 +375,41 @@ export function writesCurrencyCodes(config: Pick<AppConfig, "baseCurrency"> | un
 }
 
 /**
- * "CAD at USD/CAD 1.40623, as of 2026-10-21 04:46 UTC.": the rate and its
- * date for each currency in `currencies` the report converted into the base
- * currency, so a converted figure is never without what it was converted at.
+ * What the report's rate notes have said and must say: each currency's rate
+ * is stated once, under the first section that converted it, and a lot whose
+ * cost converts at the rate entered when it was bought is left out of it.
  */
-function conversionNotes(toBase: ReportBaseConverter, currencies: ReadonlySet<string>): string[] {
+interface ReportRateNotes {
+  /** Currencies whose rate a note already gave. */
+  noted: Set<string>;
+  /** Currencies of lots whose Cost Basis is at their own entered rate. */
+  boughtAt: ReadonlySet<string>;
+}
+
+/** The currencies of the shown lots whose cost converts into the base currency at the rate they were bought at. */
+function boughtRateCurrencies(tickerFile: TickerRecord | null, quoteCurrency: string, baseCurrency: string): Set<string> {
+  return new Set((tickerFile?.metadata.positions ?? []).flatMap((position) => {
+    const currency = (position.currency || quoteCurrency).trim();
+    return position.shares !== 0 && currency && lotCostFxRate(position, currency, baseCurrency) !== null ? [currency.toUpperCase()] : [];
+  }));
+}
+
+/**
+ * "CAD figures at USD/CAD 1.40623, as of 2026-10-21 04:46 UTC.": the rate
+ * and its date for each currency in `currencies` the report converted into
+ * the base currency, as markets quote the pair (USD/JPY, not JPY/USD), so a
+ * converted figure is never without what it was converted at. A rate already
+ * stated is not repeated, and a cost basis at its own rate is excepted.
+ */
+function conversionNotes(toBase: ReportBaseConverter, currencies: ReadonlySet<string>, rates: ReportRateNotes): string[] {
   return (toBase.conversions?.() ?? [])
-    .filter((conversion) => currencies.has(conversion.currency) && conversion.currency !== conversion.baseCurrency)
-    .map(({ currency, baseCurrency, rate, asOf }) => `${baseCurrency} figures at ${currency}/${baseCurrency} ${formatFxRate(rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ""}.`);
+    .filter((conversion) => currencies.has(conversion.currency) && conversion.currency !== conversion.baseCurrency && !rates.noted.has(conversion.currency))
+    .map(({ currency, baseCurrency, rate, asOf }) => {
+      rates.noted.add(currency);
+      const quoted = quotedFxPair(currency, baseCurrency, rate);
+      const except = rates.boughtAt.has(currency) ? ", except a cost basis at the rate it was bought at" : "";
+      return `${baseCurrency} figures at ${quoted.pair} ${formatFxRate(quoted.rate)}${asOf != null ? `, as of ${formatTimestamp(asOf)}` : ""}${except}.`;
+    });
 }
 
 /** A source's enterprise value is in the units of the capitalization it reports beside it,
@@ -981,6 +1011,10 @@ export async function buildTickerReport({
   const baseQuoteOptions = quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType);
   const baseCurrency = config.baseCurrency.trim().toUpperCase();
   const codes = writesCurrencyCodes(config);
+  const rates: ReportRateNotes = {
+    noted: new Set(),
+    boughtAt: boughtRateCurrencies(tickerFile, quote?.currency?.trim() || tickerFile?.metadata.currency?.trim() || "", config.baseCurrency),
+  };
   // Pad money prices to the currency's minor unit so a range reads £35.10 - £35.485, never past it (JPY has none).
   const quoteOptions = withCurrencyMinorDigits(codes ? { ...baseQuoteOptions, currencyCode: true } : baseQuoteOptions, quote?.currency);
   const lines: string[] = [];
@@ -1036,10 +1070,13 @@ export async function buildTickerReport({
   // with the base currency's figure after them when it differs: 627.2B USD (878.15B CAD).
   const convertedCurrencies = new Set<string>();
   const inBase = async (value: number, currency: string): Promise<string> => {
-    if (currency.trim().toUpperCase() === baseCurrency) return "";
-    const converted = await toBase(value, currency);
+    // A minor unit converts as the hundredth of its currency it is: 2.75T GBp is 27.5B GBP, never 2.75T GBP.
+    const unit = heldCurrencyUnit(currency);
+    if (!unit.currency || (unit.currency === baseCurrency && unit.divisor === 1)) return "";
+    const major = value / unit.divisor;
+    const converted = unit.currency === baseCurrency ? major : await toBase(major, unit.currency);
     if (!Number.isFinite(converted)) return "";
-    convertedCurrencies.add(currency.trim().toUpperCase());
+    if (unit.currency !== baseCurrency) convertedCurrencies.add(unit.currency);
     return ` (${formatCompact(converted)} ${baseCurrency})`;
   };
   const marketCapText = capitalization
@@ -1048,8 +1085,7 @@ export async function buildTickerReport({
   // Shown in the same currency as the market cap, so the two can be compared.
   const enterpriseValue = reportedEnterpriseValue(priced.fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
-  // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
-  const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
+  const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency
     ? await inBase(enterpriseValue, evCurrency) : ""}`;
 
   if (quote) {
@@ -1099,7 +1135,7 @@ export async function buildTickerReport({
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
-  if (lines.length > beforeFundamentals) for (const note of conversionNotes(toBase, convertedCurrencies)) lines.push(cliStyles.muted(note));
+  if (lines.length > beforeFundamentals) for (const note of conversionNotes(toBase, convertedCurrencies, rates)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
     quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);
@@ -1159,7 +1195,7 @@ export async function buildTickerReport({
     link: filing.filingUrl,
   })), hiddenFilingsNote(hiddenSecFilings));
 
-  await appendTickerPositions(lines, tickerFile, quote, config, toBase);
+  await appendTickerPositions(lines, tickerFile, quote, config, toBase, rates);
 
   return lines.join("\n");
 }

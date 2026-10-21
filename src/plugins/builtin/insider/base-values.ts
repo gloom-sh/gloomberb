@@ -2,6 +2,7 @@ import type { HeadlessPaneColumn, HeadlessPaneRow } from "../../../types/headles
 import { fxCloseOnOrBefore, loadDailyFxCloses, type FxCloses, type FxHistoryClient } from "../../../market-data/fx-closes";
 import { logFailure } from "../../../utils/log-failure";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { quotedFxPair } from "../../../utils/currency-pair";
 
 /** A Form 4 states its prices and values in US dollars. */
 export const FORM4_CURRENCY = "USD";
@@ -21,8 +22,9 @@ const dash = (value: unknown, format: (value: number) => string) => (typeof valu
  * states them). With another base currency (CAD), each value is also given
  * in it at the daily close of USD/CAD on its transaction day, or the last
  * close before a weekend or holiday (`fxCloseOnOrBefore` over the history
- * PORT and PEB read), with the rate and that close's date beside it. When the
- * closes cannot be read the values stay in USD and the note says why.
+ * PORT and PEB read), with the rate and that close's date beside it. The rate
+ * reads as markets quote the pair (USD/CAD, EUR/USD), named by `fxPair`. When
+ * the closes cannot be read the values stay in USD and the note says why.
  */
 export async function withInsiderBaseValues(
   rows: readonly HeadlessPaneRow[],
@@ -33,7 +35,8 @@ export async function withInsiderBaseValues(
   const labelled: HeadlessPaneRow[] = rows.map((row) => ({ ...row, currency: FORM4_CURRENCY }));
   const base = baseCurrency.trim().toUpperCase();
   if (!base || base === FORM4_CURRENCY) return { rows: labelled, columns: null, note: null };
-  const pair = `${FORM4_CURRENCY}/${base}`;
+  // The pair as markets quote it: USD/CAD, but EUR/USD for a euro base.
+  const pair = quotedFxPair(FORM4_CURRENCY, base, 1).pair;
   const days = labelled.flatMap((row) => typeof row.transactionDate === "string" && typeof row.totalValue === "number"
     ? [row.transactionDate.slice(0, 10)] : []).sort();
   let closes: FxCloses | null = null;
@@ -47,13 +50,14 @@ export async function withInsiderBaseValues(
   const converted = labelled.map((row) => {
     const day = typeof row.transactionDate === "string" ? row.transactionDate.slice(0, 10) : null;
     const reading = closes && day && typeof row.totalValue === "number" ? fxCloseOnOrBefore(closes, day) : null;
-    // The close is USD per unit of the base currency; the rate is the base currency per dollar.
-    const fxRate = reading ? 1 / reading.rate : null;
+    // The close is USD per unit of the base currency: the base currency per dollar is its inverse.
+    const perDollar = reading ? 1 / reading.rate : null;
     return {
       ...row,
       baseCurrency: base,
-      valueBase: fxRate != null ? (row.totalValue as number) * fxRate : null,
-      fxRate,
+      valueBase: perDollar != null ? (row.totalValue as number) * perDollar : null,
+      fxPair: pair,
+      fxRate: perDollar != null ? quotedFxPair(FORM4_CURRENCY, base, perDollar).rate : null,
       fxDate: reading?.date ?? null,
     };
   });
