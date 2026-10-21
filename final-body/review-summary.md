@@ -1,0 +1,11 @@
+# Final Alerts visual evidence — 0ad0e85
+
+Fresh head: `0ad0e8587da2eee20f8c0810df8a6add62b9ba46`.
+
+24 new desktop captures, paired against actual retained frozen main0568, previous fix6578 and error-body40b captures (72 comparisons). All36 unobstructed neighboring-pane regions match exactly, and every healthy capture matches. The required emptyStateTitle fallback changes no pane pixels relative to40b. Three of12 form captures differ only at the blinking Symbol caret: malformed paper1280 (14pixels at1x14+421+243), partial paper1280 (14 at1x14+421+234), partial white720 (14 at1x14+141+234). All raw differences are retained. The previous6578 comparison also has the14pixel partial-white720 caret difference.
+
+Four fresh terminal scenario/theme runs produced eight form/pane images; all eight are byte-identical to the corresponding40b images. These pair with eight preserved actual0568 images for eight comparison sheets. Only the four unobstructed neighbor content regions x720,y0,width720,height720 are claimed invariant: baseline success toasts obscure the neighbor footer, and form overlays obscure its body.
+
+All24 desktop images, all eight terminal sheets, all three caret crops and the full malformed correction sheet were manually reviewed. The storage-error title uses the shared red error body; readable partial MSFT rows remain visible; failed saves retain the form. No external/native requests or runtime warnings were observed. All four owned tmux sessions/profiles, browser handles, loopback server, build scratch and temporary source entries were removed; the worktree is clean. Registered renderer-component fixtures do not exercise the full native desktop shell/RPC transport.
+
+Evidence: `source-provenance.json`, `screenshots/{main,correction,fallback}.json`, `terminal-audit.json`, `terminal-fallback-comparison.json`, `independent-screenshot-review.json`; sheets under `screenshots/{main,correction,fallback,terminal}` and contacts/caret crops under `review/`. The initial audit assumption that all caret differences have y234 was corrected for the malformed form at y243; its failure log remains `compare-terminal-initial-caret-coordinate.log`. No capture was rerun or raw evidence modified.

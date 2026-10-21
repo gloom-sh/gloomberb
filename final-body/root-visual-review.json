@@ -1,0 +1,12 @@
+{
+  "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "reviewedAt": "2026-10-21T15:43:50.491423+00:00",
+  "image": "screenshots/correction/malformed-pane-white-1280.png",
+  "sha256": "aa0ae4781217266367c725b7fcc77bd9fa88d4eddbd5cb01878358ac1888b425",
+  "findings": [
+    "Single shared red price alerts unavailable. title, matching neighboring Thematic baskets error style.",
+    "Read error detail occurs once in body; active error remains separately in allowed footer.",
+    "No grey table empty-state failure title or column header remains for fully unreadable data."
+  ],
+  "matrixReview": "independent-screenshot-review.json"
+}

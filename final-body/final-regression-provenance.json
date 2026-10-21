@@ -1,0 +1,39 @@
+{
+  "finalHead": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "baselineRun": "../baseline-regressions-notify-peer.log",
+  "baselineResult": {
+    "pass": 19,
+    "intendedFail": 11
+  },
+  "originalProvenance": "../baseline-regressions-notify-peer-provenance.json",
+  "finalTestBlobs": [
+    {
+      "path": "src/plugins/builtin/alerts/alert-engine.test.ts",
+      "finalHeadSha256": "eb5929a7470487bfa12cb150964fab26b35ca9cd50cbad7f7e6cf3b50c171667",
+      "transplantedMainTestSha256": "eb5929a7470487bfa12cb150964fab26b35ca9cd50cbad7f7e6cf3b50c171667",
+      "identical": true
+    },
+    {
+      "path": "src/plugins/builtin/alerts/index.test.tsx",
+      "finalHeadSha256": "f7900804b8bc25a0d8751b6b1f5dcc39d5dea920a67478643e10b71f3dfedbf6",
+      "transplantedMainTestSha256": "f7900804b8bc25a0d8751b6b1f5dcc39d5dea920a67478643e10b71f3dfedbf6",
+      "identical": true
+    },
+    {
+      "path": "src/plugins/builtin/alerts/levels.test.ts",
+      "finalHeadSha256": "cf3c62bd0e8bcfd28ad846e6f68e27be5d385ef21811a1841202f7760b01a714",
+      "transplantedMainTestSha256": "cf3c62bd0e8bcfd28ad846e6f68e27be5d385ef21811a1841202f7760b01a714",
+      "identical": true
+    },
+    {
+      "path": "src/plugins/builtin/alerts/cli-storage.test.ts",
+      "finalHeadSha256": "085adbcf7d707cb8cf8a80938a403cbba8e07ba77c8dfd1b43ded55ec84c70a3",
+      "transplantedMainTestSha256": "085adbcf7d707cb8cf8a80938a403cbba8e07ba77c8dfd1b43ded55ec84c70a3",
+      "identical": true
+    }
+  ],
+  "rerun": false,
+  "previousHead": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "reuseReason": "Only the required healthy emptyStateTitle fallback is restored. All four final regression test hashes remain identical to the independently verified main-failure proof."
+}

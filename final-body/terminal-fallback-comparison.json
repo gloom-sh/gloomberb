@@ -1,0 +1,56 @@
+{
+  "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "previousHead": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "pairs": 8,
+  "allByteIdentical": true,
+  "records": [
+    {
+      "file": "head-malformed-paper-pane.png",
+      "before40bSha256": "7dd1f0a031511064885c6aea0bef0af353c71a50ccbd2bad52c95fbacfa319ee",
+      "after0adSha256": "7dd1f0a031511064885c6aea0bef0af353c71a50ccbd2bad52c95fbacfa319ee",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-malformed-paper.png",
+      "before40bSha256": "d54725009ca98785f77a66db4af10e0d83354afefea75ebb81f59b36e67c84db",
+      "after0adSha256": "d54725009ca98785f77a66db4af10e0d83354afefea75ebb81f59b36e67c84db",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-malformed-white-pane.png",
+      "before40bSha256": "201e5d83e773353169519e1180d32f2eed051279db1c0b8acd6e86d51c6f203d",
+      "after0adSha256": "201e5d83e773353169519e1180d32f2eed051279db1c0b8acd6e86d51c6f203d",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-malformed-white.png",
+      "before40bSha256": "3e05e95dd206058819033f9ccfc2f02254847014520471ee0bf4ca6cf5aefeab",
+      "after0adSha256": "3e05e95dd206058819033f9ccfc2f02254847014520471ee0bf4ca6cf5aefeab",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-partial-paper-pane.png",
+      "before40bSha256": "28b35f2c3f2fdaf0ae05a46127d84c81fba97ee117f2ae1dee31ad42c5f6b6f5",
+      "after0adSha256": "28b35f2c3f2fdaf0ae05a46127d84c81fba97ee117f2ae1dee31ad42c5f6b6f5",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-partial-paper.png",
+      "before40bSha256": "7195eadb6c81f77a686b3da8014faf21531a7e633975f89dce0102c778a5499b",
+      "after0adSha256": "7195eadb6c81f77a686b3da8014faf21531a7e633975f89dce0102c778a5499b",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-partial-white-pane.png",
+      "before40bSha256": "465ae697bb9fce94c2a248592f440e74bca867daeed09f2103133ce1fca0618f",
+      "after0adSha256": "465ae697bb9fce94c2a248592f440e74bca867daeed09f2103133ce1fca0618f",
+      "byteIdentical": true
+    },
+    {
+      "file": "head-partial-white.png",
+      "before40bSha256": "271a8dbd7d4ae6eb4c74238bf36bacffc570d6eaa148dcf4eb8de3862f1fa24c",
+      "after0adSha256": "271a8dbd7d4ae6eb4c74238bf36bacffc570d6eaa148dcf4eb8de3862f1fa24c",
+      "byteIdentical": true
+    }
+  ]
+}

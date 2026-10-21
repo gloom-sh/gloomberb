@@ -1,0 +1,28 @@
+{
+  "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "previousHead": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "localTypecheck": "All five targets passed before commit, same source blob.",
+  "typecheckLogSha256": "02e8771c30f216b8e30971abe812be7ee505d80f526a907babb0d7565f7d05ce",
+  "scope": "Restore required emptyStateTitle=\"No alerts\". Zero-row errors render DataTableView.status before DataTable; healthy emptiness uses provided emptyContent before fallback in both DOM andOpenTUI.",
+  "independentReviewer": "audit_three",
+  "sourcePaths": [
+    "src/components/data-table/view.tsx",
+    "src/renderers/dom/data-table/index.tsx",
+    "src/components/ui/data-table/opentui/index.tsx"
+  ],
+  "sourceBlobs": {
+    "src/components/data-table/view.tsx": {
+      "40b68e5d0b03132dd7156a90460dc07ec6a07e2c": "47f5182b763ec63b2832d55f439f22f394172779",
+      "0ad0e8587da2eee20f8c0810df8a6add62b9ba46": "47f5182b763ec63b2832d55f439f22f394172779"
+    },
+    "src/renderers/dom/data-table/index.tsx": {
+      "40b68e5d0b03132dd7156a90460dc07ec6a07e2c": "01822abd145e378aebea179031de4360a2303a36",
+      "0ad0e8587da2eee20f8c0810df8a6add62b9ba46": "01822abd145e378aebea179031de4360a2303a36"
+    },
+    "src/components/ui/data-table/opentui/index.tsx": {
+      "40b68e5d0b03132dd7156a90460dc07ec6a07e2c": "0a6b3abb59c6d537535462ce24b9efea7bdfe9d0",
+      "0ad0e8587da2eee20f8c0810df8a6add62b9ba46": "0a6b3abb59c6d537535462ce24b9efea7bdfe9d0"
+    }
+  },
+  "previousFailedCI": "../error-body/ci-39621191939-job-119294722957.log"
+}

@@ -1,0 +1,69 @@
+{
+  "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "previousHead": "40b68e5d0b03132dd7156a90460dc07ec6a07e2c",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "previousScreenshotHead": "6578fe82660f7d7d1ecdfab8cec97b6f13f28d3c",
+  "observedAt": "2026-10-21T15:37:52.399114+00:00",
+  "changedFiles": [
+    "src/plugins/builtin/alerts/pane.tsx"
+  ],
+  "patchFrom40b": "diff --git a/src/plugins/builtin/alerts/pane.tsx b/src/plugins/builtin/alerts/pane.tsx\nindex cc8a808a3..30f1b2124 100644\n--- a/src/plugins/builtin/alerts/pane.tsx\n+++ b/src/plugins/builtin/alerts/pane.tsx\n@@ -365,6 +365,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {\n       renderCell={renderCell}\n       selectedTextOverridesCellColor\n       status={displayRows.length === 0 && storeError ? { error: storeError, subject: \"price alerts\" } : undefined}\n+      emptyStateTitle=\"No alerts\"\n       emptyContent={\n         <PaneStatusBody empty emptyTitle=\"No alerts\" actions={<Button label=\"Add alert\" compact onPress={startAddAlert} />} />\n       }",
+  "actualHeadSourceBlobs": [
+    {
+      "path": "src/plugins/builtin/alerts/pane.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "30f1b2124d7a199836199421801da82fff62d466"
+    },
+    {
+      "path": "src/plugins/builtin/alerts/alert-engine.ts",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "3e31a3554d4d606a3373140929fe0908499ef337"
+    },
+    {
+      "path": "src/plugins/builtin/alerts/index.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "01738669f31c7e5905636d59f6e3f788d50fe57f"
+    },
+    {
+      "path": "src/plugins/builtin/themes/pane.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "b28a29eb9dfbd936b366d0fddc0e4885c1b889ec"
+    },
+    {
+      "path": "src/components/data-table/view.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "47f5182b763ec63b2832d55f439f22f394172779"
+    },
+    {
+      "path": "src/components/ui/data-table/opentui/index.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "0a6b3abb59c6d537535462ce24b9efea7bdfe9d0"
+    },
+    {
+      "path": "src/renderers/dom/data-table/index.tsx",
+      "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "01822abd145e378aebea179031de4360a2303a36"
+    }
+  ],
+  "desktopFixtures": [
+    {
+      "path": "capture-ui.ts",
+      "sha256": "6ca96c8fcac808f78221e425edab668fd354d07ff808bc0b16ec179db3d86fd8",
+      "identicalToPublishedFixture": true
+    },
+    {
+      "path": "ui-fixture.tsx",
+      "sha256": "26c6cf9333ff6f6afb05ad400e2c1a0dc603d7cb7cafad85f600a4b503bdcfd8",
+      "identicalToPublishedFixture": true
+    }
+  ],
+  "terminalFixture": {
+    "path": "terminal-fixture.tsx",
+    "sha256": "2175a65742fbd48031be3b075459665eaceebbdfa4fb03d1043a4e99805c4089",
+    "identicalTo40bFixture": true
+  },
+  "baselineScreenshots": "../screenshots/baseline-unobstructed",
+  "previousScreenshots": "../screenshots/head-unobstructed",
+  "previousErrorBodyScreenshots": "../error-body/screenshots/head",
+  "baselineReuse": "Actual0568 desktop and terminal captures and actual6578 desktop captures are retained under their real labels. Only final0ad head captures are fresh. No saved raw artifact is edited."
+}

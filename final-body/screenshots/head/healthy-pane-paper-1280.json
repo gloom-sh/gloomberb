@@ -1,0 +1,47 @@
+{
+  "outcome": {
+    "raw": "[{\"id\":\"old\",\"symbol\":\"MSFT\",\"condition\":\"above\",\"targetPrice\":300,\"status\":\"triggered\",\"createdAt\":1792574000000,\"triggeredAt\":1792574000000},{\"id\":\"alert-mvi9zysi-1rix\",\"symbol\":\"AAPL\",\"condition\":\"above\",\"targetPrice\":200,\"createdAt\":1792597048290,\"status\":\"active\",\"lastCheckedPrice\":195,\"lastCheckedAt\":1792597048290,\"lastQuoteUpdatedAt\":1792574100000}]",
+    "notifications": [
+      {
+        "body": "Alert set: AAPL > 200 (current 195.00)",
+        "type": "success"
+      }
+    ],
+    "error": null,
+    "nativeTraffic": []
+  },
+  "text": "Alerts\nPrices\nEvents\nHistory\nSTATE\nSYMBOL\nCURRENT\nTARGET\nAWAY\nTRIGGER\nQUOTE\nALERTED\nActive\nAAPL\n195.00\n200.00\n+2.6%\nAbove\n0ms\n-\nTriggered\nMSFT\n-\n300.00\n-\nAbove\n-\n1m ago\n[a]dd alert\n [v]iew\n [e]dit\n [d]elete\nThematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+  "traffic": [],
+  "panes": [
+    {
+      "id": "alerts",
+      "text": "Alerts\nPrices\nEvents\nHistory\nSTATE\nSYMBOL\nCURRENT\nTARGET\nAWAY\nTRIGGER\nQUOTE\nALERTED\nActive\nAAPL\n195.00\n200.00\n+2.6%\nAbove\n0ms\n-\nTriggered\nMSFT\n-\n300.00\n-\nAbove\n-\n1m ago\n[a]dd alert\n [v]iew\n [e]dit\n [d]elete",
+      "rect": {
+        "x": 8,
+        "y": 8,
+        "width": 628,
+        "height": 604,
+        "top": 8,
+        "right": 636,
+        "bottom": 612,
+        "left": 8
+      }
+    },
+    {
+      "id": "themes",
+      "text": "Thematic baskets\nthematic baskets unavailable.\nCannot read the saved thematic baskets.\nCannot read the saved thematic baskets.",
+      "rect": {
+        "x": 644,
+        "y": 8,
+        "width": 628,
+        "height": 604,
+        "top": 8,
+        "right": 1272,
+        "bottom": 612,
+        "left": 644
+      }
+    }
+  ],
+  "errors": [],
+  "blocked": []
+}

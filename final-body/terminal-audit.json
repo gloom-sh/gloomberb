@@ -1,0 +1,270 @@
+{
+  "head": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+  "baseline": "0568f95db049dccad254c672c2c8d284bbe6a586",
+  "pairs": 8,
+  "rawCaptures": 16,
+  "terminalCells": [
+    120,
+    34
+  ],
+  "dimensions": [
+    1440,
+    816
+  ],
+  "unobstructedNeighborContentPairs": 4,
+  "unobstructedNeighborContentPixelsChanged": 0,
+  "fullNeighborInvarianceClaimed": false,
+  "overlayQualification": "Baseline successfully saves and displays a success toast across the bottom-right neighbor/footer. Head correctly rejects storage and shows no success toast. Full-frame and right-half differences are retained. Only the content region above y=720 is unobstructed on both sides.",
+  "freshHeadCapture": true,
+  "baselineReused": true,
+  "networkRequests": 0,
+  "knownRuntimeWarningMatches": 0,
+  "runtimeLogs": [
+    {
+      "path": "terminal-final/baseline-malformed-paper.runtime.log",
+      "sha256": "ceac47b46a829a6f72614beacae68f874bc71b987e3c0dbbfee02cfd13136e7d",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/baseline-malformed-white.runtime.log",
+      "sha256": "b15235a8bdf9e4f204cd0e09bf8d99068ae51265d124a04a26444008396e5331",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/baseline-partial-paper.runtime.log",
+      "sha256": "00f1e60028b1a859943f9a2804341ca2309fe2423579dba366d4ba08f0f8a84a",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/baseline-partial-white.runtime.log",
+      "sha256": "6c66418bc8ebe150fc87dc1af4c667eae23fcef88bad6016eda7fa118fd16877",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/head-malformed-paper.runtime.log",
+      "sha256": "cc1afe916a25ed4fa21dbbe532cd72587c4e0b2a1ef51578d4a7eaae866ffa72",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/head-malformed-white.runtime.log",
+      "sha256": "3b04302bdaf69cf240ee2005e03baf85514a7b19626215fd876cb6c84cdf04a9",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/head-partial-paper.runtime.log",
+      "sha256": "9dd9de46a1eb00de06457c0dfe51be348942f85d3d983c22a216acbba763bc4f",
+      "knownRuntimeWarningMatches": []
+    },
+    {
+      "path": "terminal-final/head-partial-white.runtime.log",
+      "sha256": "edce4dc62e704ad6d9b01c9c25c3698ecd42a2a4891642bd0ff4901ad6ece71d",
+      "knownRuntimeWarningMatches": []
+    }
+  ],
+  "ownedCleanup": {
+    "remainingSessions": [],
+    "remainingProfiles": [],
+    "temporaryEntryFilesRemoved": true
+  },
+  "sourceBlobs": [
+    {
+      "side": "before",
+      "path": "src/plugins/builtin/alerts/pane.tsx",
+      "ref": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "blob": "50dd1d68d5d0b88f7dfa481a61b9a686485003f9"
+    },
+    {
+      "side": "before",
+      "path": "src/plugins/builtin/alerts/alert-engine.ts",
+      "ref": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "blob": "d9caed90f3cf329d5fada10632c7dbbcaab0cb82"
+    },
+    {
+      "side": "before",
+      "path": "src/plugins/builtin/alerts/index.tsx",
+      "ref": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "blob": "88a1d74be3159d0cf9fe527982514657a8bb007f"
+    },
+    {
+      "side": "before",
+      "path": "src/plugins/builtin/themes/pane.tsx",
+      "ref": "0568f95db049dccad254c672c2c8d284bbe6a586",
+      "blob": "b28a29eb9dfbd936b366d0fddc0e4885c1b889ec"
+    },
+    {
+      "side": "after",
+      "path": "src/plugins/builtin/alerts/pane.tsx",
+      "ref": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "30f1b2124d7a199836199421801da82fff62d466"
+    },
+    {
+      "side": "after",
+      "path": "src/plugins/builtin/alerts/alert-engine.ts",
+      "ref": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "3e31a3554d4d606a3373140929fe0908499ef337"
+    },
+    {
+      "side": "after",
+      "path": "src/plugins/builtin/alerts/index.tsx",
+      "ref": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "01738669f31c7e5905636d59f6e3f788d50fe57f"
+    },
+    {
+      "side": "after",
+      "path": "src/plugins/builtin/themes/pane.tsx",
+      "ref": "0ad0e8587da2eee20f8c0810df8a6add62b9ba46",
+      "blob": "b28a29eb9dfbd936b366d0fddc0e4885c1b889ec"
+    }
+  ],
+  "records": [
+    {
+      "scenario": "malformed",
+      "theme": "white",
+      "state": "form",
+      "before": "terminal-final/baseline-malformed-white.png",
+      "after": "terminal-final/head-malformed-white.png",
+      "beforeSha256": "30efa7678cf608f6b2eb99b3e20908eaefa5e98029d4790faeffd560c7094733",
+      "afterSha256": "3e05e95dd206058819033f9ccfc2f02254847014520471ee0bf4ca6cf5aefeab",
+      "changedPixels": 208151,
+      "neighborRightHalfChangedPixels": 93858,
+      "unobstructedNeighborContentChangedPixels": 43710,
+      "unobstructedNeighborContentRegion": null,
+      "neighborFooterObscuredByBaselineSuccessToast": false,
+      "sheet": "screenshots/terminal/malformed-form-white.png",
+      "sheetSha256": "411c3121edb63f26c4ea0f6915ad881b036b41b5c5d45c9c05d0ae0ef3c3a8ed"
+    },
+    {
+      "scenario": "malformed",
+      "theme": "white",
+      "state": "pane",
+      "before": "terminal-final/baseline-malformed-white-pane.png",
+      "after": "terminal-final/head-malformed-white-pane.png",
+      "beforeSha256": "30efa7678cf608f6b2eb99b3e20908eaefa5e98029d4790faeffd560c7094733",
+      "afterSha256": "201e5d83e773353169519e1180d32f2eed051279db1c0b8acd6e86d51c6f203d",
+      "changedPixels": 111498,
+      "neighborRightHalfChangedPixels": 50112,
+      "unobstructedNeighborContentChangedPixels": 0,
+      "unobstructedNeighborContentRegion": {
+        "x": 720,
+        "y": 0,
+        "width": 720,
+        "height": 720
+      },
+      "neighborFooterObscuredByBaselineSuccessToast": true,
+      "sheet": "screenshots/terminal/malformed-pane-white.png",
+      "sheetSha256": "d7b59195699004f532d823ca95e59a271b69f618bfd86413b72bcee229cd4545"
+    },
+    {
+      "scenario": "malformed",
+      "theme": "paper",
+      "state": "form",
+      "before": "terminal-final/baseline-malformed-paper.png",
+      "after": "terminal-final/head-malformed-paper.png",
+      "beforeSha256": "cad41249ba1b7dba6af41bcc15998da2ea2da1eae17729f61b218e51f4b0f7c1",
+      "afterSha256": "d54725009ca98785f77a66db4af10e0d83354afefea75ebb81f59b36e67c84db",
+      "changedPixels": 599901,
+      "neighborRightHalfChangedPixels": 400619,
+      "unobstructedNeighborContentChangedPixels": 331499,
+      "unobstructedNeighborContentRegion": null,
+      "neighborFooterObscuredByBaselineSuccessToast": false,
+      "sheet": "screenshots/terminal/malformed-form-paper.png",
+      "sheetSha256": "750901c85a11c095820f031019544373b277d201370f6e3b0703f59111ae0aab"
+    },
+    {
+      "scenario": "malformed",
+      "theme": "paper",
+      "state": "pane",
+      "before": "terminal-final/baseline-malformed-paper-pane.png",
+      "after": "terminal-final/head-malformed-paper-pane.png",
+      "beforeSha256": "cad41249ba1b7dba6af41bcc15998da2ea2da1eae17729f61b218e51f4b0f7c1",
+      "afterSha256": "7dd1f0a031511064885c6aea0bef0af353c71a50ccbd2bad52c95fbacfa319ee",
+      "changedPixels": 111498,
+      "neighborRightHalfChangedPixels": 50112,
+      "unobstructedNeighborContentChangedPixels": 0,
+      "unobstructedNeighborContentRegion": {
+        "x": 720,
+        "y": 0,
+        "width": 720,
+        "height": 720
+      },
+      "neighborFooterObscuredByBaselineSuccessToast": true,
+      "sheet": "screenshots/terminal/malformed-pane-paper.png",
+      "sheetSha256": "7502dbabf3a89305a648b09dbbff2f04f5381975a7b233b40e0ed5ba992385ef"
+    },
+    {
+      "scenario": "partial",
+      "theme": "white",
+      "state": "form",
+      "before": "terminal-final/baseline-partial-white.png",
+      "after": "terminal-final/head-partial-white.png",
+      "beforeSha256": "73deaaf3e8035c91ae8e10c526c7c76700b3ccca3d9b8c72b9728bc04d025e1a",
+      "afterSha256": "271a8dbd7d4ae6eb4c74238bf36bacffc570d6eaa148dcf4eb8de3862f1fa24c",
+      "changedPixels": 207074,
+      "neighborRightHalfChangedPixels": 94420,
+      "unobstructedNeighborContentChangedPixels": 44272,
+      "unobstructedNeighborContentRegion": null,
+      "neighborFooterObscuredByBaselineSuccessToast": false,
+      "sheet": "screenshots/terminal/partial-form-white.png",
+      "sheetSha256": "4d72b2b71d9c944f8d14725d0717c6dc8555018a361a330ddd880ed2bad316fb"
+    },
+    {
+      "scenario": "partial",
+      "theme": "white",
+      "state": "pane",
+      "before": "terminal-final/baseline-partial-white-pane.png",
+      "after": "terminal-final/head-partial-white-pane.png",
+      "beforeSha256": "73deaaf3e8035c91ae8e10c526c7c76700b3ccca3d9b8c72b9728bc04d025e1a",
+      "afterSha256": "465ae697bb9fce94c2a248592f440e74bca867daeed09f2103133ce1fca0618f",
+      "changedPixels": 60715,
+      "neighborRightHalfChangedPixels": 50112,
+      "unobstructedNeighborContentChangedPixels": 0,
+      "unobstructedNeighborContentRegion": {
+        "x": 720,
+        "y": 0,
+        "width": 720,
+        "height": 720
+      },
+      "neighborFooterObscuredByBaselineSuccessToast": true,
+      "sheet": "screenshots/terminal/partial-pane-white.png",
+      "sheetSha256": "446eaa2e391efb703baeda2b7d31574f9a81b06d9724fd532ed73c2622d0870d"
+    },
+    {
+      "scenario": "partial",
+      "theme": "paper",
+      "state": "form",
+      "before": "terminal-final/baseline-partial-paper.png",
+      "after": "terminal-final/head-partial-paper.png",
+      "beforeSha256": "6a00ef3134147b4dc9fd9bd3cb022ab8173d42d1b3704bc754b3660b2183165b",
+      "afterSha256": "7195eadb6c81f77a686b3da8014faf21531a7e633975f89dce0102c778a5499b",
+      "changedPixels": 598824,
+      "neighborRightHalfChangedPixels": 401181,
+      "unobstructedNeighborContentChangedPixels": 332061,
+      "unobstructedNeighborContentRegion": null,
+      "neighborFooterObscuredByBaselineSuccessToast": false,
+      "sheet": "screenshots/terminal/partial-form-paper.png",
+      "sheetSha256": "70d9bc35d3add2de0f1579827ed64c6886971865182cc23f89c7fc21e1b6a1b1"
+    },
+    {
+      "scenario": "partial",
+      "theme": "paper",
+      "state": "pane",
+      "before": "terminal-final/baseline-partial-paper-pane.png",
+      "after": "terminal-final/head-partial-paper-pane.png",
+      "beforeSha256": "6a00ef3134147b4dc9fd9bd3cb022ab8173d42d1b3704bc754b3660b2183165b",
+      "afterSha256": "28b35f2c3f2fdaf0ae05a46127d84c81fba97ee117f2ae1dee31ad42c5f6b6f5",
+      "changedPixels": 60715,
+      "neighborRightHalfChangedPixels": 50112,
+      "unobstructedNeighborContentChangedPixels": 0,
+      "unobstructedNeighborContentRegion": {
+        "x": 720,
+        "y": 0,
+        "width": 720,
+        "height": 720
+      },
+      "neighborFooterObscuredByBaselineSuccessToast": true,
+      "sheet": "screenshots/terminal/partial-pane-paper.png",
+      "sheetSha256": "32dde1eb1dabf9cb321c77d54734c71d9288dbd3e1a2a4bebae04a009180da99"
+    }
+  ],
+  "limitation": "Registered renderer-component fixtures; no full native desktop shell or native RPC transport exercised. Form overlays obscure the neighbor, and baseline pane-state success toasts cover its footer. Only the independently measured neighbor content region above y=720 is invariant."
+}
