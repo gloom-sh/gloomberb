@@ -33,13 +33,19 @@ export async function checkGlobalShare(root: string): Promise<void> {
     const shot = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
     await Bun.write(join(shots, `${name}.png`), Buffer.from(shot.data, "base64"));
   };
-  // Each Share makes one link, copies it and says so, with no dialog on the way.
+  // Each Share makes one link, copies it and says so in the chart's own footer (never a toast: GLO-1144),
+  // with no dialog on the way. The footer may still say it for the share before, so the link decides.
   const copied = async (count: number, what: string) => {
-    if (!await waitFor(cdp, `window.__linkCopiedToasts >= ${count}`, 15_000)) throw new Error(`${what}: no "Link copied" toast`);
+    const until = Date.now() + 15_000;
+    while (api.shares.length < count && Date.now() < until) await sleep(100);
     if (api.shares.length !== count) throw new Error(`${what}: ${api.shares.length} links for ${count} shares`);
-    const link = await evaluate<string>(cdp, "navigator.clipboard.readText()");
-    const id = count.toString(16).padStart(32, "a");
-    if (link !== `https://term.gloom.sh/api/shares/${id}/open`) throw new Error(`${what}: wrong clipboard link ${link}`);
+    const expected = `https://term.gloom.sh/api/shares/${count.toString(16).padStart(32, "a")}/open`;
+    let link = "";
+    while (Date.now() < until && (link = await evaluate<string>(cdp, "navigator.clipboard.readText()")) !== expected) await sleep(100);
+    if (link !== expected) throw new Error(`${what}: wrong clipboard link ${link}`);
+    const footer = `(document.querySelector('[data-gloom-pane-id="chart:share"] [data-gloom-role="pane-footer"]')?.textContent ?? '').includes('Link copied')`;
+    if (!await waitFor(cdp, footer, 5_000)) throw new Error(`${what}: no "Link copied" in the chart's footer`);
+    if (await evaluate<number>(cdp, "window.__linkCopiedToasts") !== 0) throw new Error(`${what}: "Link copied" was a toast, not the pane's`);
     if (await evaluate<number>(cdp, "window.__shareDialogCount") !== 0) throw new Error(`${what}: Share opened a dialog`);
   };
   const lastSettings = () => (api.shares.at(-1) as {
