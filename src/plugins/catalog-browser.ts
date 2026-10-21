@@ -16,6 +16,7 @@ import { treasuryDailyModule } from "./builtin/treasury-daily";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
 import { cryptoBoardModule } from "./builtin/crypto-board";
+import { cryptoEtfFlowsModule } from "./builtin/crypto-etf-flows";
 import { shortInterestModule } from "./builtin/short-interest";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { socialMentionsModule } from "./builtin/social-mentions";
@@ -216,7 +217,7 @@ const browserFuturesCommoditiesPlugin = composeBuiltinPlugin({
 
 const browserCryptoPlugin = composeBuiltinPlugin({
   ...cryptoPluginMeta,
-  modules: [cryptoBoardModule, perpsModule],
+  modules: [cryptoBoardModule, cryptoEtfFlowsModule, perpsModule],
 });
 
 const browserAltDataPlugin = composeBuiltinPlugin({

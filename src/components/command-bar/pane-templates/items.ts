@@ -95,6 +95,22 @@ export function getAvailablePaneTemplatesForState(options: {
     });
 }
 
+/**
+ * "ETF flows" spells out ETFF (Crypto ETF Flows), not ETF for a ticker called
+ * FLOWS: a query that is word for word a keyword of a template whose own code
+ * extends the typed one is no ticker argument, and is left to the search,
+ * which ranks that template first. "JOBS DAY" stays Jobs for Dayforce, since
+ * the template that lists "jobs day" (MDAY) does not extend JOBS.
+ */
+function spellsOutLongerCode(query: string, code: string, templates: readonly PaneTemplateDef[]): boolean {
+  const phrase = query.toLowerCase().replace(/\s+/g, " ");
+  return templates.some((template) => {
+    const longer = template.shortcut?.prefix?.trim().toUpperCase() ?? "";
+    return longer.length > code.length && longer.startsWith(code)
+      && !!template.keywords?.some((keyword) => keyword.toLowerCase() === phrase);
+  });
+}
+
 export function getAvailablePaneShortcutTemplatesForQuery(options: {
   pluginRegistry: PluginRegistry;
   disabledPlugins: readonly string[];
@@ -105,9 +121,11 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
   const trimmed = options.query.trim();
   const upper = trimmed.toUpperCase();
   const disabledPluginIds = new Set(options.disabledPlugins);
-  return [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
+  const enabled = [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
     const pluginId = options.pluginRegistry.getPaneTemplatePluginId(template.id);
-    if (pluginId && disabledPluginIds.has(pluginId)) return false;
+    return !pluginId || !disabledPluginIds.has(pluginId);
+  });
+  return enabled.filter((template) => {
     const argKind = getPaneTemplateArgKind(template);
     // The longest matching mnemonic wins, so an alias sharing a stem cannot shadow the typed one.
     const prefix = paneTemplateShortcutPrefixes(template).map((value) => value.toUpperCase())
@@ -115,6 +133,7 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
       .sort((a, b) => b.length - a.length)[0];
     if (!prefix) return false;
     const arg = trimmed.slice(prefix.length).trim();
+    if (argKind === "ticker" && arg && spellsOutLongerCode(trimmed, prefix, enabled)) return false;
     if (!template.canCreate) return true;
     try {
       const canCreate = template.canCreate(options.context, arg ? { arg } : undefined);

@@ -603,36 +603,52 @@ async function searchProviderResults(
 ): Promise<ProviderSearch> {
   const assetClass = parseAssetClassQuery(rawQuery);
   const query = assetClass?.symbolQuery ?? rawQuery;
-  // A Map rather than a list plus a seen set, because a later source can send
-  // back a richer version of a symbol already recorded. Overwriting a key keeps
-  // its original position, so an upgrade does not reorder the list.
-  const byKey = new Map<string, InstrumentSearchResult>();
-  const add = (results: InstrumentSearchResult[], upgrade = false) => {
-    for (const result of results) {
-      const key = buildProviderSearchResultKey(result);
-      if (!upgrade && byKey.has(key)) continue;
-      byKey.set(key, result);
-    }
-  };
-
   // The variants are independent lookups of the same words, so they run
   // together. Awaited in turn they multiplied every per-source timeout by the
-  // number of spellings tried.
+  // number of spellings tried. Their rows list in the order the spellings
+  // are, not as they arrive: "bitcoin ETF" asked whole lists the spot funds
+  // the server leads with ahead of the rows for "bitcoin".
+  const searchQueries = providerSearchQueries(rawQuery);
+  const answers: InstrumentSearchResult[][] = searchQueries.map(() => []);
+  // A later source can send back a richer version of a row already recorded;
+  // it replaces the row in its place, so an upgrade does not reorder the list.
+  const upgrades = new Map<string, InstrumentSearchResult>();
+  // A sector word's funds, which lead, and a market symbol verified by its quote, which follows (both below).
+  let leading: InstrumentSearchResult[] = [];
+  let verified: InstrumentSearchResult[] = [];
+  const byKey = new Map<string, InstrumentSearchResult>();
+  const merge = () => {
+    const named = new Map<string, InstrumentSearchResult>();
+    for (const result of [...answers.flat(), ...verified]) {
+      const key = buildProviderSearchResultKey(result);
+      if (!named.has(key)) named.set(key, upgrades.get(key) ?? result);
+    }
+    byKey.clear();
+    for (const result of leading) {
+      const key = buildProviderSearchResultKey(result);
+      if (!byKey.has(key)) byKey.set(key, result);
+    }
+    // A row both found keeps the funds' place and the name search's richer version of it (its theme).
+    for (const [key, result] of named) byKey.set(key, result);
+  };
   let busy = false;
-  await Promise.all(providerSearchQueries(rawQuery).map(async (searchQuery) => {
+  await Promise.all(searchQueries.map(async (searchQuery, index) => {
     try {
       const results = await dataProvider.search(searchQuery, {
         ...searchContext,
         ...(onPartial
           ? {
             onPartial: (upgraded: InstrumentSearchResult[]) => {
-              add(upgraded, true);
+              answers[index] = upgraded;
+              for (const result of upgraded) upgrades.set(buildProviderSearchResultKey(result), result);
+              merge();
               onPartial([...byKey.values()]);
             },
           }
           : {}),
       });
-      add(results);
+      answers[index] = results;
+      merge();
     } catch (error) {
       if (isProviderBusy(error)) busy = true;
       else logFailure("tickers-search", "Could not search ticker spelling")(error);
@@ -663,14 +679,15 @@ async function searchProviderResults(
           && (!exchange || canonicalExchange(quote.listingExchangeName || quote.exchangeName) === exchange)
           && (possibleCryptoPair ? normalizeTickerSymbol(quote.symbol) === symbol
             : findExactTickerSearchMatch([{ label: quote.symbol }], symbol))) {
-          add([{
+          verified = [{
             providerId: quote.providerId || dataProvider.id,
             symbol,
             name: quote.name || symbol,
             exchange: exchange || quote.listingExchangeName || quote.exchangeName || "",
             currency: quote.currency,
             type,
-          }]);
+          }];
+          merge();
         }
       } catch (error) {
         logFailure("tickers-search", "Could not verify market symbol")(error);
@@ -688,12 +705,8 @@ async function searchProviderResults(
   if (theme) {
     try {
       const { onPartial: _ignored, ...context } = searchContext ?? {};
-      const funds = await dataProvider.search(`${query.trim()} ETF`, context);
-      const named = [...byKey];
-      byKey.clear();
-      add(funds);
-      // A row both found keeps the funds' place and the name search's richer version of it (its theme).
-      for (const [key, result] of named) byKey.set(key, result);
+      leading = await dataProvider.search(`${query.trim()} ETF`, context);
+      merge();
     } catch (error) {
       logFailure("tickers-search", "Could not search theme funds")(error);
     }
@@ -715,6 +728,12 @@ export function providerSearchQueries(rawQuery: string): string[] {
   const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
   const searchQueries = buildProviderSearchQueries(query);
   if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
+  // Words before ETF or FUND name a kind of fund as well as a name ("bitcoin ETF", "spot ether ETF"), which
+  // the server answers whole with the funds of that kind. Asked first, so those rows lead.
+  if (assetClass && (assetClass.code === "ETF" || assetClass.code === "FUND") && /\p{L}{2}/u.test(query)) {
+    const whole = rawQuery.trim().replace(/\s+/g, " ");
+    if (!searchQueries.includes(whole)) searchQueries.unshift(whole);
+  }
   // A futures board code also finds its future, which the catalogue files under
   // the continuous symbol only: NG finds NovaGold and NG=F.
   const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;

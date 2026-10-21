@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
-import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
+import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -18,7 +18,8 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
-import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
+import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { fundAbroadProfile, venueAbroad } from "./fund-abroad";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -272,6 +273,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useSecFilingFocusRequest(forms ? null : ticker?.metadata.ticker, setOpenItemId);
   // A form list is the fund filings view (ETF), which US-listed funds open too.
   const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeUsEquityTicker(ticker);
+  // A fund listed abroad (3042.HK) gets what `ticker` says of it and its issuer's page, as `fn ETF` does.
+  const abroadVenue = forms && !eligibleTicker && ticker ? venueAbroad(ticker.metadata.ticker) : null;
+  const abroadFinancials = useTickerFinancials(abroadVenue ? ticker?.metadata.ticker : null, abroadVenue ? ticker : null);
+  const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
+  const abroadPage = abroad?.page ?? null;
+  const abroadName = abroad?.name;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
   const fundFacts = useFundFacts(forms && eligibleTicker ? ticker?.metadata.ticker : null);
   const facts = fundFacts.data?.payload ?? null;
@@ -444,14 +451,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   usePaneStatusLinkFooter({
     registrationId: "sec",
     focused,
-    url: openFiling ? openFiling.filingUrl : factsUrl,
+    url: openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage,
     source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : null,
-    label: openFiling || !factsUrl ? "filing" : "source",
+    label: openFiling ? "filing" : factsUrl ? "source" : abroadPage ? "issuer page" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
     loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError,
     hints,
-    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl),
+    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage),
   });
 
   usePaneNoticeFooter({
@@ -506,6 +513,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
+  }
+  if (abroadVenue) {
+    // The issuer's page is the footer's link, which `o` opens.
+    return <EmptyState title={US_FUND_FACTS_ONLY} message={abroadName} />;
   }
   if (!eligibleTicker) {
     return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");

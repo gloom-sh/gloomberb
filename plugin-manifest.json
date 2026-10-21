@@ -395,7 +395,7 @@
     {
       "id": "crypto",
       "name": "Crypto & Perps",
-      "description": "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+      "description": "Top crypto assets by market cap, daily spot bitcoin and ether ETF flows, and perpetual funding, open interest and premiums.",
       "tagline": "Crypto prices, funding and open interest.",
       "categories": [
         "markets",
@@ -411,6 +411,7 @@
       "contributes": {
         "panes": [
           "crypto-board",
+          "crypto-etf-flows",
           "perps"
         ],
         "capabilities": [],
@@ -422,6 +423,11 @@
             "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, and stablecoin supply."
           },
           {
+            "code": "ETFF",
+            "name": "Crypto ETF Flows",
+            "description": "Daily net flows of the US spot bitcoin and ether ETFs, per fund in US$ millions, with the running total since launch, as Farside Investors publishes them."
+          },
+          {
             "code": "PERP",
             "name": "Perpetuals",
             "description": "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison and Pro history.",
@@ -431,6 +437,7 @@
       },
       "highlights": [
         "CRYP",
+        "ETFF",
         "PERP"
       ],
       "screenshots": [

@@ -523,6 +523,40 @@ describe("ticker-search utilities", () => {
     expect(symbols("Fund ETF")).toEqual(["XLK"]);
   });
 
+  test("words before ETF also ask the whole query, whose funds of that kind lead in the server's order", async () => {
+    const asked: string[] = [];
+    const fund = (symbol: string, name: string, exchange: string, keyword?: string) => makeSearchResult(symbol, name, {
+      exchange, type: "ETF", ...(keyword ? { searchKeywords: [keyword] } : {}),
+    });
+    // The whole query answers slower than the name: its rows still lead.
+    const dataProvider = createTestDataProvider({
+      search: async (query) => {
+        asked.push(query);
+        if (query === "spot bitcoin ETF") {
+          await Bun.sleep(5);
+          return [
+            fund("IBIT", "iShares Bitcoin Trust ETF", "NASDAQ", "spot bitcoin etf"),
+            fund("FBTC", "Fidelity Wise Origin Bitcoin Fund", "BATS", "spot bitcoin etf"),
+            fund("3042", "ChinaAMC Bitcoin ETF (HKD counter)", "HKEX", "spot bitcoin etf"),
+            fund("BTCK", "Spot Bitcoin", "ARCA"),
+          ];
+        }
+        return [fund("BTCK", "Spot Bitcoin", "ARCA"), makeSearchResult("SPOT", "Spotify Technology", { exchange: "NYSE" })];
+      },
+    });
+    const candidates = await searchTickerCandidates({
+      query: "spot bitcoin ETF", tickers: new Map(), dataProvider, includeOptionContracts: false, totalLimit: 10,
+    });
+    expect(asked[0]).toBe("spot bitcoin ETF");
+    expect(asked).toContain("spot bitcoin");
+    expect(candidates.map((item) => item.symbol)).toEqual(["IBIT", "FBTC", "3042", "BTCK"]);
+
+    // A symbol before ETF still finds itself first; a code with no words before it asks nothing whole.
+    asked.length = 0;
+    await searchTickerCandidates({ query: "ES FUT", tickers: new Map(), dataProvider, includeOptionContracts: false });
+    expect(asked).not.toContain("ES FUT");
+  });
+
   test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {
     const lookalike = makeSearchResult("ESF", "Eurotech", { exchange: "MTA" });
     const quoteCalls: string[] = [];

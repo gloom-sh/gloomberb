@@ -36,7 +36,7 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
 import { currencyCodeLabel } from "../../utils/currency-units";
 import type { AppConfig } from "../../types/config";
-import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { CompanyProfile, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
@@ -62,7 +62,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
-import { isKnownNonUsListing, secFilingItemCodes } from "../../utils/sec";
+import { isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
@@ -206,6 +206,19 @@ function appendTextSection(lines: string[], title: string, content: string | und
   lines.push("");
   lines.push(renderSection(title));
   lines.push(verbatim ? text : wrapProse(text));
+}
+
+/** "Description from ChinaAMC (Hong Kong), Product Key Facts on HKEXnews: https://...": where a quoted description is from. */
+function descriptionSourceLine(profile: CompanyProfile | undefined): string | null {
+  const source = profile?.description?.trim() ? profile.descriptionSource : undefined;
+  return source?.publisher && source.url ? `Description from ${source.publisher}: ${source.url}` : null;
+}
+
+/** The description with where it is from under it, when it is quoted. */
+function appendDescription(lines: string[], profile: CompanyProfile | undefined) {
+  appendTextSection(lines, "Description", profile?.description);
+  const source = descriptionSourceLine(profile);
+  if (source) lines.push(cliStyles.muted(source));
 }
 
 function appendFeedSection(
@@ -705,7 +718,7 @@ function fundFactsNote(
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund") return null;
   return !exchange || isUsListingExchange(exchange)
     ? `Fund facts (fee, NAV, premium, net assets): fn ETF ${symbol}.`
-    : "Fund facts (fee, NAV, premium) cover US-listed funds only.";
+    : US_FUND_FACTS_ONLY;
 }
 
 /**
@@ -811,7 +824,7 @@ export function renderFundamentalsReport(
     } else if (financials.bankNote) {
       lines.push("", renderSection("Bank"), cliStyles.muted(financials.bankNote));
     }
-    appendTextSection(lines, "Description", profile?.description);
+    appendDescription(lines, profile);
   }
   return lines.join("\n");
 }
@@ -858,6 +871,10 @@ export function fundamentalsReportTables(
       { label: "Sector", value: profile?.sector },
       { label: "Industry", value: profile?.industry },
       { label: "Description", value: profile?.description?.trim() },
+      ...profile?.description?.trim() && profile.descriptionSource ? [
+        { label: "Description Source", value: profile.descriptionSource.publisher },
+        { label: "Description URL", value: profile.descriptionSource.url },
+      ] : [],
     ].filter((entry) => typeof entry.value === "string" && entry.value.trim().length > 0)));
   }
   return {
@@ -1081,7 +1098,7 @@ export async function buildTickerReport({
   // The statements stop a quarter short of the results the company has released.
   if (statementFilings?.resultsRelease && (latestAnnual || latestQuarter)) lines.push(cliStyles.muted(resultsReleaseText(statementFilings.resultsRelease)));
 
-  appendTextSection(lines, "Description", profile?.description);
+  appendDescription(lines, profile);
 
   appendTextSection(lines, "Notes", notes, true);
 

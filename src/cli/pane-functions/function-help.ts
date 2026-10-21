@@ -751,6 +751,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: same("Real-time where it streams, others every 15 seconds"),
     bloomberg: [],
   },
+  ETFF: {
+    summary: "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
+    usage: ["ETFF", "gloomberb fn ETFF --asset eth"],
+    keys: [key("1-4", " range"), OPEN_SOURCE],
+    data: same("Daily, as each fund reports after the US close"),
+    bloomberg: [],
+  },
   FUT: {
     summary: "Each root's front futures contract (until its stated roll date) and the day's most active month across equity index, equity sectors, rates, energy, metals, agriculture, livestock and FX with last price, unit and session change, grouped by sector.",
     usage: ["FUT"],

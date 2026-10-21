@@ -480,7 +480,7 @@
    "code": "EXEC",
    "name": "Executives",
    "description": "Officers and pay from the proxy",
-   "detail": "Named executive officers and their compensation, read from the proxy statement and checked against the filing.",
+   "detail": "Named executive officers and their compensation, read from the proxy statement and checked against the filing. Free shows each executive's total pay; Pro adds the breakdown and earlier years.",
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
@@ -695,7 +695,7 @@
    "code": "MOST",
    "name": "Market movers",
    "description": "Gainers, losers, pre-market, gaps",
-   "detail": "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap. Pro adds pre-market and after-hours movers and the gaps at the open.",
+   "detail": "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap, and the pre-market and after-hours movers. Pro adds the gaps at the open.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/MOST.png",
    "lesson": "/academy/macro-markets-and-news/markets/movers-highs-halts"
@@ -763,6 +763,13 @@
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/CRYP.png",
    "lesson": "/academy/crypto-and-prediction-markets/crypto-from-zero"
+  },
+  {
+   "code": "ETFF",
+   "name": "Crypto ETF flows",
+   "description": "Daily spot bitcoin and ether ETF flows",
+   "detail": "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, as Farside Investors publishes them: the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
+   "category": "markets"
   },
   {
    "code": "PERP",
