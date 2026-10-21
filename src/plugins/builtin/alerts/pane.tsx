@@ -364,11 +364,10 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       }}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyStateTitle="Saved alerts could not be read."
-      emptyStateHint={storeError ?? undefined}
-      emptyContent={storeError ? undefined : (
+      status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}
+      emptyContent={
         <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
-      )}
+      }
       showHorizontalScrollbar={showHorizontalScrollbar}
     />
   );
