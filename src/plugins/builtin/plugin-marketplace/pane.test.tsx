@@ -173,7 +173,7 @@ test("a research plugin switched by hand makes the set custom, and a pack from t
 
 const externalPlugin = (id: string): InstalledPlugin => ({
   id, name: `${id} plugin`, version: "1.0.0", enabled: true, toggleable: true,
-  source: "external", directory: id, commit: "1111111aaa", targets: ["tui"],
+  source: "external", directory: id, commit: "1111111aaa",
 });
 
 for (const failure of ["reject", "partial", "throw"] as const) {
