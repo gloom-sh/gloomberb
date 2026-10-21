@@ -134,7 +134,8 @@ async function focusPane(cdp: Cdp, paneId: string): Promise<void> {
   })()`) ?? fail(`${paneId} has no body to click`);
   await click(cdp, point);
   await mouse(cdp, "mouseMoved", 1, 899, false);
-  await frames(cdp, 3);
+  // Past the labels' colour transition.
+  await frames(cdp, 12);
 }
 
 export const titleTabSteps: TitleTabStep[] = [

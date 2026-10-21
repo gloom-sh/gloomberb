@@ -224,7 +224,10 @@ export function WebTabs({
           transform: `translateX(${dragTranslateX}px)${sourceDragging ? " scale(1.03)" : ""}`,
           zIndex: dragSourceValue === tab.value ? 2 : undefined,
           willChange: dragSourceValue ? "transform" : undefined,
-          transition: `color 110ms ease, background-color 110ms ease, border-color 110ms ease, transform ${dragSourceValue && dragSourceValue !== tab.value ? "var(--tab-reorder-duration, 160ms)" : "0ms"} cubic-bezier(0.77, 0, 0.175, 1)`,
+          // An inactive title-bar tab fades its hover fill in. The active one's
+          // box changes with the bar's rule and the body under it, which do not
+          // fade, so it does not either.
+          transition: `color 110ms ease${header && !active ? ", background-color 110ms ease" : ""}, transform ${dragSourceValue && dragSourceValue !== tab.value ? "var(--tab-reorder-duration, 160ms)" : "0ms"} cubic-bezier(0.77, 0, 0.175, 1)`,
           cursor: disabled ? "default" : dragSourceValue ? "grabbing" : reorderable ? "grab" : "pointer",
           ...(dragTarget ? { color: "var(--gloom-text)" } : {}),
         } satisfies CssVars;
