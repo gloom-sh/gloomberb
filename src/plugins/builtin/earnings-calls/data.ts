@@ -9,6 +9,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
 import { areDifferentCompanies } from "../../../sources/sec-registrant";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
+import { shortDate } from "../earnings/format";
 import { callCountdown, callDay, callTimeKnown, isUpcomingCall } from "./upcoming";
 
 type EarningsCallsApiClient = Pick<
@@ -89,6 +90,13 @@ export function calendarAway(call: CloudEarningsCallPayload, now: number): strin
   return started < STARTED_FOR_MS ? "started" : label;
 }
 
+/** What the pane's notice and `fn CALLS` say when the calendar may be cut. */
+export function upcomingCutNotice(calls: readonly CloudEarningsCallPayload[]): string {
+  // The server answers earliest first, so the cut is late on the last day it reached.
+  const last = calls.length > 0 ? callDay(calls[calls.length - 1]!) : null;
+  return `The calendar stops at ${UPCOMING_LIMIT.toLocaleString("en-US")} calls${last ? `: later calls from ${shortDate(last)} on may be missing` : ""}.`;
+}
+
 const UPCOMING_KIND = "upcoming";
 const UPCOMING_CACHE_SCHEMA_VERSION = 1;
 /** The calendar moves as calls are found ahead and transcribed after; a day-old one is no calendar. */
@@ -96,14 +104,20 @@ const UPCOMING_CACHE_POLICY = {
   staleMs: 5 * 60 * 1000,
   expireMs: 24 * 60 * 60 * 1000,
 } as const;
-/** More calls than the busiest week's (about 600 in the seasons' peak) is no calendar anyone reads. */
-const UPCOMING_LIMIT = 500;
+/**
+ * The most calls one calendar asks for, the server's own cap. A peak week of
+ * the reporting season holds about 600, so a week is never cut; a calendar
+ * that gets this many says it may be (`truncated`).
+ */
+export const UPCOMING_LIMIT = 1500;
 
 /** Every company's calls on New York days `from` to `to`, earliest first. */
 export interface UpcomingCallsResult {
   calls: CloudEarningsCallPayload[];
   fetchedAt: number;
   stale: boolean;
+  /** The server answered its limit's worth: calls later on these days may be missing. */
+  truncated?: boolean;
   refreshError?: string;
   errorStatus?: number;
 }
@@ -296,6 +310,11 @@ function onDays(calls: CloudEarningsCallPayload[], days: UpcomingDays): CloudEar
 }
 
 type UpcomingCallsClient = Pick<HeadlessPaneApiClient, "getCloudEarningsCalls">;
+type UpcomingCacheValue = { calls: CloudEarningsCallPayload[]; truncated?: boolean };
+
+function upcomingFromCache(value: UpcomingCacheValue, fetchedAt: number, stale: boolean): UpcomingCallsResult {
+  return { calls: value.calls, fetchedAt, stale, ...(value.truncated ? { truncated: true } : {}) };
+}
 
 export async function loadUpcomingCallsWithClient(
   client: UpcomingCallsClient,
@@ -304,28 +323,33 @@ export async function loadUpcomingCallsWithClient(
 ): Promise<UpcomingCallsResult> {
   const key = JSON.stringify([days.from, days.to]);
   const store = persistence;
-  const read = (allowExpired: boolean) => store?.getResource<{ calls: CloudEarningsCallPayload[] }>(UPCOMING_KIND, key, {
+  const read = (allowExpired: boolean) => store?.getResource<UpcomingCacheValue>(UPCOMING_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
     ...(allowExpired ? { allowExpired: true } : {}),
   });
   const cached = read(false);
-  if (!options.force && cached && !cached.stale) return { calls: cached.value.calls, fetchedAt: cached.fetchedAt, stale: false };
+  if (!options.force && cached && !cached.stale) return upcomingFromCache(cached.value, cached.fetchedAt, false);
   const active = activeUpcomingFetches.get(key);
   if (active && !options.force) return active;
 
   const request = client
     .getCloudEarningsCalls({ upcoming: days, limit: UPCOMING_LIMIT })
     .then((payload) => {
-      const calls = onDays(payload.calls ?? [], days);
+      const answered = payload.calls ?? [];
+      const value: UpcomingCacheValue = {
+        calls: onDays(answered, days),
+        // A full answer may stop partway through the last day it reaches.
+        ...(answered.length >= UPCOMING_LIMIT ? { truncated: true } : {}),
+      };
       if (activeUpcomingFetches.get(key) === request && persistence === store) {
-        store?.setResource(UPCOMING_KIND, key, { calls }, {
+        store?.setResource(UPCOMING_KIND, key, value, {
           sourceKey: CACHE_SOURCE,
           schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
           cachePolicy: UPCOMING_CACHE_POLICY,
         });
       }
-      return { calls, fetchedAt: Date.now(), stale: false };
+      return upcomingFromCache(value, Date.now(), false);
     })
     .catch((error: unknown) => {
       const errorStatus = statusOf(error);
@@ -333,9 +357,7 @@ export async function loadUpcomingCallsWithClient(
       const expired = read(true);
       if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
         return {
-          calls: expired.value.calls,
-          fetchedAt: expired.fetchedAt,
-          stale: true,
+          ...upcomingFromCache(expired.value, expired.fetchedAt, true),
           refreshError: error instanceof Error ? error.message : String(error),
           errorStatus,
         };
@@ -354,12 +376,12 @@ export function loadUpcomingCalls(days: UpcomingDays, options?: { force?: boolea
 }
 
 export function cachedUpcomingCalls(days: UpcomingDays): UpcomingCallsResult | null {
-  const cached = persistence?.getResource<{ calls: CloudEarningsCallPayload[] }>(UPCOMING_KIND, JSON.stringify([days.from, days.to]), {
+  const cached = persistence?.getResource<UpcomingCacheValue>(UPCOMING_KIND, JSON.stringify([days.from, days.to]), {
     sourceKey: CACHE_SOURCE,
     schemaVersion: UPCOMING_CACHE_SCHEMA_VERSION,
     allowExpired: true,
   });
-  return cached ? { calls: cached.value.calls, fetchedAt: cached.fetchedAt, stale: cached.stale === true } : null;
+  return cached ? upcomingFromCache(cached.value, cached.fetchedAt, cached.stale === true) : null;
 }
 
 /**

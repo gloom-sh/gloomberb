@@ -7,6 +7,7 @@ import {
   isSectionedItemRow,
   QueryBar,
   renderSectionedRowHeader,
+  usePaneNoticeFooter,
   usePaneStatusFooter,
   useQueryBarSearch,
   type DataTableCell,
@@ -27,7 +28,7 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
-import { cachedUpcomingCalls, calendarAway, loadUpcomingCalls, statusOf, type UpcomingCallsResult } from "./data";
+import { cachedUpcomingCalls, calendarAway, loadUpcomingCalls, statusOf, upcomingCutNotice, type UpcomingCallsResult } from "./data";
 import { formatPeriod } from "./format";
 import {
   calendarDays,
@@ -211,6 +212,13 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     stale: !!data && (data.stale || !!resource.error),
     hints,
   });
+  // A calendar cut at the server's limit says so, rather than end the week early.
+  usePaneNoticeFooter({
+    registrationId: "earnings-calls:calendar-notices",
+    focused,
+    enabled: !detailOpen && entitled,
+    notices: data?.truncated ? [upcomingCutNotice(data.calls)] : [],
+  });
 
   const handleRootKey = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
     if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
@@ -234,7 +242,7 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
       <ProWall
         placement="calls-wall" width={width} height={height} symbol={null}
         title="Earnings call transcripts are part of Gloom Cloud Pro."
-        message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
+        message="Every company's earnings calls this week with their start times, then each call's full transcript with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
       />
     );
   }

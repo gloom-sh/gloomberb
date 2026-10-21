@@ -17,6 +17,8 @@ import {
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
   loadUpcomingCallsWithClient,
+  UPCOMING_LIMIT,
+  upcomingCutNotice,
   type EarningsCallsResult,
   type UpcomingCallsResult,
   type UpcomingDays,
@@ -244,7 +246,8 @@ function projectCalendar(
   now: number,
 ): HeadlessRowsResult {
   const availability = String(args.options.availability ?? "all");
-  const limit = Number(args.options.limit ?? 200);
+  // The calendar lists every call of its days unless --limit says fewer.
+  const limit = args.options.limit == null ? Number.POSITIVE_INFINITY : Number(args.options.limit);
   const sections = calendarSections(result.calls.filter((call) => availabilityMatches(call, availability)), days);
   const all = sections.flatMap((section) => section.items.map((call) => ({ day: section.label, call })));
   const rows = all.slice(0, limit).map(({ day, call }) => ({
@@ -266,12 +269,17 @@ function projectCalendar(
   }));
   // On New York's clock one time says both, as in the pane.
   const sameClock = clockIsNewYork(all.map(({ call }) => call), now);
+  // A cut list says so above the table: the server's limit, or the reader's own --limit.
+  const notices = [
+    ...(result.truncated ? [upcomingCutNotice(result.calls)] : []),
+    ...(rows.length < all.length ? [`Showing the first ${rows.length} of ${all.length} calls (--limit ${rows.length}).`] : []),
+  ];
   return {
     columns: CALENDAR_COLUMNS,
     textColumns: sameClock ? CALENDAR_TEXT_COLUMNS.filter((column) => column.key !== "local") : CALENDAR_TEXT_COLUMNS,
     rows,
     errors: result.refreshError ? [result.refreshError] : undefined,
-    ...(result.stale ? { complete: false } : {}),
+    ...(result.stale || result.truncated ? { complete: false } : {}),
     empty: "No calls on the calendar these days.",
     metadata: {
       view: "upcoming",
@@ -284,7 +292,10 @@ function projectCalendar(
       availability,
       total: all.length,
       returned: rows.length,
-      truncated: rows.length < all.length,
+      truncated: rows.length < all.length || !!result.truncated,
+      sourceLimit: UPCOMING_LIMIT,
+      sourceLimitReached: !!result.truncated,
+      ...(notices.length ? { notices } : {}),
     },
   };
 }
@@ -387,7 +398,7 @@ export function createEarningsCallsHeadless(
       {
         key: "limit",
         shot: REPORT_ROWS,
-        description: "Maximum calls, or transcript segments, to return (50 calls, 20 segments by default).",
+        description: "Maximum calls, or transcript segments, to return (every call on the calendar, 50 of a company's calls, 20 segments by default).",
         type: "integer",
         minimum: 1,
         maximum: 200,

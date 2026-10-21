@@ -339,5 +339,21 @@ describe("upcoming calls", () => {
     const shelf = await definition.load(callArgs({ view: "transcripts" }), context);
     expect(shelf.rows.map((row) => row.id)).toEqual(["amd-fq2-2026", "amd-fq1-2026"]);
     expect(asked).toHaveLength(1);
+    expect(result.complete).not.toBe(false);
+    expect(result.metadata?.notices).toBeUndefined();
+
+    // A cut list says so: the reader's own --limit, and the server's limit, which leaves the report incomplete.
+    const limited = await definition.load(callArgs({ limit: 2 }), context);
+    expect(limited.rows).toHaveLength(2);
+    expect(limited.complete).not.toBe(false);
+    expect(limited.metadata?.notices).toEqual(["Showing the first 2 of 5 calls (--limit 2)."]);
+    const served = deps.loadUpcoming;
+    deps.loadUpcoming = async (days, ctx) => ({ ...(await served(days, ctx)), truncated: true });
+    const cut = await createEarningsCallsHeadless(deps).load(callArgs({}), context);
+    expect(cut.complete).toBe(false);
+    expect(cut.metadata).toMatchObject({
+      sourceLimit: 1500, sourceLimitReached: true, truncated: true,
+      notices: ["The calendar stops at 1,500 calls: later calls from Oct 22 on may be missing."],
+    });
   });
 });

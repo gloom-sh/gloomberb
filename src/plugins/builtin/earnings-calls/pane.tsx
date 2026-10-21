@@ -947,7 +947,7 @@ function CallsListView({
         placement="calls-wall"
         width={width} height={height} symbol={symbol} exchange={exchange}
         title="Earnings call transcripts are part of Gloom Cloud Pro."
-        message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
+        message="Full transcripts of each earnings call with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
       />
     );
   }

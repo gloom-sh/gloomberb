@@ -7,7 +7,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
-import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from "./data";
+import { attachEarningsCallsPersistence, resetEarningsCallsPersistence, UPCOMING_LIMIT } from "./data";
 import { EarningsCallsPane } from "./pane";
 import { TranscriptView, type ReaderTab } from "./transcript-view";
 
@@ -570,6 +570,7 @@ test("CALLS alone is the week's calendar by day; Enter opens the company's calls
   expect(calendar).toContain("in 2h 30m");
   expect(calendar).toContain("transcribed");
   expect(calendar).not.toContain("SHELF");
+  expect(calendar).not.toContain("⚠");
 
   // The cursor starts on the next call still to come.
   await press("return");
@@ -583,4 +584,16 @@ test("CALLS alone is the week's calendar by day; Enter opens the company's calls
   await act(async () => { await tui.emitKeypress({ name: "escape", sequence: "\u001b" }); });
   await framesUntil(() => tui.frame().includes("Today (3)"));
   expect(tui.frame()).not.toContain("Next call");
+});
+
+test("a calendar cut at the server's limit says so in the footer", async () => {
+  setSystemTime(WEDNESDAY);
+  signIn();
+  // Every two minutes from 08:00 in New York on Wednesday, through Friday afternoon.
+  const full = Array.from({ length: UPCOMING_LIMIT }, (_, index) =>
+    upcoming(`C${index}`, new Date(Date.parse("2026-10-21T12:00:00Z") + index * 120_000).toISOString()));
+  setCloudApiFetchTransport(async () => Response.json({ calls: full }));
+  await mount(100, null, {});
+  await framesUntil(() => tui.frame().includes("Today ("));
+  expect(tui.frame()).toContain("⚠");
 });
