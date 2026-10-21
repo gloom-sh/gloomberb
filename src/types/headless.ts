@@ -542,6 +542,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   discovery?: {
     id?: string;
     aliases?: string[];
+    /**
+     * Words that are no function's code but ask for this function's data
+     * (IVOL, IV for implied volatility). They do not open it, since one word
+     * can mean several functions: `fn IVOL` answers with the functions it
+     * means and the commands that run them, and `catalog ivol` lists them first.
+     */
+    suggestFor?: string[];
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];

@@ -12,6 +12,9 @@ export const VCA_DEFINITIONS = [
   "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
 ] as const;
 
+/** Words for implied volatility that are no function's code: `fn IVOL` names HIVG and OVDV, which list them as `suggestFor`. */
+export const IMPLIED_VOL_WORDS = ["IVOL", "IV", "OVOL", "IMPVOL", "IMPLIEDVOL"];
+
 /**
  * A skew column's header names its sign, since the conventions differ: the
  * 25-delta skew is put minus call (HIVG, VCA), the risk reversal call minus

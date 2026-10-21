@@ -210,6 +210,21 @@ export function nearFunctionCodes(
     .sort((left, right) => left.code.localeCompare(right.code));
 }
 
+/**
+ * The functions a word that is no code asks for (`IVOL`, `IV`: HIVG and
+ * OVDV), as their `discovery.suggestFor` lists it, each by its code.
+ */
+export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
+  const wanted = normalizeLookupToken(name);
+  if (!wanted) return [];
+  return [...registry.paneTemplates.values()].flatMap((template) => {
+    const pane = registry.panes.get(template.paneId);
+    const words = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.suggestFor ?? [] : [];
+    const code = template.shortcut?.prefix;
+    return code && words.some((word) => normalizeLookupToken(word) === wanted) ? [{ code: code.toUpperCase(), label: template.label }] : [];
+  }).sort((left, right) => left.code.localeCompare(right.code));
+}
+
 function sampleArgForTemplate(template: PaneTemplateDef): string {
   switch (template.shortcut?.argKind) {
     case "ticker":
@@ -391,6 +406,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
     entry.token,
     entry.shortcut,
     ...entry.aliases,
+    ...entry.capability.suggestFor ?? [],
     entry.templateId,
     entry.paneId,
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));

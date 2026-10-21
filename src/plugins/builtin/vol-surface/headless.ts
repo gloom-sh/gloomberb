@@ -4,11 +4,11 @@ import {
   expirationOptionSeconds, findListedExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
-import { skewHeader } from "../iv-history/format";
+import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
 import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
-import { formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceSmileRows, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
@@ -132,6 +132,7 @@ function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
   usListingsOnly: "Options data",
+  discovery: { suggestFor: IMPLIED_VOL_WORDS },
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [
     { key: "tab", type: "enum", values: SURFACE_TABS.map((value) => ({ value })),
@@ -167,11 +168,12 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
         return { sections: [], complete: false, unavailableSymbols: [symbol], errors: ["A current underlying price is required"] };
       }
-      snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
+      // At a stored close's precision, so the live report and a --date one export the same digits.
+      snapshot = atCapturePrecision(await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
         settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
         limit: Number(args.options.limit), signal: ctx.signal,
         requiredExpiries: requested == null ? [] : [requested],
-      }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
+      }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
     }
     const stored = snapshot.stored ?? null;
     const axis = args.options.axis as SurfaceAxis;

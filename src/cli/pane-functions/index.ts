@@ -38,7 +38,7 @@ import { isCliFailure } from "../errors";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
-import { cliOutputWritten } from "../result";
+import { cliOutputWritten, type CliErrorObject } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import { shotOptionRefusal } from "./shot-options";
@@ -204,6 +204,29 @@ function foundNothing(data: { rowCount: number; unavailableSymbols: readonly str
   return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
 
+/** A symbol as reports name it, without the exchange of its listing key. */
+const bareSymbol = (symbol: string) => symbol.split(":")[0]!.trim().toUpperCase();
+
+/**
+ * Why `fn` fails a report it printed, or null when the report has data: it
+ * is empty (a pane behind a wall reads nothing), it has no data for any
+ * symbol asked, or it is a list (`failsWithoutData`) with no name that has
+ * any. A report with data for some of what was asked, warnings or errors
+ * beside it, is a result.
+ */
+export function reportFailure(
+  data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
+  asked: string,
+  failsWithoutData = false,
+): CliErrorObject | null {
+  const missing = new Set(data.unavailableSymbols.map(bareSymbol));
+  const noSymbol = data.symbols.length > 0 && data.symbols.every((symbol) => missing.has(bareSymbol(symbol)));
+  if (!data.empty && !noSymbol && !(failsWithoutData && foundNothing(data))) return null;
+  const reasons = [...data.errors ?? [], ...typeof data.reason === "string" ? [data.reason] : []];
+  const unavailable = data.unavailableSymbols.length > 0 ? `no data for ${data.unavailableSymbols.join(", ")}` : "no data";
+  return { code: "no_data", message: `${asked}: ${reasons.length > 0 ? reasons.join("; ") : unavailable}.`.replace(/\.\.$/, ".") };
+}
+
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, registry, resolved }) => {
@@ -277,13 +300,14 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
       const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
+      // A report with no data is printed as it is, and fails: exit 1, and `ok: false` in JSON with the reason.
+      const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), resolved.headless?.failsWithoutData);
       // The report states its own freshness in its data and text; JSON cites it as `source` too.
-      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
+      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
-      // The report is printed as it is; a list that found data for none of its names says so in the exit status too.
-      if (resolved.headless?.failsWithoutData && foundNothing(report.data)) process.exitCode = CLI_EXIT_CODES.error;
+      if (failure) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }

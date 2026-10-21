@@ -281,7 +281,7 @@ describe("headless pane arguments and options", () => {
       symbols: ["AAPL", "MSFT"],
     });
     expect(() => buildHeadlessPaneLoadArgs(definition, "CMP", "AAPL", {}))
-      .toThrow("CMP requires at least 2 symbols");
+      .toThrow("CMP needs two or more tickers: fn CMP AAPL,SPY");
   });
 
   test("derives ready catalog capability and validates enum values", () => {
@@ -556,12 +556,12 @@ describe("fn --csv", () => {
     });
     expect(csvOf(report)).toEqual([
       "# section: Americas",
-      "Index,Last",
-      "SPX,7812.71",
+      "Index,Last,status",
+      "SPX,7812.71,",
       "",
       "# section: Asia-Pacific",
-      "Index,Last",
-      "KOSPI,",
+      "Index,Last,status",
+      "KOSPI,,",
       "",
       "# section: Summary",
       "Metric,Value",
@@ -584,7 +584,7 @@ describe("fn --csv", () => {
     ]);
     // --section writes that one table alone, with the closing lines.
     expect(csvOf(report, "summary").slice(0, 4)).toEqual(["Metric,Value", "Breadth (%),61.5", "Leaders,SPX; DAX", ""]);
-    expect(csvOf(report, "2").slice(0, 2)).toEqual(["Index,Last", "KOSPI,"]);
+    expect(csvOf(report, "2").slice(0, 2)).toEqual(["Index,Last,status", "KOSPI,,"]);
     expect(() => csvOf(report, "Europe")).toThrow("No section \"Europe\". Sections: Americas, Asia-Pacific, Summary, Rates, or a number from 1 to 4.");
   });
 
@@ -607,9 +607,9 @@ describe("fn --csv", () => {
       }),
     }, "HP SBK.JO XYZ");
     expect(csvOf(report)).toEqual([
-      "Symbol,Date,Volume",
-      "HP,2026-10-01,37614444",
-      "SBK.JO,2026-10-01,1838873",
+      "Symbol,Date,Volume,status",
+      "HP,2026-10-01,37614444,",
+      "SBK.JO,2026-10-01,1838873,",
       "",
       "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
       "# Publisher: U.S. Securities and Exchange Commission",

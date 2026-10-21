@@ -133,6 +133,28 @@ describe("report tables", () => {
     expect(table.columns).toEqual(["Symbol", "Last", "Last unit", "Time"]);
     expect(table.rows).toEqual([["ES", 7864.25, "", "2026-10-07T15:27:00.000Z"], ["ZC", 480.5, "c", ""]]);
   });
+
+  test("a reason drawn for a missing figure goes to status, and the columns are the same with or without one", () => {
+    const points = (value: unknown, row: Record<string, unknown>) => typeof value === "number" ? (value * 100).toFixed(2) : String(row.gap ?? "--");
+    const iv = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+    const columns = [{ key: "expiry", header: "Expiry" }, { key: "put25", header: "25D put IV", format: iv }, { key: "rr", header: "RR", format: points },
+      { key: "bf", header: "BF", format: points }];
+    const gaps = exportRowsTable("Skew", columns, [
+      { expiry: "2026-10-23", put25: null, rr: null, bf: null, gap: "no 25D quotes" },
+      { expiry: "2026-11-06", put25: 0.155, rr: -0.036, bf: 0.0048, gap: null },
+    ], { status: true });
+    const whole = exportRowsTable("Skew", columns, [{ expiry: "2026-11-06", put25: 0.155, rr: -0.036, bf: 0.0048, gap: null }], { status: true });
+    const none = exportRowsTable("Skew", columns, [], { status: true });
+    expect(gaps.columns).toEqual(["Expiry", "25D put IV (%)", "RR", "BF", "status"]);
+    expect(whole.columns).toEqual(gaps.columns);
+    expect(none.columns).toEqual(gaps.columns);
+    expect(gaps.rows).toEqual([["2026-10-23", "", "", "", "RR, BF: no 25D quotes"], ["2026-11-06", 15.5, -3.6, 0.48, ""]]);
+
+    // Beside a Status of its own the column is value_status; a table with no figures has none.
+    expect(exportRowsTable("Board", [{ key: "status", header: "Status" }, ...columns], [], { status: true }).columns.at(-1)).toBe("value_status");
+    expect(exportRowsTable("Warnings", [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }], [], { status: true }).columns)
+      .toEqual(["Expiry", "Warning"]);
+  });
 });
 
 const freshness: ReportFreshness = {

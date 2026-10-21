@@ -225,8 +225,8 @@ describe("HIVG skew history", () => {
     ]);
     // Existing columns keep their order; the two skew columns follow IV-HV, each naming its sign.
     expect(daily[0]!.split(",").map((header) => header.replace(/ \(%\)$/, "")))
-      .toEqual(["Session", "IV30", "IV90", "IV1Y", "HV", "IV-HV", "skew25d put-call (pts)", "rr25d call-put (pts)"]);
-    expect(daily.slice(1).map((line) => line.split(",").slice(-2).join(","))).toEqual(["2.5,-2.5", "2.8,-2.8", ",", ","]);
+      .toEqual(["Session", "IV30", "IV90", "IV1Y", "HV", "IV-HV", "skew25d put-call (pts)", "rr25d call-put (pts)", "status"]);
+    expect(daily.slice(1).map((line) => line.split(",").slice(-3, -1).join(","))).toEqual(["2.5,-2.5", "2.8,-2.8", ",", ","]);
     expect(daily.slice(1).map((line) => line.split(",")[0])).toEqual(["2026-10-08", "2026-10-07", "2026-10-06", "2026-10-05"]);
     expect(result.notes).toEqual(["no IV1Y history yet", "skew from 2026-10-07"]);
     const cells = (date: string) => text.split("\n").find((line) => line.startsWith(date))!.trim().split(/\s{2,}/);
@@ -236,10 +236,62 @@ describe("HIVG skew history", () => {
 
   test("an older server without the wing fields keeps the CSV columns blank and says skew is unavailable", async () => {
     const { result, daily, text } = await report([point("2026-10-07", "trade-close"), point("2026-10-07", "quote-mid"), point("2026-10-08", "trade-close")]);
-    expect(daily[0]!.endsWith(",IV-HV,skew25d put-call (pts),rr25d call-put (pts)")).toBe(true);
-    expect(daily.slice(1).every((line) => line.endsWith(",,"))).toBe(true);
+    expect(daily[0]!.endsWith(",IV-HV,skew25d put-call (pts),rr25d call-put (pts),status")).toBe(true);
+    expect(daily.slice(1).every((line) => line.endsWith(",,,"))).toBe(true);
     expect(result.notes).toContain("skew unavailable from this server");
     // The text table leaves out columns no session fills.
     expect(text).not.toContain("skew25d");
+  });
+});
+
+describe("HIVG exports for scripts", () => {
+  const session = (sessionDate: string, iv30: number): IvPoint => ({
+    sessionDate, method: "trade-close", capturedAt: `${sessionDate}T23:30:00Z`, spot: 100,
+    iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
+  });
+  // September 2026's sessions: weekdays, and Labor Day (7 Sep) is none.
+  const september = Array.from({ length: 30 }, (_, index) => `2026-09-${String(index + 1).padStart(2, "0")}`)
+    .filter((date) => ![0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()) && date !== "2026-09-07")
+    .map((date, index) => session(date, 0.12 + index / 1000));
+  const load = async (symbol: string, series: IvPoint[], options: Record<string, string | number> = {}) => {
+    const payload: IvHistoryPayload = { version: 1, symbol, asOf: "2026-10-01", status: series.length ? "ready" : "unavailable",
+      coverage: { source: "seed", addedAt: "2026-08-01T00:00:00Z", backfilledThrough: "2026-09-30", since: series[0]?.sessionDate ?? null },
+      stats: { iv30: null, iv90: null }, latest: null, series, warnings: series.length ? [] : ["Coverage for new underlyings is full; try again later."] };
+    const args = createTestHeadlessArgs({ rawArgument: symbol, argument: symbol, symbols: [symbol], options: { lookback: "ALL", hvWindow: "20", offset: 0, ...options } });
+    const apiClient = { impliedVolatility: async () => payload } as unknown as HeadlessPaneApiClient;
+    const result = await ivHistoryHeadless.load(args, createTestHeadlessContext({ apiClient })) as HeadlessBundleResult;
+    const freshness = deriveHeadlessFreshness(ivHistoryHeadless, result);
+    const csv = renderReportCsv(headlessReportTables(ivHistoryHeadless, result, args, "HIVG", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+    return { result, lines: csv.split("\n") };
+  };
+  const headers = (lines: string[]) => lines.filter((_, index) => lines[index - 1]?.startsWith("# section:"));
+
+  test("a symbol with no IV history exports the same columns as one with it, with no unit moving into or out of a header", async () => {
+    const covered = await load("SPY", september);
+    const uncovered = await load("SCHD", []);
+    expect(headers(uncovered.lines)).toEqual(headers(covered.lines));
+    expect(headers(covered.lines)).toEqual([
+      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of",
+    ]);
+    // Each measure's unit stays in its label, figures or none.
+    const measures = (lines: string[]) => lines.filter((line) => /^(IV|HV) /.test(line)).map((line) => line.split(",")[0]);
+    expect(measures(uncovered.lines)).toEqual(measures(covered.lines));
+  });
+
+  test("--event fomc --offset -6 is one row per past release, read on the sixth session before it", async () => {
+    const { lines } = await load("SPY", september, { event: "fomc", offset: -6 });
+    expect(lines[0]).toBe("Release,Release date,Offset (sessions),Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,"
+      + "skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of");
+    // 16 Sep's FOMC, six sessions back over Labor Day; July's is before the history.
+    expect(lines.filter((line) => line.startsWith("FOMC,"))).toEqual([expect.stringMatching(/^FOMC,2026-09-16,-6,2026-09-08,12\.4,13\.4,/)]);
+
+    // A session past the history's last is not there yet: the release is left out and named.
+    const ahead = await load("SPY", september, { event: "fomc", offset: 15 });
+    expect(ahead.result.sections[0]!.rows).toEqual([]);
+    expect(ahead.result.notes).toContain("Left out FOMC 2026-09-16, whose session at --offset 15 has not closed yet.");
+    expect(ahead.result.unavailableSymbols).toEqual(["SPY"]);
+    await expect(Promise.resolve(ivHistoryHeadless.load(createTestHeadlessArgs({ symbols: ["SPY"], options: { lookback: "1Y", hvWindow: "20", offset: -6 } }),
+      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
   });
 });

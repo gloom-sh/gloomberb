@@ -120,6 +120,30 @@ export async function loadDatedSurface(symbol: string, date: string, options: { 
   throw new Error(storedSurfaceMiss(bare, date, dates.value.dates));
 }
 
+/** A figure to the decimals a stored close keeps it at. */
+const toDecimals = (value: number | null, digits: number) => value == null || !Number.isFinite(value) ? null : Number(value.toFixed(digits));
+
+/**
+ * A live surface at the precision a stored close keeps its figures (the
+ * platform's compact capture: years to 8 decimals, forwards and mids to 4,
+ * rates, yields, IVs and the term slope to 6), so a report of the live chain
+ * and one of a stored close (`--date`) export the same digits. The fit and
+ * the skew are kept whole, as a capture keeps them; residuals are measured
+ * again from the rounded IVs, as a stored close measures them.
+ */
+export function atCapturePrecision(snapshot: SurfaceSnapshot): SurfaceSnapshot {
+  return { ...snapshot, expiries: snapshot.expiries.map((expiry) => {
+    const rounded: SurfaceExpiry = { ...expiry, years: toDecimals(expiry.years, 8) ?? expiry.years, rate: toDecimals(expiry.rate, 6),
+      forward: toDecimals(expiry.forward, 4), dividendYield: toDecimals(expiry.dividendYield, 6), atmIV: toDecimals(expiry.atmIV, 6),
+      termSlope: toDecimals(expiry.termSlope, 6),
+      points: expiry.points.map((point) => ({ ...point, volatility: toDecimals(point.volatility, 6) ?? point.volatility, mid: toDecimals(point.mid, 4) ?? point.mid })) };
+    for (const point of rounded.points) {
+      if (point.fitResidual != null) point.fitResidual = point.volatility - (evaluateSurfaceSmile(rounded, point.strike) ?? point.volatility);
+    }
+    return rounded;
+  }) };
+}
+
 /** A stored close surface in the shape the live OVDV views render: mid quotes, recomputed IV. */
 export function storedSurfaceSnapshot(payload: StoredSurfacePayload): DatedSurfaceSnapshot {
   const surface = payload.surface as unknown as StoredSurface;

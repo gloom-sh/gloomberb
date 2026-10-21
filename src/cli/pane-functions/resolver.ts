@@ -23,7 +23,9 @@ import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
+  findFunctionCode,
   nearFunctionCodes,
+  suggestedFunctionCodes,
   suggestPaneFunctions,
   type NearFunctionCode,
   type PaneFunctionCatalog,
@@ -36,6 +38,7 @@ import {
   optionSettings,
   type ParsedPaneFunctionArgs,
 } from "./options";
+import { argumentSymbols, validateSymbolCount } from "./headless";
 import {
   capabilityHasOption,
   capabilityPaneSettings,
@@ -65,9 +68,10 @@ export interface ResolvedPaneFunction {
 }
 
 async function buildPaneInstance(
-  resolved: Pick<ResolvedPaneFunction, "pane" | "template" | "headless" | "createOptions" | "optionSettings" | "capability" | "options">,
+  resolved: Pick<ResolvedPaneFunction, "token" | "pane" | "template" | "headless" | "createOptions" | "optionSettings" | "capability" | "options">,
   context: MarketContext,
   target: string,
+  command: "fn" | "shot",
 ): Promise<PaneInstanceConfig> {
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
@@ -88,7 +92,11 @@ async function buildPaneInstance(
       return { ...spec.settings, ...resolved.optionSettings };
     }
     const chartSpec = parseChartSpec(spec.settings?.chartSpec);
-    if (!chartSpec) throw new Error("The chart template did not produce a valid chart specification.");
+    if (!chartSpec) {
+      // A chart of too few tickers (CMP of one) has none to draw: say how many it takes.
+      if (resolved.headless) validateSymbolCount(resolved.headless, resolved.token, argumentSymbols(target), command);
+      throw new Error("The chart template did not produce a valid chart specification.");
+    }
     return {
       ...spec.settings,
       chartSpec: applyChartComposerCapabilityOptions(
@@ -242,15 +250,21 @@ async function unknownPaneFunctionError(
   // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
   const bank = bankFigurePointer(name, arg);
   if (bank) return new UnknownPaneFunctionError(name, bank.details, null, bank.message);
-  const near = nearFunctionCodes(registry, name);
+  // A word that asks for a function's data (IVOL for HIVG and OVDV) names them as a slip from a code names it.
+  const suggested = suggestedFunctionCodes(registry, name);
+  const near = [...suggested, ...nearFunctionCodes(registry, name).filter(({ code }) => !suggested.some((entry) => entry.code === code))];
   // A catalog that cannot be read still leaves the pointer to it.
   const closest = (await suggestPaneFunctions(registry, context, name).catch(logFailure("cli.pane-functions-resolver", "Find pane function suggestions failed", [])))
     .filter((entry) => !near.some(({ code }) => code === entry.token));
   const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
   const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
   const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
+  // One code is run on the argument; the functions a word asks for are each.
+  const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   return new UnknownPaneFunctionError(name, [
-    ...near.length === 1 ? [`Run: gloomberb ${command} ${near[0]!.code}${argument}`] : [],
+    // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
+    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloomberb", command, code,
+      argument.trim() || (suggested.length > 0 ? findFunctionCode(registry, code)?.argument : "")].filter(Boolean).join(" ")),
     ...closest.length > 0
       ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloomberb catalog ${word}`]
       : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloomberb catalog`],
@@ -317,7 +331,7 @@ export async function resolvePaneFunction(
     options: normalizedOptions,
     ...(tableSection !== undefined ? { tableSection } : {}),
   };
-  resolved.instance = await buildPaneInstance(resolved, context, args.arg);
+  resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
 }
 

@@ -164,7 +164,9 @@ describe("citable central bank exports", () => {
     const [table] = headlessReportTables(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness,
       { complete: true, unavailableSymbols: [] }).tables;
     expect(table!.columns).toEqual(["Jurisdiction", "Rate (%)", "Last move (bp)", "Change observed", "Pctl 1Y", "As of", "Status", "Instrument",
-      "central_bank", "source", "series_id", "source_url", "as_of", "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at", "citation"]);
+      "central_bank", "source", "series_id", "source_url", "as_of", "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at", "citation",
+      // A reason drawn for a missing figure, beside the board's own Status.
+      "value_status"]);
     const meetings = table!.rows.map((cells) => cells.slice(13, 17));
     expect(meetings).toEqual([
       ["2026-10-28", "decision", "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "2026-10-12"],

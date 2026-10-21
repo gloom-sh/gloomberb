@@ -7,7 +7,9 @@ import { captureConsole } from "../../test-support/console";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
-import { runPaneFunction } from ".";
+import { reportFailure, runPaneFunction } from ".";
+import { serializeCliResult } from "../result";
+import { DEFAULT_CLI_OPTIONS } from "../options";
 
 let finra: ReturnType<typeof spyOn> | null = null;
 afterEach(() => {
@@ -36,7 +38,9 @@ async function runSiw(...args: string[]) {
   (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
   process.exitCode = 0;
   const { exitCode } = await captureConsole(() => runPaneFunction(["SIW", ...args], cli.context));
-  const data = cli.printed[0]!.result.data as { rowCount: number; symbols: string[]; errors: string[] };
+  const { data, failure } = cli.printed[0]!.result as { data: { rowCount: number; symbols: string[]; errors: string[] }; failure?: unknown };
+  // JSON's `ok` is the exit status's word: false exactly when it is 1.
+  expect(!failure).toBe((exitCode ?? 0) === 0);
   return { exitCode: exitCode ?? 0, ...data };
 }
 
@@ -55,4 +59,23 @@ test("fn SIW exits 1 when no name resolved and 0 when some did, naming the ones 
     symbols: ["GME"],
     errors: ["Left out: BTC-USD: not a US ticker symbol."],
   });
+});
+
+test("fn fails a report with no data for what was asked, and JSON says ok: false with why beside the data", () => {
+  const report = { empty: false, rowCount: 6, symbols: ["SCHD"], unavailableSymbols: ["SCHD"], errors: ["Coverage for new underlyings is full; try again later."] };
+  // A report of six empty statistics for SCHD has nothing for SCHD.
+  const failure = reportFailure(report, "fn HIVG SCHD");
+  expect(failure).toEqual({ code: "no_data", message: "fn HIVG SCHD: Coverage for new underlyings is full; try again later." });
+  expect(reportFailure({ empty: true, rowCount: 0, symbols: ["TWTR"], unavailableSymbols: ["TWTR"], errors: ["A current underlying price is required"] }, "fn OVDV TWTR"))
+    .toEqual({ code: "no_data", message: "fn OVDV TWTR: A current underlying price is required." });
+  // An empty board asked about no symbol fails too; a listing key is its symbol.
+  expect(reportFailure({ empty: true, rowCount: 0, symbols: [], unavailableSymbols: [] }, "fn HALT")?.message).toBe("fn HALT: no data.");
+  expect(reportFailure({ empty: false, rowCount: 1, symbols: ["SAN:EPA"], unavailableSymbols: ["SAN"] }, "fn DVD SAN:EPA")).not.toBeNull();
+  // Data for some of what was asked, errors and all, is a result.
+  expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SPY", "QQQ"], unavailableSymbols: ["QQQ"], errors: ["QQQ: timed out"] }, "fn G SPY,QQQ")).toBeNull();
+  expect(reportFailure({ empty: false, rowCount: 18, symbols: ["SPY"], unavailableSymbols: [], errors: ["2027-01-15: no quotes"] }, "fn OVDV SPY")).toBeNull();
+
+  const json = JSON.parse(serializeCliResult({ data: report, failure: failure! }, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  expect(json).toMatchObject({ ok: false, error: { code: "no_data" }, data: { symbols: ["SCHD"] } });
+  expect(JSON.parse(serializeCliResult({ data: report }, { ...DEFAULT_CLI_OPTIONS, format: "json" })).ok).toBe(true);
 });

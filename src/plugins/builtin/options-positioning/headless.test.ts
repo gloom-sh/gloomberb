@@ -91,6 +91,7 @@ test("the GEX export adds up, names its unit, and opens with spot and quote time
 test("an older server without per-expiry gamma leaves the Net GEX column blank", async () => {
   const { result, tables } = await report({ withByExpiry: false });
   const expiries = tables.tables[1]!;
-  expect(expiries.rows.map((row) => row[expiries.columns.indexOf("Net GEX $")])).toEqual(["", "", ""]);
+  // The header names its unit as it does with figures in it, so a script's columns do not move.
+  expect(expiries.rows.map((row) => row[expiries.columns.indexOf("Net GEX $ (USD per 1% move)")])).toEqual(["", "", ""]);
   expect(result.errors).toEqual([]);
 });

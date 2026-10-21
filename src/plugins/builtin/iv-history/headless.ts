@@ -2,9 +2,12 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadScreenVolatilities } from "./client";
-import { formatPoints, formatRank, formatSpot, formatStat, formatVol, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatSpot, formatStat, formatVol, IMPLIED_VOL_WORDS, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
+import { offsetText, releaseOffsetRows } from "./events";
+import { loadMacroReleases } from "../macro-day/client";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, type MacroEventKind } from "../macro-day/releases";
 import { listingFateNotes, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
 import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
 
@@ -17,23 +20,34 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   usListingsOnly: "Implied volatility history",
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
-  discovery: { aliases: ["HIVG"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
+  discovery: { aliases: ["HIVG"], suggestFor: IMPLIED_VOL_WORDS, screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
     limitations: ["History starts February 2024 (daily option trade closes).", "Rank and percentile use trade-close readings only.",
       "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions.",
       "skew25d (put-call) and rr25d (call-put) come from the daily quote captures and are blank before the first one."] },
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
+    { key: "event", type: "enum", aliases: ["release"], values: MACRO_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
+      description: "One row per past release of this kind, the readings on the session --offset from it, in place of the daily history",
+      example: "--event fomc --offset -6", shot: { reportOnly: "lists the readings around past release days" } },
+    { key: "offset", type: "integer", minimum: -60, maximum: 60, defaultValue: 0,
+      description: "Sessions from each release day with --event: -6 is the sixth session before it, 0 the release day",
+      example: "--event cpi --offset -1", shot: { reportOnly: "picks the session read around each release" } },
   ],
   async load(args, ctx) {
+    const event = typeof args.options.event === "string" && args.options.event ? args.options.event as MacroEventKind : null;
+    const offset = Number(args.options.offset) || 0;
+    if (!event && offset !== 0) throw new Error("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     // What became of the symbol, as `quote` reads it, looked up beside the figures: FB's are the fund listed
     // there now, TWTR stopped trading, and HFC, which became DINO, has none of its own.
     const changes = startTickerChangeLookup(ctx.marketData, instrument.symbol, instrument.exchange);
     const quote = ctx.marketData.getQuote(instrument.symbol, instrument.exchange ?? "").catch(() => null);
-    const [payload, prices] = await Promise.all([
+    const [payload, prices, releases] = await Promise.all([
       loadIvHistory(instrument.symbol, { signal: ctx.signal }, ctx.apiClient),
       loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)),
+      // The release days MDAY studies: the list the app ships with, extended by Gloom Cloud's.
+      event ? loadMacroReleases({}, () => ctx.apiClient.getCloudMacroReleaseDays()) : null,
     ]);
     const fate = await loadListingFate(instrument, ctx.marketData, { quote, changes });
     if (fate.moved) throw new MovedSymbolError(fate.moved);
@@ -62,6 +76,35 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const errors = !served && fateNotes.length > 0 ? []
       : [prices.error, ...model.warnings].filter((value): value is string => !!value);
     const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote].filter((note): note is string => !!note)];
+    if (event && releases) {
+      const lookback = String(args.options.lookback) as IvLookback;
+      const label = MACRO_EVENT_LABELS[event];
+      const offsets = releaseOffsetRows(model, releases.releases, event, offset);
+      const eventNotes = [
+        offsets.beforeLookback > 0 && lookback !== "ALL"
+          ? `${offsets.beforeLookback} earlier ${label} release${offsets.beforeLookback === 1 ? " is" : "s are"} outside the ${lookback} lookback; --lookback ALL adds ${offsets.beforeLookback === 1 ? "it" : "them"}.` : null,
+        offsets.pending.length > 0 ? `Left out ${label} ${offsets.pending.join(", ")}, whose session${offsets.pending.length === 1 ? "" : "s"} at --offset ${offset} ${offsets.pending.length === 1 ? "has" : "have"} not closed yet.` : null,
+        staleMacroReleasesNotice(releases),
+      ].filter((note): note is string => !!note);
+      const eventColumns = [{ key: "releaseDate", header: "Release date" }, { key: "session", header: "Session" },
+        ...historyColumns.slice(1), ...skewColumns];
+      return {
+        sections: [{
+          title: `${label} releases, ${offsetText(offset)}`,
+          // The export names the release and the offset on every row, so files of several offsets or releases join.
+          columns: [{ key: "release", header: "Release" }, eventColumns[0]!, { key: "offset", header: "Offset (sessions)" }, ...eventColumns.slice(1)],
+          rows: offsets.rows.map(({ date, ...row }) => ({ ...row, session: date, release: label })),
+          textColumns: offsets.rows.some((row) => row.skew25d != null) ? eventColumns : eventColumns.slice(0, -skewColumns.length),
+        }],
+        complete: payload.status === "ready" && errors.length === 0,
+        unavailableSymbols: offsets.rows.some((row) => row.iv30 != null) ? [] : [instrument.symbol], errors,
+        ...(notes.length + eventNotes.length > 0 ? { notes: [...notes, ...eventNotes] } : {}),
+        // Dated by the history read, not by the newest release's session: an old release is no stale reading.
+        ...(model.asOf ? { freshness: { asOf: model.asOf } } : {}),
+        metadata: { status: payload.status, coverage: payload.coverage, event, offset, releasesThrough: releases.coveredThrough,
+          releaseSource: MACRO_RELEASE_SOURCES[event], unit: "decimal annualized volatility", methodology: METHODOLOGY },
+      };
+    }
     return {
       sections: [
         { title: "Statistics", columns: [

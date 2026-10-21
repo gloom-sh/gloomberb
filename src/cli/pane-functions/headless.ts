@@ -89,17 +89,36 @@ function normalizeSymbolList(value: string): string[] {
   return symbols;
 }
 
-function validateSymbolCount(
+const COUNT_WORDS = ["zero", "one", "two", "three", "four", "five"];
+const EXAMPLE_TICKERS = ["SPY", "QQQ", "IWM", "DIA", "TLT"];
+
+/**
+ * What a function that compares several tickers answers fewer: how many it
+ * needs and a command that runs, the reader's own tickers first (`CMP needs
+ * two or more tickers: fn CMP SPY,QQQ`).
+ */
+function tooFewTickersMessage(token: string, minimum: number, given: readonly string[], command: "fn" | "shot" = "fn"): string {
+  const example = [...given, ...EXAMPLE_TICKERS.filter((ticker) => !given.includes(ticker))].slice(0, Math.max(minimum, given.length + 1));
+  return `${token} needs ${COUNT_WORDS[minimum] ?? minimum} or more tickers: ${command} ${token} ${example.join(",")}`;
+}
+
+/** The tickers a function's argument lists, as its report reads them. */
+export function argumentSymbols(rawArgument: string): string[] {
+  return normalizeSymbolList(rawArgument);
+}
+
+export function validateSymbolCount(
   definition: HeadlessPaneDefinition,
   token: string,
   symbols: string[],
+  command: "fn" | "shot" = "fn",
 ): void {
   const minimum = definition.argument.minimum
     ?? (definition.argument.optional ? 0 : 1);
   const maximum = definition.argument.maximum;
   if (symbols.length < minimum) {
     if (minimum <= 1) throw requiredArgumentError(definition, token);
-    throw new Error(`${token} requires at least ${minimum} symbols.`);
+    throw new Error(tooFewTickersMessage(token, minimum, symbols, command));
   }
   if (maximum != null && symbols.length > maximum) {
     throw new Error(`${token} accepts at most ${maximum} symbols.`);
@@ -735,14 +754,14 @@ export function headlessReportTables(
       const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
       const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
-      const own = exportRowsTable(title, columns, rowsResult.rows);
+      const own = exportRowsTable(title, columns, rowsResult.rows, { status: true });
       const interval = rowsResult.interval?.trim();
       tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(interval ? { identity: { interval } } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {
           ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
           ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),
         };
-        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows);
+        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows, { status: true });
         return Object.keys(identity).length > 0 ? { ...table, identity } : table;
       })];
       break;
@@ -758,7 +777,7 @@ export function headlessReportTables(
           const entries = exportEntriesTable(section.title, section.entries);
           return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
         }
-        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows);
+        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
         const identity = {
           ...named,
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
@@ -776,7 +795,7 @@ export function headlessReportTables(
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
-      tables = [exportRowsTable(title, displayedColumns(columnsFor(snapshot.items, undefined, definition.columns)), snapshot.items)];
+      tables = [exportRowsTable(title, displayedColumns(columnsFor(snapshot.items, undefined, definition.columns)), snapshot.items, { status: true })];
       break;
     }
     default: {

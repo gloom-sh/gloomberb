@@ -15,7 +15,7 @@ export function backtestEquityCsv(report: HeadlessBundleResult, symbol: string, 
   const tables = report.sections.flatMap((section): CliReportTable[] => {
     if (!section.rows) return [];
     // The curve's one section, identified as `headlessReportTables` identifies it (no per-row units).
-    const table = exportRowsTable(section.title, section.columns ?? [], section.rows);
+    const table = exportRowsTable(section.title, section.columns ?? [], section.rows, { status: true });
     return [{
       ...table,
       identity: { ...(section.unit ? { currencyOrUnit: section.unit } : {}), ...(section.interval ? { interval: section.interval } : {}) },
