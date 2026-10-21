@@ -20,6 +20,8 @@ export interface TicketViewModel {
   brokerName: string; symbol: string; accounts: BrokerAccount[]; accountId?: string;
   accountChoices?: readonly BrokerAccountChoice[]; accountChoiceValue?: string;
   quote?: Quote; quoteData?: "realtime" | "delayed";
+  /** The quote is not current (older than the ticket accepts, or of unknown age): it shows its age beside it. */
+  quoteStale?: boolean;
   /** A spread's legs' quotes, in leg order. `quote` is then the spread's own. */
   legQuotes?: Quote[];
   phase: "enable" | "editing" | "previewing" | "review" | "submitting" | "result" | "cancel-review" | "cancelling";
@@ -119,10 +121,11 @@ function TicketNumberInput({ value, focused, onChange, ...props }: {
 /**
  * The docked quote: last price and change first, then bid in green and ask in
  * red with their sizes, as a broker's quote panel reads. A delayed quote shows
- * a clock whose tooltip names the source and its age.
+ * a clock whose tooltip names the source and its age; a stale one says its age
+ * beside the price, so the last session's book never reads as the market.
  */
-function DockedQuote({ quote, delayed, source, updated, price, change, width }: {
-  quote?: Quote; delayed: boolean; source: string; updated: string; price(value: number | undefined): string; change: string; width: number;
+function DockedQuote({ quote, delayed, stale, source, updated, price, change, width }: {
+  quote?: Quote; delayed: boolean; stale?: string; source: string; updated: string; price(value: number | undefined): string; change: string; width: number;
 }) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
@@ -139,6 +142,7 @@ function DockedQuote({ quote, delayed, source, updated, price, change, width }: 
       <FigureText>{quote?.price === undefined ? "--" : price(quote.price)}</FigureText>
       <Box flexGrow={1} minWidth={0}><FigureText part="sub" change={quote?.change}>{change}</FigureText></Box>
       {delayed ? <Box flexShrink={0} title={`${source} · ${updated}`}><Icon name="clock" color={c.warning} /></Box> : null}
+      {stale ? <Text fg={c.warning} flexShrink={0}>{stale}</Text> : null}
     </Box>
     <Box flexDirection="row" gap={2}>
       {side("Bid", quote?.bid, quote?.bidSize, c.positive)}
@@ -377,6 +381,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const updated = sourceAt && Number.isFinite(sourceAt) ? `${new Date(sourceAt).toISOString().slice(11, 19)} UTC` : "unknown";
   const delayed = m.quoteData !== "realtime" || m.quote?.dataSource !== "live";
   const age = ticketQuoteAge(m.quote, m.now).replace(" old", "");
+  const stale = m.quote && m.quoteStale ? ticketQuoteAge(m.quote, m.now) : undefined;
   const source = `${m.brokerName}, ${delayed ? "delayed" : "real-time"} ${age}`;
   const accountPicker = (pickerWidth: number) => <BrokerAccountPicker
     accounts={m.accountChoices ?? m.accounts.map((a) => ({ value: a.accountId, label: a.name, tradingMode: a.tradingMode }))}
@@ -402,7 +407,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         <Box ref={nodeRef("account")} flexShrink={1} minWidth={0}>{accountPicker(width - (onClose ? 6 : 2))}</Box>
         {onClose ? <IconButton icon="close" label="Close trade panel" shortcut="Esc" onPress={onClose} /> : null}
       </Box>
-      <DockedQuote quote={m.quote} delayed={delayed} source={source} updated={updated} price={quotePrice} change={change} width={width - 2} />
+      <DockedQuote quote={m.quote} delayed={delayed} stale={stale} source={source} updated={updated} price={quotePrice} change={change} width={width - 2} />
     </Box> : <Box flexShrink={0}>
       <Box flexDirection="column" data-gloom-selectable="true" paddingX={native ? 3 : 1} paddingY={native ? wide ? 1 : 0.5 : 0} gap={native ? wide ? 0.65 : 0.2 : 0} >
         <Box flexDirection={narrow ? "column" : "row"} justifyContent="space-between" alignItems={narrow ? "flex-start" : "center"} gap={narrow ? 0.4 : 1}>
@@ -429,7 +434,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         <Box flexDirection="row" flexWrap={native ? "wrap" : "nowrap"} alignItems="center" gap={1}>
           {/* A delayed quote is the yellow clock, as in pane footers, with the detail on hover. */}
           {delayed ? <Box flexShrink={0} title={source}><Icon name="clock" color={c.warning} /></Box> : null}
-          <Text fg={c.textDim}>{delayed ? `${m.brokerName} ${age}` : source}</Text>
+          <Text fg={stale ? c.warning : c.textDim}>{stale ? `${m.brokerName}, ${stale}` : delayed ? `${m.brokerName} ${age}` : source}</Text>
           <Text fg={c.textDim}>{`${updated}${m.synthetic && !wide && !narrow ? " · SYNTHETIC" : ""}`}</Text>
         </Box>
       </Box>

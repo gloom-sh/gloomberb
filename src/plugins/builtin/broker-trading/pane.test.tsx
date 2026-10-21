@@ -5,6 +5,7 @@ import { AppContext, appReducer, createInitialState, type AppAction } from "../.
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { BrokerConnectionStatus } from "../../../types/broker";
+import type { Quote } from "../../../types/financials";
 import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
 import { createTradeCommand } from "./command";
 import { brokerOrderFeed } from "./order-feed";
@@ -14,7 +15,7 @@ const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 afterEach(() => brokerOrderFeed.clear());
 
 test("a command prefills the resolved ticket once, focuses Review, and invalidates an existing review", async () => {
-  const demo = createDemoBroker({ seedOrders: false });
+  const demo = createDemoBroker({ seedOrders: false, quoteAgeMs: 0 });
   const paneId = "broker-ticket:command-test";
   const config = createTestPaneConfig("/synthetic/ticket-command", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
   config.brokerInstances = [demo.instance];
@@ -72,6 +73,51 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
   await tui.waitForFrameToContain("Review Order");
   expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "SELL", quantity: 3, limitPrice: 336.4, orderType: "LMT" });
   expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toHaveLength(0);
+});
+
+test.each(["BUY", "SELL"] as const)("a %s ticket sets its limit from a current quote only, and gives a stale quote's age", async (side) => {
+  // Before the open, the broker's asked quote is the last session's book, 10 hours old; its stream has the market.
+  const demo = createDemoBroker({ seedOrders: false, quoteAgeMs: 10 * 3_600_000 });
+  const pushes: Array<(quote: Quote) => void> = [];
+  demo.adapter.subscribeQuotes = (_instance, targets, onQuote) => {
+    const push = (quote: Quote) => onQuote(targets[0]!, quote);
+    pushes.push(push);
+    return () => { pushes.splice(pushes.indexOf(push), 1); };
+  };
+  const paneId = "broker-ticket:stale-quote";
+  const config = createTestPaneConfig("/synthetic/ticket-stale-quote", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
+  config.brokerInstances = [demo.instance];
+  let latest = createInitialState(config);
+  latest.focusedPaneId = paneId;
+  latest.tickers.set("AAPL", createTestTicker("AAPL", "Example company"));
+  const initial = latest;
+  const listeners = new Set<() => void>();
+  const store = {
+    getState: () => latest,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    dispatch: (action: AppAction) => { latest = appReducer(latest, action); for (const listener of listeners) listener(); },
+  };
+  const command = createTradeCommand({ pinTicker(_symbol, options) {
+    store.dispatch({ type: "UPDATE_PANE_STATE", paneId, patch: { ...options?.tabState, activeTabId: options?.tabId } });
+  } }, side);
+  const runtime = createTestPluginRuntime({ getBrokerAdapter: () => demo.adapter });
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={initial} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30}>{() => <AppContext value={store}><BrokerTradeTab width={90} height={29} focused onCapture={() => {}} /></AppContext>}</TestPaneFrame>);
+  });
+  await act(async () => { await command.execute({ symbol: "AAPL", quantity: "3" }); });
+  await tui.waitForFrameToContain("10h 0m old");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" });
+  await tui.renderFrames(4);
+  expect(demo.calls.some((call) => call.method === "previewOrder")).toBe(false);
+  const stale = await demo.adapter.getQuote!("AAPL", demo.instance);
+  const now = Date.now();
+  await act(async () => { pushes.at(-1)!({ ...stale, bid: 341.1, ask: 341.25, lastUpdated: now, lastTradeTime: now, delivery: "stream", dataSource: "live" }); });
+  await tui.waitForFrameToContain(side === "BUY" ? "341.25" : "341.1");
+  await tui.waitForFrameToExclude(" old");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" });
+  await tui.waitForFrameToContain("Review Order");
+  expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: side, quantity: 3, limitPrice: side === "BUY" ? 341.25 : 341.1 });
+  expect(demo.calls.some((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toBe(false);
 });
 
 test.each(["trade", "orders"] as const)("%s broker selection is reachable without a pointer", async (view) => {

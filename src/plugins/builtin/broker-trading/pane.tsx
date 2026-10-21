@@ -174,13 +174,15 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     const timer = setInterval(refresh, 30_000);
     return () => { active = false; clearInterval(timer); if (refreshResources.current === refresh) refreshResources.current = () => {}; };
   }, [broker, instance, connected, visible, selectAccount, allowAutoAccount, statusVersion]);
-  // A new ticket's limit defaults to its side of the quote, from the first quote that has a price, asked for
-  // or streamed, until the trader sets one. A stop is the trader's: at the touch it would trigger at once.
+  // A new ticket's limit defaults to its side of the quote, from the first current quote that has a price,
+  // asked for or streamed, until the trader sets one. A stop is the trader's: at the touch it would trigger at
+  // once. A stale quote (before the open, the last session's book) is no price to trade at: the ticket shows
+  // its age and waits for a current one, which a broker's stream brings within seconds.
   const pricePending = useRef(false);
   const prefillPrice = useCallback(() => {
     const latest = controller.getSnapshot();
     const currentDraft = latest.draft, q = latest.quote?.quote;
-    if (!pricePending.current || !currentDraft || !q || latest.phase !== "editing" || latest.modifying) return;
+    if (!pricePending.current || !currentDraft || !q || latest.quote?.stale !== false || latest.phase !== "editing" || latest.modifying) return;
     const source = currentDraft.action === "BUY" && q.ask !== undefined ? "ask" : currentDraft.action === "SELL" && q.bid !== undefined ? "bid" : "last";
     try {
       if ((currentDraft.orderType === "LMT" || currentDraft.orderType === "STP LMT") && currentDraft.limitPrice === undefined) {
@@ -392,7 +394,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     brokerName: broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
-    quote: state.quote?.quote, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,
+    quote: state.quote?.quote, quoteStale: state.quote?.stale, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,
     phase: page === "enable" ? "enable" : state.phase, draft: receipt?.request ?? draft, preview: state.review?.preview ?? receipt?.preview, warnings: state.review?.warnings ?? [], result: state.result, resultQuantities: state.resultQuantities,
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error, reconnecting,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
