@@ -2,26 +2,27 @@ import type { CSSProperties, ReactNode } from "react";
 import { Box, Text, TextAttributes } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 
-/** Between a two-line row's name and the line under it, from the name's baseline to the next line's capitals. */
-const LINE_GAP = "var(--gloom-space-sm)";
+/**
+ * Each line's height, in its own type: room for the font's ascent and descent,
+ * so a line's letters sit inside its box in every engine, without relying on
+ * `text-box` trimming (WebKit before 18.2 ignores it). Half of the space
+ * above and below the letters also separates the name from the line under it.
+ */
+const LINE_HEIGHT = 1.2;
 
-/** Room above the capitals and below the baseline for ascenders, accents and descenders. */
+/** Room above and below a line for accents and descenders that reach past it. */
 const INK_ROOM = "0.3em";
 
 /**
- * Each line's box runs from its capitals to its baseline, so the block's top
- * and bottom are where its letters start and sit. The line clips for the
- * ellipsis, and WebKit clips both ways whatever the other axis says, so the
- * clip box reaches past the capitals and the baseline by padding, and an equal
- * negative margin keeps the line where it was: ascenders and descenders draw
- * uncut, and the row does not move.
+ * The line clips for the ellipsis, and WebKit clips both ways whatever the
+ * other axis says, so the clip box reaches past the line by padding, and an
+ * equal negative margin keeps the line where it was.
  */
 const LINE_STYLE = {
   display: "block",
   minWidth: 0,
   maxWidth: "100%",
-  lineHeight: 1,
-  textBox: "trim-both cap alphabetic",
+  lineHeight: LINE_HEIGHT,
   overflow: "hidden",
   paddingBlock: INK_ROOM,
   marginBlock: `calc(-1 * ${INK_ROOM})`,
@@ -30,16 +31,15 @@ const LINE_STYLE = {
 } as CSSProperties;
 
 /**
- * The art beside the two lines (a `LogoMark` of size `lead`) is a square as
- * tall as they are: two capitals and the gap, in the lines' own type, so its
- * top and bottom edges line up with the name's capitals and the baseline of
- * the line under it.
+ * The art beside the two lines (a `LogoMark` of size `lead`) is a square
+ * exactly as tall as the two lines, in their type, so the name and the line
+ * under it always sit within its height, the block centred on it.
  */
 const LEADING_STYLE: CSSProperties = {
   flexShrink: 0,
   fontSize: "var(--gloom-type-ui)",
-  width: `calc(2cap + ${LINE_GAP})`,
-  height: `calc(2cap + ${LINE_GAP})`,
+  width: `${2 * LINE_HEIGHT}em`,
+  height: `${2 * LINE_HEIGHT}em`,
 };
 
 export interface ListRowLinesProps {
@@ -76,7 +76,7 @@ export function ListRowLines({ label, description, leading, labelColor, labelBol
           {leading}
         </Box>
       )}
-      <Box flexDirection="column" minWidth={0} flexShrink={1} style={{ gap: LINE_GAP }}>
+      <Box flexDirection="column" minWidth={0} flexShrink={1}>
         <Text fg={labelColor ?? colors.text} attributes={labelBold ? TextAttributes.BOLD : 0} style={LINE_STYLE}>
           {label}
         </Text>
