@@ -9,9 +9,10 @@ import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
-  surfaceSmileRows, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
+  surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
 
 type SurfaceAxis = NonNullable<SurfaceGridOptions["axis"]>;
@@ -26,8 +27,8 @@ export function surfaceCoordinateLabel(axis: SurfaceAxis, coordinate: number, in
 
 /** The Skew view's sign conventions and units, one line each. */
 const SKEW_NOTES = [
-  "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus ATM IV, 90/110 the IV at 90% of spot minus the IV at 110%; all in vol points.",
-  `Slope is the ATM IV change per year to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
+  "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus the IV at the forward, 90/110 the IV at 90% of the forward minus the IV at 110%; all in vol points.",
+  `Slope is the change per year in the IV at the forward to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
 ];
 
 /**
@@ -155,6 +156,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const date = typeof args.options.date === "string" && args.options.date ? storedSurfaceDate(args.options.date) : null;
     let snapshot: DatedSurfaceSnapshot;
     let quote: Quote | null = null;
+    let instrument: { symbol: string; exchange?: string } = { symbol };
     if (date) {
       // A stored close needs no current price: it carries the spot it was fitted at.
       snapshot = await loadDatedSurface(symbol, date, { signal: ctx.signal, api: ctx.apiClient });
@@ -163,22 +165,35 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         snapshot = { ...snapshot, failures: [...snapshot.failures, { expiration: requested, message: unlistedExpiryText(requested, snapshot.catalogue) }] };
       }
     } else {
-      const instrument = await ctx.resolveInstrument?.(symbol) ?? { symbol };
-      quote = await ctx.marketData.getQuote(symbol, instrument.exchange);
+      const resolved = await ctx.resolveInstrument?.(symbol) ?? { symbol };
+      instrument = resolved;
+      quote = await ctx.marketData.getQuote(symbol, resolved.exchange);
       if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
-        return { sections: [], complete: false, unavailableSymbols: [symbol], errors: ["A current underlying price is required"] };
+        // A listing that stopped trading has no current price: what became of it is why (TWTR).
+        const fate = await loadListingFate(resolved, ctx.marketData, { quote });
+        return { sections: [], complete: false, unavailableSymbols: [symbol],
+          ...listingFateEmpty(fate, ["A current underlying price is required"]) };
       }
-      // At a stored close's precision, so the live report and a --date one export the same digits.
-      snapshot = atCapturePrecision(await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
+      // At a stored close's precision, so the live report and a --date one export the same digits. A chain
+      // from a closed session is priced at that session's close, as OMON prices it.
+      snapshot = atCapturePrecision(await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated, quote,
         settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
         limit: Number(args.options.limit), signal: ctx.signal,
         requiredExpiries: requested == null ? [] : [requested],
       }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
     }
+    const available = snapshot.expiries.some((expiry) => expiry.fit);
+    const loadErrors = snapshot.failures.map((failure) => failure.expiration == null ? failure.message
+      : `${expiryLabel(failure.expiration)}: ${failure.message}`);
+    // A symbol with no option chain at all says what became of it when something did (FB is a fund now,
+    // Meta trades as META) in place of the chain's own error; a chain without clean quotes is the symbol's own.
+    const fate = !snapshot.stored && !available && snapshot.catalogue.length === 0
+      ? listingFateEmpty(await loadListingFate(instrument, ctx.marketData, { quote }), loadErrors) : null;
+    // The spot a chain from a closed session was priced at, and its session.
+    const spotBasis = available ? surfaceSpotBasisLabel(snapshot) : null;
     const stored = snapshot.stored ?? null;
     const axis = args.options.axis as SurfaceAxis;
     const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
-    const available = snapshot.expiries.some((expiry) => expiry.fit);
     const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
       ({ expiry: expiryLabel(expiry.expiration), warning })));
     const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
@@ -199,9 +214,11 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol],
-      errors: [...snapshot.failures.map((failure) => failure.expiration == null ? failure.message
-        : `${expiryLabel(failure.expiration)}: ${failure.message}`), ...smile?.errors ?? []],
-      ...(stored || tab === "skew" ? { notes: [...stored ? storedNotes(snapshot, args.options) : [], ...tab === "skew" ? SKEW_NOTES : []] } : {}),
+      errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? []],
+      ...(fate?.empty ? { empty: fate.empty } : {}),
+      ...(stored || spotBasis || tab === "skew" ? { notes: [
+        ...stored ? storedNotes(snapshot, args.options) : spotBasis ? [`Spot ${formatPrice(snapshot.spot)}, ${spotBasis}.`] : [],
+        ...tab === "skew" ? SKEW_NOTES : []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
       ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
         : smile?.freshness ? { freshness: smile.freshness } : {}),

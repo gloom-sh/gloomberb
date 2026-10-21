@@ -1,9 +1,24 @@
 import { findListedExpiry } from "../../../utils/option-expiry";
 import { evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
+import { formatCalendarDay, formatSpotTime } from "../options/model-spot";
 
 export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(2)}%`;
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 export const expiryLabel = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
+
+/**
+ * What the spot is when it is not the regular session's latest price, worded
+ * as OMON words it: `close Mon 19 Oct` for the official close of the session
+ * a closed chain was quoted in, `pre-market Tue 20 Oct 12:21 UTC` for an
+ * extended-session print. Null for the regular session's price or a bare spot.
+ */
+export function surfaceSpotBasisLabel(snapshot: Pick<SurfaceSnapshot, "spotBasis" | "spotAsOf">): string | null {
+  const basis = snapshot.spotBasis;
+  if (!basis) return null;
+  if (basis.basis === "close") return basis.sessionDate ? `close ${formatCalendarDay(basis.sessionDate)}` : "close";
+  const at = typeof snapshot.spotAsOf === "number" ? snapshot.spotAsOf : Date.parse(String(snapshot.spotAsOf));
+  return basis.session && Number.isFinite(at) ? `${basis.session} ${formatSpotTime(at)}` : null;
+}
 
 /** A one-day front expiry is the noisiest smile on the board; the default selection is the first at least four weeks out. */
 const DEFAULT_EXPIRY_MIN_DAYS = 28;

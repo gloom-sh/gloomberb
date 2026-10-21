@@ -99,10 +99,23 @@ export interface SurfaceFailure {
   reasonCode?: string;
 }
 
+/**
+ * What a surface's spot is (`optionModelSpot`): the official close of the
+ * session the chain was quoted in (`close`, that session's New York date),
+ * or the latest price (`last`, with the extended session it printed in).
+ */
+interface SurfaceSpotBasis {
+  basis: "close" | "last";
+  session: "pre-market" | "after hours" | "overnight" | null;
+  sessionDate: string | null;
+}
+
 export interface SurfaceSnapshot {
   symbol: string;
   spot: number;
   spotAsOf?: string | number | null;
+  /** Absent when the caller gave a bare spot, as a stored close does. */
+  spotBasis?: SurfaceSpotBasis | null;
   phase: "loading" | "partial" | "ready" | "error";
   settings: SurfaceSettings;
   catalogue: number[];
@@ -401,11 +414,16 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
 }
 
 /**
- * A fitted expiry's skew in decimal IV: RR is the 25-delta call minus put, BF
- * their average minus ATM, 90/110 the IV at 90% of spot minus 110%. The
- * 25-delta strikes are found on the fit inside the quoted strikes, as the
- * Table's delta columns find them, so a fit that cannot price a far wing it
- * was never quoted at does not blank a quoted expiry's skew.
+ * A fitted expiry's skew in decimal IV, measured from its forward: `atm` is
+ * the IV at the forward (ATMF), RR the 25-delta call minus put, BF their
+ * average minus ATMF, 90/110 the IV at 90% of the forward minus 110%. The
+ * spot only enters through the 25-delta strikes' spot delta, whose carry is
+ * the parity forward's, so a pre-market print against the close's chain does
+ * not move a fly, and a long-dated fly is not dragged below zero by the skew
+ * between spot and a forward several percent above it. The 25-delta strikes
+ * are found on the fit inside the quoted strikes, as the Table's delta
+ * columns find them, so a fit that cannot price a far wing it was never
+ * quoted at does not blank a quoted expiry's skew.
  */
 export function surfaceExpirySkew(expiry: SurfaceExpiry, spot: number): SkewMetrics {
   const smile = (strike: number) => evaluateSurfaceSmile(expiry, strike);
@@ -413,8 +431,9 @@ export function surfaceExpirySkew(expiry: SurfaceExpiry, spot: number): SkewMetr
     const strike = deltaStrike(expiry, spot, delta);
     return strike == null ? null : smile(strike);
   };
-  const put25 = at(-0.25), call25 = at(0.25), atm = expiry.atmIV;
-  const low = smile(spot * 0.9), high = smile(spot * 1.1);
+  const forward = expiry.forward;
+  const put25 = at(-0.25), call25 = at(0.25), atm = positive(forward) ? smile(forward) : null;
+  const low = positive(forward) ? smile(forward * 0.9) : null, high = positive(forward) ? smile(forward * 1.1) : null;
   const both = put25 != null && call25 != null;
   return { atm, put25, call25, putCallSkew: both ? put25 - call25 : null, riskReversal: both ? call25 - put25 : null,
     butterfly: both && atm != null ? (put25 + call25) / 2 - atm : null,
@@ -433,12 +452,13 @@ export function surfaceCalendarWarnings(expiries: readonly SurfaceExpiry[]): str
   return count > 0 ? [`${count} calendar arbitrage ${count === 1 ? "warning" : "warnings"}`] : [];
 }
 
+/** The ATM-forward IV change per year to the next expiry that has one: spot plays no part in it. */
 export function withSurfaceTermSlopes(expiries: readonly SurfaceExpiry[]): SurfaceExpiry[] {
   const sorted = [...expiries].sort((a, b) => a.years - b.years);
   return sorted.map((expiry, index) => {
-    const next = sorted.slice(index + 1).find((item) => item.atmIV != null);
-    return { ...expiry, termSlope: expiry.atmIV != null && next?.atmIV != null
-      ? volatilityTermSlope({ years: expiry.years, volatility: expiry.atmIV }, { years: next.years, volatility: next.atmIV }) : null };
+    const next = sorted.slice(index + 1).find((item) => item.skew.atm != null);
+    return { ...expiry, termSlope: expiry.skew.atm != null && next?.skew.atm != null
+      ? volatilityTermSlope({ years: expiry.years, volatility: expiry.skew.atm }, { years: next.years, volatility: next.skew.atm }) : null };
   });
 }
 

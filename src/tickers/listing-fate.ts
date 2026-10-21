@@ -236,6 +236,36 @@ export function listingFateNotes(fate: ListingFate, served: { served: boolean; f
 }
 
 /**
+ * A report's notes and errors beside what became of its symbol, worded as
+ * `quote`, `history` and `options` word it: with nothing served, the fate is
+ * why ("TWTR: Delisted Oct 27, 2022", "FB now lists ...; Meta Platforms
+ * trades as META") and stands in for the errors the empty load raised ("Not
+ * a ticker", "No options provider"); with data, `listingFateNotes` beside
+ * the errors. A symbol whose company moved, with nothing listed under it now,
+ * has nothing of its own to serve and throws `MovedSymbolError`.
+ */
+export function listingFateReport(
+  fate: ListingFate,
+  served: { served: boolean; firstDate?: string | null },
+  errors: readonly string[],
+): { notes: string[]; errors: string[] } {
+  if (fate.moved) throw new MovedSymbolError(fate.moved);
+  const notes = listingFateNotes(fate, served);
+  return { notes, errors: !served.served && notes.length > 0 ? [] : [...errors] };
+}
+
+/**
+ * A report that served nothing for its symbol (`listingFateReport`): what
+ * became of the symbol is the one reason it is empty, said once in place of
+ * every table's "No data." and of the load's errors; the errors alone when
+ * nothing became of it.
+ */
+export function listingFateEmpty(fate: ListingFate, errors: readonly string[]): { empty?: string; errors: string[] } {
+  const report = listingFateReport(fate, { served: false }, errors);
+  return report.notes.length ? { empty: report.notes.join(" "), errors: report.errors } : { errors: report.errors };
+}
+
+/**
  * What a report or loader with nothing of its own to serve for a symbol
  * throws when the symbol's company moved (`ListingFate.moved`): its message
  * is the change's line, "HFC became DINO on 2022-03-15".

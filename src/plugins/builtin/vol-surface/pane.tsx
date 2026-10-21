@@ -39,7 +39,7 @@ import { VolatilitySurface } from "./surface";
 import { SmileChart, TermChart } from "./charts";
 import { surfaceCoordinateLabel } from "./headless";
 import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
-  surfaceSkewRow } from "./tables";
+  surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 
 const TABS = [
@@ -95,17 +95,19 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const spotAvailable = !!quote && quote.price > 0 && Number.isFinite(quote.price) && !quote.stale;
   const spotAsOfRef = useRef(quote?.lastUpdated ?? null);
   spotAsOfRef.current = quote?.lastUpdated ?? null;
-  const spotRef = useRef(quote?.price ?? 0);
-  spotRef.current = quote?.price ?? 0;
+  const quoteRef = useRef(quote ?? null);
+  quoteRef.current = quote ?? null;
   const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable, requestedExpiration]);
   // Every load reads the spot at the moment it starts; a reload in session
   // therefore uses the current stream price, not the one from the first load.
+  // A chain from a closed session is priced at that session's close, which
+  // the quote carries, so a pre-market print does not move it.
   const surfaceRequest = useCallback((force: boolean, signal: AbortSignal): SurfaceLoadRequest => {
     const instrument = target?.instrument;
     return {
       instrument: { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
         brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument },
-      spot: spotRef.current, spotAsOf: spotAsOfRef.current, limit, forceRefresh: force, signal,
+      spot: quoteRef.current?.price ?? 0, spotAsOf: spotAsOfRef.current, quote: quoteRef.current, limit, forceRefresh: force, signal,
       requiredExpiries: expirationRef.current == null ? [] : [expirationRef.current],
       settings: { ...DEFAULT_SURFACE_SETTINGS, ivSource, priceSide, maxRelativeSpread: Number(spread), maxStaleSessions: Number(age) },
     };
@@ -153,6 +155,14 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
   const dates = useAsyncResource(underlying ? datesLoader : null);
+  // A symbol with no current price, or no option chain at all, says what became of it when something
+  // did, as `quote` says it: TWTR stopped trading, FB is a fund now and Meta trades as META.
+  const noChain = !historyDate && !!quote && (!spotAvailable
+    || (!!resource.data && !resource.loading && resource.data.catalogue.length === 0));
+  const fateExchange = target?.effectiveExchange ?? "";
+  const fateLoader = useCallback(async () => (await getSharedMarketDataCoordinator()
+    ?.loadListingFate({ symbol: underlying, exchange: fateExchange }))?.note ?? null, [underlying, fateExchange]);
+  const fateNote = useAsyncResource(underlying && noChain ? fateLoader : null).data ?? null;
   const ivRank = useIvRank(underlying || null);
   useEffect(() => () => controller.current?.abort(), [request]);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
@@ -339,7 +349,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   for (const entry of snapshot?.expiries ?? []) {
     for (const warning of entry.warnings) expiryWarnings.set(warning, [...expiryWarnings.get(warning) ?? [], entry.expiration]);
   }
-  const notices = [...(snapshot?.warnings ?? []).filter((warning) => !expiryWarnings.has(warning)), ...failures,
+  const notices = fateNote ? [] : [...(snapshot?.warnings ?? []).filter((warning) => !expiryWarnings.has(warning)), ...failures,
     ...(activeTab === "surface" && sheet?.omitted.length ? [`3D sheet omits ${sheet.omitted.map((entry) => expiryLabel(entry.expiration)).join(", ")}: smile fit fell back to interpolation (shown in Table)`] : []),
     ...[...expiryWarnings].map(([warning, expirations]) => `${expirations.length > 1 && expirations.length === snapshot?.expiries.length
       ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
@@ -350,6 +360,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
       ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
     ...(active.error ? [active.error] : [])];
+  const spotBasis = snapshot && !snapshot.stored ? surfaceSpotBasisLabel(snapshot) : null;
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
     : surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES);
@@ -464,9 +475,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         ]}
         meta={!snapshot ? undefined : snapshot.stored
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
-          : [`Spot ${formatPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
-      <PaneStatusBody loading={active.loading && !snapshot}
-      error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
+          : [`Spot ${formatPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
+            // The close a closed session's chain is priced at dates the chain too.
+            spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
+      <PaneStatusBody loading={active.loading && !snapshot && !fateNote}
+      error={!snapshot && !fateNote ? active.error : null} empty={!!fateNote || !snapshot && !active.loading}
+      emptyTitle={fateNote ?? undefined} subject="volatility surface">
       <StatGrid items={ivStats} width={width} />
       {/* The terminal sizes the view in the rows under the bar and figures; the desktop fills what is left. */}
       {nativePaneChrome ? <Box flexDirection="column" overflow="hidden" {...FILL_REST}>{content}</Box> : content}

@@ -14,7 +14,7 @@ import { fetchCpiBoard } from "../cpi/client";
 import { fetchRatePath } from "../rate-path/client";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { listingFateNotes, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
+import { listingFateNotes, listingFateReport, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
 import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
@@ -76,10 +76,9 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const skewColumns = [{ key: "skew25d", header: skewHeader("skew25d", "put-call"), format: points },
       { key: "rr25d", header: skewHeader("rr25d", "call-put"), format: points }];
     const served = model.iv30.length > 0 || prices.history.length > 0;
-    const fateNotes = listingFateNotes(fate, { served });
     // With nothing served, the fate is why: no "not a ticker" or missing-history errors beside it.
-    const errors = !served && fateNotes.length > 0 ? []
-      : [prices.error, ...model.warnings].filter((value): value is string => !!value);
+    const { notes: fateNotes, errors } = listingFateReport(fate, { served },
+      [prices.error, ...model.warnings].filter((value): value is string => !!value));
     const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote].filter((note): note is string => !!note)];
     if (event && releases) {
       const lookback = String(args.options.lookback) as IvLookback;

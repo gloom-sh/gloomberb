@@ -15,6 +15,7 @@ import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./mo
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
 import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
+import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 
 // Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
 const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
@@ -82,12 +83,13 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     hedgeInputsFromSettings(settings);
     const suppliedInputs = suppliedScenarioInputs(settings);
     let market: ScenarioMarketSnapshot;
+    let instrument: Awaited<ReturnType<typeof resolveHeadlessInstrument>> | null = null;
     if (suppliedInputs) {
       // An explicit position can be valued offline and must never depend on unrelated market requests.
       market = { ...parsePublicTickerKey(symbol), spot: null, currency: "", asOf: Date.now(), chain: null, expirationDates: [], rate: null,
         dividendYield: null, source: null, underlyingQuote: null, rateAsOf: [], warnings: [] };
     } else {
-      const instrument = await resolveHeadlessInstrument(ctx, symbol);
+      instrument = await resolveHeadlessInstrument(ctx, symbol);
       const typedExpiries = typeof settings.legs === "string" && settings.legs.trim() ? parseLegs(settings.legs).map((leg) => leg.expiration) : [];
       const expiration = readOptionExpiration(args.options.expiration);
       market = await loadScenarioMarket({ instrument, expiration: expiration ?? undefined,
@@ -104,8 +106,13 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A typed rate or yield stands in for the source that could not supply one.
     const marketWarnings = market.warnings.filter((warning) => !(supplied(settings.dividendYield) && warning.startsWith("Dividend yield unavailable"))
       && !(supplied(settings.rate) && warning.startsWith("Treasury")));
-    const errors = scenario ? [...new Set([...marketWarnings, ...scenario.warnings])]
+    const loadErrors = scenario ? [...new Set([...marketWarnings, ...scenario.warnings])]
       : [...marketWarnings, "No position supplied; add --legs or select --strategy"];
+    // A symbol with no option chain at all says what became of it when something did (TWTR stopped
+    // trading, FB is a fund now) in place of the chain's errors.
+    const fate = instrument && !market.chain && !scenario
+      ? listingFateEmpty(await loadListingFate(instrument, ctx.marketData, market.underlyingQuote ? { quote: market.underlyingQuote } : {}), loadErrors) : null;
+    const errors = fate?.errors ?? loadErrors;
     const midVolatility = !!position?.legs.some((leg) => leg.volatilitySource === "mid");
     // A seeded strategy starts at the spot its quote mids imply; the last print is reported beside it.
     const lastPrint = midVolatility && !supplied(settings.spot) && market.spot != null && money(market.spot) !== money(position!.spot)
@@ -167,7 +174,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value])) })) },
       ] : [],
       complete: scenario != null && errors.length === 0,
-      unavailableSymbols: scenario ? [] : [symbol], errors,
+      unavailableSymbols: scenario ? [] : [symbol], errors, ...(fate?.empty ? { empty: fate.empty } : {}),
       metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}), ...(collar ? { collar } : {}),
         ...(position ? { spot: { price: position.spot, basis: spotBasis, valuedAt: new Date(position.asOf).toISOString() } } : {}),
         inputSource: suppliedInputs ? "user" : "market",

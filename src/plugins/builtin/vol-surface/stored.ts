@@ -3,7 +3,10 @@ import { logForwardMoneyness, type ExpectedMove, type SkewMetrics, type SmileFit
 import { ivSymbol, loadStoredSurface, loadSurfaceDates, type ImpliedVolatilityApi, type StoredSurfacePayload } from "../iv-history/client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-rules";
-import { evaluateSurfaceSmile, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceFilterCounts, type SurfaceSnapshot } from "./model";
+import {
+  evaluateSurfaceSmile, normalizeSurfaceSettings, surfaceExpirySkew, withSurfaceTermSlopes,
+  type SurfaceExpiry, type SurfaceFilterCounts, type SurfaceSnapshot,
+} from "./model";
 import { isFiniteNumber } from "../../../utils/guards";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 
@@ -63,6 +66,10 @@ function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, sou
   }
   expiry.points.sort((a, b) => a.strike - b.strike);
   for (const point of expiry.points) point.fitResidual = point.volatility - (evaluateSurfaceSmile(expiry, point.strike) ?? point.volatility);
+  // The skew is read off the stored fit as the live surface reads it, not taken as stored: a capture
+  // that searched the far wings for its 25-delta strikes left a quoted monthly blank, and an older one
+  // measured its fly from the spot.
+  if (expiry.fit) expiry.skew = surfaceExpirySkew(expiry, spot);
   return expiry;
 }
 
@@ -149,8 +156,8 @@ export function storedSurfaceSnapshot(payload: StoredSurfacePayload): DatedSurfa
   const surface = payload.surface as unknown as StoredSurface;
   if (!surface || surface.version !== 1 || !Array.isArray(surface.expiries)) throw new Error("Unsupported stored surface format");
   const capturedAt = Date.parse(payload.capturedAt);
-  const expiries = surface.expiries.map((entry) => storedExpiry(entry, payload.spot, capturedAt, surface.source))
-    .filter((entry) => entry.points.length > 0).sort((a, b) => a.expiration - b.expiration);
+  const expiries = withSurfaceTermSlopes(surface.expiries.map((entry) => storedExpiry(entry, payload.spot, capturedAt, surface.source))
+    .filter((entry) => entry.points.length > 0));
   const rateDates = expiries.flatMap((entry) => entry.rateAsOf).sort();
   return {
     symbol: payload.symbol, spot: payload.spot, spotAsOf: surface.spotAsOf ?? payload.capturedAt, phase: "ready",
