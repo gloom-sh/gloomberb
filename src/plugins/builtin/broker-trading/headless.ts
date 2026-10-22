@@ -1,6 +1,7 @@
 import type { BrokerAdapter } from "../../../types/broker";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneColumn } from "../../../types/headless";
 import { brokerOrderStatus, loadBrokerOrdersSnapshot } from "./orders-data";
+import { accountsShownFor } from "../../../brokers/broker-portfolio-sync";
 
 type BrokerResolver = (brokerType: string, context: HeadlessPaneContext) => BrokerAdapter | null;
 
@@ -44,7 +45,7 @@ function createBrokerOrdersHeadless(
       if (!profiles.length) throw new Error("Connect a broker profile that reports orders in Brokers first.");
       const { instance, broker } = profiles[ordinal(args.options.profile, profiles.length, "profile")]!;
       if (!broker.listAccounts) throw new Error("This broker does not report account identities.");
-      const accounts = await broker.listAccounts(instance);
+      const accounts = accountsShownFor(context.config, instance, await broker.listAccounts(instance));
       context.signal.throwIfAborted();
       if (!accounts.length) throw new Error("This broker profile has no available accounts.");
       const account = accounts[ordinal(args.options.account, accounts.length, "account")]!;

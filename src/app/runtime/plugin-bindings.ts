@@ -4,7 +4,7 @@ import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
 } from "../../brokers/account-cache";
-import { clearLeftoverBrokerHoldings, findPortfolioHeir, knownBrokerHoldings } from "../../brokers/broker-portfolio-sync";
+import { accountsShownFor, clearLeftoverBrokerHoldings, findPortfolioHeir, knownBrokerHoldings } from "../../brokers/broker-portfolio-sync";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -143,7 +143,7 @@ export function bindPluginRegistryRuntimeAccess({
 
       await broker.connect?.(instance);
       if (broker.listAccounts) {
-        const accounts = await broker.listAccounts(instance);
+        const accounts = accountsShownFor(stateRef.current.config, instance, await broker.listAccounts(instance));
         dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts });
       }
     },

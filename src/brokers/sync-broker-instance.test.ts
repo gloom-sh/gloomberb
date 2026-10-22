@@ -7,6 +7,7 @@ import type { BrokerAdapter } from "../types/broker";
 import type { Portfolio, TickerRecord } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
+import { accountsShownFor } from "./broker-portfolio-sync";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { getColumnValue, getSortValue } from "../portfolio/column-values";
@@ -249,6 +250,9 @@ describe("syncBrokerInstance", () => {
     expect(result.brokerAccounts.map((account) => account.accountId)).toEqual(["st-rh"]);
     expect(config.portfolios.map((portfolio) => portfolio.id).sort()).toEqual(["broker:gateway:U1234567", "broker:snaptrade:st-rh"]);
     expect(result.tickers.get("AAPL")?.metadata.positions.map((position) => position.portfolio)).toEqual(["broker:gateway:U1234567"]);
+    // Wherever the profile's live accounts are listed (Brokers, the ticket), the same account is left out.
+    const linked = config.brokerInstances.find((instance) => instance.id === "snaptrade")!;
+    expect(accountsShownFor(config, linked, await aggregator.listAccounts!(linked)).map((account) => account.accountId)).toEqual(["st-rh"]);
   });
 
   test("fails cleanly when the broker account cache cannot be persisted", async () => {

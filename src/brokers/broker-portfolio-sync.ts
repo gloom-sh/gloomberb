@@ -79,6 +79,20 @@ export function accountsHeldUnderOwnNumber(
 }
 
 /**
+ * The accounts of `instance` to list: without those another enabled profile
+ * holds under their own number (`accountsHeldUnderOwnNumber`), so an account
+ * linked twice appears once wherever accounts are chosen or shown.
+ */
+export function accountsShownFor(
+  config: AppConfig,
+  instance: BrokerInstanceConfig,
+  accounts: BrokerAccount[],
+): BrokerAccount[] {
+  const held = accountsHeldUnderOwnNumber(config, instance, accounts);
+  return held.size ? accounts.filter((account) => !held.has(account.accountId)) : accounts;
+}
+
+/**
  * Who keeps a portfolio when the profile holding it is removed: another
  * enabled profile of the same broker that syncs the same account. Only a
  * hand-over to or from a signed-in profile (an account switching how it
