@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { capabilityPluginState, getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneApiClient } from "../../../types/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createAlert } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { EVENT_ALERTS_KEY } from "./events";
+import { appendFiredAlert, FIRED_LOG_KEY } from "./fired-log";
 import { alertsHeadless } from "./headless";
 import { createScheduledAlert } from "./scheduled";
 
@@ -64,23 +66,54 @@ test("a saved event list that does not read is reported, not shown as no alerts"
   expect(result.complete).toBe(false);
 });
 
-test("History reads the delivered alerts page by page up to a cap, and a signed-out read says what to do instead of failing bare", async () => {
+test("Prices exports the quote's own time and feed apart from the check time, and Away in percent; the text table is the pane's", async () => {
+  const quotedAt = Date.UTC(2026, 9, 22, 20, 14);
+  const checkedAt = Date.UTC(2026, 9, 22, 20, 31);
+  const alert = { ...createAlert("IBIT", "above", 50), lastCheckedPrice: 46.06, lastCheckedAt: checkedAt, lastQuoteUpdatedAt: quotedAt, lastQuoteSource: "delayed" };
+  const args = createTestHeadlessArgs({ options: { tab: "prices" } });
+  const result = await alertsHeadless.load(args, contextWith([alert], []));
+  const table = headlessReportTables(alertsHeadless, result, args, "ALRT", deriveHeadlessFreshness(alertsHeadless, result), { complete: true, unavailableSymbols: [] }).tables[0]!;
+  const cell = (header: string) => table.rows[0]![table.columns.indexOf(header)];
+  expect(Date.parse(String(cell("Quote")))).toBe(quotedAt);
+  expect(cell("Quote source")).toBe("delayed");
+  expect(Date.parse(String(cell("Checked")))).toBe(checkedAt);
+  expect(table.columns.find((column) => column.startsWith("Away"))).toMatch(/%/);
+  expect(Number(cell(table.columns.find((column) => column.startsWith("Away"))!))).toBeCloseTo(8.55, 1);
+  // The terminal keeps the pane's columns: no source or check-time column of its own.
+  const text = renderHeadlessPaneText(alertsHeadless, result, args, "ALRT");
+  expect(text).toMatch(/State\s+Symbol\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
+  expect(text).not.toContain("Quote source");
+});
+
+test("History lists this app's fired alerts with no sign-in, and merges Gloom Cloud's deliveries in, newest first", async () => {
+  const log = appendFiredAlert([], {
+    kind: "price", ruleId: "alert-1", rule: "IBIT above 50", firedAt: Date.UTC(2026, 9, 16, 14, 0),
+    value: 50.12, unit: "USD", quoteAt: "2026-10-16T13:59:00.000Z", source: "delayed", symbol: "IBIT",
+  }, "fired-1");
+  const context = (apiClient: unknown) => {
+    const ctx = createTestHeadlessContext({ apiClient: apiClient as HeadlessPaneApiClient });
+    ctx.readDeviceState = <T,>(pluginId: string, key: string) => (pluginId === ALERTS_PLUGIN_ID && key === FIRED_LOG_KEY ? log as T : null);
+    return ctx;
+  };
+  const args = createTestHeadlessArgs({ options: { tab: "history" } });
+
+  const signedOut = await alertsHeadless.load(args, context({ getMobileAlertHistory: async () => { throw new ApiRequestError("Sign in required", 401); } }));
+  expect(signedOut.rows).toEqual([expect.objectContaining({ via: "This app", alert: "IBIT above 50", value: 50.12, unit: "USD", quoteAt: "2026-10-16T13:59:00.000Z", quoteSource: "delayed" })]);
+  expect(signedOut.errors).toBeUndefined();
+  expect(signedOut.notes?.[0]).toContain("Only the alerts this app fired are listed");
+
   const offsets: number[] = [];
   const page = (offset: number) => ({
     status: "ready", warning: null, asOf: "2026-10-17T12:00:00Z", states: [], deviceEnabled: true, syncAsOf: null,
-    items: [{ id: `a${offset}`, kind: "earnings", title: `CRWV ${offset}`, body: "Reports soon", deliveredAt: "2026-10-16T09:30:00Z" }],
+    items: [{ id: `a${offset}`, kind: "earnings", title: `CRWV ${offset}`, body: "Reports soon", deliveredAt: `2026-10-1${offset + 5}T09:30:00Z` }],
     hasMore: true, nextOffset: offset + 1,
   });
-  const args = createTestHeadlessArgs({ options: { tab: "history" } });
-  const read = await alertsHeadless.load(args, createTestHeadlessContext({
-    apiClient: { getMobileAlertHistory: async (offset: number) => { offsets.push(offset); return page(offset); } } as unknown as HeadlessPaneApiClient,
-  }));
+  const signedIn = await alertsHeadless.load(args, context({ getMobileAlertHistory: async (offset: number) => { offsets.push(offset); return page(offset); } }));
+  // Five pages at most, the rest left to the pane's scrolling.
   expect(offsets).toEqual([0, 1, 2, 3, 4]);
-  expect(read.rows).toHaveLength(5);
-  expect(read.notes).toEqual(["Showing the latest 5 delivered alerts; the pane loads older ones as you scroll."]);
-
-  const refused = alertsHeadless.load(args, createTestHeadlessContext({
-    apiClient: { getMobileAlertHistory: async () => { throw new ApiRequestError("Sign in required", 401); } } as unknown as HeadlessPaneApiClient,
-  }));
-  await expect(refused).rejects.toThrow(/ALRT History needs a free Gloom sign-in/);
+  expect(signedIn.rows.map((row) => [row.via, row.alert])).toEqual([
+    ["Gloom Cloud", "CRWV 4"], ["Gloom Cloud", "CRWV 3"], ["Gloom Cloud", "CRWV 2"],
+    ["This app", "IBIT above 50"], ["Gloom Cloud", "CRWV 1"], ["Gloom Cloud", "CRWV 0"],
+  ]);
+  expect(signedIn.notes).toEqual(["Showing the latest 5 delivered alerts; the pane loads older ones as you scroll."]);
 });

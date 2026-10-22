@@ -18,6 +18,39 @@ export interface EventAlertRule {
   eventDate?: string;
   /** Scheduled events: the event date it already alerted for. The next event date arms it again. */
   firedFor?: string;
+  /** IV level: the running app's last reading of the level, or why it had none. */
+  check?: IvLevelCheck;
+  /** IV level: when the level was reached. The rule stays Alerted until it is re-armed. */
+  triggeredAt?: number;
+}
+
+/** One check of an IV level rule: the level in the rule's unit, and the option quotes it was read from. */
+export interface IvLevelCheck {
+  checkedAt: number;
+  /** % IV for an ATM rule, vol points for a risk reversal; null when the check found none. */
+  value: number | null;
+  /** When the option quotes behind the reading were observed. */
+  quoteAt?: string;
+  /** How current those quotes are: `real-time`, `15 min delayed`. */
+  source?: string;
+  /** Why there was no reading. */
+  error?: string;
+}
+
+const isText = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 300;
+
+/** A saved check, or none when it does not read: the next check writes a new one. */
+function readIvLevelCheck(value: unknown): IvLevelCheck | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const check = value as Record<string, unknown>;
+  if (!Number.isFinite(check.checkedAt) || (check.value !== null && !Number.isFinite(check.value))) return undefined;
+  return {
+    checkedAt: check.checkedAt as number,
+    value: check.value as number | null,
+    ...(isText(check.quoteAt) ? { quoteAt: check.quoteAt } : {}),
+    ...(isText(check.source) ? { source: check.source } : {}),
+    ...(isText(check.error) ? { error: check.error } : {}),
+  };
 }
 
 const isDateKey = (value: unknown): value is string =>
@@ -129,6 +162,11 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
       if (isScheduledEventRule(rule)) {
         if (isDateKey(value.eventDate)) rule.eventDate = value.eventDate;
         if (isDateKey(value.firedFor)) rule.firedFor = value.firedFor;
+      }
+      if (rule.kind === "iv_level") {
+        const check = readIvLevelCheck(value.check);
+        if (check) rule.check = check;
+        if (Number.isFinite(value.triggeredAt) && value.triggeredAt > 0) rule.triggeredAt = value.triggeredAt;
       }
       rules.push(rule);
       ids.add(value.id);

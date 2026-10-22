@@ -126,6 +126,11 @@ export interface HeadlessPaneContext {
    * that listing instead (`BDI:TSX`), for the retry each listing offers.
    */
   resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string } | null>;
+  /**
+   * What a plugin keeps on this device only (its `ctx.resume` state, never
+   * synced), such as ALRT's log of the alerts the app fired; null when none.
+   */
+  readDeviceState?: <T = unknown>(pluginId: string, key: string) => T | null;
 }
 
 export type HeadlessPaneRow = Record<string, unknown>;

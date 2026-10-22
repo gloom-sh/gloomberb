@@ -1,13 +1,14 @@
 /**
  * `gloomberb fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
- * CPI and FOMC with their dates, filings, news, market moves), History the
- * alerts delivered to the account over the last 90 days.
+ * CPI and FOMC with their dates, filings, news, IV levels, market moves),
+ * History the alerts this device's app fired, with the ones Gloom Cloud
+ * delivered to the account over the last 90 days when signed in.
  */
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow, HeadlessRowsResult } from "../../../types/headless";
 import type { PaneLock } from "../../../types/plugin";
 import { newYorkToday } from "../earnings/board-model";
-import { explainRefusal } from "../shared/cloud-denied";
+import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { ruleState } from "./event-rows";
 import { eventAlertTarget, type EventAlertRule } from "./events";
@@ -19,7 +20,9 @@ import {
   formatQuoteChecked,
   relativeTime,
 } from "./format";
+import { FIRED_LOG_KEY, firedAlertTime, quoteSourceWords, readFiredAlerts, type FiredAlert } from "./fired-log";
 import { alertKindLabel, validateAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
+import { ivLevelCheckText } from "./iv-level";
 import { readScheduledRule, scheduledEventName } from "./scheduled";
 import { readAlertStores } from "./storage";
 import type { AlertRule } from "./types";
@@ -33,17 +36,28 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 const asAlert = (row: HeadlessPaneRow) => row as unknown as AlertRule;
 const text = (value: unknown) => (typeof value === "string" && value ? value : "");
 
-/** The text report words each cell as the pane does; CSV and JSON keep the stored numbers and times. */
+const percent = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "");
+const instant = (value: unknown) => (typeof value === "number" ? firedAlertTime(value) ?? "" : "");
+
+/**
+ * The text report words each cell as the pane does: the quote's age and feed, the distance signed.
+ * CSV and JSON keep the stored numbers, with Away in %, and the quote's own time and feed in Quote
+ * and Quote source, apart from when the app last checked the alert.
+ */
 const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "State", format: (value) => (value === "triggered" ? "Triggered" : "Active") },
   { key: "symbol", header: "Symbol", format: (value, row) => (row.exchange ? `${text(value)}:${text(row.exchange)}` : text(value)) },
   { key: "lastCheckedPrice", header: "Current", align: "right", textFormat: (_value, row) => formatCurrentPrice(asAlert(row), 14) },
   { key: "targetPrice", header: "Target", align: "right", textFormat: (_value, row) => formatAlertTargetPrice(asAlert(row), 14) },
-  { key: "awayPercent", header: "Away", align: "right", textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
+  { key: "awayPercent", header: "Away", align: "right", format: percent, textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
   { key: "condition", header: "Trigger", format: (value) => conditionLabel(value as AlertRule["condition"]) },
-  { key: "lastCheckedAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
-  { key: "triggeredAt", header: "Alerted", textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
+  { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
+  { key: "quoteSource", header: "Quote source" },
+  { key: "lastCheckedAt", header: "Checked", format: instant },
+  { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
 ];
+/** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
+const PRICE_TEXT_COLUMNS = PRICE_COLUMNS.filter((column) => column.key !== "quoteSource" && column.key !== "lastCheckedAt");
 
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
@@ -55,19 +69,38 @@ const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "since", header: "Since" },
 ];
 
-const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "deliveredAt", header: "Sent (UTC)", format: (value) => text(value).slice(0, 16).replace("T", " ") },
-  { key: "event", header: "Event" },
-  { key: "title", header: "Alert" },
-  { key: "body", header: "Detail" },
-];
+const minute = (value: unknown) => text(value).slice(0, 16).replace("T", " ");
+const valueText = (value: unknown, row: HeadlessPaneRow) => (typeof value === "number" && Number.isFinite(value)
+  ? `${Number(value.toFixed(4))}${row.unit === "%" ? "%" : row.unit ? ` ${text(row.unit)}` : ""}` : "");
 
-/** A price alert as the Prices table lists it: the stored fields, without the quote's provider id, and the distance to target. */
+/**
+ * One line per alert, the app's and Gloom Cloud's together, newest first: when it went off, what
+ * sent it, the rule, the figure in its unit, and the quote behind it with its own time and feed.
+ */
+const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "time", header: "Time (UTC)", format: minute },
+  { key: "via", header: "Via" },
+  { key: "event", header: "Event" },
+  { key: "alert", header: "Alert" },
+  { key: "value", header: "Value", align: "right", unitKey: "unit", textFormat: valueText },
+  { key: "quoteAt", header: "Quote time (UTC)", format: minute },
+  { key: "quoteSource", header: "Quote source" },
+  { key: "detail", header: "Detail", shrink: true },
+];
+const HISTORY_TEXT_COLUMNS = HISTORY_COLUMNS.filter((column) => column.key !== "via");
+
+/** A price alert as the Prices table lists it: the stored fields, without the quote's provider id, the distance to target, and its quote's own time and feed. */
 function priceRow(alert: AlertRule): HeadlessPaneRow {
   const { lastQuoteProviderId: _provider, ...stored } = alert;
   const price = alert.lastCheckError ? null : alert.lastCheckedPrice;
   const away = price == null || !Number.isFinite(price) || price === 0 ? null : ((alert.targetPrice - price) / price) * 100;
-  return { ...stored, awayPercent: away != null && Number.isFinite(away) ? away : null };
+  const quoted = !alert.lastCheckError;
+  return {
+    ...stored,
+    awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
+    quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
+    quoteSource: quoted ? quoteSourceWords(alert.lastQuoteSource) : null,
+  };
 }
 
 /** Active alerts first, then the ones that went off, latest first, as the pane orders them. */
@@ -76,6 +109,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
   const triggered = alerts.filter((alert) => alert.status === "triggered").sort((a, b) => (b.triggeredAt ?? 0) - (a.triggeredAt ?? 0));
   return {
     columns: PRICE_COLUMNS,
+    textColumns: PRICE_TEXT_COLUMNS,
     rows: [...active, ...triggered].map(priceRow),
     empty: "No price alerts. Add one with gloomberb alerts add AAPL above 250.",
     ...(error ? { errors: [error], complete: false } : {}),
@@ -96,38 +130,59 @@ function eventRow(rule: EventAlertRule, today: string): HeadlessPaneRow {
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
     state: ruleState(rule, today),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
+    // An IV level's last reading, or why there was none, on its own row.
+    ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule) } : {},
   };
 }
 
 function eventsResult(rules: readonly EventAlertRule[], error: string | null): HeadlessRowsResult {
   const today = newYorkToday();
+  const checked = rules.some((rule) => rule.kind === "iv_level");
   return {
-    columns: EVENT_COLUMNS,
+    // A Last check column only when an IV level rule has a reading to show.
+    columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
     rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, today)),
     empty: "No event alerts. Add one with gloomberb alerts add CRWV earnings --days 3 or gloomberb alerts add CPI --days 1.",
     ...(error ? { errors: [error], complete: false } : {}),
   };
 }
 
-function historyRow(item: AlertHistoryItem): HeadlessPaneRow {
-  return { id: item.id, deliveredAt: item.deliveredAt, kind: item.kind, event: alertKindLabel(item.kind), title: item.title, body: item.body };
+/** A delivery Gloom Cloud sent the account (phone or email). */
+function cloudHistoryRow(item: AlertHistoryItem): HeadlessPaneRow {
+  return {
+    id: item.id, time: item.deliveredAt, via: "Gloom Cloud", kind: item.kind, event: alertKindLabel(item.kind),
+    alert: item.title, value: null, unit: null, quoteAt: null, quoteSource: null, detail: item.body,
+  };
 }
 
-/** What a signed-out read of History says: the tab is the account's own list of delivered alerts. */
+/** An alert this device's app fired, from its local log. */
+function firedHistoryRow(entry: FiredAlert): HeadlessPaneRow {
+  return {
+    id: entry.id, time: entry.firedAt, via: "This app", kind: entry.kind, event: alertKindLabel(entry.kind),
+    alert: entry.rule, value: entry.value, unit: entry.unit ?? null, quoteAt: entry.quoteAt, quoteSource: entry.source,
+    detail: entry.detail ?? "",
+  };
+}
+
+/** What a signed-out read of History adds: only this device's own alerts are listed. */
 export function alertHistoryLockNote({ verifyEmail }: PaneLock): string {
   const account = verifyEmail
     ? "verify your email (Ctrl+P, Resend Verification Email)"
     : "log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up)";
   return [
-    `ALRT History needs a free Gloom sign-in: it lists the alerts Gloom delivered to your account over the last 90 days. ${verifyEmail ? "Until the email is verified" : "Signed out"} it shows none of them.`,
-    `To read it, open the app (gloomberb), ${account}; gloomberb fn ALRT --tab history then reads with that session.`,
+    `Only the alerts this app fired are listed: the ones Gloom Cloud delivered to your phone or email over the last 90 days need a free Gloom sign-in${verifyEmail ? " with a verified email" : ""}.`,
+    `To add them, open the app (gloomberb), ${account}; gloomberb fn ALRT --tab history then reads with that session.`,
   ].join("\n");
 }
 
+/** The app's own fired alerts, newest first, with Gloom Cloud's deliveries merged in when the session can read them. */
 async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResult> {
+  const fired = readFiredAlerts(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, FIRED_LOG_KEY));
   const items: AlertHistoryItem[] = [];
   let first: AlertHistory | null = null;
   let more = false;
+  let refused: string | null = null;
+  let failed: string | null = null;
   try {
     for (let offset: number | null = 0, page = 0; offset != null; page += 1) {
       if (page === HISTORY_PAGES) {
@@ -141,28 +196,39 @@ async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResu
       offset = history.hasMore ? history.nextOffset : null;
     }
   } catch (error) {
-    throw await explainRefusal(error, alertHistoryLockNote, { symbol: null, token: "ALRT" });
+    // Signed out, the app's own log is the history; any other failure is said beside it.
+    const lock = refusedLock(error);
+    if (lock?.gate === "sign-in") refused = alertHistoryLockNote({ ...lock, symbol: null, token: "ALRT" });
+    else failed = error instanceof Error ? error.message : String(error);
   }
   const unavailable = first?.status === "unavailable";
+  const rows = [...fired.map(firedHistoryRow), ...items.map(cloudHistoryRow)]
+    .sort((a, b) => Date.parse(text(b.time)) - Date.parse(text(a.time)));
+  const errors = [...unavailable ? [first?.warning ?? "Delivered alerts are unavailable."] : [], ...failed ? [`Delivered alerts: ${failed}`] : []];
+  const notes = [
+    ...refused ? [refused] : [],
+    ...more ? [`Showing the latest ${items.length} delivered alerts; the pane loads older ones as you scroll.`] : [],
+  ];
   return {
     columns: HISTORY_COLUMNS,
-    rows: items.map(historyRow),
-    empty: "No alerts delivered in the last 90 days.",
-    freshness: { source: "Gloom Cloud", status: "not-a-feed", basis: "delivered alerts", ...(first ? { asOf: first.asOf } : {}) },
-    ...(unavailable ? { errors: [first?.warning ?? "Alert history is unavailable."], complete: false } : {}),
-    ...(more ? { notes: [`Showing the latest ${items.length} delivered alerts; the pane loads older ones as you scroll.`] } : {}),
+    textColumns: HISTORY_TEXT_COLUMNS,
+    rows,
+    empty: refused ? "This app has fired no alerts yet." : "No alerts fired by this app or delivered in the last 90 days.",
+    freshness: { source: first ? "This app and Gloom Cloud" : "This app", status: "not-a-feed", basis: "fired and delivered alerts", ...(first ? { asOf: first.asOf } : {}) },
+    ...(errors.length ? { errors, complete: false } : {}),
+    ...(notes.length ? { notes } : {}),
     metadata: { deviceEnabled: first?.deviceEnabled ?? null },
   };
 }
 
 export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  description: "Your alerts: price alerts with current price and distance to target, event alerts (earnings, CPI and FOMC dates, filings, news, market moves) or the alerts delivered to your account.",
+  description: "Your alerts: price alerts with current price and distance to target, event alerts (earnings, CPI and FOMC dates, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
   freshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
   argument: { kind: "none" },
   options: [{
     key: "tab",
-    description: "Alerts tab: prices, events or history (delivered alerts, signed in).",
+    description: "Alerts tab: prices, events or history (alerts that went off; Gloom Cloud's deliveries when signed in).",
     type: "enum",
     values: ALERT_TABS.map(({ value }) => ({ value })),
     defaultValue: "prices",
@@ -171,7 +237,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   }],
   discovery: {
     screenshotReadiness: "live-dom",
-    dataRequirements: ["Your saved alerts; the History tab needs a Gloom sign-in"],
+    dataRequirements: ["Your saved alerts and this device's log of fired alerts; History adds Gloom Cloud's deliveries when signed in"],
     limitations: ["Current price and quote time are what the app saved at its last check, blank until it has checked the alert."],
   },
   describe: (args) => `Alerts | ${String(args.options.tab ?? "prices")}`,

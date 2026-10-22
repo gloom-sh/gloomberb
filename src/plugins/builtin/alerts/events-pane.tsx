@@ -31,6 +31,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { newYorkToday } from "../earnings/board-model";
 import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
+import { checkIvLevelAlertsNow, ivLevelCheckText, rearmIvLevelAlert } from "./iv-level";
 import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
@@ -77,14 +78,15 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
   const access = usePlanAccess();
   const session = useResearchCloudSession();
-  const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind));
+  const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind) && rule.kind !== "iv_level");
   const stateLoader = useCallback(() => fetchAlertHistory(0), [session.requestKey]);
   const history = useAsyncResource(access.signedIn && hasResearch ? stateLoader : null);
   const states = useMemo(
     () => new Map((history.data?.states ?? []).map((state) => [state.ruleId, state])),
     [history.data],
   );
-  const columns = columnsFor(width, hasResearch && !!history.data);
+  // An IV level is read by this app, so its last reading needs no session.
+  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"));
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],
@@ -103,18 +105,19 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     },
     [setJson],
   );
-  // An earnings or macro alert that went off alerts again for the same event.
+  // An earnings or macro alert that went off alerts again for the same event; an IV level watches its level again.
   const rearm = useCallback(
     (rule: EventAlertRule | undefined) => {
       if (!rule) return;
+      const ivLevel = rule.kind === "iv_level";
       setJson((current) => {
         const result = readEventAlerts(current);
         return result.error
           ? current
-          : JSON.stringify(result.rules.map((entry) => (entry.id === rule.id ? rearmScheduledAlert(entry) : entry)));
+          : JSON.stringify(result.rules.map((entry) => (entry.id === rule.id ? ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry) : entry)));
       });
       // Once the write has landed, so it alerts now rather than at the next 15-minute check.
-      setTimeout(checkScheduledEventAlertsNow, 1_000);
+      setTimeout(ivLevel ? checkIvLevelAlertsNow : checkScheduledEventAlertsNow, 1_000);
     },
     [setJson],
   );
@@ -192,31 +195,40 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
-      renderCell={(rule, column, _index, row) => ({
-        text:
-          column.id === "kind"
-            ? alertKindLabel(rule.kind)
-            : column.id === "last"
-              ? isResearchAlertKind(rule.kind)
-                ? ruleStateText(states.get(rule.id))
-                : ""
-              : column.id === "target"
-              ? ruleTarget(rule)
-              : column.id === "status"
-                ? ruleState(rule, today)
-                : new Date(rule.createdAt).toISOString().slice(0, 10),
-        color: row.selected
-          ? colors.selectedText
-          : rule.status === "paused"
-            ? colors.textMuted
-            : colors.text,
-      })}
+      renderCell={(rule, column, _index, row) => {
+        // An IV level that could not be read says so on its own row: No data in State, the reason in Last check.
+        const unread = rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt && rule.check?.value === null;
+        const state = ruleState(rule, today);
+        return {
+          text:
+            column.id === "kind"
+              ? alertKindLabel(rule.kind)
+              : column.id === "last"
+                ? rule.kind === "iv_level"
+                  ? ivLevelCheckText(rule)
+                  : isResearchAlertKind(rule.kind)
+                    ? ruleStateText(states.get(rule.id))
+                    : ""
+                : column.id === "target"
+                ? ruleTarget(rule)
+                : column.id === "status"
+                  ? unread ? "No data" : state
+                  : new Date(rule.createdAt).toISOString().slice(0, 10),
+          color: row.selected
+            ? colors.selectedText
+            : unread && (column.id === "status" || column.id === "last")
+              ? colors.negative
+              : rule.status === "paused"
+                ? colors.textMuted
+                : colors.text,
+        };
+      }}
       emptyStateTitle={error ?? "No event alerts"}
       emptyContent={error ? undefined : (
         <PaneStatusBody
           empty
           emptyTitle="No event alerts"
-          emptyMessage="Follow earnings and CPI or FOMC dates, filings, news, members, funds or market moves."
+          emptyMessage="Follow earnings and CPI or FOMC dates, filings, news, IV levels, members, funds or market moves."
           actions={<Button label="Add event alert" compact onPress={add} />}
         />
       )}

@@ -1,0 +1,85 @@
+{
+  "dataDir": ":memory:",
+  "configVersion": 28,
+  "baseCurrency": "USD",
+  "refreshIntervalMinutes": 0,
+  "portfolios": [
+    {
+      "id": "main",
+      "name": "Main Portfolio",
+      "currency": "USD"
+    }
+  ],
+  "watchlists": [
+    {
+      "id": "watchlist",
+      "name": "Watchlist"
+    }
+  ],
+  "layout": {
+    "dockRoot": {
+      "kind": "pane",
+      "instanceId": "news-industry:test"
+    },
+    "instances": [
+      {
+        "instanceId": "news-industry:test",
+        "paneId": "news-industry",
+        "title": "NI LTR",
+        "binding": {
+          "kind": "none"
+        },
+        "params": {
+          "code": "LTR"
+        }
+      }
+    ],
+    "floating": [],
+    "detached": []
+  },
+  "layouts": [
+    {
+      "name": "Default",
+      "layout": {
+        "dockRoot": {
+          "kind": "pane",
+          "instanceId": "news-industry:test"
+        },
+        "instances": [
+          {
+            "instanceId": "news-industry:test",
+            "paneId": "news-industry",
+            "title": "NI LTR",
+            "binding": {
+              "kind": "none"
+            },
+            "params": {
+              "code": "LTR"
+            }
+          }
+        ],
+        "floating": [],
+        "detached": []
+      },
+      "paneState": {
+        "news-industry:test": {}
+      },
+      "focusedPaneId": "news-industry:test"
+    }
+  ],
+  "activeLayoutIndex": 0,
+  "brokerInstances": [],
+  "disabledPlugins": [],
+  "seededPlugins": [],
+  "disabledSources": [],
+  "pluginConfig": {},
+  "theme": "white",
+  "chartPreferences": {
+    "renderer": "auto"
+  },
+  "valueFlashingEnabled": true,
+  "fontSize": 12,
+  "recentTickers": [],
+  "recentCommands": [],
+  "commandBarOpens": 0
+}

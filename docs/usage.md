@@ -492,14 +492,42 @@ SC 13D/G, 6-K, 20-F), news keyword (symbol optional), analyst upgrade or
 downgrade, new 52-week high or low, unusual volume (multiple of the prior
 20-session average), short interest change (percent between FINRA settlements),
 open-market insider buy or sell, an option IV spike for one OCC contract
-(Pro), and options flow (Pro): a print at or above a premium (default $1M,
+(Pro), an IV level on a symbol, and options flow (Pro): a print at or above a premium (default $1M,
 typed as `1,000,000`, `$250k` or `1.5m`) on one symbol, or on any name in your
 portfolio and watchlists when the symbol is blank, optionally calls or puts only
 and sweeps or blocks only. The **Events** tab shows each rule's last checked value with its one-year
 percentile and date when the pane is wide enough; a flow rule shows its latest
 matching print, or how many of its contracts are being watched. **History** lists the alerts
-delivered to your phone over the last 90 days; `r` refreshes it. The phone's
+that went off, newest first, with the rule, the figure, and the quote behind it (its own time and
+feed); `r` refreshes it. The phone's
 notification settings have one switch for these market and research alerts.
+
+An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or its
+30-day 25-delta risk reversal (25D call IV minus 25D put IV, in vol points),
+above or below a level. It reads the same fits as `OVDV`: the ATM IV and 25D
+put and call IVs of the two listed expiries either side of 30 days (as
+`OVDV`'s Term view prints them for those expiries; `--expiration` adds one to
+the view), interpolated in total variance to 30 days, as `OVDV`'s fixed tenors
+are. Expiries under a week out are left out; with expiries on one side of 30
+days only, the reading is the nearest one's when it is within 10 days of 30,
+and there is none otherwise. The
+running app checks it every 15 minutes, signed in or not, and notifies once
+when the level is crossed; the rule then reads **Alerted** until you re-arm
+it (`m`, or `gloomberb alerts rearm <id>`). The **Events** tab shows its last
+reading with the time and feed of the option quotes behind it, or why there
+was none on its row. Gloom Cloud does not check these, so they reach no phone.
+
+From the shell, `gloomberb alerts add` takes the same rules:
+
+```bash
+gloomberb alerts add IBIT iv above 50          # 30-day ATM IV above 50%
+gloomberb alerts add SPY rr below -6           # 30-day 25D risk reversal below -6 vol pts
+gloomberb alerts add AAPL271217C00300000 iv spike 5
+gloomberb alerts add AAPL news buyback         # alerts add news "rate cut": any company
+gloomberb alerts add NVDA flow 5m calls sweeps # flow alone: your portfolio and watchlists, $1M and up
+```
+
+A symbol is read as `gloomberb quote` reads it and must be a US listing, as in the dialog.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row
 follows, the same way on **Prices**, **Events** and **History**: a rule on a
@@ -519,8 +547,13 @@ minutes. Signed out, nothing outside the running app notifies you. `gloomberb al
 says so under the rule it adds. It reads the symbol as `gloomberb quote` does,
 so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`, a symbol that quotes
 nothing is refused with the nearest listing (`did you mean AAPL`), and a bare
-code kept on a listing abroad names it. Alerts saved earlier are left as they
-are.
+code kept on a listing abroad names it. A bare coin ticker whose listing is a
+fund says so as `quote` does (`BTC is Grayscale Bitcoin Mini Trust ETF, not
+bitcoin. For bitcoin use BTC-USD.`), and so do `fn` reports such as `fn OPX BTC`.
+A target more than 10 times the last price, or under a tenth of it, is
+refused, in **Add Alert** too, with that note when it applies:
+`alerts add btc above 85000` is bitcoin's price typed on the fund. Alerts
+saved earlier are left as they are.
 
 If saved price alerts cannot be read, the app and CLI leave their original data
 unchanged. Price checks pause until that data is repaired; the pane and
@@ -567,8 +600,17 @@ up-to-date app. CPI and FOMC alerts notify in the running app only.
 
 `gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts
 with their event date, lead time and state, and `--tab history` the alerts
-delivered to your account (signed in); `gloomberb shot ALRT --tab events` draws
-that tab.
+that went off; `gloomberb shot ALRT --tab events` draws that tab. Its `--csv`
+keeps the figures: Away in %, Quote the quote's own time and Quote source its
+feed (`real-time`, `delayed`), apart from Checked, when the app last checked
+the alert.
+
+Every alert the app fires (price, IV level, earnings, CPI and FOMC) is kept on
+this device, the last 1,000 of them, with when it went off, the rule, the figure
+and the quote time and feed behind it. **History** and `fn ALRT --tab history`
+list that log with no sign-in; signed in, they merge in the alerts Gloom Cloud
+delivered to your phone or email over the last 90 days, and the export's Via
+column says which sent each. The log is not synced: each device keeps its own.
 
 ## Live prices and refresh cadence
 
@@ -663,7 +705,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Show a portfolio's value, weights, targets and P&L; manage manual portfolios, cash and target weights |
 | `gloomberb watchlist [action]` | Manage watchlists |
-| `gloomberb notes\|alerts [action]` | Manage local notes and alerts: price alerts, and alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`) |
+| `gloomberb notes\|alerts [action]` | Manage local notes and alerts: price alerts, alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`), and news, options flow and IV alerts (`alerts add IBIT iv above 50`) |
 | `gloomberb broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
 | `gloomberb ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `gloomberb rss fetch <url>` | Fetch an RSS feed |

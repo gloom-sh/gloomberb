@@ -69,6 +69,7 @@ import {
   bindPluginContextNamespaces,
   createPluginPaneSettingsState,
   createPluginResumeState,
+  resumeStateKey,
   type NamespacedPluginContext,
 } from "./plugin-state";
 import { createPluginSetupCommand, isPluginConfigured } from "./setup-command";
@@ -405,18 +406,18 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null {
     const stateId = this.stateNamespace(pluginId);
-    return this.persistence.pluginState.get<T>(stateId, `resume:${key}`, schemaVersion)?.value ?? null;
+    return this.persistence.pluginState.get<T>(stateId, resumeStateKey(key), schemaVersion)?.value ?? null;
   }
 
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void {
     const stateId = this.stateNamespace(pluginId);
-    this.persistence.pluginState.set(stateId, `resume:${key}`, value, schemaVersion);
+    this.persistence.pluginState.set(stateId, resumeStateKey(key), value, schemaVersion);
     this.resumeStateListeners.emit(stateId, key);
   }
 
   deleteResumeState(pluginId: string, key: string): void {
     const stateId = this.stateNamespace(pluginId);
-    this.persistence.pluginState.delete(stateId, `resume:${key}`);
+    this.persistence.pluginState.delete(stateId, resumeStateKey(key));
     this.resumeStateListeners.emit(stateId, key);
   }
 

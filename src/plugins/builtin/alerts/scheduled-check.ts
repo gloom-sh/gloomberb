@@ -1,6 +1,7 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import { newYorkToday } from "../earnings/board-model";
-import { EVENT_ALERTS_KEY, isScheduledEventRule, readEventAlerts, type EventAlertRule } from "./events";
+import { EVENT_ALERTS_KEY, eventAlertTarget, isScheduledEventRule, readEventAlerts, type EventAlertRule } from "./events";
+import type { FiredAlertInput } from "./fired-log";
 import {
   lookupScheduledDates,
   readScheduledRule,
@@ -41,6 +42,8 @@ export function startScheduledEventAlerts(
   ctx: Pick<GloomPluginContext, "configState" | "notify" | "showPane" | "log">,
   sources: ScheduledEventSources,
   now: () => number = Date.now,
+  /** Keeps each alert sent in the device's log of fired alerts. */
+  record?: (entry: FiredAlertInput) => void,
 ): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -100,10 +103,16 @@ export function startScheduledEventAlerts(
           ? reportedResult(results, scheduled.target.symbol, updated.eventDate)
           : null;
         if (scheduled.trigger === "results" && !result) return updated;
+        const body = result && scheduled.target.kind === "earnings"
+          ? scheduledResultsMessage(scheduled.target.symbol, result)
+          : scheduledAlertMessage(scheduled.target, updated.eventDate, today);
+        record?.({
+          kind: rule.kind, ruleId: rule.id, rule: eventAlertTarget(rule), firedAt: now(),
+          value: result?.epsActual ?? null, ...(result ? { unit: "EPS" } : {}), detail: body, quoteAt: null, source: null,
+          ...(scheduled.target.kind === "earnings" ? { symbol: scheduled.target.symbol, ...(scheduled.target.exchange ? { exchange: scheduled.target.exchange } : {}) } : {}),
+        });
         ctx.notify({
-          body: result && scheduled.target.kind === "earnings"
-            ? scheduledResultsMessage(scheduled.target.symbol, result)
-            : scheduledAlertMessage(scheduled.target, updated.eventDate, today),
+          body,
           type: "info",
           desktop: "always",
           persistent: true,

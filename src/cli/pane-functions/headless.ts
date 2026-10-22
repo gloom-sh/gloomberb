@@ -46,6 +46,7 @@ import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type Repor
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -225,6 +226,8 @@ export function createHeadlessPaneContext(
         ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
+    readDeviceState: <T,>(pluginId: string, key: string) =>
+      context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
