@@ -1,0 +1,17 @@
+Calls more than a year out, delta 0.70 to 0.90, spread at most 5%, open interest at least 100; sorted by extrinsic per year, lowest first.
+
+Symbol  Next earnings
+──────  ─────────────
+JPM     —
+GS      —
+
+Symbol  Expiry      Days  Strike  Delta     Bid     Ask  Sprd   OI   Extr  Extr/yr
+──────  ──────────  ────  ──────  ─────  ──────  ──────  ────  ───  ─────  ───────
+JPM     2028-12-15   785     195  0.895  149.50  154.20  3.1%  170  12.02     1.7%
+JPM     2028-12-15   785     200  0.890  145.80  150.20  3.0%  400  13.17     1.8%
+JPM     2028-12-15   785     230  0.847  122.90  126.50  2.9%  113  19.87     2.8%
+JPM     2027-12-17   421     240  0.882  105.00  108.95  3.7%  265  12.14     3.1%
+
+Source: Gloom Cloud · Thu 22 Oct 2026 18:03 UTC · 15 min delayed
+warning: JPM: no upcoming earnings date
+warning: GS: no upcoming earnings date

@@ -1,0 +1,10 @@
+Date        Status     Symbol  Name                           Timing  EPS Est
+──────────  ─────────  ──────  ─────────────────────────────  ──────  ───────
+2026-10-08  confirmed  PEP     PepsiCo, Inc.                  BMO        2.24
+2026-10-21  confirmed  META    Meta Platforms, Inc.           AMC        8.37
+2027-01-14  confirmed  JPM     JPMorgan Chase & Co.           BMO        5.90
+2027-01-19  confirmed  GS      The Goldman Sachs Group, Inc.  BMO       15.65
+
+Source: Gloom Cloud · Wed 21 Oct 2026 · not a live feed (calendar)
+warning: PEP = PepsiCo, NASDAQ (also WSE)
+warning: META = Meta Platforms, NASDAQ (also LSE, BSE, SFB, SET)
