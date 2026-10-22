@@ -1,0 +1,45 @@
+  > Search or run a command  Ctrl+P                                                                                         Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                          ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                                 ⚡
+  Main Portfolio  Watchlist                              No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP     P/E
+
+  No tickers.
+  Click + ticker to add one, or press a.
+                              ┌─:: Economic Calendar───────────────────────────────────────────────────────────────── ?  ...  x ─┐
+  + ticker Enter                Impact  All  High  Med  Low   Region  All  US  G7  EU                                 Mon Oct 26
+                                TIME (UTC)   IMPACT   COUNTRY   EVENT                             ACTUAL   FORECAST      PRIOR
+                                Mon Oct 26
+                                09:00        HIGH     DE        German Ifo Business Climate             —          —      89.9
+                                Wed Oct 28
+                                07:00        HIGH     DE        German GfK Consumer Confidence          —          —     -30.6
+                                Thu Oct 29
+                                13:15        HIGH     EU        Deposit Facility Rate                   —          —      2.5%
+                                13:15        HIGH     EU        ECB Interest Rate Decision              —          —     2.65%
+                                13:45        HIGH     EU        ECB Press Conference                    —          —         —
+                                Fri Oct 30
+                                06:30        HIGH     FR        French GDP Growth Rate QoQ Prel         —          —        0%
+                                06:30        HIGH     FR        French GDP Growth Rate YoY Prel         —          —      0.5%
+                                07:45        HIGH     FR        French Inflation Rate YoY Prel          —          —      3.1%
+                                08:00        HIGH     ES        Spanish GDP Growth Rate YoY Fl…         —          —      2.6%
+                                08:00        HIGH     ES        Spanish GDP Growth Rate QoQ Fl…         —          —      0.7%
+  + ticker                      09:00        HIGH     DE        German GDP Growth Rate QoQ Fla…         —          —      0.3%
+                                09:00        HIGH     DE        German GDP Growth Rate YoY Fla…         —          —        1%
+                                09:00        HIGH     IT        Italian GDP Growth Rate QoQ Adv         —          —      0.2%
+:: #everyone                    09:00        HIGH     IT        Italian GDP Growth Rate YoY Adv         —          —        1%
+ ← Back                         10:00        HIGH     IT        Italian Inflation Rate YoY Prel         —          —      4.2%
+  vince Discord 18h ago         10:00        HIGH     EU        GDP Growth Rate QoQ Flash               —          —      0.6%
+    hey! nice 🙂 still a lot o  10:00        HIGH     EU        GDP Growth Rate YoY Flash               —          —      1.2%
+    improvement but getting th  13:00        HIGH     DE        German Inflation Rate YoY Prel          —          —      3.3%
+   reply vince: hey! nice 🙂 s  Wed Nov 4
+  chronosmmxm_dc Discord 18h a  10:00        HIGH     EU        Inflation Rate YoY Flash                —          —      3.8%
+    I´ll come with feedback an
+    find. First impression is
+   reply chronosmmxm_dc: I´ll └next German Ifo Business Climate in 100h 41m updated just now               [f] impact [c] region─◢
+  vince Discord 18h ago
+    please do 🙏                                          Log in  Enter  Sign up free
+     ❤️ 1                                           ▄
+ --------------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +                                                                                                                                   v0.18.3 ☁ Log in Feedback
