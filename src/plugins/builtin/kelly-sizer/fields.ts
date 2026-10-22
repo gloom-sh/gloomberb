@@ -66,7 +66,7 @@ export function buildModeFields({
       },
       {
         id: "winProbability",
-        label: "Win odds",
+        label: "Win p",
         value: risk.winProbability,
         percent: true,
         onValue: (value) => updateDraft({ winProbability: value } as Partial<KellySizerDraft>),
@@ -108,7 +108,7 @@ export function buildModeFields({
     return [
       {
         id: "winProbability",
-        label: "Win odds",
+        label: "Win p",
         value: asymmetric.winProbability,
         percent: true,
         onValue: (value) => updateDraft({ winProbability: value } as Partial<KellySizerDraft>),
@@ -137,7 +137,7 @@ export function buildModeFields({
   return [
     {
       id: "winProbability",
-      label: "Win odds",
+      label: "Win p",
       value: binary.winProbability,
       percent: true,
       onValue: (value) => updateDraft({ winProbability: value } as Partial<KellySizerDraft>),
