@@ -321,8 +321,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     profile,
     isin: ticker.metadata.isin,
   });
+  // Bars and the quote are dated on the listing's clock.
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
+    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
   );
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
   const positionRows = buildPositionRows({

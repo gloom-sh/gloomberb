@@ -26,12 +26,12 @@ function Calendar({ reports, onOpen, onMore, today = TODAY }: {
   today?: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  // 100 cells: two logos a row in each day; three rows a group, so a fourth report is counted.
+  // 80 cells: two logos a row in each day; three rows a group, so a fourth report is counted.
   const days = calendarDays(reports, calendarWeekDates(today, 0), { today, limit: 6 });
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
-        <EarningsCalendarView days={days} width={100} focused selectedKey={selected}
+        <EarningsCalendarView days={days} width={80} focused selectedKey={selected}
           onSelect={setSelected} onOpen={onOpen} onMore={onMore} emptyTitle="No reports." />
       </WebInputHostProvider>
     </UiHostProvider>

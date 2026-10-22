@@ -45,7 +45,8 @@ import { loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWin
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
-import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
+import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
+import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import {
   closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
@@ -468,10 +469,14 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const window = readReportWindow(options);
     const pastWindow = !!window && window.to < isoDateToday();
     const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
+    const now = Date.now();
     const series = await loadReturnSeries(ctx.marketData, {
-      symbol, exchange: exchange ?? "", range, resolution: requested, support, now: Date.now(), forceRefresh: ctx.refresh, window,
+      symbol, exchange: exchange ?? "", range, resolution: requested, support, now, forceRefresh: ctx.refresh, window,
     });
     const returns = buildReturnRows(series.points, series.visibleFrom, series.visibleTo).reverse();
+    const venue = series.venue || undefined;
+    // The close every total is measured from, which the report names: `Totals from Mon 21 Sep close.`
+    const baseDay = returns.length ? returnBaseCloseDay(series.points, series.visibleFrom, series.resolution, venue, now) : null;
     const decimals = historyPriceDecimals(returns.flatMap((row) => row.price === null ? [] : [{
       open: null, high: null, low: null, close: cleanFloat32Price(row.price),
     }]));
@@ -489,9 +494,11 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(row.inconsistent ? { inconsistent: true } : {}),
     }));
     // A weekly or monthly bar whose period runs on is the period so far: marked partial, and dated by how far it runs.
-    const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
-    const closedDay = closedHistoryBarDay(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
-    const rows = forming ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
+    const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, venue, now);
+    const closedDay = closedHistoryBarDay(series.resolution, unmarked.at(-1)?.time, venue, now);
+    // Today's daily bar is the session still trading, not a close: marked partial (DTD), as `history` marks it.
+    const dayToDate = isTodayReturnRow(returns.at(-1), series.resolution, venue, now);
+    const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
     // The largest fall from a close to a later one in the window, said under the title.
     const drawdown = maxDrawdown(unmarked.map((row) => ({ date: row.time, close: row.close })));
@@ -515,12 +522,13 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const columns: HeadlessPaneColumn[] = [
       timeColumn(false),
       ...figures,
-      ...forming ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
+      ...forming || dayToDate ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
     ];
     const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
       maxDrawdownLine,
+      baseDay ? `Totals ${periodBaseText(baseDay, now)}.` : null,
       series.resolution !== requested
         ? `${getChartResolutionLabel(requested)} bars do not ${window ? `cover ${priceWindowText(window)}` : `reach back ${range}`}; these are ${getChartResolutionLabel(series.resolution)} bars.`
         : null,
@@ -541,6 +549,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
         // The window ends at the last session while the market is shut, which the status line says.
         ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+        ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` } : {}),
       },
       metadata: {
         symbol: key,
@@ -550,6 +559,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         interval: series.resolution,
         requestedInterval: requested,
         window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },
+        ...(baseDay ? { baseDay } : {}),
         ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
         basis: "Price returns of bar closes; dividends are not included",
         maxDrawdown: drawdown,

@@ -19,6 +19,7 @@ import {
   endsAtLatestBar,
   latestBarTime,
   returnLookbackMs,
+  returnRowsFrom,
   returnSupportRange,
   returnVisibleFrom,
   returnWindowEnd,
@@ -91,7 +92,7 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   const interval = effectiveReturnResolution(range, request.resolution, support);
   const venue = await sessionVenue(provider, symbol, exchange);
   const windowEnd = returnWindowEnd({ symbol, exchange: venue }, now);
-  const visibleFrom = returnVisibleFrom(range, interval, windowEnd.end);
+  const visibleFrom = returnVisibleFrom(range, interval, windowEnd.end, venue || undefined);
   const start = new Date(visibleFrom - returnLookbackMs(range, interval, support));
   const end = new Date(now);
   const context = request.forceRefresh ? { cacheMode: "refresh" as const } : undefined;
@@ -110,9 +111,10 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   const latest = latestBarTime(result.points);
   return {
     points: result.points,
+    // A 1W to 5Y window's rows start after its base close, found among the bars by their session days.
     visibleFrom: endsAtLatestBar(range) && latest !== null && latest < windowEnd.end
-      ? returnVisibleFrom(range, interval, latest)
-      : visibleFrom,
+      ? returnVisibleFrom(range, interval, latest, venue || undefined)
+      : returnRowsFrom(result.points, range, interval, windowEnd.end, venue || undefined),
     visibleTo: now,
     ...(result.coverageStart ? { coverageStart: result.coverageStart } : {}),
     range,

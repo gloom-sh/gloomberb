@@ -605,7 +605,7 @@ describe("resolveChartSpecData", () => {
     // series editor agree on what the user added.
     expect(result.series.map((entry) => [entry.id, entry.points.length])).toEqual([["price", 0]]);
     expect(result.errors).toEqual([
-      "price: Requested 5m price history is unavailable for TEST. Choose Auto or a supported interval.",
+      "TEST: Requested 5m price history is unavailable for TEST.",
     ]);
   });
 
@@ -810,7 +810,7 @@ describe("resolveChartSpecData", () => {
       cache,
     );
     expect(manual.errors).toEqual([
-      "price: Requested 1m price history is unavailable for TEST:XNAS. Choose Auto or a supported interval.",
+      "TEST:XNAS: Requested 1m price history is unavailable for TEST:XNAS.",
     ]);
 
     const auto = await resolveChartSpecData(

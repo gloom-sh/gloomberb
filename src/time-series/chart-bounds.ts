@@ -230,9 +230,10 @@ export function filterPoints(points: readonly TimeSeriesPoint[], bounds: DateBou
 }
 
 export function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison | null): DateBounds {
-  if (comparison?.alignment !== "session-date" || comparison.start === null || comparison.end === null) return bounds;
+  if (!comparison || comparison.start === null || comparison.end === null) return bounds;
   // A date-only selection can include a local session that began on the prior
-  // UTC day. Keep its original timestamp visible in the rendering viewport.
+  // UTC day, and a preset range's base close can be before its window (a month
+  // before a Monday is a Sunday, so the Friday). Keep both visible.
   return {
     start: bounds.start === null ? null : Math.min(bounds.start, comparison.start),
     end: bounds.end === null ? null : Math.max(bounds.end, comparison.end),
