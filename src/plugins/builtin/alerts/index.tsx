@@ -189,7 +189,7 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Create an alert before earnings, CPI or FOMC, or for filings, news and market moves",
+      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news and market moves",
       keywords: [
         "alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before",
         "filing", "filings", "sec", "8-k", "news", "keyword", "analyst", "52-week", "unusual volume", "volume",
@@ -223,7 +223,8 @@ export const alertsPlugin: GloomPlugin = {
           throw new Error("Keep at most 40 event alerts.");
         // Earnings and macro events alert before a date: one has to be known, or the rule would never go off.
         const scheduled = event === "earnings_date" || event === "macro_event";
-        if (scheduled && parseLeadDays(values[`${event}:leadDays`]) == null)
+        const awaitsResults = event === "earnings_date" && values["earnings_date:when"] === "results";
+        if (scheduled && !awaitsResults && parseLeadDays(values[`${event}:leadDays`]) == null)
           throw new Error(`Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);
         let rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
         const target = scheduled ? readScheduledRule(rule)?.target : null;

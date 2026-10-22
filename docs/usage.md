@@ -140,7 +140,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
-| `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days |
+| `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days. On the desktop and the web the bar's Calendar shows a week instead, a column per day with the companies reporting before the open and after the close as their logos, largest first, each with its ticker under it (green or red once reported, by its surprise); the Week choice goes from last week to three weeks ahead, and a day with more reports than fit ends on `+N more`, which opens the table. Enter or a second click opens a company's reports, as a table row does, and `n` (notify) sets an `ALRT` earnings alert on it for when its results are out |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings calls and their transcripts. With a ticker, the company's calls, its next one on its own line with its start here and in New York and how far away it is. Alone, the calendar of every company's calls today, the next session and the rest of the week, each day's in start order (Enter opens the company's calls); `--view transcripts` (the bar's Transcripts) lists the latest transcribed calls instead |
@@ -528,10 +528,13 @@ To watch a position through a scheduled event, alert a number of days before
 it. In `ALRT`, open **Events**, click **add event** (or run **Add Event Alert**)
 and pick **Earnings date** with a US-listed symbol, or **Macro event** with the
 CPI release or the FOMC decision, then the days before: 1 to 14, 1 by default.
-From the shell:
+An earnings alert can instead wait for the report: pick **When results are
+out** under **Alert**, which is what `n` (notify) in `ERN` sets for the
+selected company, in its table or its calendar. From the shell:
 
 ```bash
 gloomberb alerts add CRWV earnings --days 3
+gloomberb alerts add CRWV earnings results
 gloomberb alerts add CPI --days 1
 gloomberb alerts add FOMC
 ```
@@ -544,11 +547,16 @@ show each alert's next event date and its state. While the app runs it looks
 the dates up every 15 minutes and notifies once when the lead time is reached
 ("CRWV earnings in 3 days, Mon, Nov 9"), counting calendar days in New York;
 an app that was closed on that day notifies when it next runs, up to the event
-day. The alert then reads **Alerted** until the event passes and arms itself
-for the next date. Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again
-for the same event, and `gloomberb alerts delete <id>` removes it. Earnings
-alerts also reach the phone app like the other market alerts; CPI and FOMC
-alerts notify in the running app only.
+day. An alert for results goes off once the report's actual EPS is in `ERN`,
+on the report day or, for a report after the close, usually that evening
+("CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"); it waits up to 3 days
+past the date for a late figure, then follows the next report. The alert then
+reads **Alerted** until the event passes and arms itself for the next date.
+Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again for the same
+event, and `gloomberb alerts delete <id>` removes it. Earnings
+alerts also reach the phone app like the other market alerts; for an alert
+on results the phone is told on the report day, and the results themselves
+come from the running app. CPI and FOMC alerts notify in the running app only.
 
 `gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts
 with their event date, lead time and state, and `--tab history` the alerts

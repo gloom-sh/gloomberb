@@ -31,6 +31,7 @@ import {
   scheduledEventName,
   scheduledPhase,
   scheduledTargetKey,
+  scheduledTriggerText,
   type ScheduledDateLookup,
   type ScheduledEventSources,
   type ScheduledEventTarget,
@@ -48,7 +49,7 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n>], or alerts add <CPI|FOMC> [--days <n>]";
+const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], or alerts add <CPI|FOMC> [--days <n>]";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
@@ -58,7 +59,8 @@ export type AlertAddRequest =
     /** A price typed as 81.000, which the last price may show was 81000 with a dot between thousands. */
     thousandsDot?: ThousandsDotReadings & { text: string };
   }
-  | { kind: "earnings"; symbol: string; leadDays: number }
+  /** `results`: once the report's actual EPS is out, rather than `leadDays` before the date. */
+  | { kind: "earnings"; symbol: string; leadDays: number; results?: true }
   | { kind: "macro"; event: MacroAlertEvent; leadDays: number };
 
 const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
@@ -67,8 +69,9 @@ const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
 const LEADING_GROUP = /^[+-]?\d{1,3}$/;
 
 /**
- * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`, or
- * `CPI` / `FOMC`, with `--days` (already taken out of `args`, `null` when the
+ * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`,
+ * `<symbol> earnings results`, or `CPI` / `FOMC`, with `--days` (already
+ * taken out of `args`, `null` when the
  * flag came without a value) for the event forms only, and `--exchange`, which
  * a command to type again keeps. Throws a message that names what the command
  * takes.
@@ -92,7 +95,11 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
     );
   }
   if (second.toLowerCase() === "earnings") {
-    if (third !== undefined) throw new Error(`Earnings alerts take a symbol and --days, not "${third}". ${ADD_USAGE}`);
+    if (third?.toLowerCase() === "results" && rest.length === 0) {
+      if (days !== undefined) throw new Error("An alert for results goes off once they are out and takes no --days.");
+      return { kind: "earnings", symbol: first, leadDays: 0, results: true };
+    }
+    if (third !== undefined) throw new Error(`Earnings alerts take a symbol and --days or results, not "${[third, ...rest].join(" ")}". ${ADD_USAGE}`);
     return { kind: "earnings", symbol: first, leadDays: leadDays() };
   }
   const condition = second.toLowerCase() as AlertCondition;
@@ -170,8 +177,9 @@ function eventRow(rule: EventAlertRule, today: string, eventDate: string | null 
     kind: rule.kind,
     target: scheduled.target.kind === "earnings" ? scheduled.target.symbol : scheduled.target.event.toUpperCase(),
     leadDays: scheduled.leadDays,
+    when: scheduled.trigger === "results" ? "results" : "before",
     eventDate: date,
-    status: scheduledAlertStatus({ ...rule, eventDate: date ?? undefined }, scheduled.leadDays, today),
+    status: scheduledAlertStatus({ ...rule, eventDate: date ?? undefined }, scheduled.leadDays, today, scheduled.trigger),
     createdAt: rule.createdAt,
   };
 }
@@ -186,7 +194,7 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     target: row.target,
     trigger: price
       ? `${row.condition} ${row.targetPrice}`
-      : typeof row.leadDays === "number" ? `${plural(row.leadDays, "day")} before` : "",
+      : typeof row.leadDays === "number" ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date" }) : "",
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
@@ -241,7 +249,7 @@ export const alertsCliCommand: CliCommandDef = {
     usage: [
       "alerts list",
       "alerts add <symbol> <above|below|crosses> <price>",
-      "alerts add <symbol> earnings [--days <n>]",
+      "alerts add <symbol> earnings [--days <n> | results]",
       "alerts add <CPI|FOMC> [--days <n>]",
       "alerts delete <id>",
       "alerts rearm <id>",
@@ -255,6 +263,7 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add AAPL above 250",
       "alerts add SAN:EPA below 70",
       "alerts add CRWV earnings --days 3",
+      "alerts add CRWV earnings results",
       "alerts add CPI --days 1",
     ],
   },
@@ -295,16 +304,17 @@ export const alertsCliCommand: CliCommandDef = {
             read = listingReadNotes(listing);
             return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
           });
+      const lead = request.kind === "earnings" && request.results ? "results" as const : request.leadDays;
       // A listing the rule cannot follow fails before any request.
       try {
-        createScheduledAlert(target, request.leadDays, null);
+        createScheduledAlert(target, lead, null);
       } catch (error) {
         ctx.fail(error instanceof Error ? error.message : String(error));
       }
       const eventDate = target.kind === "earnings"
         ? await withMarketData(ctx, (market) => requireEventDate(target, scheduledEventSources(market.dataProvider), today, (message) => ctx.fail(message)))
         : await requireEventDate(target, scheduledEventSources(null), today, (message) => ctx.fail(message));
-      newEventRule = createScheduledAlert(target, request.leadDays, eventDate);
+      newEventRule = createScheduledAlert(target, lead, eventDate);
     }
 
     if (action === "list") {
@@ -376,17 +386,22 @@ export const alertsCliCommand: CliCommandDef = {
         const scheduled = readScheduledRule(rule)!;
         const name = scheduledEventName(scheduled.target);
         const existing = rules.find((entry) => entry.kind === rule.kind && entry.value.toLowerCase() === rule.value.toLowerCase());
-        if (existing) ctx.fail(`An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}).`);
+        if (existing) ctx.fail(scheduled.trigger === "results"
+          ? `An alert for ${name} results already exists (ID ${existing.id}).`
+          : `An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}).`);
         if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloomberb alerts delete <id>.`);
         await save({ events: [...rules, rule] });
         const eventDate = rule.eventDate!;
         const due = scheduledPhase(eventDate, scheduled.leadDays, undefined, today) === "due";
         const delivery = scheduled.target.kind === "macro" ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          // Delivery, as docs/usage.md states it: CPI and FOMC notify in the running app only; earnings also reach the phone.
-          text: (data) => `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
-            ? "already reached, so the app alerts at its next check"
-            : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}${delivery}).${dryRunNote(data.dryRun)}`,
+          // Delivery, as docs/usage.md states it: CPI and FOMC notify in the running app only; earnings also reach the phone,
+          // which Gloom Cloud alerts on the report day for a results alert.
+          text: (data) => scheduled.trigger === "results"
+            ? `Added alert ${data.alert.id}: ${name} on ${eventDate}, when results are out (the app alerts once the actual EPS is in, while it is running; with Cloud sync your phone is alerted on the day).${dryRunNote(data.dryRun)}`
+            : `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
+              ? "already reached, so the app alerts at its next check"
+              : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}${delivery}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }

@@ -48,6 +48,12 @@ export function keysClearedByChange(
 }
 
 /** The answer a wizard step starts on: its default, else a select's first option. */
+/** A wizard step's condition as the workflow field's list: one answer, or every one of several. */
+function wizardDependencies(dependsOn: WizardStep["dependsOn"]): FieldDependency[] | undefined {
+  if (!dependsOn) return undefined;
+  return (Array.isArray(dependsOn) ? dependsOn : [dependsOn]).map(({ key, value }) => ({ key, value }));
+}
+
 function wizardStepInitialValue(step: WizardStep): string | undefined {
   if (step.defaultValue) return step.defaultValue;
   if (step.type === "select" && step.options?.[0]?.value) return step.options[0].value;
@@ -175,7 +181,7 @@ export function normalizeWizardFields(steps: WizardStep[]): {
         placeholder: step.placeholder,
         description: step.body?.[0],
         required: step.required !== false,
-        dependsOn: step.dependsOn ? [{ key: step.dependsOn.key, value: step.dependsOn.value }] : undefined,
+        dependsOn: wizardDependencies(step.dependsOn),
         clearOnChange: step.clearOnChange,
       });
       continue;
@@ -188,7 +194,7 @@ export function normalizeWizardFields(steps: WizardStep[]): {
       placeholder: step.placeholder,
       description: step.body?.[0],
       required: step.required !== false,
-      dependsOn: step.dependsOn ? [{ key: step.dependsOn.key, value: step.dependsOn.value }] : undefined,
+      dependsOn: wizardDependencies(step.dependsOn),
       clearOnChange: step.clearOnChange,
     });
   }
