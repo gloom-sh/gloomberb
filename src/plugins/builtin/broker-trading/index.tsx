@@ -5,7 +5,11 @@ import { brokerCanTrade, createTradeCommand, openTradeTicket } from "./command";
 import { brokerOrderFeed } from "./order-feed";
 import { tickerSecType } from "./pane-model";
 
-/** Every enabled trading profile's orders, held for as long as the app runs: its fills toast with no ticket open. */
+/**
+ * Every enabled trading profile's orders, held for as long as the app runs:
+ * its fills toast with no ticket open, and sync the profile's positions into
+ * its portfolio.
+ */
 let releaseHeldOrders: (() => void) | undefined;
 
 /** A ticker without a saved asset category trades as its research instrument kind says. */
@@ -28,6 +32,7 @@ export const brokerTradingModule: PluginModule = {
   }],
   setup(ctx) {
     brokerOrderFeed.setNotifier((notification) => { ctx.notify(notification); });
+    brokerOrderFeed.setPositionSync((instanceId) => ctx.syncBrokerInstance(instanceId));
     let held = new Map<string, { key: string; release(): void }>();
     // A broker registered by a later plugin, or a profile added or edited, is held from then on.
     const holdProfiles = () => {
@@ -50,6 +55,7 @@ export const brokerTradingModule: PluginModule = {
       for (const entry of held.values()) entry.release();
       held.clear();
       brokerOrderFeed.setNotifier(undefined);
+      brokerOrderFeed.setPositionSync(undefined);
       brokerOrderFeed.clear();
     };
     const supported = (symbol: string, secType = "STK") => brokerCanTrade(ctx.getConfig().brokerInstances, (type) => ctx.getBrokerAdapter?.(type), symbol, secType);
