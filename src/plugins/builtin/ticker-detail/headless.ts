@@ -545,7 +545,8 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       metadata: {
         symbol: key,
         range: window ? null : range,
-        ...(window ? { window } : {}),
+        // The years asked for; `window` below is the span of the bars served.
+        ...(window ? { requestedWindow: window } : {}),
         interval: series.resolution,
         requestedInterval: requested,
         window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },

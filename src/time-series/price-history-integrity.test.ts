@@ -94,7 +94,9 @@ test("seed, resolved chart transforms and HP exports agree on quarantined values
   } as HeadlessPaneContext;
   const hp = await historicalPricesHeadless.load({ symbols: ["SPY:ARCX"], options: { range: "ALL" }, argument: ["SPY:ARCX"], rawArgument: "SPY:ARCX" }, context);
   expect(hp.rows[1]).toMatchObject({ date: reported.date.toISOString(), close: null, open: null, integrity: pricePointIntegrity(reported) });
-  expect(hp.metadata!.notices).toHaveLength(1);
+  // The drawdown line HP prints under its title, then the integrity notice.
+  expect(hp.metadata!.notices).toEqual(["Max drawdown 0.0% (daily closes): no close fell below an earlier one",
+    expect.stringContaining("1 inconsistent OHLC bar is unavailable")]);
   expect(hp.complete).toBe(false);
   const seeded = seedChartResolutionResult(spec(), new Map([[chartQuoteOverrideKeyForSource(source), history]]))!;
   expect(seeded.warnings.join(" ")).toContain("inconsistent OHLC");
