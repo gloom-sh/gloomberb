@@ -159,7 +159,7 @@ test("a pair quote replaces a leg's loaded rate only when it is at least as new,
     const board = await loadFxBoard(["USD", "EUR", "JPY", "CHF", "GBP"], provider);
 
     expect(board.get("EUR")).toMatchObject({ entry: { data: 1.2, asOf: now - 10 * 60_000 }, reference: 1.18 });
-    // The loaded rate a minute newer draws the cell, and moves from the quote's close (the GLO-1189 blank Move).
+    // The loaded rate a minute newer draws the cell, and moves from the quote's close instead of leaving Move blank.
     expect(board.get("JPY")).toMatchObject({ entry: { data: 1 / 150 }, quote: null });
     expect(board.get("JPY")?.reference).toBeCloseTo(1 / 141, 12);
     expect(board.get("CHF")).toMatchObject({ entry: { data: 1.25 }, reference: null, changeBasis: null });

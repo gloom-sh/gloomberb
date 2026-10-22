@@ -145,7 +145,7 @@ test("a cross is tinted by its move against the pairs' previous closes, whether 
   // GBP is unchanged on USD, but EUR moved against it.
   expect(tinted("GBP", "USD")).toBe(false);
   expect(tinted("EUR", "GBP")).toBe(true);
-  // The snapshot-drawn AUD leg moved 2.9% from its pair's close (GLO-1189: it stayed plain).
+  // The snapshot-drawn AUD leg moved 2.9% from its pair's close, so it is tinted, not left plain.
   expect(tinted("AUD", "USD")).toBe(true);
   // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
   expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
