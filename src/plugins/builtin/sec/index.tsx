@@ -20,6 +20,7 @@ import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
+import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -278,6 +279,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const abroadFinancials = useTickerFinancials(abroadVenue ? ticker?.metadata.ticker : null, abroadVenue ? ticker : null);
   const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
   const abroadPage = abroad?.page ?? null;
+  // An equity listed abroad links the page its exchange publishes its announcements on (ASX's for NST.AX).
+  const announcements = !forms && !eligibleTicker && ticker
+    ? listingAnnouncementsPage(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
   const fundFacts = useFundFacts(forms && eligibleTicker ? ticker?.metadata.ticker : null);
   const facts = fundFacts.data?.payload ?? null;
@@ -450,14 +455,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   usePaneStatusLinkFooter({
     registrationId: "sec",
     focused,
-    url: openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage,
-    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : null,
-    label: openFiling ? "filing" : factsUrl ? "source" : abroadPage ? "issuer page" : "filing",
+    url: openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
+    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : announcements?.name ?? null,
+    label: openFiling ? "filing" : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
     loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError,
     hints,
-    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage),
+    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
   });
 
   usePaneNoticeFooter({

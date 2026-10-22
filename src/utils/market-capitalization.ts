@@ -69,20 +69,51 @@ export function listedMarketCapitalization(value: number | null): number | null 
 /** How far a market cap may sit from the share count times the price and still rest on that count. */
 const SHARE_COUNT_TOLERANCE = 0.02;
 
+/** A market cap a view shows, and when it is the share count times the price, the provider's figure it replaced. */
+export interface ViewMarketCapitalization extends MarketCapitalization {
+  /** Set when the cap shown is `shares` x `price` because the provider's sat more than 2% from it. */
+  computed?: { shares: number; price: number; providerValue: number };
+}
+
+const positiveFinite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value > 0;
+
 /**
- * Where a market cap does not rest on the share count shown beside it (one class's count beside an all-class cap):
- * "Market cap 137.20B USD is the provider's and does not rest on the 799.93M shares shown (x 110.11 USD = 88.08B)."
- * Undefined when they tie, or without a count and a price in the cap's currency to test.
+ * The one market cap a view shows (GLO-1176): the provider's
+ * (selectMarketCapitalization), unless it sits more than 2% from the share
+ * count beside it times the price, when the view shows that product and
+ * names the provider's in its note (`marketCapBasisNote`), so a cap and the
+ * share count shown with it always tie and RV and `valuation` agree. `price`
+ * is the price the view measures at (the regular session's); without a count
+ * or a price in the cap's currency the provider's stands.
  */
-export function marketCapShareBasisNote(
-  capitalization: Pick<MarketCapitalization, "value" | "currency"> | null,
-  shares: number | undefined,
-  price: number | null | undefined,
-  priceCurrency: string | undefined,
-): string | undefined {
-  if (!capitalization || !(capitalization.value > 0) || capitalization.currency !== priceCurrency) return undefined;
-  if (shares == null || !Number.isFinite(shares) || !(shares > 0) || price == null || !Number.isFinite(price) || !(price > 0)) return undefined;
+export function viewMarketCapitalization(
+  quote: Quote | undefined,
+  fundamentals: Fundamentals | undefined,
+  price: number | null | undefined = quote?.price,
+): ViewMarketCapitalization | null {
+  const selected = selectMarketCapitalization(quote, fundamentals);
+  const shares = fundamentals?.sharesOutstanding;
+  if (!selected || !(selected.value > 0) || selected.currency !== quote?.currency) return selected;
+  if (!positiveFinite(shares) || !positiveFinite(price)) return selected;
   const product = shares * price;
-  if (Math.abs(capitalization.value / product - 1) <= SHARE_COUNT_TOLERANCE) return undefined;
-  return `Market cap ${formatCompact(capitalization.value)} ${capitalization.currency} is the provider's and does not rest on the ${formatCompact(shares)} shares shown (x ${formatNumber(price, price < 1 ? 4 : 2)} ${priceCurrency} = ${formatCompact(product)}).`;
+  if (Math.abs(selected.value / product - 1) <= SHARE_COUNT_TOLERANCE) return selected;
+  return {
+    value: product,
+    currency: selected.currency,
+    // Priced at the quote, whichever block the provider's figure came from.
+    provenance: { kind: "quote", source: quote.providerId },
+    computed: { shares, price, providerValue: selected.value },
+  };
+}
+
+/**
+ * Where a view's market cap is the share count times the price rather than the provider's:
+ * "Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.40B AUD."
+ * Undefined when the provider's is shown.
+ */
+export function marketCapBasisNote(capitalization: ViewMarketCapitalization | null): string | undefined {
+  const computed = capitalization?.computed;
+  if (!capitalization || !computed) return undefined;
+  const { currency } = capitalization;
+  return `Market cap ${formatCompact(capitalization.value)} ${currency} is the ${formatCompact(computed.shares)} shares shown x ${formatNumber(computed.price, computed.price < 1 ? 4 : 2)} ${currency}; the provider's is ${formatCompact(computed.providerValue)} ${currency}.`;
 }

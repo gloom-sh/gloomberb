@@ -138,13 +138,15 @@ test("after the close the EV row and its note read one close, the cap rests on t
   expect(chegg).toContain("Enterprise Value 60.06M USD (provider)");
   expect(chegg).toContain("EV 60.06M USD (provider) vs 40.65M computed from market cap + total debt - cash (balance sheet 2026-06-30).");
   expect(chegg).not.toContain("does not rest on");
-  // A cap on another count than the one shown (one class's) says so; NRDY's EV, withdrawn by Gloom Cloud's
+  // A provider's cap more than 2% off the count shown times the close gives way to that product, and the note
+  // names the provider's (GLO-1176: one cap per view, as RV shows it); NRDY's EV, withdrawn by Gloom Cloud's
   // validation with no check, is unavailable with the reason rather than a dropped row.
   const nerdy = valuation({
     marketCap: 82_076_032, marketCapCurrency: "USD", sharesOutstanding: 72_230_417,
     unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
   });
-  expect(nerdy).toContain("Market cap 79.11M USD is the provider's and does not rest on the 72.23M shares shown (x 0.7133 USD = 51.52M).");
+  expect(nerdy).toContain("Market Cap 51.52M USD\nShares Outstanding 72.23M\n");
+  expect(nerdy).toContain("Market cap 51.52M USD is the 72.23M shares shown x 0.7133 USD; the provider's is 79.11M USD.");
   expect(nerdy).toContain("Enterprise Value unavailable");
   expect(nerdy).toContain("EV unavailable: the provider's figure failed validation.");
 });

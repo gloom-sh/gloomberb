@@ -4,6 +4,7 @@ import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
+import { cloudExchangeAnnouncementsPath } from "./exchange-announcements";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
   PerpMarketPayload } from "./perps";
@@ -234,6 +235,13 @@ export class CloudDataApi {
 
   getFundMembers(fund: string) {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
+  }
+
+  /** A company's recent announcements on its exchange (ASX only); another exchange answers 404. */
+  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number }) {
+    return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
+      cloudExchangeAnnouncementsPath(params),
+    );
   }
 
   /** A US-listed fund's fee, NAV, premium and net assets as its sponsor publishes them. */

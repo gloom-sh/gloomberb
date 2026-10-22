@@ -144,6 +144,15 @@ test("ticker reuse preserves the actual filing issuer rather than the requested 
   expect(result.metadata?.issuers).toEqual([{ cik: "0001826011", companyName: "Banzai International, Inc." }]);
 });
 
+// GLO-1176: `fn SEC NST.AX` ended on "not covered by SEC" with nowhere to read the company's announcements.
+test("a listing abroad with no SEC filings links its exchange's announcements page; a US one keeps the generic empty", async () => {
+  const headless = createSecHeadless({ loadFilings: async () => [] });
+  const load = (symbol: string) => headless.load({ ...args(5), argument: symbol, symbols: [symbol] }, createTestHeadlessContext());
+  expect((await load("NST:ASX")).empty).toBe("NST:ASX files no SEC reports. ASX announcements: https://www.asx.com.au/markets/trade-our-cash-market/announcements.nst");
+  expect((await load("SHOP:TSX")).empty).toBe("SHOP:TSX files no SEC reports. SEDAR+ filings: https://www.sedarplus.ca/landingpage/");
+  expect((await load("ZZZZ")).empty).toBeUndefined();
+});
+
 test("accepted timestamps survive persisted JSON rows and invalid cached values remain unknown", () => {
   const filing = { ...filings[0]!, acceptedAt: new Date("2025-03-20T20:10:11.000Z") };
   const restored = JSON.parse(JSON.stringify(filing)) as SecFilingItem;

@@ -204,6 +204,13 @@ describe("pane function capabilities", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
       .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
     expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
+    // A ticker after a function that takes its underlying as an option runs as that option (GLO-1176).
+    const ovme = [{ key: "model", type: "enum" as const, values: [{ value: "european" }, { value: "american" }] },
+      { key: "symbol", type: "string" as const }];
+    expect(noArgumentMessage(ovme, "OVME", "NEM")).toBe(
+      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloomberb fn OVME --symbol NEM");
+    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloomberb fn OVME --model american");
+    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloomberb fn OVME --model european");
   });
 });
 
