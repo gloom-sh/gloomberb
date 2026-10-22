@@ -65,6 +65,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
+import type { StudyAnchor } from "./leverage";
 import { bufferPriceComparison, clipPriceComparison, comparedBufferPoints, priceComparisonBoundsForSeries, priceComparisonSeriesIds, priceObservationWindowFilter, resolvePriceComparison, type PriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource, compareChartQuoteRecency } from "./live-quotes";
@@ -752,7 +753,7 @@ export function seedChartResolutionResult(
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
-  const studies = resolveStudies(series, spec.studies, resolution);
+  const studies = resolveStudies(series, spec.studies, resolution, undefined, studyAnchors(series, priceComparison, comparisonBounds));
   const axisWarnings: string[] = [];
   const bufferedSeries = assignAxes([
     ...baseSeries,
@@ -1444,6 +1445,19 @@ function adoptPriceUnits(series: ResolvedSeries[], specs: readonly ChartSeriesSp
       ? { ...entry, unit: price.unit, unitGroup: price.unitGroup }
       : entry;
   });
+}
+
+/**
+ * Where studies that read returns over the chart's period measure each series
+ * from and to: a compared leg's shared first and last session, else the
+ * window in view.
+ */
+function studyAnchors(
+  series: readonly ResolvedSeries[],
+  comparison: PriceComparison | null,
+  bounds: DateBounds,
+): Map<string, StudyAnchor> {
+  return new Map(series.map((entry) => [entry.id, priceComparisonBoundsForSeries(entry, comparison) ?? bounds]));
 }
 
 function prepareBaseSeriesForStudies(
@@ -2323,7 +2337,8 @@ async function resolveChartSpecPass(
 
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
-    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries);
+    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries,
+      studyAnchors(calculationSeries, priceComparison, comparisonBounds));
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

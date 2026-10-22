@@ -22,6 +22,7 @@ import {
 } from "./catalog-inventory";
 import {
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_LEVERAGE_PENDING_SETTING_KEY,
   CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
@@ -259,6 +260,7 @@ function securityTemplate({
   minimumSymbols,
   build,
   keywords = [],
+  settings,
 }: {
   id: Parameters<typeof chartHeadless>[0];
   prefix: "GP" | "GIP" | "CMP" | "GF" | "GE";
@@ -272,6 +274,8 @@ function securityTemplate({
   argKind: "ticker" | "ticker-list";
   minimumSymbols: number;
   build: (symbols: string[]) => ChartSpec;
+  /** Pane settings the template opens with besides the chart. */
+  settings?: Record<string, unknown>;
 }): PaneTemplateDef {
   return {
     id,
@@ -296,7 +300,9 @@ function securityTemplate({
     canCreate: (context, options) => templateSymbols(context, options).length >= minimumSymbols,
     createInstance: (context, options) => {
       const symbols = templateSymbols(context, options);
-      return symbols.length >= minimumSymbols ? selectedInstanceFor(build(symbols), prefix, context, options) : null;
+      if (symbols.length < minimumSymbols) return null;
+      const instance = selectedInstanceFor(build(symbols), prefix, context, options);
+      return settings ? { ...instance, settings: { ...instance.settings, ...settings } } : instance;
     },
   };
 }
@@ -446,10 +452,13 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     prefix: "CMP",
     aliases: ["COMP", "TRA"],
     label: "Comparison Chart",
-    description: "Compare price returns over shared observation dates for two or more tickers.",
+    description: "Compare price returns over shared observation dates for two or more tickers. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it.",
+    // Leveraged and inverse funds: the daily line and the decay come with the comparison.
+    keywords: ["leveraged", "inverse", "decay", "daily-reset", "daily reset", "volatility decay"],
     argKind: "ticker-list",
     minimumSymbols: 2,
     build: buildComparisonChartPreset,
+    settings: { [CHART_LEVERAGE_PENDING_SETTING_KEY]: true },
   }),
   securityTemplate({
     id: "fundamental-graph-pane",

@@ -69,7 +69,20 @@ export type ChartStudyKind =
   | "spread"
   | "correlation"
   /** A weighted sum of any number of series over a divisor: `(2*42*RB=F + 42*HO=F - 3*CL=F)/3`. */
-  | "formula";
+  | "formula"
+  /**
+   * A leveraged or inverse fund's objective drawn from its index fund: `factor`
+   * times the index fund's return each session, compounded (3× daily QQQ beside
+   * TQQQ). Inputs: the index fund.
+   */
+  | "leverage"
+  /**
+   * How far a leveraged fund falls short of its objective, in percentage
+   * points: the fund against the `factor`× daily line, and that line against
+   * `factor` times the index fund's return over the period. Inputs: the fund,
+   * then the index fund.
+   */
+  | "leverage-decay";
 
 export interface ChartStudySpec {
   id: string;

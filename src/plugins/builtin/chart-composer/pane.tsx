@@ -56,9 +56,12 @@ import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
 import { chartComposerSemanticMetadata } from "./semantic";
+import { comparedFundTickers, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { loadFundFacts } from "../sec/fund-facts";
 import {
   canToggleChartSeries,
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_LEVERAGE_PENDING_SETTING_KEY,
   CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
@@ -1287,6 +1290,23 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
       savedForTarget.current = targetKey;
     }
   }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
+  // A comparison CMP opened draws each leveraged or inverse fund's daily objective once its facts are read.
+  const leveragePending = instance?.settings?.[CHART_LEVERAGE_PENDING_SETTING_KEY] === true;
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  useEffect(() => {
+    if (!leveragePending) return;
+    let cancelled = false;
+    void loadDailyObjectives(comparedFundTickers(storedRef.current), async (ticker) => (await loadFundFacts(ticker)).payload)
+      .then((objectives) => {
+        if (cancelled) return;
+        updateSettings({
+          [CHART_SPEC_SETTING_KEY]: withLeverageOverlay(storedRef.current, objectives),
+          [CHART_LEVERAGE_PENDING_SETTING_KEY]: undefined,
+        });
+      });
+    return () => { cancelled = true; };
+  }, [leveragePending, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "Select a ticker."} />;
   }

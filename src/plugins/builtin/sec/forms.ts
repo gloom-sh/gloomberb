@@ -49,6 +49,18 @@ export function filterFilingsByForms(filings: readonly SecFilingItem[], forms: r
   });
 }
 
+/**
+ * A fund's own filings out of its trust's (ProShares Trust files for 166
+ * funds): the ones the service marks as filed for the fund's series. A list
+ * the service could not mark, or a fund whose registrant runs no other
+ * series, stays whole.
+ */
+export function fundSeriesFilings(filings: readonly SecFilingItem[]): readonly SecFilingItem[] {
+  return filings.some((filing) => filing.fundSeries !== undefined)
+    ? filings.filter((filing) => filing.fundSeries === true)
+    : filings;
+}
+
 /** A form as typed or filed, without punctuation or the `SC`/`SCHEDULE` prefix of ownership schedules. */
 function compactFilingForm(form: string): string {
   return form.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^(?:SCHEDULE|SC)(?=\d)/, "");

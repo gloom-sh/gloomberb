@@ -140,8 +140,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   CMP: {
-    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance.",
-    usage: ["CMP NVDA, AMD, AVGO"],
+    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance. A leveraged or inverse fund gets its daily objective drawn from its index fund, and its decay in its own panel.",
+    usage: ["CMP NVDA, AMD, AVGO", "CMP TQQQ, QQQ"],
     keys: CHART_KEYS,
     data: QUOTES,
     bloomberg: ["COMP", "TRA"],
@@ -1036,7 +1036,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   ETF: {
-    summary: "A US-listed fund's SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
+    summary: "A US-listed fund's facts, a leveraged or inverse fund's daily objective among them, then its own SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
     usage: ["ETF SPY"],
     keys: [OPEN, OPEN_SOURCE],
     data: AS_FILED,

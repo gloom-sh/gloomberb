@@ -158,6 +158,8 @@ export interface HeadlessPaneColumn {
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */
   stackRows?: number;
+  /** The text table leaves the column out when fitted to fewer terminal columns than this; exports and piped output keep it. */
+  minTableWidth?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */

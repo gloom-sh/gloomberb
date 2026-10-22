@@ -32,6 +32,8 @@ import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
+import { fetchFundFacts } from "../sec/fund-facts";
+import { comparedFundTickers, hasLeverageOverlay, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -442,8 +444,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
     shape: "series",
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
-      const parsed = parseChartSpec(context.settings?.chartSpec);
-      if (!parsed) throw new Error("The chart specification is invalid.");
+      const saved = parseChartSpec(context.settings?.chartSpec);
+      if (!saved) throw new Error("The chart specification is invalid.");
+      // A leveraged or inverse fund compared with anything draws its daily objective beside it.
+      const parsed = template === "comparison-chart-pane" && !hasLeverageOverlay(saved)
+        ? withLeverageOverlay(saved, await loadDailyObjectives(comparedFundTickers(saved), (ticker) => fetchFundFacts(ticker, context.apiClient)))
+        : saved;
       // A bare symbol is the listing `quote` reads it as: BDI, which two companies list, asks which,
       // as `quote BDI` does, instead of charting whichever line a source picked.
       const reads = new Map<string, ReturnType<typeof readSeriesListing>>();

@@ -53,6 +53,13 @@ export interface SecFilingItem {
    * does not say (an older server).
    */
   fileNumber?: string;
+  /**
+   * In a fund's list from a trust that runs several funds: whether EDGAR
+   * lists the filing under the fund's own series. Absent when the source does
+   * not say (another registrant, an older server, a filing older than the
+   * series list reaches).
+   */
+  fundSeries?: boolean;
 }
 
 export interface SecFilingDocument {

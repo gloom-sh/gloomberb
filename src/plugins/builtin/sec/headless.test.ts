@@ -4,7 +4,7 @@ import type { HeadlessBundleSection, HeadlessPaneLoadArgs } from "../../../types
 import { ETF_FILING_FORMS, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { createFundHeadless, createSecHeadless, fundFilingsEmpty } from "./headless";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
-import { FUND_FACTS_UNAVAILABLE } from "./fund-facts";
+import { fetchFundFacts, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 import { buildSecFilingRows, getFilingColumnText, secAcceptanceTimestamp } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -224,6 +224,42 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   // The report's source is the facts' publisher, named the same way for every fund.
   expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street", asOf: "2026-10-15" });
   expect(result.complete).toBe(true);
+});
+
+test("a trust's filings keep the fund's own series, and the text table keeps Filed, Form and the filing below 100 columns", async () => {
+  const trust = (form: string, index: number, fundSeries?: boolean): SecFilingItem => ({
+    ...filings[1]!, form, accessionNumber: `0001174610-26-${String(index).padStart(6, "0")}`, companyName: "PROSHARES TRUST",
+    ...(fundSeries === undefined ? {} : { fundSeries }),
+  });
+  const load = (issuerFilings: SecFilingItem[]) => createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => issuerFilings })
+    .load(fundArgs("TQQQ"), createTestHeadlessContext());
+  // ProShares Trust files for 166 funds: another fund's 497K and a 485BXT for a fund still to launch are not TQQQ's.
+  const marked = await load([trust("497K", 1, false), trust("485BXT", 2, false), trust("497K", 3, true), trust("N-CSR", 4, true), trust("NPORT-P", 5)]);
+  const section = marked.sections[1]!;
+  expect(section.rows!.map((row) => row.accessionNumber)).toEqual(["0001174610-26-000003", "0001174610-26-000004"]);
+  // One registrant on every row and no 8-K items: neither takes a column; exports keep both.
+  expect(section.textColumns!.map((column) => [column.key, column.minTableWidth])).toEqual([
+    ["filedAt", undefined], ["acceptanceReported", 100], ["form", undefined], ["filing", undefined], ["accessionNumber", undefined],
+  ]);
+  expect(section.columns!.map((column) => column.key)).toContain("items");
+  // An older server marks nothing: the trust's list stays whole.
+  expect((await load([trust("497K", 1), trust("485BXT", 2)])).sections[1]!.rows).toHaveLength(2);
+});
+
+test("an inverse fund's objective reads as its factor, reset and direction; a server before it sends none and still reads", async () => {
+  const sqqq: FundFactsPayload = {
+    ...SPY_FACTS, ticker: "SQQQ",
+    leverage: { value: -3, asOf: "2026-10-21", source: "ProShares", reset: "daily", benchmark: "Nasdaq-100 Index", proxy: { ticker: "QQQ", basis: "index-fund" } },
+    index: { value: "Nasdaq-100 Index", asOf: null, source: "ProShares" },
+  };
+  const result = await createFundHeadless({ loadFacts: async () => sqqq, loadFilings: async () => [] }).load(fundArgs("SQQQ"), createTestHeadlessContext());
+  const entries = result.sections[0]!.entries!;
+  expect(entries.find((entry) => entry.key === "leverageFactor")).toMatchObject({ label: "Objective", value: -3, formatted: "-3× daily, inverse · 2026-10-21 · ProShares" });
+  expect(entries.find((entry) => entry.key === "index")!.formatted).toBe("Nasdaq-100 Index · ProShares");
+
+  const client = (payload: unknown) => ({ getFundFacts: async () => payload as FundFactsPayload });
+  expect((await fetchFundFacts("SPY", client(SPY_FACTS))).leverage).toBeUndefined();
+  await expect(fetchFundFacts("SQQQ", client({ ...sqqq, leverage: { ...sqqq.leverage, reset: "weekly" } }))).rejects.toThrow();
 });
 
 test("a computed premium says it is the closing price against the NAV and who computed it", async () => {
