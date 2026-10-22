@@ -41,6 +41,34 @@ import { surfaceCoordinateLabel } from "./headless";
 import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
   surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
+import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
+import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { surfaceThirtyDayAtm } from "./tables";
+
+/** DVOL moves with the book; Gloom Cloud reads it once a minute. */
+const DVOL_REFRESH_MS = 5 * 60_000;
+
+/**
+ * The figures above a coin's surface: Deribit's DVOL now, its change on the
+ * day, and the surface's 30-day IV at the forward with its gap to DVOL.
+ */
+export function dvolStats(dvol: DvolPayload | null | undefined, atm: number | null): StatItem[] {
+  const latest = dvol?.latest;
+  if (!dvol || !latest) return [];
+  const previous = dvol.observations.findLast((row) => row.date < latest.at.slice(0, 10))?.value ?? null;
+  const change = previous == null ? null : latest.value - previous;
+  const atmPoints = atm == null ? null : atm * 100;
+  const gap = dvolGap(latest.value, atmPoints);
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  return [
+    { id: "dvol", label: "DVOL", value: latest.value.toFixed(2), detail: `${latest.at.slice(11, 16)} UTC`,
+      detailVariants: [`${latest.at.slice(11, 16)} UTC`, ""] },
+    { id: "dvol-change", label: "DVOL 1D", value: change == null ? "--" : signed(change), detail: "vol pts" },
+    { id: "atm30", label: "30D ATM", value: atmPoints == null ? "--" : atmPoints.toFixed(2),
+      ...(gap == null ? {} : { detail: `${signed(gap)} vs DVOL`, detailVariants: [`${signed(gap)} vs DVOL`, ""] }) },
+  ];
+}
 
 const TABS = [
   { value: "surface", label: "3D surface" }, { value: "table", label: "Table" },
@@ -162,8 +190,16 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const fateExchange = target?.effectiveExchange ?? "";
   const fateLoader = useCallback(async () => (await getSharedMarketDataCoordinator()
     ?.loadListingFate({ symbol: underlying, exchange: fateExchange }))?.note ?? null, [underlying, fateExchange]);
-  const fateNote = useAsyncResource(underlying && noChain ? fateLoader : null).data ?? null;
+  // A coin nothing lists options on (SOL-USD) says which coins have them.
+  const coinNote = underlying && isCoinWithoutOptions(underlying)
+    ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}` : null;
+  const fateNote = useAsyncResource(underlying && noChain && !coinNote ? fateLoader : null).data ?? coinNote;
   const ivRank = useIvRank(underlying || null);
+  // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.
+  const coin = dvolCurrency(underlying);
+  const dvolLoader = useCallback(async () => loadDvol(coin!), [coin]);
+  const dvol = useAsyncResource<DvolPayload>(coin ? dvolLoader : null);
+  useAutoRefresh(dvol.updatedAt, dvol.load, { intervalMs: coin ? DVOL_REFRESH_MS : null });
   useEffect(() => () => controller.current?.abort(), [request]);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
   const liveSnapshot = liveReload ?? (incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data);
@@ -201,7 +237,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
-  ] : [];
+  ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data, surfaceThirtyDayAtm(snapshot)) : [];
   const tableHeight = Math.max(3, height - chromeBarRows(nativePaneChrome) - tabRows - statGridRows(ivStats, width));
   const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   // A typed date (`--expiration 2027-01-15`) is that day's UTC midnight; the
