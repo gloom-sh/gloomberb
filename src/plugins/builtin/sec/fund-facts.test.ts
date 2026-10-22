@@ -196,7 +196,7 @@ test("a metal trust's ounces and tonnes in trust follow its net assets, with the
     metalHoldings: {
       metal: "gold", asOf: "2026-10-20", ounces: 34085936.5, tonnes: 1060.18,
       change: { since: "2026-10-19", ounces: 54994.78, tonnes: 1.71 },
-      source: { publisher: "SPDR Gold Shares", url: "https://api.spdrgoldshares.com/api/v1/historical-archive?product=gld&exchange=NYSE&lang=en", page: "https://www.spdrgoldshares.com/usa/gld/" },
+      source: { publisher: "SPDR Gold Shares", page: "https://www.spdrgoldshares.com/usa/gld/" },
       fetchedAt: "2026-10-21T23:00:00.000Z", stale: false,
     },
   };

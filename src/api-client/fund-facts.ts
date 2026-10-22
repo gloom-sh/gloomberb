@@ -45,7 +45,8 @@ export interface FundMetalHoldings {
   ounces: number;
   tonnes: number | null;
   change: { since: string; ounces: number; tonnes: number | null } | null;
-  source: { publisher: string; url: string; page: string };
+  /** The sponsor and the fund page that shows the figures. */
+  source: { publisher: string; page: string };
   /** The last read of the sponsor's file that succeeded. */
   fetchedAt: string;
   /** The newest day is more than five days old. */
