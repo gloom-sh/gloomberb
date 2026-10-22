@@ -554,9 +554,10 @@ past the date for a late figure, then follows the next report. The alert then
 reads **Alerted** until the event passes and arms itself for the next date.
 Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again for the same
 event, and `gloomberb alerts delete <id>` removes it. Earnings
-alerts also reach the phone app like the other market alerts; for an alert
-on results the phone is told on the report day, and the results themselves
-come from the running app. CPI and FOMC alerts notify in the running app only.
+alerts also reach the phone app like the other market alerts; an alert on
+results reaches it once Gloom Cloud has the actual EPS, with the same words,
+once per report and never on the day itself. CPI and FOMC alerts notify in
+the running app only.
 
 `gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts
 with their event date, lead time and state, and `--tab history` the alerts

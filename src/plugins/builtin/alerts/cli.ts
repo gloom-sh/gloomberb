@@ -396,9 +396,9 @@ export const alertsCliCommand: CliCommandDef = {
         const delivery = scheduled.target.kind === "macro" ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // Delivery, as docs/usage.md states it: CPI and FOMC notify in the running app only; earnings also reach the phone,
-          // which Gloom Cloud alerts on the report day for a results alert.
+          // which Gloom Cloud alerts with the same results once the actual EPS is stored for a results alert.
           text: (data) => scheduled.trigger === "results"
-            ? `Added alert ${data.alert.id}: ${name} on ${eventDate}, when results are out (the app alerts once the actual EPS is in, while it is running; with Cloud sync your phone is alerted on the day).${dryRunNote(data.dryRun)}`
+            ? `Added alert ${data.alert.id}: ${name} on ${eventDate}, when results are out (the app alerts once the actual EPS is in while it is running, and with Cloud sync your phone gets the same alert).${dryRunNote(data.dryRun)}`
             : `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
               ? "already reached, so the app alerts at its next check"
               : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}${delivery}).${dryRunNote(data.dryRun)}`,
