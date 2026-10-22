@@ -606,3 +606,17 @@ export function buildFinancialTableModel(
 
   return { period, subTab, statements, rows, unit };
 }
+
+/**
+ * A statement table's columns for stalePeriodNote, each with whether the
+ * statement's lead line (its first: revenue, total assets, free cash flow)
+ * has a figure in it, so a newer column with only some figures (an EPS
+ * alone) is not read as the latest period.
+ */
+export function financialStatementPeriods(
+  statements: readonly FinancialTableStatement[],
+  subTab: Pick<FinancialSubTab, "rows">,
+): Array<{ date: string; lead: boolean }> {
+  const lead = subTab.rows[0];
+  return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasFinancialRowValue(lead, [statement]) }));
+}

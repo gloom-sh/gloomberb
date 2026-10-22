@@ -1,4 +1,4 @@
-import { FINANCIAL_VINTAGE_NOTICE, statementHistoryNotes } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
@@ -10,7 +10,7 @@ import {
 } from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
+  financialStatementPeriods, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
@@ -117,11 +117,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
+    // A latest period over 15 months old says how old it is.
+    const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
-      // The report closes with how far back its periods go, and how to read further.
-      notes: [...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
+      // The report closes with how old its latest period is, how far back its periods go, and how to read further.
+      notes: [...stale ? [stale] : [], ...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -211,6 +213,7 @@ async function loadRatioReport(
     ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     notes: [
+      ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
       ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),

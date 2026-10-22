@@ -82,13 +82,23 @@ function closeLabel(date: string): string {
  * How current the board is, for its footer. Outside the regular session the
  * close its figures describe and how old the snapshot is, `Fri 9 Oct close ·
  * snapshot 12m ago`; while a session trades, or from a server that does not
- * name the close, the delay and the snapshot's age. `age` is the relative age
- * (`12m ago`).
+ * name the close, whether its prices are live (a Pro account's) or delayed,
+ * and the snapshot's age, which the longer returns start from. `age` is the
+ * relative age (`12m ago`).
  */
-export function snapshotFooterText(payload: { regularSessionDate?: unknown; regularSessionClosedAt?: unknown }, age: string): string {
+export function snapshotFooterText(payload: { regularSessionDate?: unknown; regularSessionClosedAt?: unknown; access?: unknown }, age: string): string {
   const close = boardClose(payload);
-  return close ? `${closeLabel(close.date)} · snapshot ${age}` : `15m delayed · snapshot ${age}`;
+  if (close) return `${closeLabel(close.date)} · snapshot ${age}`;
+  return `${isLiveBoard(payload) ? "live" : "15m delayed"} · snapshot ${age}`;
 }
+
+/** Whether a board's prices are real-time: a Pro account's, priced from the server's live read. */
+export function isLiveBoard(payload: { access?: unknown } | null | undefined): boolean {
+  return payload?.access === "realtime";
+}
+
+/** How often a board is worth checking again: the server renews a live board's prices every 15 seconds. */
+export const LIVE_BOARD_REFRESH_MS = 15_000;
 
 /** A member's pre-market or after-hours print and its move from the close in Price, when it has a valid one. */
 export function memberExtended(row: ThemeMember): { session: ExtendedSession; price: number; change: number | null; changePercent: number | null } | null {
