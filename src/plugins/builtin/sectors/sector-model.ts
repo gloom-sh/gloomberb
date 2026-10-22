@@ -3,6 +3,7 @@ import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-la
 import type { PricePoint, Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { getPricePointTimestamp } from "../../../utils/price-history";
+import { periodBaseDay, periodBaseIndex } from "../../../market-data/market/period-return";
 import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import {
   getCompletedRegularSessionDisplay,
@@ -17,7 +18,6 @@ import {
   type SectorDef,
 } from "./sector-data";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_COLLECTION_ID: SectorCollectionId = "sectors";
 
 /**
@@ -274,24 +274,17 @@ export function historySessionBefore(history: readonly PricePoint[], beforeDate:
 
 export type SectorReturnRange = "1M" | "1Y";
 
-/** Clamp calendar subtraction so March 31 maps to February's final day. */
+/** The calendar date a sector's 1M or 1Y return is measured back to (periodBaseDay): 31 Mar's month is 28 Feb. */
 export function sectorReturnTargetDate(asOfDate: string, range: SectorReturnRange): string {
-  const shifted = new Date(`${asOfDate}T00:00:00Z`);
-  const day = shifted.getUTCDate();
-  shifted.setUTCDate(1);
-  shifted.setUTCMonth(shifted.getUTCMonth() - (range === "1M" ? 1 : 12));
-  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate();
-  shifted.setUTCDate(Math.min(day, lastDay));
-  return shifted.toISOString().slice(0, 10);
+  return periodBaseDay(asOfDate, range);
 }
 
+/** The close on or before that date, within a closure of it (periodBaseIndex). */
 function returnBaseline(history: readonly PricePoint[], asOfDate: string, range: SectorReturnRange) {
-  const target = sectorReturnTargetDate(asOfDate, range);
-  const baseline = getSortedHistory(history).findLast(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10) <= target);
-  if (!baseline) return null;
-  const startDate = new Date(baseline.timestamp).toISOString().slice(0, 10);
-  if (Date.parse(target) - Date.parse(startDate) > 7 * DAY_MS) return null;
-  return { ...baseline, startDate };
+  const points = getSortedHistory(history);
+  const days = points.map(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10));
+  const index = periodBaseIndex(days, sectorReturnTargetDate(asOfDate, range));
+  return index < 0 ? null : { ...points[index]!, startDate: days[index]! };
 }
 
 /** A reported session establishes the calendar even when its price or the ending observation is unavailable. */

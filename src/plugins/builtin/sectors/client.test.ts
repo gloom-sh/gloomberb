@@ -72,7 +72,7 @@ test("requests a boundary buffer when the prior-year date falls on a holiday", a
     },
   } as unknown as DataProvider;
   const [result] = await loadSectorRows(sectors.slice(0, 1), provider);
-  expect(requestedStarts.at(-1)).toBe("2025-10-05");
+  expect(requestedStarts.at(-1)).toBe("2025-09-28");
   expect(result?.row?.return1Y).toBeCloseTo(5);
   expect(result?.row?.return1YStartDate).toBe("2025-10-10");
 });

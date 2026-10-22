@@ -82,7 +82,7 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   const interval = effectiveReturnResolution(range, request.resolution, support);
   const venue = await sessionVenue(provider, symbol, exchange);
   const windowEnd = returnWindowEnd({ symbol, exchange: venue }, now);
-  const visibleFrom = returnVisibleFrom(range, interval, windowEnd.end);
+  const visibleFrom = returnVisibleFrom(range, interval, windowEnd.end, venue || undefined);
   const start = new Date(visibleFrom - returnLookbackMs(range, interval, support));
   const end = new Date(now);
   const context = request.forceRefresh ? { cacheMode: "refresh" as const } : undefined;
@@ -102,7 +102,7 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   return {
     points: result.points,
     visibleFrom: endsAtLatestBar(range) && latest !== null && latest < windowEnd.end
-      ? returnVisibleFrom(range, interval, latest)
+      ? returnVisibleFrom(range, interval, latest, venue || undefined)
       : visibleFrom,
     visibleTo: now,
     ...(result.coverageStart ? { coverageStart: result.coverageStart } : {}),

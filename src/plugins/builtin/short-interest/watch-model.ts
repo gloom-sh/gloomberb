@@ -1,4 +1,5 @@
 import { realizedVolatilityCadenceIssue } from "../../../market-data/realized-volatility";
+import { periodReturn } from "../../../market-data/market/period-return";
 import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
@@ -19,9 +20,6 @@ export const SHORT_WATCH_LIMIT = 60;
 const CROWDED_FLOAT_PERCENT = 10;
 const CROWDED_DAYS_TO_COVER = 5;
 const CROWDED_DAYS_MIN_FLOAT_PERCENT = 5;
-/** The 1M base is the close a calendar month before the latest one, or the last close up to four days before (a weekend and a holiday). */
-const RETURN_BASE_TOLERANCE_DAYS = 4;
-const DAY_MS = 86_400_000;
 const SYMBOL = /^[A-Z][A-Z0-9.]{0,9}$/;
 const LISTED_TYPES = new Set(["", "STK", "EQUITY", "COMMONSTOCK", "ADR", "ETF", "FUND"]);
 
@@ -63,9 +61,9 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
 
 /**
- * The latest close against the close one calendar month earlier: the last close
- * on or before that day, within four days of it, from daily bars only, so a gap in the history leaves the
- * return unknown rather than measuring a longer window.
+ * The latest close against the close one calendar month earlier: the last
+ * close on or before that day (periodReturn), from daily bars only, so a gap
+ * in the history leaves the return unknown rather than measuring a longer window.
  */
 export function oneMonthReturn(history: readonly PricePoint[]): { percent: number; date: string } | null {
   // Weekly or intraday bars would measure from the wrong close.
@@ -73,25 +71,10 @@ export function oneMonthReturn(history: readonly PricePoint[]): { percent: numbe
   // Cached histories come back with ISO-string dates.
   const closes = history.map((point) => ({ close: point.close, date: new Date(point.date) }))
     .filter((point) => finite(point.close) && point.close > 0 && !Number.isNaN(point.date.getTime()))
-    .sort((left, right) => left.date.getTime() - right.date.getTime());
-  const last = closes.at(-1);
-  if (!last) return null;
-  const target = new Date(last.date);
-  target.setUTCMonth(target.getUTCMonth() - 1);
-  // 31 March less a month is 3 March; clamp to the month's last day.
-  if (target.getUTCMonth() === last.date.getUTCMonth()) target.setUTCDate(0);
-  const targetMs = target.getTime();
-  let base = closes[0]!;
-  for (let index = closes.length - 1; index >= 0; index -= 1) {
-    const point = closes[index]!;
-    if (point.date.getTime() <= targetMs) {
-      base = point;
-      break;
-    }
-  }
-  if (base.date.getTime() > targetMs) return null;
-  if (targetMs - base.date.getTime() > RETURN_BASE_TOLERANCE_DAYS * DAY_MS) return null;
-  return { percent: (last.close / base.close - 1) * 100, date: isoDate(last.date) };
+    .sort((left, right) => left.date.getTime() - right.date.getTime())
+    .map((point) => ({ day: isoDate(point.date), close: point.close }));
+  const month = periodReturn(closes, "1M");
+  return month ? { percent: month.percent, date: month.end.day } : null;
 }
 
 function shortWatchSetup(row: Pick<ShortWatchRow, "percentFloat" | "daysToCover" | "return1M">): ShortWatchSetup | null {

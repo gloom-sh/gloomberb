@@ -1,4 +1,5 @@
 import { barLastSession } from "./bar-period";
+import { barCloseDay, periodBaseDay, periodBaseIndex } from "./period-return";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
@@ -32,15 +33,7 @@ export function yearToDateBaseLabel(day: string, venue: string | undefined, now 
 export function yearToDateStartIndex(dates: readonly string[], interval?: string | null): number {
   const last = dates.at(-1);
   if (!last) return -1;
-  const yearEnd = `${Number(last.slice(0, 4)) - 1}-12-31`;
-  const closes = (date: string) => {
-    const day = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
-    if (interval === "1wk") return new Date(day + 6 * 86_400_000).toISOString().slice(0, 10);
-    if (interval === "1mo") return new Date(Date.UTC(new Date(day).getUTCFullYear(), new Date(day).getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-    return date.slice(0, 10);
-  };
-  for (let index = dates.length - 1; index >= 0; index -= 1) {
-    if (closes(dates[index]!) <= yearEnd) return index;
-  }
-  return 0;
+  // The listing's whole history counts here, however far before 31 Dec its last close of the year was.
+  const index = periodBaseIndex(dates.map((date) => barCloseDay(date, interval)), periodBaseDay(last, "YTD"), Number.POSITIVE_INFINITY);
+  return Math.max(0, index);
 }

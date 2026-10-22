@@ -1,3 +1,4 @@
+import { PERIOD_BASE_MAX_GAP_DAYS } from "../../../market-data/market/period-return";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
@@ -92,7 +93,7 @@ export async function loadSectorRows(
     if (asOfDate && computeTrailingReturn(history, "1Y", price, asOfDate)?.value == null
       && provider.getDetailedPriceHistory) {
       const start = new Date(`${sectorReturnTargetDate(asOfDate, "1Y")}T00:00:00Z`);
-      start.setUTCDate(start.getUTCDate() - 7);
+      start.setUTCDate(start.getUTCDate() - PERIOD_BASE_MAX_GAP_DAYS);
       const end = new Date(`${asOfDate}T00:00:00Z`);
       end.setUTCDate(end.getUTCDate() + 1);
       const extended = await provider.getDetailedPriceHistory(sector.etf, "", start, end, "1d").catch(logFailure("sectors", "Sector extended price history failed", []));

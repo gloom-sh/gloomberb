@@ -6,6 +6,8 @@ import {
   buildReturnRows,
   closedMarketNote,
   effectiveReturnResolution,
+  returnBaseCloseDay,
+  returnBaseDay,
   returnLookbackMs,
   returnVisibleFrom,
   returnWindowEnd,
@@ -122,10 +124,24 @@ describe("return windows", () => {
     expect(returnVisibleFrom("5D", "1h", monday)).toBe(Date.parse("2026-09-30T13:00:00Z"));
   });
 
-  test("calendar ranges count back in UTC, clamping to the end of a shorter month", () => {
-    const end = Date.parse("2026-03-31T15:00:00Z");
-    expect(new Date(returnWindowStart("1M", end)).toISOString()).toBe("2026-02-28T15:00:00.000Z");
-    expect(new Date(returnWindowStart("6H", end)).toISOString()).toBe("2026-03-31T09:00:00.000Z");
+  test("1W to 5Y run from the close on or before the same date a range before, as CMP measures them", () => {
+    const days = ["2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23"].map((date, index) => point(`${date}T00:00:00Z`, 100 + index));
+    const dates = (rows: ReturnType<typeof buildReturnRows>) => rows.map((row) => new Date(row.timestamp).toISOString().slice(0, 10)).reverse();
+    // Wed 21 Oct's close: a month before is Mon 21 Sep, whose close is the base, so its own move is not in the month.
+    const wednesday = Date.parse("2026-10-21T20:00:00Z");
+    const month = buildReturnRows(days, returnVisibleFrom("1M", "1d", wednesday, "NASDAQ"));
+    expect(dates(month)).toEqual(["2026-09-22", "2026-09-23"]);
+    expect(month.at(-1)!.cumulativeChange).toBe(1);
+    expect(returnBaseCloseDay(days, returnVisibleFrom("1M", "1d", wednesday, "NASDAQ"), "1d", "NASDAQ", wednesday)).toBe("2026-09-21");
+    // Tue 20 Oct: a month before is Sun 20 Sep, so Fri 18 Sep's close.
+    expect(dates(buildReturnRows(days, returnVisibleFrom("1M", "1d", Date.parse("2026-10-20T20:00:00Z"), "NASDAQ")))[0]).toBe("2026-09-21");
+    // 31 Mar's month runs from 28 Feb; intraday bars run from the base day's session close.
+    expect(returnBaseDay("1M", Date.parse("2026-03-31T20:00:00Z"), "NASDAQ")).toBe("2026-02-28");
+    expect(returnVisibleFrom("1M", "1h", wednesday, "NASDAQ")).toBe(Date.parse("2026-09-21T20:00:00Z") - 1);
+    // A week's bar (dated Monday) is the base when its Friday close is on or before the base day; a month's when its month ended by then.
+    expect(new Date(returnVisibleFrom("1M", "1wk", Date.parse("2026-10-19T20:00:00Z"), "NASDAQ") + 1).toISOString().slice(0, 10)).toBe("2026-09-16");
+    expect(new Date(returnVisibleFrom("1Y", "1mo", wednesday, "NASDAQ") + 1).toISOString().slice(0, 10)).toBe("2025-10-01");
+    expect(new Date(returnWindowStart("6H", wednesday)).toISOString()).toBe("2026-10-21T14:00:00.000Z");
   });
 });
 

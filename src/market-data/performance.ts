@@ -1,6 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { calendarMonthsBefore } from "../utils/calendar-date";
+import { isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
 
 export interface PriceReturnHorizon {
   id: string;
@@ -66,8 +67,11 @@ export function appendQuoteToPriceReturnHistory(
   ];
 }
 
-function subtractHorizon(date: Date, horizon: PriceReturnHorizon): Date {
-  return calendarMonthsBefore(date, horizon.amount * (horizon.unit === "year" ? 12 : 1));
+/** The calendar date a horizon ending on `day` is measured back to (periodBaseDay). */
+function horizonBaseDay(day: string, horizon: PriceReturnHorizon): string {
+  return isReturnPeriod(horizon.id)
+    ? periodBaseDay(day, horizon.id)
+    : calendarMonthsBefore(new Date(`${day}T00:00:00Z`), horizon.amount * (horizon.unit === "year" ? 12 : 1)).toISOString().slice(0, 10);
 }
 
 export function computePriceReturnForHorizon(
@@ -88,16 +92,13 @@ function priceReturnForHorizon(
   };
 
   const latest = history.at(-1)!;
-  const cutoff = subtractHorizon(latest.date, horizon);
-  let baseline: PricePoint | null = null;
-
-  for (const point of history) {
-    if (point.date.getTime() <= cutoff.getTime()) {
-      baseline = point;
-    } else {
-      break;
-    }
-  }
+  // The close on or before the same date a horizon earlier, as every period return is measured. No gap
+  // limit: the overview's history can be sparse, and its base is whatever close it holds on or before then.
+  const days = history.map((point) => point.date.toISOString().slice(0, 10));
+  const baseDay = horizonBaseDay(days.at(-1)!, horizon);
+  const baseIndex = periodBaseIndex(days, baseDay, Number.POSITIVE_INFINITY);
+  const baseline = baseIndex < 0 ? null : history[baseIndex]!;
+  const cutoff = new Date(`${baseDay}T00:00:00Z`);
 
   if (history.some((point) => point.date >= (baseline?.date ?? cutoff) && pricePointIntegrity(point))) {
     return { value: null, unavailableReason: "inconsistent-ohlc" };

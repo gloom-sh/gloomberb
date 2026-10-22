@@ -2,8 +2,12 @@ import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
+import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { barLastSession } from "../market-data/market/bar-period";
+import {
+  barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
+} from "../market-data/market/period-return";
 
 const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
 
@@ -15,6 +19,26 @@ export interface PriceComparison {
   notice: string;
   alignment?: "session-date" | "timestamp";
   sourceBounds?: Record<string, { start: number; end: number }>;
+  /**
+   * Each compared leg's base and end as the notice names them, `YYYY-MM-DD`:
+   * the day its base close is from, the day of its newest observation, and
+   * whether that observation is the session still trading.
+   */
+  legs?: Record<string, { baseDay: string; endDay: string; intraday: boolean }>;
+  /** Legs left out of the comparison, by the symbol asked for, and why; the rest still compare. */
+  dropped?: Array<{ seriesId: string; label: string; reason: string }>;
+}
+
+export interface PriceComparisonOptions {
+  /**
+   * The chart's untouched preset range; null for authored dates or a view
+   * panned or zoomed off it. A preset's legs each run to their own newest
+   * observation, so one that is behind does not cut the others short, and a
+   * calendar range (1W to 5Y) is measured from the close on or before the
+   * same date a range before (periodBaseDay), as RETURN is.
+   */
+  preset?: TimeRange | null;
+  now?: number;
 }
 
 export function observationDate(time: number, series: Pick<ResolvedSeries, "timeBasis">): string {
@@ -47,12 +71,28 @@ export function priceObservationWindowFilter(
 }
 
 export function priceComparisonBoundsForSeries(series: ResolvedSeries, comparison: PriceComparison | null) {
+  // A leg left out of the comparison shows nothing of it.
+  if (comparison?.dropped?.some((entry) => entry.seriesId === series.id)) return { start: null, end: null };
   return comparison?.sourceBounds?.[series.id] ?? comparison;
 }
 
 function displayDate(time: number): string {
   const iso = new Date(time).toISOString();
   return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso.replace("T", " ").replace(".000Z", " UTC");
+}
+
+/** "Mon 21 Sep close (EWJ Fri 18 Sep close)": the text most legs share, then the others by symbol. */
+function legsText(entries: ReadonlyArray<{ label: string; text: string }>): string {
+  const groups = new Map<string, string[]>();
+  for (const { label, text } of entries) groups.set(text, [...groups.get(text) ?? [], label]);
+  const [main, ...rest] = [...groups].sort((left, right) => right[1].length - left[1].length);
+  if (!main) return "";
+  return rest.length ? `${main[0]} (${rest.map(([text, labels]) => `${labels.join(", ")} ${text}`).join("; ")})` : main[0];
+}
+
+/** A leg's venue, whose sessions say whether its newest bar is still trading. */
+function legVenue(series: ResolvedSeries | undefined): string | undefined {
+  return series?.timeBasis?.exchange || series?.listing?.exchange || undefined;
 }
 
 /** Comparable normalized closing-price legs share observed endpoints. Other chart meanings are unchanged. */
@@ -71,56 +111,161 @@ export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
   return visible.map((entry) => entry.id);
 }
 
+interface ComparedLeg {
+  id: string;
+  label: string;
+  entry: ResolvedSeries;
+  /** Every priced observation by key, chronological: a period's base can be before the window. */
+  keys: string[];
+  points: Map<string, TimeSeriesPoint>;
+  /** The keys inside the window. */
+  window: string[];
+}
+
+/**
+ * Where each compared leg starts and ends, and what the comparison says of it.
+ *
+ * Calendar bars compare by session date. An untouched preset range measures
+ * each leg from its own close on or before the same date a range before the
+ * newest observation of the chart (periodBaseDay), the convention RETURN
+ * and every period return share, and runs each leg to its own newest
+ * observation. Authored dates and a panned view start every leg at the first
+ * date they share and end them at the last. A leg with no prices, or one,
+ * is left out with its reason and the others still compare.
+ */
 export function resolvePriceComparison(
   spec: ChartSpec,
   series: readonly ResolvedSeries[],
   bounds: { start: number | null; end: number | null },
   resolution: ManualChartResolution | "auto" = spec.viewport.resolution,
   dateWindow: ChartSpec["viewport"]["dateWindow"] | null = spec.viewport.dateWindow,
+  options: PriceComparisonOptions = {},
 ): PriceComparison | null {
   const seriesIds = priceComparisonSeriesIds(spec);
   if (!seriesIds) return null;
+  const now = options.now ?? Date.now();
   const byId = new Map(series.map((entry) => [entry.id, entry]));
   const calendarBars = resolution === "1d" || resolution === "1wk" || resolution === "1mo";
-  const observations = seriesIds.map((id) => {
-    const entry = byId.get(id);
-    if (!entry) return new Map<string, TimeSeriesPoint>();
-    const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
-    return new Map(entry.points.flatMap((point) => {
-      const time = point.date.getTime();
-      if (!inWindow(time) || scalarPointValue(point) === null) return [];
-      return [[calendarBars ? observationDate(time, entry) : String(time), point] as const];
-    }));
-  });
-  const shared = [...observations[0]!.keys()].filter((key) => observations.every((points) => points.has(key)))
-    .sort((a, b) => calendarBars ? a.localeCompare(b) : Number(a) - Number(b));
-  const start = shared.find((key) => observations.every((points) => {
-    const point = points.get(key);
-    return point && scalarPointValue(point) !== 0;
-  }));
-  const end = shared.at(-1);
-  if (start === undefined || end === undefined || start === end) return {
-    seriesIds, start: null, end: null,
-    notice: `${PRICE_COMPARISON_BASIS} Comparison unavailable: need two shared dates and a nonzero baseline.`,
+  const order = (left: string, right: string) => calendarBars ? left.localeCompare(right) : Number(left) - Number(right);
+  const symbolOf = (id: string) => {
+    const source = spec.series.find((entry) => entry.id === id)?.source;
+    return source?.kind === "security" ? source.instrument.symbol : id;
   };
+  // A leg not loaded yet (a seed from cached history) has not failed: nothing compares until it is.
+  const unavailable = `${PRICE_COMPARISON_BASIS} Comparison unavailable: need two shared dates and a nonzero baseline.`;
+  if (seriesIds.some((id) => !byId.has(id))) return { seriesIds, start: null, end: null, notice: unavailable };
+  const dropped: NonNullable<PriceComparison["dropped"]> = [];
+  const reported = new Set<string>();
+  const legs: ComparedLeg[] = [];
+  for (const id of seriesIds) {
+    const entry = byId.get(id)!;
+    const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
+    const points = new Map<string, TimeSeriesPoint>();
+    const window = new Set<string>();
+    for (const point of entry.points) {
+      const time = point.date.getTime();
+      if (!Number.isFinite(time) || scalarPointValue(point) === null) continue;
+      const key = calendarBars ? observationDate(time, entry) : String(time);
+      points.set(key, point);
+      if (inWindow(time)) window.add(key);
+    }
+    const leg = { id, label: symbolOf(id), entry, keys: [...points.keys()].sort(order), points, window: [...window].sort(order) };
+    if (leg.window.length) legs.push(leg);
+    else if (entry.warning?.trim()) {
+      // A leg that failed to load: the chart's errors already say why.
+      dropped.push({ seriesId: id, label: leg.label, reason: entry.warning.trim() });
+      reported.add(id);
+    } else dropped.push({ seriesId: id, label: leg.label, reason: "no prices in this range" });
+  }
+  const nonzero = (leg: ComparedLeg, key: string) => scalarPointValue(leg.points.get(key)!) !== 0;
   // A weekly or monthly bar's close is from the last session of its period, which the notice dates it by.
-  const period = resolution === "1wk" ? "week" : resolution === "1mo" ? "month" : null;
-  const venue = byId.get(seriesIds[0]!)?.timeBasis?.exchange || byId.get(seriesIds[0]!)?.listing?.exchange || undefined;
-  const sessionDay = (key: string) => (period ? barLastSession(key, period, venue, Date.now()) : null) ?? key;
-  const sourceBounds = Object.fromEntries(seriesIds.map((id, index) => [id, {
-    start: observations[index]!.get(start)!.date.getTime(),
-    end: observations[index]!.get(end)!.date.getTime(),
+  const barPeriod = resolution === "1wk" ? "week" : resolution === "1mo" ? "month" : null;
+  const venue = legVenue(byId.get(seriesIds[0]!));
+  const sessionDay = (key: string) => (barPeriod ? barLastSession(key, barPeriod, venue, now) : null) ?? key;
+  const dayOf = (leg: ComparedLeg, key: string) => calendarBars ? key : observationDate(Number(key), leg.entry);
+  const preset = options.preset ?? null;
+  const period = !dateWindow && isReturnPeriod(preset) ? preset : null;
+  const ownEnds = preset !== null && !dateWindow;
+  const shared = (keys: (leg: ComparedLeg) => readonly string[]) => {
+    const sets = legs.map((leg) => new Set(keys(leg)));
+    return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
+  };
+  const sharedWindow = shared((leg) => leg.window);
+  const sharedStart = sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
+  // The period is measured back from the chart's newest observation, by its session day.
+  const anchor = period && legs.length
+    ? legs.map((leg) => calendarBars ? sessionDay(leg.window.at(-1)!) : dayOf(leg, leg.window.at(-1)!)).sort().at(-1)!
+    : null;
+  const baseDay = anchor && period ? periodBaseDay(anchor, period) : null;
+  const closeDay = (leg: ComparedLeg, key: string) => calendarBars && resolution !== "1d" ? barCloseDay(key, resolution, legVenue(leg.entry)) : key;
+  // Intraday bars share their times, so their base is the last bar the legs share on or before the base day.
+  const sharedBase = baseDay && !calendarBars ? (() => {
+    const keys = shared((leg) => leg.keys).filter((key) => legs.every((leg) => nonzero(leg, key)));
+    const index = periodBaseIndex(keys.map((key) => dayOf(legs[0]!, key)), baseDay);
+    return index < 0 ? undefined : keys[index];
+  })() : undefined;
+  const startOf = (leg: ComparedLeg): string | undefined => {
+    if (!baseDay) return sharedStart;
+    if (!calendarBars) return sharedBase ?? sharedStart;
+    const index = periodBaseIndex(leg.keys.map((key) => closeDay(leg, key)), baseDay);
+    const base = index < 0 ? undefined : leg.keys[index];
+    // Without a close on or before the base day (a listing younger than the range), its first close in range.
+    return base !== undefined && nonzero(leg, base) ? base : leg.window.find((key) => nonzero(leg, key));
+  };
+  const sharedEnd = sharedWindow.at(-1);
+  // Legs that share their dates compare over two of them or not at all; a leg that runs on its own is left out alone.
+  const sharedSpan = sharedStart !== undefined && sharedEnd !== undefined && order(sharedStart, sharedEnd) < 0;
+  const compared = baseDay || ownEnds || sharedSpan ? legs.flatMap((leg) => {
+    const start = startOf(leg);
+    const end = ownEnds ? leg.window.at(-1) : sharedEnd;
+    if (start !== undefined && end !== undefined && order(start, end) < 0) return [{ leg, start, end }];
+    if (baseDay || sharedStart !== undefined) {
+      dropped.push({ seriesId: leg.id, label: leg.label, reason: start === undefined ? "no nonzero price to measure from in this range" : "only one price in this range" });
+    }
+    return [];
+  }) : [];
+  // "Left out: VIX; EWJ (only one price in this range)."
+  const droppedText = dropped.length
+    ? ` Left out: ${dropped.map((entry) => reported.has(entry.seriesId) ? entry.label : `${entry.label} (${entry.reason})`).join("; ")}.`
+    : "";
+  if (!compared.length) return { seriesIds, start: null, end: null, notice: unavailable, ...(dropped.length ? { dropped } : {}) };
+  const sourceBounds = Object.fromEntries(compared.map(({ leg, start, end }) => [leg.id, {
+    start: leg.points.get(start)!.date.getTime(),
+    end: leg.points.get(end)!.date.getTime(),
   }]));
+  const currentYear = new Date(now).getUTCFullYear();
+  const legDays = Object.fromEntries(compared.map(({ leg, start, end }) => {
+    const endDay = calendarBars ? sessionDay(end) : dayOf(leg, end);
+    // A daily bar of the session still trading, or a week or month running through it.
+    return [leg.id, { baseDay: calendarBars ? sessionDay(start) : dayOf(leg, start), endDay,
+      intraday: calendarBars && isIntradayDailyBar(endDay, legVenue(leg.entry), now) }];
+  }));
+  const span = calendarBars
+    ? (() => {
+      const from = legsText(compared.map(({ leg }) => ({ label: leg.label, text: `${periodDayText(legDays[leg.id]!.baseDay, currentYear)} close` })));
+      const to = legsText(compared.map(({ leg }) => ({ label: leg.label, text: legDays[leg.id]!.intraday
+        ? `${periodDayText(legDays[leg.id]!.endDay, currentYear)}, ${LATEST_INTRADAY_TEXT}`
+        : `${periodDayText(legDays[leg.id]!.endDay, currentYear)} close` })));
+      return `From ${from} to ${to}; market session times may differ.`;
+    })()
+    : baseDay && sharedBase !== undefined
+      ? `From ${periodDayText(legDays[compared[0]!.leg.id]!.baseDay, currentYear)} close to ${displayDate(Math.max(...Object.values(sourceBounds).map((range) => range.end)))}.`
+      : `Shared observations: ${displayDate(Math.min(...Object.values(sourceBounds).map((range) => range.start)))} to ${displayDate(Math.max(...Object.values(sourceBounds).map((range) => range.end)))}.`;
   return {
     seriesIds,
     start: Math.min(...Object.values(sourceBounds).map((range) => range.start)),
     end: Math.max(...Object.values(sourceBounds).map((range) => range.end)),
     alignment: calendarBars ? "session-date" : "timestamp",
     sourceBounds,
-    notice: calendarBars
-      ? `${PRICE_COMPARISON_BASIS} Shared calendar dates: ${sessionDay(start)} to ${sessionDay(end)}; market session times may differ.`
-      : `${PRICE_COMPARISON_BASIS} Shared observations: ${displayDate(Number(start))} to ${displayDate(Number(end))}.`,
+    legs: legDays,
+    ...(dropped.length ? { dropped } : {}),
+    notice: `${PRICE_COMPARISON_BASIS} ${span}${droppedText}`,
   };
+}
+
+/** Whether a comparison's newest point is the session still trading on any leg. */
+export function priceComparisonEndsIntraday(comparison: PriceComparison | null | undefined): boolean {
+  return Object.values(comparison?.legs ?? {}).some((leg) => leg.intraday);
 }
 
 /**

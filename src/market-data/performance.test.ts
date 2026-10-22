@@ -59,14 +59,15 @@ describe("price performance", () => {
     expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.5);
   });
 
-  test("an exact clamped cutoff wins over the prior session and excludes observations one millisecond later", () => {
+  test("the clamped base day's last observation is the base, not the prior session's or the time of day a month back", () => {
+    // A month before 31 Mar is 28 Feb: its close is the last observation that day.
     const history = [
       point("2026-02-27T15:45:12.345Z", 90), point("2026-02-28T15:45:12.345Z", 100),
       point("2026-02-28T15:45:12.346Z", 120), point("2026-03-31T15:45:12.345Z", 150),
     ];
     const original = JSON.stringify(history);
-    expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.5);
-    expect(computePriceReturnForHorizon(JSON.parse(original), horizon("1M"))).toBe(0.5);
+    expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.25);
+    expect(computePriceReturnForHorizon(JSON.parse(original), horizon("1M"))).toBe(0.25);
     expect(JSON.stringify(history)).toBe(original);
   });
 
