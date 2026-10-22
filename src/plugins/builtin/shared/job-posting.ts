@@ -61,7 +61,7 @@ export function postingPlace(posting: { location: string | null; country: string
 }
 
 /** "Oct 3, 2026"; "about Oct 3, 2026" or "Oct 3, 2026 or earlier" when the careers system's date is not exact. */
-export function postedText(postedAt: string | null | undefined, precision?: string | null): string | null {
+function postedText(postedAt: string | null | undefined, precision?: string | null): string | null {
   if (!postedAt) return null;
   const date = formatShortDate(postedAt.slice(0, 10), { utc: true, fallback: "" });
   if (!date) return null;
@@ -87,7 +87,7 @@ export function employmentText(value: string | null | undefined): string | null 
  * A title the careers system never gave: `Job <id>`, an id alone, or the
  * words of the posting's address. A reader is shown "Untitled role" instead.
  */
-export function isPlaceholderTitle(title: string | null | undefined, externalId?: string | null): boolean {
+function isPlaceholderTitle(title: string | null | undefined, externalId?: string | null): boolean {
   const text = title?.trim() ?? "";
   if (!text) return true;
   if (/^job\s+\S*\d\S*$/i.test(text) || /^[A-Z]{0,4}[-_]?\d{3,}$/i.test(text)) return true;

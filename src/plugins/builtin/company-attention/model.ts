@@ -24,7 +24,7 @@ export interface AttentionRow {
   posting?: { ticker: string; externalId: string };
   app?: AppFocus;
 }
-export interface AttentionFact { label: string; value: string }
+interface AttentionFact { label: string; value: string }
 export interface AppFocus { store: "app-store" | "google-play"; appId: string; name: string; country: string; chart: "free" | "paid" | "grossing" | "unranked" }
 interface AttentionSection {
   columns: DataTableColumn[];
