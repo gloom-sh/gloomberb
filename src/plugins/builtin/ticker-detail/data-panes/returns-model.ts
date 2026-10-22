@@ -120,6 +120,11 @@ function lookbackDays(resolution: ManualChartResolution): number {
   return 62;
 }
 
+/** How far before a dated window (`--from`) the request reaches for the bar before it: a weekend and a holiday. */
+export function returnWindowLookbackMs(resolution: ManualChartResolution): number {
+  return lookbackDays(resolution) * DAY_MS;
+}
+
 /**
  * How far before the window the request reaches. The bar just before the
  * window is the base of every return, so the request covers a weekend or

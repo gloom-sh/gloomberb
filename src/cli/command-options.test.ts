@@ -97,9 +97,9 @@ test("dispatch rejects a built-in command's unknown option in the structured err
   const home = await mkdtemp(join(tmpdir(), "gloomberb-cli-options-"));
   tempDirs.push(home);
   process.env.HOME = home;
-  const rejected = await captureConsole(() => dispatchCli(["history", "AAPL", "--from", "1995-01-01", "--json"]));
+  const rejected = await captureConsole(() => dispatchCli(["history", "AAPL", "--since", "1995-01-01", "--json"]));
   expect(rejected.exitCode).toBe(1);
-  expect(JSON.parse(rejected.stderr).error.message).toBe("Unknown option --from for history.");
+  expect(JSON.parse(rejected.stderr).error.message).toBe("Unknown option --since for history.");
 
   const plugin = await captureConsole(() => dispatchCli(["echo-args", "--whatever", "1"], {
     externalPlugins: [{
