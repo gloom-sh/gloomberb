@@ -346,6 +346,8 @@ export function mapOptionsChain(
     asOf: chain.asOf,
     // Left absent when the server does not send it, so the date is then established against OPX.
     ...(chain.openInterestAsOf !== undefined ? { openInterestAsOf: chain.openInterestAsOf } : {}),
+    ...(Number.isFinite(chain.rate) ? { rate: chain.rate } : {}),
+    ...(chain.venue ? { venue: chain.venue } : {}),
   };
 }
 

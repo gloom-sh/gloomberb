@@ -154,12 +154,16 @@ export async function applyListingArgument(
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
   // A list entry with spaces is a company's name search finds, or the symbols it holds.
-  const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
-  if (typed.length === 0) return args;
+  const entered = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
+  if (entered.length === 0) return args;
+  // A symbol the function reads as another (OPX's BTC is the coin, BTC-USD) is named in a note; --exchange keeps it as typed.
+  const aliases = exchange ? [] : entered.map((raw) => headless?.symbolAlias?.(raw) ?? null);
+  const typed = entered.map((raw, index) => aliases[index]?.symbol ?? raw);
   // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
   let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
+  notes.push(...aliases.flatMap((alias) => alias ? [alias.note] : []));
   const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
   // A function with company data answers an index or an ETF with what it is and where its data is, before
   // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
@@ -180,6 +184,18 @@ export async function applyListingArgument(
       }
       notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
     }
+  }
+  // A listing the function has nothing for (OPX's SOL-USD) says what exists instead; a list leaves it out.
+  const refusals = headless?.refuseSymbol ? listings.flatMap((listing) => {
+    const refusal = headless.refuseSymbol!(listing.key);
+    return refusal ? [{ listing, refusal }] : [];
+  }) : [];
+  if (refusals.length > 0) {
+    listings = listings.filter((listing) => !refusals.some((entry) => entry.listing === listing));
+    if (listings.length === 0) {
+      throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), refusals.map(({ refusal }) => refusal.details).join("\n"));
+    }
+    notes.push(...refusals.map(({ refusal }) => `${refusal.message} ${refusal.details}`));
   }
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];

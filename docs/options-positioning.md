@@ -37,6 +37,18 @@ VIX options settle on VIX futures, so OPX has no GEX tab for them.
 
 Against vendors that read the chain's own greeks, gamma without carry runs a few percent higher on monthly expiries (SPY 2026-10-16 on 2026-10-01: 8% above the quoted greeks across the contracts that had them).
 
+## BTC and ETH options (Deribit)
+
+`OPX BTC-USD` and `OPX ETH-USD` (and `GEX`, `OVDV`, `options`, OMON) read Deribit's BTC and ETH options from Gloom Cloud. A bare `BTC` or `ETH` typed into OPX, GEX or OVDV is the coin; the US funds that trade under those tickers are `BTC:ARCA` and `ETH:ARCA`. Another coin (SOL-USD) has no listed options: the answer names BTC-USD, ETH-USD and the bitcoin-linked US listings (IBIT) instead.
+
+- Open interest is Deribit's own, read live (once a minute, or 15 minutes behind for delayed access) and counted in coins: one contract is 1 BTC or 1 ETH, to a tenth. The footer says `OI live 22:48 UTC` in place of a session, and there are no change columns.
+- Every expiry settles at 08:00 UTC on the date it names, against Deribit's index averaged over the 30 minutes before, and the expiry labels say so (`Oct 30 '26 08:00 UTC`). Days and time to expiry run to that instant.
+- Max pain and Payout $ are as above with a contract size of one coin: Payout $ is in dollars at each strike.
+- Gamma uses Deribit's mark IVs and the index as spot, Black-76 at the forward to the 08:00 UTC settlement, times one coin.
+- Walls per expiry: the Expiries tab and `fn OPX --csv` give each expiry's call and put wall (its strikes with the most call and put gamma), for US underlyings as well.
+
+`options BTC-USD` lists each contract's bid, ask and mark in BTC beside the mark in dollars (the coin price at the expiry's forward), with Deribit's mark IV and greeks (delta, gamma, vega and theta in dollars). OVDV fits the surface from those prices at a rate of zero and shows DVOL, Deribit's 30-day implied volatility index, beside it with the surface's own 30-day IV at the forward; DVOL charts as `CAP:volatility:dvol-btc` and `CAP:volatility:dvol-eth` (`gloomberb fn G CAP:volatility:dvol-btc`).
+
 ## Exports
 
 `fn GEX` and `fn OPX` open with one summary block before the tables, in the text report and as the first `--csv` section: spot and when it was quoted, when the option quotes behind gamma were taken, the open interest session, the unit, net GEX, the dealer range, the flip and both walls, each level with its distance from spot in the text. Spot and the quotes are current (15 minutes delayed unless on Pro) while open interest is about two sessions old, so the times are given apart; the closing source line dates the report by its open interest. In `--csv` every GEX figure is in US dollars of dealer delta per 1% move, named `USD per 1% move` in the label, the Net GEX header or each row's `currency_or_unit`. Puts export negative, as the table draws them, so each strike's call and put GEX add up to its net. `--json` carries the same under `metadata.gamma`, with `callWall` and `putWall`; its `total.puts` stays a positive amount. The method is also published at [gloom.sh/docs/options-positioning](https://gloom.sh/docs/options-positioning), which JSON names as `metadata.methodology`.

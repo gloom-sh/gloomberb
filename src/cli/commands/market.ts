@@ -51,7 +51,9 @@ import {
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
-import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
+import {
+  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
+} from "../../market-data/options-alternatives";
 import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
   renderFundamentalsReport, writesCurrencyCodes,
@@ -67,9 +69,15 @@ import {
   formatExpiryList,
   loadOptionModelInputs,
   loadOptionsChainOpenInterest,
+  chainCoinCurrency,
+  formatCoinPremiumCell,
   formatOptionDeltaCell,
+  formatOptionDollarCell,
+  formatOptionGammaCell,
   formatOptionIvCell,
   formatOptionQuoteCell,
+  isMarkedChain,
+  MARKED_OPTION_FIELDS,
   OPTION_MODEL_RATE,
   OPTION_VOLATILITY_FIELDS,
   OPTIONS_USAGE,
@@ -2152,6 +2160,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       };
     }, undefined, { command: "options", noun: "options chain", fate }).catch((error: unknown) => {
       if (!isOptionsUnavailableError(error)) throw error;
+      // A coin other than BTC and ETH: say which coins have options, and the bitcoin-linked listings.
+      if (isCoinWithoutOptions(listing.key)) return ctx.fail(optionsUnavailableTitle(listing.key), coinOptionsAlternativesText("options"));
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
       const alternative = listedOptionsAlternative(listing.key);
       return ctx.fail(optionsUnavailableTitle(listing.key), alternative
@@ -2182,7 +2192,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
     const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
-    const modelWarning = inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
+    // A venue that marks its contracts (Deribit) states IV and greeks without a quote.
+    const marked = isMarkedChain(chain);
+    const coin = chainCoinCurrency(chain);
+    const modelWarning = !marked && inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
       ? `IV and delta need a current ${listing.key} quote; those columns are blank`
       : null;
     const listed = chain.expirationDates.length > 0 || chain.calls.length > 0 || chain.puts.length > 0;
@@ -2209,25 +2222,28 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
         units: { iv: "annualized decimal", delta: "decimal per 1.00 move in the underlying" },
         // What each contract's `iv` and `impliedVolatility` are, so neither is read as the other.
-        fields: OPTION_VOLATILITY_FIELDS,
+        fields: marked ? MARKED_OPTION_FIELDS : OPTION_VOLATILITY_FIELDS,
         // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
-        model: {
-          spot: basisFields.spot, spotBasis: basisFields.spotBasis, spotAsOf: basisFields.spotAsOf,
-          valuationTime: modelSpot ? new Date(modelSpot.valuationTime).toISOString() : null,
-          dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE,
-        },
+        model: marked
+          ? { venue: chain.venue ?? null, marks: "venue", rate: chain.rate ?? 0, basis: "the expiry's forward", coin }
+          : {
+            spot: basisFields.spot, spotBasis: basisFields.spotBasis, spotAsOf: basisFields.spotAsOf,
+            valuationTime: modelSpot ? new Date(modelSpot.valuationTime).toISOString() : null,
+            dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE,
+          },
         openInterest: { asOf: basisFields.openInterestAsOf, listedAsOf: basis.openInterest?.listedDate ?? null,
           compared: basis.openInterest?.compared ?? 0, matched: basis.openInterest?.matched ?? 0 },
       },
       ...(warnings.length > 0 ? { warnings } : {}),
       freshness,
     }, {
-      heading: listingHeading(identity),
+      // Options a venue other than the US exchanges lists (Deribit's) are headed by that venue, not the coin's board.
+      heading: chain.venue ? `${cliStyles.bold(identity.name || identity.symbol)}${cliStyles.muted(`  ·  ${chain.venue}`)}` : listingHeading(identity),
       rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
       summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
       empty: `No option contracts for ${listingTitle(identity)}.`,
-      ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis) } : {}),
+      ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis, chain) } : {}),
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: currency, interval: OPTIONS_EXPORT_INTERVAL },
       // Exports state each decimal's unit in its header and end every row with the spot and dates it is as of.
       columns: [
@@ -2246,8 +2262,34 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "spotBasis", header: "Spot basis" },
         { key: "spotAsOf", header: "Spot as of" },
         { key: "openInterestAsOf", header: "OI as of" },
+        // A venue's marks and its coin prices (Deribit's BTC and ETH options).
+        ...(marked ? [
+          { key: "mark", header: "Mark (USD)" }, { key: "gamma", header: "Gamma (per 1.00)" },
+          { key: "vega", header: "Vega (USD per vol point)" }, { key: "theta", header: "Theta (USD per day)" },
+          { key: "forward", header: "Forward" }, { key: "expiresAt", header: "Settles" },
+        ] : []),
+        ...(coin ? [
+          { key: "coinBid", header: `Bid (${coin})` }, { key: "coinAsk", header: `Ask (${coin})` },
+          { key: "coinMark", header: `Mark (${coin})` }, { key: "coinLast", header: `Last (${coin})` },
+        ] : []),
       ],
-      textColumns: [
+      // A coin's options are quoted in the coin: its bid, ask and mark, then the mark in dollars and the venue's greeks.
+      textColumns: coin ? [
+        { key: "side", header: "Side" },
+        { key: "contract", header: "Contract", shrink: false },
+        { key: "strike", header: "Strike", align: "right" },
+        { key: "coinBid", header: `Bid ${coin}`, align: "right", format: formatCoinPremiumCell },
+        { key: "coinAsk", header: `Ask ${coin}`, align: "right", format: formatCoinPremiumCell },
+        { key: "coinMark", header: `Mark ${coin}`, align: "right", format: formatCoinPremiumCell },
+        { key: "mark", header: "Mark $", align: "right", format: formatOptionDollarCell },
+        { key: "iv", header: "IV", align: "right", format: formatOptionIvCell },
+        { key: "delta", header: "Delta", align: "right", format: formatOptionDeltaCell },
+        { key: "gamma", header: "Gamma", align: "right", format: formatOptionGammaCell, optional: true, dropPriority: 3 },
+        { key: "vega", header: "Vega $", align: "right", format: formatOptionDollarCell, optional: true, dropPriority: 2 },
+        { key: "theta", header: "Theta $", align: "right", format: formatOptionDollarCell, optional: true, dropPriority: 2 },
+        { key: "volume", header: "Vol", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
+        { key: "openInterest", header: "OI", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
+      ] : [
         { key: "side", header: "Side" },
         { key: "contract", header: "Contract", shrink: false },
         // The contract symbol already carries the date, so this goes first when the table is narrow.

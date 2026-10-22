@@ -10,9 +10,13 @@ import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
+import { coinOptionsAlias, coinWithoutOptionsRefusal } from "../../../market-data/options-alternatives";
+import { formatUtcTime } from "../../../utils/utc-time";
+import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
-  surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
+  surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
+  type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
 
 type SurfaceAxis = NonNullable<SurfaceGridOptions["axis"]>;
@@ -119,6 +123,33 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceSkewRow(expiry), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
 }
 
+/**
+ * Deribit's DVOL beside the surface of a coin's options: the latest print,
+ * the change on the day before's close, the year's range and the surface's
+ * own 30-day IV at the forward, which DVOL is read against.
+ */
+export function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null): HeadlessBundleSection {
+  const rows = dvol.observations;
+  const latest = dvol.latest ?? (rows.at(-1) ? { value: rows.at(-1)!.value, at: `${rows.at(-1)!.date}T00:00:00.000Z` } : null);
+  const today = latest?.at.slice(0, 10);
+  const previous = rows.findLast((row) => row.date < (today ?? ""))?.value ?? null;
+  const yearAgo = today ? new Date(Date.parse(`${today}T00:00:00Z`) - 365 * 86_400_000).toISOString().slice(0, 10) : "";
+  const year = rows.filter((row) => row.date > yearAgo).map((row) => row.value);
+  const atm = snapshot ? surfaceThirtyDayAtm(snapshot) : null;
+  const atmPoints = atm == null ? null : Number((atm * 100).toFixed(2));
+  const change = latest && previous != null ? Number((latest.value - previous).toFixed(2)) : null;
+  const signed = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  return { title: `DVOL · ${dvol.currency} · ${dvol.venue}`, entries: [
+    { key: "dvol", label: "DVOL", value: latest?.value ?? null, formatted: latest ? `${latest.value.toFixed(2)} at ${formatUtcTime(latest.at)}` : "--" },
+    { key: "dvolChange", label: "Change on the day", value: change, formatted: previous == null ? "--" : `${signed(change)} vol pts from ${previous.toFixed(2)}` },
+    ...(year.length ? [{ key: "dvolRange", label: "1Y range", value: { low: Math.min(...year), high: Math.max(...year) },
+      formatted: `${Math.min(...year).toFixed(2)} to ${Math.max(...year).toFixed(2)}` }] : []),
+    { key: "atm30", label: "30D IV at the forward", value: atm, formatted: atmPoints == null ? "--"
+      : `${atmPoints.toFixed(2)}, ${signed(dvolGap(latest?.value, atmPoints))} vs DVOL` },
+    { key: "series", label: "Chart", value: `CAP:${dvolSeriesId(dvol.currency)}`, formatted: `gloomberb fn G CAP:${dvolSeriesId(dvol.currency)}` },
+  ] };
+}
+
 function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
   return { title: "Forwards", columns: [
@@ -133,6 +164,8 @@ function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
   usListingsOnly: "Options data",
+  symbolAlias: coinOptionsAlias("OVDV"),
+  refuseSymbol: coinWithoutOptionsRefusal("OVDV"),
   discovery: { suggestFor: IMPLIED_VOL_WORDS },
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [
@@ -153,6 +186,10 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
     const requested = readOptionExpiration(args.options.expiration);
+    // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index, read beside the surface.
+    const coin = dvolCurrency(symbol);
+    const dvolLoad = coin && !args.options.date ? loadDvol(coin, { signal: ctx.signal }, ctx.apiClient).catch((error: unknown) =>
+      error instanceof Error ? error : new Error(String(error))) : null;
     const date = typeof args.options.date === "string" && args.options.date ? storedSurfaceDate(args.options.date) : null;
     let snapshot: DatedSurfaceSnapshot;
     let quote: Quote | null = null;
@@ -205,8 +242,11 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections : tab === "term" ? [termSection(snapshot)]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
+    const dvol = dvolLoad ? await dvolLoad : null;
+    const settles = surfaceSettlementTime(snapshot);
     return {
       sections: [
+        ...(dvol && !(dvol instanceof Error) ? [dvolSection(dvol, available ? snapshot : null)] : []),
         ...view,
         // The pane lists these (arbitrage, SVI fallback) beside the surface; here each names its expiry.
         ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }],
@@ -214,15 +254,20 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol],
-      errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? []],
+      errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? [], ...dvol instanceof Error ? [`DVOL: ${dvol.message}`] : []],
       ...(fate?.empty ? { empty: fate.empty } : {}),
-      ...(stored || spotBasis || tab === "skew" ? { notes: [
+      ...(stored || spotBasis || tab === "skew" || settles || dvol ? { notes: [
         ...stored ? storedNotes(snapshot, args.options) : spotBasis ? [`Spot ${formatPrice(snapshot.spot)}, ${spotBasis}.`] : [],
+        ...settles ? [`Expiries settle at ${settles}; days and IV run to that time.`] : [],
+        ...dvol && !(dvol instanceof Error) ? [`DVOL is ${dvol.venue}'s 30-day implied volatility index for ${dvol.currency}, in vol points; `
+          + "it weights every strike, so it sits above the IV at the forward when the wings are bid."] : [],
         ...tab === "skew" ? SKEW_NOTES : []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
       ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
         : smile?.freshness ? { freshness: smile.freshness } : {}),
-      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations" },
+      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
+        ...dvol && !(dvol instanceof Error) ? { dvol: { currency: dvol.currency, venue: dvol.venue, latest: dvol.latest, unit: "vol points",
+          series: `CAP:${dvolSeriesId(dvol.currency)}` } } : {} },
     };
   },
 };

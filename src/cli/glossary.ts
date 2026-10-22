@@ -738,6 +738,42 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "Cboe's index of the 30-day volatility that VIX options price: the VIX of the VIX. A high reading means traders are paying up "
       + "to protect against sudden jumps in VIX itself.",
   },
+  // Options positioning (OPX, GEX) and the volatility surface (OVDV).
+  {
+    term: "Max pain", aliases: ["max-pain", "maximum pain", "max pain strike", "pain strike"], functions: ["OPX", "GEX"],
+    definition: "The settlement price at which one expiry's options would pay their holders the least, summed over every call's and put's open interest: "
+      + "the strike where Payout $ is lowest. It says where option holders collect least at expiry, not where the price will go. "
+      + "Deribit's BTC and ETH options settle at 08:00 UTC on the day named, against its index averaged over the 30 minutes before.",
+  },
+  {
+    term: "Payout $", aliases: ["payout", "expiry payout", "option payout", "payout at expiry"], functions: ["OPX", "GEX"], shown: ["Payout $"],
+    definition: "What an expiry's options would pay their holders, in dollars, if the underlying settled at that strike: each call's open interest times "
+      + "how far the strike is above the call's, plus each put's times how far it is below, times the contract size (100 shares for a US listing, "
+      + "1 BTC or 1 ETH on Deribit). Max pain is the strike where it is lowest.",
+  },
+  {
+    term: "Call wall", aliases: ["put wall", "walls", "gamma wall", "gamma walls"], functions: ["OPX", "GEX"], shown: ["Call wall", "Put wall"],
+    definition: "The strike with the most dealer gamma from calls (call wall) or from puts (put wall), across every expiry or within one. "
+      + "Hedging flows are largest there, so it is often read as resistance above spot and support below it.",
+  },
+  {
+    term: "Risk reversal", short: "RR", aliases: ["25d risk reversal", "25-delta risk reversal", "25 delta risk reversal", "rr25", "risk reversals"],
+    functions: ["OVDV"], shown: ["RR"],
+    definition: "The 25-delta call's implied volatility minus the 25-delta put's, in vol points, for one expiry. Negative means puts cost more than calls "
+      + "as far from the forward (downside protection is bid), positive that upside calls are. OVDV signs it call minus put.",
+  },
+  {
+    term: "Butterfly", short: "BF", aliases: ["25d butterfly", "25-delta butterfly", "25 delta butterfly", "bf25", "smile curvature", "fly"],
+    functions: ["OVDV"], shown: ["BF"],
+    definition: "The average of the 25-delta call and put implied volatilities minus the implied volatility at the forward, in vol points, for one expiry: "
+      + "how much the wings cost over the middle of the smile. A higher butterfly prices larger moves in either direction.",
+  },
+  {
+    term: "DVOL", aliases: ["deribit volatility index", "bitcoin volatility index", "ether volatility index", "btc dvol", "eth dvol", "crypto vix"],
+    functions: ["OVDV", "G"], shown: ["DVOL"],
+    definition: "Deribit's volatility index for BTC or ETH: the 30-day implied volatility its options price, in vol points, computed from the whole "
+      + "strip of strikes as VIX is. OVDV shows it beside the coin's surface; chart it as CAP:volatility:dvol-btc or CAP:volatility:dvol-eth.",
+  },
   // The economic calendar (ECO).
   {
     term: "Actual", aliases: ["actual release", "actual value"], functions: ["ECO"], shown: ["ACTUAL", "Actual"],

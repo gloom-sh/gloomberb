@@ -1,10 +1,38 @@
-import { findListedExpiry } from "../../../utils/option-expiry";
-import { evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
+import { findListedExpiry, settlementStampTime } from "../../../utils/option-expiry";
+import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { modelSpotStamp } from "../options/model-spot";
 
 export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(2)}%`;
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
-export const expiryLabel = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
+/**
+ * `2027-01-15` for an expiry dated by its day; `2026-10-30 08:00 UTC` for one
+ * stamped with the time it settles (Deribit's, at 08:00 UTC).
+ */
+export const expiryLabel = (expiration: number) => {
+  const date = new Date(expiration * 1000).toISOString().slice(0, 10);
+  const time = settlementStampTime(expiration);
+  return time ? `${date} ${time}` : date;
+};
+
+/** When a surface's expiries settle at a stated time (08:00 UTC), that time, as one note can say it for every expiry. */
+export function surfaceSettlementTime(snapshot: Pick<SurfaceSnapshot, "expiries">): string | null {
+  for (const expiry of snapshot.expiries) {
+    const time = settlementStampTime(expiry.expiration);
+    if (time) return time;
+  }
+  return null;
+}
+
+/**
+ * The surface's implied volatility at the forward 30 days out, interpolated in
+ * total variance between the fitted expiries either side: the point DVOL and
+ * IV30 are read against. Null without fitted expiries around it.
+ */
+export function surfaceThirtyDayAtm(snapshot: SurfaceSnapshot): number | null {
+  const grid = buildSurfaceGrid(snapshot, { axis: "forward", tenors: "fixed", coordinates: [1], fixedTenors: [{ label: "30D", years: 30 / 365 }] });
+  const row = grid.rows[0];
+  return row && !row.extrapolated ? row.cells[0]?.volatility ?? null : null;
+}
 
 /**
  * The shared stamp for the spot a surface was fitted at (`modelSpotStamp`):
