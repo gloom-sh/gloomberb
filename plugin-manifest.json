@@ -99,7 +99,7 @@
           {
             "code": "HIRE",
             "name": "Hiring Momentum",
-            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons and primary posting evidence.",
+            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons, hiring moves against each company's own weeks and peers, and primary posting evidence.",
             "access": "preview"
           },
           {
