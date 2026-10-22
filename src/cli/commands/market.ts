@@ -39,7 +39,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -1358,7 +1358,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // The rows are the annual years served; older ones are not, and the closing lines say so, after how old
     // the latest year is when it ended over 15 months ago.
     const stale = stalePeriodNote(rows.map((row) => ({ date: row.date, lead: row.revenue != null })));
-    const historyNotes = [...stale ? [stale] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
+    // Years filled from the listing's exchange, for the revenue and net income columns.
+    const filled = filledPeriodsNote(financials.annualStatements.filter((statement) => rows.some((row) => row.date === statement.date)),
+      new Set(["totalRevenue", "netIncome"]));
+    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({

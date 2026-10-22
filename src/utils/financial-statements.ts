@@ -1,4 +1,4 @@
-import type { FinancialStatement } from "../types/financials";
+import type { FinancialStatement, StatementFill, StatementFillField } from "../types/financials";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
 import { mergeStatementGaps } from "./statement-gaps";
 
@@ -65,9 +65,48 @@ export function stalePeriodNote(
   return `Latest period ${lead} is ${months} months old${newest > lead ? `; ${newest} has only some figures` : ""}.`;
 }
 
+const FILL_SOURCES: Record<StatementFill["source"], string> = { asx: "ASX key statistics" };
+const FILL_FIELDS: Record<StatementFillField, string> = {
+  totalRevenue: "revenue", netIncome: "net income", totalAssets: "total assets", totalLiabilities: "total liabilities",
+};
+
+/**
+ * "From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income;
+ * 2025-06-30 revenue, net income.": the years a statements table shows that
+ * Gloom Cloud filled from the listing's exchange because the statements source
+ * does not have them yet, newest first, with the lines taken. `shown` keeps the
+ * lines the table has a row for. Null when no shown line was filled.
+ */
+export function filledPeriodsNote(
+  statements: readonly Pick<FinancialStatement, "date" | "filledFrom">[],
+  shown?: ReadonlySet<string>,
+): string | null {
+  const filled = statements.flatMap(({ date, filledFrom }) => {
+    const source = filledFrom && FILL_SOURCES[filledFrom.source];
+    const fields = (filledFrom?.fields ?? []).filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)));
+    return source && fields.length > 0 ? [{ date: date.slice(0, 10), source, fields, read: filledFrom.retrievedAt.slice(0, 10) }] : [];
+  }).sort((left, right) => right.date.localeCompare(left.date));
+  if (filled.length === 0) return null;
+  const read = filled.map((period) => period.read).sort().at(-1);
+  return `From ${filled[0]!.source} (read ${read}): ${filled.map(({ date, fields }) => `${date} ${fields.map((field) => FILL_FIELDS[field]).join(", ")}`).join("; ")}.`;
+}
+
+/**
+ * A merged row's fill, for the filled lines it still holds as the filled row
+ * gave them; a line another source's row supplied is that source's.
+ */
+function retainedFill(merged: FinancialStatement, rows: Array<FinancialStatement | undefined>): StatementFill | undefined {
+  for (const row of rows) {
+    const fill = row?.filledFrom;
+    const fields = fill?.fields.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field])) ?? [];
+    if (fill && fields.length > 0) return { ...fill, fields };
+  }
+  return undefined;
+}
+
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings", "filledFrom"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** An explicit field map is authoritative: omitted fields have unknown availability. */
@@ -275,6 +314,9 @@ export function mergeFinancialStatementRows(
 
     // A gap either report declares for the period survives the other's value.
     mergeStatementGaps(merged, [row, fallback]);
+    const fill = retainedFill(merged, [row, fallback]);
+    if (fill) merged.filledFrom = fill;
+    else delete merged.filledFrom;
     // A fallback row-level date cannot safely date a different primary value.
     // Retained fallback fields still carry their own per-field provenance.
     for (const key of keys) if (!hasMetricValue(merged, key)) delete fieldAvailability[key];

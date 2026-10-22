@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows, stalePeriodNote, statementHistoryNotes } from "./financial-statements";
+import { coalesceFinancialPeriodAliases, filledPeriodsNote, mergeFinancialStatementRows, stalePeriodNote, statementHistoryNotes } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import type { FinancialStatement } from "../types/financials";
 
@@ -245,5 +245,20 @@ describe("stalePeriodNote", () => {
     // No dated column, or none with the lead figure: the newest period stands.
     expect(stalePeriodNote([{ date: "TTM", lead: true }], now)).toBeNull();
     expect(stalePeriodNote([{ date: "2024-12-31", lead: false }], now)).toBe("Latest period 2024-12-31 is 21 months old.");
+  });
+});
+
+describe("filled years", () => {
+  const filledFrom = { source: "asx" as const, page: "https://www.asx.com.au/markets/company/EVN", retrievedAt: "2026-10-22T01:00:00.000Z", fields: ["totalRevenue" as const, "netIncome" as const] };
+  test("a merged row names only the filled lines it still holds as filled", () => {
+    const filled: FinancialStatement = { date: "2025-06-30", currency: "AUD", totalRevenue: 4.351e9, netIncome: 9.26e8, filledFrom };
+    // Another source's own revenue for the year wins and is its own; the filled net income stays filled.
+    const [merged] = mergeFinancialStatementRows([{ date: "2025-06-30", currency: "AUD", totalRevenue: 4.4e9, eps: 0.46 }], [filled]);
+    expect(merged).toMatchObject({ totalRevenue: 4.4e9, netIncome: 9.26e8, eps: 0.46, filledFrom: { ...filledFrom, fields: ["netIncome"] } });
+    const [replaced] = mergeFinancialStatementRows([{ date: "2025-06-30", currency: "AUD", totalRevenue: 4.4e9, netIncome: 9.3e8 }], [filled]);
+    expect(replaced).not.toHaveProperty("filledFrom");
+    expect(filledPeriodsNote([replaced!])).toBeNull();
+    expect(filledPeriodsNote([merged!], new Set(["totalAssets"]))).toBeNull();
+    expect(filledPeriodsNote([merged!])).toBe("From ASX key statistics (read 2026-10-22): 2025-06-30 net income.");
   });
 });

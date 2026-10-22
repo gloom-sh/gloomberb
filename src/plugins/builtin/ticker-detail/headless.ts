@@ -1,4 +1,4 @@
-import { FINANCIAL_VINTAGE_NOTICE, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
@@ -10,7 +10,7 @@ import {
 } from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  financialStatementPeriods, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
+  financialStatementPeriods, financialSubTabFields, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
@@ -82,12 +82,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       : allReceipts
         ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
         : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
-    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis }) => ({
+    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom }) => ({
       date, currency: currency ?? statementCurrency ?? null,
       shareBasis: shareBasis ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
+      ...(filledFrom ? { filledFrom } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
       ...(epsBasis ? { epsBasis } : {}),
       ...(unavailableEarnings ? { unavailableEarnings } : {}),
@@ -120,11 +121,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
     // A latest period over 15 months old says how old it is.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
+    // Years filled from the listing's exchange, with the lines this table shows.
+    const filled = table ? filledPeriodsNote(table.statements, financialSubTabFields(table.subTab)) : null;
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...stale ? [stale] : [], ...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
+      notes: [...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -215,6 +218,7 @@ async function loadRatioReport(
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     notes: [
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
+      ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
       ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
