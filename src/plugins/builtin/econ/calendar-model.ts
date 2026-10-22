@@ -210,7 +210,7 @@ const EURO_AREA_MEMBERS: Readonly<Record<string, string>> = {
  * Climate" is DE), by the adjective its title starts with; null for a
  * release of the whole euro area (ECB, euro area CPI) and for any other row.
  */
-export function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | null {
+function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | null {
   if (event.country !== "EU") return null;
   const word = /^([A-Z][a-z]+) /.exec(event.event)?.[1];
   return word ? EURO_AREA_MEMBERS[word] ?? null : null;
