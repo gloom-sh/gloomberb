@@ -10,9 +10,9 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { cryptoMarketsCache, STABLECOIN_SUPPLY_CACHES } from "./client";
+import { cryptoMarketsCache, DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { CryptoBoardPane } from "./pane";
-import { cryptoFixture, stablecoinSupplyFixture } from "./test-fixture";
+import { cryptoFixture, defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 let restore: (() => void) | undefined;
@@ -24,7 +24,7 @@ afterEach(() => {
   restore?.();
   restore = undefined;
   cryptoMarketsCache.reset();
-  for (const cache of STABLECOIN_SUPPLY_CACHES) cache.reset();
+  for (const cache of [...STABLECOIN_SUPPLY_CACHES, ...DEFI_TVL_CACHES]) cache.reset();
 });
 
 async function mountPane(width = 130, height = 20) {
@@ -170,4 +170,30 @@ test("a supply outage leaves the stablecoin board as it is without supply and sa
   expect(frame).toContain("MCAP");
   expect(frame).not.toContain("SUPPLY");
   expect(frame).toContain("Stablecoin supply is unavailable right now.");
+});
+
+test("the DeFi tab asks for TVL only once shown, dates every figure and its source, and lists chains on a click", async () => {
+  const query = spyOn(apiClient, "getCloudCryptoMarkets").mockImplementation(async () => cryptoFixture());
+  const defi = spyOn(apiClient, "getCloudDefiTvl").mockImplementation(async () => defiTvlFixture());
+  restore = () => {
+    query.mockRestore();
+    defi.mockRestore();
+  };
+  await mountPane(150, 26);
+  expect(defi).not.toHaveBeenCalled();
+  await tui.clickFrameText("DeFi");
+  const frame = await tui.waitForFrameToContain("Aave");
+  expect(defi).toHaveBeenCalledTimes(1);
+  expect(frame).toMatch(/Total DeFi TVL\s+92\.40B\s+as of 2026-09-23/);
+  expect(frame).toMatch(/7D change\s+\+2\.01B\s+\+2\.22%/);
+  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 2026-09-19/);
+  // Protocols are the source's latest read, not the day's close.
+  expect(frame).toContain("as of 2026-09-22 16:17 UTC");
+  expect(frame).toMatch(/1\s+Aave\s+Lending\s+17\.88B/);
+
+  await tui.clickFrameText("Chains");
+  const chains = await tui.waitForFrameToContain("Ethereum");
+  expect(chains).toMatch(/CHAIN\s+TOKEN\s+TVL/);
+  expect(chains).toMatch(/1\s+Ethereum\s+ETH\s+55\.40B/);
+  expect(chains).not.toContain("16:17 UTC");
 });

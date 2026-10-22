@@ -185,8 +185,13 @@ system in CI, and both run locally:
   surface's labels, a value read from the clock) is named as unsteady and left
   out of the count. A shard that did not finish, a view pictured on one side
   only and a view that did not open are named above the count, which then
-  says it is incomplete. Four shards run two at a time, so the report waits
-  rather than hold runners the required checks need. One comment on the pull
+  says it is incomplete. The base is the commit the pull request left main
+  at, pictured once: every push to main pictures its commit and the Actions
+  cache keeps the pictures, keyed by everything they depend on (the commit,
+  the pinned Chrome, the snapshot, the fonts and the scripts that take them),
+  so a pull request pictures only its head, in eight shards at once. When
+  main has not pictured that commit, the pull request pictures it first and
+  keeps the pictures for its next push. One comment on the pull
   request (the workflow bot's, found by its marker), edited on every run, says
   how many of how many views changed and lists them; the `ui-benchmark`
   artifact has the sheets: before, after and the difference of every view that
@@ -360,6 +365,20 @@ so the selected row reads in the selection color without each cell checking
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
+**Country flags.** Wherever a row or a field names a country (ECO's country,
+a balance's or a board's country or jurisdiction, a venue's market, an IPO's
+exchange, a filing's country), the desktop and the web lead it with the
+country's flag (`components/ui/country-flag.tsx`). A table cell goes through
+`withCountryFlag(cell, value, desktop)`, which takes a code (`GB`, `GBR`), the
+euro area (`EU`, "Euro area") or an English name, and keeps the flag's room
+blank for a value with no flag so a column's text stays in line; the column
+widens by `COUNTRY_FLAG_CELLS` on the desktop (`withFlagRoom`). A board row sets
+`MarketBoardRow.country`; a `KeyValueRow` sets `country`; any other label
+puts `CountryFlagLead` before its text. A flag is drawn in
+`country-flag-art.tsx`, 30 by 20, in the same flat style as its neighbours; a
+country without art keeps its text alone. The terminal draws none of them and
+its output does not change.
+
 **Broker logos.** Wherever a list names a broker or an account at one (Add
 Broker Account, the Brokers pane's profiles, a portfolio's tab and its
 overflow menu, the first-run guide's brokers), the desktop and the web lead the
@@ -377,6 +396,21 @@ capitals to its baseline, the lines are `--gloom-space-sm` apart, and the
 `lead` tile is a square exactly as tall as the two, so the name's capitals
 start at the logo's top edge and the second line sits on its bottom edge. A
 row does not set its own line gap or tile size.
+
+**Company and coin logos.** A table that lists companies or coins (ERN, MOST,
+EQS, CRYP) leads each row's name cell with the company's or the coin's logo
+on the desktop and the web: `withCompanyLogo` (`components/company-logo.tsx`)
+puts a row-size `CompanyLogoMark` in the cell's `leading`, the same
+`LogoMark` tile as a broker's, with the logo Gloom Cloud serves for the
+ticker (`CRYPTO` reads the coin's), on a white plate since logos are drawn for
+a light page (a black coin mark on a clear field would vanish on a dark
+theme). A company with no logo gets its initial on the same tile, so a missing logo moves nothing, and a logo that failed to load
+is not asked for again while the app runs. The logo sits in the name cell, not
+the ticker's: the ticker column keeps its width and the name gives up the
+tile's room, so no column moves and no row grows. The terminal draws none and
+gets the cell as it was. Lists of people, funds, indices and sectors, and
+columns of securities without a company behind them (options, cash), have no
+logo.
 
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
 

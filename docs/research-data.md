@@ -1044,13 +1044,13 @@ History is bounded to the latest 4,000 stored rows within one year, with truncat
 
 ## Crypto
 
-`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins on their own tab. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, prices, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload that the pane refreshes every 15 seconds.
+`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins and DeFi TVL on their own tabs. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, prices, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload that the pane refreshes every 15 seconds.
 
 On top of that, the rows on screen subscribe to the shared market socket like any watchlist. A real-time quote moves the price, day change, market cap, 7D, 30D and 1Y returns and the end of the sparkline as it arrives; a streamed quote older than the board's own price is ignored, so a delayed plan's 15-minute-old crypto quotes never replace a current price. The footer shows the time of the newest price. Streaming runs in the background whether or not the window has focus, and pauses only while it is hidden or minimized.
 
 CHG% UTC is the change since 00:00 UTC, from the previous UTC day's close, the move `gloomberb quote` gives a coin; `fn CRYP` heads it `Chg % UTC`, and its `--csv` keeps the `Chg %` header. A coin whose close Gloom Cloud cannot date to the last two days (a source still reporting a weeks-old close) shows a dash rather than a 24-hour move beside the others. 7D% and 30D% compare the price with the close 7 and 30 UTC days earlier, the same basis, so a 7D move includes today's. 1Y% uses the price a year ago implied by the source's 52-week change. VOL 24H is aggregate USD volume across venues. A missing close shows as a dash rather than a zero return.
 
-Enter or click opens the coin in the ticker pane for its chart, quote and news. Column headers sort (numbers largest first), `r` refreshes, and narrow panes drop 1Y, the sparkline, 30D, volume and the name in that order. `gloomberb fn CRYP --json` returns the board; `--list stablecoin` returns the stablecoin tab.
+Enter or click opens the coin in the ticker pane for its chart, quote and news. Column headers sort (numbers largest first), `r` refreshes, and narrow panes drop 1Y, the sparkline, 30D, volume and the name in that order. `gloomberb fn CRYP --json` returns the board; `--list stablecoin` returns the stablecoin tab, and `--list defi` the [DeFi tab](#defi-tvl).
 
 Every coin on the board has one symbol, `<COIN>-USD` (`USDT-USD`, `USDE-USD`), and `quote`, `history`, `GIP` and the ticker pane all read it by that symbol, bare or on its crypto venue. A coin typed without its quote currency (`USDT`, `TETHER`) is not a ticker, and the hint names its symbol: `Did you mean USDT-USD (Tether USDt)?`.
 
@@ -1073,6 +1073,24 @@ Every supply figure is read on one day, the newest day of the daily total, and t
 - If the dataset cannot be read, prices are untouched: supply shows the last day Gloom Cloud read, with a notice giving its date. With no supply at all the chart says it is unavailable, the table keeps MCAP without the supply columns, and `fn CRYP` notes the outage while the price report stays complete.
 
 `gloomberb fn CRYP --list stablecoin` prints the total line before the table and adds the supply columns; `--json` carries them per row with each coin's `pegType` (`peggedUSD`, `peggedEUR`), and the total under `metadata.supply`; `--csv` adds a dated section with the total, the six charted coins and Other in USD. Chart the total with `gloomberb fn G CAP:crypto:stablecoin-supply` and one coin with `gloomberb fn G CAP:crypto:stablecoin-coin-supply/USDT-USD`.
+
+#### DeFi TVL
+
+The DeFi tab shows the total value locked in DeFi, its 7D and 30D change, and its daily history over 1M, 3M, 1Y or all of it, above the 25 largest protocols or the 10 largest chains by TVL (List: Protocols or Chains). The figures are DefiLlama's: what counts as locked, and what is left out as double counted, is their definition, and the Source figure names them with the day their history starts (`daily since 2018-02-12`). Gloom Cloud reads DefiLlama's free API once a UTC day and keeps every read it makes, never deleted for age: each read is logged with its URL, time and hash, the first copy of each URL's answer each UTC day is stored compressed, and the figures it serves keep the day they were observed. The app only talks to Gloom Cloud, and the tab is free with no account. It loads the first time it is shown, not with the coin board.
+
+- **Total DeFi TVL** is the newest day of DefiLlama's total chart, every chain together, and its date is the tab's as of. 7D and 30D compare it with the same chart 7 and 30 days earlier, in dollars and percent.
+- **A chain** is read from its own daily chart on that day. 7D and 30D are against the same chart, and SHARE is the chain's TVL over the total the same day.
+- **A protocol** counts its versions together, as DefiLlama ranks it (Aave is V3, V2, V4 and the rest). Its TVL is the source's latest figure, not a daily close, so the protocol list carries its own time (`as of 2026-10-21 16:17 UTC`). 7D and 30D compare it with DefiLlama's figure a week and a month earlier, and 1D% with a day earlier. Protocols have no share: a liquid staking token deposited in a lending market counts in both. Centralized exchanges are not DeFi and are left off. Over 12 to 18 October 2026 Aave went from 18.46B to 17.88B.
+- Column headers sort (numbers largest first). A narrow pane drops the chain count, 1D%, the 30D and 7D dollar changes, the category and then 30D%, keeping the name, TVL, 7D% and a chain's SHARE.
+- If the source cannot be read, the tab keeps the last day Gloom Cloud read, dated; with nothing read yet it says DeFi TVL is unavailable.
+
+`gloomberb fn CRYP --list defi` (or `--list tvl`) prints the total line before the protocols, and `--by chain` lists the chains; `--json` carries the rows, the total under `metadata.total`, `asOf`, `protocolsAsOf` and `historyStart`; `--csv` adds the other list and the total's daily history in USD, a day the source has no figure for left blank. Chart the total with `gloomberb fn G CAP:crypto:defi-tvl`. `gloomberb catalog defi` (or `tvl`, `total value locked`, `on-chain`, `aave`, `lido`) and the same words in `search` point to it.
+
+Exchange reserves and exchange flows (the coins held on exchanges, and what moves in and out) are not covered: no source for them is in the terminal, and `catalog "exchange reserves"` and `search "exchange reserves"` say so, naming CRYP's DeFi and stablecoin supply as the closest data.
+
+#### Crypto news
+
+A coin pair's news is the stories filed under its pair. When none are, as for `BTC-USD`, the stories that mention the coin are shown instead and the pane says so (`No stories are filed under BTC-USD; these mention bitcoin.`); `gloomberb news BTC-USD` heads them `Stories matching "bitcoin"  ·  no stories filed under BTC-USD`, and `ticker` and `fn CN` note it. A major coin is searched by its name (`bitcoin`, `ethereum`), another by its listing's name without the quote currency (`HYPE32196-USD` is `hyperliquid`). A bare code with no listing name is not searched, because a code alone is too often a word.
 
 ### Spot crypto ETF flows (ETFF)
 

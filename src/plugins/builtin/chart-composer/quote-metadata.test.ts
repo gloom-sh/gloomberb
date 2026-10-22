@@ -6,7 +6,8 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { QUOTE_SCHEMA_VERSION } from "../../../sources/provider-router/cache";
 import { loadChartPaneModel } from "./headless";
 import { buildPriceChartPreset } from "./presets";
-import { ChartResolveCache, resolveChartSpecData } from "../../../time-series/resolve";
+import { resolveChartSpecData } from "../../../time-series/resolve";
+import { ChartResolveCache } from "../../../time-series/resolve-context";
 import { AppPersistence } from "../../../data/app-persistence";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 

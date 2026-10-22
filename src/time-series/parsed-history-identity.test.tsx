@@ -6,7 +6,8 @@ import type { InstrumentRef } from "../market-data/request-types";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import type { PricePoint } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
-import { resolveChartSpecData, type ChartResolveSources } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { type ChartResolveSources } from "./resolve-context";
 import { rememberParsedPriceHistory } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 

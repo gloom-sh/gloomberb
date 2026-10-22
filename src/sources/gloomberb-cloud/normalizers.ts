@@ -222,6 +222,15 @@ function parseCloudPricePointDate(
     : new Date(value);
 }
 
+/** A served venue count, when it is one: a venue name and a count of zero or more. */
+function venueVolume(value: unknown): { venueVolume: { venue: string; volume: number } } | null {
+  if (!value || typeof value !== "object") return null;
+  const { venue, volume } = value as { venue?: unknown; volume?: unknown };
+  return typeof venue === "string" && venue.trim() && typeof volume === "number" && Number.isFinite(volume) && volume >= 0
+    ? { venueVolume: { venue: venue.trim(), volume } }
+    : null;
+}
+
 /**
  * One served bar. `coin`: the bars are a coin's, which trades every hour of every day. Its intraday volume is the
  * value traded in the bar on major spot venues, and a bar no venue reported has none rather than 0, so a 0 (from an
@@ -241,6 +250,7 @@ export function mapPricePoint(
     low: normalizePriceValueByDivisor(point.low, divisor),
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: coin && point.volume === 0 ? undefined : point.volume,
+    ...(venueVolume(point.venueVolume) ?? {}),
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),

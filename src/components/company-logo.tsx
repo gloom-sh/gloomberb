@@ -1,8 +1,11 @@
+import { createElement } from "react";
 import { Box, ImageSurface, Text, TextAttributes, useUiCapabilities } from "../ui";
 import { cloudLogoPath, type CloudLogoKind } from "../api-client/paths";
 import { getCloudApiBaseUrl } from "../api-client/request";
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { colors } from "../theme/colors";
+import type { DataTableCell } from "./ui/data-table";
+import { LogoMark, type LogoMarkProps } from "./ui/logo-mark";
 
 export function resolveCompanyLogoSrc(input: {
   symbol: string;
@@ -12,6 +15,42 @@ export function resolveCompanyLogoSrc(input: {
   if (!kind) return null;
   const path = cloudLogoPath(kind, input.symbol);
   return path ? `${getCloudApiBaseUrl()}${path}` : null;
+}
+
+/** What a row's logo stands for: a company's listing or a coin. */
+export interface CompanyLogoSubject {
+  symbol: string;
+  /** `CRYPTO` draws the coin's logo; any other listing but cash and contracts, the company's. */
+  assetCategory?: string;
+  /** Its initial stands in while there is no logo; the symbol's without a name. */
+  name?: string | null;
+}
+
+/**
+ * A company's or a coin's logo on a `LogoMark` tile, on the desktop and the
+ * web: the logo Gloom Cloud serves for its ticker, and its initial on the
+ * same tile when there is none, so a missing logo moves nothing.
+ */
+export function CompanyLogoMark({ symbol, assetCategory, name, size }: CompanyLogoSubject & Pick<LogoMarkProps, "size">) {
+  return createElement(LogoMark, {
+    src: resolveCompanyLogoSrc({ symbol, assetCategory }),
+    name: name?.trim() || symbol,
+    size,
+    plate: true,
+  });
+}
+
+/**
+ * The cell that names a company or a coin in a table, led by its logo on the
+ * desktop and the web (docs/pane-conventions.md, "Company and coin logos").
+ * The terminal gets the cell as it was, and exports read only its text.
+ */
+export function withCompanyLogo(cell: DataTableCell, subject: CompanyLogoSubject | null | undefined, desktop: boolean): DataTableCell {
+  if (!desktop || !subject?.symbol) return cell;
+  return {
+    ...cell,
+    leading: createElement(CompanyLogoMark, { symbol: subject.symbol, assetCategory: subject.assetCategory, name: subject.name ?? cell.text }),
+  };
 }
 
 export function CompanyLogo({

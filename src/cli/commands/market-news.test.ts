@@ -5,6 +5,7 @@ import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
+import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
@@ -240,6 +241,26 @@ test("a real listing, with or without stories, never falls back to a text search
   await news.execute(["TTF", "--exchange", "NYSE"], unknown.context);
   await news.execute(["TTF", "--feed", "top"], unknown.context);
   expect(requests).toHaveLength(0);
+});
+
+test("a coin pair whose stories came from searching the coin says so, with the name its quote gives to search", async () => {
+  const queries: Array<{ ticker?: string; listingName?: string }> = [];
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (query) => {
+        queries.push({ ticker: query.ticker, listingName: query.listingName });
+        return [{ ...mapCloudNewsArticle(story("btc", "Bitcoin snaps back after a failed downside break", "2026-10-15T09:00:00.000Z")), searchedFor: "hyperliquid" }];
+      },
+      getQuote: async () => ({ symbol: "HYPE32196-USD", name: "Hyperliquid USD", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" }),
+    },
+  });
+  await news.execute(["HYPE32196-USD"], cli.context);
+
+  expect(queries).toEqual([{ ticker: "HYPE32196-USD", listingName: "Hyperliquid USD" }]);
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "hyperliquid"  ·  no stories filed under HYPE32196-USD');
+  expect(text).toContain("Bitcoin snaps back");
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ ticker: "HYPE32196-USD", search: "hyperliquid" });
 });
 
 test("text search refuses a symbol's options and text the service would reject", async () => {

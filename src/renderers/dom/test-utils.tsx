@@ -9,6 +9,7 @@ import { WebBox } from "./host/box";
 import { WebText, WebSpan } from "./host/text";
 import { WebScrollBox } from "./host/scroll-box";
 import { WebInput } from "./host/input";
+import { WebImageSurface } from "./host/image-surface";
 import { WebButton, WebTextField } from "./desktop/controls";
 import { noopRendererHost } from "../../test-support/renderer-host";
 
@@ -19,7 +20,7 @@ function createUi(capabilities: UiHost["capabilities"]): UiHost {
     kind: "desktop-web",
     capabilities: { ...BASE_CAPABILITIES, ...capabilities },
     Box: WebBox, Text: WebText, Span: WebSpan, ScrollBox: WebScrollBox,
-    Button: WebButton, Input: WebInput, TextField: WebTextField,
+    Button: WebButton, Input: WebInput, TextField: WebTextField, ImageSurface: WebImageSurface,
     SpinnerMark: () => null,
   } as unknown as UiHost;
 }

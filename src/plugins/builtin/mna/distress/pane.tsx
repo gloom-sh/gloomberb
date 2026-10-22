@@ -29,7 +29,8 @@ import type {
 import type { CloudFilingEventPayload } from "../../../../api-client";
 import { useAutoRefresh, usePluginPaneState } from "../../../../public/react";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { Box, type ScrollBoxRenderable } from "../../../../ui";
+import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../../ui";
+import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../../components/ui/country-flag";
 import { usePluginTickerActions } from "../../../runtime";
 import { toneColor, type StateTone } from "../../shared/research-cells";
 import {
@@ -419,6 +420,8 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
     const rows = loaded.payload.notices;
     return { rows, hasMore: canPage(loaded.payload.hasMore, offset + rows.length), nextOffset: offset + rows.length, loaded, attributions: loaded.payload.attributions };
   }, [country, kind, prefix]);
+  // The desktop and the web lead each country code with its flag.
+  const flagged = useUiCapabilities().nativePaneChrome === true;
   const spec = useMemo<RowSpec<InsolvencyNotice>>(() => ({
     getId: insolvencyId,
     title: (row) => cellText(row.entity_name),
@@ -429,7 +432,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
       switch (column) {
         case "published": return { text: isoDay(row.published_date), color: muted };
         case "company": return { text: cellText(row.entity_name), color: base };
-        case "country": return { text: row.country, color: muted };
+        case "country": return withCountryFlag({ text: row.country, color: muted }, row.country, flagged);
         case "registry": return { text: row.registry_id, color: muted };
         case "procedure": return { text: insolvencyProcedureCell(row), color: tone(insolvencyTone(row)) };
         case "notice": return { text: insolvencyNoticeLabel(row, "short"), color: muted };
@@ -437,7 +440,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
       }
     },
     detail: (row, width, attributions) => <InsolvencyDetail row={row} width={width} attributions={attributions} />,
-  }), []);
+  }), [flagged]);
   const hints = useMemo<PaneHint[]>(() => [{ id: "distress-search", key: "/", label: "search", onPress: onSearch }], [onSearch]);
   return (
     <DistressTable
@@ -445,7 +448,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
       viewId="insolvency"
       loader={loader}
       spec={spec}
-      columns={insolvencyColumns(props.width)}
+      columns={insolvencyColumns(props.width, flagged ? COUNTRY_FLAG_CELLS : 0)}
       subject="insolvency notices"
       search={search}
       searching={searching}

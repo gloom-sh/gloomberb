@@ -30,6 +30,7 @@ import {
   countriesWithoutEvents,
   FILTER_CYCLE,
   loadCalendar,
+  eventCountry,
   matchesCountry,
   matchesImpact,
   noScheduledReleasesMessage,
@@ -382,7 +383,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       .map((event) => ({
         date: isoDate(event.date),
         time: hasNoStatedTime(event) ? "" : event.time,
-        country: event.country,
+        country: eventCountry(event),
         impact: event.impact,
         event: event.event,
         actual: event.actual ?? "",

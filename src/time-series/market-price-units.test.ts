@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { resolveChartSpecData, seedChartResolutionResult } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { seedChartResolutionResult } from "./chart-seed";
 import { summarizeResolvedSeries } from "./reporting";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { CHART_SPEC_VERSION, type ChartSpec, type SeriesTransform } from "./types";

@@ -1,7 +1,7 @@
 import { isCryptoInstrumentType } from "../../tickers/search/ranking";
 import { isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { Quote } from "../../types/financials";
-import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { isCryptoPairSymbol, MAJOR_COIN_NAMES } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { groupByCompany } from "../../tickers/company-name";
 import type { TickerRecord } from "../../types/ticker";
@@ -9,22 +9,8 @@ import type { TickerRecord } from "../../types/ticker";
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
 export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
 
-// The coins whose bare ticker is most often typed for the coin itself. The label is how the note
-// names the coin and what a listing's name has to say before the note applies.
-const MAJOR_COINS = new Map([
-  ["BTC", "bitcoin"],
-  ["ETH", "ethereum"],
-  ["SOL", "solana"],
-  ["XRP", "XRP"],
-  ["DOGE", "dogecoin"],
-  ["ADA", "cardano"],
-  ["LTC", "litecoin"],
-  ["BCH", "bitcoin cash"],
-  ["AVAX", "avalanche"],
-  ["DOT", "polkadot"],
-  ["LINK", "chainlink"],
-  ["BNB", "BNB"],
-]);
+// How the note names the coin, and what a listing's name has to say before the note applies.
+const MAJOR_COINS = MAJOR_COIN_NAMES;
 
 /**
  * A bare coin ticker usually resolves to a listed fund, not the coin. The note applies only when

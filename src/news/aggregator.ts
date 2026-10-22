@@ -338,7 +338,11 @@ export class NewsService {
         }
         if (entry.loadMoreInFlight) return entry.state;
         const incoming = filterNewsArticlesForQuery(dedupeNewsArticles(result.articles), query);
-        const existing = entry.state.articles;
+        // The stories a coin's fallback found are not the pair's own: once stories are filed under it, they replace them.
+        const existing = incoming.length > 0 && entry.state.articles.length > 0
+          && (incoming[0]!.searchedFor ?? null) !== (entry.state.articles[0]!.searchedFor ?? null)
+          ? []
+          : entry.state.articles;
         const incomingIds = new Set(incoming.map((article) => article.id));
         const hasOlderPages = existing.some((article) => !incomingIds.has(article.id));
         const articles = existing.length > 0

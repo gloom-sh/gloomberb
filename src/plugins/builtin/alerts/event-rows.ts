@@ -11,6 +11,6 @@ export function ruleTarget(rule: EventAlertRule): string {
 /** The state word the Events tab shows: a scheduled rule is Alerted once it has gone off for its coming event. */
 export function ruleState(rule: EventAlertRule, today: string): "Active" | "Paused" | "Alerted" {
   const scheduled = readScheduledRule(rule);
-  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today) : rule.status;
+  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today, scheduled.trigger) : rule.status;
   return status === "paused" ? "Paused" : status === "triggered" ? "Alerted" : "Active";
 }

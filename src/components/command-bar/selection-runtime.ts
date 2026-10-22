@@ -39,6 +39,7 @@ type ExecuteCollectionCommandFn = (
 
 interface UseCommandBarSelectionRuntimeOptions {
   activeTickerSymbol: string | null;
+  promptTickerSymbol?: string | null;
   availableCommands: Command[];
   clearThemePreview: (themeId: string) => void;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
@@ -82,6 +83,7 @@ interface UseCommandBarSelectionRuntimeOptions {
 
 export function useCommandBarSelectionRuntime({
   activeTickerSymbol,
+  promptTickerSymbol = null,
   availableCommands,
   clearThemePreview,
   closeAll,
@@ -131,6 +133,7 @@ export function useCommandBarSelectionRuntime({
 
   const resolveImmediateRootSelection = useCallback((query: string): ResultItem | null => buildImmediateRootSelection({
     activeTickerSymbol,
+    promptTickerSymbol,
     availableCommands,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -147,6 +150,7 @@ export function useCommandBarSelectionRuntime({
     startThemePicker,
   }), [
     activeTickerSymbol,
+    promptTickerSymbol,
     availableCommands,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -171,6 +175,7 @@ export function useCommandBarSelectionRuntime({
     const query = rootQueryRef.current;
     const accept = () => acceptRootShortcutTabAction({
       activeTickerSymbol,
+      promptTickerSymbol,
       availableCommands,
       createPaneTemplateItem,
       createPluginCommandItem,
@@ -196,6 +201,7 @@ export function useCommandBarSelectionRuntime({
     return accepted;
   }, [
     activeTickerSymbol,
+    promptTickerSymbol,
     availableCommands,
     createPaneTemplateItem,
     createPluginCommandItem,

@@ -65,7 +65,49 @@ export function defaultFloatingRect(termWidth: number, termHeight: number, def?:
 }
 
 export function maxFloatingZ(layout: LayoutConfig): number {
-  return layout.floating.reduce((highest, entry) => Math.max(highest, entry.zIndex ?? 50), 50);
+  return layout.floating.reduce((highest, entry) => Math.max(highest, entry.zIndex ?? FLOATING_PANE_BASE_Z), FLOATING_PANE_BASE_Z);
+}
+
+/** Where floating panes stack from, above the docked panes and the dividers between them. */
+const FLOATING_PANE_BASE_Z = 50;
+
+/** The lowest of the shell's fixed overlays over every pane: the drag outline (95; the drop preview is 96). */
+const SHELL_PREVIEW_Z = 95;
+
+/**
+ * How far above its own z a floating pane draws: its resize edges one level
+ * up (shell/pane/layers.tsx), window mode's highlight up to three
+ * (shell/window-mode/overlays.tsx).
+ */
+const FLOATING_PANE_CHROME_LAYERS = 3;
+
+/**
+ * The highest z a floating pane holds, 91: with its chrome above it, still
+ * under the drag and dock previews, the window-mode status and the pane menu,
+ * which the shell draws at fixed levels over every pane, in the terminal's
+ * cells, in the kitty images it cuts around them and on the desktop alike.
+ * Raising a pane adds one to the top, so a stack that would pass this is
+ * renumbered from the base in the same order; a layout saved with a higher
+ * stack is renumbered when it loads.
+ */
+export const FLOATING_PANE_MAX_Z = SHELL_PREVIEW_Z - FLOATING_PANE_CHROME_LAYERS - 1;
+
+/**
+ * The entries with the same front-to-back order and no z above
+ * `FLOATING_PANE_MAX_Z`: the same array when none is, else every entry
+ * renumbered from the base (equal z keep their array order, as they draw).
+ * Past 42 floating panes the numbers cannot fit and the top ones run over.
+ */
+export function compactFloatingZ(entries: FloatingPaneEntry[]): FloatingPaneEntry[] {
+  if (entries.every((entry) => (entry.zIndex ?? FLOATING_PANE_BASE_Z) <= FLOATING_PANE_MAX_Z)) return entries;
+  const order = entries
+    .map((entry, index) => ({ index, z: entry.zIndex ?? FLOATING_PANE_BASE_Z }))
+    .sort((left, right) => left.z - right.z || left.index - right.index);
+  const next = [...entries];
+  order.forEach(({ index }, rank) => {
+    next[index] = { ...entries[index]!, zIndex: FLOATING_PANE_BASE_Z + rank };
+  });
+  return next;
 }
 
 export function updateFloatingPane(

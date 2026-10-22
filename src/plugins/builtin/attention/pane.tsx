@@ -10,6 +10,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -173,13 +174,16 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
           color: row.zScore >= 2 ? colors.warning : row.zScore < 0 ? colors.textDim : colors.text, attributes: row.zScore >= 2 ? TextAttributes.BOLD : 0, keepColorWhenSelected: row.zScore >= 2 };
         case "priceChangePct": return row.priceChangePct == null ? missingCell(colors) : { text: rowCell(row, column.id), value: row.priceChangePct, color: signedColor(row.priceChangePct, colors) };
         case "relativeVolume": return row.relativeVolume == null ? missingCell(colors) : { text: rowCell(row, column.id), value: row.relativeVolume, color: row.relativeVolume >= 2 ? colors.textBright : colors.text };
-        case "sector": case "country": return { text: rowCell(row, column.id), color: colors.textDim };
+        case "sector": return { text: rowCell(row, column.id), color: colors.textDim };
+        // The column has room for the flag beside a code.
+        case "country": return withCountryFlag({ text: rowCell(row, column.id), color: colors.textDim }, row.country, desktop);
         default: return { text: rowCell(row, column.id), value: numeric, color: colors.text };
       }
     }
     const value = row[column.id as keyof AttentionGroup];
-    return { text: typeof value === "number" ? number(value) : value, value: typeof value === "number" ? value : undefined,
+    const groupCell: DataTableCell = { text: typeof value === "number" ? number(value) : value, value: typeof value === "number" ? value : undefined,
       color: column.id === "name" ? colors.textBright : column.id === "tickers" ? colors.textDim : colors.text };
+    return tab === "countries" && column.id === "name" ? withCountryFlag(groupCell, row.name, desktop) : groupCell;
   };
   // The whole board in four figures; a preview would only summarise its own three rows.
   const top = (groups: readonly AttentionGroup[]) => groups[0] ? { value: groups[0].name, detail: `${number(groups[0].sharePct, 1)}%` } : null;

@@ -9,6 +9,8 @@ export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
 };
 type Command = Parameters<Parameters<NonNullable<GloomPlugin["setup"]>>[0]["registerCommand"]>[0];
 type Field = NonNullable<Command["wizard"]>[number];
+/** An earnings alert goes off days before the report, or once its results are out. */
+const EARNINGS_ALERT_WHEN = [{ value: "before", label: "Days before the date" }, { value: "results", label: "When results are out" }];
 const choices = (values: string[]) => values.map(value => ({label: value.replaceAll("_", " "), value}));
 export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMap(kind => {
   const fields: Field[] = kind === "perps_threshold" ? [
@@ -20,7 +22,10 @@ export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMa
     : kind === "macro_event" ? [{key:"event", label:"Release", type:"select", defaultValue:"cpi", options:MACRO_ALERT_EVENTS.map((value) => ({value, label:MACRO_EVENT_NAMES[value]}))}]
     : [{key:"symbol",label:kind === "news_keyword" ? "Symbol (optional)" : kind === "options_flow" ? "Symbol (blank: portfolio and watchlists)" : "Symbol",type:"text",placeholder:"AAPL", required:kind !== "news_keyword" && kind !== "options_flow"},
       {key:"exchange",label:"US exchange",type:"select",defaultValue:"US",options:choices(["US","NASDAQ","NYSE","ARCA","AMEX","BATS","OTC"])}];
-  if (kind === "earnings_date") fields.push({key:"leadDays",label:"Days before earnings",type:"number",defaultValue:String(DEFAULT_LEAD_DAYS)});
+  if (kind === "earnings_date") {
+    fields.push({key:"when",label:"Alert",type:"select",defaultValue:"before",options:EARNINGS_ALERT_WHEN});
+    fields.push({key:"leadDays",label:"Days before earnings",type:"number",defaultValue:String(DEFAULT_LEAD_DAYS)});
+  }
   if (kind === "macro_event") fields.push({key:"leadDays",label:"Days before",type:"number",defaultValue:String(DEFAULT_LEAD_DAYS)});
   if (kind === "filing_type") fields.push({key:"form",label:"Filing type",type:"select",defaultValue:"8-K",options:choices([...RESEARCH_ALERT_FORMS])});
   if (kind === "news_keyword") fields.push({key:"keyword",label:"Keyword or phrase",type:"text",required:true,placeholder:"buyback"});
@@ -32,8 +37,15 @@ export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMa
     fields.push({key:"print",label:"Print type",type:"select",defaultValue:"any",options:[{label:"any print",value:"any"},{label:"sweeps only",value:"sweep"},{label:"blocks only",value:"block"}]});
   }
   if (kind === "unusual_volume" || kind === "short_interest_change" || kind === "iv_spike") fields.push({key:"threshold",label:kind === "unusual_volume" ? "Volume / prior 20-session average" : kind === "iv_spike" ? "IV rise (percentage points)" : "Settlement change (%)",type:"number",defaultValue:kind === "unusual_volume" ? "2" : kind === "iv_spike" ? "5" : "10"});
-  return fields.map(field => ({...field, key:`${kind}:${field.key}`, dependsOn:{key:"event",value:kind}}));
+  return fields.map(field => ({...field, key:`${kind}:${field.key}`, dependsOn: kind === "earnings_date" && field.key === "leadDays"
+    // The lead time is for an alert before the date, not one waiting for results.
+    ? [{key:"event",value:kind}, {key:"earnings_date:when",value:"before"}]
+    : {key:"event",value:kind}}));
 });
+/** The Add Event Alert form filled in for an earnings alert on `symbol` that goes off once its results are out, as ERN opens it. */
+export function earningsResultsAlertValues(symbol: string): Record<string, string> {
+  return { event: "earnings_date", "earnings_date:symbol": symbol, "earnings_date:when": "results" };
+}
 export function createResearchAlert(kind: string, values: Record<string,string>, now = Date.now()): EventAlertRule {
   if (!isResearchAlertKind(kind)) throw new Error("Choose an alert event.");
   const input: Record<string,unknown> = {version:1};
@@ -68,7 +80,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
   const symbol = config.symbol ?? "All symbols";
   switch(rule.kind) {
     case "perps_threshold": return `${config.marketId} · ${config.metric} ${config.direction} ${((config.threshold ?? 0) * 100).toFixed(3)}%`;
-    case "earnings_date": return `${symbol} · ${config.leadDays}d before`;
+    case "earnings_date": return `${symbol} · ${config.when === "results" ? "results" : `${config.leadDays}d before`}`;
     case "macro_event": return `${MACRO_EVENT_NAMES[config.event as MacroAlertEvent] ?? config.event} · ${config.leadDays}d before`;
     case "filing_type": return `${symbol} · ${config.form}`;
     case "news_keyword": return `${symbol} · ${config.keyword}`;

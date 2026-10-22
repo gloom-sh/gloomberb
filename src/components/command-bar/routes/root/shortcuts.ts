@@ -127,12 +127,15 @@ export function parseRootShortcutIntent({
   pluginCommands = [],
   paneTemplates,
   activeTicker,
+  promptTicker = null,
 }: {
   query: string;
   commands: Command[];
   pluginCommands?: CommandDef[];
   paneTemplates: PaneTemplateDef[];
   activeTicker: string | null;
+  /** The command prompt's instrument, used when a pane requires a ticker and the focused pane has none. */
+  promptTicker?: string | null;
 }): ShortcutIntent {
   const trimmed = query.trim();
   if (!trimmed) return { kind: "none" };
@@ -145,9 +148,12 @@ export function parseRootShortcutIntent({
   if (!match) return { kind: "none" };
 
   const argText = trimmed.slice(match.prefix.length).trim();
-  const inferredArg = match.source === "pane-template" && match.template?.shortcut?.argOptional
-    ? null
-    : inferShortcutArg(match.argKind, activeTicker);
+  // A pane that requires a ticker takes the one already in the prompt. An
+  // optional ticker stays unbound, and other commands keep the focused ticker.
+  const inferFrom = match.source === "pane-template"
+    ? (match.template?.shortcut?.argOptional ? null : (promptTicker ?? activeTicker))
+    : activeTicker;
+  const inferredArg = inferShortcutArg(match.argKind, inferFrom);
   const completionQuery = inferredArg ? `${match.prefix} ${inferredArg}` : null;
 
   let kind: Exclude<ShortcutIntentKind, "none">;

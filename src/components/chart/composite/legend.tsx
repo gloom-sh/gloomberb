@@ -14,6 +14,7 @@ import {
 } from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
+import { DisclosureMarker } from "../../ui/disclosure-marker";
 
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
@@ -157,7 +158,7 @@ function CompositeSeriesSwatch({ series, cue, filled = true }: {
 
 export function CompositeLegend({
   scene,
-  series,
+  series: allSeries,
   visibleSeriesIds,
   lineCues = NO_LINE_CUES,
   cellPlot = false,
@@ -172,6 +173,8 @@ export function CompositeLegend({
   keyboardIndex,
   rows = 1,
   onWantedRowsChange,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   scene: CompositeChartScene | null;
   series: ResolvedSeries[];
@@ -193,8 +196,15 @@ export function CompositeLegend({
   rows?: number;
   /** The lines the legend needs to show every entry whole, told while no cursor moves the values. */
   onWantedRowsChange?: (rows: number) => void;
+  /** Folded to its first series and a count of the rest, which a press opens. */
+  collapsed?: boolean;
+  /** Folds or opens the legend: a chevron in its inset, shown under the pointer while it is open. */
+  onToggleCollapsed?: () => void;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
+  // Folded, the legend keeps its first series; the rest wait behind a count.
+  const foldedCount = collapsed ? Math.max(0, allSeries.length - 1) : 0;
+  const series = foldedCount > 0 ? allSeries.slice(0, 1) : allSeries;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
@@ -280,8 +290,10 @@ export function CompositeLegend({
     ? Math.max(1, Math.min(innerWidth, Math.floor(accessoryWidth ?? 14)))
     : 0;
   const reservedAccessoryGap = accessory && innerWidth > resolvedAccessoryWidth ? 1 : 0;
+  const foldedText = foldedCount > 0 ? `+${foldedCount}` : null;
+  const foldedWidth = foldedText ? displayWidth(foldedText) + 1 : 0;
   // The cursor date lives on the time axis, where the crosshair points at it.
-  const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap);
+  const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap - foldedWidth);
   // Names get the room the row has. When it overflows, the widest name
   // shortens first: its listing exchange goes before any of the name is cut.
   // The value (including its sign/unit) always stays intact. If the row cannot
@@ -348,7 +360,7 @@ export function CompositeLegend({
   const desiredSeriesWidth = lines ? lineWidth(lines.at(-1)!) : measureSeriesWidth();
   const seriesWidth = lines ? widthBeforeAccessory : Math.min(desiredSeriesWidth, widthBeforeAccessory);
   const accessorySpacerWidth = accessory
-    ? Math.max(reservedAccessoryGap, innerWidth - seriesWidth - resolvedAccessoryWidth)
+    ? Math.max(reservedAccessoryGap, innerWidth - seriesWidth - foldedWidth - resolvedAccessoryWidth)
     : 0;
   const keyboardEntryStart = keyboardIndex === null || keyboardIndex === undefined || lines
     ? null
@@ -471,6 +483,13 @@ export function CompositeLegend({
     </ScrollBox>
   );
   const lineCount = lines?.length ?? 1;
+  const foldLabel = foldedCount > 0
+    ? `Show ${foldedCount} more series (Shift+L)`
+    : "Collapse the legend to its first series (Shift+L)";
+  const pressFold = (event: ChartMouseEvent) => {
+    consumeChartMouseEvent(event);
+    onToggleCollapsed?.();
+  };
   return (
     <Box
       flexDirection="row"
@@ -478,11 +497,41 @@ export function CompositeLegend({
       width={width}
       height={lineCount}
       paddingLeft={inset}
+      position="relative"
       overflow="visible"
       // Accessory dropdowns must escape above the sibling drawing toolbar.
       zIndex={accessory ? 40 : 20}
       data-gloom-role="composite-chart-legend"
+      data-gloom-reveal-scope="true"
+      data-collapsed={foldedCount > 0 ? "true" : undefined}
     >
+      {/* The chevron sits in the inset, so it moves nothing: folded it always
+          shows, open it shows under the pointer (the terminal has Shift+L). */}
+      {onToggleCollapsed && inset > 0 && (foldedCount > 0 || isDesktopWeb) ? (
+        <Box
+          position="absolute"
+          left={0}
+          top={0}
+          width={inset}
+          height={1}
+          zIndex={22}
+          alignItems="center"
+          justifyContent="center"
+          hoverBackgroundColor={hoverBg()}
+          onMouseDown={pressFold}
+          cursor="pointer"
+          data-gloom-interactive="true"
+          data-gloom-role="composite-chart-legend-toggle"
+          data-gloom-label={foldLabel}
+          data-gloom-reveal={foldedCount > 0 ? undefined : "hover"}
+          title={isDesktopWeb ? foldLabel : undefined}
+          role={isDesktopWeb ? "button" : undefined}
+          aria-label={isDesktopWeb ? foldLabel : undefined}
+          aria-expanded={isDesktopWeb ? foldedCount === 0 : undefined}
+        >
+          <DisclosureMarker expanded={foldedCount === 0} color={themeColors.textDim} />
+        </Box>
+      ) : null}
       {valueDates.lead ? (
         <Box width={leadWidth} height={1} flexShrink={0} data-gloom-role="composite-chart-legend-date">
           <Text fg={themeColors.textMuted}>{valueDates.lead}</Text>
@@ -493,6 +542,29 @@ export function CompositeLegend({
           {lines.map((line, index) => scrollLine(line, index, index === lines!.length - 1 ? scrollRef : undefined))}
         </Box>
       ) : seriesWidth > 0 ? scrollLine(null, "line", scrollRef) : null}
+      {foldedText ? (
+        <Box
+          flexDirection="row"
+          width={foldedWidth}
+          height={1}
+          flexShrink={0}
+          paddingLeft={1}
+          data-gloom-role="composite-chart-legend-more"
+        >
+          <Box
+            height={1}
+            flexShrink={0}
+            hoverBackgroundColor={onToggleCollapsed ? hoverBg() : undefined}
+            onMouseDown={onToggleCollapsed ? pressFold : undefined}
+            cursor={onToggleCollapsed ? "pointer" : undefined}
+            data-gloom-interactive={onToggleCollapsed ? "true" : undefined}
+            data-gloom-label={foldLabel}
+            title={isDesktopWeb ? foldLabel : undefined}
+          >
+            <Text fg={themeColors.textDim}>{foldedText}</Text>
+          </Box>
+        </Box>
+      ) : null}
       {accessorySpacerWidth > 0 ? (
         <Box width={accessorySpacerWidth} flexShrink={0} />
       ) : null}

@@ -93,6 +93,8 @@ import { bankSection } from "../bank-section";
 import type { FundBondFacts } from "../../api-client/fund-facts";
 import { bondFigures, fetchFundBondFacts, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
+import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -1223,7 +1225,7 @@ export async function buildTickerReport({
     ],
     body: item.summary,
     link: item.url,
-  })));
+  })), recentNews[0]?.searchedFor ? coinNewsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
 
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
@@ -1480,6 +1482,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",
         limit: NEWS_ITEM_LIMIT,
+        // A coin pair with no story filed under it searches for the coin by this name.
+        ...(isRoundTheClockCoin(requestSymbol, exchange || quote?.exchangeName) && (quote?.name || tickerFile?.metadata.name)
+          ? { listingName: quote?.name || tickerFile?.metadata.name }
+          : {}),
       }),
       // Outside the US the lookup checks the SEC registrant against the listing's company,
       // and refuses another company's filings.
@@ -1505,7 +1511,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
     const memberships = await membershipsLoad;
     if (dependencies.printResult) {
-      const warnings = [choiceNote, coinNote, quoteNote].filter((note): note is string => !!note);
+      const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
+      const warnings = [choiceNote, coinNote, quoteNote, newsNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,

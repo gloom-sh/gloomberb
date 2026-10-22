@@ -128,7 +128,8 @@ export { MarkdownText } from "./markdown-text";
 // this file is the public `gloomberb/components` surface: a kit component
 // reaches plugins only once it is added here.
 export {
-  ActionRow, Badge, BulletList, Button, ButtonActionScope, Card, Checkbox, ChoiceDialog, ColumnGrid, ColumnGridPair, ConfirmDialog, confirmDialog, DataTable,
+  ActionRow, Badge, BulletList, Button, ButtonActionScope, Card, Checkbox, ChoiceDialog, ColumnGrid, ColumnGridPair, ConfirmDialog, confirmDialog,
+  COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, DataTable,
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
@@ -136,11 +137,11 @@ export {
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
-  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
+  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch, withCountryFlag, withFlagRoom,
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CardProps, CheckboxProps, ChoiceDialogChoice, ColumnGridCell,
-  ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions,
+  ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions, CountryFlagProps,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
   FigureListItem, FigureListProps, GridField,

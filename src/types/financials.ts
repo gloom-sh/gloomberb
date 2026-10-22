@@ -825,6 +825,11 @@ export interface PricePoint {
   low?: number;
   close: number;
   volume?: number;
+  /**
+   * The trades of one venue alone, when the market's volume for the bar is unavailable: never its volume, so no sum
+   * or comparison with a day's count takes it.
+   */
+  venueVolume?: { venue: string; volume: number };
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */

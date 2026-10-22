@@ -11,7 +11,7 @@ import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import type { PricePoint } from "../types/financials";
 import type { ChartRequest } from "../market-data/request-types";
 import type { HistorySession, PriceHistoryResult } from "../types/price-history";
-import type { ChartResolveOptions } from "./resolve";
+import type { ChartResolveOptions } from "./resolve-context";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => {

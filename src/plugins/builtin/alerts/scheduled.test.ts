@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
+import { getVisibleWorkflowFields, normalizeWizardFields } from "../../../components/command-bar/workflow/fields";
 import { parseAlertAddArgs, thousandsDotMessage } from "./cli";
 import { EVENT_ALERTS_KEY, readEventAlerts } from "./events";
+import { createResearchAlert, earningsResultsAlertValues, researchAlertDescription, researchWizardFields } from "./research-builder";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import {
   createScheduledAlert,
@@ -8,10 +10,14 @@ import {
   nextCpiReleaseDate,
   nextEarningsDate,
   parseLeadDays,
+  readEarningsResults,
   readScheduledRule,
   rearmScheduledAlert,
+  reportedResult,
   scheduledAlertMessage,
   scheduledPhase,
+  scheduledResultsMessage,
+  type EarningsResultRow,
   type ScheduledEventSources,
 } from "./scheduled";
 
@@ -70,10 +76,10 @@ test("event rules keep their dates through storage and take only US listings and
   const { rules, error } = readEventAlerts(JSON.stringify([rule, { ...macro, eventDate: "soon" }]));
   expect(error).toBeNull();
   expect(rules[0]).toMatchObject({ kind: "earnings_date", eventDate: "2026-11-09", firedFor: "2026-08-12" });
-  expect(readScheduledRule(rules[0]!)).toEqual({ target: { kind: "earnings", symbol: "CRWV", exchange: "NASDAQ" }, leadDays: 3 });
+  expect(readScheduledRule(rules[0]!)).toEqual({ target: { kind: "earnings", symbol: "CRWV", exchange: "NASDAQ" }, leadDays: 3, trigger: "date" });
   // A date that does not read is dropped; the rule stays.
   expect(rules[1]!.eventDate).toBeUndefined();
-  expect(readScheduledRule(rules[1]!)).toEqual({ target: { kind: "macro", event: "cpi" }, leadDays: 1 });
+  expect(readScheduledRule(rules[1]!)).toEqual({ target: { kind: "macro", event: "cpi" }, leadDays: 1, trigger: "date" });
   expect(rearmScheduledAlert(rules[0]!).firedFor).toBeUndefined();
   expect(() => createScheduledAlert({ kind: "earnings", symbol: "SAN", exchange: "EPA" }, 1, null)).toThrow("US listings");
   expect(readEventAlerts(JSON.stringify([{ ...macro, value: JSON.stringify({ version: 1, event: "cpi", leadDays: 15 }) }])).error).not.toBeNull();
@@ -83,6 +89,8 @@ test("event rules keep their dates through storage and take only US listings and
 test("alerts add reads price, earnings and macro forms and names what it takes", () => {
   expect(parseAlertAddArgs(["AAPL", "above", "250"], undefined)).toEqual({ kind: "price", symbol: "AAPL", condition: "above", price: 250 });
   expect(parseAlertAddArgs(["CRWV", "earnings"], "3")).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 3 });
+  expect(parseAlertAddArgs(["CRWV", "earnings", "results"], undefined)).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 0, results: true });
+  expect(() => parseAlertAddArgs(["CRWV", "earnings", "results"], "2")).toThrow("takes no --days");
   expect(parseAlertAddArgs(["cpi"], undefined)).toEqual({ kind: "macro", event: "cpi", leadDays: 1 });
   // A ticker named like an event still takes a price alert.
   expect(parseAlertAddArgs(["CPI", "below", "3"], undefined)).toMatchObject({ kind: "price", symbol: "CPI" });
@@ -152,6 +160,201 @@ test("the app alerts once when the lead time is reached and saves the event it a
     checkScheduledEventAlertsNow();
     await Bun.sleep(10);
     expect(notifications).toHaveLength(1);
+  } finally {
+    stop();
+  }
+});
+
+test("ERN's alert is ALRT's earnings alert set to wait for results, and the form drops the lead time for it", () => {
+  const rule = createResearchAlert("earnings_date", { ...earningsResultsAlertValues("CRWV"), "earnings_date:exchange": "US", "earnings_date:leadDays": "1" });
+  expect(readScheduledRule(rule)).toEqual({ target: { kind: "earnings", symbol: "CRWV", exchange: "US" }, leadDays: 0, trigger: "results" });
+  expect(researchAlertDescription(rule)).toBe("CRWV · results");
+  // A rule saved before keeps its value and goes off before the date.
+  const before = createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, 3, null);
+  expect(JSON.parse(before.value)).toEqual({ version: 1, symbol: "CRWV", exchange: "", leadDays: 3 });
+  expect(readScheduledRule(before)?.trigger).toBe("date");
+  expect(JSON.parse(createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", null).value))
+    .toEqual({ version: 1, symbol: "CRWV", exchange: "", leadDays: 0, when: "results" });
+  expect(() => createScheduledAlert({ kind: "macro", event: "cpi" }, "results", null)).toThrow("Only earnings");
+
+  const { fields, initialValues } = normalizeWizardFields(researchWizardFields);
+  const shown = (when: string) => getVisibleWorkflowFields(fields, { ...initialValues, event: "earnings_date", "earnings_date:when": when })
+    .map((field) => field.id);
+  expect(shown("before")).toContain("earnings_date:leadDays");
+  expect(shown("results")).not.toContain("earnings_date:leadDays");
+  expect(shown("results")).toContain("earnings_date:when");
+});
+
+test("an alert for results is due from the report day until the actual EPS is in, or for three days after", () => {
+  expect(scheduledPhase("2026-10-20", 0, undefined, "2026-10-19", "results")).toBe("armed");
+  expect(scheduledPhase("2026-10-20", 0, undefined, "2026-10-20", "results")).toBe("due");
+  // An after-close report is filled in overnight; a late one a day or two later.
+  expect(scheduledPhase("2026-10-20", 0, undefined, "2026-10-23", "results")).toBe("due");
+  expect(scheduledPhase("2026-10-20", 0, undefined, "2026-10-24", "results")).toBe("passed");
+  expect(scheduledPhase("2026-10-20", 0, "2026-10-20", "2026-10-21", "results")).toBe("fired");
+
+  const rows: EarningsResultRow[] = [
+    { symbol: "CRWV", date: "2026-07-20", epsActual: 0.05, epsEstimate: 0.04 },
+    { symbol: "CRWV", date: "2026-10-21", epsActual: null, epsEstimate: 0.1 },
+    { symbol: "NFLX", date: "2026-10-20", epsActual: 6.1, epsEstimate: 5.9 },
+  ];
+  expect(reportedResult(rows, "CRWV", "2026-10-20")).toBeNull();
+  const out = [...rows, { symbol: "CRWV", date: "2026-10-21", epsActual: 0.12, epsEstimate: 0.1 }];
+  // Reported a day later than the date followed.
+  expect(reportedResult(out, "crwv", "2026-10-20")).toEqual({ symbol: "CRWV", date: "2026-10-21", epsActual: 0.12, epsEstimate: 0.1 });
+  expect(scheduledResultsMessage("CRWV", { epsActual: 0.12, epsEstimate: 0.1 })).toBe("CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)");
+  expect(scheduledResultsMessage("CRWV", { epsActual: -0.3, epsEstimate: null })).toBe("CRWV reported EPS -0.30");
+});
+
+test("the app alerts for results once the actual EPS lands, keeping the report day until then, and then follows the next report", async () => {
+  const rule = { ...createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", "2026-10-20", 1_000) };
+  const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);
+  const notifications: string[] = [];
+  let saved = Promise.withResolvers<void>();
+  const ctx = {
+    configState: {
+      get: (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: unknown) => { store.set(key, String(value)); saved.resolve(); },
+    },
+    notify: (notification: { body?: string }) => { notifications.push(notification.body ?? ""); },
+    showPane() {},
+    log: { info() {}, warn() {}, error() {}, debug() {} },
+  };
+  let reported: number | null = null;
+  const reads: string[] = [];
+  const sources: ScheduledEventSources = {
+    // Once the day has passed, the calendar's next report is next quarter's.
+    earnings: async () => [{ symbol: "CRWV", earningsDate: new Date("2026-10-20T20:00:00Z") }, { symbol: "CRWV", earningsDate: new Date("2027-01-26T20:00:00Z") }],
+    cpi: async () => ({ release: { nextReleaseAt: null } }),
+    fomc: async () => [],
+    results: async (symbols, from, to) => {
+      reads.push(`${symbols.join(",")} ${from} ${to}`);
+      return [{ symbol: "CRWV", date: "2026-10-20", epsActual: reported, epsEstimate: 0.1 }];
+    },
+  };
+  let now = Date.parse("2026-10-20T18:00:00Z");
+  const stop = startScheduledEventAlerts(ctx as never, sources, () => now);
+  const check = async () => {
+    checkScheduledEventAlertsNow();
+    await Bun.sleep(20);
+  };
+  try {
+    // The morning before an after-close report: nothing yet, and no write.
+    await check();
+    expect(notifications).toEqual([]);
+    expect(reads).toEqual(["CRWV 2026-10-17 2026-10-23"]);
+
+    // The next morning the calendar has moved on, but the rule still waits on the 20th; the actual is in.
+    now = Date.parse("2026-10-21T13:00:00Z");
+    reported = 0.12;
+    await check();
+    await saved.promise;
+    expect(notifications).toEqual(["CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"]);
+    expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2026-10-20", firedFor: "2026-10-20" });
+
+    // Once only; then it follows January's report.
+    saved = Promise.withResolvers<void>();
+    await check();
+    await saved.promise;
+    expect(notifications).toHaveLength(1);
+    expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2027-01-26", firedFor: "2026-10-20" });
+  } finally {
+    stop();
+  }
+});
+
+test("results come from ERN's board, and from the per-ticker calendar for a company the board has no actual for", async () => {
+  const asked: string[][] = [];
+  const row = (symbol: string, epsActual: number | null): EarningsResultRow => ({ symbol, date: "2026-10-20", epsActual, epsEstimate: 0.1 });
+  const calendar = async (symbols: string[]) => {
+    asked.push(symbols);
+    return symbols.map((symbol) => row(symbol, 0.12));
+  };
+  // CRWV's actual is in the board; NBIS is on the board without one, and SHOP not at all.
+  const board = async () => [row("CRWV", 0.2), row("NBIS", null)];
+  expect(await readEarningsResults(["CRWV", "NBIS", "SHOP"], board, calendar)).toEqual([
+    row("CRWV", 0.2), row("NBIS", null), row("NBIS", 0.12), row("SHOP", 0.12),
+  ]);
+  expect(asked).toEqual([["NBIS", "SHOP"]]);
+  // Nothing missing, nothing more to read.
+  await readEarningsResults(["CRWV"], board, calendar);
+  expect(asked).toHaveLength(1);
+
+  // Either failing leaves the other's rows; both failing, or the board with nothing else to read, is the error.
+  const down = async (): Promise<EarningsResultRow[]> => { throw new Error("UPSTREAM_ERROR"); };
+  expect(await readEarningsResults(["NBIS"], down, calendar)).toEqual([row("NBIS", 0.12)]);
+  expect(await readEarningsResults(["NBIS"], board, down)).toEqual([row("CRWV", 0.2), row("NBIS", null)]);
+  await expect(readEarningsResults(["NBIS"], down, down)).rejects.toThrow("UPSTREAM_ERROR");
+  await expect(readEarningsResults(["NBIS"], down, null)).rejects.toThrow("UPSTREAM_ERROR");
+});
+
+test("a results alert follows a report moved before its day, and keeps waiting through failed lookups until the actual is in", async () => {
+  const rule = createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", "2026-10-20", 1_000);
+  const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);
+  const notifications: string[] = [];
+  const warnings: string[] = [];
+  const ctx = {
+    configState: {
+      get: (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: unknown) => { store.set(key, String(value)); },
+    },
+    notify: (notification: { body?: string }) => { notifications.push(notification.body ?? ""); },
+    showPane() {},
+    log: { info() {}, warn: (message: string) => { warnings.push(message); }, error() {}, debug() {} },
+  };
+  let dates: "moved" | "down" = "moved";
+  let results: "down" | number | null = null;
+  const reads: string[] = [];
+  const sources: ScheduledEventSources = {
+    earnings: async () => {
+      if (dates === "down") throw new Error("UPSTREAM_ERROR");
+      return [{ symbol: "CRWV", earningsDate: new Date("2026-10-22T20:00:00Z") }];
+    },
+    cpi: async () => ({ release: { nextReleaseAt: null } }),
+    fomc: async () => [],
+    results: async (symbols, from, to) => {
+      reads.push(`${symbols.join(",")} ${from} ${to}`);
+      if (results === "down") throw new Error("UPSTREAM_ERROR");
+      return [{ symbol: "CRWV", date: "2026-10-22", epsActual: results, epsEstimate: 0.1 }];
+    },
+  };
+  let now = Date.parse("2026-10-19T14:00:00Z");
+  const stop = startScheduledEventAlerts(ctx as never, sources, () => now);
+  const check = async () => {
+    checkScheduledEventAlertsNow();
+    await Bun.sleep(20);
+  };
+  const saved = () => readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0];
+  try {
+    // Moved from the 20th to the 22nd the day before: the rule follows it, and reads no results before it.
+    await check();
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22" });
+    expect(reads).toEqual([]);
+
+    // The 20th, the old day, passes quietly.
+    now = Date.parse("2026-10-20T22:00:00Z");
+    await check();
+    expect(notifications).toEqual([]);
+    expect(reads).toEqual([]);
+
+    // On the day both reads fail: the rule keeps its day and waits.
+    now = Date.parse("2026-10-22T22:00:00Z");
+    dates = "down";
+    results = "down";
+    await check();
+    expect(notifications).toEqual([]);
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22" });
+    expect(saved()?.firedFor).toBeUndefined();
+    expect(warnings).toEqual(["Event dates unavailable", "Earnings results unavailable"]);
+
+    // The next morning the dates are still down, and the actual is in: one alert.
+    now = Date.parse("2026-10-23T13:00:00Z");
+    results = 0.12;
+    await check();
+    await check();
+    expect(notifications).toEqual(["CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"]);
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22", firedFor: "2026-10-22" });
+    expect(reads).toEqual(["CRWV 2026-10-19 2026-10-25", "CRWV 2026-10-19 2026-10-25"]);
   } finally {
     stop();
   }

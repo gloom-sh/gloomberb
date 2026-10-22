@@ -8,6 +8,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { usePaneInstance } from "../../../state/app/context";
@@ -207,6 +208,8 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     if (column.id === "status") return { text, color: toneColor(STATUS_TONES[text] ?? "text", colors) };
     if (column.id === "changeMw" && typeof value === "number") return { text: `${value > 0 ? "+" : ""}${text}`, value, color: signedColor(value, colors) };
     if (column.id === "ticker") return { text, color: colors.textBright, attributes: state.selected ? 0 : TextAttributes.BOLD };
+    // The column has room for the flag beside a code.
+    if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
     return { text, value: numeric,
       color: column.id === "name" || column.id === "utility" || column.id === "capacityMw" || column.id === "requestedMw" ? colors.textBright
         : ["location", "asOf", "observedAt", "scope", "proposedDate", "region", "country", "kind", "role", "period"].includes(column.id) ? colors.textDim : colors.text };

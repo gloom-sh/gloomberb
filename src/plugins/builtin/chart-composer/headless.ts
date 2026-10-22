@@ -9,7 +9,8 @@ import { CHART_FIELD_IDS, GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from
 import { buildSeriesSpec } from "./chart-spec-edit";
 import { getSharedRegistry } from "../../registry";
 import { notATickerSymbol } from "../../../sources/provider-errors";
-import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
+import { resolveChartSpecData } from "../../../time-series/resolve";
+import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition } from "../../../time-series/history-acquisition";
 import {
   getSupportMaxRange,
   intersectChartResolutionSupport,

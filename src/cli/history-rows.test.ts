@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
-  historyRows, historyUnbrokenFrom, historyUnit,
+  historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote,
 } from "./history-rows";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
 import { latestTradeIndex, missingVolumeCount, pricePointValues } from "../utils/price-history-integrity";
@@ -92,6 +92,22 @@ describe("history rows", () => {
     // A history with no volume at all (an index, a currency pair) has nothing to mark, and a day still forming says so itself.
     expect(historyMissingVolumeNote(historyRows(served.map(({ volume: _, ...point }) => mapPricePoint(point, 1, "CCC", true)), "1h"))).toBeNull();
     expect(historyMissingVolumeNote([coin[1]!, { ...coin[0]!, partial: true }])).toBeNull();
+  });
+
+  test("one venue's count in place of the market's volume is kept apart from volume, named with its venue", () => {
+    // KGC's five-minute bars as Gloom Cloud serves the session still trading when the consolidated tape is unavailable
+    // (GLO-1175): the counts are IEX's alone, about a tenth of the market's.
+    const served = [{ date: "2026-10-21T13:30:00Z", open: 23.87, high: 23.87, low: 23.66, close: 23.67, venueVolume: { venue: "IEX", volume: 4_251 } },
+      { date: "2026-10-21T13:35:00Z", open: 23.66, high: 23.93, low: 23.66, close: 23.93, venueVolume: { venue: "IEX", volume: 19_387 } }];
+    const points = served.map((point) => mapPricePoint(point, 1, "NYSE"));
+    expect(points.map((point) => [point.volume, point.venueVolume])).toEqual([[undefined, { venue: "IEX", volume: 4_251 }],
+      [undefined, { venue: "IEX", volume: 19_387 }]]);
+    const rows = historyRows(points, "5m");
+    expect(rows.map(({ volume, venueVolume, volumeVenue }) => ({ volume, venueVolume, volumeVenue }))).toEqual([
+      { volume: null, venueVolume: 4_251, volumeVenue: "IEX" }, { volume: null, venueVolume: 19_387, volumeVenue: "IEX" }]);
+    expect(historyMissingVolumeNote(rows)).toBeNull();
+    expect(historyVenueVolumeNote(rows)).toBe("2 of 2 bars count IEX trades only, not the market's volume");
+    expect(historyVenueVolumeNote(historyRows([mapPricePoint({ ...served[0]!, volume: 600_000 }, 1, "NYSE")], "5m"))).toBeNull();
   });
 
   test("the latest trade a coin's intraday history ends with is part of the bar before it, never a bar without volume", () => {
