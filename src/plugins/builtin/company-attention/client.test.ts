@@ -182,16 +182,17 @@ test("HIRE's moves report each move with why, a company's weeks with why a week 
   const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["RIVN"] }),
     createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: async () => structuredClone(realMoves) as HiringCompanyMoves } as never }));
   const weeks = company.sections.find((section) => section.title === "Hiring moves")!;
-  expect(weeks.rows[0]).toMatchObject({ week: "2026-10-12", newRoles: 311, signal: "Accelerating" });
-  expect(weeks.rows.at(-1)).toMatchObject({ week: "2026-09-14", excluded: "First read" });
-  expect(weeks.columns.find((column) => column.key === "pace")?.format?.(weeks.rows[0]!.pace, weeks.rows[0]!)).toBe("3.4x");
+  const weekRows = weeks.rows!;
+  expect(weekRows[0]).toMatchObject({ week: "2026-10-12", newRoles: 311, signal: "Accelerating" });
+  expect(weekRows.at(-1)).toMatchObject({ week: "2026-09-14", excluded: "First read" });
+  expect(weeks.columns!.find((column) => column.key === "pace")?.format?.(weekRows[0]!.pace, weekRows[0]!)).toBe("3.4x");
   expect(company.notes).toContain(realMoves.latest.why);
-  expect(company.sections.find((section) => section.title === "Move drivers")!.rows[0]).toMatchObject({ label: "Operations", newRoles: 222 });
+  expect(company.sections.find((section) => section.title === "Move drivers")!.rows![0]).toMatchObject({ label: "Operations", newRoles: 222 });
 
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
   const free = { ...structuredClone(realMovesBoard), preview: true, moves: realMovesBoard.moves.slice(0, 3), locked: realMovesBoard.total - 3 } as HiringMovesBoard;
   const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => free } as never }));
-  expect(market.sections.at(-1)!.rows.map((row) => [row.symbol, typeof row.why])).toEqual([["RIVN", "string"], ["GNRC", "string"], ["BBIO", "string"]]);
+  expect(market.sections.at(-1)!.rows!.map((row) => [row.symbol, typeof row.why])).toEqual([["RIVN", "string"], ["GNRC", "string"], ["BBIO", "string"]]);
   expect(market.errors).toEqual(["Free shows 3 of 18 moves. Gloom Pro adds the other 15."]);
 
   const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board,
