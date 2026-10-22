@@ -45,6 +45,7 @@ import {
   subscribeCalendar,
   impactIndicator,
   loadCalendar,
+  eventCountry,
   matchesCountry,
   matchesImpact,
   noScheduledReleasesMessage,
@@ -387,11 +388,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
           color: indicator.color,
         };
       }
-      case "country":
+      case "country": {
         // The ISO code, led on the desktop by the flag drawn as art, never a
         // flag emoji: emoji widths do not match a fixed column and pushed the
-        // right-hand columns off the pane.
-        return withCountryFlag({ text: ev.country, color: colors.textMuted }, ev.country, flagged);
+        // right-hand columns off the pane. A national euro-area release is
+        // its member's (DE for German Ifo), the ECB's the euro area's.
+        const country = eventCountry(ev);
+        return withCountryFlag({ text: country, color: colors.textMuted }, country, flagged);
+      }
       case "event":
         return { text: ev.event, color: colors.text };
       case "actual":

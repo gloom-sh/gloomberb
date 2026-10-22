@@ -8,6 +8,7 @@ import {
   landedHighImpactPrints,
   loadCalendar,
   countriesWithoutEvents,
+  eventCountry,
   matchesCountry,
   matchesImpact,
   noScheduledReleasesMessage,
@@ -166,7 +167,7 @@ describe("country filters", () => {
   });
 
   test("a list matches any of its parts, a region its members", () => {
-    const at = (country: string) => ({ country });
+    const at = (country: string) => ({ country, event: "CPI" });
     expect(matchesCountry(at("BR"), "MX,BR")).toBe(true);
     expect(matchesCountry(at("US"), "MX,BR")).toBe(false);
     expect(matchesCountry(at("JP"), "G7,MX")).toBe(true);
@@ -176,12 +177,39 @@ describe("country filters", () => {
   });
 
   test("countries named with nothing listed are said plainly; regions are never among them", () => {
-    const events = [{ country: "MX" }, { country: "US" }];
+    const events = [{ country: "MX", event: "CPI" }, { country: "US", event: "CPI" }];
     expect(countriesWithoutEvents("MX,BR,ZA", events)).toEqual(["BR", "ZA"]);
     expect(countriesWithoutEvents("G7,IN", events)).toEqual(["IN"]);
     expect(countriesWithoutEvents("US", events)).toEqual([]);
     expect(noScheduledReleasesMessage(["MX"])).toBe("No scheduled releases for MX in this window.");
     expect(noScheduledReleasesMessage(["ZA", "IN"])).toBe("No scheduled releases for ZA or IN in this window.");
     expect(noScheduledReleasesMessage(["MX", "BR", "ZA", "IN", "KR"])).toBe("No scheduled releases for MX, BR, ZA, IN or KR in this window.");
+  });
+
+  test("a national euro-area release is its member's by the adjective its title starts with, and still the euro area's", () => {
+    // Titles as both feeds list them under EU.
+    const eu = (event: string) => ({ country: "EU", event });
+    const shown = (event: string) => eventCountry(eu(event));
+    expect(shown("German Ifo Business Climate")).toBe("DE");
+    expect(shown("German Bundesbank President Nagel Speech")).toBe("DE");
+    expect(shown("French GDP Growth Rate QoQ Prel")).toBe("FR");
+    expect(shown("Italian 2-Year BTP Short Term Auction")).toBe("IT");
+    expect(shown("Spanish Unemployment Rate")).toBe("ES");
+    expect(shown("Belgian NBB Business Climate")).toBe("BE");
+    // The euro area's own releases, and words that only look like a member's.
+    for (const event of ["ECB Interest Rate Decision", "ECB President Lagarde Speech", "Inflation Rate YoY Final", "EU-Bonds Auction",
+      "European Commission Forecasts", "Germany 10-Year Bund Yield", "german Ifo Business Climate", "GermanIfo"]) {
+      expect([event, shown(event)]).toEqual([event, "EU"]);
+    }
+    // Only an EU row is read: a German-named row of another country stays that country's.
+    expect(eventCountry({ country: "US", event: "German Ifo Business Climate" })).toBe("US");
+
+    const ifo = eu("German Ifo Business Climate");
+    expect(matchesCountry(ifo, "EU")).toBe(true);
+    expect(matchesCountry(ifo, "G7")).toBe(true);
+    expect(matchesCountry(ifo, "DE")).toBe(true);
+    expect(matchesCountry(ifo, "FR")).toBe(false);
+    expect(matchesCountry(eu("ECB Interest Rate Decision"), "DE")).toBe(false);
+    expect(countriesWithoutEvents("DE,FR,EU", [ifo])).toEqual(["FR"]);
   });
 });
