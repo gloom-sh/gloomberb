@@ -1,0 +1,40 @@
+  > Search or run a command  Ctrl+P                                                                     Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                   ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                    ⚡
+  Main Portfolio  Watchlist                       No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP
+
+  No tickers.
+  Click + ticke┌─:: Earnings Calendar─────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+                   [ ] Mine                                                                               Size  Mine first
+  + ticker Ente    TICKER   NAME            WHEN     IMPLIED    MOVE   AVG MOVE   EPS EST   EPS ACT   SALES EST  MKT CAP ▼
+                 Today (138)                                                                                               ▀
+                   PG       Procter & Gamb… BMO         ±3.2%      --       1.6%      1.89        --      22.82B   364.47B
+                   UNP      Union Pacific…  BMO         ±3.5%      --       4.0%      3.48        --       7.13B   170.98B
+                   BX       Blackstone Inc. BMO         ±4.2%      --       3.6%      1.26        --       3.21B   131.99B
+                   LMT      Lockheed Marti… BMO         ±4.5%      --       6.2%      7.52        --      20.46B   126.85B
+                   WDC      Western Digita… AMC         ±8.3%      --       7.5%      4.10        --       4.15B   125.77B
+                   VLO      Valero Energy…  BMO         ±4.8%      --       2.7%     21.18        --      41.74B   125.75B
+                   NEM      Newmont Corpor… AMC         ±5.0%      --       6.4%      1.94        --       6.24B   124.09B
+                   SPOT     Spotify Techno… BMO         ±8.5%      --         --      3.10        --          --   108.00B
+                   CMCSA    Comcast Corpor… BMO         ±6.0%      --       5.3%      0.99        --      29.22B    78.30B
+                   BCS      Barclays PLC    BMO         ±8.1%      --         --      0.67        --          --    76.17B
+                   NSC      Norfolk Southe… BMO         ±5.4%      --       2.5%      3.47        --       3.48B    73.69B
+  + ticker         BE       Bloom Energy C… AMC         ±9.9%      --      11.2%      0.67        --       1.07B    69.97B
+                   HON      Honeywell Inte… BMO         ±5.2%      --       5.3%      2.16        --       5.01B    68.03B
+                   ARGX     argenx SE       BMO        ±10.3%      --         --    -27.83        --       1.64B    55.66B
+:: #everyone       NDAQ     Nasdaq, Inc.    BMO         ±3.7%      --       1.7%      1.02        --       1.46B    54.02B
+ ← Back            NOK      Nokia Corporat… BMO         ±9.2%      --         --      0.07        --          --    51.79B
+    improvement    FIX      Comfort System… AMC        ±16.2%      --       9.6%     12.85        --       3.40B    49.42B
+   reply vince:    BBD      Banco Bradesco… AMC        ±17.2%      --         --      0.13        --          --    45.71B
+  chronosmmxm_d    BBDO     Banco Bradesco… AMC            --      --         --        --        --          --    45.68B
+    I´ll come w    PCG      PG&E Corp       BMO         ±3.8%      --       1.1%      0.42        --       6.82B    39.48B
+    can find. F    ROP      Roper Technolo… BMO         ±7.6%      --       3.8%      5.79        --       2.17B    39.32B
+   reply chrono    CBRE     CBRE Group, In… BMO         ±9.5%      --       3.9%      1.95        --      11.90B    38.87B
+  vince Discord    HBAN     Huntington Ban… BMO         ±6.4%      --       2.5%      0.38        --       2.83B    31.76B
+    please do  └just now                                           [v]iew catalysts [t]icker [e]stimates [c]alls [a]nalysts─◢
+     ❤️ 1                                    ▄     Log in  Enter  Sign up free
+ -------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +                                                                                                               v0.18.3 ☁ Log in Feedback
