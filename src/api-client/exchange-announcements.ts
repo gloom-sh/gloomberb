@@ -1,5 +1,5 @@
 /** One company announcement as its exchange released it (ASX). */
-export interface ExchangeAnnouncement {
+interface ExchangeAnnouncement {
   /** Release time, ISO 8601 UTC. */
   date: string;
   headline: string;

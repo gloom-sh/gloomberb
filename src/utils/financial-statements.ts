@@ -29,7 +29,7 @@ export function statementHistoryNotes(
 }
 
 /** How old a statement's latest period may be before a report says how old it is (GLO-1176). */
-export const STALE_STATEMENT_MONTHS = 15;
+const STALE_STATEMENT_MONTHS = 15;
 
 /** Whole months from a YYYY-MM-DD period end to `now`, in UTC. */
 function monthsSince(date: string, now: number): number | null {
