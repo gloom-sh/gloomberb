@@ -283,7 +283,11 @@ function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerC
 export function isCloudScreenerEligible(): boolean | Promise<boolean> {
   const user = apiClient.getCurrentUser();
   if (user || !apiClient.isSignedIn()) return apiClient.isVerified() && hasProAccess(user);
-  return apiClient.ensureVerifiedSession().then((verified) => !!verified && hasProAccess(verified), () => false);
+  return apiClient.ensureVerifiedSession().then((verified) => !!verified && hasProAccess(verified), (error: unknown) => {
+    // The delayed lists still load; the failed account check is logged, not shown.
+    logFailure("market-movers", "Account check for the real-time lists failed")(error);
+    return false;
+  });
 }
 
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
