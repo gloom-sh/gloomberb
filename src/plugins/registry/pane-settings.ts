@@ -164,11 +164,12 @@ export function resolveRegistryPaneSettings({
     for (const field of settingsDef.fields) {
       if (field.type === "action" || field.storage !== "plugin") continue;
       const configValue = getConfigState(pluginId, field.key);
+      const present = (stored: unknown) => field.present ? field.present(stored) : stored;
       if (configValue !== null) {
-        resolvedSettings[field.key] = configValue;
+        resolvedSettings[field.key] = present(configValue);
       } else if (settingsDef.values && field.key in settingsDef.values) {
         // Never set: the default the settings declare, not a same-named pane value.
-        resolvedSettings[field.key] = settingsDef.values[field.key];
+        resolvedSettings[field.key] = present(settingsDef.values[field.key]);
       } else {
         delete resolvedSettings[field.key];
       }

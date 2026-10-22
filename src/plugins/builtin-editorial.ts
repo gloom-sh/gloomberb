@@ -39,6 +39,11 @@ export const BUILTIN_EDITORIAL: Readonly<Record<string, BuiltinEditorial>> = {
     screenshots: ["SPLC", "GPU", "JOBS"],
   },
   application: { categories: ["core"] },
+  "daily-brief": {
+    categories: ["research"],
+    tagline: "The day's quotes, chart and tables.",
+    highlights: ["DAY"],
+  },
   broker: { categories: ["broker"], tagline: "Broker accounts, sync and connections." },
   "clinical-trials": { categories: ["research"], tagline: "Clinical trials by drug, condition, sponsor." },
   "comment-letters": { categories: ["research"], tagline: "SEC comment letters and company replies." },

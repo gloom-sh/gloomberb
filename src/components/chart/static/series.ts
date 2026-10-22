@@ -23,8 +23,22 @@ export interface StaticSeriesOptions {
   dataShape?: ResolvedSeries["dataShape"];
   /** Wall-clock spacing instead of one slot per observation. */
   calendarSpaced?: boolean;
+  /**
+   * Intraday clock. The axis reads this zone, and each bar keeps this cadence.
+   * A session-date change still takes one slot.
+   */
+  timeZone?: string;
+  cadenceMs?: number;
   /** Columns below zero in this colour. */
   negativeColor?: string;
+}
+
+function intradayBasis(options: StaticSeriesOptions): { timeBasis?: ResolvedSeries["timeBasis"] } {
+  const { timeZone, cadenceMs } = options;
+  if (timeZone && timeZone !== "UTC" && typeof cadenceMs === "number" && cadenceMs > 0 && cadenceMs < DAY_MS) {
+    return { timeBasis: { kind: "market", timeZone, cadenceMs } };
+  }
+  return options.calendarSpaced ? {} : { timeBasis: INDEX_SPACED_TIME_BASIS };
 }
 
 export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOptions): ResolvedSeries {
@@ -41,7 +55,7 @@ export function staticSeries(points: TimeSeriesPoint[], options: StaticSeriesOpt
     axis: "right",
     panelId: "main",
     interpolation: "none",
-    ...(options.calendarSpaced ? {} : { timeBasis: INDEX_SPACED_TIME_BASIS }),
+    ...intradayBasis(options),
     ...(options.negativeColor ? { negativeColor: options.negativeColor } : {}),
     points,
   };

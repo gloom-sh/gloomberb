@@ -484,6 +484,38 @@
       ]
     },
     {
+      "id": "daily-brief",
+      "name": "Daily Brief",
+      "description": "Opens at the start of the day. ES, Nasdaq, crude, the 10-year and 30-year yields, the 30-year mortgage rate, fear and greed, VIX, and the next Fed meeting, plus small tables. Headlines, releases, and earnings are the start; Ask Gloom or the Tables setting can replace those tables with any view.",
+      "tagline": "The day's quotes, chart and tables.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ],
+      "contributes": {
+        "panes": [
+          "daily-brief"
+        ],
+        "capabilities": [],
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "DAY",
+            "name": "Daily Brief",
+            "description": "Opens at the start of the day. ES, Nasdaq, crude, the 10-year and 30-year yields, the 30-year mortgage rate, fear and greed, VIX, and the next Fed meeting, plus small tables. Headlines, releases, and earnings are the start; Ask Gloom or the Tables setting can replace those tables with any view."
+          }
+        ]
+      },
+      "highlights": [
+        "DAY"
+      ]
+    },
+    {
       "id": "debug",
       "name": "Debug",
       "description": "View and export debug logs",
