@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-19T08:00:00.000Z",
+ "generatedAt": "2026-10-19T14:00:00.000Z",
  "proRequired": true,
  "preview": false,
  "symbol": "RIVN",
@@ -36,14 +36,14 @@
    ]
   },
   "ratio": 3.4175824175824174,
-  "zScore": 16.35247121743766,
+  "zScore": 14.122696252860127,
   "peers": {
    "group": "sector",
    "label": "Consumer Cyclical",
-   "companies": 131,
-   "medianRatio": 0.8921568627450981
+   "companies": 130,
+   "medianRatio": 0.8952309737454305
   },
-  "peerRelative": 3.8306967757517203,
+  "peerRelative": 3.8175426429718766,
   "direction": "accelerating",
   "signal": "accelerating",
   "drivers": [
@@ -80,9 +80,17 @@
     "count": 3
    }
   ],
-  "why": "311 new roles in the week of Oct 12, 2026, 3.4x the average of 91 a week over the 3 measured weeks before. Consumer Cyclical peers (131): 0.9x. Most of the rise in Operations: +209 against 13 a week.",
+  "flags": [],
+  "peakDay": {
+   "day": "2026-10-17",
+   "newRoles": 113
+  },
+  "priorMaxOpen": 852,
+  "why": "311 new roles in the week of Oct 12, 2026, 3.4x the average of 91 a week over the 3 measured weeks before. Consumer Cyclical peers (130): 0.9x. Most of the rise in Operations: +209 against 13 a week.",
   "firstComputedAt": "2026-10-19T06:04:11.000Z",
-  "computedAt": "2026-10-19T06:04:11.000Z"
+  "computedAt": "2026-10-19T06:04:11.000Z",
+  "signalSince": "2026-10-19T00:04:09.000Z",
+  "confirmed": true
  },
  "week": {
   "week": "2026-10-12",
@@ -147,8 +155,8 @@
    "week": "2026-10-12",
    "newRoles": 311,
    "ratio": 3.4175824175824174,
-   "zScore": 16.35247121743766,
-   "peerRelative": 3.8306967757517203,
+   "zScore": 14.122696252860127,
+   "peerRelative": 3.8175426429718766,
    "direction": "accelerating",
    "signal": "accelerating",
    "computedAt": "2026-10-19T06:04:11.000Z"
@@ -647,6 +655,7 @@
  "locked": {
   "history": 0,
   "added": 0,
-  "closed": 0
+  "closed": 0,
+  "move": 0
  }
 }

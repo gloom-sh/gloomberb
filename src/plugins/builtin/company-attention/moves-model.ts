@@ -1,15 +1,15 @@
 import type { DataTableColumn, StatItem } from "../../../components";
-import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
+import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
 import { formatNumber } from "../../../utils/format";
-import { countOf, freePreviewNote } from "../shared/free-preview";
+import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
 import type { AttentionRow } from "./model";
 
 /**
  * HIRE's Moves tab: each covered company's new roles in the latest complete
- * UTC week against its own measured weeks and its peers' (docs/hiring.md in
- * the server, Hiring moves). The board lists the moves; a company shows its
- * weeks, what drove the move and the postings behind it.
+ * UTC week against its own measured weeks and its peers'
+ * (docs/hiring-app-attention.md, Moves). The board lists the moves; a company
+ * shows its weeks, what drove the move and the postings behind it.
  */
 export type MovesView = "weeks" | "drivers" | "titles" | "added" | "closed";
 export const MOVES_VIEWS: ReadonlyArray<{ value: MovesView; label: string }> = [
@@ -36,6 +36,17 @@ function signalLabel(signal: HiringMove["signal"]): string {
   return signal === "accelerating" ? "Accelerating" : signal === "slowing" ? "Slowing" : signal === "with_peers" ? "With peers" : "In line";
 }
 export const SIGNAL_TONE: Record<string, "positive" | "negative" | "muted"> = { Accelerating: "positive", Slowing: "negative", "With peers": "muted", "In line": "muted" };
+
+/** Why a move is shown but not alerted: the move's own numbers say it is not a pace. */
+const FLAG_LABELS: Record<HiringMoveFlag, string> = { one_day_batch: "One-day batch", outsized: "Over board size" };
+const flagText = (move: Pick<HiringMove, "flags">) => (move.flags ?? []).map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
+/** Whether the move's alert has gone out, waits for a later pass or is held. */
+function alertText(move: HiringMove): string | null {
+  if (move.signal !== "accelerating" && move.signal !== "slowing") return "None: not the company's own move";
+  if (move.flags?.length) return "Held: flagged for a second look";
+  if (move.confirmed === undefined) return null;
+  return move.confirmed ? `Alerting: the signal has held since ${move.signalSince?.slice(0, 16).replace("T", " ") ?? "--"} UTC` : "Waits for a pass 12 hours on to keep it";
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** "Oct 12": the Monday a UTC week starts on. */
@@ -80,11 +91,16 @@ export function moveFacts(move: HiringMove): Array<{ label: string; value: strin
     { label: "Pace", value: `${pace(move.ratio)} its average, z ${signed(move.zScore, 1)}` },
     { label: "Peers", value: `${pace(move.peers.medianRatio)}, ${peerGroup(move)}` },
     { label: "Against peers", value: pace(move.peerRelative) },
+    ...(move.flags?.length ? [{ label: "Check", value: [
+      move.flags.includes("one_day_batch") && move.peakDay ? `${count(move.peakDay.newRoles)} of the ${count(move.newRoles)} came on ${move.peakDay.day}` : "",
+      move.flags.includes("outsized") && move.priorMaxOpen != null ? `more than the ${count(move.priorMaxOpen)} roles its boards held open at most before` : "",
+    ].filter(Boolean).join("; ") || flagText(move)! }] : []),
     ...(move.drivers.length ? [{ label: "Role families", value: move.drivers.map((row) => `${row.label} ${count(row.newRoles)} (${average(row.baselineMean)} a week)`).join(", ") }] : []),
     ...(move.topTitles.length ? [{ label: "Top titles", value: move.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Roles closed", value: count(move.closedRoles) },
     { label: "Open roles", value: count(move.openRoles) },
     { label: "Boards", value: move.sourceTickers.join(", ") },
+    ...(alertText(move) ? [{ label: "Alert", value: alertText(move)! }] : []),
     { label: "First computed", value: move.firstComputedAt },
   ];
 }
@@ -115,8 +131,11 @@ const column = (id: string, label: string, width: number, numeric = false, flex 
 const BOARD_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 22, false, true), column("signal", "Signal", 13), column("newRoles", "New roles", 10, true),
   column("mean", "Avg / week", 11, true), column("pace", "Pace", 7, true), column("z", "Z-score", 9, true), column("peers", "Peers", 7, true), column("driver", "Driver", 24)];
 
+/** Shown only while a row on the board is flagged. */
+const CHECK_COLUMN = column("check", "Check", 15);
+
 const moveRow = (move: HiringMove): MovesRow => ({ id: move.symbol, symbol: move.symbol, move, values: { symbol: move.symbol, name: move.name, signal: signalLabel(move.signal), newRoles: move.newRoles,
-  mean: move.baseline.mean, pace: move.ratio, z: move.zScore, peers: move.peers.medianRatio, driver: driverText(move) } });
+  mean: move.baseline.mean, pace: move.ratio, z: move.zScore, peers: move.peers.medianRatio, check: flagText(move), driver: driverText(move) } });
 
 export function movesBoardModel(board: HiringMovesBoard, filter: HiringMovesFilter): MovesModel {
   const { coverage } = board;
@@ -131,7 +150,8 @@ export function movesBoardModel(board: HiringMovesBoard, filter: HiringMovesFilt
       { label: "Measured", value: count(coverage.measured), detail: `week of ${weekLabel(board.week)}`, detailVariants: [`wk ${weekLabel(board.week)}`, ""] },
       { label: "Not measured", value: count(coverage.unmeasured), detail: "collection changed", detailVariants: [""] },
     ] : [],
-    sections: { board: { columns: BOARD_COLUMNS, rows: board.moves.map(moveRow), locked: board.preview ? board.locked : 0,
+    sections: { board: { columns: board.moves.some((move) => move.flags?.length) ? [...BOARD_COLUMNS.slice(0, -1), CHECK_COLUMN, BOARD_COLUMNS.at(-1)!] : BOARD_COLUMNS,
+      rows: board.moves.map(moveRow), locked: board.preview ? board.locked : 0,
       empty: !board.week ? "No week has been measured yet." : filter === "all" ? "No company was measured this week." : "No company moved against its own weeks this week." } },
     latest: null,
   };
@@ -159,12 +179,20 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Average", value: average(latest.baseline.mean), detail: `a week, ${latest.baseline.weeks} before`, detailVariants: ["a week", ""] },
     { label: "Pace", value: pace(latest.ratio), detail: `z ${signed(latest.zScore, 1)}`, tone: tone(latest.direction) },
     { label: "Peers", value: pace(latest.peers.medianRatio), detail: latest.peers.group === "universe" ? "all covered" : latest.peers.label, detailVariants: [""] },
-    { label: "Signal", value: signalLabel(latest.signal), detail: driverText(latest) ?? undefined, detailVariants: [""], tone: tone(latest.signal) },
+    // A flagged move says what to check where the driver would be; its drivers keep their view.
+    { label: "Signal", value: signalLabel(latest.signal), detail: (latest.flags?.length ? `${flagText(latest)}, no alert` : driverText(latest)) ?? undefined, detailVariants: [""], tone: tone(latest.signal) },
   ] : data.week && !data.week.measured ? [
     { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },
     { label: "Not measured", value: exclusionText(data.week.excluded) || "--", wide: true },
+  ] : data.week && data.preview && data.locked.move ? [
+    // A free read off the free board: the week's counts, the move is Pro's.
+    { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },
+    { label: "Closed", value: count(data.week.closedRoles) },
+    { label: "Open", value: count(data.week.openRoles) },
+    { label: "Move", value: "Pro", detail: "pace, peers, why", detailVariants: [""] },
   ] : [];
   const historyLocked = data.preview ? Math.max(0, data.locked.history - weeks.length) : 0;
+  const noMove = data.preview && data.locked.move ? "This company's move is in Pro." : "No measured move for this company yet.";
   return {
     asOf: latest?.computedAt ?? data.history[0]?.computedAt ?? null,
     week: latest?.week ?? data.week?.week ?? null,
@@ -189,13 +217,13 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
         columns: [column("label", "Role family", 24, false, true), column("newRoles", "New roles", 10, true), column("mean", "Avg / week", 11, true), column("change", "Change", 9, true)],
         rows: (latest?.drivers ?? []).map((row): MovesRow => ({ id: row.id, values: { label: row.label, newRoles: row.newRoles, mean: row.baselineMean, change: row.newRoles - row.baselineMean } })),
         locked: 0,
-        empty: latest ? "No role family stands out in this week." : "No measured move for this company yet.",
+        empty: latest ? "No role family stands out in this week." : noMove,
       },
       titles: {
         columns: [column("title", "Title", 40, false, true), column("count", "New roles", 10, true)],
         rows: (latest?.topTitles ?? []).map((row): MovesRow => ({ id: row.title, values: { title: row.title.trim(), count: row.count } })),
         locked: 0,
-        empty: latest ? "No title repeats in this week's new roles." : "No measured move for this company yet.",
+        empty: latest ? "No title repeats in this week's new roles." : noMove,
       },
       added: { columns: POSTING_COLUMNS("First seen"), rows: data.evidence.added.map(postingRow(false)), locked: data.preview ? data.locked.added : 0, empty: "No posting was first seen this week." },
       closed: { columns: POSTING_COLUMNS("Closed"), rows: data.evidence.closed.map(postingRow(true)), locked: data.preview ? data.locked.closed : 0, empty: "No posting closed this week." },
@@ -203,14 +231,21 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
   };
 }
 
-/** The lock line of a free moves read: what free shows and what Pro adds. Null when nothing is held back. */
-export function movesPreviewNote(data: HiringMovesBoard | HiringCompanyMoves): string | null {
+const list = (parts: string[]) => parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+
+/**
+ * The lock line of a free moves read: what free shows and what Pro adds. Null
+ * when nothing is held back. A free board is the same own moves whatever
+ * `filter` asked for.
+ */
+export function movesPreviewNote(data: HiringMovesBoard | HiringCompanyMoves, filter?: HiringMovesFilter): string | null {
   if (!data.preview) return null;
   if ("moves" in data) {
-    return data.locked > 0 ? freePreviewNote({ shows: `${data.moves.length} of ${count(data.total)} moves`, adds: `the other ${count(data.locked)}` }) : null;
+    const shows = `${data.moves.length} of ${count(data.total)} moves${filter && filter !== "moves" ? `: ${previewCantFilter(["signal"])}` : ""}`;
+    return data.locked > 0 ? freePreviewNote({ shows, adds: `the other ${count(data.locked)}` }) : null;
   }
-  const { history, added, closed } = data.locked;
-  if (history + added + closed <= 0) return null;
-  const adds = [history > 0 ? `${countOf(history, "week")} of history` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
-  return freePreviewNote({ shows: "the latest week and three postings each way", adds: adds.join(" and ") });
+  const { history, added, closed, move = 0 } = data.locked;
+  if (history + added + closed + move <= 0) return null;
+  const adds = [move > 0 ? "its move" : "", history > 0 ? `${countOf(history, "week")} of history` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
+  return freePreviewNote({ shows: "the latest week and three postings each way", adds: list(adds) });
 }

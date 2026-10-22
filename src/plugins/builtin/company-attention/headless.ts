@@ -78,7 +78,7 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const lock = kind === "hiring" ? hiringPreviewNote(data as HiringPayload | HiringBoard) : appsPreviewNote(data as AppAttentionPayload);
       const movesData = movesRead ? await movesRead : null;
       const movesModel = movesData && !(movesData instanceof Error) ? "moves" in movesData ? movesBoardModel(movesData, movesFilter) : companyMovesModel(movesData) : null;
-      const movesLock = movesData && !(movesData instanceof Error) ? movesPreviewNote(movesData) : null;
+      const movesLock = movesData && !(movesData instanceof Error) ? movesPreviewNote(movesData, movesFilter) : null;
       // A company's move says why in one sentence; the board's rows each carry theirs.
       const why = movesModel?.latest?.why;
       const notes = [...model.notices, ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),

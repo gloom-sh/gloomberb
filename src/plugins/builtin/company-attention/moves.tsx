@@ -146,6 +146,8 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
           const tone = SIGNAL_TONE[value] ?? "muted";
           return { text: value, color: toneColor(tone, colors), keepColorWhenSelected: tone !== "muted" };
         }
+        // A flagged move is shown, not alerted.
+        if (column.id === "check" && typeof value === "string") return { text: value, value, color: toneColor("warning", colors), keepColorWhenSelected: true };
         if (typeof value === "number") {
           return { text: movesNumber(column.id, value), value, color: MOVES_SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors) : column.id === "mean" ? colors.textDim : colors.text };
         }

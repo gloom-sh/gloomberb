@@ -10,6 +10,7 @@ import realApps from "./fixtures/apps.json";
 import { attentionCache, cachedAttention, fetchAppRank, fetchAttention, loadAttention, validateAttention } from "./client";
 import { appsModel, attentionSeries, hiringModel, sortAttentionRows } from "./model";
 import { attentionHeadless } from "./headless";
+import { companyMovesModel, moveFacts, movesBoardModel, movesPreviewNote } from "./moves-model";
 import realAppRank from "./fixtures/app-rank.json";
 import realMoves from "./fixtures/hiring-moves.json";
 import realMovesBoard from "./fixtures/hiring-moves-board.json";
@@ -190,11 +191,29 @@ test("HIRE's moves report each move with why, a company's weeks with why a week 
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
   const free = { ...structuredClone(realMovesBoard), preview: true, moves: realMovesBoard.moves.slice(0, 3), locked: realMovesBoard.total - 3 } as HiringMovesBoard;
   const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => free } as never }));
-  expect(market.sections.at(-1)!.rows.map((row) => [row.symbol, typeof row.why])).toEqual([["CBRL", "string"], ["RIVN", "string"], ["ARGX", "string"]]);
-  expect(market.errors).toEqual(["Free shows 3 of 39 moves. Gloom Pro adds the other 36."]);
+  expect(market.sections.at(-1)!.rows.map((row) => [row.symbol, typeof row.why])).toEqual([["RIVN", "string"], ["GNRC", "string"], ["BBIO", "string"]]);
+  expect(market.errors).toEqual(["Free shows 3 of 18 moves. Gloom Pro adds the other 15."]);
 
   const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board,
     getCloudHiringMoves: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
   expect(missing.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
   expect(missing.notes).toEqual(["Hiring moves are not available yet."]);
+});
+
+test("a flagged move is listed with what to check and never reads as alerted; a free read off the free board keeps the week, not the move", async () => {
+  const board = movesBoardModel(structuredClone(realMovesBoard) as HiringMovesBoard, "moves").sections.board!;
+  // CBRL's seasonal roles came in one day: on the board, after the unflagged moves.
+  const cbrl = board.rows.find((row) => row.symbol === "CBRL")!;
+  expect(cbrl.values.check).toBe("One-day batch");
+  expect(board.rows.findIndex((row) => row.values.check)).toBe(board.rows.length - 2);
+  expect(moveFacts(cbrl.move!)).toEqual(expect.arrayContaining([{ label: "Check", value: "1,318 of the 1,329 came on 2026-10-13" }, { label: "Alert", value: "Held: flagged for a second look" }]));
+  const unflagged = movesBoardModel({ ...structuredClone(realMovesBoard), moves: realMovesBoard.moves.slice(0, 3) } as HiringMovesBoard, "moves").sections.board!;
+  expect(unflagged.columns.some((column) => column.id === "check")).toBe(false);
+
+  const { latest: _latest, ...rivn } = structuredClone(realMoves) as HiringCompanyMoves;
+  const free: HiringCompanyMoves = { ...rivn, latest: null, preview: true, weeks: [], history: [], locked: { history: 5, added: 17, closed: 17, move: 1 } };
+  const model = companyMovesModel(free);
+  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New roles", "311"], ["Closed", "191"], ["Open", "979"], ["Move", "Pro"]]);
+  expect(model.sections.drivers!.empty).toBe("This company's move is in Pro.");
+  expect(movesPreviewNote(free)).toBe("Free shows the latest week and three postings each way. Gloom Pro adds its move, 5 weeks of history and 34 more postings.");
 });

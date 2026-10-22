@@ -111,7 +111,7 @@ export interface HiringBoard {
 
 /**
  * Why a company's week is not measured: the collection changed, so its new
- * roles say nothing about hiring (docs/hiring.md, Hiring moves).
+ * roles say nothing about hiring (docs/hiring-app-attention.md, Moves).
  */
 export type HiringMoveExclusion =
   | "first_read" | "source_added" | "identity_reset" | "catch_up" | "retired" | "truncated" | "rediscovered"
@@ -126,6 +126,12 @@ export interface HiringMoveWeek {
   measured: boolean
   excluded: HiringMoveExclusion[]
 }
+
+/**
+ * Why a move is held from alerts and ranked after the others: one day carried
+ * most of its new roles, or it is more roles than the boards ever held open.
+ */
+export type HiringMoveFlag = "one_day_batch" | "outsized"
 
 /** A company's new roles in one UTC week against its own measured weeks before and its peers'. */
 export interface HiringMove {
@@ -150,9 +156,18 @@ export interface HiringMove {
   /** Role families behind the move, each scaled to the week's measured new roles. */
   drivers: Array<{ id: string; label: string; newRoles: number; baselineMean: number }>
   topTitles: Array<{ title: string; count: number }>
+  /** Absent from a server before flags. */
+  flags?: HiringMoveFlag[]
+  /** The day with the most new roles that week, and how many. */
+  peakDay?: { day: string; newRoles: number } | null
+  /** The most roles the company's boards held open in a week before. */
+  priorMaxOpen?: number | null
   why: string
   firstComputedAt: string
   computedAt: string
+  /** Since when the current signal has held; it alerts once a pass 12 hours on keeps it. */
+  signalSince?: string
+  confirmed?: boolean
 }
 
 export interface HiringMovePosting {
@@ -175,6 +190,8 @@ export interface HiringMovesBoard {
   proRequired: true
   preview: boolean
   week: string | null
+  /** A free read is always the own moves, whatever was asked. */
+  filter?: HiringMovesFilter
   total: number
   locked: number
   coverage: {
@@ -202,5 +219,6 @@ export interface HiringCompanyMoves {
   history: Array<Pick<HiringMove, "week" | "newRoles" | "ratio" | "zScore" | "peerRelative" | "direction" | "signal" | "computedAt">>
   evidence: { added: HiringMovePosting[]; closed: HiringMovePosting[] }
   evidenceTotals: { added: number; closed: number }
-  locked: { history: number; added: number; closed: number }
+  /** `move`: a free read of a company off the free board keeps its week, not its move. */
+  locked: { history: number; added: number; closed: number; move?: number }
 }
