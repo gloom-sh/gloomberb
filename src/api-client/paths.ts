@@ -612,9 +612,11 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
 }
 
 /** Stories whose headline, summary or publisher matches the text, best match first; the service takes at most 100. */
-export function cloudNewsSearchPath(query: string, limit?: number): string {
+/** `topics` are NI codes the stories must carry: `query=gold&topics=metals` is gold's market news. */
+export function cloudNewsSearchPath(query: string, limit?: number, topics?: readonly string[]): string {
   const search = new URLSearchParams({ query });
   if (limit != null) search.set("limit", String(limit));
+  if (topics?.length) search.set("topics", topics.join(","));
   return appendQuery("/news/search", search);
 }
 

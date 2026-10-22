@@ -61,6 +61,7 @@ export interface KeyboardToolDrag {
 
 /** The chart's own layout: its tool bar, its legend and its panels' heights. */
 export interface CompositeChartLayoutControls {
+  /** The bar is saved hidden; it still opens while a tool is in hand. */
   toolbarHidden: boolean;
   toggleToolbar: () => void;
   /** The legend has more than one series, so it can fold to its first. */
@@ -661,8 +662,9 @@ export function useCompositeChartKeyboard({
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
   const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable;
   const pinState = pin ? pin.pinned : null;
+  // Hidden as it shows: a saved hidden bar is open while a tool is in hand.
+  const toolbarHidden = layout.toolbarHidden && armedTool === null;
   const {
-    toolbarHidden,
     legendCollapsible,
     legendCollapsed,
     panelsResizable,

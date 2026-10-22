@@ -10,7 +10,9 @@ export function computeTickerPriceReturns(
 ): Pick<Fundamentals, "return1Y" | "return3Y"> {
   const quote = hasUnknownBondHistoryBasis(financials?.quote, assetCategory, financials?.quoteMetadata?.instrumentType)
     ? undefined : financials?.quote;
-  const fields = buildPriceReturnFields(appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], quote));
+  // Bars and the quote are dated on the listing's clock.
+  const venue = financials?.quote?.listingExchangeName || financials?.quote?.exchangeName || undefined;
+  const fields = buildPriceReturnFields(appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], quote), venue);
   return {
     return1Y: fields.find((field) => field.id === "1Y")?.value ?? undefined,
     return3Y: fields.find((field) => field.id === "3Y")?.value ?? undefined,

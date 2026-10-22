@@ -19,6 +19,8 @@ export type MarketContext = ConfigContext & {
   resolveBroker?: (brokerType: string) => import("../types/broker").BrokerAdapter | null;
   /** Charts catalog series in a report run without the plugin runtime. */
   seriesCapabilities?: CapabilityInvoker;
+  /** The catalog series charted as an expression (`FRED:DFII10`), in a report run without the plugin runtime. */
+  findCatalogSeries?: (expression: string) => import("../series/types").SeriesDefinition | undefined;
   /** `--refresh`: prefetched data bypasses the local cache. */
   refresh?: boolean;
   /** Filings behind the statements and a bank's figures, read from Gloom Cloud; absent where the data service is a stand-in. */

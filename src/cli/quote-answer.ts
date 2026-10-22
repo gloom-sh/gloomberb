@@ -7,7 +7,8 @@ import { canonicalExchange } from "../utils/exchanges";
 import type { CliCommandDef } from "../types/plugin";
 import { currencyCodeNote } from "./currency-hints";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "./listing-suggestion";
-import { indexRootAlsoLine, indexRootFor, indexRootTryLine } from "./index-roots";
+import { indexRootAlsoLine, indexRootTryLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { knownGapForTicker } from "./known-gaps";
 import {

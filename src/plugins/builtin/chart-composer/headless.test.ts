@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
+import { bareFredSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -318,4 +318,49 @@ test("an economic chart is dated by its observations' day, and by their period w
   const catalog = (seriesId: string) => ({ source: { kind: "capability" as const, capabilityId: "c", seriesId } });
   expect(periodChartDates([{ id: "ratio", label: "VIX 3M / VIX", points: days }], { series: [catalog("ratio")] } as never)).toEqual({ asOf: "2026-10-09" });
   expect(periodChartDates([cpi], { series: [catalog("s"), { source: { kind: "security" } }] } as never)).toEqual({});
+});
+
+test("fn G DFII10 charts the FRED series once no listing answers to it, and a ticker of the same letters still charts as the ticker", async () => {
+  const days = ["2026-10-19", "2026-10-20", "2026-10-21"];
+  const fredCalls: string[] = [];
+  const catalog = (expression: string) => ({ "FRED:DFII10": "10Y TIPS real yield", "FRED:IR": "Some FRED series" })[expression];
+  const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+  const context = (getQuote: (symbol: string) => Promise<unknown>, chartSpec = buildCustomChartPreset("DFII10")) => {
+    chartSpec.viewport.dateWindow = { start: "2026-10-19", end: "2026-10-22" };
+    return createTestHeadlessContext({
+      marketData: createTestDataProvider({
+        getTickerFinancials: async () => { throw new Error("Not a ticker: DFII10."); },
+        getQuote: getQuote as never,
+      }),
+      apiClient: { getCloudFredSeries: async (id: string) => {
+        fredCalls.push(id);
+        return { info: null, observations: days.map((date, index) => ({ date, value: 2.8 - index / 100 })) };
+      } } as never,
+      settings: { chartSpec },
+      catalogSeriesName: catalog,
+      resolveListing: async () => null,
+    });
+  };
+  const result = await chartHeadless("chart-composer-pane").load(
+    { argument: "DFII10", rawArgument: "DFII10", symbols: [], options: {} }, context(notATicker)) as ChartPaneModel;
+  expect(fredCalls).toEqual(["DFII10"]);
+  expect(result.errors).toEqual([]);
+  expect(result.series[0]).toMatchObject({ label: "10Y TIPS real yield" });
+  expect(result.series[0]!.points.map(({ value }) => value)).toEqual([2.8, 2.79, 2.78]);
+
+  const dfii10 = buildCustomChartPreset("DFII10").series[0]!;
+  const ir = buildCustomChartPreset("IR").series[0]!;
+  const quoted = async (symbol: string) => ({ symbol, price: 79, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0 });
+  const guard = (getQuote: (symbol: string) => Promise<unknown>) => ({ marketData: createTestDataProvider({ getQuote: getQuote as never }), catalogSeriesName: catalog });
+  // A listing read, a quote that answers, or a failure that is not "not a ticker" keep the ticker.
+  expect(await bareFredSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
+  expect(await bareFredSeries(ir, async () => null, guard(quoted))).toBeNull();
+  expect(await bareFredSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
+  // A symbol the catalog does not list is never asked about.
+  let asked = 0;
+  expect(await bareFredSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
+  expect(asked).toBe(0);
+  expect(await bareFredSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
+    id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
+  });
 });

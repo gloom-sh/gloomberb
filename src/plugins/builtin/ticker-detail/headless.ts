@@ -1,4 +1,4 @@
-import { FINANCIAL_VINTAGE_NOTICE, statementHistoryNotes } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
@@ -10,7 +10,7 @@ import {
 } from "../../../utils/price-history-integrity";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
+  financialStatementPeriods, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
@@ -41,7 +41,8 @@ import {
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
-import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
+import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
+import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import {
   closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyDateHeader, isDailyOrLongerBar, type HistoryBarSize,
@@ -117,11 +118,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
+    // A latest period over 15 months old says how old it is.
+    const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
-      // The report closes with how far back its periods go, and how to read further.
-      notes: [...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
+      // The report closes with how old its latest period is, how far back its periods go, and how to read further.
+      notes: [...stale ? [stale] : [], ...offering ? [offering] : [], ...statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -211,6 +214,7 @@ async function loadRatioReport(
     ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     notes: [
+      ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...offering ? [offering] : [],
       ...runwayShown ? [runwayMethod(reportsShortTermTotal([...financials.quarterlyStatements, ...financials.annualStatements]))] : [],
       ...statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
@@ -423,10 +427,14 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const range = (options.range ?? "5D") as ReturnRange;
     const requested = (options.interval ?? "1h") as ManualChartResolution;
     const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
+    const now = Date.now();
     const series = await loadReturnSeries(ctx.marketData, {
-      symbol, exchange: exchange ?? "", range, resolution: requested, support, now: Date.now(), forceRefresh: ctx.refresh,
+      symbol, exchange: exchange ?? "", range, resolution: requested, support, now, forceRefresh: ctx.refresh,
     });
     const returns = buildReturnRows(series.points, series.visibleFrom, series.visibleTo).reverse();
+    const venue = series.venue || undefined;
+    // The close every total is measured from, which the report names: `Totals from Mon 21 Sep close.`
+    const baseDay = returns.length ? returnBaseCloseDay(series.points, series.visibleFrom, series.resolution, venue, now) : null;
     const decimals = historyPriceDecimals(returns.flatMap((row) => row.price === null ? [] : [{
       open: null, high: null, low: null, close: cleanFloat32Price(row.price),
     }]));
@@ -444,9 +452,11 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(row.inconsistent ? { inconsistent: true } : {}),
     }));
     // A weekly or monthly bar whose period runs on is the period so far: marked partial, and dated by how far it runs.
-    const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
-    const closedDay = closedHistoryBarDay(series.resolution, unmarked.at(-1)?.time, series.venue || undefined, Date.now());
-    const rows = forming ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
+    const forming = formingHistoryBar(series.resolution, unmarked.at(-1)?.time, venue, now);
+    const closedDay = closedHistoryBarDay(series.resolution, unmarked.at(-1)?.time, venue, now);
+    // Today's daily bar is the session still trading, not a close: marked partial (DTD), as `history` marks it.
+    const dayToDate = isTodayReturnRow(returns.at(-1), series.resolution, venue, now);
+    const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
@@ -466,11 +476,12 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const columns: HeadlessPaneColumn[] = [
       timeColumn(false),
       ...figures,
-      ...forming ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
+      ...forming || dayToDate ? [{ key: "partial", header: "Partial", format: (value: unknown) => value === true ? "true" : "" }] : [],
     ];
     const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
+      baseDay ? `Totals ${periodBaseText(baseDay, now)}.` : null,
       series.resolution !== requested
         ? `${getChartResolutionLabel(requested)} bars do not reach back ${range}; these are ${getChartResolutionLabel(series.resolution)} bars.`
         : null,
@@ -491,6 +502,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(series.venue ? { cadenceExchange: series.venue } : {}),
         // The window ends at the last session while the market is shut, which the status line says.
         ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+        ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` } : {}),
       },
       metadata: {
         symbol: key,
@@ -498,6 +510,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         interval: series.resolution,
         requestedInterval: requested,
         window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },
+        ...(baseDay ? { baseDay } : {}),
         ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
         basis: "Price returns of bar closes; dividends are not included",
         ...(notices.length ? { notices } : {}),

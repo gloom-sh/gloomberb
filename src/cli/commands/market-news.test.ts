@@ -182,6 +182,52 @@ test("a word nothing answers to and no story mentions keeps the not-a-ticker ans
   expect(render(cli.printed[1]!)).toContain("No listing answers to ZZQXV. news takes a company ticker");
 });
 
+test("a metal's future, name or bare board code is the metal's market news (NI METALS); the ticker in capitals keeps its company news", async () => {
+  const requests = serveSearch(STORIES);
+  const tickerNews: string[] = [];
+  // GOLD is Gold.com Inc.; no listing answers to GC.
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (query: { ticker?: string }) => { tickerNews.push(query.ticker ?? ""); return []; },
+      getQuote: async (symbol: string) => {
+        if (symbol === "GOLD") return { symbol: "GOLD", name: "Gold.com Inc.", exchangeName: "NYSE" };
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+    },
+  });
+  for (const typed of ["GC=F", "SI=F", "hg=f", "PA=F", "gold", "Silver", "GC"]) await news.execute([typed], cli.context);
+
+  expect(requests.map((url) => [url.searchParams.get("query"), url.searchParams.get("topics")])).toEqual([
+    ["gold", "metals"], ["silver", "metals"], ["copper", "metals"], ["palladium", "metals"], ["gold", "metals"], ["silver", "metals"],
+    ["gold", "metals"],
+  ]);
+  const headings = cli.printed.map((printed) => render(printed).split("\n")[0]);
+  expect(headings).toEqual([
+    'Metals news matching "gold"  ·  the commodity GC=F trades',
+    'Metals news matching "silver"  ·  the commodity SI=F trades',
+    'Metals news matching "copper"  ·  the commodity HG=F trades',
+    'Metals news matching "palladium"  ·  the commodity PA=F trades',
+    'Metals news matching "gold"',
+    'Metals news matching "silver"',
+    'Metals news matching "gold"  ·  GC is the futures board\'s code for Gold',
+  ]);
+  expect(cli.printed[4]!.result.metadata).toMatchObject({ ticker: null, search: "gold", topics: ["metals"], companyNews: "gloomberb news GOLD" });
+  expect(render(cli.printed[4]!)).toContain("gold → gold's market news. For Gold.com Inc. (ticker GOLD), try: gloomberb news GOLD");
+  // No ticker is SILVER here, so none is offered.
+  expect(cli.printed[5]!.result.metadata).not.toHaveProperty("companyNews");
+
+  // GOLD in capitals is the ticker: its company news, no metals search.
+  await news.execute(["GOLD"], cli.context);
+  expect(requests).toHaveLength(7);
+  expect(tickerNews).toEqual(["GC", "GOLD"]);
+  expect(render(cli.printed[7]!).split("\n")[0]).toContain("Gold.com Inc.");
+
+  // No story tagged METALS: every story that names the metal is one search away.
+  serveSearch([]);
+  await news.execute(["PL=F"], cli.context);
+  expect(render(cli.printed[8]!)).toContain(`No metals stories match "platinum". For every story that mentions it, try: gloomberb news '"platinum"'`);
+});
+
 test("a real listing, with or without stories, never falls back to a text search", async () => {
   const requests = serveSearch(STORIES);
   const quiet = createTestCliContext({

@@ -104,6 +104,17 @@ function optionValueOf(options: readonly PaneFunctionOptionDef[], typed: string)
   return null;
 }
 
+/** Options that name an underlying listing, which a ticker typed after the function is meant for. */
+const LISTING_OPTION_KEYS = new Set(["symbol", "ticker", "underlying"]);
+
+/** `--symbol NEM` for a word that reads as a ticker (NEM, BHP:ASX, 7203.T), when the function takes one as an option. */
+function listingOptionOf(options: readonly PaneFunctionOptionDef[], typed: string): string | null {
+  const word = typed.trim();
+  if (!/^[A-Za-z0-9^][A-Za-z0-9.:=^&-]{0,23}$/.test(word) || !/[A-Za-z]/.test(word)) return null;
+  const option = options.find(({ key, type }) => type === "string" && LISTING_OPTION_KEYS.has(optionToken(key)));
+  return option ? `--${option.key} ${word}` : null;
+}
+
 /** An option in use, as typed after the function: its own example, else a choice that is not the default. */
 function optionExample(option: PaneFunctionOptionDef): string {
   if (option.example) return option.example;
@@ -119,7 +130,8 @@ const LISTED_OPTIONS = 6;
 /**
  * What a function that takes no argument answers one with: its options and a
  * command to run. A word that is one of an option's values runs as that option
- * (`fn JODI gas` is `fn JODI --commodity gas`); anything else gets an option's example.
+ * (`fn JODI gas` is `fn JODI --commodity gas`), and a ticker runs as the option that takes one
+ * (`fn OVME NEM` is `fn OVME --symbol NEM`); anything else gets an option's example.
  */
 export function noArgumentMessage(
   options: readonly PaneFunctionOptionDef[],
@@ -129,7 +141,7 @@ export function noArgumentMessage(
 ): string {
   const head = `${code} does not accept an argument.`;
   if (options.length === 0) return `${head} Run: gloomberb ${command} ${code}`;
-  const asOption = optionValueOf(options, typed);
+  const asOption = optionValueOf(options, typed) ?? listingOptionOf(options, typed);
   const listed = options.slice(0, LISTED_OPTIONS).map(optionFlags).join(", ");
   const more = options.length > LISTED_OPTIONS ? ` and ${options.length - LISTED_OPTIONS} more (gloomberb catalog ${code})` : "";
   const run = asOption ? `Run: gloomberb ${command} ${code} ${asOption}` : `Example: gloomberb ${command} ${code} ${optionExample(options[0]!)}`;

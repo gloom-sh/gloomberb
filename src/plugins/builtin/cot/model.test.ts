@@ -2,9 +2,13 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotPriceMapping, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotContractUnitText, cotLegendValue, cotNetPoints, cotPriceMapping, cotScope, cotUnknownMarketMessage } from "./model";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { cotModule } from "./index";
+import { cotHeadless } from "./headless";
+import { getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
+import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
+import { parseCliGlobalArgs } from "../../../cli/options";
 
 function position(): CotClassSummary {
   const percentile = { value: null, rank: null, sampleCount: 2, windowStart: "2025-09-15", windowEnd: "2026-09-15",
@@ -165,4 +169,38 @@ test("commodity names open their market as FUT finds them, before a six-letter w
   expect(cotUnknownMarketMessage("pork bellies")).toContain("HG copper");
   const template = cotModule.paneTemplates![0]!;
   expect(await template.createInstance!({ activeTicker: null } as never, { arg: "cocoa" } as never)).toMatchObject({ title: "COT CC", params: { code: "073732" } });
+});
+
+test("a market's report lists its weeks newest first, the newest n with --limit or --tail, under its report date and contract size", async () => {
+  const gold: CotContractPayload = { ...payload(), status: "available", gaps: [],
+    contract: { contractCode: "088691", marketName: "GOLD - COMMODITY EXCHANGE INC.", exchangeCode: "CMX", commodityCode: "088", contractUnits: "CONTRACTS OF 100 TROY OUNCES" },
+    history: ["2026-09-01", "2026-09-08", "2026-09-15"].map((reportDate, index) => ({ reportDate, openInterest: 180 + index,
+      positions: [{ id: "noncommercial" as const, long: 30, short: 10 + index, spreading: 0, net: 20 - index, netPercentOfOpenInterest: 10 }] })) };
+  const capability = getPaneFunctionCapability({ id: "cot-pane", paneId: "cot", label: "COT", description: "COT", headless: cotHeadless },
+    { id: "cot", name: "COT", component: () => null, defaultPosition: "right" });
+  const report = async (flags: string[]) => {
+    const global = parseCliGlobalArgs(["fn", "COT", "gold", ...flags]);
+    const options = normalizeCapabilityOptions(capability, parsePaneFunctionArgs(global.args.slice(1), global.options).options, { strict: true });
+    const result = await cotHeadless.load({ argument: "gold", symbols: [], options } as never,
+      { apiClient: { getCloudCotContract: async () => gold } } as never);
+    return (result as { sections: Array<{ title: string; rows: Array<Record<string, unknown>> }> }).sections;
+  };
+
+  const all = await report([]);
+  expect(all[0]!.title).toBe("GOLD  ·  report date 2026-09-15  ·  1 contract = 100 troy ounces");
+  expect(all[1]!.title).toBe("Weekly positions");
+  expect(all[1]!.rows.map((row) => row.reportDate)).toEqual(["2026-09-15", "2026-09-08", "2026-09-01"]);
+  for (const flags of [["--limit", "2"], ["--tail", "2"]]) {
+    const [, weeks] = await report(flags);
+    expect(weeks!.title, flags.join(" ")).toBe("Weekly positions  ·  newest 2 of 3");
+    expect(weeks!.rows.map((row) => row.reportDate), flags.join(" ")).toEqual(["2026-09-15", "2026-09-08"]);
+  }
+});
+
+test("a contract's size reads in plain words where the CFTC spells a unit, and keeps its own spelling otherwise", () => {
+  expect(cotContractUnitText("CONTRACTS OF 5,000 BUSHELS")).toBe("1 contract = 5,000 bushels");
+  expect(cotContractUnitText("(CONTRACTS OF JPY 12,500,000)")).toBe("1 contract = JPY 12,500,000");
+  expect(cotContractUnitText("$50 X S&P 500 INDEX")).toBe("1 contract = $50 X S&P 500 INDEX");
+  expect(cotContractUnitText("Contracts of 2,500  MMBTU'S")).toBe("1 contract = 2,500 MMBTU'S");
+  expect(cotContractUnitText(null)).toBeNull();
 });
