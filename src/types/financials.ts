@@ -489,6 +489,12 @@ export interface CorporateActionsData {
 
 export interface CompanyProfile {
   description?: string;
+  /**
+   * Who published the description and where, when it is quoted from a
+   * document rather than the data provider's own text: a fund's issuer page,
+   * or the key facts its exchange publishes.
+   */
+  descriptionSource?: { publisher: string; url: string };
   sector?: string;
   industry?: string;
   employees?: number;

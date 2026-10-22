@@ -765,6 +765,13 @@
    "lesson": "/academy/crypto-and-prediction-markets/crypto-from-zero"
   },
   {
+   "code": "ETFF",
+   "name": "Crypto ETF flows",
+   "description": "Daily spot bitcoin and ether ETF flows",
+   "detail": "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, as Farside Investors publishes them: the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
+   "category": "markets"
+  },
+  {
    "code": "PERP",
    "name": "Perpetual history",
    "description": "Funding, open interest and premium history",

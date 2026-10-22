@@ -5,9 +5,10 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow, SupplyTierFilter } from "../../../api-client/supply-chain";
 import {
-  Badge, buildSectionedRows, DataTableView, EmptyState, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneNoticeFooter,
-  usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
+  Badge, buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, formatPercentAxis, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid,
+  statGridRows, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
 } from "../../../components";
+import { staticSeries } from "../../../components/chart/static/series";
 import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -30,7 +31,7 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
   shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -38,6 +39,8 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, suppl
 
 type Item = { kind: "edge"; row: SupplyRow } | { kind: "locked"; id: string };
 const itemId = (item: Item) => item.kind === "edge" ? item.row.id : item.id;
+const rowId = (row: SupplyRow) => row.id;
+const formatShare = (value: number) => `${Number(value.toFixed(2))}%`;
 const ROLE_PLURALS: Record<SupplyRole, string> = { customer: "Customers", supplier: "Suppliers", partner: "Partners", competitor: "Competitors", investee: "Investees" };
 /** A share figure is at most five cells (`99.9%`, `100%`), right-aligned so the bars line up. */
 const SHARE_FIGURE_CELLS = 5;
@@ -250,6 +253,15 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
   ] });
   const focusId = data?.entity?.id;
+  // Over the table, how much of the receivables one customer holds at each period end the company disclosed.
+  const concentration = useMemo(() => tab === "table" && view === "says" ? receivablesConcentration(tableRows, focusId) : [], [tab, view, tableRows, focusId]);
+  const concentrationDates = useMemo(() => new Map(concentration.map((point) => [point.rowId, point.date])), [concentration]);
+  const getConcentrationDate = useCallback((row: SupplyRow) => concentrationDates.get(row.id) ?? null, [concentrationDates]);
+  const chartSelection = useChartTableSelection({ rows: tableRows, getId: rowId, getDate: getConcentrationDate,
+    selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openRow, enabled: concentration.length > 0 });
+  const concentrationSeries = useMemo(() => [{ ...staticSeries(concentration.map((point) => ({ date: point.date, observedAt: point.date, value: point.pct })),
+    { id: "receivables-concentration", label: "Largest disclosed customer · receivables", color: ROLE_COLORS.customer, calendarSpaced: true, style: "points" }), unit: "%", unitGroup: "percent" }], [concentration]);
+  const concentrationChart = concentration.length ? { series: concentrationSeries, formatValue: formatShare, formatAxisValue: formatPercentAxis, strip: null, ...chartSelection } : null;
   const values = tableRows.filter((row) => nativeValue(row) !== null || row.usd !== null);
   const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
   const bases: BasisForms = tableRows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [share.forms.map(displayWidth)] : []; });
@@ -317,12 +329,13 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const bodyHeight = Math.max(3, height - tabRows);
   const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options) : [];
   const tierFilter = { id: "tiers", label: "Evidence", kind: "multi" as const, emptyLabel: "Primary", values: options.tiers, options: TIER_OPTIONS, onChange: (value: string[]) => { setTiers(supplyOptions(value).tiers); setSelected(null); setOpen(null); } };
-  const header = <Box flexDirection="column" flexShrink={0}>
-    <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
-      options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
-      meta={view === "names" ? "% of reporting company's basis" : undefined} />
-    <StatGrid items={figures} width={width} />
-  </Box>;
+  const query = <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
+    options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
+    meta={view === "names" ? "% of reporting company's basis" : undefined} />;
+  // Without a trend the figures keep every row they had; the chart layout shares the height with the table only when it draws.
+  const header = concentrationChart
+    ? <ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} figures={figures} chart={concentrationChart} query={query} />
+    : <Box flexDirection="column" flexShrink={0}>{query}<StatGrid items={figures} width={width} /></Box>;
   const flowFigureColumns = Math.min(Math.max(1, figures.length), Math.max(1, Math.floor(width / 24)));
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;

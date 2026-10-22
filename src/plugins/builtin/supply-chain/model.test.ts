@@ -3,7 +3,7 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache, validateSupplyChain } from "./client";
-import { counterpartyLabel, counterpartyName, disclosedValue, fitShareBasis, flowBands, percentage, shareParts, sortRows, supplyRoleCounts } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, fitShareBasis, flowBands, percentage, receivablesConcentration, shareParts, sortRows, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -198,4 +198,36 @@ test("NVDA geographic XBRL facts do not invent a denominator or quarterly durati
   expect(flowBands(scoped, 6, {}, "FOCUS").customers.map(row => row.weight)).toEqual([null, null]);
   const mixed = flowBands([...scoped, supplyRow("prose", { pctScope: "TW" })], 6, {}, "FOCUS").customers;
   expect(mixed.find(row => row.id === "xbrl-0")?.weight).toBeNull();
+});
+
+test("receivables concentration takes the largest customer each period end, from the company's own filings, and needs three periods", () => {
+  const ar = (id: string, period: string, pct: number, overrides: Parameters<typeof supplyRow>[1] = {}) =>
+    supplyRow(id, { pctOfRevenue: pct, pctBasis: "receivables", period, asOf: period, sourceKind: "xbrl", ...overrides });
+  const rows = [
+    ar("a", "2025-10-31", 12), ar("b", "2026-01-31", 25), ar("c", "2026-01-31", 18), ar("d", "2026-04-30", 30), ar("e", "2026-07-31", 22),
+    // Not a single customer's receivables share at a period end of the focus company:
+    supplyRow("revenue", { pctOfRevenue: 40, period: "2026-07-31" }),
+    ar("scoped", "2026-07-31", 45, { pctScope: "Compute" }),
+    ar("reverse", "2026-07-31", 50, { reportingEntity: supplyRow("x").counterparty }),
+    ar("group", "2026-07-31", 60, { counterparty: { ...supplyRow("g").counterparty, aggregate: true } }),
+    ar("corporate-group", "2026-07-31", 65, { entityScope: "group" }),
+    ar("negative", "2026-07-31", -1), ar("nan", "2026-08-31", NaN),
+    ar("overflow-day", "2026-02-30", 90), ar("non-leap", "2025-02-29", 90),
+    ar("supplier", "2026-07-31", 70, { role: "supplier", direction: "in" }),
+    ar("announced", "2026-07-31", 75, { tier: 2, sourceKind: "press_release" }),
+    ar("lead", "2026-07-31", 80, { leadStatus: "lead" }),
+    ar("stale", "2026-07-31", 85, { leadStatus: "stale" }),
+    ar("implausible", "2026-07-31", 140),
+    // Not a balance-sheet date, so never a point of its own.
+    ar("quarter", "2026-Q1", 90), ar("year", "2026", 90), ar("ongoing", "ongoing", 90), ar("month13", "2026-13-01", 90),
+  ];
+  expect(receivablesConcentration(rows, "FOCUS")).toEqual([
+    { period: "2025-10-31", date: new Date("2025-10-31T00:00:00Z"), pct: 12, rowId: "a" }, { period: "2026-01-31", date: new Date("2026-01-31T00:00:00Z"), pct: 25, rowId: "b" },
+    { period: "2026-04-30", date: new Date("2026-04-30T00:00:00Z"), pct: 30, rowId: "d" }, { period: "2026-07-31", date: new Date("2026-07-31T00:00:00Z"), pct: 22, rowId: "e" },
+  ]);
+  // Two dated periods and odd labels are still not a trend.
+  expect(receivablesConcentration([rows[0]!, rows[1]!, ...rows.filter((row) => ["quarter", "year", "ongoing", "month13"].includes(row.id))], "FOCUS")).toEqual([]);
+  // Two points are not a trend.
+  expect(receivablesConcentration(rows.slice(1, 4), "FOCUS")).toEqual([]);
+  expect(receivablesConcentration(rows, null)).toEqual([]);
 });

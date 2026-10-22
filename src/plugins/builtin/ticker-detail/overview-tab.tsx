@@ -6,7 +6,7 @@ import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useMemo, type ReactNode } from "react";
-import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, ExternalLinkText, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
@@ -61,6 +61,7 @@ import { describeFundamentalMarketCap } from "../../../utils/market-capitalizati
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
+import { safeExternalUrl } from "../../../utils/external-url";
 import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
 
@@ -147,6 +148,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const sector = ticker.metadata.sector ?? profile?.sector;
   const industry = ticker.metadata.industry ?? profile?.industry;
   const description = profile?.description?.trim();
+  // A description quoted from the fund's issuer or its exchange names where it is from.
+  const descriptionSource = description && profile?.descriptionSource?.publisher
+    && safeExternalUrl(profile.descriptionSource.url) ? profile.descriptionSource : null;
   const listingVenue = exchangeShortName(
     quote?.tradingExchangeName ?? quote?.listingExchangeName ?? quote?.exchangeName,
     quote?.listingExchangeFullName ?? quote?.fullExchangeName,
@@ -562,6 +566,14 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <SectionHeading title={t("Description")} />
             {/* The desktop wraps it at the pane's own width, so it follows a resize to the pixel. */}
             <Text fg={colors.text} width={nativePaneChrome ? undefined : contentWidth} wrapMode="word" wrapText>{description}</Text>
+            {descriptionSource && (
+              <PaneLinkMenu>
+                <Box flexDirection="row" width={nativePaneChrome ? undefined : contentWidth}>
+                  <Text flexShrink={0} fg={colors.textDim}>{`${t("Source")}: `}</Text>
+                  <ExternalLinkText url={descriptionSource.url} label={descriptionSource.publisher} />
+                </Box>
+              </PaneLinkMenu>
+            )}
           </Box>
         )}
       </Box>

@@ -6,7 +6,7 @@ import { callsLockNote } from "./lock-note";
 
 
 const description =
-  "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.";
+  "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, the calendar of upcoming calls this week; with a ticker, that company's calls, its next one first.";
 
 function explicitSymbol(options?: { arg?: string; symbol?: string | null }): string | null {
   const symbol = (options?.symbol ?? options?.arg ?? "").trim().toUpperCase();
@@ -63,8 +63,8 @@ export const earningsCallsModule: PluginModule = {
         "qa",
         "ect",
       ],
-      // The ticker is optional on purpose: CALLS alone browses every call,
-      // and it must not silently bind to whatever ticker happens to be active.
+      // The ticker is optional on purpose: CALLS alone is the calendar of every
+      // company's calls, and it must not silently bind to whatever ticker happens to be active.
       shortcut: { prefix: "CALLS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
       headless: earningsCallsHeadless,
       createInstance: (_context, options) => {

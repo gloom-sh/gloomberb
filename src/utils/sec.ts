@@ -141,6 +141,9 @@ export function listingAbroadVenue(key: string): string | null {
   return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
 }
 
+/** What `ticker` and ETF say of a fund listed abroad: the facts Gloom collects are the US-listed funds'. */
+export const US_FUND_FACTS_ONLY = "Fund facts (fee, NAV, premium) cover US-listed funds only.";
+
 /**
  * The symbol data that covers US listings only reads a listing by: AAPL for
  * AAPL:NASDAQ, ^SPX as it is. A listing abroad throws, naming what covers US

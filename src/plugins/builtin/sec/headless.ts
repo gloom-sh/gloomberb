@@ -1,9 +1,12 @@
 import type {
+  HeadlessBundleResult,
   HeadlessPaneColumn,
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
@@ -14,6 +17,7 @@ import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./mod
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -128,12 +132,42 @@ export const secHeadless = createSecHeadless();
 
 export interface FundHeadlessDependencies extends SecHeadlessDependencies {
   loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
+  loadAbroadProfile?(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null>;
 }
 
-const defaultFundDependencies: FundHeadlessDependencies = {
+const defaultFundDependencies = {
   ...defaultDependencies,
-  loadFacts: (symbol, ctx) => fetchFundFacts(symbol, ctx.apiClient),
+  loadFacts: (symbol: string, ctx: HeadlessPaneContext) => fetchFundFacts(symbol, ctx.apiClient),
+  async loadAbroadProfile(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null> {
+    const { symbol, exchange } = parsePublicTickerKey(key);
+    return fundAbroadProfile(await ctx.marketData.getTickerFinancials(symbol, exchange));
+  },
 };
+
+/**
+ * ETF for a fund listed abroad (3042:HKEX): what `ticker` says, that the
+ * facts cover US-listed funds only, and the fund's page at its issuer where
+ * the profile has one. No SEC request: the SEC knows no listing abroad, and
+ * its "Unknown ticker" said nothing of the fund.
+ */
+function fundAbroadResult(symbol: string, venue: string, profile: FundAbroadProfile | null): HeadlessBundleResult {
+  const entries = [
+    ...profile?.name ? [{ label: "Name", value: profile.name }] : [],
+    ...profile?.page ? [{ label: "Issuer page", value: profile.page }] : [],
+    ...profile?.descriptionSource
+      ? [{ label: "Description from", value: `${profile.descriptionSource.publisher}: ${profile.descriptionSource.url}` }]
+      : [],
+  ];
+  return {
+    sections: [
+      { title: "Fund facts", rows: [], empty: US_FUND_FACTS_ONLY },
+      ...entries.length ? [{ title: "Fund", entries }] : [],
+    ],
+    complete: true,
+    freshness: { source: profile?.page ? "Fund issuer" : "Gloom", status: "not-a-feed", basis: "published fund data" },
+    metadata: { symbol, venue, usListedOnly: true, issuerPage: profile?.page ?? null },
+  };
+}
 
 /**
  * ETF: a US-listed fund's facts (fee, NAV, premium or discount, net assets,
@@ -145,7 +179,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
   return {
     shape: "bundle",
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
-    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker." },
+    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page." },
     options: [{
       key: "limit",
       shot: REPORT_ROWS,
@@ -160,6 +194,19 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
     describe: (args) => `ETF | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      const abroad = venueAbroad(symbol);
+      if (abroad) {
+        try {
+          const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx);
+          return fundAbroadResult(symbol, abroad, profile);
+        } catch (error) {
+          return {
+            ...fundAbroadResult(symbol, abroad, null),
+            complete: false,
+            errors: [`Fund profile unavailable: ${errorMessage(error)}`],
+          };
+        }
+      }
       const limit = Number(args.options.limit);
       const [factsResult, filingsResult] = await Promise.allSettled([
         dependencies.loadFacts(symbol, ctx),

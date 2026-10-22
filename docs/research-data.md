@@ -1092,6 +1092,19 @@ Exchange reserves and exchange flows (the coins held on exchanges, and what move
 
 A coin pair's news is the stories filed under its pair. When none are, as for `BTC-USD`, the stories that mention the coin are shown instead and the pane says so (`No stories are filed under BTC-USD; these mention bitcoin.`); `gloomberb news BTC-USD` heads them `Stories matching "bitcoin"  ·  no stories filed under BTC-USD`, and `ticker` and `fn CN` note it. A major coin is searched by its name (`bitcoin`, `ethereum`), another by its listing's name without the quote currency (`HYPE32196-USD` is `hyperliquid`). A bare code with no listing name is not searched, because a code alone is too often a word.
 
+### Spot crypto ETF flows (ETFF)
+
+`ETFF` lists the daily net flows of the US spot bitcoin ETFs (`--asset eth` for ether): one row per US trading day, newest first, with the day's total and each fund's flow in US$ millions, in the order Farside Investors publishes them. Gloom Cloud reads Farside's tables every hour while funds report (20:00 UTC to 14:00 UTC the next morning on trading days) and every six hours otherwise, keeps every page it read, and serves the latest figures. The pane footer names the publisher and `o` opens its table.
+
+- **Pending.** The newest day fills in fund by fund. A fund that reported the day before and shows nothing yet reads `pending`, in the table and in `fn ETFF`, and the day's total is Farside's own total so far, not a sum.
+- **Figures.** Latest day, 5 days and 20 days sum the published daily totals; Since launch is every listed day, from the first fund's launch (2024-01-11 for bitcoin, 2024-07-23 for ether). Days the market was closed are left out.
+- **Chart and range.** The chart draws the running total since launch, over the range the table lists: 1M, 3M, 1Y or All (keys `1`-`4`). The figures above it always use the whole history.
+- **Stale.** When no read has succeeded for two days the footer says so, with the date of the last read.
+
+`gloomberb fn ETFF` prints the newest 20 days (`--limit` for more, `--json` for every fund's figure and `pending`), with a summary line and the source. `gloomberb catalog flows` finds it, and so do `ETF flows`, `bitcoin flows` and `ether flows` in search and the command bar.
+
+Searching a category (`bitcoin ETF`, `spot ether ETF`, `HK bitcoin ETF`) or an issuer (`ChinaAMC`, `Bosera`, `Harvest bitcoin`, `iShares bitcoin`) lists the spot funds first: the US funds, the Hong Kong funds with each counter named (`ChinaAMC Bitcoin ETF (HKD counter)`, `(USD counter)`), and the XETRA-listed products. Their descriptions come from the issuer's or the exchange's product page, named under the description with a link; `fn ETF` on a fund listed outside the US says fund facts cover US-listed funds and links the issuer's page.
+
 ### Relative rotation (RRG / GRR)
 
 The default universe is the eleven US sector ETFs versus SPY. All prices come

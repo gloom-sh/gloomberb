@@ -38,6 +38,8 @@ export const ko: Record<string, string> = {
   "Name": "이름",
   "Title": "제목",
   "Source": "출처",
+  "Issuer page": "발행사 페이지",
+  "Description from": "설명 출처",
   "Headline": "헤드라인",
   "Symbol": "종목코드",
   "Price": "가격",

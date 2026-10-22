@@ -143,7 +143,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
-| `CALLS [ticker]` | Earnings call transcripts; alone, every transcribed call |
+| `CALLS [ticker]` | Earnings calls and their transcripts. With a ticker, the company's calls, its next one on its own line with its start here and in New York and how far away it is. Alone, the calendar of every company's calls today, the next session and the rest of the week, each day's in start order (Enter opens the company's calls); `--view transcripts` (the bar's Transcripts) lists the latest transcribed calls instead |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
 | `QQ <tickers>` | Ticker quote monitor |
 | `CMP <tickers>` | Normalized price comparison; `fn CMP LMT RTX --range YTD` starts at the prior year's last close, the one YTD returns are measured from |
@@ -317,6 +317,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues; a market opens its Pro history and evidence; free preview |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab, with peg, off peg in bp, the 24h low and high with UTC times, total supply, a stacked supply chart and each coin's supply, 7D and 30D change and share |
+| `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days, the running total since launch and the funds the newest day still waits on |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC; opens on high-impact releases until you pick another impact, which the pane keeps |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates; `fn ECST` prints the 2s10s spread in bp and takes `--range 5Y|20Y|ALL` for the window of its percentiles, highs and lows. The daily rates add their 1D and 1W moves ranked against the series' whole history (`1D move  -1bp · 21 pctl since 1962`), and Treasury yields name their 15:30 ET cut-off ([move ranks and cut-offs](research-data.md#was-it-a-big-day-move-ranks)) |
 | `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab; CLI also accepts `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date) and `--tab world`; the table carries each tenor's 1D move in bp, and with `--compare` both curves and the difference in bp |
@@ -1033,7 +1034,7 @@ Each built-in plugin can be switched on or off in `PL`. Ticker Research, Market 
 | Global Markets | WEI, MAP, CHOKE, BI, THEM, FXC, RRG |
 | Screeners & Movers | EQS, MOST, HILO, FLOW |
 | Commodities & Energy | FUT, CTM, COT, DOE, NGS, PSD, JODI |
-| Crypto & Perps | CRYP, PERP |
+| Crypto & Perps | CRYP, ETFF, PERP |
 
 The typed commodities shortcuts open their corresponding tabs in **Commodities & Energy**.
 

@@ -107,7 +107,7 @@ export const cryptoPluginMeta = {
   stateId: "market-overview",
   name: "Crypto & Perps",
   version: "1.0.0",
-  description: "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+  description: "Top crypto assets by market cap, daily spot bitcoin and ether ETF flows, and perpetual funding, open interest and premiums.",
   toggleable: true,
 };
 

@@ -74,6 +74,8 @@ export type CloudEarningsCallsParams = IssuerListingParams & {
   offset?: number;
   /** Include calls still working through the transcription pipeline. */
   includePending?: boolean;
+  /** Every company's calls on these New York days (YYYY-MM-DD), earliest first, in place of a company or the shelf. */
+  upcoming?: { from: string; to: string };
 };
 
 export type CloudNewsParams = {
@@ -356,6 +358,11 @@ export function cloudEarningsCallsPath(
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.includePending) search.set("includePending", "true");
+  if (params.upcoming) {
+    search.set("upcoming", "true");
+    search.set("from", params.upcoming.from);
+    search.set("to", params.upcoming.to);
+  }
   return appendQuery("/cloud/transcripts", search);
 }
 

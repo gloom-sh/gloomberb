@@ -458,8 +458,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   CALLS: {
-    summary: "Earnings call transcripts with speakers, the analyst Q&A, and extracted guidance and quotes. Alone it lists every transcribed call as it lands.",
-    usage: ["CALLS", "CALLS NVDA"],
+    summary: "Earnings call transcripts with speakers, the analyst Q&A, and extracted guidance and quotes. With a ticker, the company's calls, its next one first with its start and how far away it is. Alone, the calendar of every company's calls this week; --view transcripts lists the latest transcripts.",
+    usage: ["CALLS", "CALLS NVDA", "CALLS --view transcripts"],
     keys: [OPEN, key("/", "find"), OPEN_SOURCE],
     data: pro("Within hours of the call"),
     access: "pro",
@@ -749,6 +749,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CRYP"],
     keys: [TABS, OPEN],
     data: same("Real-time where it streams, others every 15 seconds"),
+    bloomberg: [],
+  },
+  ETFF: {
+    summary: "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
+    usage: ["ETFF", "gloomberb fn ETFF --asset eth"],
+    keys: [key("1-4", " range"), OPEN_SOURCE],
+    data: same("Daily, as each fund reports after the US close"),
     bloomberg: [],
   },
   FUT: {
