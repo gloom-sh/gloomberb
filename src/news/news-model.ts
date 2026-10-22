@@ -1,3 +1,4 @@
+import { coinSearchName } from "../utils/crypto-pair";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import type { NewsCapability } from "../capabilities";
 import type { NewsArticle, NewsFeed, NewsQuery, NewsQueryState } from "./types";
@@ -55,6 +56,9 @@ export function buildNewsQueryKey(query: NewsQuery): string {
     query.since?.toISOString() ?? "",
     query.until?.toISOString() ?? "",
     query.cursor ?? "",
+    // A coin pair's feed falls back to stories naming the coin; a name that arrives after the
+    // first load is a new query, so the pane asks again. A stock's or a major coin's key is unchanged by it.
+    ...(feed === "ticker" ? [coinSearchName(ticker, exchange, query.listingName) ?? ""].filter(Boolean) : []),
   ].join("|");
 }
 

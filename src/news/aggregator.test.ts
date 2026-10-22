@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { NewsService } from "./aggregator";
+import { buildNewsQueryKey, NewsService } from "./aggregator";
 import { DEFAULT_GLOBAL_QUERY } from "./news-model";
 import { newsProvider, type NewsCapability } from "../capabilities";
 import type { MarketNewsItem } from "../types/news-source";
@@ -334,6 +334,15 @@ describe("NewsService", () => {
     answer = [filed];
     await agg.poll(query);
     expect(agg.getQueryState(query).articles.map((article) => article.url)).toEqual(["https://example.com/filed"]);
+  });
+
+  it("keys a coin's feed by the name it searches, so a name that arrives after the first load asks again; a stock's or a major coin's keeps its key", () => {
+    // The pane only watches a new query when its key changes; the service keeps polling the first one it was given.
+    const key = (ticker: string, exchange: string, listingName?: string) =>
+      buildNewsQueryKey({ feed: "ticker", ticker, exchange, limit: 10, ...(listingName ? { listingName } : {}) });
+    expect(key("HYPE32196-USD", "CCC", "Hyperliquid USD")).not.toBe(key("HYPE32196-USD", "CCC"));
+    expect(key("BTC-USD", "CCC", "Bitcoin USD")).toBe(key("BTC-USD", "CCC"));
+    expect(key("AAPL", "NASDAQ", "Apple Inc.")).toBe(key("AAPL", "NASDAQ"));
   });
 
   it("loads story detail and merges source items into existing query state", async () => {
