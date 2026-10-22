@@ -10,6 +10,7 @@ import {
   nextCpiReleaseDate,
   nextEarningsDate,
   parseLeadDays,
+  readEarningsResults,
   readScheduledRule,
   rearmScheduledAlert,
   reportedResult,
@@ -257,6 +258,103 @@ test("the app alerts for results once the actual EPS lands, keeping the report d
     await saved.promise;
     expect(notifications).toHaveLength(1);
     expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2027-01-26", firedFor: "2026-10-20" });
+  } finally {
+    stop();
+  }
+});
+
+test("results come from ERN's board, and from the per-ticker calendar for a company the board has no actual for", async () => {
+  const asked: string[][] = [];
+  const row = (symbol: string, epsActual: number | null): EarningsResultRow => ({ symbol, date: "2026-10-20", epsActual, epsEstimate: 0.1 });
+  const calendar = async (symbols: string[]) => {
+    asked.push(symbols);
+    return symbols.map((symbol) => row(symbol, 0.12));
+  };
+  // CRWV's actual is in the board; NBIS is on the board without one, and SHOP not at all.
+  const board = async () => [row("CRWV", 0.2), row("NBIS", null)];
+  expect(await readEarningsResults(["CRWV", "NBIS", "SHOP"], board, calendar)).toEqual([
+    row("CRWV", 0.2), row("NBIS", null), row("NBIS", 0.12), row("SHOP", 0.12),
+  ]);
+  expect(asked).toEqual([["NBIS", "SHOP"]]);
+  // Nothing missing, nothing more to read.
+  await readEarningsResults(["CRWV"], board, calendar);
+  expect(asked).toHaveLength(1);
+
+  // Either failing leaves the other's rows; both failing, or the board with nothing else to read, is the error.
+  const down = async (): Promise<EarningsResultRow[]> => { throw new Error("UPSTREAM_ERROR"); };
+  expect(await readEarningsResults(["NBIS"], down, calendar)).toEqual([row("NBIS", 0.12)]);
+  expect(await readEarningsResults(["NBIS"], board, down)).toEqual([row("CRWV", 0.2), row("NBIS", null)]);
+  await expect(readEarningsResults(["NBIS"], down, down)).rejects.toThrow("UPSTREAM_ERROR");
+  await expect(readEarningsResults(["NBIS"], down, null)).rejects.toThrow("UPSTREAM_ERROR");
+});
+
+test("a results alert follows a report moved before its day, and keeps waiting through failed lookups until the actual is in", async () => {
+  const rule = createScheduledAlert({ kind: "earnings", symbol: "CRWV", exchange: "" }, "results", "2026-10-20", 1_000);
+  const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);
+  const notifications: string[] = [];
+  const warnings: string[] = [];
+  const ctx = {
+    configState: {
+      get: (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: unknown) => { store.set(key, String(value)); },
+    },
+    notify: (notification: { body?: string }) => { notifications.push(notification.body ?? ""); },
+    showPane() {},
+    log: { info() {}, warn: (message: string) => { warnings.push(message); }, error() {}, debug() {} },
+  };
+  let dates: "moved" | "down" = "moved";
+  let results: "down" | number | null = null;
+  const reads: string[] = [];
+  const sources: ScheduledEventSources = {
+    earnings: async () => {
+      if (dates === "down") throw new Error("UPSTREAM_ERROR");
+      return [{ symbol: "CRWV", earningsDate: new Date("2026-10-22T20:00:00Z") }];
+    },
+    cpi: async () => ({ release: { nextReleaseAt: null } }),
+    fomc: async () => [],
+    results: async (symbols, from, to) => {
+      reads.push(`${symbols.join(",")} ${from} ${to}`);
+      if (results === "down") throw new Error("UPSTREAM_ERROR");
+      return [{ symbol: "CRWV", date: "2026-10-22", epsActual: results, epsEstimate: 0.1 }];
+    },
+  };
+  let now = Date.parse("2026-10-19T14:00:00Z");
+  const stop = startScheduledEventAlerts(ctx as never, sources, () => now);
+  const check = async () => {
+    checkScheduledEventAlertsNow();
+    await Bun.sleep(20);
+  };
+  const saved = () => readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0];
+  try {
+    // Moved from the 20th to the 22nd the day before: the rule follows it, and reads no results before it.
+    await check();
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22" });
+    expect(reads).toEqual([]);
+
+    // The 20th, the old day, passes quietly.
+    now = Date.parse("2026-10-20T22:00:00Z");
+    await check();
+    expect(notifications).toEqual([]);
+    expect(reads).toEqual([]);
+
+    // On the day both reads fail: the rule keeps its day and waits.
+    now = Date.parse("2026-10-22T22:00:00Z");
+    dates = "down";
+    results = "down";
+    await check();
+    expect(notifications).toEqual([]);
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22" });
+    expect(saved()?.firedFor).toBeUndefined();
+    expect(warnings).toEqual(["Event dates unavailable", "Earnings results unavailable"]);
+
+    // The next morning the dates are still down, and the actual is in: one alert.
+    now = Date.parse("2026-10-23T13:00:00Z");
+    results = 0.12;
+    await check();
+    await check();
+    expect(notifications).toEqual(["CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"]);
+    expect(saved()).toMatchObject({ eventDate: "2026-10-22", firedFor: "2026-10-22" });
+    expect(reads).toEqual(["CRWV 2026-10-19 2026-10-25", "CRWV 2026-10-19 2026-10-25"]);
   } finally {
     stop();
   }

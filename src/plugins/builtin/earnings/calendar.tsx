@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { CompanyLogoMark } from "../../../components/company-logo";
-import { EmptyState } from "../../../components";
+import { PaneStatusBody } from "../../../components";
 import { ClippedText } from "../../../components/ui/display";
 import { FILL_REST } from "../../../components/ui/fill";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
@@ -11,12 +11,12 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { BoardReport } from "./board-model";
-import type { CalendarDay, CalendarGroup } from "./calendar-model";
+import { calendarGroupKey, type CalendarDay, type CalendarGroup } from "./calendar-model";
 import { epsText, signedPercent, TIMING_LABEL } from "./format";
 
 /** Cells a logo and its ticker take side by side; a day fits as many as its width holds. */
 const CALENDAR_SLOT_CELLS = 7;
-/** Rows of logos a session shows before the rest is left to the table. */
+/** Rows of logos a session shows before its last slot counts the rest. */
 export const CALENDAR_GROUP_ROWS = 5;
 /** The columns between two days. */
 const DAY_GAP_CELLS = 1;
@@ -30,9 +30,18 @@ export function calendarSlotsPerRow(width: number): number {
 /** One spot in the week: a day, a row of its logos, and a slot in that row. */
 interface Position { day: number; row: number; slot: number }
 
-/** A day's logos as the rows it draws them in, groups one after another. */
-function dayRows(day: CalendarDay, perRow: number): BoardReport[][] {
-  return day.groups.flatMap((group) => chunk(group.reports, perRow));
+/** A group's last slot when it has more reports than it draws: "+N more", which expands it. */
+interface MoreSlot { kind: "more"; key: string; day: CalendarDay; group: CalendarGroup }
+type Slot = BoardReport | MoreSlot;
+
+const isMore = (slot: Slot): slot is MoreSlot => "kind" in slot && slot.kind === "more";
+
+/** A group's logos as the rows it draws them in, its "+N more" slot last. */
+function groupRows(day: CalendarDay, group: CalendarGroup, perRow: number): Slot[][] {
+  const more: MoreSlot[] = group.more > 0
+    ? [{ kind: "more", key: `more:${calendarGroupKey(day.date, group.session)}`, day, group }]
+    : [];
+  return chunk<Slot>([...group.reports, ...more], perRow);
 }
 
 function chunk<T>(items: readonly T[], size: number): T[][] {
@@ -46,7 +55,7 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
  * day, left and right along the row and on into the next day at the same
  * depth. Null when there is nowhere to go.
  */
-export function moveInWeek(grid: readonly BoardReport[][][], from: Position, direction: "up" | "down" | "left" | "right"): Position | null {
+export function moveInWeek<T>(grid: readonly (readonly (readonly T[])[])[], from: Position, direction: "up" | "down" | "left" | "right"): Position | null {
   const rows = grid[from.day] ?? [];
   if (direction === "up" || direction === "down") {
     const row = from.row + (direction === "down" ? 1 : -1);
@@ -65,11 +74,11 @@ export function moveInWeek(grid: readonly BoardReport[][][], from: Position, dir
   return null;
 }
 
-function locate(grid: readonly BoardReport[][][], key: string | null): Position | null {
+function locate(grid: readonly Slot[][][], key: string | null): Position | null {
   if (!key) return null;
   for (const [day, rows] of grid.entries()) {
     for (const [row, reports] of rows.entries()) {
-      const slot = reports.findIndex((report) => report.key === key);
+      const slot = reports.findIndex((entry) => entry.key === key);
       if (slot >= 0) return { day, row, slot };
     }
   }
@@ -89,12 +98,17 @@ interface CalendarViewProps {
   days: readonly CalendarDay[];
   width: number;
   focused: boolean;
+  /** A report's key, or the key of a "+N more" slot. */
   selectedKey: string | null;
-  onSelect: (report: BoardReport) => void;
+  onSelect: (key: string) => void;
   /** Enter, or a second click: the company's reports, as a table row opens them. */
   onOpen: (report: BoardReport) => void;
-  /** A day's group has more reports than it draws: the table lists them all. */
+  /** A click on a "+N more" slot, or Enter on it: draw the whole group. */
   onMore: (day: CalendarDay, group: CalendarGroup) => void;
+  /** The week is not read yet; `days` are empty until it is. */
+  loading?: boolean;
+  /** The week could not be read. */
+  error?: string | null;
   emptyTitle: string;
 }
 
@@ -104,26 +118,39 @@ interface CalendarViewProps {
  * largest first, each with its ticker under it. A reported company's ticker
  * takes the colour of its surprise.
  */
-export function EarningsCalendarView({ days, width, focused, selectedKey, onSelect, onOpen, onMore, emptyTitle }: CalendarViewProps) {
+export function EarningsCalendarView({
+  days, width, focused, selectedKey, onSelect, onOpen, onMore, loading = false, error = null, emptyTitle,
+}: CalendarViewProps) {
   const colors = useThemeColors();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   // The page keys scroll the week.
   useRegisterPaneScrollBox(scrollRef, { enabled: true });
   const tiles = useRef(new Map<string, BoxRenderable>());
   const perRow = calendarSlotsPerRow(width);
-  const grid = useMemo(() => days.map((day) => dayRows(day, perRow)), [days, perRow]);
+  // Each day's groups as rows of slots; the keys walk the day's rows, groups one after another.
+  const layout = useMemo(() => days.map((day) => day.groups.map((group) => groupRows(day, group, perRow))), [days, perRow]);
+  const grid = useMemo(() => layout.map((groups) => groups.flat()), [layout]);
   const position = locate(grid, selectedKey);
   const empty = days.every((day) => day.groups.length === 0);
+  const ready = !loading && !error;
 
   // The cursor starts on the first company of the week.
   useEffect(() => {
     if (position || empty) return;
-    const first = grid.find((rows) => rows.length > 0)?.[0]?.[0];
-    if (first) onSelect(first);
+    const first = grid.flat(2).find((slot) => !isMore(slot));
+    if (first) onSelect(first.key);
   }, [empty, grid, onSelect, position]);
 
-  const reveal = useCallback((key: string) => afterLayout(() => revealInScrollBox(scrollRef.current, tiles.current.get(key) ?? null)), [scrollRef]);
-  const press = useDoubleClickActivation<BoardReport>({ onSelect, onActivate: onOpen });
+  // Keeps the cursor in view, after a key moves it or a "+N more" slot draws the rest of its group.
+  useEffect(() => {
+    if (!selectedKey) return;
+    afterLayout(() => revealInScrollBox(scrollRef.current, tiles.current.get(selectedKey) ?? null));
+  }, [selectedKey]);
+  const tileRef = useCallback((key: string) => (node: BoxRenderable | null) => {
+    if (node) tiles.current.set(key, node);
+    else tiles.current.delete(key);
+  }, []);
+  const press = useDoubleClickActivation<BoardReport>({ onSelect: (report) => onSelect(report.key), onActivate: onOpen });
 
   useShortcut((event) => {
     if (!focused || !position) return;
@@ -133,18 +160,16 @@ export function EarningsCalendarView({ days, width, focused, selectedKey, onSele
       const next = moveInWeek(grid, position, direction);
       event.preventDefault();
       event.stopPropagation();
-      if (!next) return;
-      const report = grid[next.day]![next.row]![next.slot]!;
-      onSelect(report);
-      reveal(report.key);
+      if (next) onSelect(grid[next.day]![next.row]![next.slot]!.key);
       return;
     }
     if (isPlainKey(event, "return", "enter")) {
-      const report = grid[position.day]?.[position.row]?.[position.slot];
-      if (!report) return;
+      const slot = grid[position.day]?.[position.row]?.[position.slot];
+      if (!slot) return;
       event.preventDefault();
       event.stopPropagation();
-      onOpen(report);
+      if (isMore(slot)) onMore(slot.day, slot.group);
+      else onOpen(slot);
     }
   });
 
@@ -168,70 +193,67 @@ export function EarningsCalendarView({ days, width, focused, selectedKey, onSele
             fg={day.today ? colors.textBright : colors.textDim}
             attributes={TextAttributes.BOLD}
           />
-          <Text fg={colors.textMuted}>{day.closed ? "closed" : String(day.total)}</Text>
+          {/* A holiday says so, unless companies report on it anyway; no count before the week is read. */}
+          {day.closed && day.total === 0 ? <Text fg={colors.textMuted}>closed</Text>
+            : ready ? <Text fg={colors.textMuted}>{String(day.total)}</Text> : null}
         </Box>
       ))}
     </Box>
   );
 
-  if (empty) {
-    return (
-      <Box flexDirection="column" {...FILL_REST}>
-        {header}
-        <EmptyState title={emptyTitle} />
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="column" {...FILL_REST}>
       {header}
-      <ScrollBox ref={scrollRef} {...FILL_REST} scrollY focusable={false}>
-        <Box flexDirection="row" alignItems="flex-start" paddingX={1} columnGap={DAY_GAP_CELLS} data-gloom-role="earnings-calendar-week">
-          {days.map((day) => (
-            <Box
-              key={day.date}
-              flexGrow={1}
-              flexBasis={0}
-              minWidth={0}
-              flexDirection="column"
-              data-gloom-role="earnings-calendar-day"
-              data-date={day.date}
-            >
-              {day.groups.map((group) => (
-                <Box key={group.session ?? "unset"} flexDirection="column" style={{ paddingTop: "var(--gloom-space-sm)" }}>
-                  <Box flexDirection="row" columnGap={1} height={1} overflow="hidden">
-                    <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{group.label}</Text>
-                    <Text fg={colors.textMuted}>{String(group.reports.length + group.more)}</Text>
-                  </Box>
-                  {chunk<BoardReport | "more">([...group.reports, ...(group.more > 0 ? ["more" as const] : [])], perRow).map((slots, rowIndex) => (
-                    <Box key={rowIndex} flexDirection="row">
-                      {Array.from({ length: perRow }, (_, slot) => {
-                        const report = slots[slot];
-                        if (report === "more") return <MoreTile key="more" count={group.more} onPress={() => onMore(day, group)} />;
-                        // The last row's room past its logos.
-                        if (!report) return <Box key={slot} flexGrow={1} flexBasis={0} minWidth={0} />;
-                        return (
-                          <ReportTile
-                            key={report.key}
-                            report={report}
-                            selected={report.key === selectedKey}
-                            onPress={(event) => press(report.key, report, event)}
-                            tileRef={(node) => {
-                              if (node) tiles.current.set(report.key, node);
-                              else tiles.current.delete(report.key);
-                            }}
-                          />
-                        );
-                      })}
+      <PaneStatusBody loading={loading} error={error} empty={ready && empty} emptyTitle={emptyTitle} subject="the earnings calendar">
+        <ScrollBox ref={scrollRef} {...FILL_REST} scrollY focusable={false}>
+          <Box flexDirection="row" alignItems="flex-start" paddingX={1} columnGap={DAY_GAP_CELLS} data-gloom-role="earnings-calendar-week">
+            {days.map((day, dayIndex) => (
+              <Box
+                key={day.date}
+                flexGrow={1}
+                flexBasis={0}
+                minWidth={0}
+                flexDirection="column"
+                data-gloom-role="earnings-calendar-day"
+                data-date={day.date}
+              >
+                {day.groups.map((group, groupIndex) => (
+                  <Box key={group.session ?? "unset"} flexDirection="column" style={{ paddingTop: "var(--gloom-space-sm)" }}>
+                    <Box flexDirection="row" columnGap={1} height={1} overflow="hidden">
+                      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{group.label}</Text>
+                      <Text fg={colors.textMuted}>{String(group.reports.length + group.more)}</Text>
                     </Box>
-                  ))}
-                </Box>
-              ))}
-            </Box>
-          ))}
-        </Box>
-      </ScrollBox>
+                    {layout[dayIndex]![groupIndex]!.map((slots, rowIndex) => (
+                      <Box key={rowIndex} flexDirection="row">
+                        {Array.from({ length: perRow }, (_, index) => {
+                          const slot = slots[index];
+                          // The last row's room past its logos.
+                          if (!slot) return <Box key={index} flexGrow={1} flexBasis={0} minWidth={0} />;
+                          if (isMore(slot)) {
+                            return (
+                              <MoreTile key={slot.key} count={group.more} selected={slot.key === selectedKey}
+                                onPress={() => onMore(day, group)} tileRef={tileRef(slot.key)} />
+                            );
+                          }
+                          return (
+                            <ReportTile
+                              key={slot.key}
+                              report={slot}
+                              selected={slot.key === selectedKey}
+                              onPress={(event) => press(slot.key, slot, event)}
+                              tileRef={tileRef(slot.key)}
+                            />
+                          );
+                        })}
+                      </Box>
+                    ))}
+                  </Box>
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </ScrollBox>
+      </PaneStatusBody>
     </Box>
   );
 }
@@ -282,27 +304,35 @@ function ReportTile({ report, selected, onPress, tileRef }: {
   );
 }
 
-function MoreTile({ count, onPress }: { count: number; onPress: () => void }) {
+function MoreTile({ count, selected, onPress, tileRef }: {
+  count: number;
+  selected: boolean;
+  onPress: () => void;
+  tileRef: (node: BoxRenderable | null) => void;
+}) {
   const colors = useThemeColors();
   return (
     <Box
+      ref={tileRef}
       flexGrow={1}
       flexBasis={0}
       minWidth={0}
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
-      hoverBackgroundColor="var(--gloom-hover-fill)"
+      backgroundColor={selected ? colors.selected : undefined}
+      hoverBackgroundColor={selected ? undefined : "var(--gloom-hover-fill)"}
       onMouseDown={onPress}
-      title="See them all in the table"
+      title={`Show the other ${count}`}
       data-gloom-interactive="true"
       data-gloom-role="earnings-calendar-more"
+      data-selected={selected ? "true" : undefined}
       style={TILE_STYLE}
     >
       <Box style={LOGO_STYLE} alignItems="center" justifyContent="center">
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
+        <Text fg={selected ? colors.selectedText : colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
       </Box>
-      <Text fg={colors.textMuted}>more</Text>
+      <Text fg={selected ? colors.selectedText : colors.textMuted}>more</Text>
     </Box>
   );
 }

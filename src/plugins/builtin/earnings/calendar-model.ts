@@ -19,8 +19,13 @@ export interface CalendarGroup {
   label: string;
   /** The ones drawn, largest first (held, then watched names lead when the board puts mine first). */
   reports: BoardReport[];
-  /** Reports of this group past its limit, left to the table. */
+  /** Reports of this group past its limit, counted in its last slot until the group is expanded. */
   more: number;
+}
+
+/** Names a day's group, so a "+N more" slot can expand that group alone. */
+export function calendarGroupKey(date: string, session: EarningsTiming | null): string {
+  return `${date}:${session ?? "unset"}`;
 }
 
 export interface CalendarDay {
@@ -74,12 +79,18 @@ function bySize(left: BoardReport, right: BoardReport, mineFirst: boolean): numb
  * reports grouped by when they come out, before the open, during the
  * session, after the close, and with no time yet. A group takes at most
  * `limit` slots: past it, its largest companies and a last slot that counts
- * the rest.
+ * the rest. A group named in `expanded` (see `calendarGroupKey`) draws all
+ * of its reports.
  */
 export function calendarDays(
   reports: readonly BoardReport[],
   dates: readonly string[],
-  { today, mineFirst = false, limit = Number.POSITIVE_INFINITY }: { today: string; mineFirst?: boolean; limit?: number },
+  { today, mineFirst = false, limit = Number.POSITIVE_INFINITY, expanded }: {
+    today: string;
+    mineFirst?: boolean;
+    limit?: number;
+    expanded?: ReadonlySet<string>;
+  },
 ): CalendarDay[] {
   return dates.map((date) => {
     const inDay = reports.filter((report) => report.date === date);
@@ -87,7 +98,9 @@ export function calendarDays(
       const inGroup = inDay.filter((report) => report.timing === session).sort((left, right) => bySize(left, right, mineFirst));
       if (inGroup.length === 0) return [];
       // Past the limit, the last slot counts the rest.
-      const shown = inGroup.length > limit ? inGroup.slice(0, Math.max(0, limit - 1)) : inGroup;
+      const shown = inGroup.length > limit && !expanded?.has(calendarGroupKey(date, session))
+        ? inGroup.slice(0, Math.max(0, limit - 1))
+        : inGroup;
       return [{ session, label, reports: shown, more: inGroup.length - shown.length }];
     });
     return {

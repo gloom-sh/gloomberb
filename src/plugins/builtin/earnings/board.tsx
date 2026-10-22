@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   PageStackView,
@@ -40,12 +40,20 @@ import {
 } from "./board-model";
 import { boardColumns, boardHasActuals, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
-import { CALENDAR_WEEK_OFFSETS, calendarDays, calendarWeekDates, calendarWeekLabel, type CalendarWeekOffset } from "./calendar-model";
-import { cachedEarningsCalendar, loadEarningsBoard } from "./client";
+import {
+  CALENDAR_WEEK_OFFSETS,
+  calendarDays,
+  calendarGroupKey,
+  calendarWeekDates,
+  calendarWeekLabel,
+  type CalendarWeekOffset,
+} from "./calendar-model";
+import { cachedEarningsCalendar, earningsCalendarKey, loadEarningsBoard } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { EarningsHistoryView } from "./history";
 
 const NO_SYMBOLS: string[] = [];
+const NONE_EXPANDED: ReadonlySet<string> = new Set();
 
 /** The stored calendar reaches about three months ahead. */
 const HORIZON_DAYS = 90;
@@ -62,6 +70,8 @@ const ORDER_OPTIONS: ReadonlyArray<{ value: Order; label: string }> = [{ value: 
 const ERN_VIEWS: ReadonlyArray<{ value: BoardView; label: string }> = [{ value: "table", label: "Table" }, { value: "calendar", label: "Calendar" }];
 
 interface BoardData {
+  /** The query read, by `earningsCalendarKey`: kept data from another week is not this week's. */
+  range: string;
   reports: BoardReport[];
   stale: boolean;
   refreshError: string | null;
@@ -107,6 +117,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const [requestedView] = usePaneSettingValue<string>("view", "");
   const [chosenView, setView] = usePluginPaneState<BoardView | null>("view", null);
   const [weekOffset, setWeekOffset] = usePluginPaneState<CalendarWeekOffset>("week", 0);
+  // The calendar's groups opened past their "+N more" slot, by `calendarGroupKey`.
+  const [expanded, setExpanded] = useState(NONE_EXPANDED);
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const view: BoardView = !desktop ? "table"
     : chosenView ?? (ERN_VIEWS.some((option) => option.value === requestedView) ? requestedView as BoardView : "table");
@@ -129,9 +141,10 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       ? { from: days[0]!.from, to: days.at(-1)!.to, perDay: MARKET_PER_DAY, symbols: named }
       : { from: today, to: addDays(today, HORIZON_DAYS), perDay: 0, symbols: named },
   [calendar, days, market, named, today, week]);
+  const range = earningsCalendarKey(query);
 
   const loader = useCallback(async (force: boolean): Promise<BoardData> => {
-    if (!market && named.length === 0) return { reports: [], stale: false, refreshError: null };
+    if (!market && named.length === 0) return { range, reports: [], stale: false, refreshError: null };
     // Named companies also go to the per-ticker calendar, which covers listings the stored one does not.
     const [cloud, fallback] = await Promise.allSettled([
       loadEarningsBoard(query, force),
@@ -145,30 +158,35 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned))
       : [];
     return {
+      range,
       reports: [...reports, ...extra],
       stale: cloud.status === "fulfilled" && cloud.value.stale,
       refreshError: cloud.status === "rejected"
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : cloud.value.refreshError,
     };
-  }, [calendar, dataProvider, market, named, owned, query]);
+  }, [calendar, dataProvider, market, named, owned, query, range]);
   const resource = useAsyncResource(loader, {
     keepPreviousData: true,
     initialData: () => {
       const cached = cachedEarningsCalendar(query);
-      return cached ? { reports: cached.payload.reports.map((report) => boardReport(report, owned)), stale: false, refreshError: null } : null;
+      return cached ? { range, reports: cached.payload.reports.map((report) => boardReport(report, owned)), stale: false, refreshError: null } : null;
     },
   });
   const data = resource.data;
+  // The week on screen is only the one read for it, never the last week's kept while this one loads or after it failed.
+  const weekData = data?.range === range ? data : null;
   const rows = useMemo(() => boardRows(data?.reports ?? [], days, sort, order === "mine"), [data, days, order, sort]);
   const reportRows = useMemo(() => rows.filter((row): row is BoardRow & { kind: "report" } => row.kind === "report"), [rows]);
   const slotsPerRow = calendarSlotsPerRow(width);
   const weekDays = useMemo(
-    () => (calendar ? calendarDays(data?.reports ?? [], week, { today, mineFirst: order === "mine", limit: slotsPerRow * CALENDAR_GROUP_ROWS }) : []),
-    [calendar, data, order, slotsPerRow, today, week],
+    () => (calendar
+      ? calendarDays(weekData?.reports ?? [], week, { today, mineFirst: order === "mine", limit: slotsPerRow * CALENDAR_GROUP_ROWS, expanded })
+      : []),
+    [calendar, expanded, order, slotsPerRow, today, week, weekData],
   );
   const selectedReport = calendar
-    ? data?.reports.find((report) => report.key === selectedKey) ?? null
+    ? weekData?.reports.find((report) => report.key === selectedKey) ?? null
     : (reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null)?.report ?? null;
   const selected = reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null;
   const open = reportRows.find((row) => row.key === openKey)?.report
@@ -234,7 +252,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;
-  const alerts = getSharedRegistry()?.commands.has("set-event-alert") === true;
+  // The desktop and the web only: the terminal's footer stays as it was.
+  const alerts = desktop && getSharedRegistry()?.commands.has("set-event-alert") === true;
   usePaneFooter("earnings-actions", () => ({
     order: 10,
     hints: symbol
@@ -288,37 +307,39 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   ) : null;
 
   if (calendar) {
+    // The query bar stays up while a week loads or fails, so another week or the table is a click away.
     return (
-      <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} subject="the earnings calendar">
-        <PageStackView
-          focused={focused}
-          detailOpen={!!open}
-          onBack={() => setOpenKey(null)}
-          detailTitle={open ? `${open.symbol} · ${open.name}` : undefined}
-          rootContent={(
-            <Box flexDirection="column" {...FILL_REST}>
-              {queryBar}
-              <EarningsCalendarView
-                days={weekDays}
-                width={width}
-                focused={focused && !open}
-                selectedKey={selectedReport?.key ?? null}
-                onSelect={(report) => setSelectedKey(report.key)}
-                onOpen={(report) => setOpenKey(report.key)}
-                onMore={(day, group) => {
-                  // The table lists the day in full, from the first report the calendar left out.
-                  const next = data?.reports.filter((report) => report.date === day.date && report.timing === group.session)
-                    .find((report) => !group.reports.includes(report));
-                  if (next) setSelectedKey(next.key);
-                  setView("table");
-                }}
-                emptyTitle={emptyStateTitle}
-              />
-            </Box>
-          )}
-          detailContent={history}
-        />
-      </PaneStatusBody>
+      <PageStackView
+        focused={focused}
+        detailOpen={!!open}
+        onBack={() => setOpenKey(null)}
+        detailTitle={open ? `${open.symbol} · ${open.name}` : undefined}
+        rootContent={(
+          <Box flexDirection="column" {...FILL_REST}>
+            {queryBar}
+            <EarningsCalendarView
+              days={weekDays}
+              width={width}
+              focused={focused && !open}
+              selectedKey={selectedKey}
+              onSelect={setSelectedKey}
+              onOpen={(report) => setOpenKey(report.key)}
+              onMore={(day, group) => {
+                // The group draws in full, the cursor on the first company its last slot counted.
+                const all = calendarDays(weekData?.reports ?? [], [day.date], { today, mineFirst: order === "mine" })[0]
+                  ?.groups.find((entry) => entry.session === group.session);
+                setExpanded((current) => new Set(current).add(calendarGroupKey(day.date, group.session)));
+                const next = all?.reports[group.reports.length];
+                if (next) setSelectedKey(next.key);
+              }}
+              loading={!weekData && !resource.error}
+              error={weekData ? null : resource.error}
+              emptyTitle={emptyStateTitle}
+            />
+          </Box>
+        )}
+        detailContent={history}
+      />
     );
   }
 

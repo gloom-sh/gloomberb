@@ -218,15 +218,15 @@ function compare(left: BoardReport, right: BoardReport, sort: BoardSort): number
   return sort.direction === "asc" ? a - b : b - a;
 }
 
-/**
- * Sections in date order, each ranked by the sort (largest company first by
- * default). With `mineFirst`, held names lead, then watched, then the rest.
- */
 /** Held names, then watched, then the rest, when the board puts mine first; one rank for all otherwise. */
 export function ownershipRank(report: Pick<BoardReport, "owned">, mineFirst: boolean): number {
   return !mineFirst ? 0 : report.owned === "held" ? 0 : report.owned === "watched" ? 1 : 2;
 }
 
+/**
+ * Sections in date order, each ranked by the sort (largest company first by
+ * default). With `mineFirst`, held names lead, then watched, then the rest.
+ */
 export function boardRows(
   reports: readonly BoardReport[],
   days: readonly MarketDay[],

@@ -47,13 +47,13 @@ export function keysClearedByChange(
   return clearOnChange && !Object.is(previous, next) ? clearOnChange : [];
 }
 
-/** The answer a wizard step starts on: its default, else a select's first option. */
 /** A wizard step's condition as the workflow field's list: one answer, or every one of several. */
 function wizardDependencies(dependsOn: WizardStep["dependsOn"]): FieldDependency[] | undefined {
   if (!dependsOn) return undefined;
   return (Array.isArray(dependsOn) ? dependsOn : [dependsOn]).map(({ key, value }) => ({ key, value }));
 }
 
+/** The answer a wizard step starts on: its default, else a select's first option. */
 function wizardStepInitialValue(step: WizardStep): string | undefined {
   if (step.defaultValue) return step.defaultValue;
   if (step.type === "select" && step.options?.[0]?.value) return step.options[0].value;

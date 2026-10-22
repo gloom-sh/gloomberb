@@ -19,15 +19,20 @@ const report = (symbol: string, fields: Partial<EarningsCalendarReport> = {}): B
   implied: null, realized: null, averageMove: null, averageReports: 0, ...fields,
 }, new Map());
 
-function Calendar({ reports, onOpen, onMore }: { reports: BoardReport[]; onOpen: (report: BoardReport) => void; onMore: () => void }) {
+function Calendar({ reports, onOpen, onMore, today = TODAY }: {
+  reports: BoardReport[];
+  onOpen: (report: BoardReport) => void;
+  onMore: () => void;
+  today?: string;
+}) {
   const [selected, setSelected] = useState<string | null>(null);
   // 100 cells: two logos a row in each day; three rows a group, so a fourth report is counted.
-  const days = calendarDays(reports, calendarWeekDates(TODAY, 0), { today: TODAY, limit: 6 });
+  const days = calendarDays(reports, calendarWeekDates(today, 0), { today, limit: 6 });
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
         <EarningsCalendarView days={days} width={100} focused selectedKey={selected}
-          onSelect={(entry) => setSelected(entry.key)} onOpen={onOpen} onMore={onMore} emptyTitle="No reports." />
+          onSelect={setSelected} onOpen={onOpen} onMore={onMore} emptyTitle="No reports." />
       </WebInputHostProvider>
     </UiHostProvider>
   );
@@ -76,13 +81,36 @@ test("the week draws each report as its logo with the ticker under it, before th
   expect(opened).toEqual(["JPM", "NFLX"]);
 });
 
-test("a session with more reports than fit ends on a +N more slot that leads to the table", async () => {
+const press = (key: string) => act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); });
+
+test("a session with more reports than fit ends on a +N more slot, which a click or the keys reach and Enter opens", async () => {
   let more = 0;
   const reports = ["A", "B", "C", "D", "E", "F", "G", "H"].map((symbol, index) => report(symbol, { marketCap: (10 - index) * 1e9 }));
   const container = await dom.render(<Calendar reports={reports} onOpen={() => {}} onMore={() => { more += 1; }} />);
   expect(tiles(container).map((tile) => tile.dataset.symbol)).toEqual(["A", "B", "C", "D", "E"]);
-  const slot = container.querySelector<HTMLElement>("[data-gloom-role=earnings-calendar-more]")!;
-  expect(slot.textContent).toBe("+3more");
-  await act(async () => { slot.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })); });
+  const slot = () => container.querySelector<HTMLElement>("[data-gloom-role=earnings-calendar-more]")!;
+  expect(slot().textContent).toBe("+3more");
+  await act(async () => { slot().dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })); });
   expect(more).toBe(1);
+
+  // From A, two rows down and one right is the slot; Enter on it asks for the rest, as a click does.
+  await press("ArrowDown");
+  await press("ArrowDown");
+  await press("ArrowRight");
+  expect(slot().dataset.selected).toBe("true");
+  expect(tiles(container).some((tile) => tile.dataset.selected === "true")).toBe(false);
+  await press("Enter");
+  expect(more).toBe(2);
+});
+
+test("a holiday says closed, unless companies report on it", async () => {
+  // Thanksgiving week: Thu Nov 26 2026 is closed.
+  const heads = async (date: string) => {
+    const container = await dom.render(
+      <Calendar today="2026-11-23" onOpen={() => {}} onMore={() => {}} reports={[report("HOLI", { date })]} />,
+    );
+    return [...container.querySelectorAll<HTMLElement>("[data-gloom-role=earnings-calendar-days] > *")].map((day) => day.textContent);
+  };
+  expect(await heads("2026-11-27")).toEqual(["Mon Nov 230", "Tue Nov 240", "Wed Nov 250", "Thu Nov 26closed", "Fri Nov 271"]);
+  expect((await heads("2026-11-26"))[3]).toBe("Thu Nov 261");
 });

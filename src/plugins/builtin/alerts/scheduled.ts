@@ -214,6 +214,34 @@ export function reportedResult(rows: readonly EarningsResultRow[], symbol: strin
     .sort((left, right) => Math.abs(daysBetween(eventDate, left.date)) - Math.abs(daysBetween(eventDate, right.date)))[0] ?? null;
 }
 
+type ResultsRead = (symbols: string[]) => Promise<readonly EarningsResultRow[]>;
+
+/**
+ * The reports results alerts wait on, from ERN's board and, for each symbol
+ * the board has no actual EPS for (a listing the stored calendar does not
+ * cover, or the board unreadable), the per-ticker calendar. Either read
+ * failing leaves the other's rows; only both failing, or the board failing
+ * with no other read, is an error.
+ */
+export async function readEarningsResults(
+  symbols: readonly string[],
+  board: ResultsRead,
+  calendar: ResultsRead | null,
+): Promise<EarningsResultRow[]> {
+  const [fromBoard] = await Promise.allSettled([board([...symbols])]);
+  const rows = fromBoard.status === "fulfilled" ? [...fromBoard.value] : [];
+  const reported = new Set(rows.filter((row) => row.epsActual != null).map((row) => row.symbol.trim().toUpperCase()));
+  const missing = symbols.filter((symbol) => !reported.has(symbol.trim().toUpperCase()));
+  if (missing.length === 0 || !calendar) {
+    if (fromBoard.status === "rejected") throw fromBoard.reason;
+    return rows;
+  }
+  const [fromCalendar] = await Promise.allSettled([calendar(missing)]);
+  if (fromCalendar.status === "fulfilled") return [...rows, ...fromCalendar.value];
+  if (fromBoard.status === "rejected") throw fromBoard.reason;
+  return rows;
+}
+
 /** The days to read reports over for results alerts waiting on `eventDates`. */
 export function resultsLookupRange(eventDates: readonly string[]): { from: string; to: string } | null {
   const sorted = [...eventDates].sort();

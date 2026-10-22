@@ -140,7 +140,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
-| `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days. On the desktop and the web the bar's Calendar shows a week instead, a column per day with the companies reporting before the open and after the close as their logos, largest first, each with its ticker under it (green or red once reported, by its surprise); the Week choice goes from last week to three weeks ahead, and a day with more reports than fit ends on `+N more`, which opens the table. Enter or a second click opens a company's reports, as a table row does, and `n` (notify) sets an `ALRT` earnings alert on it for when its results are out |
+| `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days. On the desktop and the web the bar's Calendar shows a week instead, a column per day with the companies reporting before the open and after the close as their logos, largest first, each with its ticker under it (green or red once reported, by its surprise); the Week choice goes from last week to three weeks ahead, and a day with more reports than fit ends on `+N more`, which shows the rest of that group in place (the arrows reach it, Enter opens it). Enter or a second click opens a company's reports, as a table row does, and `n` (notify) sets an `ALRT` earnings alert on it for when its results are out |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings calls and their transcripts. With a ticker, the company's calls, its next one on its own line with its start here and in New York and how far away it is. Alone, the calendar of every company's calls today, the next session and the rest of the week, each day's in start order (Enter opens the company's calls); `--view transcripts` (the bar's Transcripts) lists the latest transcribed calls instead |
@@ -556,8 +556,10 @@ Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again for the same
 event, and `gloomberb alerts delete <id>` removes it. Earnings
 alerts also reach the phone app like the other market alerts; an alert on
 results reaches it once Gloom Cloud has the actual EPS, with the same words,
-once per report and never on the day itself. CPI and FOMC alerts notify in
-the running app only.
+once per report and never on the day itself. A version of the app from before
+results alerts reads one as a day-of earnings alert, and saving your alerts
+from it turns it into one on every synced device; set it again from an
+up-to-date app. CPI and FOMC alerts notify in the running app only.
 
 `gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts
 with their event date, lead time and state, and `--tab history` the alerts
