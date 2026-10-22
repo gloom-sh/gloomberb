@@ -155,7 +155,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     const reports = cloud.status === "fulfilled" ? cloud.value.payload.reports.map((report) => boardReport(report, owned)) : [];
     const covered = new Set(reports.map((report) => report.symbol));
     const extra = fallback.status === "fulfilled"
-      ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned))
+      ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned, today))
       : [];
     return {
       range,
@@ -165,7 +165,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : cloud.value.refreshError,
     };
-  }, [calendar, dataProvider, market, named, owned, query, range]);
+  }, [calendar, dataProvider, market, named, owned, query, range, today]);
   const resource = useAsyncResource(loader, {
     keepPreviousData: true,
     initialData: () => {

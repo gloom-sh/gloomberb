@@ -2,6 +2,7 @@ import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
   CorporateActionsData,
+  EarningsDateStatus,
   EarningsEpsBasis,
   Quote,
   QuoteMetadata,
@@ -89,6 +90,12 @@ export interface EarningsEvent {
   earningsDate: Date;
   earningsCallDate?: Date | null;
   isDateEstimate?: boolean | null;
+  /**
+   * The report's status as Gloom Cloud holds it: reported once the report is
+   * out, before the calendar has its actual. Absent from servers that do not
+   * say; `isDateEstimate` and `epsActual` tell the rest.
+   */
+  dateStatus?: EarningsDateStatus | null;
   estimateBasis?: Partial<Record<EarningsEstimateField, EarningsEstimateBasis>>;
   epsEstimate: number | null;
   epsLow?: number | null;

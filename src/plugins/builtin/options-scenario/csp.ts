@@ -2,6 +2,8 @@ import type { StatItem } from "../../../components";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { loadEarningsCalendar } from "../earnings/data/cache";
+import { calendarEventOf, newYorkDay, resolveListingEvents, upcomingReportDate } from "../shared/earnings-calendar";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatHedgePrice } from "./hedge";
 import { UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
@@ -99,15 +101,19 @@ export function cashSecuredPut(
 }
 
 /**
- * The next report date from the earnings calendar, YYYY-MM-DD; null when the
- * calendar has none for the symbol or cannot be read.
+ * The next report date, YYYY-MM-DD, as every earnings surface resolves it
+ * (shared/earnings-calendar): the calendar's, or once that date has passed
+ * the next one on record; null when there is none or the calendar cannot be
+ * read.
  */
-export async function loadNextEarningsDate(provider: DataProvider | null | undefined, symbol: string): Promise<string | null> {
+export async function loadNextEarningsDate(provider: DataProvider | null | undefined, symbol: string, today = newYorkDay()): Promise<string | null> {
   const key = symbol.trim().toUpperCase();
   const result = await loadEarningsCalendar(provider, [key]).catch(() => null);
-  const event = result?.events.find((entry) => entry.symbol.trim().toUpperCase() === key);
-  const time = event?.earningsDate.getTime();
-  return time != null && Number.isFinite(time) ? new Date(time).toISOString().slice(0, 10) : null;
+  const event = calendarEventOf(result?.events, key);
+  if (!provider || !event) return null;
+  const listing = parsePublicTickerKey(key);
+  const resolved = await resolveListingEvents(provider, [{ key, symbol: listing.symbol, exchange: listing.exchange ?? "" }], [event], today);
+  return upcomingReportDate(resolved.get(key));
 }
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

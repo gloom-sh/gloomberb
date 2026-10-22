@@ -5,6 +5,8 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import { formatEventMetric } from "./event-model";
+import { loadEarningsCalendar } from "../earnings/data/cache";
+import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
 
 function metricFormat(currencyKey: "epsCurrency" | "revenueCurrency", kind: "eps" | "revenue") {
   return (value: unknown, row: Record<string, unknown>) => {
@@ -42,14 +44,20 @@ function settledError(result: PromiseSettledResult<unknown>): string | null {
   return result.reason instanceof Error ? result.reason.message : String(result.reason);
 }
 
-/** Corporate actions, analyst research and financials together; one failing leaves the others. */
-export async function loadEventSources(provider: DataProvider, symbol: string): Promise<EventSources> {
-  const [actions, estimates, financials] = await Promise.allSettled([
+/**
+ * Corporate actions, analyst research and financials together; one failing
+ * leaves the others. The earnings rows are resolved against the earnings
+ * calendar, so the next report reads as `earnings` and ERN give it.
+ */
+export async function loadEventSources(provider: DataProvider, symbol: string, today = newYorkDay()): Promise<EventSources> {
+  const [actions, estimates, financials, calendar] = await Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
     provider.getAnalystResearch?.(symbol, "") ?? null,
     provider.getTickerFinancials(symbol, ""),
+    loadEarningsCalendar(provider, [symbol]),
   ]);
-  const actionsData = actions.status === "fulfilled" ? actions.value : null;
+  const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
+  const actionsData = actions.status === "fulfilled" && actions.value ? withResolvedEarnings(actions.value, event, today) : null;
   const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
   const financialsData = financials.status === "fulfilled" ? financials.value : null;
   return {
