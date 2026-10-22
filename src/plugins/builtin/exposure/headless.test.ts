@@ -105,6 +105,7 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   const payload = structuredClone(audited) as ExposurePayload;
   payload.access = "preview";
   payload.lockedHoldings = 4;
+  payload.unknowns = [...payload.unknowns, "Free preview covers the first holding at depth 1. Portfolio totals cover this displayed subset at its original NAV weight; remaining holdings are withheld."];
   payload.holdings = payload.holdings.filter(holding => holding.symbol === "AAPL");
   payload.holdings[0]!.extensions = drivers.AAPL as unknown as ExposureExtensionObservation[];
   payload.portfolio.measures = [];
@@ -120,5 +121,9 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +2025-09-27$/m);
   // An anonymous counterparty leads with its filing's name; the Kind column already says supplier.
   expect(text).toMatch(/^Supplier +Vendor two \(undisclosed\) +-- +Unknown +2026-06-30$/m);
-  expect(text).toContain("Pro: Free preview: one holding, depth one. Full analysis requires Pro · gloom.sh/cloud");
+  // The preview is the standard Pro line; what the server says about the subset's weights is a note, never an error.
+  const flat = text.replace(/\n(?! )/g, " ");
+  expect(flat).toContain("Pro: Free shows the first holding, one relationship hop deep. Gloom Pro adds the other 4 holdings and paths up to four hops · gloom.sh/cloud");
+  expect(flat).toContain("Notes: Portfolio totals cover this displayed subset at its original NAV weight; remaining holdings are withheld.");
+  expect(text.slice(text.indexOf("Errors:"))).not.toContain("Free preview");
 });
