@@ -92,14 +92,16 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
     if (outcome === "success") {
       expect(latest?.series.map((series) => series.points.length)).toEqual([2, 2]);
       expect(settled).not.toContain("Comparison unavailable");
-    } else {
+    } else if (outcome === "disjoint") {
       expect(latest?.priceComparison?.start).toBeNull();
-      if (outcome === "disjoint") expect(settled).toContain("Comparison unavailable");
-      else {
-        expect(latest?.errors.length).toBeGreaterThan(0);
-        expect(settled).toContain("price history is unavailable");
-      }
+      expect(settled).toContain("Comparison unavailable");
       expect(settled).not.toContain("no observations in the selected date range");
+    } else {
+      // The leg with no bars is left out; the other still plots.
+      expect(latest?.series.map((series) => series.points.length)).toEqual([2, 0]);
+      expect(latest?.priceComparison?.dropped?.map((entry) => entry.label)).toEqual([secondSymbol]);
+      if (outcome === "failed") expect(latest?.errors.length).toBeGreaterThan(0);
+      expect(settled).not.toContain("Comparison unavailable");
     }
 
     if (outcome === "disjoint") {

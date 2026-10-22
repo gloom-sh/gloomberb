@@ -133,8 +133,11 @@ test("daily history missing a settled session is re-checked on a receding schedu
     load = () => upTo("2026-09-22");
     expect(await at("2026-09-23T09:00:00Z")).toBe("2026-09-21");
     expect(await at("2026-09-23T09:30:00Z")).toBe("2026-09-22");
-    await at("2026-09-23T19:00:00Z");
+    await at("2026-09-23T13:00:00Z");
     expect(calls).toHaveLength(5);
+    // The session that opened at 13:30 has a bar the morning copy lacks.
+    await at("2026-09-23T19:00:00Z");
+    expect(calls).toHaveLength(6);
   } finally { store.close(); }
 });
 
@@ -200,8 +203,8 @@ test("a narrow range of a listing that stays behind is not revalidated on its sh
       await router.getPriceHistory("HALT", "NASDAQ", "1M");
       await Bun.sleep(0);
     }
-    // One ask of the 1M key, then one paced re-check before the next close.
-    expect(calls).toEqual(["5Y", "1M", "1M"]);
+    // One ask of the 1M key, one when the session opens, then one paced re-check before the next close.
+    expect(calls).toEqual(["5Y", "1M", "1M", "1M"]);
     // Without a broader copy, the 1M copy's own short TTL does not drive it either.
     calls.length = 0;
     for (let time = Date.parse("2026-09-23T10:01:00Z"); time <= Date.parse("2026-09-23T20:00:00Z"); time += 60_000) {
@@ -209,7 +212,7 @@ test("a narrow range of a listing that stays behind is not revalidated on its sh
       await router.getPriceHistory("STILL", "NASDAQ", "1M");
       await Bun.sleep(0);
     }
-    expect(calls).toEqual(["1M", "1M"]);
+    expect(calls).toEqual(["1M", "1M", "1M"]);
   } finally { store.close(); }
 }, 30_000);
 
@@ -229,9 +232,12 @@ test("a listing on a venue without published closures is not re-checked through 
       await router.getPriceHistory("NPN", "JSE", "1Y");
       await Bun.sleep(0);
     }
-    // One fetch per key a day, as before: the holiday is not a missing session.
-    expect(calls.map((call) => call.slice(3, 13))).toEqual(["2026-09-24", "2026-09-24", "2026-09-24", "2026-09-24",
-      "2026-09-25", "2026-09-25", "2026-09-26", "2026-09-26", "2026-09-27", "2026-09-27"]);
+    // Each key is fetched as each weekday's session opens and settles, then once a day over the weekend:
+    // the holiday is not a missing session, so it is not re-checked beyond that.
+    expect(calls.map((call) => call.slice(3, 19))).toEqual([
+      "2026-09-24T00:00", "2026-09-24T00:00", "2026-09-24T07:00", "2026-09-24T07:00", "2026-09-24T15:50", "2026-09-24T15:50",
+      "2026-09-25T07:00", "2026-09-25T07:00", "2026-09-25T15:50", "2026-09-25T15:50",
+      "2026-09-26T16:00", "2026-09-26T16:00", "2026-09-27T16:10", "2026-09-27T16:10"]);
   } finally { store.close(); }
 }, 30_000);
 

@@ -204,6 +204,13 @@ describe("pane function capabilities", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
       .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
     expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
+    // A ticker after a function that takes its underlying as an option runs as that option.
+    const ovme = [{ key: "model", type: "enum" as const, values: [{ value: "european" }, { value: "american" }] },
+      { key: "symbol", type: "string" as const }];
+    expect(noArgumentMessage(ovme, "OVME", "NEM")).toBe(
+      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloomberb fn OVME --symbol NEM");
+    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloomberb fn OVME --model american");
+    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloomberb fn OVME --model european");
   });
 });
 
@@ -357,6 +364,23 @@ describe("pane catalog search", () => {
       expect(page).toContain("gloomberb fn PORT <portfolio-id>");
       expect(page).toMatch(/Also matches "port"[\s\S]*\nMAP\s/);
       for (const query of ["ais", "AIS", "shipping"]) expect(filterPaneCatalogEntries(entries, query).map(({ token }) => token), query).toContain("MAP");
+    } finally {
+      registry.destroy();
+    }
+  });
+
+  test("a metals desk's plain words for the gold/silver ratio list GR first, and search lists it", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["ratio", "gold silver", "gold silver ratio", "gold/silver ratio"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        const { shown, loose } = selectPaneCatalogMatches(ranked, query, 10);
+        expect(shown[0]?.token, query).toBe("GR");
+        // `search` lists functions only from a match that is not loose.
+        expect(loose, query).toBe(false);
+      }
     } finally {
       registry.destroy();
     }

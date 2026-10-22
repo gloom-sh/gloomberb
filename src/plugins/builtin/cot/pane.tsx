@@ -13,7 +13,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCotBoard, loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -177,7 +177,8 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   });
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
+    // The unit the net is counted in, as `fn COT` titles it: what one contract is, where the report says.
+    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}

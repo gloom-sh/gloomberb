@@ -15,12 +15,11 @@ import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/a
 import {
   CHART_LAYOUT_SETTING_KEY,
   NO_CHART_LAYOUT,
+  draggedPanelWeights,
   minimumPanelRows,
-  movePanelBoundary,
   parseChartLayoutPrefs,
   patchChartLayout,
   stepTopPanel,
-  weightsFromRows,
   type ChartLayoutPrefs,
 } from "./chart-layout";
 import { usePaneFocused } from "../../../state/app/activity";
@@ -585,7 +584,16 @@ function ThemedCompositeChart({
   const patchLayout = useCallback((patch: ChartLayoutPrefs | ((layout: ChartLayoutPrefs) => ChartLayoutPrefs)) => {
     layoutStateRef.current.onChartLayoutChange((layout) => patchChartLayout(layout, typeof patch === "function" ? patch(layout) : patch));
   }, []);
-  const toggleToolbar = useCallback(() => patchLayout((layout) => ({ toolbarHidden: !layout.toolbarHidden })), [patchLayout]);
+  // The tool in hand, read when the bar is toggled (the keyboard hook below holds it).
+  const toolInHandRef = useRef<{ armed: boolean; putDown: () => void }>({ armed: false, putDown: () => {} });
+  // Shift+T and the chevrons act on the bar as it shows: a bar open only for
+  // the tool in hand folds again, the tool put down, and stays hidden.
+  const toggleToolbar = useCallback(() => {
+    const tool = toolInHandRef.current;
+    const hidden = layoutStateRef.current.chartLayout.toolbarHidden === true && !tool.armed;
+    if (!hidden && tool.armed) tool.putDown();
+    patchLayout({ toolbarHidden: !hidden });
+  }, [patchLayout]);
   const toggleLegendCollapsed = useCallback(() => patchLayout((layout) => ({ legendCollapsed: !layout.legendCollapsed })), [patchLayout]);
   const resetPanelHeights = useCallback(() => {
     setDraftPanelWeights(null);
@@ -596,6 +604,28 @@ function ThemedCompositeChart({
     const maximized = layoutStateRef.current.maximizedPanelId;
     patchLayout({ maximizedPanelId: maximized === panelId ? undefined : panelId });
   }, [patchLayout]);
+  // A panel given the whole plot is let go once the chart no longer has it, so
+  // it never comes back maximized, and when a panel is added beside it, so the
+  // new one shows. The chart's panels are the ones it is given and the ones
+  // its series bring; a panel whose data is loading is still given.
+  const chartPanelIds = useMemo(() => {
+    const ids = new Set(panels.map((panel) => panel.id));
+    for (const panel of projectedScene?.panels ?? []) ids.add(panel.id);
+    return [...ids].join("\u0000");
+  }, [panels, projectedScene]);
+  const seenPanelIdsRef = useRef<readonly string[] | null>(null);
+  const savedMaximizedPanelId = chartLayout.maximizedPanelId;
+  const chartDrawn = projectedScene !== null;
+  useEffect(() => {
+    const ids = chartPanelIds ? chartPanelIds.split("\u0000") : [];
+    const previous = seenPanelIdsRef.current;
+    seenPanelIdsRef.current = ids;
+    if (!savedMaximizedPanelId) return;
+    const gone = chartDrawn && !ids.includes(savedMaximizedPanelId);
+    const added = !!previous && previous.length > 1 && previous.includes(savedMaximizedPanelId)
+      && ids.some((id) => !previous.includes(id));
+    if (gone || added) patchLayout({ maximizedPanelId: undefined });
+  }, [chartDrawn, chartPanelIds, patchLayout, savedMaximizedPanelId]);
   // Shift+Up and Shift+Down: the top panel a row taller or shorter.
   const stepTopPanelRows = useCallback((direction: 1 | -1) => {
     const { rows } = panelLayoutRef.current;
@@ -678,6 +708,7 @@ function ThemedCompositeChart({
     pickDrawColor,
     layout: layoutControls,
   });
+  toolInHandRef.current = { armed: armedTool !== null, putDown: () => armTool(null) };
   const pressFromPointer = useCallback(() => {
     onPress?.();
     activateFromPointer();
@@ -810,15 +841,12 @@ function ThemedCompositeChart({
         consumeChartMouseEvent(event);
         const deltaRows = ((event.pixelY ?? gesture.startPixelY) - gesture.startPixelY) / Math.max(1, latestPanelResizeRef.current.cellHeightPx);
         const plotRows = gesture.rows.reduce((sum, entry) => sum + entry.rows, 0);
-        const next = movePanelBoundary(
-          gesture.rows.map((entry) => entry.rows),
-          gesture.index,
-          deltaRows,
-          minimumPanelRows(plotRows, gesture.rows.length),
-        );
-        const weights = weightsFromRows(gesture.rows.map((entry, position) => ({ id: entry.id, rows: next[position]! })), gesture.weightTotal);
+        // Back where it started, or never a row away, the line saves nothing.
+        const weights = draggedPanelWeights(gesture, gesture.index, deltaRows, minimumPanelRows(plotRows, gesture.rows.length));
         gesture.weights = weights;
-        setDraftPanelWeights((current) => ({ ...(current ?? layoutStateRef.current.chartLayout.panelWeights), ...weights }));
+        setDraftPanelWeights(weights
+          ? (current) => ({ ...(current ?? layoutStateRef.current.chartLayout.panelWeights), ...weights })
+          : null);
       },
       onMouseUp: release,
       onMouseDragEnd: release,

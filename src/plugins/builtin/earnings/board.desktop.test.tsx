@@ -129,7 +129,7 @@ const viewOption = (root: HTMLElement, label: string) => [...root.querySelectorA
   .find((button) => button.textContent === label)!;
 const pick = (element: HTMLElement) => act(async () => { element.click(); });
 const setWeek = (week: number) => act(async () => {
-  dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "week", value: week });
+  dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "range", value: String(week) });
 });
 
 test("the table and the calendar share the cursor, and +N more opens its group in the calendar", async () => {
@@ -171,12 +171,12 @@ test("another week shows no reports of its own until it is read, and its failure
   await setWeek(1);
   await settle();
   expect(tiles(root)).toEqual([]);
-  expect(root.textContent).not.toContain("No reports on the calendar this week.");
+  expect(root.textContent).not.toContain("No reports on the calendar");
   expect(root.querySelector("[data-gloom-status=loading]")).not.toBeNull();
 
   await act(async () => { pending.reject(new Error("UPSTREAM_ERROR")); });
   await settle();
-  expect(root.textContent).not.toContain("No reports on the calendar this week.");
+  expect(root.textContent).not.toContain("No reports on the calendar");
   expect(root.querySelector("[data-gloom-status=error]")).not.toBeNull();
   // The view switch is still there, to go back to the table.
   expect(viewOption(root, "Table")).toBeDefined();
@@ -185,7 +185,7 @@ test("another week shows no reports of its own until it is read, and its failure
   nextWeek = Promise.resolve([]);
   await setWeek(2);
   await settle();
-  expect(root.textContent).toContain("No reports on the calendar this week.");
+  expect(root.textContent).toContain("No reports on the calendar in the week of Oct 26.");
 });
 
 test("the Names filter lists Mine, each portfolio and watchlist and the sector funds, and reads only the chosen one's companies", async () => {

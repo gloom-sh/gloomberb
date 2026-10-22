@@ -5,7 +5,10 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
 import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
-import { GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
+import { CHART_FIELD_IDS, GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
+import { buildSeriesSpec } from "./chart-spec-edit";
+import { getSharedRegistry } from "../../registry";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveChartSpecData } from "../../../time-series/resolve";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition } from "../../../time-series/history-acquisition";
 import {
@@ -33,6 +36,8 @@ import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
+import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
+import { LATEST_INTRADAY_TEXT } from "../../../market-data/market/period-return";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -307,8 +312,11 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
  * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
  * newest observation and how far behind that is.
  */
-function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): HeadlessPaneFreshness {
+function chartFreshness(allSeries: readonly HeadlessSeries[], spec: ChartSpec, comparison?: PriceComparison | null): HeadlessPaneFreshness {
   const order = ["1wk", "1mo"];
+  // A leg that failed to load has no bars to date; the ones that loaded say what the chart is.
+  const loaded = allSeries.filter((entry) => entry.points.length > 0);
+  const series = loaded.length ? loaded : allSeries;
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {
@@ -321,7 +329,9 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
   if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
   const closedDay = closedPriceBarDay(series);
-  return { ...barHistoryFreshness(coarsest), ...(closedDay ? { asOf: closedDay } : {}) };
+  // A comparison whose newest point is a session still trading is not a day's closes.
+  const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT } : {};
+  return { ...barHistoryFreshness(coarsest), ...basis, ...(closedDay ? { asOf: closedDay } : {}) };
 }
 
 /** A series' venue and the day its newest bar starts, as the forming and closed bar checks read them. */
@@ -437,6 +447,33 @@ export function argumentWithListing(argument: string, symbol: string, key: strin
   return named ? legs.join("") : key;
 }
 
+/**
+ * A FRED series id typed where a ticker goes (`fn G DFII10`), as the chart of
+ * FRED:DFII10: the catalog lists it, no listing answers to it, and the quote
+ * source says it is not a ticker. A real ticker of the same letters, read as
+ * a listing or quoted, still charts as the ticker; null then, and for any
+ * other series.
+ */
+export async function bareFredSeries(
+  series: ChartSeriesSpec,
+  readListing: () => Promise<unknown>,
+  context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName">,
+): Promise<ChartSeriesSpec | null> {
+  const { source } = series;
+  if (source.kind !== "security" || source.instrument.exchange || source.instrument.instrument || source.fieldId !== CHART_FIELD_IDS.price) return null;
+  const id = source.instrument.symbol.trim().toUpperCase();
+  const expression = `FRED:${id}`;
+  const label = /^[A-Z0-9]+$/.test(id)
+    ? context.catalogSeriesName?.(expression) ?? getSharedRegistry()?.series?.findByExpression(expression)?.definition.name
+    : undefined;
+  if (!label || await readListing()) return null;
+  const failure = await Promise.resolve().then(() => context.marketData.getQuote(id, ""))
+    .then((quote) => quote ? null : `Not a ticker: ${id}.`, (error: unknown) => error instanceof Error ? error.message : String(error));
+  if (!failure || !notATickerSymbol(failure)) return null;
+  const fred = buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
+  return { ...fred, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
@@ -448,8 +485,13 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       // A bare symbol is the listing `quote` reads it as: BDI, which two companies list, asks which,
       // as `quote BDI` does, instead of charting whichever line a source picked.
       const reads = new Map<string, ReturnType<typeof readSeriesListing>>();
+      const listings = new Map<string, Promise<Awaited<ReturnType<NonNullable<typeof context.resolveListing>>> | null>>();
+      const readListing = (symbol: string) => {
+        if (!listings.has(symbol)) listings.set(symbol, context.resolveListing?.(symbol, (key) => argumentWithListing(args.rawArgument, symbol, key)) ?? Promise.resolve(null));
+        return listings.get(symbol)!;
+      };
       const readSeriesListing = async (symbol: string): Promise<{ symbol: string; exchange?: string } | null> => {
-        const read = await context.resolveListing?.(symbol, (key) => argumentWithListing(args.rawArgument, symbol, key));
+        const read = await readListing(symbol);
         if (read) return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {} };
         return context.resolveInstrument ? context.resolveInstrument(symbol) : null;
       };
@@ -458,6 +500,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         series: await Promise.all(parsed.series.map(async (series) => {
           if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
           const { symbol } = series.source.instrument;
+          // A FRED id no ticker answers to (DFII10) is its FRED series; an intraday chart has none.
+          const fred = template === "graph-intraday-price-pane" ? null : await bareFredSeries(series, () => readListing(symbol), context);
+          if (fred) return fred;
           if (!reads.has(symbol)) reads.set(symbol, readSeriesListing(symbol));
           const instrument = await reads.get(symbol)!;
           return instrument ? { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } } : series;
@@ -548,7 +593,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         model.warnings = [...model.warnings ?? [], dropped.warning];
         model.metadata = { ...model.metadata, resolution: dropped.drop };
       }
-      model.freshness = chartFreshness(model.series, model.spec);
+      model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

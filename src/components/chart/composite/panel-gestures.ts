@@ -81,6 +81,13 @@ export interface PendingAxisWheel {
 /** Two presses on an axis closer than this, with no drag between, are a double click where the host does not count clicks. */
 export const AXIS_DOUBLE_PRESS_MS = 400;
 
+/**
+ * How recent the first press of a host's own double click (`detail` 2) must be
+ * to count as one on the same plot: twice the usual system setting, so the
+ * host still decides what a double click is.
+ */
+export const PLOT_DOUBLE_CLICK_MS = 1000;
+
 /** Blurs a focused text field, the focus change a consumed mousedown prevents. */
 export function releaseEditableFocus(event: ChartMouseEvent): void {
   if (!event.target?.closest?.(`[data-gloom-role="${COMPOSITE_PANEL_ROLE}"]`)) return;

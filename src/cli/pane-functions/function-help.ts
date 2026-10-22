@@ -380,8 +380,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CACS"],
   },
   EVTS: {
-    summary: "The market's report days with implied and past moves; a ticker picks its row.",
-    usage: ["EVTS", "EVTS NVDA"],
+    summary: "The market's report days with implied and past moves, or a past or coming week or day of them; a ticker picks its row.",
+    usage: ["EVTS", "EVTS NVDA", "gloomberb fn EVTS --week last", "gloomberb fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,
     bloomberg: ["EVTS"],
@@ -658,7 +658,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CN"],
   },
   NI: {
-    summary: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector.",
+    summary: "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector.",
     usage: ["NI ENERGY"],
     keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,

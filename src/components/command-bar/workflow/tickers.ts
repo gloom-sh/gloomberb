@@ -1,3 +1,4 @@
+import { indexRootSuggestion } from "../../../tickers/index-roots";
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
@@ -203,7 +204,10 @@ export async function resolveTickerInputOrThrow(
 ): Promise<ResolvedTickerInput> {
   const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps, { ...options, throwUnresolved: true });
   if (!resolved) {
-    throw new Error(`No ticker match found for "${rawInput ?? activeTicker ?? ""}".`);
+    const typed = rawInput ?? activeTicker ?? "";
+    // A bare index root (VIX) is quoted as ^VIX, which the message offers.
+    const suggestion = indexRootSuggestion(typed.trim());
+    throw new Error(`No ticker match found for "${typed}".${suggestion ? ` ${suggestion}` : ""}`);
   }
   return resolved;
 }

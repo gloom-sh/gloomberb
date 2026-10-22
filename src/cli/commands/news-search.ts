@@ -4,7 +4,7 @@ import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { cliStyles } from "../../utils/cli-output";
 import { logFailure } from "../../utils/log-failure";
 import { commodityNamedIn, commoditySearchName, isCommodityName } from "../../market-data/commodity-names";
-import type { FuturesContract } from "../../market-data/futures-board";
+import { futuresBoardContract, type FuturesContract } from "../../market-data/futures-board";
 
 /** What the service accepts of a search: two characters to two hundred, with a letter or a number in them. */
 const MIN_TEXT_LENGTH = 2;
@@ -77,9 +77,62 @@ export function newsFallbackText(symbol: string): string | null {
  * newest first within each. The service holds stories back from an account
  * without real-time access, as every other news request.
  */
-export async function searchNewsStories(text: string, limit: number): Promise<NewsArticle[]> {
-  const response = await apiClient.searchCloudNews(text, limit);
+export async function searchNewsStories(text: string, limit: number, topics?: readonly string[]): Promise<NewsArticle[]> {
+  const response = await apiClient.searchCloudNews(text, limit, topics);
   return response.items.map((item) => mapCloudNewsArticle(item));
+}
+
+/** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
+export const METALS_NEWS_TOPIC = "metals";
+
+/** A metal's market news, for what `news` was given: its name, its future, or its board code. */
+export interface MetalNewsRoute {
+  /** The metal the stories are searched for, in METALS: "gold". */
+  metal: string;
+  contract: FuturesContract;
+  /** Why what was typed reads as the metal, under the heading; null for the metal's own name. */
+  reason: string | null;
+  /** The name as typed, which in capitals may be a ticker too ("gold", GOLD for Gold.com Inc.). */
+  word: string | null;
+}
+
+/**
+ * A metal's market news for a metal's future (GC=F, SI=F, HG=F, PL=F, PA=F,
+ * ALI=F) or its name typed as a word (gold, Silver, copper): news filed under
+ * companies has none of the metal's own, and the stories that merely name it
+ * are mostly miners' releases. A word with no lower-case letter (GOLD) is a
+ * ticker and keeps its company news; a board code typed bare (GC) is read once
+ * no listing answers to it (`metalCodeNewsRoute`).
+ */
+export function metalNewsRoute(typed: string): MetalNewsRoute | null {
+  const text = typed.trim();
+  if (/=F$/i.test(text)) {
+    const contract = futuresBoardContract(text);
+    const metal = contract?.sector === "metals" ? commoditySearchName(contract) : null;
+    return contract && metal ? { metal, contract, reason: `the commodity ${contract.symbol} trades`, word: null } : null;
+  }
+  if (!/^\p{L}{3,}$/u.test(text) || !/\p{Ll}/u.test(text)) return null;
+  // One word of letters: the metal's names are one word each (gold, aluminium).
+  const contract = commodityNamedIn(text);
+  return contract?.sector === "metals" ? { metal: text.toLowerCase(), contract, reason: null, word: text } : null;
+}
+
+/** A metal's market news for its board code typed bare (GC, SI, HG) where no listing answers to it. */
+export function metalCodeNewsRoute(typed: string): MetalNewsRoute | null {
+  const code = typed.trim().toUpperCase();
+  const contract = /^[A-Z]{2,3}$/.test(code) ? futuresBoardContract(code) : null;
+  const metal = contract?.sector === "metals" ? commoditySearchName(contract) : null;
+  return contract && metal ? { metal, contract, reason: `${code} is the futures board's code for ${contract.name}`, word: null } : null;
+}
+
+/** The line above a metal's market news: "Metals news matching "gold"", with why what was typed reads as the metal. */
+export function metalNewsHeading(route: MetalNewsRoute): string {
+  return `${cliStyles.bold(`Metals news matching "${route.metal}"`)}${route.reason ? cliStyles.muted(`  ·  ${route.reason}`) : ""}`;
+}
+
+/** What a metal's market news says when no story is tagged METALS: every story that names it is one search away. */
+export function noMetalStoriesMessage(route: MetalNewsRoute): string {
+  return `No metals stories match "${route.metal}". For every story that mentions it, try: ${quotedSearchCommand(route.metal)}`;
 }
 
 /** The futures news route a search offers when no story matches it: `gloomberb news KC=F` for "arabica". */
