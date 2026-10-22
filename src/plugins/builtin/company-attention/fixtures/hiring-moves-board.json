@@ -1,0 +1,2893 @@
+{
+ "generatedAt": "2026-10-19T08:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "week": "2026-10-12",
+ "total": 39,
+ "locked": 0,
+ "coverage": {
+  "measured": 1638,
+  "signals": {
+   "accelerating": 32,
+   "slowing": 7,
+   "withPeers": 0
+  },
+  "unmeasured": 283,
+  "unmeasuredReasons": {
+   "collapsed": 26,
+   "first_read": 129,
+   "rediscovered": 10,
+   "truncated": 116,
+   "catch_up": 43,
+   "identity_reset": 18,
+   "read_gap": 18
+  },
+  "computedAt": "2026-10-19T06:04:11.000Z",
+  "baselineWeeks": 13
+ },
+ "moves": [
+  {
+   "symbol": "CBRL",
+   "name": "CRACKER BARREL OLD COUNTRY STORE, INC",
+   "sector": "Consumer Cyclical",
+   "industry": "Restaurants",
+   "sourceTickers": [
+    "CBRL"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 1329,
+   "closedRoles": 26,
+   "openRoles": 6700,
+   "baseline": {
+    "weeks": 3,
+    "mean": 18,
+    "sd": 5.5677643628300215,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 23
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 19
+     }
+    ]
+   },
+   "ratio": 73.83333333333333,
+   "zScore": 235.4625509571019,
+   "peers": {
+    "group": "industry",
+    "label": "Restaurants",
+    "companies": 9,
+    "medianRatio": 1.382608695652174
+   },
+   "peerRelative": 53.40146750524109,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "retail",
+     "label": "Retail & hospitality",
+     "newRoles": 1231,
+     "baselineMean": 16.333333333333332
+    },
+    {
+     "id": "other",
+     "label": "Other",
+     "newRoles": 96,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Restaurant Seasonal",
+     "count": 655
+    },
+    {
+     "title": "Retail Seasonal",
+     "count": 655
+    },
+    {
+     "title": "Restaurant Manager",
+     "count": 15
+    }
+   ],
+   "why": "1,329 new roles in the week of Oct 12, 2026, 74x the average of 18 a week over the 3 measured weeks before. Restaurants peers (9): 1.4x. Most of the rise in Retail & hospitality: +1,215 against 16 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "RIVN",
+   "name": "Rivian Automotive, Inc. / DE",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Manufacturers",
+   "sourceTickers": [
+    "RIVN"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 311,
+   "closedRoles": 191,
+   "openRoles": 979,
+   "baseline": {
+    "weeks": 3,
+    "mean": 91,
+    "sd": 13.45362404707371,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 102
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 95
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 76
+     }
+    ]
+   },
+   "ratio": 3.4175824175824174,
+   "zScore": 16.35247121743766,
+   "peers": {
+    "group": "sector",
+    "label": "Consumer Cyclical",
+    "companies": 131,
+    "medianRatio": 0.8921568627450981
+   },
+   "peerRelative": 3.8306967757517203,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 222,
+     "baselineMean": 13.333333333333334
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 32,
+     "baselineMean": 16
+    },
+    {
+     "id": "retail",
+     "label": "Retail & hospitality",
+     "newRoles": 9,
+     "baselineMean": 5
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Manager, Field Service",
+     "count": 4
+    },
+    {
+     "title": "Parts Advisor",
+     "count": 3
+    },
+    {
+     "title": "Service Production Supervisor",
+     "count": 3
+    }
+   ],
+   "why": "311 new roles in the week of Oct 12, 2026, 3.4x the average of 91 a week over the 3 measured weeks before. Consumer Cyclical peers (131): 0.9x. Most of the rise in Operations: +209 against 13 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "ARGX",
+   "name": "ARGENX SE",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "ARGX"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 72,
+   "closedRoles": 12,
+   "openRoles": 140,
+   "baseline": {
+    "weeks": 3,
+    "mean": 6.666666666666667,
+    "sd": 5.033222956847167,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 6
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 2
+     }
+    ]
+   },
+   "ratio": 10.799999999999999,
+   "zScore": 12.980417099237426,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.8407920792079208
+   },
+   "peerRelative": 12.845030617051341,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 60,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "research",
+     "label": "Research",
+     "newRoles": 5,
+     "baselineMean": 0
+    },
+    {
+     "id": "clinical",
+     "label": "Clinical",
+     "newRoles": 5,
+     "baselineMean": 1
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Rheumatology Territory Business Manager, Atlanta, GA",
+     "count": 2
+    }
+   ],
+   "why": "72 new roles in the week of Oct 12, 2026, 11x the average of 7 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the rise in Sales: +59 against 1 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "BBIO",
+   "name": "BridgeBio Pharma, Inc.",
+   "sector": "Healthcare",
+   "industry": "Biotechnology",
+   "sourceTickers": [
+    "BBIO"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 24,
+   "closedRoles": 19,
+   "openRoles": 72,
+   "baseline": {
+    "weeks": 3,
+    "mean": 4,
+    "sd": 2,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 6
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 2
+     }
+    ]
+   },
+   "ratio": 6,
+   "zScore": 10,
+   "peers": {
+    "group": "industry",
+    "label": "Biotechnology",
+    "companies": 91,
+    "medianRatio": 0.6
+   },
+   "peerRelative": 10,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 12,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "clinical",
+     "label": "Clinical",
+     "newRoles": 3,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 2,
+     "baselineMean": 0.3333333333333333
+    }
+   ],
+   "topTitles": [],
+   "why": "24 new roles in the week of Oct 12, 2026, 6.0x the average of 4 a week over the 3 measured weeks before. Biotechnology peers (91): 0.6x. Most of the rise in Sales: +12 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "GNRC",
+   "name": "GENERAC HOLDINGS INC.",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "sourceTickers": [
+    "GNRC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 36,
+   "closedRoles": 1,
+   "openRoles": 91,
+   "baseline": {
+    "weeks": 3,
+    "mean": 4,
+    "sd": 3.4641016151377544,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 8
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 2
+     }
+    ]
+   },
+   "ratio": 9,
+   "zScore": 9.237604307034013,
+   "peers": {
+    "group": "industry",
+    "label": "Specialty Industrial Machinery",
+    "companies": 19,
+    "medianRatio": 0.8067632850241546
+   },
+   "peerRelative": 11.155688622754491,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 21,
+     "baselineMean": 1.3333333333333333
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 3,
+     "baselineMean": 0
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 3,
+     "baselineMean": 0.3333333333333333
+    }
+   ],
+   "topTitles": [],
+   "why": "36 new roles in the week of Oct 12, 2026, 9.0x the average of 4 a week over the 3 measured weeks before. Specialty Industrial Machinery peers (19): 0.8x. Most of the rise in Engineering: +20 against 1 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "CPNG",
+   "name": "Coupang, Inc.",
+   "sector": "Consumer Cyclical",
+   "industry": "Internet Retail",
+   "sourceTickers": [
+    "CPNG"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 92,
+   "closedRoles": 68,
+   "openRoles": 696,
+   "baseline": {
+    "weeks": 3,
+    "mean": 43,
+    "sd": 6.244997998398398,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 38
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 50
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 41
+     }
+    ]
+   },
+   "ratio": 2.13953488372093,
+   "zScore": 7.472429946297629,
+   "peers": {
+    "group": "industry",
+    "label": "Internet Retail",
+    "companies": 5,
+    "medianRatio": 0.7358490566037735
+   },
+   "peerRelative": 2.9075730471079306,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 23,
+     "baselineMean": 4.666666666666667
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 14,
+     "baselineMean": 6.333333333333333
+    },
+    {
+     "id": "product",
+     "label": "Product",
+     "newRoles": 9,
+     "baselineMean": 2.3333333333333335
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Director, Global Construction (Taiwan)",
+     "count": 2
+    }
+   ],
+   "why": "92 new roles in the week of Oct 12, 2026, 2.1x the average of 43 a week over the 3 measured weeks before. Internet Retail peers (5): 0.7x. Most of the rise in Operations: +18 against 5 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "DNOW",
+   "name": "DNOW Inc.",
+   "sector": "Industrials",
+   "industry": "Industrial Distribution",
+   "sourceTickers": [
+    "DNOW"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 30,
+   "closedRoles": 16,
+   "openRoles": 144,
+   "baseline": {
+    "weeks": 3,
+    "mean": 8,
+    "sd": 3,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 5
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 11
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 8
+     }
+    ]
+   },
+   "ratio": 3.75,
+   "zScore": 7.333333333333333,
+   "peers": {
+    "group": "industry",
+    "label": "Industrial Distribution",
+    "companies": 10,
+    "medianRatio": 0.9170258620689655
+   },
+   "peerRelative": 4.08930669800235,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 17,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 5,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "product",
+     "label": "Product",
+     "newRoles": 3,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Project Manager",
+     "count": 3
+    },
+    {
+     "title": "Service Technician Helper",
+     "count": 3
+    },
+    {
+     "title": "Account Representative",
+     "count": 2
+    }
+   ],
+   "why": "30 new roles in the week of Oct 12, 2026, 3.8x the average of 8 a week over the 3 measured weeks before. Industrial Distribution peers (10): 0.9x. Most of the rise in Manufacturing: +17 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "TAK",
+   "name": "TAKEDA PHARMACEUTICAL CO LTD",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "TAK"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 227,
+   "closedRoles": 146,
+   "openRoles": 934,
+   "baseline": {
+    "weeks": 3,
+    "mean": 142,
+    "sd": 3.4641016151377544,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 144
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 144
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 138
+     }
+    ]
+   },
+   "ratio": 1.5985915492957747,
+   "zScore": 7.133041545521857,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.8407920792079208
+   },
+   "peerRelative": 1.9012923513762747,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "other",
+     "label": "Other",
+     "newRoles": 106,
+     "baselineMean": 6
+    },
+    {
+     "id": "people",
+     "label": "People",
+     "newRoles": 10,
+     "baselineMean": 4.333333333333333
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 25,
+     "baselineMean": 20.666666666666668
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Manager, Evidence Generation Study Design & Execution Lead",
+     "count": 4
+    },
+    {
+     "title": "Account Lead Vaccines",
+     "count": 2
+    },
+    {
+     "title": "Drug Product Process Scientist - Small Molecule",
+     "count": 2
+    }
+   ],
+   "why": "227 new roles in the week of Oct 12, 2026, 1.6x the average of 142 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the rise in Other: +100 against 6 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "DVN",
+   "name": "DEVON ENERGY CORP/DE",
+   "sector": "Energy",
+   "industry": "Oil & Gas E&P",
+   "sourceTickers": [
+    "DVN"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 19,
+   "closedRoles": 5,
+   "openRoles": 61,
+   "baseline": {
+    "weeks": 3,
+    "mean": 4.333333333333333,
+    "sd": 1.5275252316519465,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 3
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 6
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 4
+     }
+    ]
+   },
+   "ratio": 4.384615384615385,
+   "zScore": 7.045638767423835,
+   "peers": {
+    "group": "industry",
+    "label": "Oil & Gas E&P",
+    "companies": 8,
+    "medianRatio": 0.375
+   },
+   "peerRelative": 11.692307692307693,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 14,
+     "baselineMean": 2.3333333333333335
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 5,
+     "baselineMean": 0.6666666666666666
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Lease Operator",
+     "count": 4
+    },
+    {
+     "title": "Optimization Operator",
+     "count": 3
+    },
+    {
+     "title": "Maintenance Operator",
+     "count": 2
+    }
+   ],
+   "why": "19 new roles in the week of Oct 12, 2026, 4.4x the average of 4 a week over the 3 measured weeks before. Oil & Gas E&P peers (8): 0.4x. Most of the rise in Operations: +12 against 2 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "BHC",
+   "name": "Bausch Health Companies Inc.",
+   "sector": "Healthcare",
+   "industry": "Drug Manufacturers - Specialty & Generic",
+   "sourceTickers": [
+    "BHC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 44,
+   "closedRoles": 20,
+   "openRoles": 123,
+   "baseline": {
+    "weeks": 3,
+    "mean": 16,
+    "sd": 0,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 16
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 16
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 16
+     }
+    ]
+   },
+   "ratio": 2.75,
+   "zScore": 7,
+   "peers": {
+    "group": "industry",
+    "label": "Drug Manufacturers - Specialty & Generic",
+    "companies": 15,
+    "medianRatio": 0.8571428571428572
+   },
+   "peerRelative": 3.208333333333333,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 22,
+     "baselineMean": 5.666666666666667
+    },
+    {
+     "id": "marketing",
+     "label": "Marketing",
+     "newRoles": 4,
+     "baselineMean": 0
+    },
+    {
+     "id": "legal_compliance",
+     "label": "Legal & compliance",
+     "newRoles": 3,
+     "baselineMean": 0.3333333333333333
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "GreaterLondon Practice Development Specialist LND",
+     "count": 2
+    },
+    {
+     "title": "Tecnofarma Electro Mechanical Technician I CMX",
+     "count": 2
+    }
+   ],
+   "why": "44 new roles in the week of Oct 12, 2026, 2.8x the average of 16 a week over the 3 measured weeks before. Drug Manufacturers - Specialty & Generic peers (15): 0.9x. Most of the rise in Sales: +16 against 6 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "PAHC",
+   "name": "PHIBRO ANIMAL HEALTH CORP",
+   "sector": "Healthcare",
+   "industry": "Drug Manufacturers - Specialty & Generic",
+   "sourceTickers": [
+    "PAHC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 16,
+   "closedRoles": 5,
+   "openRoles": 42,
+   "baseline": {
+    "weeks": 3,
+    "mean": 3.3333333333333335,
+    "sd": 1.1547005383792515,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 4
+     }
+    ]
+   },
+   "ratio": 4.8,
+   "zScore": 6.937819061732103,
+   "peers": {
+    "group": "industry",
+    "label": "Drug Manufacturers - Specialty & Generic",
+    "companies": 15,
+    "medianRatio": 0.8571428571428572
+   },
+   "peerRelative": 5.6,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "research",
+     "label": "Research",
+     "newRoles": 5,
+     "baselineMean": 0
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 5,
+     "baselineMean": 1.3333333333333333
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 1,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Operator 1",
+     "count": 4
+    }
+   ],
+   "why": "16 new roles in the week of Oct 12, 2026, 4.8x the average of 3 a week over the 3 measured weeks before. Drug Manufacturers - Specialty & Generic peers (15): 0.9x. Most of the rise in Research: +5 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "M",
+   "name": "Macy's, Inc.",
+   "sector": "Consumer Cyclical",
+   "industry": "Department Stores",
+   "sourceTickers": [
+    "M"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 2348,
+   "closedRoles": 1229,
+   "openRoles": 6405,
+   "baseline": {
+    "weeks": 3,
+    "mean": 1221.6666666666667,
+    "sd": 169.19022824422615,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 1253
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 1373
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 1039
+     }
+    ]
+   },
+   "ratio": 1.9219645293315142,
+   "zScore": 6.657200862141226,
+   "peers": {
+    "group": "sector",
+    "label": "Consumer Cyclical",
+    "companies": 131,
+    "medianRatio": 0.8921568627450981
+   },
+   "peerRelative": 2.154289911997961,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "retail",
+     "label": "Retail & hospitality",
+     "newRoles": 1459,
+     "baselineMean": 865.3333333333334
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 495,
+     "baselineMean": 139
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 298,
+     "baselineMean": 133.33333333333334
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Manager, Sales and Customer Service",
+     "count": 13
+    },
+    {
+     "title": "Seasonal Retail Housekeeping Associate, Herald Square",
+     "count": 7
+    },
+    {
+     "title": "Seasonal Retail Sales Associate, Cross County",
+     "count": 6
+    }
+   ],
+   "why": "2,348 new roles in the week of Oct 12, 2026, 1.9x the average of 1,222 a week over the 3 measured weeks before. Consumer Cyclical peers (131): 0.9x. Most of the rise in Retail & hospitality: +594 against 865 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "WEC",
+   "name": "WEC ENERGY GROUP, INC.",
+   "sector": "Utilities",
+   "industry": "Utilities - Regulated Electric",
+   "sourceTickers": [
+    "WEC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 28,
+   "closedRoles": 8,
+   "openRoles": 79,
+   "baseline": {
+    "weeks": 3,
+    "mean": 9.666666666666666,
+    "sd": 1.5275252316519468,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 10
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 8
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 11
+     }
+    ]
+   },
+   "ratio": 2.896551724137931,
+   "zScore": 5.896618941607873,
+   "peers": {
+    "group": "industry",
+    "label": "Utilities - Regulated Electric",
+    "companies": 16,
+    "medianRatio": 0.7614579574160952
+   },
+   "peerRelative": 3.8039548945906194,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 10,
+     "baselineMean": 4
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 3,
+     "baselineMean": 0
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 5,
+     "baselineMean": 2
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Oak Creek Computer Instrument Technician WI",
+     "count": 2
+    },
+    {
+     "title": "Pewaukee Materials Specialist %28South%29 WI",
+     "count": 2
+    }
+   ],
+   "why": "28 new roles in the week of Oct 12, 2026, 2.9x the average of 10 a week over the 3 measured weeks before. Utilities - Regulated Electric peers (16): 0.8x. Most of the rise in Operations: +6 against 4 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "RDW",
+   "name": "Redwire Corp",
+   "sector": "Industrials",
+   "industry": "Aerospace & Defense",
+   "sourceTickers": [
+    "RDW"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 14,
+   "closedRoles": 13,
+   "openRoles": 20,
+   "baseline": {
+    "weeks": 3,
+    "mean": 3.3333333333333335,
+    "sd": 1.5275252316519468,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 5
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 3
+     }
+    ]
+   },
+   "ratio": 4.2,
+   "zScore": 5.8423739467217715,
+   "peers": {
+    "group": "industry",
+    "label": "Aerospace & Defense",
+    "companies": 21,
+    "medianRatio": 0.8146270818247647
+   },
+   "peerRelative": 5.155733333333333,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 8,
+     "baselineMean": 1.6666666666666667
+    },
+    {
+     "id": "product",
+     "label": "Product",
+     "newRoles": 4,
+     "baselineMean": 0.6666666666666666
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Staff Mechanical Engineer",
+     "count": 2
+    }
+   ],
+   "why": "14 new roles in the week of Oct 12, 2026, 4.2x the average of 3 a week over the 3 measured weeks before. Aerospace & Defense peers (21): 0.8x. Most of the rise in Engineering: +6 against 2 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "AZTA",
+   "name": "Azenta, Inc.",
+   "sector": "Healthcare",
+   "industry": "Medical Instruments & Supplies",
+   "sourceTickers": [
+    "AZTA"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 17,
+   "closedRoles": 8,
+   "openRoles": 73,
+   "baseline": {
+    "weeks": 3,
+    "mean": 4.666666666666667,
+    "sd": 2.0816659994661326,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 7
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 3
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 4
+     }
+    ]
+   },
+   "ratio": 3.642857142857143,
+   "zScore": 5.7092239485973995,
+   "peers": {
+    "group": "industry",
+    "label": "Medical Instruments & Supplies",
+    "companies": 17,
+    "medianRatio": 0.9383886255924171
+   },
+   "peerRelative": 3.8820346320346317,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "research",
+     "label": "Research",
+     "newRoles": 5,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 3,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 2,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Associate Scientist",
+     "count": 2
+    }
+   ],
+   "why": "17 new roles in the week of Oct 12, 2026, 3.6x the average of 5 a week over the 3 measured weeks before. Medical Instruments & Supplies peers (17): 0.9x. Most of the rise in Research: +5 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "YOU",
+   "name": "Clear Secure, Inc.",
+   "sector": "Technology",
+   "industry": "Software - Application",
+   "sourceTickers": [
+    "YOU"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 24,
+   "closedRoles": 9,
+   "openRoles": 64,
+   "baseline": {
+    "weeks": 3,
+    "mean": 7.666666666666667,
+    "sd": 3.055050463303893,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 11
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 7
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 5
+     }
+    ]
+   },
+   "ratio": 3.1304347826086953,
+   "zScore": 5.346338310781813,
+   "peers": {
+    "group": "industry",
+    "label": "Software - Application",
+    "companies": 74,
+    "medianRatio": 0.879229567933368
+   },
+   "peerRelative": 3.560429376785852,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "people",
+     "label": "People",
+     "newRoles": 5,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 6,
+     "baselineMean": 2.3333333333333335
+    },
+    {
+     "id": "customer",
+     "label": "Customer",
+     "newRoles": 4,
+     "baselineMean": 1
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Senior Enterprise Account Executive (C1 - B2B)",
+     "count": 4
+    },
+    {
+     "title": "Regional People Partner",
+     "count": 3
+    },
+    {
+     "title": "Manager, Member Care",
+     "count": 2
+    }
+   ],
+   "why": "24 new roles in the week of Oct 12, 2026, 3.1x the average of 8 a week over the 3 measured weeks before. Software - Application peers (74): 0.9x. Most of the rise in People: +5 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "BE",
+   "name": "Bloom Energy Corp",
+   "sector": "Industrials",
+   "industry": "Electrical Equipment & Parts",
+   "sourceTickers": [
+    "BE"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 31,
+   "closedRoles": 17,
+   "openRoles": 185,
+   "baseline": {
+    "weeks": 3,
+    "mean": 11.333333333333334,
+    "sd": 3.7859388972001824,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 14
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 7
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 13
+     }
+    ]
+   },
+   "ratio": 2.735294117647059,
+   "zScore": 5.19466034732118,
+   "peers": {
+    "group": "industry",
+    "label": "Electrical Equipment & Parts",
+    "companies": 13,
+    "medianRatio": 0.8647686832740213
+   },
+   "peerRelative": 3.163035584604212,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 14,
+     "baselineMean": 4.666666666666667
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 5,
+     "baselineMean": 1
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 5,
+     "baselineMean": 1.6666666666666667
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Equipment Maintenance Technician",
+     "count": 3
+    },
+    {
+     "title": "Manufacturing Team Lead",
+     "count": 3
+    },
+    {
+     "title": "Metrology Technician",
+     "count": 2
+    }
+   ],
+   "why": "31 new roles in the week of Oct 12, 2026, 2.7x the average of 11 a week over the 3 measured weeks before. Electrical Equipment & Parts peers (13): 0.9x. Most of the rise in Manufacturing: +9 against 5 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "CDNS",
+   "name": "CADENCE DESIGN SYSTEMS INC",
+   "sector": "Technology",
+   "industry": "Software - Application",
+   "sourceTickers": [
+    "CDNS"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 73,
+   "closedRoles": 32,
+   "openRoles": 659,
+   "baseline": {
+    "weeks": 3,
+    "mean": 42.333333333333336,
+    "sd": 5.686240703077327,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 36
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 44
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 47
+     }
+    ]
+   },
+   "ratio": 1.7244094488188975,
+   "zScore": 4.713302780122752,
+   "peers": {
+    "group": "industry",
+    "label": "Software - Application",
+    "companies": 74,
+    "medianRatio": 0.879229567933368
+   },
+   "peerRelative": 1.9612732689053298,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 53,
+     "baselineMean": 23.333333333333332
+    },
+    {
+     "id": "finance",
+     "label": "Finance",
+     "newRoles": 6,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 3,
+     "baselineMean": 1.3333333333333333
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Lead Software Engineer",
+     "count": 4
+    },
+    {
+     "title": "Principal Software Engineer (Geometry)",
+     "count": 4
+    },
+    {
+     "title": "Principal Software Engineer (Preprocessing)",
+     "count": 4
+    }
+   ],
+   "why": "73 new roles in the week of Oct 12, 2026, 1.7x the average of 42 a week over the 3 measured weeks before. Software - Application peers (74): 0.9x. Most of the rise in Engineering: +30 against 23 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "LUCK",
+   "name": "Lucky Strike Entertainment Corp",
+   "sector": "Consumer Cyclical",
+   "industry": "Leisure",
+   "sourceTickers": [
+    "LUCK"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 135,
+   "closedRoles": 90,
+   "openRoles": 2307,
+   "baseline": {
+    "weeks": 3,
+    "mean": 89.33333333333333,
+    "sd": 9.71253485622231,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 87
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 81
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 100
+     }
+    ]
+   },
+   "ratio": 1.5111940298507462,
+   "zScore": 4.701827827923875,
+   "peers": {
+    "group": "industry",
+    "label": "Leisure",
+    "companies": 6,
+    "medianRatio": 0.6961538461538461
+   },
+   "peerRelative": 2.170775954481735,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "retail",
+     "label": "Retail & hospitality",
+     "newRoles": 90,
+     "baselineMean": 48
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 24,
+     "baselineMean": 21.333333333333332
+    },
+    {
+     "id": "people",
+     "label": "People",
+     "newRoles": 7,
+     "baselineMean": 5
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Bartender",
+     "count": 12
+    },
+    {
+     "title": "Porter",
+     "count": 12
+    },
+    {
+     "title": "Greeter / Counter Desk Attendant",
+     "count": 11
+    }
+   ],
+   "why": "135 new roles in the week of Oct 12, 2026, 1.5x the average of 89 a week over the 3 measured weeks before. Leisure peers (6): 0.7x. Most of the rise in Retail & hospitality: +42 against 48 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "OMCL",
+   "name": "OMNICELL, INC.",
+   "sector": "Healthcare",
+   "industry": "Health Information Services",
+   "sourceTickers": [
+    "OMCL"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 23,
+   "closedRoles": 11,
+   "openRoles": 63,
+   "baseline": {
+    "weeks": 3,
+    "mean": 9,
+    "sd": 1,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 8
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 9
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 10
+     }
+    ]
+   },
+   "ratio": 2.5555555555555554,
+   "zScore": 4.666666666666667,
+   "peers": {
+    "group": "industry",
+    "label": "Health Information Services",
+    "companies": 10,
+    "medianRatio": 0.6214285714285714
+   },
+   "peerRelative": 4.112388250319285,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "clinical",
+     "label": "Clinical",
+     "newRoles": 7,
+     "baselineMean": 3.6666666666666665
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 3,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "customer",
+     "label": "Customer",
+     "newRoles": 3,
+     "baselineMean": 0.6666666666666666
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Pharmacy Technician",
+     "count": 3
+    }
+   ],
+   "why": "23 new roles in the week of Oct 12, 2026, 2.6x the average of 9 a week over the 3 measured weeks before. Health Information Services peers (10): 0.6x. Most of the rise in Clinical: +3 against 4 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "RRX",
+   "name": "REGAL REXNORD CORP",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "sourceTickers": [
+    "RRX"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 80,
+   "closedRoles": 53,
+   "openRoles": 558,
+   "baseline": {
+    "weeks": 3,
+    "mean": 51.666666666666664,
+    "sd": 4.932882862316248,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 54
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 55
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 46
+     }
+    ]
+   },
+   "ratio": 1.5483870967741937,
+   "zScore": 3.9417806139614306,
+   "peers": {
+    "group": "industry",
+    "label": "Specialty Industrial Machinery",
+    "companies": 19,
+    "medianRatio": 0.8067632850241546
+   },
+   "peerRelative": 1.9192582576781922,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 50,
+     "baselineMean": 26
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 4,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 7,
+     "baselineMean": 4.333333333333333
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "2nd Shift Production Associate Stearns",
+     "count": 5
+    },
+    {
+     "title": "Production Associate Stearns (1st Shift)",
+     "count": 5
+    },
+    {
+     "title": "Production Associate Magstop (1st Shift)",
+     "count": 4
+    }
+   ],
+   "why": "80 new roles in the week of Oct 12, 2026, 1.5x the average of 52 a week over the 3 measured weeks before. Specialty Industrial Machinery peers (19): 0.8x. Most of the rise in Manufacturing: +24 against 26 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "TNC",
+   "name": "TENNANT CO",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "sourceTickers": [
+    "TNC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 18,
+   "closedRoles": 3,
+   "openRoles": 76,
+   "baseline": {
+    "weeks": 3,
+    "mean": 7.333333333333333,
+    "sd": 1.5275252316519465,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 9
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 6
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 7
+     }
+    ]
+   },
+   "ratio": 2.4545454545454546,
+   "zScore": 3.938927711338648,
+   "peers": {
+    "group": "industry",
+    "label": "Specialty Industrial Machinery",
+    "companies": 19,
+    "medianRatio": 0.8067632850241546
+   },
+   "peerRelative": 3.0424605334784975,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "customer",
+     "label": "Customer",
+     "newRoles": 7,
+     "baselineMean": 0
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 3,
+     "baselineMean": 0
+    },
+    {
+     "id": "marketing",
+     "label": "Marketing",
+     "newRoles": 1,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [],
+   "why": "18 new roles in the week of Oct 12, 2026, 2.5x the average of 7 a week over the 3 measured weeks before. Specialty Industrial Machinery peers (19): 0.8x. Most of the rise in Customer: +7 against 0 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "TDOC",
+   "name": "Teladoc Health, Inc.",
+   "sector": "Healthcare",
+   "industry": "Health Information Services",
+   "sourceTickers": [
+    "TDOC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 27,
+   "closedRoles": 15,
+   "openRoles": 60,
+   "baseline": {
+    "weeks": 3,
+    "mean": 13,
+    "sd": 2,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 15
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 13
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 11
+     }
+    ]
+   },
+   "ratio": 2.076923076923077,
+   "zScore": 3.8829013735766043,
+   "peers": {
+    "group": "industry",
+    "label": "Health Information Services",
+    "companies": 10,
+    "medianRatio": 0.6214285714285714
+   },
+   "peerRelative": 3.3421750663129974,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "clinical",
+     "label": "Clinical",
+     "newRoles": 13,
+     "baselineMean": 5.333333333333333
+    },
+    {
+     "id": "customer",
+     "label": "Customer",
+     "newRoles": 4,
+     "baselineMean": 0.3333333333333333
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 4,
+     "baselineMean": 2
+    }
+   ],
+   "topTitles": [],
+   "why": "27 new roles in the week of Oct 12, 2026, 2.1x the average of 13 a week over the 3 measured weeks before. Health Information Services peers (10): 0.6x. Most of the rise in Clinical: +8 against 5 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "SNN",
+   "name": "SMITH & NEPHEW PLC",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "SNN"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 69,
+   "closedRoles": 59,
+   "openRoles": 357,
+   "baseline": {
+    "weeks": 3,
+    "mean": 40,
+    "sd": 7.54983443527075,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 33
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 39
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 48
+     }
+    ]
+   },
+   "ratio": 1.725,
+   "zScore": 3.841143835488627,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.8407920792079208
+   },
+   "peerRelative": 2.051636834667923,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 25,
+     "baselineMean": 12.333333333333334
+    },
+    {
+     "id": "finance",
+     "label": "Finance",
+     "newRoles": 9,
+     "baselineMean": 2
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 7,
+     "baselineMean": 3
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "NPD Materials Specialist",
+     "count": 2
+    }
+   ],
+   "why": "69 new roles in the week of Oct 12, 2026, 1.7x the average of 40 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the rise in Sales: +13 against 12 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "PODD",
+   "name": "INSULET CORP",
+   "sector": "Healthcare",
+   "industry": "Medical Devices",
+   "sourceTickers": [
+    "PODD"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 15,
+   "closedRoles": 37,
+   "openRoles": 199,
+   "baseline": {
+    "weeks": 3,
+    "mean": 38.333333333333336,
+    "sd": 4.932882862316248,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 44
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 36
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 35
+     }
+    ]
+   },
+   "ratio": 0.3913043478260869,
+   "zScore": -3.7686733144071587,
+   "peers": {
+    "group": "industry",
+    "label": "Medical Devices",
+    "companies": 32,
+    "medianRatio": 0.9006526468455403
+   },
+   "peerRelative": 0.43446754883427846,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 1,
+     "baselineMean": 6.666666666666667
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 0,
+     "baselineMean": 5
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 0,
+     "baselineMean": 4
+    }
+   ],
+   "topTitles": [],
+   "why": "15 new roles in the week of Oct 12, 2026, 0.4x the average of 38 a week over the 3 measured weeks before. Medical Devices peers (32): 0.9x. Most of the fall in Engineering: -6 against 7 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "REGN",
+   "name": "REGENERON PHARMACEUTICALS, INC.",
+   "sector": "Healthcare",
+   "industry": "Biotechnology",
+   "sourceTickers": [
+    "REGN"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 137,
+   "closedRoles": 106,
+   "openRoles": 590,
+   "baseline": {
+    "weeks": 3,
+    "mean": 82,
+    "sd": 14.730919862656235,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 65
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 91
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 90
+     }
+    ]
+   },
+   "ratio": 1.670731707317073,
+   "zScore": 3.733643283161719,
+   "peers": {
+    "group": "industry",
+    "label": "Biotechnology",
+    "companies": 91,
+    "medianRatio": 0.6
+   },
+   "peerRelative": 2.7845528455284554,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 29,
+     "baselineMean": 8.666666666666666
+    },
+    {
+     "id": "legal_compliance",
+     "label": "Legal & compliance",
+     "newRoles": 19,
+     "baselineMean": 2.3333333333333335
+    },
+    {
+     "id": "clinical",
+     "label": "Clinical",
+     "newRoles": 26,
+     "baselineMean": 12
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Analytical Scientist",
+     "count": 3
+    },
+    {
+     "title": "Assoc Supply Planning Reporting Analyst",
+     "count": 3
+    },
+    {
+     "title": "Manager Cmc Regulatory Affairs Biologics",
+     "count": 3
+    }
+   ],
+   "why": "137 new roles in the week of Oct 12, 2026, 1.7x the average of 82 a week over the 3 measured weeks before. Biotechnology peers (91): 0.6x. Most of the rise in Manufacturing: +20 against 9 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "TEX",
+   "name": "TEREX CORP",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "TEX"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 38,
+   "closedRoles": 20,
+   "openRoles": 206,
+   "baseline": {
+    "weeks": 3,
+    "mean": 21,
+    "sd": 4.358898943540674,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 26
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 19
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 18
+     }
+    ]
+   },
+   "ratio": 1.8095238095238095,
+   "zScore": 3.709704134011871,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.8407920792079208
+   },
+   "peerRelative": 2.1521656236682145,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 9,
+     "baselineMean": 2
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 18,
+     "baselineMean": 11.666666666666666
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 4,
+     "baselineMean": 1.6666666666666667
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Optima/AO Assembler Lead",
+     "count": 2
+    }
+   ],
+   "why": "38 new roles in the week of Oct 12, 2026, 1.8x the average of 21 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the rise in Supply chain: +7 against 2 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "ATMU",
+   "name": "Atmus Filtration Technologies Inc.",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Parts",
+   "sourceTickers": [
+    "ATMU"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 21,
+   "closedRoles": 12,
+   "openRoles": 89,
+   "baseline": {
+    "weeks": 3,
+    "mean": 9.666666666666666,
+    "sd": 2.0816659994661326,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 8
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 9
+     }
+    ]
+   },
+   "ratio": 2.1724137931034484,
+   "zScore": 3.6451826184485028,
+   "peers": {
+    "group": "industry",
+    "label": "Auto Parts",
+    "companies": 18,
+    "medianRatio": 0.9339819772756954
+   },
+   "peerRelative": 2.3259697145763973,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 6,
+     "baselineMean": 0.6666666666666666
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 8,
+     "baselineMean": 3.3333333333333335
+    },
+    {
+     "id": "research",
+     "label": "Research",
+     "newRoles": 2,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "LGS.WAREHOUSE OPERATOR - LEVEL I",
+     "count": 3
+    }
+   ],
+   "why": "21 new roles in the week of Oct 12, 2026, 2.2x the average of 10 a week over the 3 measured weeks before. Auto Parts peers (18): 0.9x. Most of the rise in Engineering: +5 against 1 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "FTV",
+   "name": "Fortive Corp",
+   "sector": "Technology",
+   "industry": "Scientific & Technical Instruments",
+   "sourceTickers": [
+    "FTV"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 53,
+   "closedRoles": 46,
+   "openRoles": 278,
+   "baseline": {
+    "weeks": 3,
+    "mean": 33.333333333333336,
+    "sd": 4.509249752822894,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 38
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 33
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 29
+     }
+    ]
+   },
+   "ratio": 1.5899999999999999,
+   "zScore": 3.4063665882187912,
+   "peers": {
+    "group": "industry",
+    "label": "Scientific & Technical Instruments",
+    "companies": 9,
+    "medianRatio": 0.7544910179640719
+   },
+   "peerRelative": 2.107380952380952,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 11,
+     "baselineMean": 2.6666666666666665
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 10,
+     "baselineMean": 5.333333333333333
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 6,
+     "baselineMean": 1.6666666666666667
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Facilities Assessment Consultant - Mechanical (Cent/West, US)",
+     "count": 2
+    },
+    {
+     "title": "Facilities Assessment Consultant - Mechanical (East, US)",
+     "count": 2
+    },
+    {
+     "title": "Field Service Engineer",
+     "count": 2
+    }
+   ],
+   "why": "53 new roles in the week of Oct 12, 2026, 1.6x the average of 33 a week over the 3 measured weeks before. Scientific & Technical Instruments peers (9): 0.8x. Most of the rise in Operations: +8 against 3 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "XYZ",
+   "name": "Block",
+   "sector": "Technology",
+   "industry": "Software - Infrastructure",
+   "sourceTickers": [
+    "XYZ"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 9,
+   "closedRoles": 22,
+   "openRoles": 221,
+   "baseline": {
+    "weeks": 3,
+    "mean": 25.666666666666668,
+    "sd": 2.3094010767585034,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 27
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 23
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 27
+     }
+    ]
+   },
+   "ratio": 0.35064935064935066,
+   "zScore": -3.289758474798845,
+   "peers": {
+    "group": "industry",
+    "label": "Software - Infrastructure",
+    "companies": 56,
+    "medianRatio": 0.9864864864864864
+   },
+   "peerRelative": 0.35545276641167056,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 6,
+     "baselineMean": 11.333333333333334
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 2,
+     "baselineMean": 4.666666666666667
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 0,
+     "baselineMean": 2.6666666666666665
+    }
+   ],
+   "topTitles": [],
+   "why": "9 new roles in the week of Oct 12, 2026, 0.4x the average of 26 a week over the 3 measured weeks before. Software - Infrastructure peers (56): 1.0x. Most of the fall in Sales: -5 against 11 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "PSKY",
+   "name": "Paramount Skydance Corp",
+   "sector": "Communication Services",
+   "industry": "Entertainment",
+   "sourceTickers": [
+    "PSKY"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 12,
+   "closedRoles": 20,
+   "openRoles": 280,
+   "baseline": {
+    "weeks": 3,
+    "mean": 30,
+    "sd": 5.291502622129181,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 34
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 24
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 32
+     }
+    ]
+   },
+   "ratio": 0.4,
+   "zScore": -3.2863353450309964,
+   "peers": {
+    "group": "industry",
+    "label": "Entertainment",
+    "companies": 11,
+    "medianRatio": 0.8571428571428571
+   },
+   "peerRelative": 0.46666666666666673,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "marketing",
+     "label": "Marketing",
+     "newRoles": 2,
+     "baselineMean": 9
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 1,
+     "baselineMean": 3.6666666666666665
+    },
+    {
+     "id": "design",
+     "label": "Design",
+     "newRoles": 0,
+     "baselineMean": 2.3333333333333335
+    }
+   ],
+   "topTitles": [],
+   "why": "12 new roles in the week of Oct 12, 2026, 0.4x the average of 30 a week over the 3 measured weeks before. Entertainment peers (11): 0.9x. Most of the fall in Marketing: -7 against 9 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "VIAV",
+   "name": "VIAVI SOLUTIONS INC.",
+   "sector": "Technology",
+   "industry": "Communication Equipment",
+   "sourceTickers": [
+    "VIAV"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 3,
+   "closedRoles": 12,
+   "openRoles": 148,
+   "baseline": {
+    "weeks": 3,
+    "mean": 16,
+    "sd": 2.6457513110645907,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 17
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 13
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 18
+     }
+    ]
+   },
+   "ratio": 0.1875,
+   "zScore": -3.25,
+   "peers": {
+    "group": "industry",
+    "label": "Communication Equipment",
+    "companies": 11,
+    "medianRatio": 0.41538461538461535
+   },
+   "peerRelative": 0.45138888888888895,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 0,
+     "baselineMean": 4.666666666666667
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 1,
+     "baselineMean": 4.333333333333333
+    },
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 2,
+     "baselineMean": 3.6666666666666665
+    }
+   ],
+   "topTitles": [],
+   "why": "3 new roles in the week of Oct 12, 2026, 0.2x the average of 16 a week over the 3 measured weeks before. Communication Equipment peers (11): 0.4x. Most of the fall in Manufacturing: -5 against 5 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "XP",
+   "name": "XP Inc.",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "XP"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 1,
+   "closedRoles": 17,
+   "openRoles": 145,
+   "baseline": {
+    "weeks": 3,
+    "mean": 16.666666666666668,
+    "sd": 4.932882862316247,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 20
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 19
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 11
+     }
+    ]
+   },
+   "ratio": 0.06,
+   "zScore": -3.1759656784775845,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.841974345217773
+   },
+   "peerRelative": 0.07126107860742628,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 0,
+     "baselineMean": 4
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 0,
+     "baselineMean": 1.6666666666666667
+    },
+    {
+     "id": "finance",
+     "label": "Finance",
+     "newRoles": 0,
+     "baselineMean": 1.6666666666666667
+    }
+   ],
+   "topTitles": [],
+   "why": "1 new role in the week of Oct 12, 2026, 0.1x the average of 17 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the fall in Engineering: -4 against 4 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "TKO",
+   "name": "TKO Group Holdings, Inc.",
+   "sector": "Communication Services",
+   "industry": "Entertainment",
+   "sourceTickers": [
+    "TKO"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 1,
+   "closedRoles": 13,
+   "openRoles": 71,
+   "baseline": {
+    "weeks": 3,
+    "mean": 12,
+    "sd": 2,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 10
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 14
+     }
+    ]
+   },
+   "ratio": 0.08333333333333333,
+   "zScore": -3.1754264805429417,
+   "peers": {
+    "group": "industry",
+    "label": "Entertainment",
+    "companies": 11,
+    "medianRatio": 0.8571428571428571
+   },
+   "peerRelative": 0.09722222222222222,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 0,
+     "baselineMean": 3.6666666666666665
+    },
+    {
+     "id": "marketing",
+     "label": "Marketing",
+     "newRoles": 0,
+     "baselineMean": 1.6666666666666667
+    },
+    {
+     "id": "data_ai",
+     "label": "Data & AI",
+     "newRoles": 0,
+     "baselineMean": 1
+    }
+   ],
+   "topTitles": [],
+   "why": "1 new role in the week of Oct 12, 2026, 0.1x the average of 12 a week over the 3 measured weeks before. Entertainment peers (11): 0.9x. Most of the fall in Operations: -4 against 4 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "LCII",
+   "name": "LCI INDUSTRIES",
+   "sector": "Consumer Cyclical",
+   "industry": "Recreational Vehicles",
+   "sourceTickers": [
+    "LCII"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 55,
+   "closedRoles": 75,
+   "openRoles": 254,
+   "baseline": {
+    "weeks": 3,
+    "mean": 34.666666666666664,
+    "sd": 6.429100507328637,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 42
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 30
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 32
+     }
+    ]
+   },
+   "ratio": 1.5865384615384617,
+   "zScore": 3.1627026689277975,
+   "peers": {
+    "group": "sector",
+    "label": "Consumer Cyclical",
+    "companies": 131,
+    "medianRatio": 0.8921568627450981
+   },
+   "peerRelative": 1.7783178360101437,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 19,
+     "baselineMean": 7
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 30,
+     "baselineMean": 21
+    },
+    {
+     "id": "operations",
+     "label": "Operations",
+     "newRoles": 2,
+     "baselineMean": 0
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Assembly - Laborer",
+     "count": 3
+    },
+    {
+     "title": "Assembly - Axle Torsions",
+     "count": 2
+    },
+    {
+     "title": "CDL Driver",
+     "count": 2
+    }
+   ],
+   "why": "55 new roles in the week of Oct 12, 2026, 1.6x the average of 35 a week over the 3 measured weeks before. Consumer Cyclical peers (131): 0.9x. Most of the rise in Supply chain: +12 against 7 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "SAM",
+   "name": "BOSTON BEER CO INC",
+   "sector": "Consumer Defensive",
+   "industry": "Beverages - Brewers",
+   "sourceTickers": [
+    "SAM"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 6,
+   "closedRoles": 10,
+   "openRoles": 85,
+   "baseline": {
+    "weeks": 3,
+    "mean": 20,
+    "sd": 1,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 21
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 19
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 20
+     }
+    ]
+   },
+   "ratio": 0.3,
+   "zScore": -3.1304951684997055,
+   "peers": {
+    "group": "sector",
+    "label": "Consumer Defensive",
+    "companies": 58,
+    "medianRatio": 0.8503089825645552
+   },
+   "peerRelative": 0.3528129258321978,
+   "direction": "slowing",
+   "signal": "slowing",
+   "drivers": [
+    {
+     "id": "research",
+     "label": "Research",
+     "newRoles": 0,
+     "baselineMean": 2.6666666666666665
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 0,
+     "baselineMean": 2.3333333333333335
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 0,
+     "baselineMean": 2
+    }
+   ],
+   "topTitles": [],
+   "why": "6 new roles in the week of Oct 12, 2026, 0.3x the average of 20 a week over the 3 measured weeks before. Consumer Defensive peers (58): 0.9x. Most of the fall in Research: -3 against 3 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "CWH",
+   "name": "Camping World Holdings, Inc.",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto & Truck Dealerships",
+   "sourceTickers": [
+    "CWH"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 42,
+   "closedRoles": 18,
+   "openRoles": 732,
+   "baseline": {
+    "weeks": 3,
+    "mean": 26.333333333333332,
+    "sd": 3.7859388972001824,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 22
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 28
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 29
+     }
+    ]
+   },
+   "ratio": 1.5949367088607596,
+   "zScore": 3.0529780715696657,
+   "peers": {
+    "group": "industry",
+    "label": "Auto & Truck Dealerships",
+    "companies": 5,
+    "medianRatio": 0.7237762237762239
+   },
+   "peerRelative": 2.203632361034672,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 14,
+     "baselineMean": 4
+    },
+    {
+     "id": "retail",
+     "label": "Retail & hospitality",
+     "newRoles": 11,
+     "baselineMean": 5.333333333333333
+    },
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 2,
+     "baselineMean": 0.6666666666666666
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Detailer",
+     "count": 7
+    },
+    {
+     "title": "Product Specialist Advisor",
+     "count": 4
+    },
+    {
+     "title": "Fixed Operations Director",
+     "count": 3
+    }
+   ],
+   "why": "42 new roles in the week of Oct 12, 2026, 1.6x the average of 26 a week over the 3 measured weeks before. Auto & Truck Dealerships peers (5): 0.7x. Most of the rise in Sales: +10 against 4 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "COHU",
+   "name": "COHU INC",
+   "sector": "Technology",
+   "industry": "Semiconductor Equipment & Materials",
+   "sourceTickers": [
+    "COHU"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 17,
+   "closedRoles": 0,
+   "openRoles": 213,
+   "baseline": {
+    "weeks": 3,
+    "mean": 6,
+    "sd": 3.605551275463989,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 5
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 10
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 3
+     }
+    ]
+   },
+   "ratio": 2.8333333333333335,
+   "zScore": 3.05085107923876,
+   "peers": {
+    "group": "industry",
+    "label": "Semiconductor Equipment & Materials",
+    "companies": 10,
+    "medianRatio": 1.0444444444444443
+   },
+   "peerRelative": 2.712765957446809,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "supply_chain",
+     "label": "Supply chain",
+     "newRoles": 7,
+     "baselineMean": 1.3333333333333333
+    },
+    {
+     "id": "manufacturing",
+     "label": "Manufacturing",
+     "newRoles": 7,
+     "baselineMean": 1.6666666666666667
+    },
+    {
+     "id": "engineering",
+     "label": "Engineering",
+     "newRoles": 2,
+     "baselineMean": 0.3333333333333333
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Warehouse Helper",
+     "count": 4
+    },
+    {
+     "title": "Production Operator",
+     "count": 2
+    }
+   ],
+   "why": "17 new roles in the week of Oct 12, 2026, 2.8x the average of 6 a week over the 3 measured weeks before. Semiconductor Equipment & Materials peers (10): 1.0x. Most of the rise in Supply chain: +6 against 1 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "LCCC",
+   "name": "Lakeshore Acquisition III Corp.",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "LCCC"
+   ],
+   "week": "2026-10-12",
+   "newRoles": 32,
+   "closedRoles": 20,
+   "openRoles": 120,
+   "baseline": {
+    "weeks": 3,
+    "mean": 17,
+    "sd": 5,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 17
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 22
+     }
+    ]
+   },
+   "ratio": 1.8823529411764706,
+   "zScore": 3,
+   "peers": {
+    "group": "universe",
+    "label": "All covered",
+    "companies": 1530,
+    "medianRatio": 0.8407920792079208
+   },
+   "peerRelative": 2.2387852927322602,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "drivers": [
+    {
+     "id": "sales",
+     "label": "Sales",
+     "newRoles": 28,
+     "baselineMean": 1
+    }
+   ],
+   "topTitles": [
+    {
+     "title": "Regional Sales Manager, Oregon",
+     "count": 22
+    },
+    {
+     "title": "Partner Inside Sales Representative (Remote)",
+     "count": 12
+    },
+    {
+     "title": "Regional Sales Manager, Bay Area",
+     "count": 11
+    }
+   ],
+   "why": "32 new roles in the week of Oct 12, 2026, 1.9x the average of 17 a week over the 3 measured weeks before. All covered companies (1,530): 0.8x. Most of the rise in Sales: +27 against 1 a week.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  }
+ ]
+}

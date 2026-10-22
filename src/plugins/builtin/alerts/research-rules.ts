@@ -12,6 +12,7 @@ const RESEARCH_ALERT_KINDS = [
   "iv_spike",
   "options_flow",
   "perps_threshold",
+  "hiring_move",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -119,6 +120,14 @@ export function normalizeResearchRule(
       result.symbol = identity.symbol
       result.exchange = "US"
       result.contract = identity.contract
+    } else if (kind === "hiring_move") {
+      // A HIRE company: any listing, a world one with its venue (ADYEN:AMS).
+      const symbol =
+        typeof input.symbol === "string"
+          ? input.symbol.trim().toUpperCase()
+          : ""
+      if (!/^[A-Z0-9][A-Z0-9.:-]{0,31}$/.test(symbol)) return null
+      result.symbol = symbol
     } else if (
       (kind !== "news_keyword" && kind !== "options_flow") ||
       input.symbol
@@ -224,6 +233,9 @@ export function normalizeResearchRule(
         break
       case "insider_trade":
         direction(["buy", "sell", "either"], "either")
+        break
+      case "hiring_move":
+        direction(["either", "accelerating", "slowing"], "either")
         break
       case "iv_spike":
         numeric("threshold", 5, 0.1, 100)

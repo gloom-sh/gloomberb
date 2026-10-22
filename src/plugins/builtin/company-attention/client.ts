@@ -1,12 +1,14 @@
 import { apiClient } from "../../../api-client";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
-import type { HiringBoard, HiringPayload, HiringSummary } from "../../../api-client/hiring";
+import type { HiringBoard, HiringCompanyMoves, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSummary } from "../../../api-client/hiring";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { AppFocus, AttentionKind } from "./model";
 
 export type AttentionPayload = HiringBoard | HiringPayload | AppAttentionPayload;
 export const attentionCache = createPluginCache<AttentionPayload>({ kind: "company-attention", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export type MovesPayload = HiringMovesBoard | HiringCompanyMoves;
+export const movesCache = createPluginCache<MovesPayload>({ kind: "hiring-moves", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 export const appRankCache = createPluginCache<AppRankPayload>({ kind: "app-rank-history", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
 const positive = (value: unknown) => finite(value) && (value as number) >= 0;
@@ -59,6 +61,34 @@ export async function fetchAttention(kind: AttentionKind, symbol?: string, filte
 const cacheKey = (kind: AttentionKind, symbol: string | undefined, access: string, filters: AppAttentionFilter) => `${kind}:${symbol ?? "board"}:${access}:${JSON.stringify(filters)}`;
 export const cachedAttention = (kind: AttentionKind, symbol: string | undefined, access: string, filters: AppAttentionFilter) => cachedCloudResource(attentionCache, cacheKey(kind, symbol, access, filters), (data) => validateAttention(kind, data));
 export const loadAttention = (kind: AttentionKind, symbol: string | undefined, access: string, filters: AppAttentionFilter, force = false) => loadCloudResource(attentionCache, cacheKey(kind, symbol, access, filters), () => fetchAttention(kind, symbol, filters), { force, validate: (data) => validateAttention(kind, data) });
+
+const SIGNALS = new Set(["accelerating", "slowing", "with_peers", null]);
+const hiringMove = (row: HiringMove) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && positive(row.newRoles)
+  && !!row.baseline && positive(row.baseline.mean) && Array.isArray(row.baseline.values) && finite(row.zScore) && !!row.peers && typeof row.peers.label === "string"
+  && SIGNALS.has(row.signal) && Array.isArray(row.drivers) && row.drivers.every((driver) => typeof driver.label === "string" && positive(driver.newRoles))
+  && Array.isArray(row.topTitles) && typeof row.why === "string" && Array.isArray(row.sourceTickers);
+const moveWeek = (row: HiringMoveWeek) => !!row && date(row.week) && typeof row.measured === "boolean" && Array.isArray(row.excluded);
+const movePosting = (row: HiringMovePosting) => !!row && typeof row.title === "string" && date(row.firstSeenAt) && (row.url === null || url(row.url));
+export function validateMoves(payload: MovesPayload): MovesPayload {
+  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("moves" in payload
+    ? (payload.week === null || date(payload.week)) && Array.isArray(payload.moves) && payload.moves.every(hiringMove) && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.signals
+    : typeof payload.symbol === "string" && (payload.latest === null || hiringMove(payload.latest)) && (payload.week === null || moveWeek(payload.week))
+      && Array.isArray(payload.weeks) && payload.weeks.every(moveWeek) && Array.isArray(payload.history) && !!payload.evidence
+      && [payload.evidence.added, payload.evidence.closed].every((rows) => Array.isArray(rows) && rows.every(movePosting)) && !!payload.locked);
+  if (!valid) throw new Error("The server returned unreadable hiring moves.");
+  return payload;
+}
+export interface MovesQuery { filter?: HiringMovesFilter; offset?: number; limit?: number }
+export async function fetchMoves(symbol: string | undefined, query: MovesQuery = {}, client: Pick<typeof apiClient, "getCloudHiringMoves"> = apiClient, signal?: AbortSignal) {
+  try {
+    const data = validateMoves(await client.getCloudHiringMoves(symbol, { limit: query.limit, offset: query.offset, signal: query.filter }, signal));
+    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned moves for a different company.");
+    return data;
+  } catch (error) { throw unavailableOnServer(error, "Hiring moves are not available yet.", [404, 503]); }
+}
+const movesKey = (symbol: string | undefined, access: string, filter: HiringMovesFilter) => `${symbol ?? `board:${filter}`}:${access}`;
+export const cachedMoves = (symbol: string | undefined, access: string, filter: HiringMovesFilter) => cachedCloudResource(movesCache, movesKey(symbol, access, filter), validateMoves);
+export const loadMoves = (symbol: string | undefined, access: string, filter: HiringMovesFilter, force = false) => loadCloudResource(movesCache, movesKey(symbol, access, filter), () => fetchMoves(symbol, { filter }), { force, validate: validateMoves });
 
 export async function fetchAppRank(focus: AppFocus, days: number, offset = 0, signal?: AbortSignal, client: Pick<typeof apiClient, "getCloudAppRankHistory"> = apiClient, limit = 500) {
   const data = await client.getCloudAppRankHistory(focus.store, focus.appId, { country: focus.country, chart: focus.chart, days, offset, limit }, signal);

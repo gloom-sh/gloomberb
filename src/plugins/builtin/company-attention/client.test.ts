@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import type { HiringPayload } from "../../../api-client/hiring";
+import type { HiringCompanyMoves, HiringMovesBoard, HiringPayload } from "../../../api-client/hiring";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -10,8 +11,13 @@ import { attentionCache, cachedAttention, fetchAppRank, fetchAttention, loadAtte
 import { appsModel, attentionSeries, hiringModel, sortAttentionRows } from "./model";
 import { attentionHeadless } from "./headless";
 import realAppRank from "./fixtures/app-rank.json";
+import realMoves from "./fixtures/hiring-moves.json";
+import realMovesBoard from "./fixtures/hiring-moves-board.json";
 
 const fixture = () => structuredClone(realHiring) as HiringPayload;
+/** A company HIRE has no moves for yet. */
+const noMoves = async (symbol?: string): Promise<HiringCompanyMoves> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol: symbol ?? "", name: null, latest: null, week: null, weeks: [], history: [],
+  evidence: { added: [], closed: [] }, evidenceTotals: { added: 0, closed: 0 }, locked: { history: 0, added: 0, closed: 0 } });
 afterEach(() => { attentionCache.reset(); setCloudApiFetchTransport(null); });
 
 test("a sparse real capture preserves unknown changes and does not fabricate a trend", () => {
@@ -97,11 +103,11 @@ test("the report prints shares as the pane does, and a remote share with the rol
 });
 
 test("a hiring report heads each view by what its rows are, and the board has only its table, as the pane's tabs do", async () => {
-  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture() } as never }));
-  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence"]);
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture(), getCloudHiringMoves: noMoves } as never }));
+  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen"]);
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
-  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board } as never }));
-  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
+  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => realMovesBoard } as never }));
+  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring", "Hiring moves"]);
 });
 
 test("headless pages expose continuation and never claim a truncated report is complete", async () => {
@@ -152,14 +158,14 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   hiring.locked = { history: 5, evidence: 57, peers: 17, signals: 0, mix: 21 };
   hiring.coverage.firstObservedAt = "2026-09-19T00:00:00.000Z";
   hiring.latest = { ...hiring.latest!, completeness: "partial" };
-  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }));
+  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves } as never }));
   expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
   expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
   expect(hire.sections.find((section) => section.title === "Hiring trend")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
 
   // A preview that holds nothing back (a company with no captures) has nothing to unlock.
   hiring.locked = { history: 0, evidence: 0, peers: 0, signals: 0, mix: 0 };
-  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }))).errors).toBeUndefined();
+  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves } as never }))).errors).toBeUndefined();
 
   const apps = structuredClone(realApps) as AppAttentionPayload;
   apps.access = "preview";
@@ -168,4 +174,27 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   const report = await attentionHeadless("apps").load(createTestHeadlessArgs({ symbols: [apps.symbol!] }), createTestHeadlessContext({ apiClient: { getCloudAppAttention: async () => apps } as never }));
   expect(report.errors).toEqual([`Free shows ${apps.apps.length} of ${apps.apps.length + 9} app ranks and the latest day of history. Gloom Pro adds the other 9 ranks and 9 earlier days of history, with history from 4 Oct 2026.`]);
   expect(report.notes).toEqual(apps.coverage.limitations);
+});
+
+test("HIRE's moves report each move with why, a company's weeks with why a week is not measured, and a server without moves keeps the rest", async () => {
+  const hiring = { ...fixture(), symbol: "RIVN" };
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["RIVN"] }),
+    createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: async () => structuredClone(realMoves) as HiringCompanyMoves } as never }));
+  const weeks = company.sections.find((section) => section.title === "Hiring moves")!;
+  expect(weeks.rows[0]).toMatchObject({ week: "2026-10-12", newRoles: 311, signal: "Accelerating" });
+  expect(weeks.rows.at(-1)).toMatchObject({ week: "2026-09-14", excluded: "First read" });
+  expect(weeks.columns.find((column) => column.key === "pace")?.format?.(weeks.rows[0]!.pace, weeks.rows[0]!)).toBe("3.4x");
+  expect(company.notes).toContain(realMoves.latest.why);
+  expect(company.sections.find((section) => section.title === "Move drivers")!.rows[0]).toMatchObject({ label: "Operations", newRoles: 222 });
+
+  const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
+  const free = { ...structuredClone(realMovesBoard), preview: true, moves: realMovesBoard.moves.slice(0, 3), locked: realMovesBoard.total - 3 } as HiringMovesBoard;
+  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => free } as never }));
+  expect(market.sections.at(-1)!.rows.map((row) => [row.symbol, typeof row.why])).toEqual([["CBRL", "string"], ["RIVN", "string"], ["ARGX", "string"]]);
+  expect(market.errors).toEqual(["Free shows 3 of 39 moves. Gloom Pro adds the other 36."]);
+
+  const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board,
+    getCloudHiringMoves: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
+  expect(missing.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
+  expect(missing.notes).toEqual(["Hiring moves are not available yet."]);
 });

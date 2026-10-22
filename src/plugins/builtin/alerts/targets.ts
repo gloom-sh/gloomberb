@@ -33,7 +33,8 @@ const pane = (templateId: string, options?: PaneTemplateCreateOptions): AlertTar
 /**
  * The one map from what an alert follows to what it opens, for every rule kind and every delivered alert:
  * a perpetual opens PERP on its market; a dated event the pane its date comes from (ERN, CPI, WIRP); catalyst,
- * Congress and 13F rules their calendar or list, on the company or fund they name; any other rule on a security
+ * Congress and 13F rules their calendar or list, on the company or fund they name; a hiring move HIRE on the
+ * company; any other rule on a security
  * that listing's DES. A rule on no security opens the pane it watches (SRCH for a news keyword, FLOW for flow
  * on the user's lists, FIRST for breaking news). Null when there is nothing to open.
  */
@@ -50,6 +51,8 @@ export function alertTarget(subject: AlertSubject): AlertTarget | null {
     case "news_keyword": if (!symbol) return pane(RESEARCH_SEARCH_TEMPLATE_ID, subject.keyword ? { arg: subject.keyword } : undefined); break;
     case "options_flow": if (!symbol) return pane("scanner-flow-pane"); break;
     case "breaking_news": if (!symbol) return pane("news-breaking-pane"); break;
+    // A hiring move opens HIRE on the company, where its Moves tab says why.
+    case "hiring_move": return symbol ? pane("hiring-pane", { symbol }) : null;
   }
   return symbol ? { kind: "description", symbol, ...(subject.exchange ? { exchange: subject.exchange } : {}) } : null;
 }

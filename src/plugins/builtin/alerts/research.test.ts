@@ -24,6 +24,14 @@ test("filing rules take the SCHEDULE 13D/13G names and keep rules saved as SC 13
   expect(readEventAlerts(JSON.stringify([saved])).rules).toHaveLength(1);
 });
 
+test("hiring move rules take any HIRE listing with its venue, as Cloud stores them", () => {
+  // Every other symbol rule is US-only; HIRE covers world listings.
+  const rule = createResearchAlert("hiring_move", { "hiring_move:symbol": " adyen:ams " }, 1_000);
+  expect(JSON.parse(rule.value)).toEqual({ version: 1, symbol: "ADYEN:AMS", direction: "either" });
+  expect(eventAlertTarget(readEventAlerts(JSON.stringify([rule])).rules[0]!)).toBe("ADYEN:AMS · accelerating or slowing");
+  expect(() => createResearchAlert("hiring_move", { "hiring_move:symbol": "RIVN", "hiring_move:direction": "surge" })).toThrow("Check the symbol");
+});
+
 test("invalid contracts, exchanges and thresholds are refused before sync", () => {
   expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL" })).toThrow("OCC contract");
   expect(() => createResearchAlert("fifty_two_week", { "fifty_two_week:symbol": "SAP", "fifty_two_week:exchange": "XETRA" })).toThrow();
