@@ -22,14 +22,14 @@ function cotPositionRow(row: CotClassSummary) {
  * A market's title line: its name, the report date (the Tuesday the positions
  * are of) and what one contract is, so a net of +207,879 reads in ounces too.
  */
-export function cotContractTitle(data: CotContractPayload, code: string): string {
+function cotContractTitle(data: CotContractPayload, code: string): string {
   const units = cotContractUnitText(data.contract?.contractUnits);
   return [data.contract ? cotMarketName(data.contract.marketName) : code, data.asOf ? `report date ${data.asOf}` : null, units]
     .filter(Boolean).join("  ·  ");
 }
 
 /** The weekly reports newest first, the newest `limit` of them when given. */
-export function cotWeeklyRows(history: readonly CotHistoryPoint[], limit: number | null): CotHistoryPoint[] {
+function cotWeeklyRows(history: readonly CotHistoryPoint[], limit: number | null): CotHistoryPoint[] {
   const newest = [...history].reverse();
   return limit == null ? newest : newest.slice(0, limit);
 }
