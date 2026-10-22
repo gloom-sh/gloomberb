@@ -185,8 +185,13 @@ system in CI, and both run locally:
   surface's labels, a value read from the clock) is named as unsteady and left
   out of the count. A shard that did not finish, a view pictured on one side
   only and a view that did not open are named above the count, which then
-  says it is incomplete. Four shards run two at a time, so the report waits
-  rather than hold runners the required checks need. One comment on the pull
+  says it is incomplete. The base is the commit the pull request left main
+  at, pictured once: every push to main pictures its commit and the Actions
+  cache keeps the pictures, keyed by everything they depend on (the commit,
+  the pinned Chrome, the snapshot, the fonts and the scripts that take them),
+  so a pull request pictures only its head, in eight shards at once. When
+  main has not pictured that commit, the pull request pictures it first and
+  keeps the pictures for its next push. One comment on the pull
   request (the workflow bot's, found by its marker), edited on every run, says
   how many of how many views changed and lists them; the `ui-benchmark`
   artifact has the sheets: before, after and the difference of every view that
