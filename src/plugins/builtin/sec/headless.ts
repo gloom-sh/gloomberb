@@ -18,6 +18,7 @@ import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
+import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -111,10 +112,13 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           ? { filings: (await load(limit)).slice(0, limit), hidden: null }
           : await loadLatestFilings(load, limit);
       const note = hidden && hiddenFilingsNote(hidden);
+      // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
+      const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {
         rows: buildSecFilingRows(filings),
         ...(note ? { notes: [note] } : {}),
-        ...(form ? { empty: `No ${form} filings found for ${symbol}.` } : {}),
+        ...(form ? { empty: `No ${form} filings found for ${symbol}.` }
+          : page ? { empty: `${symbol} files no SEC reports. ${page.name}: ${page.url}` } : {}),
         metadata: {
           acceptanceNote: SEC_ACCEPTANCE_NOTE,
           symbol,

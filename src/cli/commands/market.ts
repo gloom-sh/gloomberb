@@ -39,7 +39,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { statementHistoryNotes } from "../../utils/financial-statements";
+import { stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -83,6 +83,8 @@ import {
 import { missingExpiryMessage, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
 import { apiClient } from "../../api-client";
+import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
+import { exchangeAnnouncementsPage, listsExchangeAnnouncements, type ExchangeAnnouncementsPage } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
@@ -129,8 +131,8 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
-import { selectMarketCapitalization } from "../../utils/market-capitalization";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
   barResolutionFromDates,
@@ -1286,7 +1288,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       const freshness = view === "valuation" ? valuationFreshness(financials) : fundamentalsFreshness(financials);
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
-      const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
+      // One market cap per view: the share count times the price where the provider's sits more than 2% from it.
+      const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
       // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
       const [statementFilings, bank] = view === "fundamentals"
         ? await Promise.all([
@@ -1334,8 +1337,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const freshness = rowsFreshness(rows, {
       ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
     });
-    // The rows are the annual years served; older ones are not, and the closing lines say so.
-    const historyNotes = statementHistoryNotes("annual", rows.map((row) => row.date), listing.key);
+    // The rows are the annual years served; older ones are not, and the closing lines say so, after how old
+    // the latest year is when it ended over 15 months ago.
+    const stale = stalePeriodNote(rows.map((row) => ({ date: row.date, lead: row.revenue != null })));
+    const historyNotes = [...stale ? [stale] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
@@ -1533,6 +1538,27 @@ async function registrantUsExchange(market: MarketContext, symbol: string, regis
   return (venues.find((venue) => isUsListingExchange(venue.exchange)) ?? venues[0])?.exchange ?? null;
 }
 
+/** ASX announcements as `filings` lists them for a listing that files nothing with the SEC. */
+const ANNOUNCEMENT_COLUMNS = [
+  { key: "date", header: "Released", format: (value: unknown) => typeof value === "string" ? `${value.slice(0, 16).replace("T", " ")} UTC` : "" },
+  { key: "headline", header: "Headline", maxWidth: 60 },
+  { key: "type", header: "Type", maxWidth: 36 },
+  { key: "priceSensitive", header: "Price sensitive", format: (value: unknown) => value === true ? "yes" : "" },
+  { key: "url", header: "URL", optional: true },
+];
+
+const ASX_ANNOUNCEMENTS = { source: "ASX company announcements", status: "not-a-feed", basis: "exchange announcements", oldest: null } as const;
+
+function announcementRows(payload: ExchangeAnnouncementsPayload) {
+  return payload.announcements.map((item) => ({
+    date: item.date,
+    headline: item.headline,
+    type: item.types.join("; "),
+    priceSensitive: item.priceSensitive,
+    url: item.url,
+  }));
+}
+
 async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   // Filings come newest first, so --tail asks for the same first n as --limit.
@@ -1541,12 +1567,16 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const form = takeOption(args, "--form")?.trim() || null;
   const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
-    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    // NST.AX is NST:ASX, as quote, valuation and the pane functions read it: the SEC is asked by venue.
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx, { venueSuffix: true });
     const venues = loadBareVenues(listing, market);
     const { symbol, exchange } = listing.request;
     // A listing outside the US sends its company to the lookup, which needs its quote first.
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const identity = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
+    // Where a listing abroad publishes its announcements, whatever the SEC holds for it.
+    const page = identity ? exchangeAnnouncementsPage(identity.symbol, identity.exchange) : null;
+    const pageLine = page ? `${page.name}: ${page.url}` : null;
     try {
       const context = identity?.name ? { listingName: identity.name } : undefined;
       const [filings, quote] = await Promise.all([
@@ -1560,9 +1590,17 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ]);
       const resolved = identity ?? listingIdentity(listing, quote);
       const choice = await listingChoiceNotes(listing, market, quote, venues);
+      // A company on ASX that files nothing with the SEC lists its ASX announcements instead.
+      if (identity && filings.length === 0 && !form && listsExchangeAnnouncements(identity.exchange)) {
+        await printExchangeAnnouncements(ctx, { resolved, count, choice, page: page! });
+        return;
+      }
       ctx.printResult({
         data: filingsWithItemLabels(filings),
-        metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) },
+        metadata: {
+          ...listingMetadata(resolved), ...(form ? { form } : {}),
+          ...(page ? { announcementsPage: page.url } : {}),
+        },
         freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
@@ -1570,10 +1608,12 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         rows: filingRows,
         columns: FILING_COLUMNS,
         textColumns: FILING_TEXT_COLUMNS,
-        // A listing abroad is looked up by its company: none found means the company files nothing with the SEC.
-        empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.`
+        // A listing abroad is looked up by its company: none found means the company files nothing with the SEC,
+        // and the page its own exchange publishes its announcements on is where to read them.
+        empty: [form ? `No ${form} filings found for ${listingTitle(resolved)}.`
           : identity ? noSecReportsNotice(resolved)
-          : `No SEC filings found for ${listingTitle(resolved)}.`,
+          : `No SEC filings found for ${listingTitle(resolved)}.`, pageLine].filter(Boolean).join("\n"),
+        ...(pageLine ? { footnote: pageLine, exportNotes: [pageLine] } : {}),
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -1584,10 +1624,56 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const resolved = identity ?? listingIdentity(listing, await quotePromise);
       ctx.printResult({
         data: [] as SecFilingItem[],
-        metadata: { ...listingMetadata(resolved), secRegistrant: error.registrantName },
+        metadata: { ...listingMetadata(resolved), secRegistrant: error.registrantName, ...(page ? { announcementsPage: page.url } : {}) },
         warnings: ctx.cliOptions.format === "text" ? undefined : [message],
-      }, { rows: filingRows, columns: FILING_COLUMNS, textColumns: FILING_TEXT_COLUMNS, empty: message });
+      }, { rows: filingRows, columns: FILING_COLUMNS, textColumns: FILING_TEXT_COLUMNS, empty: [message, pageLine].filter(Boolean).join("\n") });
     }
+  });
+}
+
+/**
+ * `filings` for a company on ASX that files nothing with the SEC: its latest
+ * ASX announcements from Gloom Cloud, newest first, under the line saying it
+ * files no SEC reports, with its ASX announcements page. A failed read still
+ * ends on that page, with the reason.
+ */
+async function printExchangeAnnouncements(
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+  input: { resolved: ListingIdentity; count: number; choice: string[]; page: ExchangeAnnouncementsPage },
+): Promise<void> {
+  const { resolved, count, choice, page } = input;
+  const notice = noSecReportsNotice(resolved);
+  const pageLine = `${page.name}: ${page.url}`;
+  let payload: ExchangeAnnouncementsPayload | null = null;
+  let failure: string | null = null;
+  try {
+    payload = await apiClient.getCloudExchangeAnnouncements({ symbol: resolved.symbol, exchange: resolved.exchange, limit: Math.min(count, 50) });
+  } catch (error) {
+    failure = `ASX announcements unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  const rows = payload ? announcementRows(payload) : [];
+  const warnings = [
+    ...choice,
+    ...payload?.stale ? ["ASX could not be reached; these are the announcements Gloom Cloud read last."] : [],
+    ...failure ? [failure] : [],
+  ];
+  ctx.printResult({
+    data: rows,
+    metadata: {
+      ...listingMetadata(resolved), secFilings: 0, announcementsPage: payload?.page ?? page.url,
+      ...(payload ? { announcementsTotal: payload.total, announcementsRetrievedAt: payload.retrievedAt } : {}),
+    },
+    freshness: rowsFreshness(rows, { ...ASX_ANNOUNCEMENTS, observedKey: "date" }),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  }, {
+    heading: listingHeading(resolved),
+    ...(rows.length > 0 ? { summary: () => `${notice} Its latest ASX announcements:` } : {}),
+    rows: () => rows,
+    columns: ANNOUNCEMENT_COLUMNS,
+    empty: `${failure ? notice : `${notice} ASX lists no announcements for it.`}\n${pageLine}`,
+    footnote: pageLine,
+    exportNotes: [notice, pageLine],
+    exportIdentity: { symbolOrSeries: `${resolved.symbol}:${resolved.exchange}` },
   });
 }
 
@@ -2668,7 +2754,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "filings",
-    description: "Fetch recent SEC filings",
+    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's list",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["filings <symbol> [--count <n>] [--form <form>]"],
@@ -2677,7 +2763,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
     },
     execute: runFilings,
   },

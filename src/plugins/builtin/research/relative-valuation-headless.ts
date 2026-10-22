@@ -4,7 +4,9 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
-import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues } from "./relative-valuation-model";
+import {
+  RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
+} from "./relative-valuation-model";
 import { paneSchemas } from "./headless-schema";
 import { isRecord } from "../../../utils/guards";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -16,6 +18,12 @@ const price = (value: unknown, row: Record<string, unknown>) => (
   value == null || !row.currency ? "-" : formatCurrency(Number(value), String(row.currency))
 );
 const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
+
+/** The reason a row lacks the figure under `key` ("no TTM FCF"), which exports move to their status column. */
+function gapText(row: Record<string, unknown>, key: RelativeValuationGapKey): string {
+  const gaps = row.gaps as Partial<Record<RelativeValuationGapKey, string>> | undefined;
+  return gaps?.[key] ?? "-";
+}
 
 /**
  * The pre-market, after-hours or overnight print and its move from the regular close in Last, for the peers that have
@@ -34,30 +42,31 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
 
 const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
-  { key: "price", header: "Last", align: "right", format: price },
-  { key: "changePercent", header: "Chg%", align: "right", format: percent },
+  { key: "price", header: "Last", align: "right", format: (value, row) => value == null ? gapText(row, "price") : price(value, row) },
+  { key: "changePercent", header: "Chg%", align: "right", format: (value, row) => value == null ? gapText(row, "changePercent") : percent(value) },
 ];
 
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
   { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency",
-    format: (value, row) => value == null ? "-" : `${formatCompact(Number(value), { fixedDecimals: true })}${row.marketCapCurrency ? ` ${row.marketCapCurrency}` : ""}` },
+    format: (value, row) => value == null ? gapText(row, "marketCap") : `${formatCompact(Number(value), { fixedDecimals: true })}${row.marketCapCurrency ? ` ${row.marketCapCurrency}` : ""}` },
   ...([ ["trailingPE", "P/E"], ["forwardPE", "Fwd P/E"] ] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     format: (_value: unknown, row: Record<string, unknown>) => {
       const values = row as Partial<ReturnType<typeof relativeValuationValues>>;
-      return formatPriceEarnings(values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key]);
+      const multiple = values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key];
+      return multiple == null ? gapText(row, key) : formatPriceEarnings(multiple);
     },
   })),
-  ...[["evSales", "EV/S"]].map(([key, header]) => ({
-    key: key!, header: header!, align: "right" as const,
+  ...([["evSales", "EV/S"]] as const).map(([key, header]) => ({
+    key, header, align: "right" as const,
     // A withdrawn EV says so rather than leaving a bare dash; the note under the table says why.
-    format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1)
-      : row.evSalesUnavailable ? "EV unavailable" : "-",
+    format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1) : gapText(row, key),
   })),
-  ...[["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]].map(([key, header]) => ({
-    key: key!, header: header!, align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
+  ...([["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
+    key, header, align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+      : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
   })),
 ];
 
@@ -168,6 +177,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
           ...rows.some((row) => Object.keys(row.notMeaningful).length > 0
             || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
           ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+          ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
         ],
         multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS; notMeaningful says why one is null, and reportedMultiples preserves the finite provider values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",

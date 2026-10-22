@@ -28,6 +28,43 @@ export function statementHistoryNotes(
     ];
 }
 
+/** How old a statement's latest period may be before a report says how old it is. */
+const STALE_STATEMENT_MONTHS = 15;
+
+/** Whole months from a YYYY-MM-DD period end to `now`, in UTC. */
+function monthsSince(date: string, now: number): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return null;
+  const today = new Date(now);
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return (today.getUTCFullYear() - year) * 12 + (today.getUTCMonth() + 1 - month) - (today.getUTCDate() < day ? 1 : 0);
+}
+
+/**
+ * "Latest period 2024-06-30 is 27 months old.": what a statements report and
+ * FA say when the latest period with the statement's lead figure (revenue,
+ * total assets) ended more than 15 months ago, so a table that stops years
+ * back never reads as current (EVN:ASX's balance sheet stopped at 2024-06-30
+ * in October 2026). A newer period with only some figures (EVN's FY2025: EPS
+ * alone) is named as such. `periods` are the table's columns, any order; a
+ * column without a date (TTM) is not a period. Null when the latest period is
+ * recent, or no column has a date.
+ */
+export function stalePeriodNote(
+  periods: ReadonlyArray<{ date: string; lead: boolean }>,
+  now = Date.now(),
+): string | null {
+  const dated = periods.filter(({ date }) => /^\d{4}-\d{2}-\d{2}/.test(date)).map(({ date, lead }) => ({ date: date.slice(0, 10), lead }));
+  if (dated.length === 0) return null;
+  const newest = dated.reduce((latest, period) => (period.date > latest ? period.date : latest), "");
+  const lead = dated.filter((period) => period.lead).reduce((latest, period) => (period.date > latest ? period.date : latest), "") || newest;
+  const [year, month, day] = lead.split("-").map(Number) as [number, number, number];
+  // Over 15 months: past the same day 15 months on.
+  if (!(now > Date.UTC(year, month - 1 + STALE_STATEMENT_MONTHS, day, 23, 59, 59, 999))) return null;
+  const months = monthsSince(lead, now);
+  return `Latest period ${lead} is ${months} months old${newest > lead ? `; ${newest} has only some figures` : ""}.`;
+}
+
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
 const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings"]);

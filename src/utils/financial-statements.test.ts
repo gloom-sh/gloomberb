@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows, statementHistoryNotes } from "./financial-statements";
+import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows, stalePeriodNote, statementHistoryNotes } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import type { FinancialStatement } from "../types/financials";
 
@@ -226,5 +226,24 @@ describe("statementHistoryNotes", () => {
     // A report with no dated period has nothing to say about its history.
     expect(statementHistoryNotes("annual", [], "KO")).toEqual([]);
     expect(statementHistoryNotes("annual", ["TTM"], "KO")).toEqual([]);
+  });
+});
+
+describe("stalePeriodNote", () => {
+  test("says how old a latest period over 15 months old is, from the newest period with the lead figure", () => {
+    const now = Date.parse("2026-10-22T02:00:00Z");
+    // EVN:ASX's balance sheet stopped at 2024-06-30.
+    expect(stalePeriodNote([{ date: "2024-06-30", lead: true }, { date: "2023-06-30", lead: true }], now))
+      .toBe("Latest period 2024-06-30 is 27 months old.");
+    // Its income statement has a FY2025 column with EPS alone: the latest full period is FY2024's.
+    expect(stalePeriodNote([{ date: "TTM", lead: true }, { date: "2025-06-30", lead: false }, { date: "2024-06-30", lead: true }], now))
+      .toBe("Latest period 2024-06-30 is 27 months old; 2025-06-30 has only some figures.");
+    // 15 months to the day is not over 15 months; a day more is.
+    expect(stalePeriodNote([{ date: "2025-07-22", lead: true }], now)).toBeNull();
+    expect(stalePeriodNote([{ date: "2025-07-21", lead: true }], now)).toBe("Latest period 2025-07-21 is 15 months old.");
+    expect(stalePeriodNote([{ date: "2026-06-30", lead: true }], now)).toBeNull();
+    // No dated column, or none with the lead figure: the newest period stands.
+    expect(stalePeriodNote([{ date: "TTM", lead: true }], now)).toBeNull();
+    expect(stalePeriodNote([{ date: "2024-12-31", lead: false }], now)).toBe("Latest period 2024-12-31 is 21 months old.");
   });
 });

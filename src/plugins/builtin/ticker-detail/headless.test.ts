@@ -44,6 +44,33 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   expect((shares.cells as Array<{ growth: number }>)[0]!.growth).toBeCloseTo(0.2);
 });
 
+// EVN:ASX's statements stopped at 2024-06-30 in October 2026, with a FY2025 column of EPS alone, and nothing said so.
+test("financial statements say how old a latest period over 15 months old is, past a newer column with only some figures", async () => {
+  setSystemTime(new Date("2026-10-22T02:00:00Z"));
+  try {
+    const ctx = {
+      marketData: createTestDataProvider({
+        async getTickerFinancials() {
+          return {
+            financialCurrency: "AUD",
+            annualStatements: [
+              { date: "2023-06-30", totalRevenue: 2.29e9, netIncome: 1.6e8, totalAssets: 6.75e9, eps: 0.09 },
+              { date: "2024-06-30", totalRevenue: 3.3e9, netIncome: 4.2e8, totalAssets: 8.82e9, eps: 0.22 },
+              { date: "2025-06-30", eps: 0.46 },
+            ],
+            quarterlyStatements: [], priceHistory: [],
+          };
+        },
+      }),
+    } as HeadlessPaneContext;
+    const load = (statement: string) => financialStatementsHeadless.load(args(["EVN:ASX"], { period: "annual", statement }), ctx);
+    expect((await load("income")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old; 2025-06-30 has only some figures.");
+    expect((await load("balance")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old.");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
   const dateEvidence = { accessionNumber: "0000909832-24-000049", filed: "2024-10-09", startDate: "2023-09-04" };
   const ctx = { marketData: createTestDataProvider({ async getTickerFinancials() {
