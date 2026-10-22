@@ -901,7 +901,7 @@ function ChartComposerSurface({
         content: (context: PromptContext<string>) => (
           <ChoiceDialog
             {...context}
-            title="Chart Resolution"
+            title="Bar Size"
             selectedChoiceId={spec.viewport.resolution}
             choices={[
               ...dialogResolutions.map((value) => ({
@@ -915,9 +915,12 @@ function ChartComposerSurface({
         ),
       }).catch(() => "");
       if (next === CUSTOM_BAR_SIZE_CHOICE) {
+        // A row picked with the mouse closes on mousedown; the field opens after the
+        // click has placed the focus, or the desktop leaves it on the dialog.
+        await new Promise((resolve) => setTimeout(resolve, 0));
         const typed = await dialog.prompt<string>({
           content: (ctx: PromptContext<string>) => (
-            <TextPromptDialog {...ctx} title="Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
+            <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
           ),
         }).catch(() => undefined);
         if (!typed) return;
