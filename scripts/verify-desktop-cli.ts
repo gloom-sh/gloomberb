@@ -105,7 +105,7 @@ try {
   assert.equal(await realpath(shot.data.outputPath), await realpath(join(caller, output)), "Relative --output escaped the caller directory");
   assert.equal(shot.data.render.loadingStateDetected, false);
   assert.equal(shot.data.render.errorStateDetected, false);
-  assert.match(shot.data.render.visibleText, /Install Gloomberb/);
+  assert.match(shot.data.render.visibleText, /Install Gloom/);
   const png = join(evidence, output);
   await copyFile(join(caller, output), png);
   const { bitmap } = await Jimp.read(png);
@@ -125,7 +125,7 @@ try {
       assert.equal(report.data.empty, false);
       assert(report.data.rowCount > 0);
       assert.equal(report.data.reason, undefined);
-      assert.match(report.data.visibleText, /Install Gloomberb/);
+      assert.match(report.data.visibleText, /Install Gloom/);
     } else {
       // No ticker is intentional: DIAG's rendered empty state needs no quote,
       // filings or account. It still exercises the real browser and archive.
