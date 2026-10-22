@@ -251,8 +251,9 @@ test("a trust's filings keep the fund's own series, and the text table keeps Fil
     ["filedAt", undefined], ["acceptanceReported", 100], ["form", undefined], ["filing", undefined], ["accessionNumber", undefined],
   ]);
   expect(section.columns!.map((column) => column.key)).toContain("items");
-  // An older server marks nothing: the trust's list stays whole.
+  // An older server marks nothing, and a list with nothing marked as the fund's own says nothing about it: both stay whole.
   expect((await load([trust("497K", 1), trust("485BXT", 2)])).sections[1]!.rows).toHaveLength(2);
+  expect((await load([trust("497K", 1, false), trust("485BXT", 2, false)])).sections[1]!.rows).toHaveLength(2);
 });
 
 test("an inverse fund's objective reads as its factor, reset and direction; a server before it sends none and still reads", async () => {

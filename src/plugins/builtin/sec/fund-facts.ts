@@ -53,13 +53,14 @@ export function fundFactsErrorLine(error: unknown): string {
   return message === FUND_FACTS_UNAVAILABLE ? t(FUND_FACTS_UNAVAILABLE) : tf("Fund facts unavailable: {message}", { message });
 }
 
-export async function fetchFundFacts(ticker: string, client: Client = apiClient): Promise<FundFactsPayload> {
-  try { return validateFundFacts(await client.getFundFacts(ticker)); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
+export async function fetchFundFacts(ticker: string, client: Client = apiClient, signal?: AbortSignal): Promise<FundFactsPayload> {
+  try { return validateFundFacts(await (signal ? client.getFundFacts(ticker, { signal }) : client.getFundFacts(ticker))); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
 }
 const cacheKey = (ticker: string) => ticker.trim().toUpperCase();
 export const cachedFundFacts = (ticker: string) => cachedCloudResource(fundFactsCache, cacheKey(ticker), validateFundFacts);
-export const loadFundFacts = (ticker: string, force = false) =>
-  loadCloudResource(fundFactsCache, cacheKey(ticker), () => fetchFundFacts(ticker), { force, validate: validateFundFacts });
+/** Through the cache the ETF pane keeps; `client` is a report's own, `signal` ends a read it no longer waits for. */
+export const loadFundFacts = (ticker: string, force = false, { client = apiClient, signal }: { client?: Client; signal?: AbortSignal } = {}) =>
+  loadCloudResource(fundFactsCache, cacheKey(ticker), () => fetchFundFacts(ticker, client, signal), { force, validate: validateFundFacts, signal });
 
 /** A fee as the prospectus states it: two decimals at least, four when it has them (0.0945%). */
 function formatFeePercent(value: number): string {

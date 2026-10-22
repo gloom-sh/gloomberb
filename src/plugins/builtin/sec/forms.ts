@@ -52,11 +52,12 @@ export function filterFilingsByForms(filings: readonly SecFilingItem[], forms: r
 /**
  * A fund's own filings out of its trust's (ProShares Trust files for 166
  * funds): the ones the service marks as filed for the fund's series. A list
- * the service could not mark, or a fund whose registrant runs no other
- * series, stays whole.
+ * the service could not mark, a fund whose registrant runs no other series,
+ * or a list in which nothing is marked as the fund's own (a series list that
+ * came back empty) stays whole.
  */
 export function fundSeriesFilings(filings: readonly SecFilingItem[]): readonly SecFilingItem[] {
-  return filings.some((filing) => filing.fundSeries !== undefined)
+  return filings.some((filing) => filing.fundSeries === true)
     ? filings.filter((filing) => filing.fundSeries === true)
     : filings;
 }

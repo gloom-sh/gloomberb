@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { normalizeChartSpec, validateChartSpec } from "../../../time-series/spec";
 import { buildComparisonChartPreset } from "./presets";
-import { comparedFundTickers, dailyObjective, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { comparedFundTickers, dailyObjective, loadDailyObjectives, mayDrawDailyObjective, withLeverageOverlay } from "./leverage-overlay";
 
 const facts = (value: number, proxy: string | null, reset = "daily") => ({ leverage: { value, reset, proxy: proxy ? { ticker: proxy } : null } });
 
@@ -39,4 +39,22 @@ test("only a daily objective with an index fund draws a line", () => {
   expect(dailyObjective(facts(1.75, "QQQ", "monthly"))).toBeNull();
   expect(dailyObjective(facts(2, null))).toBeNull();
   expect(dailyObjective({})).toBeNull();
+});
+
+test("a comparison waits a bounded time for its legs' facts, and asks none when it cannot draw the line", async () => {
+  const aborted: string[] = [];
+  const objectives = await loadDailyObjectives(["TQQQ", "SQQQ"], (ticker, signal) => ticker === "TQQQ"
+    ? Promise.resolve(facts(3, "QQQ"))
+    // A read that never answers is charted without and aborted once the wait is over.
+    : new Promise((_, reject) => signal.addEventListener("abort", () => { aborted.push(ticker); reject(signal.reason); })),
+  { timeoutMs: 20 });
+  expect([...objectives.keys()]).toEqual(["TQQQ"]);
+  expect(aborted).toEqual(["SQQQ"]);
+
+  const spec = buildComparisonChartPreset(["TQQQ", "QQQ"]);
+  expect(mayDrawDailyObjective(spec)).toBe(true);
+  // One session's chart, or weekly bars, would only warn that the line needs daily bars.
+  expect(mayDrawDailyObjective({ ...spec, viewport: { ...spec.viewport, range: "1D" } })).toBe(false);
+  expect(mayDrawDailyObjective({ ...spec, viewport: { ...spec.viewport, resolution: "1wk" } })).toBe(false);
+  expect(mayDrawDailyObjective(withLeverageOverlay(spec, new Map([["TQQQ", { factor: 3, proxy: "QQQ" }]])))).toBe(false);
 });

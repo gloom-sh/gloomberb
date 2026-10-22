@@ -36,8 +36,9 @@ import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
-import { fetchFundFacts } from "../sec/fund-facts";
-import { comparedFundTickers, hasLeverageOverlay, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { loadFundFacts } from "../sec/fund-facts";
+import { comparedFundTickers, loadDailyObjectives, mayDrawDailyObjective, withLeverageOverlay } from "./leverage-overlay";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
 import { LATEST_INTRADAY_TEXT } from "../../../market-data/market/period-return";
 
@@ -476,6 +477,26 @@ export async function bareFredSeries(
   return { ...fred, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
 }
 
+/**
+ * The compared tickers whose fund facts could state a daily objective: each
+ * but those a quote already cached says are not funds (a stock, an index).
+ * The facts are read through the ETF pane's cache, so a ticker read once
+ * is not asked again for a day.
+ */
+async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext): Promise<string[]> {
+  const tickers = comparedFundTickers(spec);
+  const read = context.marketData.getCachedFinancialsForTargets;
+  const cached = tickers.length && read
+    ? await Promise.resolve().then(() => read.call(context.marketData, tickers.map((symbol) => ({ symbol })), { allowExpired: true, includeStaleQuotes: true }))
+      .catch(() => null)
+    : null;
+  return tickers.filter((ticker) => {
+    const financials = cached?.get(ticker);
+    const kind = classifyInstrumentType(financials?.quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType);
+    return kind === null || kind === "fund";
+  });
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
@@ -485,8 +506,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       const saved = parseChartSpec(context.settings?.chartSpec);
       if (!saved) throw new Error("The chart specification is invalid.");
       // A leveraged or inverse fund compared with anything draws its daily objective beside it.
-      const parsed = template === "comparison-chart-pane" && !hasLeverageOverlay(saved)
-        ? withLeverageOverlay(saved, await loadDailyObjectives(comparedFundTickers(saved), (ticker) => fetchFundFacts(ticker, context.apiClient)))
+      const parsed = template === "comparison-chart-pane" && mayDrawDailyObjective(saved)
+        ? withLeverageOverlay(saved, await loadDailyObjectives(
+          await possibleFundTickers(saved, context),
+          async (ticker, signal) => (await loadFundFacts(ticker, false, { client: context.apiClient, signal })).payload,
+          { signal: context.signal },
+        ))
         : saved;
       // A bare symbol is the listing `quote` reads it as: BDI, which two companies list, asks which,
       // as `quote BDI` does, instead of charting whichever line a source picked.

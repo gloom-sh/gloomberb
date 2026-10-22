@@ -46,8 +46,20 @@ export function comparedFundTickers(spec: ChartSpec): string[] {
 }
 
 /** Whether the chart already draws a fund's objective, as built here or kept from before. */
-export function hasLeverageOverlay(spec: ChartSpec): boolean {
+function hasLeverageOverlay(spec: ChartSpec): boolean {
   return spec.studies.some((study) => study.kind === "leverage" || study.kind === "leverage-decay");
+}
+
+/**
+ * Whether a report of this chart could draw a daily objective at all: a
+ * price comparison without one yet, over daily bars. One session's chart, or
+ * bars asked for by the week, month or hour, would only warn that the line
+ * needs daily bars, so its legs' facts are not asked for.
+ */
+export function mayDrawDailyObjective(spec: ChartSpec): boolean {
+  if (hasLeverageOverlay(spec) || !priceComparisonSeriesIds(spec)) return false;
+  if (spec.viewport.range === "1D" && !spec.viewport.dateWindow) return false;
+  return spec.viewport.resolution === "auto" || spec.viewport.resolution === "1d";
 }
 
 /**
@@ -87,20 +99,43 @@ export function withLeverageOverlay(spec: ChartSpec, objectives: ReadonlyMap<str
   return { ...spec, series, studies, panels: reconcilePanels(spec.panels, series, studies) };
 }
 
+/** How long a comparison waits for its legs' fund facts before it is charted without objectives. */
+const DAILY_OBJECTIVES_TIMEOUT_MS = 2_500;
+/** A pane draws its chart meanwhile and adds the objectives when they come. */
+export const LEVERAGE_FACTS_PANE_TIMEOUT_MS = 15_000;
+
 /**
  * Each compared fund's daily objective, from its facts. A fund whose facts
- * fail to load is charted without one: the comparison never waits on them
- * failing.
+ * fail to load, or are not in by `timeoutMs`, is charted without one: the
+ * comparison never waits long on them. The reads still running then are
+ * aborted through the signal `loadFacts` is given, as they are when `signal`
+ * (the caller's) aborts.
  */
 export async function loadDailyObjectives(
   tickers: readonly string[],
-  loadFacts: (ticker: string) => Promise<LeverageFacts | null>,
+  loadFacts: (ticker: string, signal: AbortSignal) => Promise<LeverageFacts | null>,
+  { timeoutMs = DAILY_OBJECTIVES_TIMEOUT_MS, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<Map<string, DailyObjective>> {
   const objectives = new Map<string, DailyObjective>();
-  await Promise.all(tickers.map(async (ticker) => {
-    const objective = dailyObjective(await loadFacts(ticker).catch(() => null));
-    // An index fund charted beside its leveraged fund is not leveraged itself.
-    if (objective && objective.proxy !== ticker) objectives.set(ticker, objective);
-  }));
+  if (tickers.length === 0) return objectives;
+  const deadline = new AbortController();
+  const expired = new Promise<null>((resolve) => deadline.signal.addEventListener("abort", () => resolve(null), { once: true }));
+  const timer = setTimeout(() => deadline.abort(new DOMException("Fund facts took too long.", "TimeoutError")), timeoutMs);
+  const cancel = () => deadline.abort(signal?.reason);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    await Promise.all(tickers.map(async (ticker) => {
+      const facts = await Promise.race([loadFacts(ticker, deadline.signal).catch(() => null), expired]);
+      const objective = dailyObjective(facts);
+      // An index fund charted beside its leveraged fund is not leveraged itself.
+      if (objective && objective.proxy !== ticker) objectives.set(ticker, objective);
+    }));
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+    // Reads still running are no longer waited for.
+    deadline.abort();
+  }
   return objectives;
 }

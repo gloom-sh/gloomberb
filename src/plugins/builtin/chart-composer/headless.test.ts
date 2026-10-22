@@ -364,3 +364,39 @@ test("fn G DFII10 charts the FRED series once no listing answers to it, and a ti
     id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
   });
 });
+
+test("fn CMP reads a leg's fund facts once through their cache, and never a leg a cached quote calls a stock", async () => {
+  const { buildComparisonChartPreset } = await import("./presets");
+  const { fundFactsCache } = await import("../sec/fund-facts");
+  fundFactsCache.reset();
+  const asked: string[] = [];
+  const facts = (ticker: string) => ({
+    ticker, covered: true, name: null, structure: "registered", expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null,
+    netAssets: null, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+    leverage: { value: 3, asOf: "2026-10-21", source: "ProShares", reset: "daily", benchmark: "Nasdaq-100 Index", proxy: { ticker: "QQQ", basis: "index-fund" } },
+  });
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getPriceHistoryForResolution: async () => [{ date: new Date("2026-08-03"), close: 100 }, { date: new Date("2026-08-04"), close: 110 }],
+    // AAPL's quote, cached from an earlier read, says it is a stock.
+    getCachedFinancialsForTargets: (targets) => new Map(targets.filter((target) => target.symbol === "AAPL").map((target) => [target.symbol, {
+      annualStatements: [], quarterlyStatements: [], priceHistory: [],
+      quote: { symbol: "AAPL", price: 1, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0, instrumentType: "EQUITY" },
+    }])),
+  });
+  const apiClient = { getFundFacts: async (ticker: string) => { asked.push(ticker); return facts(ticker); } };
+  const context = { ...fixture().context, marketData: provider, apiClient: apiClient as never };
+  const symbols = ["AAPL:NASDAQ", "TQQQ:NASDAQ"];
+  const load = () => chartHeadless("comparison-chart-pane").load(
+    { argument: symbols, rawArgument: symbols.join(","), symbols, options: {} },
+    { ...context, settings: { chartSpec: buildComparisonChartPreset(symbols) } },
+  ) as Promise<ChartPaneModel>;
+  try {
+    const first = await load();
+    expect(first.spec.studies.map((study) => study.kind)).toEqual(["leverage", "leverage-decay"]);
+    await load();
+    expect(asked).toEqual(["TQQQ"]);
+  } finally {
+    fundFactsCache.reset();
+  }
+});

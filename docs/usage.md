@@ -244,7 +244,7 @@ The number goes on either side of its series (`HO=F*42`), and only the whole for
 fn CMP TQQQ,QQQ --rangePreset 1M
 ```
 
-Returns are from closing prices, so they leave out distributions, as every comparison does. The line needs daily bars; with weekly or monthly bars it is left out with a warning. A fund that resets monthly, or whose benchmark no fund tracks one for one, gets no line.
+Returns are from closing prices, so they leave out distributions, as every comparison does. The line needs daily bars: a chart switched to weekly or monthly bars leaves it out with a warning, and `fn CMP` with `--chartResolution 1wk`, or over one session, does not draw it. A fund that resets monthly, or whose benchmark no fund tracks one for one, gets no line. `fn CMP` waits at most a few seconds for the funds' facts and charts the comparison without the line when they are late.
 
 #### Your own series
 
