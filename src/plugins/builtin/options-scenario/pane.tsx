@@ -38,7 +38,7 @@ import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKN
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
-import { hedgeStatItems, scenarioHedgeBudget, type HedgeQuote } from "./hedge";
+import { hedgeStatItems, scenarioHedgeBudget, seededLegQuotes, type HedgeQuote } from "./hedge";
 import { readOptionExpiration } from "../../../utils/option-expiry";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 
@@ -166,9 +166,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const earningsDate = frozenEarnings ? settings.scenarioEarningsDate as string | null : earnings.data;
   // A position following the market is at the live print, which the footer names with its feed.
   const spotBasis = scenario && !live ? scenarioSpotBasis(settings, scenario.position, market) : null;
+  // The put's bid and ask: its streamed quote while the pane follows the market, else the chain's.
   const csp = useMemo(() => cspStrategy && scenario && !earnings.loading
-    ? cashSecuredPut(scenario.position, live?.basis ?? spotBasis ?? "last price", earningsDate) : null,
-  [cspStrategy, scenario, earnings.loading, earningsDate, live?.basis, spotBasis]);
+    ? cashSecuredPut(scenario.position, live?.basis ?? spotBasis ?? "last price", earningsDate,
+      seededLegQuotes(scenario.position, market?.chain, live?.quotes).get(scenario.position.legs[0]?.id ?? "")) : null,
+  [cspStrategy, scenario, earnings.loading, earningsDate, live?.basis, live?.quotes, spotBasis, market?.chain]);
   // A collar seeded, or one typed with the shares it hedges, as the report reads it.
   const collarStrategy = settings.strategy === "collar";
   const collar = useMemo(() => scenario && (collarStrategy || scenario.position.underlying)

@@ -163,7 +163,8 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs and FOMC days against a normal day, and every release day |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
-| `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
+| `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks; a hedge budget, a collar, or a cash-secured put with its yield on cash at the mid and at the bid |
+| `CSP <tickers>` | Cash-secured puts across a list, ranked by annualised yield at the bid, with % OTM, delta, IV rank, spread and an earnings flag |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
 | `DVD <ticker>` | Dividend yield and history; `gloomberb fn DVD KO PEP JNJ` ranks several tickers in one table by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield; `gloomberb fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)) |
@@ -1038,7 +1039,7 @@ Each built-in plugin can be switched on or off in `PL`. Ticker Research, Market 
 | Plugin | Functions |
 |--------|-----------|
 | Ticker Research | The research pane, DES, FA, QQ, HP, RETURN, the G charts, CAT, ANR, DIAG, EVT, RV, EE, EM, GUID, KPIS, GUIDE, SEG, DVD, RDCF, PEB, EXEC, TAS |
-| Options & Volatility | OMON, OPX, GEX, OVME, OSA, OVDV, HVG, HVT, HIVG, VCA |
+| Options & Volatility | OMON, OPX, GEX, OVME, OSA, CSP, OVDV, HVG, HVT, HIVG, VCA |
 | Ownership & Insiders | HDS, 13F, INS, SI, SIW, SIV, the Congress tab |
 | Filings & Events | SEC, ETF, RISK, EK, CATL, LITI, MA, DIST |
 | Credit & Bonds | CDS, CDX, SOVR, CRD, AUCT, YAS, CRDOC, COVN, DDIS |
@@ -1094,13 +1095,22 @@ To size a protective put against a budget, add `--nav` and `--budget-bps`, and `
 gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m
 ```
 
-To sell a cash-secured put, `--strategy csp` seeds one short put at its quote midpoint:
+To sell a cash-secured put, `--strategy csp` seeds one short put at its quote midpoint, at `--strike` or, with `--delta 0.30`, the put whose delta is nearest -0.30:
 
 ```sh
 gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20
 ```
 
-The **Cash-secured put** block, and a row of figures in the pane, give the cash secured, the premium received and its price basis, yield on cash and annualised, how far the strike is below the named spot, the break-even, days to expiry and whether the next earnings report falls before expiry (`unknown` when the calendar has no date). Each figure is defined under [Cash-secured put](research-data.md#cash-secured-put). The status line names the spot the scenario is valued at and when.
+The **Cash-secured put** block, and a row of figures in the pane, give the cash secured, the premium received and its price basis, yield on cash and annualised, the put's bid, ask and spread with the premium and annualised yield at the bid (what a sell order fills at without crossing the spread), how far the strike is below the named spot, the break-even, days to expiry and whether the next earnings report falls before expiry (`unknown` when the calendar has no date). GS's November 820 put at 5.40/6.75 yields 9.01% a year at the 6.075 mid and 8.01% at the bid. Each figure is defined under [Cash-secured put](research-data.md#cash-secured-put). The status line names the spot the scenario is valued at and when. `--csv` writes every figure of the report as a number, with its unit (`USD`, `USD per share`, `%`, `days`) in the label and in the `currency_or_unit` column.
+
+To rank puts across several names, `CSP` sells the same put on each: the one nearest `--delta` (0.30) on the listed expiry nearest `--days` out (30) or `--expiration`, read as OSA reads it, highest annualised yield at the bid first:
+
+```sh
+gloomberb fn CSP JPM GS KO AAPL XOM
+gloomberb fn CSP JPM GS KO --delta 0.20 --days 45 --max-spread 15
+```
+
+Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and whether the next report falls before expiry. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, never left out; a name with no chain is listed last with why. In the pane, type the names in Symbols and pick the delta and the expiry from the bar; Enter opens the selected name's put in OSA. Each figure is defined under [Cash-secured put screen](research-data.md#cash-secured-put-screen).
 
 To collar shares, `--strategy collar` buys the put at `--put-strike` and sells the call at `--call-strike` on the `--expiration` chain, each at its quote midpoint (the quoted strikes nearest 10% below and above spot when omitted), and holds the 100 shares per contract they cover:
 

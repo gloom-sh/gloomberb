@@ -265,13 +265,22 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   OSA: {
     summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
       + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve. "
-      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, distance out of the money, break-even, days to expiry and an earnings flag.",
+      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, the bid, ask and spread with the yield at the bid, "
+      + "distance out of the money, break-even, days to expiry and an earnings flag. CSP ranks the same put across several names.",
     usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
       "gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
       "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],
+  },
+  CSP: {
+    summary: "Which names pay most to sell a put? For each, the put nearest a delta (0.30) on the expiry nearest a date or a number of days out (30), "
+      + "ranked by annualised yield on cash at the bid, with % out of the money, delta, IV rank, the spread (marked wide, never left out) and an earnings flag.",
+    usage: ["CSP JPM, GS, KO", "gloomberb fn CSP JPM GS KO AAPL --delta 0.20 --days 45"],
+    keys: [key("Enter", " open in OSA")],
+    data: OPTIONS,
+    bloomberg: [],
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",

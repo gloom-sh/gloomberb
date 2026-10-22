@@ -160,6 +160,8 @@ export function validateScenarioInputs(position: ScenarioPosition): string | nul
 /** The stored stand-in for a currency nothing names; shown as `currency unknown`. */
 export const UNKNOWN_CURRENCY = "UNKNOWN";
 export const currencyLabel = (currency: string) => currency === UNKNOWN_CURRENCY ? "currency unknown" : currency;
+/** The unit an export names beside an amount: the currency code, or `currency unknown`. */
+export const amountUnit = (currency: string) => currency && currency !== UNKNOWN_CURRENCY ? currency : "currency unknown";
 
 /**
  * The position's currency: the one typed, else the underlying's quote

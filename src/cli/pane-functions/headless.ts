@@ -775,7 +775,10 @@ export function headlessReportTables(
         };
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
-          return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
+          // A figure that declares its unit names it in the unit column of its own line too.
+          const rowIdentities = section.entries.some((entry) => entry.unit?.trim())
+            ? section.entries.map((entry) => entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : undefined) : undefined;
+          return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
         const identity = {

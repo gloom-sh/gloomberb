@@ -3,7 +3,7 @@ import type { OptionsChain } from "../../../types/financials";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { formatCompact } from "../../../utils/format";
-import { UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
+import { amountUnit, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
 /**
  * Hedge budget sizing (docs/research-data.md#options-scenario-analysis): how
@@ -118,9 +118,10 @@ export interface HedgeQuote { bid: number; ask: number }
 
 /**
  * The bid and ask of each leg a strategy seeded from the chain, by leg id: the
- * chain's, or the leg's streamed quote when the pane follows the market.
+ * chain's, or the leg's streamed quote when the pane follows the market. A
+ * typed leg has none.
  */
-function hedgeLegQuotes(
+export function seededLegQuotes(
   position: ScenarioPosition, chain: OptionsChain | null | undefined, liveQuotes?: ReadonlyMap<string, HedgeQuote>,
 ): Map<string, HedgeQuote> {
   const contracts = new Map([...(chain?.calls ?? []), ...(chain?.puts ?? [])].map((contract) => [contract.contractSymbol, contract]));
@@ -206,7 +207,7 @@ export function scenarioHedgeBudget(
   const inputs = hedgeInputsFromSettings(settings);
   if (!inputs) return null;
   if (!position?.legs.length) throw new Error("A hedge budget needs a position; add --legs or select --strategy.");
-  return sizeHedgeBudget(position, inputs, { quotes: hedgeLegQuotes(position, market?.chain, market?.liveQuotes),
+  return sizeHedgeBudget(position, inputs, { quotes: seededLegQuotes(position, market?.chain, market?.liveQuotes),
     spot: hedgeSpot(position, market?.spot, supplied(settings.spot)) });
 }
 
@@ -246,21 +247,26 @@ function costText(cost: number, sizingPrice: number | null, multiplier: number, 
 /** The report's Hedge budget section; `value` keeps full precision, `formatted` is what text output prints. */
 export function hedgeReportEntries(hedge: HedgeBudget): HeadlessPaneEntry[] {
   const unit = hedge.currency && hedge.currency !== UNKNOWN_CURRENCY ? ` ${hedge.currency}` : "";
+  // Each figure's `value` is in its `unit`, a share of NAV in percent, so an export writes the number and its unit.
+  const amount = { unit: amountUnit(hedge.currency) };
   return [
-    { key: "nav", label: "NAV", value: hedge.nav, formatted: `${money(hedge.nav)}${unit}` },
-    { key: "budget", label: "Budget", value: hedge.budget, formatted: `${money(hedge.budget)}${unit} (${formatBps(hedge.budgetBps)} of NAV)` },
-    { key: "sizingPrice", label: "Sizing price", value: hedge.sizingPrice,
+    { key: "nav", label: "NAV", value: hedge.nav, ...amount, formatted: `${money(hedge.nav)}${unit}` },
+    { key: "budget", label: "Budget", value: hedge.budget, ...amount, formatted: `${money(hedge.budget)}${unit} (${formatBps(hedge.budgetBps)} of NAV)` },
+    { key: "sizingPrice", label: "Sizing price", value: hedge.sizingPrice, unit: `${amount.unit} per share`,
       formatted: hedge.sizingPrice == null ? "--" : describePrice(hedge.basis, hedge.singleLeg, hedge.sizingPrice) },
-    { key: "costPerContract", label: "Cost per contract", value: hedge.costPerContract, formatted: costText(hedge.costPerContract, hedge.sizingPrice, hedge.multiplier, unit) },
-    { key: "contracts", label: "Contracts", value: hedge.contracts, formatted: hedge.contracts.toLocaleString("en-US") },
-    { key: "premium", label: "Premium spent", value: hedge.premium, formatted: `${money(hedge.premium)}${unit}` },
-    { key: "premiumBps", label: "Premium / NAV", value: hedge.premiumBps, formatted: `${formatBps(hedge.premiumBps)} (${(hedge.premiumBps / 100).toFixed(2)}% of NAV)` },
-    { key: "notional", label: "Notional protected", value: hedge.notional,
+    { key: "costPerContract", label: "Cost per contract", value: hedge.costPerContract, ...amount,
+      formatted: costText(hedge.costPerContract, hedge.sizingPrice, hedge.multiplier, unit) },
+    { key: "contracts", label: "Contracts", value: hedge.contracts, unit: "contracts", formatted: hedge.contracts.toLocaleString("en-US") },
+    { key: "premium", label: "Premium spent", value: hedge.premium, ...amount, formatted: `${money(hedge.premium)}${unit}` },
+    { key: "premiumBps", label: "Premium / NAV", value: hedge.premiumBps, unit: "bp",
+      formatted: `${formatBps(hedge.premiumBps)} (${(hedge.premiumBps / 100).toFixed(2)}% of NAV)` },
+    { key: "notional", label: "Notional protected", value: hedge.notional, ...amount,
       formatted: `${money(hedge.notional)}${unit} (${hedge.contracts.toLocaleString("en-US")} x ${hedge.multiplier} x ${formatHedgePrice(hedge.spot)})` },
-    { key: "notionalOfNav", label: "Notional / NAV", value: hedge.notionalOfNav, formatted: percent(hedge.notionalOfNav) },
+    { key: "notionalOfNav", label: "Notional / NAV", value: hedge.notionalOfNav * 100, unit: "%", formatted: percent(hedge.notionalOfNav) },
     hedge.coverage == null || hedge.sleeve == null
       ? { key: "coverage", label: "Coverage", value: null, formatted: "No equity sleeve given; add --sleeve <amount> to read notional against it" }
-      : { key: "coverage", label: "Coverage", value: hedge.coverage, formatted: `${percent(hedge.coverage)} of a ${money(hedge.sleeve)}${unit} sleeve` },
+      : { key: "coverage", label: "Coverage", value: hedge.coverage * 100, unit: "%",
+        formatted: `${percent(hedge.coverage)} of a ${money(hedge.sleeve)}${unit} sleeve` },
   ];
 }
 

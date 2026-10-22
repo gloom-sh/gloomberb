@@ -1,7 +1,10 @@
 import { expect, setSystemTime, test } from "bun:test";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
-import type { HeadlessPaneContext } from "../../../types/headless";
+import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { cashSecuredPut, cspReportEntries, earningsBeforeExpiry } from "./csp";
 import { optionsScenarioHeadless } from "./headless";
@@ -41,6 +44,47 @@ test("a cash-secured put reads cash, premium, yields, distance, break-even and d
   expect([two.cashSecured, two.premium, two.yieldOnCash]).toEqual([17_000, 139, csp.yieldOnCash]);
   expect(cashSecuredPut({ ...position, legs: [{ ...position.legs[0]!, quantity: 1 }] }, "typed", null)).toBeNull();
   expect(cashSecuredPut({ ...position, legs: [{ ...position.legs[0]!, side: "call" }] }, "typed", null)).toBeNull();
+});
+
+test("selling at the bid: GS's November 820 put at 5.40/6.75 yields 8.01% a year at the bid against 9.01% at the mid", () => {
+  const gs: ScenarioPosition = { symbol: "GS", currency: "USD", spot: 890, rate: 0.041, dividendYield: 0.0225, asOf: Date.parse("2026-10-21T18:00:00Z"),
+    legs: [{ id: "GS261120P00820000", side: "put", quantity: -1, strike: 820, expiration: expiry, price: 6.075, priceSource: "mid",
+      volatility: 0.33, volatilitySource: "mid", multiplier: 100 }] };
+  const csp = cashSecuredPut(gs, "implied by option quotes", null, { bid: 5.4, ask: 6.75 })!;
+  expect(csp.daysToExpiry).toBe(30);
+  expect(csp.annualizedYield!).toBeCloseTo(607.5 / 82_000 * 365 / 30, 12);
+  expect(csp.quote).toMatchObject({ bid: 5.4, ask: 6.75, spread: 1.35, bidPremium: 540 });
+  expect(csp.quote!.spreadOfMid).toBeCloseTo(1.35 / 6.075, 12);
+  expect(csp.quote!.bidYieldOnCash).toBeCloseTo(540 / 82_000, 12);
+  expect(csp.quote!.bidAnnualizedYield!).toBeCloseTo(540 / 82_000 * 365 / 30, 12);
+  const formatted = Object.fromEntries(cspReportEntries(csp).map((entry) => [entry.key, entry.formatted]));
+  expect([formatted.annualizedYield, formatted.bid, formatted.ask, formatted.spread, formatted.bidPremium, formatted.bidAnnualizedYield]).toEqual([
+    "9.01% (yield on cash x 365 / 30)", "5.40 per share", "6.75 per share", "1.35 per share (22.2% of the mid)",
+    "540.00 USD (5.40 x 100 x 1)", "8.01% (0.66% on cash x 365 / 30)"]);
+  // A put with no two-sided quote (typed by hand) has no bid figures rather than a zero.
+  expect(cashSecuredPut(gs, "typed", null, { bid: 0, ask: 6.75 })!.quote).toBeNull();
+  expect(cspReportEntries(cashSecuredPut(gs, "typed", null)!).some((entry) => entry.key === "bid")).toBe(false);
+});
+
+test("the CSV writes each cash-secured put figure as a number, with its unit in the unit column", () => {
+  const csp = cashSecuredPut(position, "implied by option quotes", "2026-10-27", { bid: 0.67, ask: 0.72 })!;
+  const result: HeadlessBundleResult = { sections: [{ title: "Cash-secured put", entries: cspReportEntries(csp) }], complete: true,
+    unavailableSymbols: [], errors: [] };
+  const definition = { ...optionsScenarioHeadless, freshness: { source: "Gloom Cloud", status: "not-a-feed" as const, asOf: "2026-10-13" } };
+  const args = { symbols: ["KO"], rawArgument: "KO", argument: "KO", options: {} };
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "OSA", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+    .split("\n").map((line) => line.split(","));
+  // Metric, value and unit.
+  const row = (metric: string) => { const cells = csv.find((line) => line[0] === metric); return cells && [cells[0], cells[1], cells[3]]; };
+  expect(csv[0]).toEqual(["Metric", "Value", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+  expect(row("Cash secured (USD)")).toEqual(["Cash secured (USD)", "8500", "USD"]);
+  expect(row("Annualised yield at the bid (%)")).toEqual(["Annualised yield at the bid (%)", "7.57120743034", "%"]);
+  expect(row("Spread (% of mid)")?.[2]).toBe("% of mid");
+  expect(row("Break-even (USD per share)")).toEqual(["Break-even (USD per share)", "84.305", "USD per share"]);
+  expect(row("Days to expiry")).toEqual(["Days to expiry", "38", "days"]);
+  // A figure with no unit, such as the earnings flag, leaves the column blank rather than borrowing another's.
+  expect(row("Earnings before expiry")?.[2]).toBe("");
 });
 
 test("days to expiry count from the valuation date in New York, and earnings are unknown without an upcoming date", () => {
