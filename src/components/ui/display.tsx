@@ -5,6 +5,7 @@ import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
+import { CountryFlagLead } from "./country-flag";
 import { usePaneLinkMenuEntry } from "./external-link";
 import { titleCase } from "./header-case";
 import { statToneColor, type StatTone } from "./stat-grid";
@@ -69,6 +70,8 @@ export interface KeyValueRowProps {
    * `PaneLinkMenu` the pane menu lists it as `link.label`, so the keyboard reaches what a click opens.
    */
   link?: { label: string; onOpen: () => void };
+  /** The country the value names (a code or a name): the desktop and the web lead the value with its flag. */
+  country?: string | null;
 }
 
 /**
@@ -120,7 +123,7 @@ export function KeyValueRow(props: KeyValueRowProps) {
  * width in characters, the value and detail taking the rest of the row and
  * clipped in CSS where they run out of it.
  */
-function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left", link }: KeyValueRowProps) {
+function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left", link, country }: KeyValueRowProps) {
   const colors = useThemeColors();
   usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
   const target = link ? {
@@ -136,6 +139,7 @@ function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidt
     <Box width={width === undefined ? undefined : "100%"} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row" {...target}>
       {/* At least the label width, in characters; a longer label keeps every character and moves its value along. */}
       <Text fg={colors.textDim} style={{ ...NATIVE_CLIP_STYLE, flex: "0 0 auto", minWidth: `${labelChars}ch`, paddingRight: "1ch", boxSizing: "border-box" }}>{t(label)}</Text>
+      {country ? <CountryFlagLead value={country} /> : null}
       <Text
         fg={color ?? statToneColor(tone, colors) ?? colors.text}
         attributes={emphasis ? TextAttributes.BOLD : undefined}

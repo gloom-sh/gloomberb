@@ -15,7 +15,8 @@ import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { withCountryFlag, withFlagRoom } from "../../../components/ui/country-flag";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { fetchCommodityBalances } from "./client";
@@ -148,12 +149,18 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
       resetTo: PRICE_SORT,
     }));
   }, [setPriceSort]);
+  // The desktop and the web lead each country with its flag.
+  const flagged = useUiCapabilities().nativePaneChrome === true;
+  const balanceColumns = useMemo(
+    () => BALANCE_COLUMNS.map((column) => (column.id === "country" ? withFlagRoom(column, flagged) : column)),
+    [flagged],
+  );
   const renderBalanceCell = useCallback((row: BalanceRow, column: BalanceColumn): DataTableCell => {
     switch (column.id) {
       case "crop":
         return { text: row.crop, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "country":
-        return { text: row.country, color: colors.text };
+        return withCountryFlag({ text: row.country, color: colors.text }, row.country, flagged);
       case "attribute":
         return { text: row.attribute, color: colors.text };
       case "value":
@@ -163,7 +170,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
       case "year":
         return { text: row.year, color: colors.textMuted };
     }
-  }, [colors]);
+  }, [colors, flagged]);
   const renderPriceCell = useCallback((row: PriceForecast, column: PriceColumn): DataTableCell => {
     switch (column.id) {
       case "crop":
@@ -227,7 +234,7 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
           focused={focused}
           rootWidth={width}
           rootHeight={tableHeight}
-          columns={BALANCE_COLUMNS}
+          columns={balanceColumns}
           items={balanceRows}
           getItemKey={(row) => row.id}
           sortColumnId={balanceSort.columnId}

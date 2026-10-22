@@ -1385,7 +1385,8 @@ Choose the existing control that owns the interaction you need:
 | Selectable lists | `ListView` |
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
-| Labeled values and badges | `KeyValueRow`, `Badge` |
+| Labeled values and badges | `KeyValueRow` (`country` leads the value with its flag), `Badge` |
+| Countries | `withCountryFlag` (a table cell led by the country's flag; widen the column with `withFlagRoom`), `CountryFlagLead` (the flag before any other label), `CountryFlag`. The desktop and the web draw the flag; the terminal is unchanged |
 | A few rows of figures under their headers, or label and value pairs in columns, inside a section | `ColumnGrid` (`ColumnGridColumn`: cells, `growFrom`, `align`, `gapBefore`), `ColumnGridPair` |
 | Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high; `fill` on the desktop takes the width of the box it is in, so it follows a resize) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |

@@ -21,6 +21,7 @@ import { useAsyncResource, usePaneSettingValue, usePluginPaneState } from "../..
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { loadWorldVenues } from "./client";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 import { LayeredMapView } from "./layered-pane";
@@ -160,11 +161,12 @@ function VenueMapView({ focused, width, height }: PaneProps) {
       case "mic":
         return { text: venue.mic, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "name":
-        return { text: venue.title, color: colors.textMuted };
+        // The desktop and the web lead each venue with its country's flag.
+        return withCountryFlag({ text: venue.title, color: colors.textMuted }, venue.countryCode, nativePaneChrome === true);
       case "time":
         return { text: formatVenueLocalTime(venue.timezone, now), color: colors.textDim };
     }
-  }, [now]);
+  }, [nativePaneChrome, now]);
 
   const sidebarHeader = (
     <QueryBar

@@ -360,6 +360,20 @@ so the selected row reads in the selection color without each cell checking
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
+**Country flags.** Wherever a row or a field names a country (ECO's country,
+a balance's or a board's country or jurisdiction, a venue's market, an IPO's
+exchange, a filing's country), the desktop and the web lead it with the
+country's flag (`components/ui/country-flag.tsx`). A table cell goes through
+`withCountryFlag(cell, value, desktop)`, which takes a code (`GB`, `GBR`), the
+euro area (`EU`, "Euro area") or an English name, and keeps the flag's room
+blank for a value with no flag so a column's text stays in line; the column
+widens by `COUNTRY_FLAG_CELLS` on the desktop (`withFlagRoom`). A board row sets
+`MarketBoardRow.country`; a `KeyValueRow` sets `country`; any other label
+puts `CountryFlagLead` before its text. A flag is drawn in
+`country-flag-art.tsx`, 30 by 20, in the same flat style as its neighbours; a
+country without art keeps its text alone. The terminal draws none of them and
+its output does not change.
+
 **Broker logos.** Wherever a list names a broker or an account at one (Add
 Broker Account, the Brokers pane's profiles, a portfolio's tab and its
 overflow menu, the first-run guide's brokers), the desktop and the web lead the

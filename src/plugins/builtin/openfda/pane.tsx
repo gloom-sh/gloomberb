@@ -127,7 +127,7 @@ function DrugReportDetail({ record, width }: { record: DrugReport; width: number
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Outcome" value={record.outcomes.length > 0 ? record.outcomes.join(", ") : record.outcome ?? "Not coded"} width={width} />
       {labelerText(record) ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Labeler" value={labelerText(record)!} width={width} /> : null}
       {record.reporter ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Reporter" value={record.reporter} width={width} /> : null}
-      {record.country ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Country" value={record.country} width={width} /> : null}
+      {record.country ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Country" value={record.country} country={record.country} width={width} /> : null}
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Report" value={record.id.slice("drug:".length)} width={width} />
       <Section title="Reactions" width={width}>
         <Prose text={record.reactions.join(", ") || "None coded."} width={width} figures={false} />
