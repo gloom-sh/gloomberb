@@ -146,7 +146,7 @@ export interface MarketMoversResult {
 }
 
 export interface PreferredMarketMoverSources {
-  isCloudEligible(): boolean;
+  isCloudEligible(): boolean | Promise<boolean>;
   fetchCloud(
     category: CloudMarketScreenerCategory,
     count: number,
@@ -275,9 +275,15 @@ function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerC
   return "most-active";
 }
 
-function isCloudScreenerEligible(): boolean {
+/**
+ * Whether the signed-in account reads the real-time lists. A session restored
+ * without its account, as the CLI starts from the saved one, is asked for it
+ * first, so a Pro account is never handed the delayed lists.
+ */
+export function isCloudScreenerEligible(): boolean | Promise<boolean> {
   const user = apiClient.getCurrentUser();
-  return apiClient.isVerified() && hasProAccess(user);
+  if (user || !apiClient.isSignedIn()) return apiClient.isVerified() && hasProAccess(user);
+  return apiClient.ensureVerifiedSession().then((verified) => !!verified && hasProAccess(verified), () => false);
 }
 
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
@@ -361,7 +367,9 @@ export async function fetchPreferredMarketMovers(
   sources: PreferredMarketMoverSources = defaultPreferredMarketMoverSources,
 ): Promise<MarketMoversResult> {
   const { metadataWaitMs = MARKET_METADATA_WAIT_MS, ...options } = preferredOptions ?? {};
-  if (!sources.isCloudEligible()) {
+  // Answered at once unless the account has to be asked for, so a loaded account's list starts as soon as before.
+  const eligibility = sources.isCloudEligible();
+  if (!(typeof eligibility === "boolean" ? eligibility : await eligibility)) {
     const result = await sources.fetchMarket(category, count, options);
     return { quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
   }

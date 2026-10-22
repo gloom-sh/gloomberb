@@ -123,8 +123,9 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["CRYP"],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
-  // A board snapshot refreshed every few minutes; the pane streams, the report does not.
-  freshness: { status: "delayed", ...CRYPTO_BOARD_FRESHNESS },
+  // The board as the server read it, at most 15 seconds before; the pane streams, the report does not.
+  // Each row keeps the time of its own last trade, so a coin that has not traded lately reads its age.
+  freshness: { status: "live", ...CRYPTO_BOARD_FRESHNESS },
   async load(args, ctx) {
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     // Supply is its own request: a failure there leaves the prices whole.

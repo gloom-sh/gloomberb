@@ -55,6 +55,10 @@ test("a snapshot over 30 minutes old, a trading session and an older server date
   setSystemTime(new Date("2026-10-12T15:47:00Z"));
   expect((await load({ session: "REGULAR", regularSessionDate: null, regularSessionClosedAt: null }, [member("LMT", 512)])).line)
     .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · 15 min delayed");
+  // A Pro account's board is priced from the server's live read; a delayed one, or an older server's, is not.
+  const trading = { session: "REGULAR" as const, regularSessionDate: null, regularSessionClosedAt: null };
+  expect((await load({ ...trading, access: "realtime" }, [member("LMT", 512)])).line).toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · live");
+  expect((await load({ ...trading, access: "delayed" }, [member("LMT", 512)])).line).toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · 15 min delayed");
 });
 
 test("the title names the basket shown, and the word that matched it when that is not the basket's name", async () => {

@@ -11,7 +11,7 @@ const columns: HeadlessPaneColumn[] = [
 export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows", argument: { kind: "ticker", optional: true, placeholder: "fund", description: "Covered fund or index alias; omit for the fund list." },
   options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }], defaultValue: "members", description: "Members, movers or changes." }],
-  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Partial delayed member return coverage.", "Nasdaq-100 is not covered."] },
+  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered."] },
   describe: (args) => args.rawArgument ? `MEMB ${args.rawArgument}` : "Index and ETF members",
   async load(args, context) {
     const input = args.symbols[0] ?? args.rawArgument ?? "";
@@ -25,15 +25,16 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     const data = await fetchMembers(fund, context.apiClient);
     const movers = args.options.tab === "movers";
     const rows = memberRows(data.members, movers ? "movers" : "members", "", DEFAULT_SORT).flatMap((row) => row.kind === "item" ? [{ ...row.item }] : []);
-    // Member prices are the pane's 15-minute delayed quotes. As in the pane, the fund's snapshot says
-    // whether it is stale; the members' own flags are not what the pane reads.
-    return { freshness: { status: data.stale ? "stale" : "delayed", delayMinutes: 15, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
+    // Member prices are the pane's quotes: real-time for a Pro account, 15 minutes delayed otherwise. As in the
+    // pane, the fund's snapshot says whether it is stale; the members' own flags are not what the pane reads.
+    const live = data.access === "realtime";
+    return { freshness: { status: data.stale ? "stale" : live ? "live" : "delayed", delayMinutes: 15, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
       complete: !data.stale && data.aggregate.fresh1D === data.aggregate.total,
       unavailableSymbols: data.members.flatMap((row) => row.symbol && row.changePercent === null ? [row.symbol] : []),
       metadata: { fund: data.fund, asOf: data.asOf, snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale, notices: [
         holdingsSourceText(input, data),
         // The pane's coverage figure, and once what the table's dashes mean instead of leaving them bare.
-        [coverageText(data.aggregate), data.aggregate.fresh1D < data.aggregate.total ? "1D -- means no fresh delayed quote; those holdings are not counted" : ""].filter(Boolean).join(" | "),
+        [coverageText(data.aggregate), data.aggregate.fresh1D < data.aggregate.total ? `1D -- means no fresh ${live ? "" : "delayed "}quote; those holdings are not counted` : ""].filter(Boolean).join(" | "),
         ...holdingsCaveats(data, movers),
       ] } };
   },

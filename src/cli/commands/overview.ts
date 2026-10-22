@@ -2,11 +2,11 @@ import { logFailure } from "../../utils/log-failure";
 import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
-import { withCliServices } from "../context";
+import { withCliServices, withMarketData } from "../context";
 import { formatCompact } from "../../utils/format";
 import { DATE_OPTION_EXAMPLES, DATE_OPTION_FORMATS, dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import {
-  fetchScreenerResult,
+  fetchPreferredMarketMovers,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
   type ScreenerCategory,
@@ -139,6 +139,8 @@ const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
 const MOVERS_USAGE = "movers [gainers|losers|active|trending] [--session regular|extended]";
 /** The most rows the movers list serves in one request. */
 const MOVER_REQUEST_CAP = 100;
+/** A one-shot list waits this long for its rows' average volumes and sizes, as `fn MOST` does. */
+const MOVER_METADATA_WAIT_MS = 10_000;
 
 function moverRankBasis(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): MoverRankBasis {
   if (value == null) return "regular";
@@ -215,12 +217,14 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // After the close a price list keeps only the rows moving its way on the basis
   // asked for, so it reads more candidates than it shows.
   const count = category === "most_actives" ? limit : Math.min(MOVER_REQUEST_CAP, Math.max(limit, MOVER_CANDIDATES));
-  const screener = await fetchScreenerResult(category, count, undefined, { forceRefresh: ctx.cliOptions.refresh, session: basis });
+  // With the saved session, as MOST reads it: a Pro account gets the real-time lists, anyone else the delayed ones.
+  const movers = await withMarketData(ctx, () =>
+    fetchPreferredMarketMovers(category, count, { forceRefresh: ctx.cliOptions.refresh, session: basis, metadataWaitMs: MOVER_METADATA_WAIT_MS }));
   // Last and Chg% are the regular session, as `ticker` reads it, and a
   // pre-market or after-hours print is its own column. The list is ranked by
   // the regular session's move (its close's after the close), or with
   // --session extended by the extended print's move from that close.
-  const { quotes, rankedBy } = rankMoverQuotes(category, screener.data.map(moverRegularSession), basis);
+  const { quotes, rankedBy } = rankMoverQuotes(category, movers.quotes.map(moverRegularSession), basis);
   const rows = quotes.slice(0, limit).map((quote) => {
     const { extended, ...row } = quote;
     return {
@@ -232,12 +236,12 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
     };
   });
   const fellBack = basis === "extended" && rankedBy === "regular";
-  // A screener snapshot, as the MOST report reads it: delayed, each row dated by its own last price.
+  // As the MOST report reads it: real-time for a Pro account, delayed otherwise, each row dated by its own last price.
   ctx.printResult({
     data: rows,
     metadata: { category, rankedBy },
     ...(fellBack ? { warnings: ["No pre-market or after-hours prints now, so the list is ranked by the regular-session move."] } : {}),
-    freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }),
+    freshness: rowsFreshness(rows, { status: movers.source === "cloud" ? "live" : "delayed" }, { stale: movers.stale }),
   }, {
     heading: `Ranked by ${MOVER_RANKING_LABELS[rankedBy]}`,
     columns: [
