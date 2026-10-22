@@ -2727,7 +2727,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "filings",
-    description: "Fetch recent SEC filings",
+    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's list",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["filings <symbol> [--count <n>] [--form <form>]"],
@@ -2736,7 +2736,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings BHP:ASX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
     },
     execute: runFilings,
   },
