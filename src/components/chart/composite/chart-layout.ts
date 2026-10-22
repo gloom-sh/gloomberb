@@ -88,6 +88,23 @@ export function movePanelBoundary(rows: readonly number[], index: number, deltaR
 }
 
 /**
+ * The weights a drag on the line above panel `index` sets, from the rows the
+ * panels had when it started: null until the line has moved a whole row, so
+ * a click that jitters by a few pixels keeps the split as it was.
+ */
+export function draggedPanelWeights(
+  start: { rows: readonly { id: string; rows: number }[]; weightTotal: number },
+  index: number,
+  deltaRows: number,
+  minRows: number,
+): Record<string, number> | null {
+  const rows = start.rows.map((entry) => entry.rows);
+  const next = movePanelBoundary(rows, index, deltaRows, minRows);
+  if (next.every((count, position) => count === rows[position])) return null;
+  return weightsFromRows(start.rows.map((entry, position) => ({ id: entry.id, rows: next[position]! })), start.weightTotal);
+}
+
+/**
  * The top panel's weight for it to lay out a row taller (1) or shorter (-1).
  * The panels below keep their weights, so they share what is left as they did
  * and a step back undoes a step. Null when the top panel would go under
