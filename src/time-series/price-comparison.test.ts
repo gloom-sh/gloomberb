@@ -3,7 +3,9 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { PricePoint, Quote } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolvePriceComparison } from "./price-comparison";
-import { ChartResolveCache, resolveChartSpecData, seedChartResolutionResult } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
+import { seedChartResolutionResult } from "./chart-seed";
 import { summarizeResolvedSeries } from "./reporting";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 

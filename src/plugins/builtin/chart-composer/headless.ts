@@ -6,7 +6,8 @@ import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness
 import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
 import { GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
-import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
+import { resolveChartSpecData } from "../../../time-series/resolve";
+import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition } from "../../../time-series/history-acquisition";
 import {
   getSupportMaxRange,
   intersectChartResolutionSupport,
