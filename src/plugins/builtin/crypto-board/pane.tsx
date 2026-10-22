@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { withCompanyLogo } from "../../../components/company-logo";
 import {
   ChartTableHeader,
   DataTableView,
@@ -91,7 +92,8 @@ function quoteTargets(
   }));
 }
 
-function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
+/** `logos`: the desktop and the web lead each name with the coin's logo; the terminal draws none. */
+function renderCryptoCell(row: CryptoRow, column: CryptoColumn, logos: boolean): DataTableCell {
   const signed = (value: number | null) => ({
     text: formatCryptoPercent(value),
     color: value == null ? colors.textDim : priceColor(value),
@@ -102,7 +104,7 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
     case "code":
       return { text: row.code, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "name":
-      return { text: row.name };
+      return withCompanyLogo({ text: row.name }, { symbol: row.code, assetCategory: "CRYPTO", name: row.name }, logos);
     case "price":
       return { text: row.priceText };
     case "changePercent":
@@ -312,6 +314,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   }), [data, statusLine, resource.data?.stale, resource.error, resource.loading]);
 
   const reloadSupply = supplyResource.reload;
+  const logos = useUiCapabilities().nativePaneChrome === true;
+  const renderCell = useCallback((row: CryptoRow, column: CryptoColumn) => renderCryptoCell(row, column, logos), [logos]);
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => {
       void resource.reload();
@@ -357,7 +361,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           })}
           visibleRangeKey={`${activeTab}:${sort.columnId}:${sort.direction}`}
           onVisibleRangeChange={setVisibleRange}
-          renderCell={renderCryptoCell}
+          renderCell={renderCell}
           selectedTextOverridesCellColor
           emptyStateTitle="No crypto assets returned."
           rootBefore={stablecoins ? (

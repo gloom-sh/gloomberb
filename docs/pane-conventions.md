@@ -378,6 +378,21 @@ capitals to its baseline, the lines are `--gloom-space-sm` apart, and the
 start at the logo's top edge and the second line sits on its bottom edge. A
 row does not set its own line gap or tile size.
 
+**Company and coin logos.** A table that lists companies or coins (ERN, MOST,
+EQS, CRYP) leads each row's name cell with the company's or the coin's logo
+on the desktop and the web: `withCompanyLogo` (`components/company-logo.tsx`)
+puts a row-size `CompanyLogoMark` in the cell's `leading`, the same
+`LogoMark` tile as a broker's, with the logo Gloom Cloud serves for the
+ticker (`CRYPTO` reads the coin's), on a white plate since logos are drawn for
+a light page (a black coin mark on a clear field would vanish on a dark
+theme). A company with no logo gets its initial on the same tile, so a missing logo moves nothing, and a logo that failed to load
+is not asked for again while the app runs. The logo sits in the name cell, not
+the ticker's: the ticker column keeps its width and the name gives up the
+tile's room, so no column moves and no row grows. The terminal draws none and
+gets the cell as it was. Lists of people, funds, indices and sectors, and
+columns of securities without a company behind them (options, cash), have no
+logo.
+
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
 
 **The body under a bar.** What sits under a pane's tabs, query bar and figures takes the rest of the pane by flex on the desktop and the web: spread `FILL_REST` (`components/ui/fill.ts`) on its box, and on the pane's own root box, instead of the rows the terminal counts. A chrome bar is taller than a row there, so a body given `height - 1` rows runs past the footer by the difference. Tables, charts and the 3D surface in that box fill it to the footer. `SeriesListDetail` does this for a series list beside its detail. A pane that shows other panes as views under its own bars (Fixed Income) puts each in a box with `data-gloom-role="nested-pane-content"`, and the view's root takes that box the way a pane's root takes the pane.

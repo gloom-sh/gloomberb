@@ -3,8 +3,10 @@ import {
   Box,
   ScrollBox,
   useRendererHost,
+  useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { withCompanyLogo } from "../../../components/company-logo";
 import {
   Button,
   confirmDialog,
@@ -242,6 +244,7 @@ function EquityScreenView({
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
+  const logos = useUiCapabilities().nativePaneChrome === true;
   const { notify } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession(),
@@ -983,7 +986,7 @@ function EquityScreenView({
                 return focus.state === "stale"
                   ? { text: metricDate(focus).text, color: colors.warning }
                   : { text: "" };
-              if (column.id === "name") return { text: row.name ?? "--" };
+              if (column.id === "name") return withCompanyLogo({ text: row.name ?? "--" }, row.name ? row : null, logos);
               return { text: String(row[column.id as "symbol"] ?? "--") };
             }}
             sortColumnId={

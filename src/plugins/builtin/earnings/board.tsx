@@ -14,6 +14,7 @@ import { useAppSelector, usePaneSettingValue } from "../../../state/app/context"
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import type { EarningsEvent } from "../../../types/data-provider";
+import { useUiCapabilities } from "../../../ui";
 import { useAssetData, usePluginAppActions, usePluginTickerActions } from "../../runtime";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
 import {
@@ -148,10 +149,12 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const quotesRef = useRef(quotes);
   quotesRef.current = quotes;
   const statusShown = columns.some((column) => column.id === "status");
+  const logos = useUiCapabilities().nativePaneChrome === true;
   // Stable while the quotes tick: each row redraws by its own quote's version.
   const renderCell = useCallback((row: BoardRow, column: BoardColumn) => {
     const context: BoardCellContext = {
       statusShown,
+      logos,
       move: (report) => {
         const state = quotesRef.current.get(report.symbol);
         const move = reportMove(report, state?.quote, today);
@@ -159,7 +162,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       },
     };
     return renderBoardCell(row, column, context);
-  }, [statusShown, today]);
+  }, [logos, statusShown, today]);
   const rowVersion = useCallback((row: BoardRow) => {
     if (row.kind !== "report") return row.key;
     const state = quotes.get(row.report.symbol);

@@ -1,4 +1,5 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
+import { withCompanyLogo } from "../../../components/company-logo";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
@@ -81,6 +82,8 @@ export interface BoardCellContext {
   statusShown: boolean;
   /** The move on a report out today (reportMove); "loading" while its quote is. */
   move: (report: BoardReport) => number | "loading" | null;
+  /** The desktop and the web lead each name with the company's logo; the terminal draws none. */
+  logos?: boolean;
 }
 
 const NO_CONTEXT: BoardCellContext = { statusShown: true, move: () => null };
@@ -101,7 +104,7 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "symbol":
       return { text: report.symbol, color: colors.text, attributes: TextAttributes.BOLD };
     case "name":
-      return { text: report.name, color: colors.text };
+      return withCompanyLogo({ text: report.name, color: colors.text }, report, context.logos === true);
     case "when": {
       const timing = report.timing ? TIMING_LABEL[report.timing] : "--";
       const text = row.showDay ? `${weekday(report.date)} ${timing}` : timing;

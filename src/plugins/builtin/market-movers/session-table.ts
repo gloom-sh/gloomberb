@@ -1,5 +1,6 @@
 import type { CloudSessionMoversCategory } from "../../../api-client/market-movers";
 import type { DataTableCell, DataTableColumn } from "../../../components";
+import { withCompanyLogo } from "../../../components/company-logo";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
@@ -60,14 +61,15 @@ function signedPercent(value: number | null): DataTableCell {
   };
 }
 
-export function renderSessionMoverCell(row: SessionMoverRow, column: SessionMoverColumn): DataTableCell {
+/** `logos`: the desktop and the web lead each name with the company's logo; the terminal draws none. */
+export function renderSessionMoverCell(row: SessionMoverRow, column: SessionMoverColumn, logos = false): DataTableCell {
   switch (column.id) {
     case "rank":
       return { text: String(row.rank), color: colors.textDim };
     case "symbol":
       return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "name":
-      return { text: row.name };
+      return withCompanyLogo({ text: row.name }, row, logos);
     case "price":
       return { text: formatMoverPrice(row.price, row.currency, moverReferencePrice({ ...row, previousClose: row.referenceClose })), value: row.price };
     case "gapPercent":
