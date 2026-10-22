@@ -463,7 +463,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   // A report or shot of the History tab is as of the last daily close it read, not when it ran.
   useRemoteUiNode(mode === "history" && historyInputs ? {
     role: "report-freshness",
-    label: "History freshness",
+    label: "History age",
     getMetadata: () => ({ asOf: historyInputs.end }),
   } : null);
   // History mode says what it is waiting for, or why it has no inputs, before any sizing warning.
@@ -566,7 +566,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   if (!requestedSymbol || !ticker) {
     return (
       <Box flexDirection="column" width={width} height={height} paddingX={1} paddingY={1}>
-        <EmptyState title="No ticker selected." hint="Select a ticker or open with KELLY <ticker>." />
+        <EmptyState title="No ticker selected." hint="Pick a ticker or open with KELLY <ticker>." />
       </Box>
     );
   }
