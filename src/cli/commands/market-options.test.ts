@@ -147,3 +147,17 @@ test("a chain that dates its own open interest is labelled with that date, and O
   }
   expect(listedOpenInterest).not.toHaveBeenCalled();
 });
+
+test("options on a company's name read as an index asks about the company's stock, whose options are listed", async () => {
+  // The service answers "JP Morgan" with an index and a fund carrying the words, "JPMorgan" with the company.
+  const row = (symbol: string, name: string, exchange: string, type: string) => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
+  const dataProvider = {
+    search: async (query: string) => query === "JP Morgan"
+      ? [row("^JTEK", "JP MORGAN ETF TRUS", "NASDAQ", "INDEX"), row("XEMD", "BondBloxx JP Morgan USD Emerging Markets 1-10 Year Bond ETF", "BATS", "ETF")]
+      : query === "JPMorgan" ? [row("JPM", "JPMorgan Chase & Co.", "NYSE", "EQUITY")] : [],
+    getOptionsChain: async (symbol: string) => { throw new Error(`No options provider available for ${symbol}`); },
+  };
+  const cli = createTestCliContext({ dataProvider });
+  await expect(options.execute(["JP Morgan"], cli.context))
+    .rejects.toThrow("Options are not available for ^JTEK:NASDAQ. Did you mean JPM (JPMorgan Chase & Co.)?");
+});

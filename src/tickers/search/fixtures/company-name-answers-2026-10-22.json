@@ -1,0 +1,1138 @@
+{
+ "captured": "2026-10-22: the cloud search's answers (its ranking of that day's production rows with the company universe) for the short names of the 100 largest US companies, first 8 rows each, as `symbol | name | exchange | type | searchAliases`",
+ "answers": {
+  "Nvidia": [
+   "NVDA | NVIDIA Corporation | NASDAQ | Common Stock | Nvidia",
+   "NVD | NVIDIA Corporation | XETRA | Common Stock",
+   "NVDA | NVIDIA Corporation | BMV | Common Stock",
+   "NVDA | NVIDIA Corporation | WSE | Common Stock",
+   "NVDA | NVIDIA Corporation | VIE | Common Stock",
+   "NVDA | NVIDIA Corporation | BVL | Common Stock",
+   "NVDA | NVIDIA Corporation | SWX | Common Stock",
+   "NVDA | NVIDIA Corporation | IEX | Common Stock"
+  ],
+  "Apple": [
+   "AAPL | Apple Inc. | NASDAQ | Common Stock | Apple",
+   "APLE | Apple Hospitality REIT, Inc. | NYSE | REIT",
+   "AAPL | Apple Inc. | TSX | EQUITY",
+   "APC | Apple Inc. | XETRA | Common Stock",
+   "AAPL | Apple Inc. | BVC | Common Stock",
+   "AAPL | Apple Inc. | BMV | Common Stock",
+   "AAPL | Apple Inc. | BVL | Common Stock",
+   "AAPL | Apple Inc. | WSE | Common Stock"
+  ],
+  "Google": [
+   "GOOGL | Alphabet Inc. | NASDAQ | Common Stock | Google",
+   "GOOG | Alphabet Inc. | NASDAQ | Common Stock | Google",
+   "RGOOGL-USD | Google Tokenized Stock (Reality) | CCC | CRYPTOCURRENCY",
+   "GOOGL | Google Inc. | BYMA | Depositary Receipt",
+   "DEPW | Google DeepMind AI Lab Ecosystem ETF | ARCA | ETF",
+   "DEPW | Google DeepMind AI Lab Ecosystem ETF | IEX | ETF",
+   "GOOP | Kurv Yield Premium Strategy Google (GOOGL) ETF | BATS | ETF",
+   "483340 | Kim Ace Google Value Chain Mutual Fund | KRX | ETF"
+  ],
+  "Alphabet": [
+   "GOOGL | Alphabet Inc. | NASDAQ | Common Stock | Alphabet",
+   "GOOG | Alphabet Inc. | NASDAQ | Common Stock",
+   "GOGLD | ALPHABET INC | BYMA | Common Stock",
+   "GOOGL | Alphabet Inc. Class A Common Stock | BMV | Common Stock",
+   "ABEA | Alphabet Inc. Class A Common Stock | XETRA | Common Stock",
+   "GOOGLCL | Alphabet Inc. Class A Common Stock | BVS | Common Stock",
+   "GOOGL | Alphabet Inc. Class A Common Stock | BVL | Common Stock",
+   "GOOA | Alphabet Inc. Class A Common Stock | VIE | Common Stock"
+  ],
+  "Microsoft": [
+   "MSFT | Microsoft Corporation | NASDAQ | Common Stock | Microsoft",
+   "MSF | Microsoft Corporation Common Stock | XETRA | Common Stock",
+   "MSFT | Microsoft Corporation Common Stock | BMV | Common Stock",
+   "MSFT | Microsoft Corporation Common Stock | SWX | Common Stock",
+   "MSFT | Microsoft Corporation Common Stock | BVL | Common Stock",
+   "MSFT | Microsoft Corporation Common Stock | VIE | Common Stock",
+   "MSFT | Microsoft Corporation Common Stock | WSE | Common Stock",
+   "MSFT | Microsoft Corporation | IEX | Common Stock"
+  ],
+  "Amazon": [
+   "AMZN | Amazon.com Inc. | NASDAQ | Common Stock | Amazon",
+   "AMZN | Amazon.com, Inc. | TSX | EQUITY",
+   "AMZ | Amazon.com Inc. | XETRA | Common Stock",
+   "AMZN | Amazon.com Inc. | BVC | Common Stock",
+   "AMZN | Amazon.com Inc. | BMV | Common Stock",
+   "AMZN.USD | Amazon.com Inc. | SWX | Common Stock",
+   "AMZN | Amazon.com Inc. | VIE | Common Stock",
+   "AMZN | Amazon.com Inc. | BVL | Common Stock"
+  ],
+  "SpaceX": [
+   "SPCX | Space Exploration Technologies Corp. | NASDAQ | Common Stock | SpaceX",
+   "SPACZZX | SpaceX - Company Level | NASDAQ | Mutual Fund",
+   "SPACEX01 | Space Exploration Technologies Corp. Depositary Receipt | SET | Depositary Receipt",
+   "SPACEX03 | Space Exploration Technologies Corp. Depositary Receipt SPACEX03 | SET | Depositary Receipt",
+   "SPACEX06 | Space Exploration Technologies Corp. Depositary Receipt | SET | Depositary Receipt",
+   "SPACEX23 | Space Exploration Technologies Corp. Depositary Receipt | SET | Depositary Receipt",
+   "SPACEX80 | Space Exploration Technologies Corp. Depositary Receipt | SET | Depositary Receipt",
+   "F98182 | Vontobel Warrant on Spacex Exploration | BIT | Warrant"
+  ],
+  "Meta": [
+   "META | Meta Platforms Inc. | NASDAQ | Common Stock | Meta",
+   "META | Meta Platforms Inc. Class A Common Stock | BMV | Common Stock",
+   "META | Meta Platforms Inc. Class A Common Stock | BVL | Common Stock",
+   "META | Meta Platforms Inc. Class A Common Stock | VIE | Common Stock",
+   "META | Meta Platforms Inc. Class A Common Stock | WSE | Common Stock",
+   "META | Meta Platforms Inc. | IEX | Common Stock",
+   "META | Meta Platforms Inc. Class A Common Stock | BVS | Common Stock",
+   "META | Meta Platforms Inc. Class A Common Stock | SWX | Common Stock"
+  ],
+  "Facebook": [
+   "META | Meta Platforms Inc. | NASDAQ | Common Stock | Facebook",
+   "FBOK34 | Facebook, Inc. | B3 | Common Stock",
+   "FB3S | Facebook -3X Mutual Fund | LSE | ETF",
+   "FBE | Facebook -3X Mutual Fund | LSE | ETF",
+   "SFB3 | Facebook -3X Mutual Fund | LSE | ETF",
+   "FB3S | Facebook -3X Mutual Fund | XETRA | ETF",
+   "FB3 | Leverage Shares 3x Facebook ETP | LSE | ETF",
+   "3LFB | GraniteShares 3X Long Facebook Mutual Fund | LSE | ETF"
+  ],
+  "Broadcom": [
+   "AVGO | Broadcom Inc. | NASDAQ | Common Stock | Broadcom",
+   "AVGO | Broadcom Inc. | BMV | Common Stock",
+   "1YD | Broadcom Inc. | XETRA | Common Stock",
+   "AVGO | Broadcom Inc. | BVL | Common Stock",
+   "BROA | Broadcom Inc. | VIE | Common Stock",
+   "AVGO | Broadcom Inc. | SWX | Common Stock",
+   "AVGO | Broadcom Inc. | IEX | Common Stock",
+   "1AVGOM | Broadcom Inc. | CBOE | Common Stock"
+  ],
+  "Tesla": [
+   "TSLA | Tesla, Inc. | NASDAQ | Common Stock | Tesla",
+   "TSLA | Tesla, Inc. | TSX | EQUITY",
+   "TSLA | Tesla, Inc. | BMV | Common Stock",
+   "TL0 | Tesla, Inc. | XETRA | Common Stock",
+   "TSLA.USD | Tesla, Inc. | SWX | Common Stock",
+   "TSLA | Tesla, Inc. | VIE | Common Stock",
+   "TSLA | Tesla, Inc. | WSE | Common Stock",
+   "TSLA | Tesla, Inc. | BVL | Common Stock"
+  ],
+  "Berkshire": [
+   "BRK.B | Berkshire Hathaway Inc. Class B | NYSE | Common Stock | Berkshire",
+   "BRK.A | Berkshire Hathaway Inc. Class A | NYSE | Common Stock",
+   "BRKB | Berkshire Hathaway Inc | BVL | Common Stock",
+   "BRKB | Berkshire Hathaway Inc. Class B | BMV | Common Stock",
+   "BRYN | Berkshire Hathaway Inc. Class B | XETRA | Common Stock",
+   "BRK.USD | Berkshire Hathaway Inc. Class B | SWX | Common Stock",
+   "BRKB | Berkshire Hathaway Inc. Class B | VIE | Common Stock",
+   "BRK.B | Berkshire Hathaway Inc. Class B | IEX | Common Stock"
+  ],
+  "Berkshire Hathaway": [
+   "BRK.B | Berkshire Hathaway Inc. Class B | NYSE | Common Stock | Berkshire Hathaway",
+   "BRK.A | Berkshire Hathaway Inc. Class A | NYSE | Common Stock",
+   "BRKB | Berkshire Hathaway Inc. Class B | VIE | Common Stock",
+   "BRKB-USD | Berkshire Hathaway Inc Class B (Derivatives) | CCC | CRYPTOCURRENCY",
+   "BRKA | Berkshire Hathaway Inc. Class A | VIE | Common Stock",
+   "BRYN | Berkshire Hathaway Inc. Class B | XETRA | Common Stock",
+   "BRKB | Berkshire Hathaway Inc | BVL | Common Stock",
+   "BRKB | Berkshire Hathaway Inc. Class B | BMV | Common Stock"
+  ],
+  "Eli Lilly": [
+   "LLY | Eli Lilly and Company | NYSE | Common Stock | Lilly; Eli Lilly",
+   "LLY | Eli Lilly and Company | BMV | Common Stock",
+   "LLY | Eli Lilly and Company | XETRA | Common Stock",
+   "LLY | Eli Lilly and Company | BVL | Common Stock",
+   "LLY | Eli Lilly and Company | IEX | Common Stock",
+   "1LLYM | Eli Lilly and Company | CBOE | Common Stock",
+   "LILY | Eli Lilly and Company | WSE | Common Stock",
+   "LLY | Eli Lilly and Company | SWX | Common Stock"
+  ],
+  "Lilly": [
+   "LLY | Eli Lilly and Company | NYSE | Common Stock | Lilly; Eli Lilly",
+   "LLY | Eli Lilly and Company | BMV | Common Stock",
+   "LLY | Eli Lilly and Company | XETRA | Common Stock",
+   "LLY | Eli Lilly and Company | BVL | Common Stock",
+   "LLY | Eli Lilly and Company | IEX | Common Stock",
+   "1LLYM | Eli Lilly and Company | CBOE | Common Stock",
+   "LILY | Eli Lilly and Company | WSE | Common Stock",
+   "LLY | Eli Lilly and Company | SWX | Common Stock"
+  ],
+  "Micron": [
+   "MU | Micron Technology Inc. | NASDAQ | Common Stock | Micron",
+   "MTE | Micron Technology Inc. | XETRA | Common Stock",
+   "MU | Micron Technology Inc. | BMV | Common Stock",
+   "MU.USD | Micron Technology Inc. | SWX | Common Stock",
+   "MU | Micron Technology Inc. | BVL | Common Stock",
+   "MU | Micron Technology Inc. | VIE | Common Stock",
+   "MCRN | Micron Technology Inc. | WSE | Common Stock",
+   "MU | Micron Technology Inc. | IEX | Common Stock"
+  ],
+  "Walmart": [
+   "WMT | Walmart Inc. | NASDAQ | Common Stock | Walmart",
+   "WMT | Walmart Inc. | BMV | Common Stock",
+   "WALMARTCL | WALMART INC | BVS | Common Stock",
+   "WALMARTCL1 | Walmart Inc. | BVS | Common Stock",
+   "WMT | Walmart Inc. | XETRA | Common Stock",
+   "WMT | Walmart Inc. | BVL | Common Stock",
+   "WMT | Walmart Inc. | IEX | Common Stock",
+   "1WMTM | Walmart Inc. | CBOE | Common Stock"
+  ],
+  "AMD": [
+   "AMD | Advanced Micro Devices Inc. | NASDAQ | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | BMV | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | XETRA | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | BVL | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | VIE | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | WSE | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | IEX | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | BVS | Common Stock"
+  ],
+  "Advanced Micro Devices": [
+   "AMD | Advanced Micro Devices Inc. | NASDAQ | Common Stock | Advanced Micro Devices",
+   "AMD | Advanced Micro Devices, Inc. | TSX | EQUITY",
+   "AMD | Advanced Micro Devices Inc. | XETRA | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | BMV | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | BVL | Common Stock",
+   "AMD.USD | Advanced Micro Devices Inc. | SWX | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | VIE | Common Stock",
+   "AMD | Advanced Micro Devices Inc. | WSE | Common Stock"
+  ],
+  "JPMorgan": [
+   "JPM | JPMorgan Chase & Co. | NYSE | Common Stock | JPMorgan; JPMorgan Chase",
+   "JUSC | JPMorgan US Smaller Companies Investment Trust plc | LSE | Closed-end Fund",
+   "JUSCL | JPMorgan US Smaller Companies Investment Trust plc | CBOE | Closed-end Fund",
+   "JTEK19 | JPMorgan U.S. Tech Leaders ETF | SET | Depositary Receipt",
+   "JPST | JPMorgan Ultra-Short Income ETF | ARCA | ETF",
+   "JMST | JPMorgan Ultra-Short Municipal Income ETF | BATS | ETF",
+   "USMSX | JPMorgan Ultra-Short Municipal Fund Class A | NASDAQ | Mutual Fund",
+   "USMTX | JPMorgan Ultra-Short Municipal Fund Class I | NASDAQ | Mutual Fund"
+  ],
+  "JP Morgan": [
+   "JPM | JPMorgan Chase & Co. | NYSE | Common Stock | JPMorgan; JPMorgan Chase",
+   "JUSRX | J.P. Morgan U.S. Equity Fund | NASDAQ | Mutual Fund",
+   "11141 | J.P. Morgan USD/JPY Put Warrant (Stock Code 11141) | HKEX | Warrant",
+   "XEMD | BondBloxx JP Morgan USD Emerging Markets 1-10 Year Bond ETF | BATS | ETF",
+   "XEMD | BondBloxx JP Morgan USD Emerging Markets 1-10 Year Bond ETF | IEX | ETF",
+   "SHEMBA | UBS JP Morgan USD Emerging Markets Diversified 1-5 Mutual Fund | SWX | ETF",
+   "18001 | China Pacific Insurance (Group) Co., Ltd. Warrant (issued by J.P. Morgan) | HKEX | Warrant",
+   "67172 | Meituan Bull Warrant (Issued by J.P. Morgan) | HKEX | Warrant"
+  ],
+  "Visa": [
+   "V | Visa Inc. Class A | NYSE | Common Stock | Visa",
+   "VISA | Visa Inc. Class A | VIE | Common Stock",
+   "VISA | Visa Inc. Class A | WSE | Common Stock",
+   "VISASTEEL | Visa Steel Ltd. | NSE | Common Stock",
+   "VISASTEEL | Visa Steel Ltd. | BSE | Common Stock",
+   "VUSD | Visa Inc. Class A | LSE | Common Stock",
+   "V | Visa Inc. Class A | BMV | Common Stock",
+   "3V64 | Visa Inc. Class A | XETRA | Common Stock"
+  ],
+  "Exxon": [
+   "XOM | ExxonMobil Holdings Corporation | NYSE | Common Stock | Exxon; Exxon Mobil",
+   "AXN | Exxon Mobil Corporation | TASE | Common Stock",
+   "XOM | Exxon Mobil Corporation | BMV | Common Stock",
+   "XOM | Exxon Mobil Corporation | BVL | Common Stock",
+   "XONAD | Exxon Mobil Corporation | CBOE | Common Stock",
+   "4XOM | EXXON MOBIL | BIT | Common Stock",
+   "XONA | Exxon Mobil Corporation | FWB2 | Common Stock",
+   "EXXO34 | Exxon Mobil Corporation | B3 | Depositary Receipt"
+  ],
+  "ExxonMobil": [
+   "XOM | ExxonMobil Holdings Corporation | NYSE | Common Stock | Exxon; Exxon Mobil",
+   "7DZ | ExxonMobil Holdings Corporation | XETRA | Common Stock",
+   "XOM | ExxonMobil Holdings Corporation | BMV | EQUITY",
+   "EXXO34 | ExxonMobil Holdings Corporation | B3 | EQUITY",
+   "XOMCL | ExxonMobil Holdings Corporation | BVS | Common Stock",
+   "XOM2 | ExxonMobil Holdings Corporation | VIE | Common Stock",
+   "XOM | ExxonMobil Holdings Corporation | IEX | Common Stock",
+   "1XOMM | ExxonMobil Holdings Corporation | CBOE | Common Stock"
+  ],
+  "Johnson & Johnson": [
+   "JNJ | Johnson & Johnson | NYSE | Common Stock | Johnson & Johnson",
+   "JNJ | Johnson & Johnson | XETRA | Common Stock",
+   "JNJ | Johnson & Johnson | BVC | Common Stock",
+   "JNJ | Johnson & Johnson | BMV | Common Stock",
+   "JNJ.USD | Johnson & Johnson | SWX | Common Stock",
+   "JNJ | Johnson & Johnson | VIE | Common Stock",
+   "JNJ | Johnson & Johnson | IEX | Common Stock",
+   "1JNJM | Johnson & Johnson | CBOE | Common Stock"
+  ],
+  "Mastercard": [
+   "MA | Mastercard Inc. | NYSE | Common Stock | Mastercard",
+   "M4I | Mastercard Inc. Class A Common Stock | XETRA | Common Stock",
+   "MA | Mastercard Inc. Class A Common Stock | BMV | Common Stock",
+   "MA | Mastercard Inc. Class A Common Stock | BVL | Common Stock",
+   "MA | Mastercard Inc. | IEX | Common Stock",
+   "1MAM | Mastercard Inc. Class A Common Stock | CBOE | Common Stock",
+   "M4ID | Mastercard Inc. Class A Common Stock | CBOE | Common Stock",
+   "MA | Mastercard Inc. Class A Common Stock | BVS | Common Stock"
+  ],
+  "AbbVie": [
+   "ABBV | AbbVie Inc. | NYSE | Common Stock | AbbVie",
+   "ABBV-USD | ABBVIE INC | SWX | EQUITY",
+   "ABBV | AbbVie Inc. | VIE | Common Stock",
+   "ABBV | AbbVie Inc. | BMV | Common Stock",
+   "4AB | AbbVie Inc. | XETRA | Common Stock",
+   "ABBV.USD | AbbVie Inc. | SWX | Common Stock",
+   "ABBV | AbbVie Inc. | SWX | Common Stock",
+   "ABBV | AbbVie Inc. | IEX | Common Stock"
+  ],
+  "Intel": [
+   "INTC | Intel Corporation | NASDAQ | Common Stock | Intel",
+   "INTC | Intel Corporation | BMV | Common Stock",
+   "INL | Intel Corporation | XETRA | Common Stock",
+   "INTL | Intel Corporation | WSE | Common Stock",
+   "INTC | Intel Corporation | VIE | Common Stock",
+   "INTC | Intel Corporation | BVL | Common Stock",
+   "INTC | Intel Corporation | IEX | Common Stock",
+   "1INTCM | Intel Corporation | CBOE | Common Stock"
+  ],
+  "Palantir": [
+   "PLTR | Palantir Technologies Inc. | NASDAQ | Common Stock | Palantir",
+   "PLTR | Palantir Technologies Inc. | TSX | Common Stock",
+   "PLTR | Palantir Technologies Inc. Class A Common Stock | BMV | Common Stock",
+   "PTX | Palantir Technologies Inc. Class A Common Stock | XETRA | Common Stock",
+   "PLTR | Palantir Technologies Inc. Class A Common Stock | VIE | Common Stock",
+   "PLTR.USD | Palantir Technologies Inc. Class A Common Stock | SWX | Common Stock",
+   "PLTR | Palantir Technologies Inc. | IEX | Common Stock",
+   "1PLTRM | Palantir Technologies Inc. Class A Common Stock | CBOE | Common Stock"
+  ],
+  "Chevron": [
+   "CVX | Chevron Corporation | NYSE | Common Stock | Chevron",
+   "CHV | Chevron Corporation | XETRA | Common Stock",
+   "CVX-USD | CHEVRON CORP | SWX | EQUITY",
+   "CVX | Chevron Corporation | BMV | Common Stock",
+   "CVX.USD | Chevron Corporation | SWX | Common Stock",
+   "CVX | Chevron Corporation | VIE | Common Stock",
+   "CVX | Chevron Corporation | IEX | Common Stock",
+   "1CVXM | Chevron Corporation | CBOE | Common Stock"
+  ],
+  "Costco": [
+   "COST | Costco Wholesale Corp | NASDAQ | Common Stock | Costco",
+   "COST | Costco Wholesale Corp | BMV | Common Stock",
+   "CTO | Costco Wholesale Corp | XETRA | Common Stock",
+   "COST | Costco Wholesale Corp | IEX | Common Stock",
+   "1COSTM | Costco Wholesale Corp | CBOE | Common Stock",
+   "COST | Costco Wholesale Corp | BVS | Common Stock",
+   "COST | Costco Wholesale Corp | VIE | Common Stock",
+   "COSTCL | Costco Wholesale Corp | BVS | Common Stock"
+  ],
+  "Cisco": [
+   "CSCO | Cisco Systems, Inc. | NASDAQ | Common Stock | Cisco",
+   "CSCO | Cisco Systems, Inc. | BVS | Common Stock",
+   "CSCO | Cisco Systems, Inc. | BMV | Common Stock",
+   "CIS | Cisco Systems, Inc. | XETRA | Common Stock",
+   "CSCO | Cisco Systems, Inc. | BVL | Common Stock",
+   "CSCO | Cisco Systems, Inc. | IEX | Common Stock",
+   "1CSCOM | Cisco Systems, Inc. | CBOE | Common Stock",
+   "4333 | Cisco Systems, Inc. | HKEX | Common Stock"
+  ],
+  "Coca Cola": [
+   "KO | The Coca-Cola Company | NYSE | Common Stock | Coca Cola",
+   "CCEP | Coca-Cola Europacific Partners PLC | NASDAQ | EQUITY",
+   "COKE | Coca-Cola Consolidated, Inc. | NASDAQ | EQUITY",
+   "CCH | Coca-Cola HBC AG | LSE | EQUITY",
+   "KOF | Coca-Cola FEMSA, S.A.B. de C.V. | NYSE | EQUITY",
+   "KOFUBL | Coca-Cola FEMSA, S.A.B. de C.V. | BMV | EQUITY",
+   "SKO00=F | Coca-Cola Co, The Stock Futures | CME | FUTURE"
+  ],
+  "Coca-Cola": [
+   "KO | The Coca-Cola Company | NYSE | Common Stock | Coca Cola",
+   "CCEP | Coca-Cola Europacific Partners PLC | NASDAQ | Common Stock",
+   "COKE | Coca-Cola Consolidated Inc. | NASDAQ | Common Stock",
+   "CCH | Coca-Cola HBC AG | LSE | Common Stock",
+   "KOF | Coca-Cola FEMSA, S.A.B. de C.V. | NYSE | EQUITY",
+   "KOFUBL | Coca-Cola FEMSA, S.A.B. de C.V. | BMV | Unit",
+   "EEE | Coca-Cola HBC AG | ATH | Common Stock",
+   "CCH | Coca-Cola HBC AG | VIE | Common Stock"
+  ],
+  "Oracle": [
+   "ORCL | Oracle Corporation | NYSE | Common Stock | Oracle",
+   "ORCL-D | Oracle Corporation | NYSE | Common Stock",
+   "ORACLECR | Oracle Credit Limited | BSE | Common Stock",
+   "ORCL | Oracle Corporation | BMV | Common Stock",
+   "ORC | Oracle Corporation | XETRA | Common Stock",
+   "ORCL | Oracle Corporation | VIE | Common Stock",
+   "ORCL | Oracle Corporation | WSE | Common Stock",
+   "ORCL | Oracle Corporation | IEX | Common Stock"
+  ],
+  "UnitedHealth": [
+   "UNH | UnitedHealth Group Inc. | NYSE | Common Stock | UnitedHealth",
+   "UNH | UnitedHealth Group Inc. | BMV | Common Stock",
+   "UNH | UnitedHealth Group Inc. | XETRA | Common Stock",
+   "UNH | UnitedHealth Group Inc. | BVL | Common Stock",
+   "UNH | UnitedHealth Group Inc. | VIE | Common Stock",
+   "UNH | UnitedHealth Group Inc. | IEX | Common Stock",
+   "1UNHM | UnitedHealth Group Inc. | CBOE | Common Stock",
+   "UNH | UnitedHealth Group Inc. | BVS | Common Stock"
+  ],
+  "Merck": [
+   "MRK | Merck & Co., Inc. | NYSE | Common Stock | Merck",
+   "MRK | Merck KGaA | XETRA | Common Stock",
+   "MERK | Merck Tbk PT | JAKARTA | Common Stock",
+   "MRK | Merck & Co., Inc. | BYMA | EQUITY",
+   "MRCK34 | Merck & Co., Inc. | B3 | EQUITY",
+   "MRK.USD | Merck & Co., Inc. | SWX | Common Stock",
+   "6MK | Merck & Co., Inc. | XETRA | Common Stock",
+   "MRK | Merck & Co., Inc. | BMV | Common Stock"
+  ],
+  "Procter & Gamble": [
+   "PG | The Procter & Gamble Company | NYSE | Common Stock | Procter & Gamble",
+   "PGHL | Procter & Gamble Health Ltd. | NSE | Common Stock",
+   "PGHH | Procter & Gamble Hygiene Limited | NSE | Common Stock",
+   "PGHH | Procter & Gamble Hygiene and Health Care Limited | BSE | Common Stock",
+   "PGHL | Procter & Gamble Health Ltd. | BSE | Common Stock",
+   "PG | The Procter & Gamble Company | BMV | Common Stock",
+   "PRG | The Procter & Gamble Company | XETRA | Common Stock",
+   "PG | The Procter & Gamble Company | VIE | Common Stock"
+  ],
+  "Bank of America": [
+   "BAC | Bank of America Corporation | NYSE | Common Stock | Bank of America",
+   "BAC-PL | Bank of America Corporation | NYSE | EQUITY",
+   "BAC-PQ | Bank of America Corporation | NYSE | EQUITY",
+   "BAC-PK | Bank of America Corporation | NYSE | EQUITY",
+   "BAC.PR.L | Bank of America Corp | NYSE | Preferred Stock",
+   "BAC.PR.K | Bank of America Corp | NYSE | Preferred Stock",
+   "BAC.PR.M | Bank of America Corp | NYSE | Preferred Stock",
+   "BAC.PR.B | Bank of America Corp | NYSE | Preferred Stock"
+  ],
+  "BofA": [
+   "BAC | Bank of America Corporation | NYSE | Common Stock | BofA",
+   "BOFA | Bank of America Corporation CDR | NEO | Depositary Receipt",
+   "BOFA | Bank of America Corporation CDR | TSX | Depositary Receipt",
+   "BOFA | Boc Hong Kong Holdings Ltd. Sponsored ADR | FWB2 | American Depositary Receipt",
+   "AAAQHXX | BofA Finance LLC Capped Point to Point Worst Of Barrier Note AAAQHXX | NASDAQ | Mutual Fund",
+   "AAMDGXX | BofA Finance LLC Capped Point to Point Worst Of Barrier Note AAMDGXX | NASDAQ | Mutual Fund",
+   "AANICXX | BofA Finance LLC Capped Point to Point Worst Of Barrier Note AANICXX | NASDAQ | Mutual Fund",
+   "AANVKXX | BofA Finance LLC Capped Point to Point Worst Of Barrier Note AANVKXX | NASDAQ | Mutual Fund"
+  ],
+  "Caterpillar": [
+   "CAT | Caterpillar Inc. | NYSE | Common Stock | Caterpillar",
+   "CAT | Caterpillar Inc. | SWX | Common Stock",
+   "CAT | Caterpillar Inc. | BMV | Common Stock",
+   "CAT.B | CATERPILLAR INC | BYMA | Common Stock",
+   "CAT1 | Caterpillar Inc. | XETRA | Common Stock",
+   "CAT | Caterpillar Inc. | BVL | Common Stock",
+   "CAT | Caterpillar Inc. | VIE | Common Stock",
+   "CAT | Caterpillar Inc. | IEX | Common Stock"
+  ],
+  "Lam Research": [
+   "LRCX | Lam Research Corp. | NASDAQ | Common Stock | Lam Research",
+   "LAR0 | Lam Research Corp. | XETRA | Common Stock",
+   "LRCX | Lam Research Corp. | IEX | Common Stock",
+   "1LRCXM | Lam Research Corp. | CBOE | Common Stock",
+   "LRC2 | Lam Research Corp. | VIE | Common Stock",
+   "LRCX | Lam Research Corporation | BMV | Common Stock",
+   "LRCX.USD | Lam Research Corporation | SWX | Common Stock",
+   "LAR0 | Lam Research Corp. | HANOVER | Common Stock"
+  ],
+  "Applied Materials": [
+   "AMAT | Applied Materials Inc. | NASDAQ | Common Stock | Applied Materials",
+   "AP2 | Applied Materials Inc. | XETRA | Common Stock",
+   "AMAT-USD | Applied Materials Inc (Derivatives) | CCC | CRYPTOCURRENCY",
+   "AMAT | Applied Materials Inc. | BMV | Common Stock",
+   "AMAT | Applied Materials Inc. | BVL | Common Stock",
+   "AMAT | Applied Materials Inc. | IEX | Common Stock",
+   "1AMATM | Applied Materials Inc. | CBOE | Common Stock",
+   "4336 | Applied Materials Inc. | HKEX | Common Stock"
+  ],
+  "Home Depot": [
+   "HD | The Home Depot, Inc. | NYSE | Common Stock | Home Depot",
+   "HDI | The Home Depot, Inc. | XETRA | Common Stock",
+   "HD | The Home Depot, Inc. | BMV | Common Stock",
+   "HD.USD | The Home Depot, Inc. | SWX | Common Stock",
+   "HD | The Home Depot, Inc. | IEX | Common Stock",
+   "1HDM | The Home Depot, Inc. | CBOE | Common Stock",
+   "HD | The Home Depot, Inc. | BVS | Common Stock",
+   "HD | The Home Depot, Inc. | VIE | Common Stock"
+  ],
+  "Dell": [
+   "DELL | Dell Technologies Inc. | NYSE | Common Stock | Dell",
+   "DELL | Dell Technologies Inc. Class C Common Stock | VIE | Common Stock",
+   "DELL | Dell Technologies Inc. | IEX | Common Stock",
+   "DELL | Dell Technologies Inc. | TSX | Depositary Receipt",
+   "DELL | Dell Technologies Inc. CEDEAR | BYMA | Depositary Receipt",
+   "DELL | Dell Technologies Inc. | NEO | Depositary Receipt",
+   "12DA | Dell Technologies Inc. Class C Common Stock | XETRA | Common Stock",
+   "DELLC | Dell Technologies Inc. Class C Common Stock | BMV | Common Stock"
+  ],
+  "Philip Morris": [
+   "PM | Philip Morris International Inc. | NYSE | Common Stock | Philip Morris",
+   "TABAK | Philip Morris ČR a.s. | PSE | Common Stock",
+   "PMI | Philip Morris International Inc. | SWX | Common Stock",
+   "4I1 | Philip Morris International Inc. | XETRA | Common Stock",
+   "PMOR | Philip Morris International Inc. | VIE | Common Stock",
+   "PM | Philip Morris International Inc. | IEX | Common Stock",
+   "1PMM | Philip Morris International Inc. | CBOE | Common Stock",
+   "4I1D | Philip Morris International Inc. | CBOE | Common Stock"
+  ],
+  "General Electric": [
+   "GE | GE Aerospace | NYSE | Common Stock | General Electric",
+   "GCP | General Electric Company | XETRA | Common Stock",
+   "GE | General Electric Company | BMV | Common Stock",
+   "GE | General Electric Company | BVC | Common Stock",
+   "GECL | General Electric Company | BVS | Common Stock",
+   "GE | General Electric Company | BVL | Common Stock",
+   "GCPD | General Electric Company | CBOE | Common Stock",
+   "GE | General Electric Company | SWX | Common Stock"
+  ],
+  "Morgan Stanley": [
+   "MS | Morgan Stanley | NYSE | Common Stock | Morgan Stanley",
+   "MS-Q | Morgan Stanley Common Stock | NYSE | Common Stock",
+   "MS.USD | Morgan Stanley | SWX | Common Stock",
+   "MS | Morgan Stanley Common Stock | BMV | Common Stock",
+   "MSDL | Morgan Stanley Direct Lending Fund | NYSE | EQUITY",
+   "EDD | Morgan Stanley Emerging Markets Domestic Debt Fund, Inc. | NYSE | EQUITY",
+   "MS-PE | Morgan Stanley | NYSE | EQUITY",
+   "MS.PR.F | Morgan Stanley | NYSE | Preferred Stock"
+  ],
+  "Palo Alto Networks": [
+   "PANW | Palo Alto Networks, Inc. | NASDAQ | Common Stock | Palo Alto Networks",
+   "PANW | Palo Alto Networks, Inc. | TSX | Common Stock",
+   "5AP | Palo Alto Networks, Inc. | XETRA | Common Stock",
+   "CYBR | Palo Alto Networks, Inc. | TASE | Common Stock",
+   "PANW | Palo Alto Networks, Inc. | BMV | Common Stock",
+   "PANW | Palo Alto Networks, Inc. | BVL | Common Stock",
+   "PANW | Palo Alto Networks, Inc. | VIE | Common Stock",
+   "PANW | Palo Alto Networks, Inc. | IEX | Common Stock"
+  ],
+  "Netflix": [
+   "NFLX | Netflix Inc. | NASDAQ | Common Stock | Netflix",
+   "NFC | Netflix Inc. | XETRA | Common Stock",
+   "NFLX | Netflix Inc. | BMV | Common Stock",
+   "NFLX | Netflix Inc. | VIE | Common Stock",
+   "NFLX | Netflix Inc. | BVL | Common Stock",
+   "NFLX | Netflix Inc. | WSE | Common Stock",
+   "NFLX | Netflix Inc. | SWX | Common Stock",
+   "NFLX | Netflix Inc. | IEX | Common Stock"
+  ],
+  "Goldman": [
+   "GS | The Goldman Sachs Group, Inc. | NYSE | Common Stock | Goldman; Goldman Sachs",
+   "GSBD | Goldman Sachs BDC, Inc. | NYSE | EQUITY",
+   "GS.PR.D | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS.PR.A | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS.PR.C | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS4385340 | Goldman Sachs Group, Inc. | IEX | Preferred Stock",
+   "GS5287988 | Goldman Sachs Group, Inc. | IEX | Preferred Stock",
+   "GS5225861 | Goldman Sachs Group, Inc. | IEX | Preferred Stock"
+  ],
+  "Goldman Sachs": [
+   "GS | The Goldman Sachs Group, Inc. | NYSE | Common Stock | Goldman; Goldman Sachs",
+   "GSBD | Goldman Sachs BDC, Inc. | NYSE | EQUITY",
+   "GS.PR.D | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS.PR.A | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS.PR.C | Goldman Sachs Group Inc-The | NYSE | Preferred Stock",
+   "GS4385340 | Goldman Sachs Group, Inc. | IEX | Preferred Stock",
+   "GS5225861 | Goldman Sachs Group, Inc. | IEX | Preferred Stock",
+   "GS5287988 | Goldman Sachs Group, Inc. | IEX | Preferred Stock"
+  ],
+  "Texas Instruments": [
+   "TXN | Texas Instruments Inc. | NASDAQ | Common Stock | Texas Instruments",
+   "TXN40682-USD | Texas Instruments Incorporated Common Stock (Derivatives) | CCC | CRYPTOCURRENCY",
+   "TXNON-USD | Texas Instruments Tokenized Stock (Ondo) | CCC | CRYPTOCURRENCY",
+   "TXN | Texas Instruments Inc. | BMV | Common Stock",
+   "TII | Texas Instruments Inc. | XETRA | Common Stock",
+   "TXN | Texas Instruments Inc. | WSE | Common Stock",
+   "TXN | Texas Instruments Inc. | IEX | Common Stock",
+   "TIID | Texas Instruments Inc. | CBOE | Common Stock"
+  ],
+  "Raytheon": [
+   "RTX | RTX Corporation | NYSE | Common Stock | Raytheon",
+   "US75513E1010 | Raytheon Technologies Corp. | XSTU | Common Stock",
+   "RYTT34 | Raytheon Technologies Corporation | B3 | Depositary Receipt"
+  ],
+  "Thermo Fisher": [
+   "TMO | Thermo Fisher Scientific Inc. | NYSE | Common Stock | Thermo Fisher",
+   "TMOF | Thermo Fisher Scientific Inc. | VIE | Common Stock",
+   "TN8 | Thermo Fisher Scientific Inc. | XETRA | Common Stock",
+   "TMO | Thermo Fisher Scientific Inc. | BMV | Common Stock",
+   "TMO | Thermo Fisher Scientific Inc. | IEX | Common Stock",
+   "1TMOM | Thermo Fisher Scientific Inc. | CBOE | Common Stock",
+   "TMO | Thermo Fisher Scientific Inc. | BVL | Common Stock",
+   "TMO | Thermo Fisher Scientific Inc. | BVS | Common Stock"
+  ],
+  "Wells Fargo": [
+   "WFC | Wells Fargo & Company | NYSE | Common Stock | Wells Fargo",
+   "WFC | Wells Fargo & Company | BMV | Common Stock",
+   "NWT | Wells Fargo & Company | XETRA | Common Stock",
+   "WFC | Wells Fargo & Company | IEX | Common Stock",
+   "74YK | Wells Fargo & Company | LSE | Common Stock",
+   "NWTD | Wells Fargo & Company | CBOE | Common Stock",
+   "WFC | Wells Fargo & Company | BVS | Common Stock",
+   "WFC | Wells Fargo & Company | VIE | Common Stock"
+  ],
+  "GE Vernova": [
+   "GEV | GE Vernova Inc. | NYSE | Common Stock | GE Vernova",
+   "GVT&D | GE Vernova T&D India Ltd | NSE | Common Stock",
+   "GEVE | GE Vernova Inc. | VIE | Common Stock",
+   "GEV-USD | GE VERNOVA INC. | SWX | EQUITY",
+   "Y5C | GE Vernova Inc. | XETRA | Common Stock",
+   "GEV | GE Vernova Inc. | BMV | Common Stock",
+   "GEV | GE Vernova Inc. | SWX | Common Stock",
+   "GEV.USD | GE Vernova Inc. | SWX | Common Stock"
+  ],
+  "CrowdStrike": [
+   "CRWD | CrowdStrike Holdings, Inc. | NASDAQ | Common Stock | CrowdStrike",
+   "CRWD | CrowdStrike Holdings, Inc. | BMV | Common Stock",
+   "45C | CrowdStrike Holdings, Inc. | XETRA | Common Stock",
+   "CRWD | CrowdStrike Holdings, Inc. | VIE | Common Stock",
+   "CRWD | CrowdStrike Holdings, Inc. | IEX | Common Stock",
+   "1CRWDM | CrowdStrike Holdings, Inc. | CBOE | Common Stock",
+   "45C | CrowdStrike Holdings, Inc. | FWB2 | Common Stock",
+   "4CRWD | Crowdstrike Hold | BIT | Common Stock"
+  ],
+  "Amgen": [
+   "AMGN | Amgen Inc. | NASDAQ | Common Stock | Amgen",
+   "AMGN | Amgen Inc. | BMV | Common Stock",
+   "AMG | Amgen Inc. Common Stock | XETRA | Common Stock",
+   "AMGN | Amgen Inc. Common Stock | VIE | Common Stock",
+   "AMGN | Amgen Inc. | IEX | Common Stock",
+   "1AMGNM | Amgen Inc. Common Stock | CBOE | Common Stock",
+   "AMGD | Amgen Inc. Common Stock | CBOE | Common Stock",
+   "AMGN | Amgen Inc. Common Stock | BVS | Common Stock"
+  ],
+  "IBM": [
+   "IBM | International Business Machines Corporation | NYSE | Common Stock",
+   "IBM | International Business Machines Corporation | XETRA | Common Stock",
+   "IBM | International Business Machines Corporation | BMV | Common Stock",
+   "IBM | International Business Machines Corporation | BVL | Common Stock",
+   "IBM | International Business Machines Corporation | VIE | Common Stock",
+   "IBM | International Business Machines Corporation | IEX | Common Stock",
+   "IBM | International Business Machines Corporation | BVS | Common Stock",
+   "IBM | International Business Machines Corporation | SWX | Common Stock"
+  ],
+  "Arista": [
+   "ANET | Arista Networks Inc. | NYSE | Common Stock | Arista",
+   "ANET-USD | ARISTA NET.INC. NEW O.N. | SWX | EQUITY",
+   "ANET | Arista Networks Inc. | BMV | Common Stock",
+   "1170 | Arista Networks Inc. | XETRA | Common Stock",
+   "ANET | Arista Networks Inc. | IEX | Common Stock",
+   "1ANETM | Arista Networks Inc. | CBOE | Common Stock",
+   "ARIS | Arista Networks Inc. | VIE | Common Stock",
+   "1170 | Arista Networks Inc. | HANOVER | Common Stock"
+  ],
+  "Linde": [
+   "LIN | Linde plc | NASDAQ | Common Stock | Linde",
+   "LIN | Linde plc | XETRA | Common Stock",
+   "LINDEINDIA | Linde India Ltd. | NSE | Common Stock",
+   "LINDEINDIA | Linde India Ltd. | BSE | Common Stock",
+   "LIN | Linde plc | VIE | Common Stock",
+   "LIN | Linde plc | IEX | Common Stock",
+   "1LINUM | Linde plc | CBOE | Common Stock",
+   "LIN1N | Linde plc | BMV | Common Stock"
+  ],
+  "Shopify": [
+   "SHOP | Shopify Inc. | NASDAQ | Common Stock | Shopify",
+   "SHOP | Shopify Inc. | TSX | Common Stock",
+   "SHOP | Shopify Inc. | NEO | Common Stock",
+   "SHOPN | Shopify Inc. | BMV | Common Stock",
+   "SHOP | Shopify Inc. | IEX | Common Stock",
+   "307 | Shopify Inc. | XDUS | Common Stock",
+   "0VHA | Shopify Inc. | LSE | Common Stock",
+   "307 | Shopify Inc. | FWB2 | Common Stock"
+  ],
+  "Marvell": [
+   "MRVL | Marvell Technology Inc. | NASDAQ | Common Stock | Marvell",
+   "MRVL | Marvell Technology Inc. | VIE | Common Stock",
+   "9MW | Marvell Technology Inc. | XETRA | Common Stock",
+   "MRVL1 | Marvell Technology Inc. | BMV | Common Stock",
+   "19MW | Marvell Technology Inc. | BIT | Common Stock",
+   "49MW | Marvell Technology, Inc. | BIT | Common Stock",
+   "MRVL | Marvell Technology Inc. | IEX | Common Stock",
+   "19MWM | Marvell Technology Inc. | CBOE | Common Stock"
+  ],
+  "American Express": [
+   "AXP | American Express Company | NYSE | Common Stock | American Express",
+   "AEC1 | American Express Company | XETRA | Common Stock",
+   "AXP.USD | American Express Company | SWX | Common Stock",
+   "AXP | American Express Company | SWX | Common Stock",
+   "AXP | American Express Company | BMV | Common Stock",
+   "AXP | American Express Company | BVL | Common Stock",
+   "AXP | American Express Company | IEX | Common Stock",
+   "1AXPM | American Express Company | CBOE | Common Stock"
+  ],
+  "KLA": [
+   "KLAC | KLA Corporation | NASDAQ | Common Stock | KLA",
+   "KLA | KLA Corporation | XETRA | Common Stock",
+   "KLAC | KLA Corporation | BMV | Common Stock",
+   "KLAC | KLA Corporation | VIE | Common Stock",
+   "KLAC | KLA Corporation | IEX | Common Stock",
+   "KLAC | KLA Corporation | SWX | Common Stock",
+   "KLAD | KLA Corporation | CBOE | Common Stock",
+   "1KLACM | KLA Corporation | CBOE | Common Stock"
+  ],
+  "Citigroup": [
+   "C | Citigroup Inc. | NYSE | Common Stock | Citigroup",
+   "C-R | Citigroup Inc. | NYSE | Common Stock",
+   "C | Citigroup Inc. | SWX | Common Stock",
+   "C | Citigroup Inc. | BYMA | EQUITY",
+   "C | Citigroup Inc. | BMV | Common Stock",
+   "C | Citigroup Inc. | BVL | Common Stock",
+   "TRVC | Citigroup Inc. | XETRA | Common Stock",
+   "CITI | Citigroup Inc. | VIE | Common Stock"
+  ],
+  "Sandisk": [
+   "SNDK | Sandisk Corp. | NASDAQ | Common Stock | Sandisk",
+   "SNDK-USD | SanDisk Corporation (Derivatives) | CCC | CRYPTOCURRENCY",
+   "BW9 | Sandisk Corp. | XETRA | Common Stock",
+   "SNDKB-USD | SanDisk Tokenized bStocks | CCC | CRYPTOCURRENCY",
+   "SNDK1 | Sandisk Corp. | BMV | Common Stock",
+   "SNDK | Sandisk Corp. | VIE | Common Stock",
+   "SNDK | Sandisk Corp. | IEX | Common Stock",
+   "BW9 | Sandisk Corp. | FWB2 | Common Stock"
+  ],
+  "Salesforce": [
+   "CRM | Salesforce, Inc. | NYSE | Common Stock | Salesforce",
+   "CRM | Salesforce, Inc. | VIE | Common Stock",
+   "FOO | Salesforce, Inc. | XETRA | Common Stock",
+   "CRM-USD | SALESFORCE INC | SWX | EQUITY",
+   "CRM | Salesforce, Inc. | BMV | Common Stock",
+   "CRM | Salesforce, Inc. | BVL | Common Stock",
+   "CRM | Salesforce, Inc. | IEX | Common Stock",
+   "1CRMM | Salesforce, Inc. | CBOE | Common Stock"
+  ],
+  "Analog Devices": [
+   "ADI | Analog Devices, Inc. | NASDAQ | Common Stock | Analog Devices",
+   "ADI | Analog Devices, Inc. | VIE | Common Stock",
+   "ANL | Analog Devices, Inc. | XETRA | Common Stock",
+   "ADI | Analog Devices, Inc. | BMV | Common Stock",
+   "ADI | Analog Devices, Inc. | IEX | Common Stock",
+   "1ADIM | Analog Devices, Inc. | CBOE | Common Stock",
+   "ADI | Analog Devices, Inc. | BVL | Common Stock",
+   "ANLD | Analog Devices, Inc. | CBOE | Common Stock"
+  ],
+  "Amphenol": [
+   "APH | Amphenol Corp. | NYSE | Common Stock | Amphenol",
+   "APH | Amphenol Corp. Class A Common Stock | BMV | Common Stock",
+   "APH | Amphenol Corp. Class A Common Stock | VIE | Common Stock",
+   "XPH | Amphenol Corp. Class A Common Stock | XETRA | Common Stock",
+   "APH | Amphenol Corp. | IEX | Common Stock",
+   "1APHM | Amphenol Corp. Class A Common Stock | CBOE | Common Stock",
+   "XPHD | Amphenol Corp. Class A Common Stock | CBOE | Common Stock",
+   "XPH | Amphenol Corp. Class A Common Stock | XSTU | Common Stock"
+  ],
+  "Disney": [
+   "DIS | The Walt Disney Company | NYSE | Common Stock | Disney",
+   "DISON-USD | Disney Tokenized Stock (Ondo) | CCC | CRYPTOCURRENCY",
+   "DIS39998-USD | Walt Disney Co (Derivatives) | CCC | CRYPTOCURRENCY",
+   "0QZO.IL | The Walt Disney Company | LTS | EQUITY",
+   "DIS.SN | The Walt Disney Company | BVS | EQUITY",
+   "1DIS | The Walt Disney Company | BIT | EQUITY",
+   "DIS | The Walt Disney Company | TSX | ETF"
+  ],
+  "Gilead": [
+   "GILD | Gilead Sciences Inc. | NASDAQ | Common Stock | Gilead",
+   "GIS | Gilead Sciences Inc. | XETRA | Common Stock",
+   "GILD | Gilead Sciences Inc. | BMV | Common Stock",
+   "GILD.USD | Gilead Sciences Inc. | SWX | Common Stock",
+   "GILD | Gilead Sciences Inc. | VIE | Common Stock",
+   "GILD | Gilead Sciences Inc. | IEX | Common Stock",
+   "1GILDM | Gilead Sciences Inc. | CBOE | Common Stock",
+   "GILD | Gilead Sciences Inc. | BVL | Common Stock"
+  ],
+  "Qualcomm": [
+   "QCOM | QUALCOMM Incorporated | NASDAQ | Common Stock | Qualcomm",
+   "QCI | QUALCOMM Incorporated | XETRA | Common Stock",
+   "QCOM | QUALCOMM Incorporated | BVS | Common Stock",
+   "QCOM | QUALCOMM Incorporated | BMV | Common Stock",
+   "QCOM.USD | QUALCOMM Incorporated | SWX | Common Stock",
+   "QCOM | QUALCOMM Incorporated | VIE | Common Stock",
+   "QCOM | QUALCOMM Incorporated | IEX | Common Stock",
+   "1QCOMM | QUALCOMM Incorporated | CBOE | Common Stock"
+  ],
+  "BlackRock": [
+   "BLK | BlackRock, Inc. | NYSE | Common Stock | BlackRock",
+   "BCAT | BlackRock Capital Allocation Term Trust | NYSE | EQUITY",
+   "ECAT | BlackRock ESG Capital Allocation Term Trust | NYSE | EQUITY",
+   "TCPC | BlackRock TCP Capital Corp. | NASDAQ | EQUITY",
+   "BLK | BlackRock, Inc. | BMV | Common Stock",
+   "UU2 | BlackRock, Inc. | XETRA | Common Stock",
+   "BLK | BlackRock, Inc. | IEX | Common Stock",
+   "1BLKM | BlackRock, Inc. | CBOE | Common Stock"
+  ],
+  "Pepsi": [
+   "PEP | PepsiCo, Inc. | NASDAQ | Common Stock | Pepsi",
+   "PEP | PepsiCo, Inc. | BMV | Common Stock",
+   "PEP | PepsiCo, Inc. | XETRA | Common Stock",
+   "PEPS | PepsiCo, Inc. | VIE | Common Stock",
+   "PEP | PepsiCo, Inc. | IEX | Common Stock",
+   "1PEPM | PepsiCo, Inc. | CBOE | Common Stock",
+   "PEP | PepsiCo, Inc. | SWX | Common Stock",
+   "PEP | PepsiCo, Inc. | BVS | Common Stock"
+  ],
+  "PepsiCo": [
+   "PEP | PepsiCo, Inc. | NASDAQ | Common Stock | PepsiCo",
+   "PEP | PepsiCo, Inc. | XETRA | Common Stock",
+   "PEP | PepsiCo, Inc. | BMV | Common Stock",
+   "PEPS | PepsiCo, Inc. | VIE | Common Stock",
+   "PEP | PepsiCo, Inc. | IEX | Common Stock",
+   "1PEPM | PepsiCo, Inc. | CBOE | Common Stock",
+   "PEP | PepsiCo, Inc. | SWX | Common Stock",
+   "PEP | PepsiCo, Inc. | BVS | Common Stock"
+  ],
+  "Verizon": [
+   "VZ | Verizon Communications Inc. | NYSE | Common Stock | Verizon",
+   "VZ | Verizon Communications Inc. | VIE | Common Stock",
+   "VZ | Verizon Communications Inc. | BMV | Common Stock",
+   "BAC | Verizon Communications Inc. | XETRA | Common Stock",
+   "VZ | Verizon Communications Inc. | BVL | Common Stock",
+   "VZ | Verizon Communications Inc. | IEX | Common Stock",
+   "BACD | Verizon Communications Inc. | CBOE | Common Stock",
+   "VZ | Verizon Communications Inc. | BVS | Common Stock"
+  ],
+  "Abbott": [
+   "ABT | Abbott Laboratories | NYSE | Common Stock | Abbott",
+   "ABBOTINDIA | Abbott India Ltd. | NSE | Common Stock",
+   "ABL | Abbott Laboratories | XETRA | Common Stock",
+   "ABT | Abbott Laboratories | BMV | Common Stock",
+   "ABT | Abbott Laboratories | VIE | Common Stock",
+   "ABT | Abbott Laboratories | IEX | Common Stock",
+   "1ABTM | Abbott Laboratories | CBOE | Common Stock",
+   "ABLD | Abbott Laboratories | CBOE | Common Stock"
+  ],
+  "ConocoPhillips": [
+   "COP | ConocoPhillips | NYSE | Common Stock | ConocoPhillips",
+   "YCP | ConocoPhillips | XETRA | Common Stock",
+   "COP | ConocoPhillips | BMV | Common Stock",
+   "COPH | ConocoPhillips | VIE | Common Stock",
+   "COP | ConocoPhillips | IEX | Common Stock",
+   "YCPD | ConocoPhillips | CBOE | Common Stock",
+   "0QZA | ConocoPhillips | LSE | Common Stock",
+   "YCP | ConocoPhillips | MUNICH | Common Stock"
+  ],
+  "McDonald's": [
+   "MCD | McDonald's Corporation | NYSE | Common Stock | McDonald's",
+   "MDO | McDonald's Corporation | XETRA | Common Stock",
+   "2702 | McDonald's Holdings Co., Ltd. | JPX | Common Stock",
+   "MCDC34 | McDonald's Corporation | B3 | EQUITY",
+   "MCD | McDonald's Corporation | BMV | Common Stock",
+   "MCD.USD | McDonald's Corporation | SWX | Common Stock",
+   "MCD | McDonald's Corporation | VIE | Common Stock",
+   "MCDL | McDonald's Corporation | WSE | Common Stock"
+  ],
+  "Deere": [
+   "DE | Deere & Company | NYSE | Common Stock | Deere",
+   "DE | Deere & Company | BMV | Common Stock",
+   "DCO | Deere & Company | XETRA | Common Stock",
+   "DE | Deere & Company | IEX | Common Stock",
+   "DCOD | Deere & Company | CBOE | Common Stock",
+   "DEER | Deere & Company | VIE | Common Stock",
+   "4DE | DEERE & CO | BIT | Common Stock",
+   "0R2P | Deere & Company | LSE | Common Stock"
+  ],
+  "John Deere": [
+   "DE | Deere & Company | NYSE | Common Stock | John Deere",
+   "CA47788ZAP6 | John Deere Financial Inc. 5.17% Notes Due 2028 | MUNICH | Common Stock",
+   "US24422EYJ27 | John Deere Capital Corporation DE Float 03/09/29 | XSTU | Common Stock",
+   "US24422EYK99 | John Deere Capital Corporation 3.9% 03/09/2029 | XSTU | Common Stock",
+   "US24422EYT09 | John Deere Capital Corporation 4.8% 09/11/2029 | XSTU | Common Stock",
+   "XS317677685 | John Deere Capital Corporation 2.5% Euro Medium Term Note due September 11, 2028 | XDUS | Common Stock",
+   "US24422EYQ69 | John Deere Capital Corp. Floating Rate Senior Notes due September 11, 2028 | XSTU | Common Stock",
+   "US24422EYR43 | John Deere Capital Corp. 4.65% 09/11/2028 | XSTU | Common Stock"
+  ],
+  "Union Pacific": [
+   "UNP | Union Pacific Corp. | NYSE | Common Stock | Union Pacific",
+   "UNPON-USD | Union Pacific Corporation Tokenized Stock (Ondo) | CCC | CRYPTOCURRENCY",
+   "UNP | Union Pacific Corp. | XETRA | Common Stock",
+   "UNP | Union Pacific Corp. | IEX | Common Stock",
+   "UNP | Union Pacific Corp. | BMV | Common Stock",
+   "UNP | Union Pacific Corp. | BVS | Common Stock",
+   "UNPC | Union Pacific Corp. | VIE | Common Stock",
+   "UNPCL | Union Pacific Corp. | BVS | Common Stock"
+  ],
+  "Pfizer": [
+   "PFE | Pfizer Inc. | NYSE | Common Stock | Pfizer",
+   "PFIZER | Pfizer Ltd. | NSE | Common Stock",
+   "PFIZER | Pfizer Limited | BSE | Common Stock",
+   "PFE | Pfizer Inc. | XETRA | Common Stock",
+   "PFE | Pfizer Inc. | BVC | Common Stock",
+   "PFE | Pfizer Inc. | BMV | Common Stock",
+   "PFE | Pfizer Inc. | BVL | Common Stock",
+   "PFE | Pfizer Inc. | VIE | Common Stock"
+  ],
+  "Welltower": [
+   "WELL | Welltower Inc. | NYSE | REIT | Welltower",
+   "WELL | Welltower Inc. | VIE | REIT",
+   "WELL | Welltower Inc. | BMV | REIT",
+   "WELL | Welltower Inc. | IEX | REIT",
+   "0LUS | Welltower Inc. | LSE | REIT",
+   "HCW | Welltower Inc. | MUNICH | REIT",
+   "HCW | Welltower Inc. | FWB2 | REIT",
+   "HCW | Welltower Inc. | XSTU | REIT"
+  ],
+  "Southern Copper": [
+   "SCCO | Southern Copper Corporation | NYSE | Common Stock | Southern Copper",
+   "PCU | Southern Copper Corporation | XETRA | Common Stock",
+   "SCCO | Southern Copper Corporation | BMV | Common Stock",
+   "SCCO | Southern Copper Corporation | BVL | Common Stock",
+   "SPCCPI1 | Southern Copper Corporation | BVL | Common Stock",
+   "SCCO | Southern Copper Corporation | IEX | Common Stock",
+   "PCU | Southern Copper Corporation | FWB2 | Common Stock",
+   "PCU | Southern Copper Corp.         R | HANOVER | Common Stock"
+  ],
+  "T-Mobile": [
+   "TMUS | T-Mobile US Inc. | NASDAQ | Common Stock | T-Mobile",
+   "TMUS | T-Mobile US Inc. | SWX | Common Stock",
+   "TM5 | T-Mobile US Inc. | XETRA | Common Stock",
+   "TMUS | T-Mobile US Inc. | BMV | Common Stock",
+   "TMUS | T-Mobile US Inc. | VIE | Common Stock",
+   "TMUS | T-Mobile US Inc. | BVL | Common Stock",
+   "TMUS | T-Mobile US Inc. | IEX | Common Stock",
+   "TM5D | T-Mobile US Inc. | CBOE | Common Stock"
+  ],
+  "Danaher": [
+   "DHR | Danaher Corp. | NYSE | Common Stock | Danaher",
+   "DHR | Danaher Corp. | BMV | Common Stock",
+   "DAP | Danaher Corp. | XETRA | Common Stock",
+   "DHRC | Danaher Corp. | VIE | Common Stock",
+   "DHR | Danaher Corp. | IEX | Common Stock",
+   "DAPD | Danaher Corp. | CBOE | Common Stock",
+   "DAP | Danaher Corp. | FWB2 | Common Stock",
+   "DAP | Danaher Corp. | XDUS | Common Stock"
+  ],
+  "NextEra": [
+   "NEE | NextEra Energy Inc. | NYSE | Common Stock | NextEra",
+   "NEE-V | NextEra Energy, Inc. | NYSE | Unit",
+   "NEE-T | NextEra Energy Inc. | NYSE | Common Stock",
+   "NEEXU | NextEra Energy, Inc. | NYSE | Common Stock",
+   "NEE | NextEra Energy Inc. | BMV | Common Stock",
+   "FP3 | NextEra Energy Inc. | XETRA | Common Stock",
+   "NEE | NextEra Energy Inc. | IEX | Common Stock",
+   "NEEPT | NextEra Energy Inc | IEX | Unit"
+  ],
+  "TJX": [
+   "TJX | The TJX Companies, Inc. | NYSE | Common Stock | TJX",
+   "TJX | The TJX Companies, Inc. | BMV | Common Stock",
+   "TJX | The TJX Companies, Inc. | XETRA | Common Stock",
+   "TJX | The TJX Companies, Inc. | IEX | Common Stock",
+   "TJX | The TJX Companies, Inc. | XSTU | Common Stock",
+   "TJX | The TJX Companies, Inc. | FWB2 | Common Stock",
+   "TJX | The TJX Companies, Inc. | MUNICH | Common Stock",
+   "TJX | The TJX Companies, Inc. | XDUS | Common Stock"
+  ],
+  "Charles Schwab": [
+   "SCHW | The Charles Schwab Corporation | NYSE | Common Stock | Schwab; Charles Schwab",
+   "SNOXX | Charles Schwab Family of Funds - Schwab Treasury Obligations Money Fund | NASDAQ | MONEY_MARKET",
+   "SCHW.PR.D | Charles Schwab Corp-The | NYSE | Preferred Stock",
+   "SCHW.PR.J | The Charles Schwab Corporation | NYSE | Preferred Stock",
+   "SCHWPD | Charles Schwab Corp. | IEX | Preferred Stock",
+   "SCHWPJ | Charles Schwab Corp. | IEX | Preferred Stock",
+   "SWG | The Charles Schwab Corporation | XETRA | Common Stock",
+   "SCHW | The Charles Schwab Corporation | IEX | Common Stock"
+  ],
+  "Schwab": [
+   "SCHW | The Charles Schwab Corporation | NYSE | Common Stock | Schwab; Charles Schwab",
+   "SCHD | Schwab U.S. Dividend Equity ETF | ARCA | ETF",
+   "SCHG | Schwab U.S. Large-Cap Growth ETF | ARCA | ETF",
+   "SCHB | Schwab U.S. Broad Market ETF | ARCA | ETF",
+   "SCHF | Schwab International Equity ETF | ARCA | ETF",
+   "SCHX | Schwab U.S. Large-Cap ETF | ARCA | ETF",
+   "SCCR | Schwab Core Bond ETF | ARCA | ETF",
+   "SWANX | Schwab Core Equity Fund | NASDAQ | Mutual Fund"
+  ],
+  "Seagate": [
+   "STX | Seagate Technology Holdings plc | NASDAQ | Common Stock | Seagate",
+   "STXB-USD | Seagate Tokenized bStocks | CCC | CRYPTOCURRENCY",
+   "STXH | Seagate Technology Holdings plc | VIE | Common Stock",
+   "STXN | Seagate Technology Holdings plc | BMV | Common Stock",
+   "847 | Seagate Technology Holdings plc | XETRA | Common Stock",
+   "STX | Seagate Technology Holdings plc | IEX | Common Stock",
+   "1STXM | Seagate Technology Holdings plc | CBOE | Common Stock",
+   "IE00BKVD2N49 | Seagate Technology Holdings PLC | XSTU | Common Stock"
+  ],
+  "ServiceNow": [
+   "NOW | ServiceNow Inc. | NYSE | Common Stock | ServiceNow",
+   "4S0 | ServiceNow Inc. | XETRA | Common Stock",
+   "NOWW | ServiceNow Inc. | BMV | Common Stock",
+   "SNOW | ServiceNow Inc. | VIE | Common Stock",
+   "NOW | ServiceNow Inc. | IEX | Common Stock",
+   "1NOWM | ServiceNow Inc. | CBOE | Common Stock",
+   "4S0D | ServiceNow Inc. | CBOE | Common Stock",
+   "4S0 | ServiceNow Inc. | FWB2 | Common Stock"
+  ],
+  "Eaton": [
+   "ETN | Eaton Corporation plc | NYSE | Common Stock | Eaton",
+   "ETN1N | Eaton Corporation plc | BMV | Common Stock",
+   "3EC | Eaton Corporation plc | XETRA | Common Stock",
+   "ETN | Eaton Corporation plc | IEX | Common Stock",
+   "ETN | Eaton Corporation plc | VIE | Common Stock",
+   "EXG | Eaton Vance Tax-Managed Global Diversified Equity Income Fund | NYSE | Closed-end Fund",
+   "EVT | Eaton Vance Tax-Advantaged Dividend Income Fund | NYSE | Closed-end Fund",
+   "ETY | Eaton Vance Tax-Managed Diversified Equity Income Fund | NYSE | Closed-end Fund"
+  ],
+  "Boeing": [
+   "BA | The Boeing Company | NYSE | Common Stock | Boeing",
+   "BA-A | The Boeing Company | NYSE | Common Stock",
+   "300323 | Boeing Semiconductor Technology Corp. | SZSE | Common Stock",
+   "BCO | The Boeing Company | XETRA | Common Stock",
+   "BA | The Boeing Company | BMV | Common Stock",
+   "BA | The Boeing Company | LSE | Common Stock",
+   "BOEG | The Boeing Company | WSE | Common Stock",
+   "BA | The Boeing Company | IEX | Common Stock"
+  ],
+  "Intuitive Surgical": [
+   "ISRG | Intuitive Surgical Inc. | NASDAQ | Common Stock | Intuitive Surgical",
+   "ISRG | Intuitive Surgical Inc. | VIE | Common Stock",
+   "IUI1 | Intuitive Surgical Inc. | XETRA | Common Stock",
+   "ISRG | Intuitive Surgical Inc. | BMV | Common Stock",
+   "ISRG | Intuitive Surgical Inc. | IEX | Common Stock",
+   "IUI1 | Intuitive Surgical Inc. | FWB2 | Common Stock",
+   "1ISRG | Intuitive Surgical Inc. | BIT | Common Stock",
+   "0R29 | Intuitive Surgical Inc. | LSE | Common Stock"
+  ],
+  "AT&T": [
+   "T | AT&T Inc. | NYSE | Common Stock | AT&T",
+   "ATT | AT&T Inc. | VIE | Common Stock",
+   "SOBA | AT&T Inc. | XETRA | Common Stock",
+   "T | AT&T Inc. | BMV | Common Stock",
+   "T | AT&T Inc. | BVL | Common Stock",
+   "T.USD | AT&T Inc. | SWX | Common Stock",
+   "T | AT&T Inc. | IEX | Common Stock",
+   "SOBAD | AT&T Inc. | CBOE | Common Stock"
+  ],
+  "Accenture": [
+   "ACN | Accenture plc | NYSE | Common Stock | Accenture",
+   "ACN | Accenture plc | VIE | Common Stock",
+   "ACN42379-USD | Accenture plc Class A Ordinary Shares (Derivatives) | CCC | CRYPTOCURRENCY",
+   "ACNN | Accenture plc | BMV | Common Stock",
+   "CSA | Accenture plc | XETRA | Common Stock",
+   "ACN | Accenture plc | IEX | Common Stock",
+   "1ACNM | Accenture plc | CBOE | Common Stock",
+   "ACN | Accenture plc | BVS | Common Stock"
+  ],
+  "Interactive Brokers": [
+   "IBKR | Interactive Brokers Group, Inc. | NASDAQ | Common Stock | Interactive Brokers",
+   "IBKR | Interactive Brokers Group, Inc. Class A Common Stock | BMV | Common Stock",
+   "KY6 | Interactive Brokers Group, Inc. Class A Common Stock | XETRA | Common Stock",
+   "IBKR | Interactive Brokers Group, Inc. | IEX | Common Stock",
+   "IBKR | Interactive Brokers Group, Inc. Class A Common Stock | VIE | Common Stock",
+   "KY6 | Interactive Brokers Group, Inc. Class A Common Stock | FWB2 | Common Stock",
+   "KY6 | Interactive Brokers Group, Inc. Class A Common Stock | MUNICH | Common Stock",
+   "1IBKR | Interactive Brokers Group, Inc. Class A Common Stock | BIT | Common Stock"
+  ],
+  "Western Digital": [
+   "WDC | Western Digital Corp. | NASDAQ | Common Stock | Western Digital",
+   "WDC | Western Digital Corp. | XETRA | Common Stock",
+   "WDCON-USD | Western Digital Tokenized Stock (Ondo) | CCC | CRYPTOCURRENCY",
+   "WDC | Western Digital Corp. | BMV | Common Stock",
+   "WDC | Western Digital Corp. | IEX | Common Stock",
+   "1WDCM | Western Digital Corp. | CBOE | Common Stock",
+   "WDC | Western Digital Corp. | VIE | Common Stock",
+   "WDC | Western Digital Corp. | SWX | Common Stock"
+  ],
+  "Uber": [
+   "UBER | Uber Technologies Inc. | NYSE | Common Stock | Uber",
+   "UBER | Uber Technologies Inc. | BVC | Common Stock",
+   "UBER | Uber Technologies Inc. | BMV | Common Stock",
+   "UBER | Uber Technologies Inc. | BVL | Common Stock",
+   "UBER | Uber Technologies Inc. | WSE | Common Stock",
+   "UBER | Uber Technologies Inc. | VIE | Common Stock",
+   "UBER | Uber Technologies Inc. | IEX | Common Stock",
+   "UBER | Uber Technologies Inc. | SWX | Common Stock"
+  ],
+  "Chubb": [
+   "CB | Chubb Limited | NYSE | Common Stock | Chubb",
+   "CBN | Chubb Limited | BMV | Common Stock",
+   "AEX | Chubb Limited | XETRA | Common Stock",
+   "CB | Chubb Limited | IEX | Common Stock",
+   "CHBB | Chubb Limited | VIE | Common Stock",
+   "CHU26 | Chubb INA Holdings LLC 1.0225% 03/17/32 | SWX | Common Stock",
+   "8240 | Chubb Arabia Cooperative Insurance Company | TADAWUL | Common Stock",
+   "0VQD | Chubb Limited | LSE | Common Stock"
+  ],
+  "Marathon Petroleum": [
+   "MPC | Marathon Petroleum Corp. | NYSE | Common Stock | Marathon Petroleum",
+   "MPN | Marathon Petroleum Corp. | XETRA | Common Stock",
+   "MPC | Marathon Petroleum Corp. | IEX | Common Stock",
+   "MPC | Marathon Petroleum Corp. | BMV | Common Stock",
+   "MPC | Marathon Petroleum Corp. | VIE | Common Stock",
+   "MPN | Marathon Petroleum Corp.      R | HANOVER | Common Stock",
+   "MPN | Marathon Petroleum Corp. | MUNICH | Common Stock",
+   "MPN | Marathon Petroleum Corp. | XSTU | Common Stock"
+  ],
+  "Vertex": [
+   "VRTX | Vertex Pharmaceuticals Incorporated | NASDAQ | Common Stock | Vertex",
+   "VERX | Vertex Inc. Class A | NASDAQ | Common Stock",
+   "VERTEX | Vertex Securities Ltd | BSE | Common Stock",
+   "VTX | Vertex Resource Group Ltd. | TSXV | Common Stock",
+   "VX1 | Vertex Pharmaceuticals Incorporated Common Stock | XETRA | Common Stock",
+   "623A | Vertex Co., Ltd. | JPX | Common Stock",
+   "VRTX | Vertex Pharmaceuticals Incorporated | BYMA | EQUITY",
+   "VERTEXPP | Vertex Securities Limited Partly Paid | BSE | Common Stock"
+  ],
+  "Blackstone": [
+   "BX | Blackstone Inc. | NYSE | Common Stock | Blackstone",
+   "BXMT | Blackstone Mortgage Trust Inc Class A | NYSE | REIT",
+   "BXDC | Blackstone Digital Infrastructure Trust Inc. | NYSE | REIT",
+   "BX | Blackstone Inc. | BMV | Common Stock",
+   "BBN1 | Blackstone Inc. | XETRA | Common Stock",
+   "BX | Blackstone Inc. | IEX | Common Stock",
+   "BLCK | Blackstone Inc. | VIE | Common Stock",
+   "BXDC | Blackstone Digital Infrastructure Trust Inc. | IEX | REIT"
+  ],
+  "S&P Global": [
+   "SPGI | S&P Global Inc. | NYSE | Common Stock | S&P Global",
+   "SPGI | S&P Global Inc. | BMV | Common Stock",
+   "MHL | S&P Global Inc. | XETRA | Common Stock",
+   "SPGI | S&P Global Inc. | IEX | Common Stock",
+   "MHLD | S&P Global Inc. | CBOE | Common Stock",
+   "SPGI | S&P Global Inc. | VIE | Common Stock",
+   "0KYY | S&P Global Inc. | LSE | Common Stock",
+   "MHL | S&P Global Inc. | XSTU | Common Stock"
+  ],
+  "Progressive": [
+   "PGR | The Progressive Corporation | NYSE | Common Stock | Progressive",
+   "PLAN | Progressive Planet Solutions Inc. | TSXV | Common Stock",
+   "1581 | Progressive Path Group Holdings Limited | HKEX | Common Stock",
+   "7201 | Progressive Impact Corporation Berhad | BURSAMY | Common Stock",
+   "PRIC | Progressive Insurance Co. Ltd. | PSX | Common Stock",
+   "PLAN | Progressive Planet Solutions Inc. | NEO | Common Stock",
+   "PGV | The Progressive Corporation | XETRA | Common Stock",
+   "PGR | The Progressive Corporation | VIE | Common Stock"
+  ],
+  "Fortinet": [
+   "FTNT | Fortinet, Inc. | NASDAQ | Common Stock | Fortinet",
+   "FTNT | Fortinet, Inc. | VIE | Common Stock",
+   "FTNT | Fortinet, Inc. | BMV | Common Stock",
+   "FO8 | Fortinet, Inc. | XETRA | Common Stock",
+   "FTNT | Fortinet, Inc. | IEX | Common Stock",
+   "FO8 | Fortinet, Inc. | FWB2 | Common Stock",
+   "FO8 | Fortinet, Inc. | XDUS | Common Stock",
+   "1FTNT | Fortinet, Inc. | BIT | Common Stock"
+  ],
+  "Lockheed Martin": [
+   "LMT | Lockheed Martin Corporation | NYSE | Common Stock | Lockheed Martin",
+   "LMT-USD | LOCKHEED MARTIN | SWX | EQUITY",
+   "LOM | Lockheed Martin Corporation | XETRA | Common Stock",
+   "LMT | Lockheed Martin Corporation | BMV | Common Stock",
+   "LMT | Lockheed Martin Corporation | IEX | Common Stock",
+   "LMT | Lockheed Martin Corporation | VIE | Common Stock",
+   "LMT | Lockheed Martin Corporation | SWX | Common Stock",
+   "LOMD | Lockheed Martin Corporation | CBOE | Common Stock"
+  ],
+  "Lockheed": [
+   "LMT | Lockheed Martin Corporation | NYSE | Common Stock | Lockheed",
+   "LMT-USD | LOCKHEED MARTIN | SWX | EQUITY",
+   "LOM | Lockheed Martin Corporation | XETRA | Common Stock",
+   "LMT | Lockheed Martin Corporation | BMV | Common Stock",
+   "LMT | Lockheed Martin Corporation | IEX | Common Stock",
+   "LMT | Lockheed Martin Corporation | VIE | Common Stock",
+   "LMT | Lockheed Martin Corporation | SWX | Common Stock",
+   "LOMD | Lockheed Martin Corporation | CBOE | Common Stock"
+  ],
+  "Capital One": [
+   "COF | Capital One Financial Corp. | NYSE | Common Stock | Capital One",
+   "COFI | Capital One Financial Corp. | VIE | Common Stock",
+   "COF | Capital One Financial Corp. | BMV | Common Stock",
+   "COF | Capital One Financial Corp. | IEX | Common Stock",
+   "CFX | Capital One Financial Corp. | XETRA | Common Stock",
+   "0HT4 | Capital One Financial Corp. | LSE | Common Stock",
+   "CFX | Capital One Financial Corp. | XSTU | Common Stock",
+   "CFX | Capital One Financial Corp. | FWB2 | Common Stock"
+  ],
+  "Valero": [
+   "VLO | Valero Energy Corporation | NYSE | Common Stock | Valero",
+   "VLO | Valero Energy Corporation | BMV | Common Stock",
+   "VLO | Valero Energy Corporation | VIE | Common Stock",
+   "V1L | Valero Energy Corporation | XETRA | Common Stock",
+   "VLO | Valero Energy Corporation | IEX | Common Stock",
+   "V1LD | Valero Energy Corporation | CBOE | Common Stock",
+   "V1L | Valero Energy Corporation | MUNICH | Common Stock",
+   "V1L | Valero Energy Corporation | XSTU | Common Stock"
+  ]
+ }
+}

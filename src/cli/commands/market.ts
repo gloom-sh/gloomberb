@@ -179,6 +179,7 @@ import {
   loadForListing,
   loadListingQuote,
   listingFateLoader,
+  meantQuestion,
   movedSymbolLine,
   requireCliListing,
   resolveCliListing,
@@ -2154,7 +2155,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (!isOptionsUnavailableError(error)) throw error;
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
       const alternative = listedOptionsAlternative(listing.key);
-      return ctx.fail(optionsUnavailableTitle(listing.key), alternative
+      // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
+      const meant = meantQuestion(listing);
+      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
         ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloomberb options ${alternative.symbol}.`
           + ` Strategy payoffs: gloomberb fn OSA ${alternative.symbol}`
         : "Strategy payoffs on a listed underlying: gloomberb fn OSA <ticker>");
