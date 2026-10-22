@@ -49,6 +49,11 @@ export interface BrokerAccount {
   currency?: string;
   /** "cloud" is a connection held by the user's Gloom Cloud account. */
   source?: "gateway" | "flex" | "cloud";
+  /**
+   * The account's own number at its brokerage, for one held through an
+   * aggregator (SnapTrade). Another profile that holds that number keeps it.
+   */
+  brokerageAccountId?: string;
   updatedAt?: number;
   asOfDate?: string;
   netLiquidation?: number;
@@ -149,6 +154,17 @@ export interface BrokerOrderPreview {
   commission?: number;
   commissionCurrency?: string;
   warningText?: string;
+  /**
+   * Where the figures come from, for a broker that says: its own preview, or none for this order
+   * (the ticket then names each figure "Not available", never zero). Omitted by a broker that does not say.
+   */
+  impactSource?: "broker" | "unavailable";
+  /** Whom the figures are credited to, e.g. "Robinhood via SnapTrade". */
+  impactSourceLabel?: string;
+  cashBefore?: number;
+  cashAfter?: number;
+  /** The broker's terms for these figures, shown with them before the order is confirmed. */
+  disclosure?: string;
 }
 
 export interface BrokerOrder {

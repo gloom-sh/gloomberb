@@ -7,6 +7,7 @@ import type { BrokerAccount } from "../types/trading";
 import type { TickerRecord } from "../types/ticker";
 import { getBrokerInstance } from "../utils/broker-instances";
 import {
+  accountsHeldUnderOwnNumber,
   clearBrokerInstanceTickerData,
   clearLeftoverBrokerHoldings,
   ensureBrokerPortfolio,
@@ -248,6 +249,13 @@ export async function syncBrokerInstance({
     throwIfBrokerImportCancelled(signal);
   }
 
+  // An account another profile holds under its own number stays with it.
+  const heldUnderOwnNumber = accountsHeldUnderOwnNumber(config, instance, brokerAccounts);
+  if (heldUnderOwnNumber.size > 0) {
+    brokerAccounts = brokerAccounts.filter((account) => !heldUnderOwnNumber.has(account.accountId));
+    positions = positions.filter((position) => !position.accountId || !heldUnderOwnNumber.has(position.accountId));
+  }
+
   const accountMetadata = new Map(
     brokerAccounts.map((account) => [
       account.accountId,
@@ -301,7 +309,7 @@ export async function syncBrokerInstance({
       const account = accountMetadata.get(accountId);
       claimPortfolio(portfolioId, account?.name || accountId, account?.currency || "USD", accountId);
     }
-  } else {
+  } else if (heldUnderOwnNumber.size === 0) {
     const defaultAccount = brokerAccounts[0];
     const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, defaultAccount?.accountId, portfolioBrokerId);
     const fallbackName = defaultAccount?.name || defaultAccount?.accountId || instance.label || broker.name;

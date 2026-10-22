@@ -391,7 +391,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     <Box visible={docked || page !== "orders"} height={docked && native ? undefined : ticketHeight} maxHeight={ticketHeight} flexShrink={0}>
     <PaneFooterScope active={page !== "orders"}>
     <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} asking={drawerConfirming} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
-    brokerName: broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
+    // An adapter that fronts several brokers (signed in) names the one this profile connects.
+    brokerName: broker.describeInstance?.(instance).brokerName ?? broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
     quote: state.quote?.quote, quoteStale: state.quote?.stale, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,

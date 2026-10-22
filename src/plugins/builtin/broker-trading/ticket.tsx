@@ -11,7 +11,7 @@ import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
-import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
+import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketImpactMoney, ticketImpactSource, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
 import { brokerOrderDone, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
@@ -171,6 +171,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   // A credit spread's preview reports what it receives as a negative cost.
   const previewCredit = (m.preview?.estimatedCost ?? 0) < 0;
   const previewCost = m.preview?.estimatedCost === undefined ? undefined : Math.abs(m.preview.estimatedCost);
+  const impactSource = ticketImpactSource(m.preview);
   const unit = strategy ? "spreads" : draft?.contract.secType === "OPT" ? "contracts" : "shares";
   const busy = blocked || ["previewing", "submitting", "cancelling"].includes(m.phase);
   const fast = mode === "simulation" && m.confirmOrders === false && !m.modifying;
@@ -452,7 +453,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <TicketSection width={formWidth} title={m.modifying ? "Modify order" : docked ? undefined : "Order details"}>
             <Box flexDirection="column" gap={rowGap}>
               {!m.connected ? m.reconnecting ? <Notice tone="muted">{`Reconnecting to ${m.brokerName}...`}</Notice> : <Notice variant="callout">Broker disconnected. Connect in Brokers.</Notice>
-                : !m.tradingEnabled ? <Notice variant="callout">Trading is off for this profile.</Notice> : null}
+                : !m.tradingEnabled ? <Notice variant="callout">{m.capabilities?.disabledReason ?? "Trading is off for this profile."}</Notice> : null}
               <Box ref={nodeRef("action")} flexDirection="row" onMouseDown={() => setActive("action")}>
                 {!native ? <FieldLabel label="" width={2} active={focused && active === "action"} /> : null}
                 <Box flexGrow={1}><SegmentedControl variant="flat" accessibleLabel="Order side" value={draft.action} size="large" width="100%"
@@ -521,14 +522,17 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
             stopPrice: showStop ? draft?.stopPrice : undefined, tif: draft?.tif ?? "DAY", outsideRth: draft?.outsideRth }, strategy ? sell ? "net credit" : "net debit" : "at", (value) => money(value, currency))}</Text>
           {m.original && draft ? <Text fg={c.warning}>{replacementChanges(m.original, draft, (value) => money(value, currency))}</Text> : null}
           <Box marginTop={native && wide ? 1 : 0} flexDirection="column" gap={native && wide ? 0.4 : 0}>
-            <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formWidth} />
-            <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
+            {impactSource ? <TicketReceiptRow label="Impact source" value={impactSource} width={formWidth} /> : null}
+            <TicketReceiptRow label="Fees" value={ticketImpactMoney(m.preview, m.preview?.fees, currency)} width={formWidth} />
+            <TicketReceiptRow label="Commission" value={ticketImpactMoney(m.preview, m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
             {!wide ? <TicketOrderSummary model={m} width={formWidth} compact receipt /> : null}
           </Box>
           <Box flexDirection="row" justifyContent="space-between" alignItems={native ? "baseline" : "center"} paddingTop={native && wide ? 0.7 : 0}>
             <Text fg={c.textDim}>{previewCredit ? "Estimated credit" : "Estimated cost"}</Text>
-            <FigureText>{money(previewCost, currency)}</FigureText>
+            <FigureText>{ticketImpactMoney(m.preview, previewCost, currency)}</FigureText>
           </Box>
+          {/* The broker's terms for its figures, before the order is confirmed. */}
+          {m.preview?.disclosure ? <Text fg={c.textDim} wrapText>{m.preview.disclosure}</Text> : null}
           {/* Beside the chart, warnings are lines, so the place button fits without scrolling. */}
           {warnings.map((warning, index) => <Notice key={index} variant={docked ? undefined : "callout"} tone="warning">{warning}</Notice>)}
           {m.preview?.errors?.map((error, index) => <Notice key={index} variant={docked ? undefined : "callout"} tone="negative">{error}</Notice>)}
@@ -556,10 +560,11 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={resultQuantity(m.result?.filled)} width={formWidth} /> : null}
           <TicketReceiptRow label="Remaining" value={resultQuantity(m.result?.remaining)} width={formWidth} />
           <Text fg={c.textDim}>Estimates from order preview</Text>
-          <TicketReceiptRow label={previewCredit ? "Preview credit" : "Preview cost"} value={money(previewCost, currency)} width={formWidth} />
-          <TicketReceiptRow label="Fees" value={money(m.preview?.fees, currency)} width={formWidth} />
-          <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
+          <TicketReceiptRow label={previewCredit ? "Preview credit" : "Preview cost"} value={ticketImpactMoney(m.preview, previewCost, currency)} width={formWidth} />
+          <TicketReceiptRow label="Fees" value={ticketImpactMoney(m.preview, m.preview?.fees, currency)} width={formWidth} />
+          <TicketReceiptRow label="Commission" value={ticketImpactMoney(m.preview, m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formWidth} />
           {m.preview?.buyingPowerAfter !== undefined ? <TicketReceiptRow label="Buying power after" value={money(m.preview.buyingPowerAfter, currency)} width={formWidth} /> : null}
+          {m.preview?.cashAfter !== undefined ? <TicketReceiptRow label="Cash after" value={money(m.preview.cashAfter, currency)} width={formWidth} /> : null}
           {m.error && !["UNKNOWN", "REJECTED"].includes(resultStatus) ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
           {!finished && resultStatus !== "UNKNOWN" ? <Box flexDirection="row" alignItems="center" gap={1}>
             {action("refresh", "Refresh status", false, false, "neutral", true)}<Text fg={c.textDim}>·</Text>

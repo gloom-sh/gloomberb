@@ -206,6 +206,51 @@ describe("syncBrokerInstance", () => {
     ]);
   });
 
+  test("leaves an account linked through SnapTrade to the profile that holds it under its own number", async () => {
+    const gateway: BrokerAdapter = {
+      ...createDemoBroker(),
+      listAccounts: async () => [{ accountId: "U1234567", name: "IBKR", currency: "USD" }],
+      importPositions: async () => [{ ticker: "AAPL", exchange: "NASDAQ", shares: 12, avgCost: 180, currency: "USD", accountId: "U1234567" }],
+    };
+    const aggregator: BrokerAdapter = {
+      ...createDemoBroker(),
+      id: "aggregator",
+      listAccounts: async () => [
+        { accountId: "st-ibkr", name: "Interactive Brokers ····4567", currency: "USD", brokerageAccountId: "u1234567" },
+        { accountId: "st-rh", name: "Robinhood ····8443", currency: "USD", brokerageAccountId: "5RH18443" },
+      ],
+      importPositions: async () => [
+        { ticker: "AAPL", exchange: "NASDAQ", shares: 12, avgCost: 180, currency: "USD", accountId: "st-ibkr" },
+        { ticker: "MSFT", exchange: "NASDAQ", shares: 3, avgCost: 300, currency: "USD", accountId: "st-rh" },
+      ],
+    };
+    const brokers = new Map([["demo", gateway], ["aggregator", aggregator]]);
+    const tickerRepository = new JsonTickerRepository();
+    let config: AppConfig = {
+      ...createDefaultConfig("/tmp/gloomberb-sync-own-number"),
+      portfolios: [],
+      brokerInstances: [
+        { ...createBrokerInstance(), id: "gateway" },
+        { id: "snaptrade", brokerType: "aggregator", label: "SnapTrade", config: { apiKey: "key" }, enabled: true },
+      ],
+    };
+    const sync = async (instanceId: string) => {
+      const result = await syncBrokerInstance({ config, instanceId, brokers, tickerRepository });
+      config = result.config;
+      return result;
+    };
+
+    // Synced before the gateway holds the account, then after.
+    expect((await sync("snaptrade")).portfolioIds).toEqual(["broker:snaptrade:st-ibkr", "broker:snaptrade:st-rh"]);
+    await sync("gateway");
+    const result = await sync("snaptrade");
+
+    expect(result.portfolioIds).toEqual(["broker:snaptrade:st-rh"]);
+    expect(result.brokerAccounts.map((account) => account.accountId)).toEqual(["st-rh"]);
+    expect(config.portfolios.map((portfolio) => portfolio.id).sort()).toEqual(["broker:gateway:U1234567", "broker:snaptrade:st-rh"]);
+    expect(result.tickers.get("AAPL")?.metadata.positions.map((position) => position.portfolio)).toEqual(["broker:gateway:U1234567"]);
+  });
+
   test("fails cleanly when the broker account cache cannot be persisted", async () => {
     const config = {
       ...createDefaultConfig("/tmp/gloomberb-sync-broker-persistence-error"),

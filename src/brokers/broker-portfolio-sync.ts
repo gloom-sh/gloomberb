@@ -1,6 +1,7 @@
 import type { BrokerAdapter } from "../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, TickerRecord } from "../types/ticker";
+import type { BrokerAccount } from "../types/trading";
 import { buildBrokerPortfolioId, getBrokerInstance, isBrokerPortfolioId } from "../utils/broker-instances";
 import { isSignedInBrokerProfile } from "./signed-in/profile";
 
@@ -53,6 +54,28 @@ export function isHeldByOtherSignedInProfile(
   const ownerId = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
   const owner = getBrokerInstance(config.brokerInstances, ownerId);
   return !!owner && owner.id !== instance.id && isSignedInBrokerProfile(owner);
+}
+
+/**
+ * The accounts `instance` reports that another enabled profile already holds
+ * under the account's own number, such as IBKR U1234567 synced on this device
+ * and linked through SnapTrade as well. That profile keeps the account, so its
+ * portfolio and positions appear once.
+ */
+export function accountsHeldUnderOwnNumber(
+  config: AppConfig,
+  instance: BrokerInstanceConfig,
+  accounts: readonly BrokerAccount[],
+): Set<string> {
+  const held = new Set(config.portfolios.flatMap((portfolio) => {
+    if (!portfolio.brokerAccountId || portfolio.brokerInstanceId === instance.id) return [];
+    const owner = getBrokerInstance(config.brokerInstances, portfolio.brokerInstanceId);
+    return owner && owner.enabled !== false ? [portfolio.brokerAccountId.trim().toUpperCase()] : [];
+  }));
+  return new Set(accounts.flatMap((account) => {
+    const number = account.brokerageAccountId?.trim().toUpperCase();
+    return number && held.has(number) ? [account.accountId] : [];
+  }));
 }
 
 /**

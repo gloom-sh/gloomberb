@@ -404,7 +404,7 @@ class GloomApiClient {
   async brokerRequest<T>(
     broker: string,
     path: string,
-    options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
+    options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
   ): Promise<T> {
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(broker)) throw new Error(`Invalid broker id "${broker}".`);
     if (path !== "" && (!/^\/[A-Za-z0-9/_.~%?=&-]*$/.test(path) || path.includes(".."))) {
