@@ -33,6 +33,26 @@ export interface FundBondFacts {
 }
 
 /**
+ * A gold or silver trust's metal in trust (GLD, GLDM, IAU, IAUM, SLV), as its
+ * sponsor publishes it each business day: troy ounces, the sponsor's own
+ * tonnes, and the change on the stored day before (`since`). `change` is null
+ * until two days are stored: iShares publishes no history of its ounces, so
+ * IAU, IAUM and SLV have days from October 2026 only.
+ */
+export interface FundMetalHoldings {
+  metal: "gold" | "silver";
+  asOf: string;
+  ounces: number;
+  tonnes: number | null;
+  change: { since: string; ounces: number; tonnes: number | null } | null;
+  source: { publisher: string; url: string; page: string };
+  /** The last read of the sponsor's file that succeeded. */
+  fetchedAt: string;
+  /** The newest day is more than five days old. */
+  stale: boolean;
+}
+
+/**
  * `not-collected-yet`: a source Gloom reads covers the fund, but it has no
  * figures yet. `not-published`: no source Gloom reads covers it. Servers
  * before statuses leave it out.
@@ -66,6 +86,8 @@ export interface FundFactsPayload {
   index: FundFact<string> | null;
   /** A bond fund's SEC yield, yield to worst and duration; null for any other fund. Servers before it leave it out. */
   bond?: FundBondFacts | null;
+  /** A metal trust's metal in trust; absent for any other fund, until its first read, and from servers before it. */
+  metalHoldings?: FundMetalHoldings | null;
   /** The newest NAV is older than a few US trading days: every figure is older than it looks. */
   stale: boolean;
   fetchedAt: string | null;

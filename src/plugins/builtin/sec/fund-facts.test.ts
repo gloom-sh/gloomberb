@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { setLanguage, t } from "../../../i18n";
-import { fundFactEntries, fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
+import { fetchFundFacts, fundFactEntries, fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 
 const IVV: FundFactsPayload = {
   ticker: "IVV", covered: true, name: "iShares Core S&P 500 ETF", structure: "registered",
@@ -186,4 +186,41 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
   // A fund the server sends no bond facts for, or an older server, shows none; the IVV cells are unchanged.
   expect(fundFactItems(IVV).map((item) => item.id)).toEqual(["nav", "premium", "fee", "assets", "sponsor", "inception"]);
   expect(fundFactPublishers(MUB)).toEqual(["iShares"]);
+});
+
+test("a metal trust's ounces and tonnes in trust follow its net assets, with the day's change and the date, from its sponsor's daily holdings", async () => {
+  const gld: FundFactsPayload = {
+    ...IVV, ticker: "GLD", name: "SPDR Gold Trust", structure: "trust",
+    nav: { value: 378.04, asOf: "2026-10-20", source: "SPDR Gold Shares" },
+    expenseRatio: null, premiumDiscount: null, netAssets: null, sponsor: null, inception: null,
+    metalHoldings: {
+      metal: "gold", asOf: "2026-10-20", ounces: 34085936.5, tonnes: 1060.18,
+      change: { since: "2026-10-19", ounces: 54994.78, tonnes: 1.71 },
+      source: { publisher: "SPDR Gold Shares", url: "https://api.spdrgoldshares.com/api/v1/historical-archive?product=gld&exchange=NYSE&lang=en", page: "https://www.spdrgoldshares.com/usa/gld/" },
+      fetchedAt: "2026-10-21T23:00:00.000Z", stale: false,
+    },
+  };
+  // The server's answer reads, and one with a malformed holdings figure is refused.
+  expect((await fetchFundFacts("GLD", { getFundFacts: async () => gld })).metalHoldings?.ounces).toBe(34085936.5);
+  await expect(fetchFundFacts("GLD", { getFundFacts: async () => ({ ...gld, metalHoldings: { ...gld.metalHoldings!, ounces: "lots" } }) as never }))
+    .rejects.toThrow("Unreadable fund facts response");
+
+  expect(fundFactItems(gld).map((item) => [item.label, item.value, item.detail])).toEqual([
+    ["NAV", "$378.04", "2026-10-20"],
+    ["Gold in trust", "1,060.18 t", "34.09M oz · 2026-10-20"],
+    ["Day change", "+1.71 t", "+54,995 oz · since 2026-10-19"],
+  ]);
+  const entries = Object.fromEntries(fundFactEntries(gld).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
+  expect(entries).toMatchObject({
+    metalOunces: [34085936.5, "34,085,936.5 troy oz · 1,060.18 tonnes · 2026-10-20 · SPDR Gold Shares", "troy oz"],
+    metalChangeOunces: [54994.78, "+54,994.78 troy oz · +1.71 tonnes · since 2026-10-19", "troy oz"],
+  });
+
+  // SLV's first stored day has no change yet, says so, and its stale day is marked.
+  const slv: FundFactsPayload = { ...gld, ticker: "SLV", metalHoldings: { ...gld.metalHoldings!, metal: "silver", asOf: "2026-10-21",
+    ounces: 497876480.1, tonnes: 15485.69, change: null, stale: true, source: { ...gld.metalHoldings!.source, publisher: "iShares" } } };
+  expect(fundFactItems(slv).filter((item) => item.id?.startsWith("metal")).map((item) => [item.label, item.value, item.tone]))
+    .toEqual([["Silver in trust", "15,485.69 t", "warning"]]);
+  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "-- · 2026-10-21 is the first day stored" });
+  expect(fundFactPublishers(slv)).toEqual(["SPDR Gold Shares", "iShares"]);
 });

@@ -362,6 +362,23 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("a metals desk's plain words for the gold/silver ratio list GR first, and search lists it", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["ratio", "gold silver", "gold silver ratio", "gold/silver ratio"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        const { shown, loose } = selectPaneCatalogMatches(ranked, query, 10);
+        expect(shown[0]?.token, query).toBe("GR");
+        // `search` lists functions only from a match that is not loose.
+        expect(loose, query).toBe(false);
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("crack spread and refining margin searches find G alone, with the per-barrel crack presets it charts", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const plugins = getLoadablePlugins();
