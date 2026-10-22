@@ -52,7 +52,7 @@ type ThesisStoreClient = Pick<
  * readable offline from the last copy. Writes go through here so every pane
  * showing a thesis sees the saved version at once.
  */
-class ThesisStore {
+export class ThesisStore {
   constructor(private readonly client: ThesisStoreClient = apiClient) {}
 
   private snapshot: ThesisStoreSnapshot = EMPTY;
@@ -62,6 +62,13 @@ class ThesisStore {
   private openThesis: ((thesisId: string) => void) | null = null;
   private disposers: Array<() => void> = [];
   private refreshPromise: Promise<void> | null = null;
+  /**
+   * Counts the times the store stopped or lost its account. A refresh keeps
+   * the count it started under and says nothing once it has moved on, so a
+   * request that outlives a dispose, a restart or a sign-out cannot write its
+   * answer, or its failure, over what the store holds now.
+   */
+  private generation = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
   private readonly signalListeners = new Set<(thesisId: string) => void>();
@@ -104,9 +111,13 @@ class ThesisStore {
     const syncAuth = () => {
       if (this.client.isVerified()) {
         void this.refresh();
-      } else if (this.snapshot.loaded || this.snapshot.theses.length > 0) {
-        this.update({ ...EMPTY });
-        this.persistence?.setState(CACHE_STATE_KEY, []);
+      } else {
+        // Whatever a refresh in flight is about to say belongs to the account that left.
+        this.abandonRefresh();
+        if (this.snapshot.loaded || this.snapshot.theses.length > 0) {
+          this.update({ ...EMPTY });
+          this.persistence?.setState(CACHE_STATE_KEY, []);
+        }
       }
     };
     this.disposers.push(this.client.subscribeCurrentUser(syncAuth));
@@ -121,7 +132,7 @@ class ThesisStore {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.refreshTimer = null;
     this.started = false;
-    this.refreshPromise = null;
+    this.abandonRefresh();
   }
 
   get(id: string | null | undefined): CloudThesis | null {
@@ -132,23 +143,35 @@ class ThesisStore {
   async refresh(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.update({ loading: true, error: null });
-    this.refreshPromise = (async () => {
-      try {
-        const theses = await this.client.listTheses({ scope: "all" });
-        this.update({ theses, loaded: true, loading: false, error: null, offline: false });
-        this.persistence?.setState(CACHE_STATE_KEY, theses);
-      } catch (error) {
-        this.update({
-          loading: false,
-          loaded: true,
-          error: error instanceof Error ? error.message : "Could not load theses.",
-          offline: this.snapshot.theses.length > 0,
-        });
-      } finally {
-        this.refreshPromise = null;
-      }
-    })();
-    return this.refreshPromise;
+    const run: Promise<void> = this.load(this.generation).finally(() => {
+      if (this.refreshPromise === run) this.refreshPromise = null;
+    });
+    this.refreshPromise = run;
+    return run;
+  }
+
+  private async load(generation: number): Promise<void> {
+    try {
+      const theses = await this.client.listTheses({ scope: "all" });
+      if (generation !== this.generation) return;
+      this.update({ theses, loaded: true, loading: false, error: null, offline: false });
+      this.persistence?.setState(CACHE_STATE_KEY, theses);
+    } catch (error) {
+      if (generation !== this.generation) return;
+      this.update({
+        loading: false,
+        loaded: true,
+        error: error instanceof Error ? error.message : "Could not load theses.",
+        offline: this.snapshot.theses.length > 0,
+      });
+    }
+  }
+
+  /** Drops the refresh in flight: its answer is ignored, and nothing is left loading on its account. */
+  private abandonRefresh(): void {
+    this.generation += 1;
+    this.refreshPromise = null;
+    if (this.snapshot.loading) this.update({ loading: false });
   }
 
   async create(input: Parameters<ThesisStoreClient["createThesis"]>[0]): Promise<CloudThesis> {
