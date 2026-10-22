@@ -480,6 +480,11 @@ export interface CloudPricePointPayload {
   low?: number;
   close: number;
   volume?: number;
+  /**
+   * One venue's count for a bar whose market volume is unavailable (a US session still trading, counted on IEX
+   * alone), served in place of `volume`.
+   */
+  venueVolume?: { venue: string; volume: number };
   /** A daily bar still forming when served: a coin's UTC day, or the trade date a future is trading. */
   partial?: boolean;
   /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */

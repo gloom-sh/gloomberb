@@ -109,6 +109,7 @@ import {
   historyAllRangeYears,
   historyIntervalsByRange,
   historyMissingVolumeNote,
+  historyVenueVolumeNote,
   historyNotes,
   historyReportsVolume,
   historyPriceDecimals,
@@ -1134,6 +1135,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
       // The status line says how far a bar still forming runs; the note is for the bars it does not name.
       gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
+      historyVenueVolumeNote(data) ?? [],
       historyBarStatusNote(forming ? served : data) ?? [],
     ].flat();
     const priceColumns: CliResultColumn[] = [
@@ -1148,8 +1150,16 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     ];
     // A bar without volume in a history that reports it prints as missing, never as 0 or blank beside the others.
     const missingVolume = historyReportsVolume(data) ? MISSING_VOLUME_TEXT : "";
+    // A bar with one venue's count in place of the market's shows it beside the venue, never as its volume.
     const textPriceColumns = priceColumns.map((column) => column.key !== "volume" ? column
-      : { ...column, format: (value: unknown) => formatCountCell(value) || missingVolume });
+      : {
+        ...column,
+        format: (value: unknown, row: Record<string, unknown>) => formatCountCell(value)
+          || (typeof row.venueVolume === "number"
+            ? cliStyles.muted(`${formatCountCell(row.venueVolume)} ${typeof row.volumeVenue === "string" ? row.volumeVenue : ""}`.trim())
+            : missingVolume),
+      });
+    const venueCounted = data.some((row) => row.venueVolume != null);
     // Text shows a flag only on a bar that has one; the column is dropped when none does.
     const flagColumn: CliResultColumn = {
       key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
@@ -1196,6 +1206,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         ...marked ? [{ key: "partial", header: "Partial" }, { key: "filled", header: "Filled" }] : [],
         ...unsettled ? [{ key: "unsettled", header: "Unsettled" }] : [],
         ...volume ? [{ key: "volumeUnit", header: "Volume unit" }, { key: "volumeNote", header: "Volume note" }] : [],
+        ...venueCounted ? [{ key: "venueVolume", header: "Venue volume" }, { key: "volumeVenue", header: "Volume venue" }] : [],
       ],
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
