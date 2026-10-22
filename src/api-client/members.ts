@@ -7,6 +7,12 @@ export interface FundMember {
   contribution: number | null; stale: boolean;
 }
 export interface FundMembersPayload {
+  /**
+   * Whose prices the members carry: `realtime` for a Pro account, priced from
+   * a live read the server renews every 15 seconds; `delayed`, fifteen
+   * minutes behind, otherwise. An older server leaves it out (delayed).
+   */
+  access?: "realtime" | "delayed";
   fund: MemberFund; asOf: string; fetchedAt: string; excludedDerivatives: number; stale: boolean;
   quotesUnavailable: boolean; snapshotAsOf: string | null; fundDailyAsOf: string | null; quoteCap: number;
   members: FundMember[];

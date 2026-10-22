@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   attachMarketMoversPersistence,
   fetchPreferredMarketMovers,
   fetchScreener,
   fetchScreenerResult,
+  isCloudScreenerEligible,
   parseScreenerResponse,
   parseTrendingResponse,
   resetMarketMoversPersistence,
@@ -22,6 +24,24 @@ const response = () => ({ status: "success" as const, data: { ...SAMPLE_SCREENER
 afterEach(() => {
   jest.useRealTimers();
   resetMarketMoversPersistence();
+});
+
+test("a saved session with no account loaded yet, as the CLI starts, asks for the account before choosing the lists", async () => {
+  const pro = { id: "pro", emailVerified: true, plan: "pro" } as ReturnType<typeof apiClient.getCurrentUser>;
+  const spies = [
+    spyOn(apiClient, "getCurrentUser").mockReturnValue(null),
+    spyOn(apiClient, "isSignedIn").mockReturnValue(true),
+  ];
+  const ensure = spyOn(apiClient, "ensureVerifiedSession").mockResolvedValue(pro as never);
+  try {
+    expect(await isCloudScreenerEligible()).toBe(true);
+    ensure.mockResolvedValue({ ...pro, plan: "free" } as never);
+    expect(await isCloudScreenerEligible()).toBe(false);
+    ensure.mockRejectedValue(new Error("offline"));
+    expect(await isCloudScreenerEligible()).toBe(false);
+  } finally {
+    for (const spy of [...spies, ensure]) spy.mockRestore();
+  }
 });
 
 test("trending ignores malformed symbols without inventing rows", () => {
