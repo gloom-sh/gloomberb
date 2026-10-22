@@ -76,7 +76,8 @@ export interface SurfaceExpiry {
   delayMinutes: number | null;
   stale: boolean;
   rate: number | null;
-  rateMethod: "treasury-exact" | "treasury-interpolated" | "treasury-boundary" | "unavailable";
+  /** `venue`: the rate the venue prices its premiums at (Deribit's zero), in place of Treasury's. */
+  rateMethod: "treasury-exact" | "treasury-interpolated" | "treasury-boundary" | "venue" | "unavailable";
   rateAsOf: string[];
   forward: number | null;
   dividendYield: number | null;
@@ -347,7 +348,9 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   result.delayMinutes = chain.delayMinutes ?? null;
   result.stale = input.stale ?? false;
   result.error = input.error ?? null;
-  const rate = surfaceTreasuryRate(curve, result.years);
+  const rate: SurfaceRate = Number.isFinite(chain.rate)
+    ? { rate: chain.rate!, method: "venue", asOf: [], warnings: [] }
+    : surfaceTreasuryRate(curve, result.years);
   result.rate = rate.rate;
   result.rateMethod = rate.method;
   result.rateAsOf = rate.asOf;

@@ -20,6 +20,23 @@ export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Ja
 /** The value's name in a catalog flag, `--expiration <date|unix>`. */
 export const OPTION_EXPIRATION_PLACEHOLDER = "date|unix";
 
+/** Seconds into its UTC day that Deribit stamps each expiry at: its 08:00 UTC settlement. */
+const UTC_SETTLEMENT_SECONDS = 8 * 3600;
+
+/**
+ * Whether an expiry stamp is the settlement instant itself, as Deribit stamps
+ * its BTC and ETH expiries (08:00 UTC), rather than a listed option's date. No
+ * US listing is stamped at that hour: they carry the date's midnight or its close.
+ */
+export function isSettlementStamp(seconds: number): boolean {
+  return Number.isFinite(seconds) && ((seconds % 86_400) + 86_400) % 86_400 === UTC_SETTLEMENT_SECONDS;
+}
+
+/** `08:00 UTC` for a settlement stamp (`isSettlementStamp`); null for a dated one. */
+export function settlementStampTime(seconds: number): string | null {
+  return isSettlementStamp(seconds) ? `${new Date(seconds * 1000).toISOString().slice(11, 16)} UTC` : null;
+}
+
 /** The expiry's calendar date, `2028-01-21`; empty for a stamp that is not a time. */
 export function expiryIsoDate(seconds: number): string {
   const date = new Date(seconds * 1000);
