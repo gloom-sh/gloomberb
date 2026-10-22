@@ -357,8 +357,8 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * at its quote midpoint, so each leg takes the IV that midpoint implies against
  * the expiry's put-call parity forward, with the time left at the market
  * timestamp OSA values at. This holds even when the chain carries a provider
- * IV measured at another time (a same-day IV solved when the chain was served,
- * hours after the after-hours print OSA values at). The forward comes from the
+ * IV measured at another time (a same-day IV solved at the close's quotes,
+ * hours before the after-hours print OSA values at). The forward comes from the
  * same quotes, so a spot that moved after they were taken (an after-hours or
  * pre-market print against the close's chain) does not skew the call against
  * the put. A leg whose midpoint cannot be solved (a spot too far from every
