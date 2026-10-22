@@ -1,7 +1,8 @@
 import { saveConfig } from "../data/config/store";
 import { loadCliConfigIfAvailable } from "./context";
 import { getPluginsDir } from "../plugins/loader";
-import { seedExtractedPlugins } from "../plugins/extracted-plugins";
+import { pluginSeedNotice, seedExtractedPlugins } from "../plugins/extracted-plugins";
+import { setPluginSeedNotice } from "../plugins/seed-notice";
 import { debugLog } from "../utils/debug-log";
 
 const log = debugLog.createLogger("plugin-seed");
@@ -10,8 +11,10 @@ const log = debugLog.createLogger("plugin-seed");
  * Reinstalls plugins that moved out of this repository into their own.
  *
  * Runs before the plugin catalog is read so a restored plugin is available in
- * the same session, and stays quiet on failure: an offline launch should start
- * normally and try again next time, not block on a network request.
+ * the same session, and never blocks or prints: an offline launch should
+ * start normally and try again next time. What it could not install becomes
+ * one notice the app shows once it is up (`setPluginSeedNotice`), saying why
+ * when git is missing, and `doctor` names the plugins.
  *
  * Returns the seeded ids so a caller that already holds the config in memory
  * can adopt them. The desktop loads its config before restoring, and without
@@ -27,12 +30,19 @@ export async function restoreExtractedPlugins(): Promise<string[] | null> {
     // nothing on a Gloomberb too old for it. That failure is retried at the
     // next launch, by when this Gloomberb has usually updated itself. The
     // registry is read once, and only when something is left to install.
-    const { installListedPlugin, loadRegistryListings } = await import("../plugins/installer");
+    // Quiet: the terminal app is about to own the screen, and git's or bun's
+    // output would be left behind in the scrollback.
+    const { gitInstalled, installListedPlugin, loadRegistryListings } = await import("../plugins/installer");
     let listings: ReturnType<typeof loadRegistryListings> | undefined;
+    let gitMissing: boolean | undefined;
     const result = await seedExtractedPlugins(config, async (repo) => {
+      // Without git every clone fails the same way: no registry read, no attempt.
+      gitMissing ??= !gitInstalled();
+      if (gitMissing) throw new Error("git is not installed");
       listings ??= loadRegistryListings();
-      return installListedPlugin(repo, {}, await listings);
+      return installListedPlugin(repo, { quiet: true }, await listings);
     });
+    setPluginSeedNotice(pluginSeedNotice(result.failed, gitMissing === true));
 
     const seeded = [...new Set(result.seeded)].sort();
     const existing = [...new Set(config.seededPlugins ?? [])].sort();

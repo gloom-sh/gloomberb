@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "./extracted-plugins";
+import { EXTRACTED_PLUGINS, officialPluginsCheck, pluginSeedNotice, seedExtractedPlugins } from "./extracted-plugins";
 import type { AppConfig } from "../types/config";
 
 /**
@@ -133,5 +133,36 @@ describe("seedExtractedPlugins", () => {
 
     expect(result.failed).toContain("substack");
     expect(result.seeded).not.toContain("substack");
+  });
+});
+
+/**
+ * Without git every seed install fails, and the launch used to say nothing:
+ * the plugins were just absent. The notice and `doctor` have to name the cause
+ * and the fix, and stop once the plugins are there.
+ */
+describe("a seed that left official plugins out", () => {
+  test("the launch notice names git, as Git for Windows on Windows, or says it retries", () => {
+    expect(pluginSeedNotice(["polls"], true, "win32")).toBe("Polls needs Git and is not installed. Install Git for Windows, then restart Gloom.");
+    expect(pluginSeedNotice(EXTRACTED_PLUGINS.map((entry) => entry.id), true, "linux"))
+      .toBe(`${EXTRACTED_PLUGINS.length} official plugins need Git and are not installed. Install git, then restart Gloom.`);
+    expect(pluginSeedNotice(["tv", "polls"], false, "linux")).toBe("TV and Polls could not be installed. Gloom tries again at the next launch.");
+    expect(pluginSeedNotice([], true, "win32")).toBeNull();
+  });
+
+  test("doctor fails naming the missing plugins while git is missing, and passes once they are installed", async () => {
+    await withPluginsDir((dir) => {
+      const seeded = EXTRACTED_PLUGINS.map((entry) => entry.id).filter((id) => id !== "polls" && id !== "tv");
+      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => true, pluginsDir: dir, platform: "win32" })).toEqual({
+        check: "official plugins",
+        status: "error",
+        detail: "Not installed: TV and Polls. They need Git: install Git for Windows (https://git-scm.com/download/win), then restart Gloom.",
+      });
+      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => false, pluginsDir: dir })?.status).toBe("warn");
+
+      mkdirSync(join(dir, "gloom-polls"));
+      mkdirSync(join(dir, "gloom-tv"));
+      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => true, pluginsDir: dir })).toBeNull();
+    });
   });
 });

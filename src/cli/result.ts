@@ -13,7 +13,7 @@ import {
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
-import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
 import {
@@ -397,7 +397,7 @@ function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): bo
 
 /** The closing source, as-of and status line of a text result, for output printed without `printResult`. */
 export function cliFreshnessFooter(freshness: ReportFreshness): string {
-  return cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)));
+  return cliStyles.muted(wrapToTerminal(formatFreshnessLine(withSavedCopy(freshness))));
 }
 
 export function serializeCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
@@ -405,8 +405,10 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
 ): string {
-  const { freshness, exportFreshness, failure, ...rest } = result;
-  const cited = freshness ?? exportFreshness;
+  const { freshness: reported, exportFreshness, failure, ...rest } = result;
+  // A command that answered from a saved copy after its refresh failed says so in place of live or delayed.
+  const freshness = reported && withSavedCopy(reported);
+  const cited = freshness ?? (exportFreshness && withSavedCopy(exportFreshness));
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
     const window = Array.isArray(result.data) ? windowed(result.data as unknown[], options, renderOptions) : null;

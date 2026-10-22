@@ -3,6 +3,7 @@ import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
 import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
+import { takePluginSeedNotice } from "../../../../plugins/seed-notice";
 import {
   getDataDir,
   initDataDir,
@@ -72,6 +73,8 @@ function buildInitializationPayload(
   services: AppServices,
   windowTarget: DesktopWindowTarget,
 ): ElectrobunBackendInit {
+  // The main window says once what the launch's seed could not install.
+  const pluginSeedNotice = windowTarget.kind === "main" ? takePluginSeedNotice() : null;
   return {
     config,
     sessionSnapshot: backend.getSessionSnapshot(),
@@ -84,6 +87,7 @@ function buildInitializationPayload(
     hostName: hostname(),
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
+    ...(pluginSeedNotice ? { pluginSeedNotice } : {}),
     telemetry: {
       installId: readOrCreateInstallId(config.dataDir),
       os: describeNodeOs(),

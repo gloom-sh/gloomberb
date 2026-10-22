@@ -215,6 +215,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
           checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
+          // Official plugins a launch could not install, which the app otherwise just lacks.
+          const { officialPluginsCheck } = await import("../../plugins/extracted-plugins");
+          const { gitInstalled } = await import("../../plugins/installer");
+          const official = officialPluginsCheck(services.config, { gitMissing: () => !gitInstalled() });
+          if (official) checks.push(official);
           checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
           // Only a saved value no conversion can price is worth a line.
           const baseCurrencyIssue = baseCurrencyProblem(services.config.baseCurrency);

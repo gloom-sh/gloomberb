@@ -12,6 +12,7 @@ import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/u
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
 import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
+import { savedCopyServedAt } from "../../data/saved-copies";
 
 /**
  * The four states of docs/usage.md#how-current-a-report-is, plus `unreported`
@@ -98,6 +99,22 @@ export interface ReportFreshness {
   publishedAt?: string;
   /** When this report was built. */
   retrievedAt: string;
+  /**
+   * Refreshing the data failed and a copy saved earlier answered: when that
+   * copy was saved, an ISO instant in UTC. The status line then says
+   * `couldn't refresh; saved 21:49 UTC` in place of how current the data is.
+   */
+  savedAt?: string;
+}
+
+/**
+ * The freshness a command prints, saying when anything it shows came from a
+ * copy saved earlier because refreshing it failed (`collectSavedCopies`): its
+ * status line then reads `couldn't refresh; saved 21:49 UTC` instead of live
+ * or delayed.
+ */
+export function withSavedCopy(freshness: ReportFreshness, savedAt = savedCopyServedAt()): ReportFreshness {
+  return savedAt == null ? freshness : { ...freshness, savedAt: new Date(savedAt).toISOString() };
 }
 
 /** One source's newest observation: an ISO instant in UTC. */
@@ -702,6 +719,19 @@ function onRetrievalDay(iso: string, retrievedAt: string): boolean {
   return iso.slice(0, 10) === retrievedAt.slice(0, 10);
 }
 
+/**
+ * What a report answered from a saved copy says in place of how current its
+ * data is: `couldn't refresh; saved 21:49 UTC`, with the day when the copy was
+ * saved on another day than the report was built.
+ */
+function savedCopyText(savedAt: string, retrievedAt: string, local: boolean): string {
+  const at = Date.parse(savedAt);
+  if (!Number.isFinite(at)) return "couldn't refresh";
+  const iso = new Date(at).toISOString();
+  const time = onRetrievalDay(iso, retrievedAt) ? `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}` : timeText(iso, local);
+  return `couldn't refresh; saved ${time}`;
+}
+
 /** `US and XETRA`, `US, XETRA and EPA`. */
 function listText(items: readonly string[]): string {
   return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
@@ -838,7 +868,7 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     ...(freshness.schedule && detail.schedule !== "none" ? [freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
-    statusText(freshness, detail.status === "short"),
+    freshness.savedAt ? savedCopyText(freshness.savedAt, freshness.retrievedAt, local) : statusText(freshness, detail.status === "short"),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
     ...(freshness.note && detail.note !== "none" ? [freshness.note] : []),
   ];
@@ -881,7 +911,8 @@ function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: num
       ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
       `${freshness.observation} ${asOf.slice(0, 10)}`,
       lagText(lagDays),
-      ...(freshness.status === "stale" ? ["stale"] : []),
+      ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, false)]
+        : freshness.status === "stale" ? ["stale"] : []),
     ];
   }
   const period = freshness.periodicity;
@@ -892,7 +923,7 @@ function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: num
     ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
     `observed ${dated(asOf)}${period ? ` (${period})` : ""}${oldest}`,
     `lag ${lagDays}d`,
-    ...(stale ? [stale] : []),
+    ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, false)] : stale ? [stale] : []),
   ];
 }
 

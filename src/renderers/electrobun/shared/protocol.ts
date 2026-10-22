@@ -27,6 +27,8 @@ export interface ElectrobunBackendInit {
   hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
+  /** What the launch's plugin seed could not install, for the main window to say once. */
+  pluginSeedNotice?: string;
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
 }

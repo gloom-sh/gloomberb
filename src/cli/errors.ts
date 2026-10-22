@@ -5,10 +5,22 @@ import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
 const CLI_ERROR_CODE = "cli_error";
+/** The code of a command whose requests never reached the data service. */
+const SERVICE_UNREACHABLE_CODE = "service_unreachable";
+
+/** What to check when nothing answered: the connection, and the proxy when one is set. */
+function unreachableHint(): string {
+  const env = typeof process === "undefined" ? {} : process.env;
+  const proxy = ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"].find((name) => env[name]?.trim());
+  return proxy
+    ? `Check the internet connection and the proxy in ${proxy}, then try again.`
+    : "Check the internet connection, then try again.";
+}
 
 export interface CliErrorContext {
   /** The command that failed, used to point at its help. */
@@ -81,6 +93,10 @@ function cliErrorObject(error: unknown): CliErrorObject {
   // A symbol or name search was too busy to look up: not a miss, and asking again may find it.
   if (isProviderBusy(error)) {
     return { code: SEARCH_BUSY_CODE, message: SEARCH_BUSY_MESSAGE, retryable: true };
+  }
+  // No answer came back at all: in Gloom's words, whichever fetch failed (Bun's "Unable to connect", a refused proxy).
+  if (isNetworkFailure(error)) {
+    return { code: SERVICE_UNREACHABLE_CODE, message: DATA_SERVICE_UNREACHABLE_MESSAGE, details: unreachableHint(), retryable: true };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {

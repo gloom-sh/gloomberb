@@ -59,6 +59,19 @@ installed from a repository the registry does not list, update only when you
 ask. Turn this off with **Update official plugins automatically** in the
 Plugins pane's settings.
 
+### Official plugins that need Git
+
+These official plugins live in their own repositories and install from GitHub
+with `git` on first start: TV, Substack, Interactive Brokers, IBKR Gateway,
+Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI. Every
+plugin installed from GitHub needs `git` on `PATH`, and Windows does not ship
+it: install [Git for Windows](https://git-scm.com/download/win). Without it the
+app starts without them and shows one notice, `gloomberb doctor` fails with an
+**official plugins** check that names them, and `gloomberb install` says Git is
+missing. Install Git, then restart Gloom, which installs them. Git runs quietly:
+its progress and the detached-HEAD advice of a pinned checkout stay out of the
+terminal, and a failure reports git's last line.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under

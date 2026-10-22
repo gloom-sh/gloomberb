@@ -4,6 +4,7 @@ import type { Quote } from "../../types/financials";
 import { isCryptoPairSymbol, MAJOR_COIN_NAMES } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { groupByCompany } from "../../tickers/company-name";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
@@ -69,7 +70,7 @@ function failureReason(message: string, symbol: string): string {
 
 /**
  * Text-mode notes under a quote table: one line per distinct failure reason (with the crypto board
- * pointer when a failed symbol is a crypto pair), then a line for each bare coin ticker that
+ * pointer when a failed symbol is a crypto pair, unless nothing could be reached), then a line for each bare coin ticker that
  * resolved to something else. `--exchange` names the listing on purpose, so it gets no coin note.
  */
 export function quoteNotes(results: QuoteNoteResult[], options: { exchange?: string } = {}): string[] {
@@ -84,7 +85,7 @@ export function quoteNotes(results: QuoteNoteResult[], options: { exchange?: str
     // "Not a ticker: APPLE." already names its symbol.
     isNotATickerMessage(reason)
       ? reason
-      : `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
+      : `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) && reason !== DATA_SERVICE_UNREACHABLE_MESSAGE ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
   ));
   if (!options.exchange) {
     for (const result of results) {

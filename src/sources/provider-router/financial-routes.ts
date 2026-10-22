@@ -16,6 +16,7 @@ import {
   sortCachedRecords,
 } from "./cache";
 import { noProviderError, type ProviderMissNote } from "../provider-errors";
+import { noteSavedCopyServed } from "../../data/saved-copies";
 import { withBrokerTimeout } from "./brokers";
 import {
   hasMeaningfulProfile,
@@ -166,7 +167,13 @@ export class ProviderRouterFinancialRoutes {
 
     if (cached.value) {
       const brokerResult = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerFinancials(ticker, exchange, context));
-      const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
+      const refresh: ProviderMissNote = {};
+      const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context, refresh);
+      // The refresh failed and the saved statements answer: when they were last saved.
+      const saved = cached.providerRecords?.map((record) => record.fetchedAt) ?? [];
+      if (!providerResult && refresh.failure !== undefined && cached.providerValue && saved.length > 0) {
+        noteSavedCopyServed(Math.max(...saved));
+      }
       const merged = mergeFinancials(
         brokerResult?.value ?? cached.brokerRecord?.value ?? null,
         context?.statementHistory === "extended"
@@ -229,7 +236,11 @@ export class ProviderRouterFinancialRoutes {
     if (providerQuote) {
       return providerQuote.value;
     }
-    if (cached) return cached.value;
+    if (cached) {
+      // The refresh failed rather than finding nothing newer: the saved copy answers, and says so.
+      if (misses.failure !== undefined) noteSavedCopyServed(cached.fetchedAt);
+      return cached.value;
+    }
     // No source has a current quote: the last price one answered with, flagged
     // stale and dated by its own time, rather than none.
     if (misses.lastKnownQuote) return misses.lastKnownQuote;

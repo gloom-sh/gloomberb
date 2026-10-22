@@ -552,18 +552,33 @@ function sectionList(tables: readonly CliReportTable[]): string {
 }
 
 /**
- * `--section`: one table, by its title (any case) or its 1-based position.
- * Without a selector the report keeps every table.
+ * The table `--section` names by title, in any case: the one titled so, else
+ * the one whose title starts with it, as a title that carries its date does
+ * (`Strikes` for `Strikes · Oct 30 '26`). A start several titles share picks
+ * none.
+ */
+function sectionByTitle(tables: readonly CliReportTable[], wanted: string): CliReportTable | undefined {
+  const name = wanted.toLowerCase();
+  const titles = tables.map((table) => table.title.trim().toLowerCase());
+  const exact = titles.indexOf(name);
+  if (exact >= 0) return tables[exact];
+  const starting = tables.filter((_, index) => titles[index]!.startsWith(name));
+  if (starting.length > 1) {
+    throw new Error(`"${wanted}" starts more than one section: ${starting.map((table) => table.title).join(", ")}. Give more of the title, or its number.`);
+  }
+  return starting[0];
+}
+
+/**
+ * `--section`: one table, by its title or the start of it (any case), or its
+ * 1-based position. Without a selector the report keeps every table.
  */
 export function selectReportTables(report: CliReportTables, selector: string | true | undefined): CliReportTables {
   if (selector === undefined) return report;
   if (selector === true || !selector.trim()) throw new Error("--section needs a section title or number.");
   const wanted = selector.trim();
   if (report.tables.length === 0) throw new Error(`No section "${wanted}": this report has no tables.`);
-  const index = /^\d+$/.test(wanted)
-    ? Number(wanted) - 1
-    : report.tables.findIndex((table) => table.title.trim().toLowerCase() === wanted.toLowerCase());
-  const table = report.tables[index];
+  const table = /^\d+$/.test(wanted) ? report.tables[Number(wanted) - 1] : sectionByTitle(report.tables, wanted);
   if (!table) throw new Error(`No section "${wanted}". Sections: ${sectionList(report.tables)}.`);
   return { ...report, tables: [table] };
 }

@@ -194,6 +194,7 @@ import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cu
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
+import { isNetworkFailure } from "../../utils/network-failure";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { primeBoardCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
@@ -1025,9 +1026,13 @@ function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeB
   return { unit: "percent", ...(change == null ? {} : { changeBasisPoints: toBasisPoints(change, 1) }) };
 }
 
-/** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
+/**
+ * A crypto pair that will not load points at the crypto board. Structured
+ * formats keep the error as thrown, and so does no connection at all, which
+ * the board cannot get past either.
+ */
 function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
-  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol)) throw error;
+  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol) || isNetworkFailure(error)) throw error;
   return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
 
