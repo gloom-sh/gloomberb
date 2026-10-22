@@ -17,8 +17,9 @@ export type SectorNewsSelection = "all" | typeof SECTOR_NEWS_SECTORS[number];
 
 /**
  * NI codes, Bloomberg style: topics the service tags from a story's text and
- * source (`NI MNA`), and the sectors NI always had (`NI TECH`). ENERGY is a
- * topic, so it takes energy news from every sector. `LTR` is the one code that
+ * source (`NI MNA`), and the sectors NI always had (`NI TECH`). ENERGY and
+ * METALS are topics, so they take their market's news from every sector:
+ * METALS is metal prices, futures and bullion, not a miner's releases. `LTR` is the one code that
  * lists no stories: public fund and investor letters, as links.
  */
 export interface NewsIndustryCode {
@@ -34,6 +35,7 @@ export const NEWS_INDUSTRY_CODES: readonly NewsIndustryCode[] = [
   { code: "MNA", label: "M&A", topic: "mna" },
   { code: "CB", label: "Central banks", topic: "cb" },
   { code: "ENERGY", label: "Energy", topic: "energy" },
+  { code: "METALS", label: "Metals", topic: "metals" },
   { code: "REG", label: "Regulation", topic: "reg" },
   { code: "CRYPTO", label: "Crypto", topic: "crypto" },
   { code: "EARN", label: "Earnings", topic: "earn" },
@@ -58,6 +60,8 @@ const INDUSTRY_CODE_ALIASES: Record<string, string> = {
   earnings: "EARN",
   ipos: "IPO",
   regulation: "REG",
+  metal: "METALS",
+  precious_metals: "METALS",
 };
 
 function industryKey(value: string): string {

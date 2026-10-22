@@ -125,7 +125,24 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { commodityNewsRoute, commonWordCandidate, newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, noStoriesMessage, quotedSearchCommand, searchNewsStories, wordMeansMore } from "./news-search";
+import {
+  commodityNewsRoute,
+  commonWordCandidate,
+  METALS_NEWS_TOPIC,
+  metalCodeNewsRoute,
+  type MetalNewsRoute,
+  metalNewsHeading,
+  metalNewsRoute,
+  newsFallbackText,
+  newsSearchHeading,
+  newsSearchText,
+  newsSearchTextProblem,
+  noMetalStoriesMessage,
+  noStoriesMessage,
+  quotedSearchCommand,
+  searchNewsStories,
+  wordMeansMore,
+} from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
@@ -164,6 +181,7 @@ import {
   listingFateLoader,
   movedSymbolLine,
   requireCliListing,
+  resolveCliListing,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
@@ -1423,6 +1441,50 @@ async function printNewsSearch(
   });
 }
 
+/** The ticker a metal's name is in capitals, when one answers to exactly that: GOLD, Gold.com Inc., for "gold". */
+async function tickerOfWord(word: string, market: MarketContext): Promise<{ symbol: string; name: string | null } | null> {
+  const symbol = word.toUpperCase();
+  const listing = await resolveCliListing(symbol, null, market).catch(() => {
+    // Intentional ignore: a word no listing answers to offers no ticker under the metal's news.
+    return null;
+  });
+  if (!listing || listing.symbol.toUpperCase() !== symbol) return null;
+  const quote = await loadListingQuote(market.dataProvider, listing);
+  const identity = listingIdentity(listing, quote);
+  return quote !== null || identity.name != null ? { symbol: listing.symbol, name: identity.name ?? null } : null;
+}
+
+/**
+ * A metal's market news (GLO-1158): the stories tagged METALS that mention
+ * it, for its future, its board code or its name. Under them, the ticker its
+ * name is in capitals, whose company news `news GOLD` keeps.
+ */
+async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Parameters<CliCommandDef["execute"]>[1], market?: MarketContext) {
+  const search = searchNewsStories(route.metal, limit, [METALS_NEWS_TOPIC]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+    logFailure("cli.commands-market", "Search metals news failed")(error);
+    return { found: [] as NewsArticle[], failure: errorMessage(error) ?? "no answer" };
+  });
+  const word = route.word;
+  const ticker = word
+    ? await (market ? tickerOfWord(word, market) : withMarketData(ctx, (context) => tickerOfWord(word, context)))
+      .catch(logFailure("cli.commands-market", "Read the ticker a metal's name is failed", null))
+    : null;
+  const { found, failure } = await search;
+  const companyNews = ticker ? `gloomberb news ${ticker.symbol}` : null;
+  ctx.printResult({
+    data: found,
+    ...(failure === undefined ? {} : { warnings: [`Searching metals stories for "${route.metal}" failed: ${failure}`] }),
+    metadata: { ticker: null, search: route.metal, topics: [METALS_NEWS_TOPIC], feed: null, ...(companyNews ? { companyNews } : {}) },
+    freshness: rowsFreshness(newsRows(found), cloudNewsFreshness(await cloudRealtimeAccess())),
+  }, {
+    heading: metalNewsHeading(route),
+    rows: newsRows,
+    columns: NEWS_COLUMNS,
+    empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
+    ...(ticker ? { footnote: `${word} → ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
+  });
+}
+
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
@@ -1435,6 +1497,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
     await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
+    return;
+  }
+  // A metal's future or name is its market's news, not a company's: GOLD in capitals stays Gold.com's.
+  const metal = args.length === 1 && !exchangeOption && !feed ? metalNewsRoute(args[0]!) : null;
+  if (metal) {
+    await printMetalNews(metal, limit, ctx);
     return;
   }
   if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
@@ -1478,6 +1546,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const emptyMessage = (searched: boolean) => listing && identity
       ? newsEmptyMessage(searched && word ? word : listing.symbol, listingTitle(identity), quote, resolved, searched)
       : undefined;
+    // A metal's board code no listing answers to (GC, SI) is the metal's market news.
+    const metalCode = !resolved && unfiled && !exchangeOption ? metalCodeNewsRoute(args[0]!) : null;
+    if (metalCode) {
+      await printMetalNews(metalCode, limit, ctx, market);
+      return;
+    }
     if (word && reason) {
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
       const search = await searchNewsStories(word, limit).then((found) => ({ found, failure: undefined }), (error: unknown) => {

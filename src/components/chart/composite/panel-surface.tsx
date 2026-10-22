@@ -65,6 +65,7 @@ import { useCompositePanelBitmap } from "./panel-bitmap";
 import { nextDrawingId, nextLevelId } from "./drawing-store";
 import {
   AXIS_DOUBLE_PRESS_MS,
+  PLOT_DOUBLE_CLICK_MS,
   COMPOSITE_PANEL_ROLE,
   isVerticalWheelDirection,
   manualValueAxes,
@@ -679,12 +680,15 @@ export function CompositePanelSurface({
       bare = !drawingHit && !levelHit;
     }
     // A double click on bare plot gives the panel the whole chart, or the
-    // others back (the terminal counts two presses on one spot).
+    // others back (the terminal counts two presses on one spot). Its first
+    // press must have landed here too: a double click on a button that goes
+    // away under it (All panels) ends on this plot, and is not one of its.
+    if (!bare) lastPlotPressRef.current = null;
     if (onToggleMaximized && bare) {
       const now = Date.now();
       const last = lastPlotPressRef.current;
       const double = typeof event.detail === "number"
-        ? event.detail >= 2
+        ? event.detail >= 2 && !!last && now - last.at < PLOT_DOUBLE_CLICK_MS
         : !!last && now - last.at < AXIS_DOUBLE_PRESS_MS && Math.abs(last.x - event.x) <= 1 && Math.abs(last.y - event.y) <= 1;
       lastPlotPressRef.current = double ? null : { at: now, x: event.x, y: event.y };
       if (double) {

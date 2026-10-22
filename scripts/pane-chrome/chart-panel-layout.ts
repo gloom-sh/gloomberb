@@ -18,11 +18,14 @@ import { pixelChange } from "./ui-audit-compare";
  * does; that the legend's chevron shows under the pointer and folds the legend
  * to its first series and a count of the rest, which opens it again, as
  * Shift+L does, and a click on an entry still hides its series; that the line
- * between two panels shows under the pointer, a drag on it moves it and a
- * double-click puts back the split; that Shift+Up makes the top panel taller;
+ * between two panels shows under the pointer, a click on it that jitters keeps
+ * the split, a drag on it moves it and a double-click puts back the split;
+ * that Shift+Up makes the top panel taller; that a tool picked from the keys
+ * opens a hidden bar and its chevron folds it again, kept hidden;
  * that a double-click on the RSI plot gives it the whole chart, with its
  * `All panels` button and every series still read in the legend, and the
- * button or another double-click gives the others back; and that a drag on the
+ * button, a double-click on it or another on the plot gives the others back
+ * and keeps them; and that a drag on the
  * plot still pans. It pictures each state, and writes a contact sheet per
  * browser: before and after at rest, then each new state, a row per width.
  *
@@ -43,6 +46,8 @@ const out = resolve(takeOption(args, "--out") ?? cacheDir("chart-panel-layout"))
 const browsers = (takeOption(args, "--browsers") ?? "chromium,webkit").split(",") as Array<"chromium" | "webkit">;
 const widths = (takeOption(args, "--widths") ?? "640,1280").split(",").map(Number);
 const HEIGHT = 800;
+/** A taller window, where a split kept in whole rows would share the plot unlike the chart's own. */
+const TALL_HEIGHT = 1010;
 const STATES = ["rest", "toolbar-hidden", "legend-folded", "divider-hover", "panels-resized", "maximized"] as const;
 
 interface Check { browser: string; width: number; name: string; ok: boolean; detail: string }
@@ -132,6 +137,17 @@ async function open(page: Page, url: URL) {
   await settle(page, 800);
 }
 
+/** A double click at a hand's pace, so the page draws what the first click did before the second lands. */
+async function humanDoubleClick(page: Page, at: { x: number; y: number }) {
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down({ clickCount: 1 });
+  await page.mouse.up({ clickCount: 1 });
+  await page.waitForTimeout(150);
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.up({ clickCount: 2 });
+  await settle(page);
+}
+
 async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, steps = 10) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -217,6 +233,28 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   // The line between the price and volume panels: under the pointer, dragged, then double-clicked.
   const divider = rest.dividers[0]!.box;
   const plotX = rest.panels[0]!.box.x + rest.panels[0]!.box.width / 2;
+  // A click on it that jitters a few pixels, past the host's drag threshold
+  // but short of a row, keeps the split: the panels share a taller window as
+  // they did, where a split saved in whole rows would not.
+  const taller = async () => {
+    await page.setViewportSize({ width, height: TALL_HEIGHT });
+    await settle(page, 400);
+    const state = heights(await layoutState(page));
+    await page.setViewportSize({ width, height: HEIGHT });
+    await settle(page, 400);
+    return state;
+  };
+  const tallBefore = await taller();
+  await page.mouse.move(plotX, center(divider).y);
+  await page.mouse.down();
+  for (const offset of [4, 5, 3]) {
+    await page.mouse.move(plotX, center(divider).y + offset);
+    await page.waitForTimeout(40);
+  }
+  await page.mouse.up();
+  await park(page, width);
+  const tallAfter = await taller();
+  say("a click on the line that jitters a few pixels keeps the split", JSON.stringify(tallAfter) === JSON.stringify(tallBefore), { before: tallBefore, after: tallAfter });
   await page.mouse.move(plotX, center(divider).y);
   await settle(page, 200);
   const dividerHovered = await layoutState(page);
@@ -247,8 +285,8 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await page.mouse.click(plotX, rest.panels[0]!.box.y + 10);
   await page.keyboard.press("Shift+ArrowUp");
   await settle(page);
-  const taller = await layoutState(page);
-  say("Shift+Up makes the top panel taller", heights(taller).main! > restHeights.main!, heights(taller));
+  const stepped = await layoutState(page);
+  say("Shift+Up makes the top panel taller", heights(stepped).main! > restHeights.main!, heights(stepped));
   await page.keyboard.press("Shift+ArrowDown");
   await settle(page);
   say("Shift+Down gives it back", sameHeights(await layoutState(page), rest), heights(await layoutState(page)));
@@ -263,6 +301,24 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await settle(page);
   say("Shift+T folds the tool bar and Shift+L the legend", keyFolded.toolbar?.folded === true && keyLegend.legend?.collapsed === true
     && (await layoutState(page)).legend?.collapsed === false, { toolbar: keyFolded.toolbar?.folded, legend: keyLegend.legend?.collapsed });
+
+  // Hidden, the bar opens for a tool picked from the keys; its chevron then
+  // puts the tool down and folds it, and it stays hidden.
+  await page.keyboard.press("Shift+T");
+  await page.keyboard.press("Shift+M");
+  await settle(page);
+  const toolOpen = await layoutState(page);
+  const toolbarBox = toolOpen.toolbar?.box ?? rest.toolbar.box;
+  await page.mouse.move(toolbarBox.x + 6, toolbarBox.y + toolbarBox.height / 2);
+  await settle(page, 200);
+  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
+  await park(page, width);
+  const toolHidden = await layoutState(page);
+  say("a hidden bar opened by a tool from the keys folds again by its chevron, and stays hidden",
+    toolOpen.toolbar?.folded === false && toolHidden.toolbar?.folded === true && toolHidden.toolbar.buttons === 1,
+    { open: toolOpen.toolbar?.folded, after: toolHidden.toolbar });
+  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
+  await park(page, width);
 
   // A double-click on the RSI plot gives it the whole chart, and the way back.
   const rsi = rest.panels.find((panel) => panel.label === "RSI")!.box;
@@ -288,6 +344,16 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await page.mouse.dblclick(whole.x + whole.width / 2, whole.y + whole.height / 2);
   await park(page, width);
   say("as does another double-click", again.panels.length === 1 && sameHeights(await layoutState(page), rest), heights(await layoutState(page)));
+  // A double-click on All panels: its first click brings the panels back, and
+  // its second, landing on the plot under it, does not take the chart again.
+  await page.mouse.dblclick(rsi.x + rsi.width / 2, rsi.y + rsi.height / 2);
+  await park(page, width);
+  const remaximized = await layoutState(page);
+  await humanDoubleClick(page, center(remaximized.restore!));
+  await park(page, width);
+  const doubleRestored = await layoutState(page);
+  say("a double-click on All panels gives the others back and keeps them", remaximized.panels.length === 1
+    && sameHeights(doubleRestored, rest) && !doubleRestored.restore, heights(doubleRestored));
 
   // A drag on the plot still pans (to older bars: the view starts at the newest), and gives no panel the chart.
   const price = rest.panels[0]!.box;

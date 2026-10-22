@@ -658,7 +658,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CN"],
   },
   NI: {
-    summary: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector.",
+    summary: "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector.",
     usage: ["NI ENERGY"],
     keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,

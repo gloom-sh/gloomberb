@@ -959,7 +959,7 @@
           {
             "code": "NI",
             "name": "Topic News",
-            "description": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
+            "description": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
           },
           {
             "code": "FIRST",

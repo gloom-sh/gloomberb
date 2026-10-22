@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { FundFactsPayload, FundLeverage } from "../../../api-client/fund-facts";
+import type { FundFactsPayload, FundLeverage, FundMetalHoldings } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
@@ -18,6 +18,13 @@ export const fundFactsCache = createPluginCache<FundFactsPayload>({
 type Client = Pick<typeof apiClient, "getFundFacts">;
 
 const fact = (value: unknown) => value === null || (typeof value === "object" && value !== null && "value" in value && "source" in value);
+const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+function isMetalHoldingsShape(value: FundFactsPayload["metalHoldings"]): boolean {
+  return value == null || ((value.metal === "gold" || value.metal === "silver") && typeof value.asOf === "string" && finite(value.ounces)
+    && (value.tonnes === null || finite(value.tonnes)) && typeof value.source?.publisher === "string"
+    && (value.change === null || (typeof value.change?.since === "string" && finite(value.change.ounces))));
+}
 
 /** Absent from servers before it; otherwise a dated factor with its reset period. */
 const leverageShape = (value: FundFactsPayload["leverage"]) => value === undefined || value === null
@@ -26,7 +33,7 @@ const leverageShape = (value: FundFactsPayload["leverage"]) => value === undefin
 function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
     || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
-    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage)) {
+    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)) {
     throw new Error("Unreadable fund facts response");
   }
   return data;
@@ -71,6 +78,13 @@ function formatNav(value: number): string {
 function formatNetAssets(value: number): string {
   return `$${formatCompact(value)}`;
 }
+
+/** Ounces and tonnes as the sponsor publishes them, to its own decimals (34,085,936.5; 1,060.18). */
+const metalFigure = (value: number, signed = false) =>
+  `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 3 })}`;
+
+/** "Gold in trust", "Silver in trust". */
+const metalLabel = (holdings: FundMetalHoldings) => holdings.metal === "gold" ? "Gold in trust" : "Silver in trust";
 
 /**
  * The fee as the server says it is: a sponsor fee (IBIT, GLD), or an expense
@@ -185,6 +199,18 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   for (const figure of facts.bond ? bondFigures(facts.bond) : []) {
     items.push(cell(figure.key, figure.label, figure.text, { detail: figure.date, marked: facts.stale }));
   }
+  // A metal trust's metal in trust, in tonnes as the market quotes it and ounces as the trust counts it, then its day's change.
+  const metal = facts.metalHoldings;
+  if (metal) {
+    const ounces = `${formatCompact(metal.ounces)} oz`;
+    items.push(cell("metal", metalLabel(metal), metal.tonnes == null ? ounces : `${metalFigure(metal.tonnes)} t`,
+      { detail: metal.tonnes == null ? metal.asOf : `${ounces} · ${metal.asOf}`, marked: metal.stale }));
+    if (metal.change) {
+      const change = `${metalFigure(Math.round(metal.change.ounces), true)} oz`;
+      items.push(cell("metal-change", "Day change", metal.change.tonnes == null ? change : `${metalFigure(metal.change.tonnes, true)} t`,
+        { detail: metal.change.tonnes == null ? tf("since {date}", { date: metal.change.since }) : `${change} · ${tf("since {date}", { date: metal.change.since })}`, marked: metal.stale }));
+    }
+  }
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
   // A leveraged or inverse fund's objective, dated by the sponsor page it was read from, beside its benchmark.
@@ -271,6 +297,15 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
       ? `${facts.netAssets.asOf} month-end${facts.netAssets.document ? ` ${facts.netAssets.document}` : ""}` : facts.netAssets.asOf;
     add("netAssets", "Net assets", facts.netAssets.value, provenance(formatNetAssets(facts.netAssets.value), date, scope, facts.netAssets.source), "USD");
   }
+  const metal = facts.metalHoldings;
+  if (metal) {
+    // The trust's own figures, as its sponsor's daily holdings file states them; JSON has the tonnes in `fundFacts`.
+    add("metalOunces", metalLabel(metal), metal.ounces, provenance(`${metalFigure(metal.ounces)} troy oz`,
+      metal.tonnes == null ? null : `${metalFigure(metal.tonnes)} tonnes`, metal.stale ? `${metal.asOf} stale` : metal.asOf, metal.source.publisher), "troy oz");
+    add("metalChangeOunces", "Day change", metal.change?.ounces ?? null, metal.change
+      ? provenance(`${metalFigure(metal.change.ounces, true)} troy oz`, metal.change.tonnes == null ? null : `${metalFigure(metal.change.tonnes, true)} tonnes`, `since ${metal.change.since}`)
+      : `-- · ${metal.asOf} is the first day stored`, "troy oz");
+  }
   if (facts.bond) {
     add("bondClass", "Bond fund", facts.bond.kind, bondClassText(facts.bond));
     const keys = { secYield: "secYieldPercent", yieldToWorst: "yieldToWorstPercent", duration: "durationYears" } as const;
@@ -302,8 +337,8 @@ export function listNames(names: readonly string[]): string {
  * the consolidated close cites Gloom Cloud on its own line, not here.
  */
 export function fundFactPublishers(facts: FundFactsPayload): string[] {
-  return [...new Set([facts.nav, facts.expenseRatio, facts.netAssets, facts.leverage, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
-    .flatMap((value) => value ? [value.source] : []))];
+  return [...new Set([...[facts.nav, facts.expenseRatio, facts.netAssets, facts.leverage, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
+    .flatMap((value) => value ? [value.source] : []), ...facts.metalHoldings ? [facts.metalHoldings.source.publisher] : []])];
 }
 
 /** The newest NAV is stale: one line saying since when, as the report's note says it. */
