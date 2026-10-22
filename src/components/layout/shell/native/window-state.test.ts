@@ -62,13 +62,17 @@ function drawn(fragments: readonly CellRect[], cell: { x: number; y: number }): 
 test("windows raised back and forth stay under the pane menu and drag previews, which keep cutting their charts", () => {
   let layout = floatingLayout([50, 51]);
   // Focus moves between two windows, through both ways a pane is raised.
+  let highest = 0;
   for (let turn = 0; turn < 120; turn += 1) {
     const pane = turn % 2 === 0 ? "cryp" : "news";
     layout = turn % 3 === 0 ? bringToFront(layout, pane) : bringFloatingToFront(layout, pane);
+    highest = Math.max(highest, ...layout.floating.map((entry) => entry.zIndex ?? 50));
   }
   layout = bringFloatingToFront(layout, "cryp");
 
-  expect(Math.max(...layout.floating.map((entry) => entry.zIndex ?? 50))).toBeLessThanOrEqual(FLOATING_PANE_MAX_Z);
+  expect(highest).toBe(FLOATING_PANE_MAX_Z);
+  // Window mode highlights a pane three levels up; at the top of the stack that still stays under the drag outline (95).
+  expect(highest + 3).toBeLessThan(95);
   const [cryp, news] = layout.floating;
   expect(cryp!.zIndex!).toBeGreaterThan(news!.zIndex!);
   // Unbounded, CRYP reached z 171 here, over the dock preview (96), which then no longer cut its chart.
