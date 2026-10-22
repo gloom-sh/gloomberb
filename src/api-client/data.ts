@@ -76,6 +76,7 @@ import {
   cloudEarningsTranscriptPath,
   cloudJobsMoversPath,
   cloudJobsPath,
+  cloudJobsPostingPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
   type IssuerListingParams,
@@ -132,6 +133,7 @@ import type {
   CloudEarningsCallAudioPayload,
   CloudEarningsTranscriptPayload,
   CloudJobsMoversPayload,
+  CloudJobsPostingDetail,
   CloudJobsPostingsPayload,
   CloudJobsResponse,
   CloudProxyStatementListPayload,
@@ -1005,6 +1007,10 @@ export class CloudDataApi {
     params: CloudJobsPostingsParams = {},
   ): Promise<CloudJobsPostingsPayload> {
     return this.request<CloudJobsPostingsPayload>(cloudJobsPostingsPath(ticker, params));
+  }
+
+  async getCloudJobsPosting(ticker: string, posting: { id: number } | { externalId: string }): Promise<CloudJobsPostingDetail> {
+    return this.request<CloudJobsPostingDetail>(cloudJobsPostingPath(ticker, posting));
   }
 
   async getCloudJobsMovers(limit?: number, offset?: number): Promise<CloudJobsMoversPayload> {

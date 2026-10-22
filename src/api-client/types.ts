@@ -910,6 +910,17 @@ export interface CloudJobsPosting {
   tags: string[];
 }
 
+/** One posting as its detail view reads it. */
+export interface CloudJobsPostingDetail extends CloudJobsPosting {
+  /** The careers system's own id. */
+  externalId: string;
+  /** As the careers system writes it ("Full time", "FULL_TIME", "CDI"). */
+  employmentType: string | null;
+  /** The start of the role's description, as read from its page. */
+  description: string | null;
+  closedAt: string | null;
+}
+
 export interface CloudJobsChange {
   count: number;
   percent: number | null;
