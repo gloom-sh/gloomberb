@@ -29,7 +29,6 @@ import {
   boardReport,
   boardRows,
   fallbackReport,
-  marketDays,
   newYorkToday,
   ownershipBySymbol,
   relativeDays,
@@ -41,12 +40,18 @@ import {
 import { boardColumns, boardHasActuals, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
 import {
+  boardRangeDays,
+  boardRangeLabel,
+  boardRangeWeek,
+  boardRangeWords,
   CALENDAR_WEEK_OFFSETS,
   calendarDays,
   calendarGroupKey,
   calendarWeekDates,
   calendarWeekLabel,
-  type CalendarWeekOffset,
+  isBoardRangeDay,
+  requestedBoardRange,
+  type BoardRange,
 } from "./calendar-model";
 import { cachedEarningsCalendar, earningsCalendarKey, loadEarningsBoard } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
@@ -71,7 +76,7 @@ const ERN_VIEWS: ReadonlyArray<{ value: BoardView; label: string }> = [{ value: 
 
 interface BoardData {
   /** The query read, by `earningsCalendarKey`: kept data from another week is not this week's. */
-  range: string;
+  queryKey: string;
   reports: BoardReport[];
   stale: boolean;
   refreshError: string | null;
@@ -116,7 +121,11 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   // A layout's `view` setting opens on the week; a choice made in the pane wins.
   const [requestedView] = usePaneSettingValue<string>("view", "");
   const [chosenView, setView] = usePluginPaneState<BoardView | null>("view", null);
-  const [weekOffset, setWeekOffset] = usePluginPaneState<CalendarWeekOffset>("week", 0);
+  // `EVTS --week last` or `--date 2026-10-15` opens on those days; a choice in the bar's Range wins. One
+  // range for both views: the table draws its days, the calendar its week (this week for the days ahead).
+  const [requestedDate] = usePaneSettingValue<string>("date", "");
+  const [requestedWeek] = usePaneSettingValue<string>("week", "");
+  const [range, setRange] = usePluginPaneState<BoardRange>("range", requestedBoardRange(requestedDate, requestedWeek));
   // The calendar's groups opened past their "+N more" slot, by `calendarGroupKey`.
   const [expanded, setExpanded] = useState(NONE_EXPANDED);
   const desktop = useUiCapabilities().nativePaneChrome === true;
@@ -132,24 +141,27 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     () => (scopedSymbols.length > 0 ? [...scopedSymbols] : [...owned.keys()]).slice(0, MAX_SYMBOLS),
     [owned, scopedSymbols],
   );
-  const days = useMemo(() => (market ? marketDays(today) : relativeDays(today)), [market, today]);
+  // The days ahead by default; a chosen week or day, past or ahead, for the market and for named companies alike.
+  const days = useMemo(() => (market || range ? boardRangeDays(range, today) : relativeDays(today)), [market, range, today]);
+  const weekOffset = boardRangeWeek(range, today);
   const week = useMemo(() => calendarWeekDates(today, weekOffset), [today, weekOffset]);
-  // The calendar reads its week, reported days included; the table its days ahead.
+  // The calendar reads its week, reported days included; the table its days.
   const query = useMemo<EarningsCalendarQuery>(() => calendar
     ? { from: week[0]!, to: week.at(-1)!, perDay: market ? MARKET_PER_DAY : 0, symbols: named }
-    : market
-      ? { from: days[0]!.from, to: days.at(-1)!.to, perDay: MARKET_PER_DAY, symbols: named }
+    : market || range
+      ? { from: days[0]!.from, to: days.at(-1)!.to, perDay: market ? MARKET_PER_DAY : 0, symbols: named }
       : { from: today, to: addDays(today, HORIZON_DAYS), perDay: 0, symbols: named },
-  [calendar, days, market, named, today, week]);
-  const range = earningsCalendarKey(query);
+  [calendar, days, market, named, range, today, week]);
+  const queryKey = earningsCalendarKey(query);
 
   const loader = useCallback(async (force: boolean): Promise<BoardData> => {
-    if (!market && named.length === 0) return { range, reports: [], stale: false, refreshError: null };
+    if (!market && named.length === 0) return { queryKey, reports: [], stale: false, refreshError: null };
     // Named companies also go to the per-ticker calendar, which covers listings the stored one does not.
     const [cloud, fallback] = await Promise.allSettled([
       loadEarningsBoard(query, force),
       market ? Promise.resolve([] as EarningsEvent[]) : loadEarningsCalendar(dataProvider, named, { force }).then((result) => result.events
-        .filter((event) => !calendar || (event.earningsDate.toISOString().slice(0, 10) >= query.from && event.earningsDate.toISOString().slice(0, 10) <= query.to))),
+        // The per-ticker calendar is upcoming reports; a week or a chosen range keeps those in it.
+        .filter((event) => (!calendar && !range) || (event.earningsDate.toISOString().slice(0, 10) >= query.from && event.earningsDate.toISOString().slice(0, 10) <= query.to))),
     ]);
     if (cloud.status === "rejected" && (market || fallback.status === "rejected")) throw cloud.reason;
     const reports = cloud.status === "fulfilled" ? cloud.value.payload.reports.map((report) => boardReport(report, owned)) : [];
@@ -158,24 +170,24 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned))
       : [];
     return {
-      range,
+      queryKey,
       reports: [...reports, ...extra],
       stale: cloud.status === "fulfilled" && cloud.value.stale,
       refreshError: cloud.status === "rejected"
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
         : cloud.value.refreshError,
     };
-  }, [calendar, dataProvider, market, named, owned, query, range]);
+  }, [calendar, dataProvider, market, named, owned, query, queryKey, range]);
   const resource = useAsyncResource(loader, {
     keepPreviousData: true,
     initialData: () => {
       const cached = cachedEarningsCalendar(query);
-      return cached ? { range, reports: cached.payload.reports.map((report) => boardReport(report, owned)), stale: false, refreshError: null } : null;
+      return cached ? { queryKey, reports: cached.payload.reports.map((report) => boardReport(report, owned)), stale: false, refreshError: null } : null;
     },
   });
   const data = resource.data;
   // The week on screen is only the one read for it, never the last week's kept while this one loads or after it failed.
-  const weekData = data?.range === range ? data : null;
+  const weekData = data?.queryKey === queryKey ? data : null;
   const rows = useMemo(() => boardRows(data?.reports ?? [], days, sort, order === "mine"), [data, days, order, sort]);
   const reportRows = useMemo(() => rows.filter((row): row is BoardRow & { kind: "report" } => row.kind === "report"), [rows]);
   const slotsPerRow = calendarSlotsPerRow(width);
@@ -280,27 +292,44 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     { id: "mine", kind: "toggle", label: "Mine", value: mineOnly, defaultValue: false, onChange: setMineOnly },
   ];
   const orderView: QueryBarView<Order> = { value: order, options: ORDER_OPTIONS, onChange: setOrder };
-  // On the desktop the view picks the table or the week, and the order is a filter beside Mine.
-  const queryBar = !desktop ? <QueryBar width={width} filters={mineFilter} view={orderView} /> : (
+  // The weeks the bar offers, last week to three ahead, and the one on screen when it is another.
+  const weekOptions = (shown: number | null) => [...new Set([...CALENDAR_WEEK_OFFSETS, ...(shown == null ? [] : [shown])])]
+    .sort((left, right) => left - right)
+    .map((offset) => ({ value: String(offset), label: calendarWeekLabel(today, offset) }));
+  // One Range for both views. The table's: the days ahead, a week, or a day asked for (`--date`), which stays a
+  // choice once the bar moves off it. The calendar's: the week it draws, a day's own week.
+  const rangeDates = [...new Set([requestedDate, range].filter(isBoardRangeDay))];
+  const rangeFilter: QueryBarFilter = calendar
+    ? { id: "range", label: "Range", value: String(weekOffset), options: weekOptions(weekOffset), onChange: setRange }
+    : {
+      id: "range",
+      label: "Range",
+      value: range,
+      defaultValue: "",
+      options: [
+        { value: "", label: "Upcoming" },
+        ...weekOptions(range && !isBoardRangeDay(range) ? weekOffset : null),
+        ...rangeDates.map((date) => ({ value: date, label: boardRangeLabel(date, today)! })),
+      ],
+      onChange: (value: string) => { setRange(value); setSelectedKey(null); },
+    };
+  // On the desktop the view picks the table or the week, and the order is a filter beside Mine and the Range.
+  const queryBar = !desktop ? <QueryBar width={width} filters={[...mineFilter, rangeFilter]} view={orderView} /> : (
     <QueryBar
       width={width}
       filters={[
         ...mineFilter,
-        ...(calendar ? [{
-          id: "week",
-          label: "Week",
-          value: String(weekOffset),
-          options: CALENDAR_WEEK_OFFSETS.map((offset) => ({ value: String(offset), label: calendarWeekLabel(today, offset) })),
-          onChange: (value: string) => setWeekOffset(Number(value) as CalendarWeekOffset),
-        }] : []),
+        rangeFilter,
         { id: "order", label: "Order", inline: true, value: order, options: ORDER_OPTIONS, onChange: setOrder },
       ]}
       view={{ value: view, options: ERN_VIEWS, onChange: setView }}
     />
   );
-  const emptyStateTitle = market ? `No reports on the calendar ${calendar ? "this week" : "these days"}.`
+  // "last week", "on Thu Oct 15", "in the week of Nov 2": the days the empty board or week is of.
+  const rangeWords = calendar ? boardRangeWords(String(weekOffset), today) : boardRangeWords(range, today);
+  const emptyStateTitle = market ? `No reports on the calendar ${rangeWords ?? "these days"}.`
     : named.length === 0 ? "No portfolio or watchlist names."
-      : calendar ? "No reports from these companies this week." : "No upcoming reports.";
+      : rangeWords ? `No reports from these companies ${rangeWords}.` : "No upcoming reports.";
   const history = open ? (
     <EarningsHistoryView key={open.symbol} symbol={open.symbol} width={width} height={Math.max(4, height - 1)}
       focused={focused} registrationId="earnings-history" />

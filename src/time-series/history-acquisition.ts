@@ -1,6 +1,7 @@
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
-import { ProviderMissError } from "../sources/provider-errors";
+import { notATickerSymbol, ProviderMissError } from "../sources/provider-errors";
+import { indexRootSuggestion } from "../tickers/index-roots";
 import {
   HISTORY_RETENTION_MAX_AGE_MS,
   canonicalHistoryInterval,
@@ -297,6 +298,19 @@ async function withOlderBars(
   return current;
 }
 
+/**
+ * A failure that says no listing carries the symbol, offering the index a
+ * bare root names: `Not a ticker: VIX. Did you mean ^VIX (Cboe Volatility
+ * Index)?`. Null for any other failure.
+ */
+function notATickerText(error: unknown): string | null {
+  const message = error instanceof Error ? error.message.split("\n")[0]! : "";
+  const symbol = notATickerSymbol(message);
+  if (!symbol) return null;
+  const suggestion = message.includes(" Did you mean ") ? null : indexRootSuggestion(symbol);
+  return suggestion ? `Not a ticker: ${symbol}. ${suggestion}` : message;
+}
+
 export async function loadPriceHistory(
   provider: DataProvider,
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
@@ -306,10 +320,13 @@ export async function loadPriceHistory(
     ...(request.historySession ? { historySession: request.historySession } : {}) };
   let coverageNotice: string | null = null;
   let retentionError: HistoryRetentionError | null = null;
+  // No source has a listing for the symbol: no bar size would help, so the failure says that instead.
+  let notATicker: string | null = null;
   const observeFailure = (error: unknown) => {
     if (error instanceof SnapshotHistoryUnavailableError) throw error;
     if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
     if (isHistoryRetentionError(error)) retentionError ??= error;
+    notATicker ??= notATickerText(error);
   };
   const observeCoverage = (result: PriceHistoryResult) => {
     coverageNotice ??= historyCoverageNotice(result.coverageStart, request.visibleBounds.start);
@@ -382,8 +399,8 @@ export async function loadPriceHistory(
     }
   }
 
-  const unavailable = () => coverageNotice
-    ?? `Requested ${request.resolution} price history is unavailable for ${instrumentLabel(source)}. Choose Auto or a supported interval.`;
+  const unavailable = () => coverageNotice ?? notATicker
+    ?? `Requested ${request.resolution} price history is unavailable for ${instrumentLabel(source)}.`;
   const fail = (message: string): never => {
     if (retryAt !== undefined) throw new PriceHistoryAcquisitionError(message, retryAt);
     throw new Error(message);
@@ -421,7 +438,7 @@ export async function loadPriceHistory(
     if (source.period && source.period !== "auto" && isMarketFieldId(source.fieldId)
       && (result.resolution === null || !isResolutionFineEnoughForMarketPeriod(result.resolution, source.period))) return fail(unavailable());
   } catch (error) {
-    return fail(coverageNotice ?? (error instanceof Error ? error.message : String(error)));
+    return fail(coverageNotice ?? notATickerText(error) ?? (error instanceof Error ? error.message : String(error)));
   }
   const { points } = result;
   observeCoverage(result);

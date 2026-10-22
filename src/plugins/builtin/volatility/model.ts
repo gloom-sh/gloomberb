@@ -1,3 +1,4 @@
+import { PERIOD_BASE_MAX_GAP_DAYS, periodBaseDay } from "../../../market-data/market/period-return";
 import type { CloudFredObservationPayload, CloudFredSeriesInfoPayload } from "../../../api-client";
 import type { PricePoint } from "../../../types/financials";
 import { VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES } from "../shared/volatility-indices";
@@ -354,21 +355,15 @@ export interface VolatilityCurveLookback {
   values: Partial<Record<string, number>>;
 }
 
-/** A week back is seven calendar days; a month back is the same day of the previous month, or its last day. */
+/** A week back is seven calendar days; a month back is the same day of the previous month, or its last day (periodBaseDay). */
 export function volatilityLookbackDate(date: string, id: VolatilityLookbackId): string {
-  if (id === "1W") return new Date(Date.parse(date) - 7 * DAY_MS).toISOString().slice(0, 10);
-  const target = new Date(`${date}T00:00:00.000Z`);
-  const day = target.getUTCDate();
-  target.setUTCDate(1);
-  target.setUTCMonth(target.getUTCMonth() - 1);
-  target.setUTCDate(Math.min(day, new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()));
-  return target.toISOString().slice(0, 10);
+  return periodBaseDay(date, id);
 }
 
 /**
  * The curve a week and a month before its date, read from the same daily
  * histories and aligned the same way: the last date on or before the look-back
- * where the 30D and 3M both closed, else where two tenors did, within ten days.
+ * where the 30D and 3M both closed, else where two tenors did, within a market closure of it (PERIOD_BASE_MAX_GAP_DAYS).
  * A tenor without a close on that date is a gap, never a neighbouring day.
  */
 export function volatilityCurveLookbacks(data: Pick<VolatilityData, "curve" | "board" | "fred">): VolatilityCurveLookback[] {
@@ -382,7 +377,7 @@ export function volatilityCurveLookbacks(data: Pick<VolatilityData, "curve" | "b
   }));
   return (["1W", "1M"] as const).map((id) => {
     const target = volatilityLookbackDate(curve.date!, id);
-    const floor = new Date(Date.parse(target) - 10 * DAY_MS).toISOString().slice(0, 10);
+    const floor = new Date(Date.parse(target) - PERIOD_BASE_MAX_GAP_DAYS * DAY_MS).toISOString().slice(0, 10);
     const counts = new Map<string, number>();
     for (const history of histories.values()) for (const day of history.keys()) {
       if (day >= floor && day <= target) counts.set(day, (counts.get(day) ?? 0) + 1);

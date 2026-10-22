@@ -9,18 +9,56 @@ import { createCalculatorSurfaceDependencies, loadCalculatorSurfaceVol, type Cal
 const number = (value: number) => Number.isFinite(value) ? value.toFixed(6) : "--";
 const metric = (label: string, value: number, suffix = ""): HeadlessPaneEntry => ({ label, value, formatted: `${number(value)}${suffix}` });
 
+/** What was typed for each input, by option key: the CLI's strings, a pane's settings. */
+type EnteredInputs = Readonly<Record<string, unknown>>;
+const PLAIN_DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+/** A computed number without float noise or padding: 73.15, 30, 60. */
+const plain = (value: number) => Number.isFinite(value) ? String(Number(value.toPrecision(12))) : "--";
+
+/**
+ * An input echoed as it was entered: the typed text when it was a plain
+ * decimal of this value (73.15 stays 73.15, 73.150 stays 73.150), else the
+ * number without padding. Percent inputs (`scale` 100) compare the typed
+ * percent with the decimal the model reads.
+ */
+function enteredText(entered: EnteredInputs, key: string, value: number, scale = 1): string {
+  const raw = entered[key];
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (PLAIN_DECIMAL.test(text) && Number(plain(Number(text) / scale)) === Number(plain(value))) return text.replace(/^\+/, "");
+  return plain(value * scale);
+}
+
+/** A price or day count, at the precision it was entered. */
+const input = (entered: EnteredInputs, label: string, key: string, value: number): HeadlessPaneEntry => (
+  { label, value, formatted: enteredText(entered, key, value) }
+);
+
+/** A volatility or rate in percent, as the options ask for it: 60%, never 0.600000. */
+const percentInput = (entered: EnteredInputs, label: string, key: string, value: number): HeadlessPaneEntry => {
+  const text = enteredText(entered, key, value, 100);
+  return { label, value: Number(text), unit: "%", formatted: `${text}%` };
+};
+
+/** A volatility read off the surface was not typed, so it reads to the hundredth of a point. */
+const surfacePercent = (label: string, value: number): HeadlessPaneEntry => {
+  const percent = Number((value * 100).toFixed(2));
+  return { label, value: percent, unit: "%", formatted: `${percent}%` };
+};
+
 function report(draft: OptionCalcDraft, valuation: OptionValuation | null,
   implied: { volatility: number | null; note: string | null }, surface: CalculatorSurfaceVol | null,
-  errors: string[], effectiveTreeSteps: number | null = null): HeadlessBundleResult {
+  errors: string[], effectiveTreeSteps: number | null = null, entered: EnteredInputs = {}): HeadlessBundleResult {
   const model = draft.pricingModel ?? "european";
   return {
     sections: [
       { title: "Inputs", entries: [
         ...(draft.symbol ? [{ label: "Underlying", value: draft.symbol }] : []),
         { label: "Model", value: model }, { label: "Side", value: draft.side },
-        metric("Spot", draft.spot), metric("Strike", draft.strike), metric("Days to expiry", draft.daysToExpiry),
-        metric("Volatility", draft.volatility, " decimal"), metric("Annual rate", draft.rate, " decimal"),
-        metric("Annual dividend yield", draft.dividendYield, " decimal"),
+        input(entered, "Spot", "spot", draft.spot), input(entered, "Strike", "strike", draft.strike),
+        input(entered, "Days to expiry", "days", draft.daysToExpiry),
+        surface?.volatility != null ? surfacePercent("Volatility", draft.volatility) : percentInput(entered, "Volatility", "volatility", draft.volatility),
+        percentInput(entered, "Annual rate", "rate", draft.rate),
+        percentInput(entered, "Annual dividend yield", "dividendYield", draft.dividendYield),
         ...(model === "american" ? [{ label: "Requested tree steps", value: draft.steps ?? 400 }] : []),
         ...(effectiveTreeSteps != null && effectiveTreeSteps !== (draft.steps ?? 400)
           ? [{ label: "Effective tree steps", value: effectiveTreeSteps }] : []),
@@ -68,7 +106,8 @@ export const optionsCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "marketPrice", aliases: ["market-price"], type: "string", description: "Observed premium per unit for implied volatility inversion" },
   ],
   async load(args, ctx) {
-    const draft = draftFromCalculatorInputs({ ...ctx.settings, ...args.options });
+    const entered = { ...ctx.settings, ...args.options };
+    const draft = draftFromCalculatorInputs(entered);
     const dividends = draft.dividends ?? [];
     if (draft.pricingModel !== "american" && dividends.some((dividend) => dividend.amount > 0)) {
       throw new Error("Discrete cash dividends require the American CRR model.");
@@ -83,7 +122,7 @@ export const optionsCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
         spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry, signal: ctx.signal,
       }, createCalculatorSurfaceDependencies(ctx.marketData, ctx.apiClient));
       if (surface.volatility == null || surface.error) return report(draft, null,
-        { volatility: null, note: "Surface volatility unavailable" }, surface, [surface.error ?? "Surface volatility unavailable"]);
+        { volatility: null, note: "Surface volatility unavailable" }, surface, [surface.error ?? "Surface volatility unavailable"], null, entered);
       valuedDraft = { ...draft, volatility: surface.volatility };
     }
     ctx.signal.throwIfAborted();
@@ -93,6 +132,6 @@ export const optionsCalculatorHeadless: HeadlessPaneDefinition<"bundle"> = {
     const implied = valuedDraft.marketPrice > 0 ? valuedDraft.pricingModel === "american"
       ? solveBinomialImpliedVolatility(valuedDraft, valuedDraft.marketPrice, tree)
       : solveImpliedVolatility(valuedDraft, valuedDraft.marketPrice) : { volatility: null, note: null };
-    return report(valuedDraft, valuation, implied, surface, [], effectiveTreeSteps);
+    return report(valuedDraft, valuation, implied, surface, [], effectiveTreeSteps, entered);
   },
 };

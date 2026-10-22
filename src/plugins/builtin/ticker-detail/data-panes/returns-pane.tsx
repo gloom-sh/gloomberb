@@ -37,12 +37,16 @@ import {
   buildReturnRows,
   closedMarketNote,
   effectiveReturnResolution,
+  isTodayReturnRow,
+  returnBaseCloseDay,
   RETURN_RANGES,
   type ReturnRange,
   type ReturnRow,
 } from "./returns-model";
 import { loadReturnSeries, type ReturnSeries } from "./returns-history";
 import { formingHistoryBar, formingHistoryBarText, historyBarDate } from "./history-bars";
+import { periodBaseText } from "../../../../market-data/market/period-return";
+import { DAY_SO_FAR_TEXT } from "../../../../time-series/session-bar";
 
 type ReturnColumnId = "time" | "price" | "intervalChange" | "intervalPercent" | "cumulativeChange" | "cumulativePercent";
 type ReturnColumn = DataTableColumn & { id: ReturnColumnId };
@@ -192,15 +196,24 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
     () => data ? formingHistoryBar(data.resolution, newestDate, data.venue || undefined, Date.now()) : null,
     [data, newestDate],
   );
-  const formingKey = forming ? returnRows[0]?.key : undefined;
+  // Today's daily bar is the session still trading, marked as Historical Prices marks it.
+  const dayToDate = !!data && isTodayReturnRow(returnRows[0], data.resolution, data.venue || undefined, Date.now());
+  const formingKey = forming || dayToDate ? returnRows[0]?.key : undefined;
   const barSize = data?.resolution ?? shownResolution;
+  // The close every total is measured from: `from Mon 21 Sep close`.
+  const baseText = useMemo(() => {
+    const day = data && returnRows.length ? returnBaseCloseDay(data.points, data.visibleFrom, data.resolution, data.venue || undefined, Date.now()) : null;
+    return day ? periodBaseText(day) : null;
+  }, [data, returnRows.length]);
   // A shut market's window ends at its last session, which the footer names.
   const marketInfo = useMemo<PaneFooterSegment[]>(() => [
+    ...baseText ? [{ id: "base", parts: [{ text: baseText, tone: "muted" as const }] }] : [],
     ...data?.lastSession
       ? [{ id: "market", parts: [{ text: closedMarketNote(data.lastSession, data.visibleTo), tone: "muted" as const }] }]
       : [],
     ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
-  ], [data, forming, newestDate]);
+    ...dayToDate ? [{ id: "forming", parts: [{ text: DAY_SO_FAR_TEXT, tone: "muted" as const }] }] : [],
+  ], [baseText, data, dayToDate, forming, newestDate]);
   usePaneStatusFooter({ registrationId: "returns", loading, error, hints, info: marketInfo });
 
   const integrityNotice = priceHistoryIntegrityNotice(returnRows.filter((row) => row.inconsistent).length);
@@ -288,6 +301,8 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
         ["Range", data?.range ?? range],
         ["Interval", getChartResolutionLabel(data?.resolution ?? shownResolution)],
         ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
+        ...(dayToDate && newestDate ? [["Partial bar", `${newestDate}, ${DAY_SO_FAR_TEXT}`]] : []),
+        ...(baseText ? [["Base", baseText]] : []),
         ["Window", data ? `after ${new Date(data.visibleFrom).toISOString()} through ${new Date(data.visibleTo).toISOString()}` : ""],
         ...(data?.lastSession ? [["Market", closedMarketNote(data.lastSession, data.visibleTo)]] : []),
         ["Time zone", "UTC, bar open"],

@@ -1120,9 +1120,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A coin's volume is traded value in its quote currency: said in every row and on the status line.
     const volume = historyVolume(unit, traded);
     const rows = historyRows(points, resolution, unit.currency, unit.unit, volume);
-    const served = range === "YTD" ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval))) : rows;
     // Bars stop arriving on the listing's own trading days, not New York's.
     const venue = quote?.listingExchangeName || exchange || undefined;
+    const served = range === "YTD" ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;
     // October's monthly bar on 16 Oct runs through the 15th: marked partial, and the status line says how far.
     const forming = formingPeriodBar(served, venue);
     // A complete one is dated by the day its last session closed, the day its close is from.

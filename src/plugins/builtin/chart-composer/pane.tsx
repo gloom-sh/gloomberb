@@ -52,6 +52,7 @@ import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
+import { seriesMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
@@ -943,9 +944,9 @@ function ChartComposerSurface({
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
     && statusError?.startsWith(`${study.id}: `));
   const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
-  // Failed series use their authored id in errors and their display label in warnings.
-  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
-  const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
+  // Failed series name what was asked for in errors and their display label in warnings.
+  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${seriesMessageName(entry)}: `));
+  const errorMessage = errorSeries ? statusError?.slice(`${seriesMessageName(errorSeries)}: `.length) : undefined;
   // The label the resolver wrote its warnings with, before the legend named the company.
   const errorSeriesLabel = (resolution.legendSeries?.find((entry) => entry.id === errorSeries?.id)
     ?? legendSeries?.find((entry) => entry.id === errorSeries?.id))?.label;

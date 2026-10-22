@@ -86,7 +86,8 @@ export function seedChartResolutionResult(
     series[0] = { ...primary, priorClose: sessionView.priorClose };
   }
   const resolutionSupport = support.length === series.length ? intersectChartResolutionSupport(support) : [];
-  const priceComparison = resolvePriceComparison(spec, series, bounds, resolution);
+  const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, spec.viewport.dateWindow,
+    { preset: explicitBounds(spec) || runtimeRequestBounds(options) ? null : spec.viewport.range, now: referenceNow?.getTime() ?? Date.now() });
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;

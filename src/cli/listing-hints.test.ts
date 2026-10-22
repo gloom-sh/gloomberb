@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { marketDataCliCommands } from "./commands/market";
-import { indexRootFor, indexRootTryLine } from "./index-roots";
+import { indexRootTryLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
 import {
   futuresTryLine, ListingArgError, listingChoiceNote, parseListingArg, quoteBareListing, quotedListingChoiceNotes, resolveCliListing, type ListingVenue,
 } from "./listing-arg";

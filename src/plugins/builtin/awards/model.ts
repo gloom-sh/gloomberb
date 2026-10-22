@@ -67,6 +67,24 @@ export function awardsPreviewNote(data: AwardsPayload, filter: AwardFilter): str
   });
 }
 
+/** The server's word for a selection with no awards: the report's empty line, not a gap in coverage. */
+const NO_AWARDS = "No awards are available for this selection.";
+
+/** Why the awards asked for are empty, as the server says it; null while there are some. */
+export function awardsEmptyReason(data: Pick<AwardsPayload, "gaps">): string | null {
+  return data.gaps.includes(NO_AWARDS) ? NO_AWARDS : null;
+}
+
+/**
+ * Collection health (jurisdictions awaiting a first collection, unfinished
+ * windows, quarantined records, a paused or capped store): what the awards
+ * shown may be missing, so coverage notes in the pane, `fn AWARDS` and its
+ * JSON, never errors.
+ */
+export function awardsCoverageNotes(data: Pick<AwardsPayload, "gaps">): string[] {
+  return data.gaps.filter((gap) => gap !== NO_AWARDS);
+}
+
 /** Award dates after the response's own date are the source's, not a mapping slip; they say so instead of passing as past awards. */
 export function futureAwardDatesNote(rows: readonly AwardRow[], generatedAt: string): string | null {
   const today = generatedAt.slice(0, 10);
