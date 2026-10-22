@@ -57,8 +57,9 @@ import { hongKongListingCode, tickerHasListingSuffix } from "../listing-symbols"
 import { parseSecAcceptanceTime } from "../sec-edgar/acceptance-time";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
-  cloudNewsParams,
+  cloudNewsReadArticles,
   mapCloudNewsArticle,
+  readCloudNews,
 } from "./news";
 import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
@@ -956,21 +957,21 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
           return normalizeNewsFeed(query) === "ticker" ? !!query.ticker && !predictionMarketListing(query.ticker, query.exchange) : true;
         },
         async fetchNewsPage(query: NewsQuery) {
-          const response = await withCloudFallback(
-            () => apiClient.getCloudNews(cloudNewsParams(query)),
+          const read = await withCloudFallback(
+            () => readCloudNews(apiClient, query),
             "Cloud news is unavailable",
           );
           return {
-            articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
-            nextCursor: response.nextCursor ?? null,
+            articles: cloudNewsReadArticles(read, query.ticker),
+            nextCursor: read.nextCursor ?? null,
           };
         },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {
-          const response = await withCloudFallback(
-            () => apiClient.getCloudNews(cloudNewsParams(query)),
+          const read = await withCloudFallback(
+            () => readCloudNews(apiClient, query),
             "Cloud news is unavailable",
           );
-          return response.items.map((item) => mapCloudNewsArticle(item, query.ticker));
+          return cloudNewsReadArticles(read, query.ticker);
         },
         async fetchNewsStory(storyId: string): Promise<NewsArticle | null> {
           const story = await withCloudFallback(

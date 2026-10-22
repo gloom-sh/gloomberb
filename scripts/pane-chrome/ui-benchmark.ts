@@ -14,8 +14,9 @@ import { pixelChange } from "./ui-audit-compare";
  * reports; it never fails a change for moving pixels.
  *
  *   bun run ui:benchmark [--base <ref>] [--out <dir>] [--replay <dir>] [--widths 640,1280] [--only T,MAP]
- *   bun run ui:benchmark shoot --base <ref> --shard 0/4 --out <dir>     one shard (CI)
- *   bun run ui:benchmark report --shards <dir> --out <dir> [--expect-shards 4] [--comment <pr>]
+ *   bun run ui:benchmark shoot --base <ref> --shard 0/8 --out <dir> [--base-cache <dir>] [--base-only]   one shard (CI)
+ *   bun run ui:benchmark base-key --base <ref> --shard 0/8 --replay <dir>   the key a base's pictures are kept under
+ *   bun run ui:benchmark report --shards <dir> --out <dir> [--expect-shards 8] [--comment <pr>]
  *
  * Both sides read Gloom Cloud from one replay folder (web-app.ts), offline,
  * so both draw the same data and neither is pictured while a fetch is still
@@ -25,6 +26,18 @@ import { pixelChange } from "./ui-audit-compare";
  * it), so a read the snapshot lacks draws the same offline state on both. The base is a worktree of `--base`
  * (default: where HEAD left origin/main) under the cache folder; the head is
  * this checkout. The audit of each side is ui-audit.ts, from this checkout.
+ *
+ * A base's pictures can be kept and used again (CI: main pictures each of its
+ * commits once, and a pull request pictures only its head against the
+ * commit it left main at). `shoot --base-cache <dir>` takes the base's
+ * pictures from `<dir>` when they were taken for the same commit, shard,
+ * widths and snapshot, and otherwise takes them and keeps them there, unless
+ * a view failed to open on the base; `--base-only` stops there. `base-key`
+ * prints what CI keeps `<dir>` under: the commit and shard, and a digest of
+ * everything else the pictures depend on (the pinned Chrome, the snapshot's
+ * clock and plugin lock, the fonts, and this checkout's files that take them),
+ * so kept pictures are the ones a fresh run takes. Only offline runs keep
+ * pictures: without a snapshot the base fetches what the replay lacks, live.
  *
  * The report says when it is incomplete: a shard that did not finish, and the
  * views pictured on one side only (a view the head lost or gained is a
@@ -58,7 +71,7 @@ function baseWorktree(sha: string): string {
   return dir;
 }
 
-interface ShootOptions { base: string; out: string; replay: string; widths: string; shard?: string; only?: string; offline: boolean }
+interface ShootOptions { base: string; out: string; replay: string; widths: string; shard?: string; only?: string; offline: boolean; baseCache?: string; baseOnly?: boolean }
 
 /**
  * One pass of the audit, white theme only, no report: `fetch` opens every view
@@ -81,18 +94,63 @@ function audit(pass: "fetch" | "before" | "after" | "before-again" | "after-agai
   ]);
 }
 
+/** What a base's pictures were taken for: kept ones are used only for the same. */
+function baseSide(sha: string, options: ShootOptions): string {
+  return JSON.stringify({ base: sha, shard: options.shard ?? "0/1", widths: options.widths, only: options.only ?? null, offline: options.offline });
+}
+
+/** A folder whose `before/` holds this base's pictures: this run's, from a `--base-only` step, or kept ones. */
+async function keptBase(sha: string, options: ShootOptions): Promise<string | null> {
+  if (!options.baseCache || !options.offline) return null;
+  for (const dir of [options.out, options.baseCache]) {
+    const file = join(dir, "base.json");
+    if (existsSync(file) && existsSync(join(dir, "before", "views.jsonl")) && await Bun.file(file).text() === baseSide(sha, options)) return dir;
+  }
+  return null;
+}
+
+/** The base's pictures kept in `--base-cache`, unless a view failed to open: a fresh run might open it. */
+async function keepBase(sha: string, options: ShootOptions & { baseCache: string }): Promise<void> {
+  const failed = await failedViews(join(options.out, "before"));
+  if (failed.length) {
+    console.warn(`The base's pictures are not kept: ${list(failed)} did not open.`);
+    return;
+  }
+  await rm(options.baseCache, { recursive: true, force: true });
+  await mkdir(options.baseCache, { recursive: true });
+  await cp(join(options.out, "before"), join(options.baseCache, "before"), { recursive: true });
+  // Written last: a folder with this file holds every picture.
+  await Bun.write(join(options.baseCache, "base.json"), baseSide(sha, options));
+}
+
 async function shoot(options: ShootOptions): Promise<void> {
   // --end-of-options: a ref is never read as an option, whatever a dispatch passes.
   const sha = git(["rev-parse", "--verify", "--end-of-options", `${options.base}^{commit}`]);
   await mkdir(options.out, { recursive: true });
-  const dirty = git(["status", "--porcelain", "--untracked-files=no"]) !== "";
-  await Bun.write(join(options.out, "sides.json"), JSON.stringify({ base: sha, head: git(["rev-parse", "HEAD"]), dirty, shard: options.shard ?? "0/1", offline: options.offline }));
-  const base = baseWorktree(sha);
-  if (!options.offline) {
-    audit("fetch", base, options);
-    await rm(join(options.out, "fetch"), { recursive: true, force: true });
+  if (!options.baseOnly) {
+    const dirty = git(["status", "--porcelain", "--untracked-files=no"]) !== "";
+    await Bun.write(join(options.out, "sides.json"), JSON.stringify({ base: sha, head: git(["rev-parse", "HEAD"]), dirty, shard: options.shard ?? "0/1", offline: options.offline }));
   }
-  audit("before", base, options);
+  const base = baseWorktree(sha);
+  const kept = await keptBase(sha, options);
+  if (kept) {
+    if (kept !== options.out) {
+      await rm(join(options.out, "before"), { recursive: true, force: true });
+      await cp(join(kept, "before"), join(options.out, "before"), { recursive: true });
+    }
+    console.log(`The base's pictures of ${sha.slice(0, 12)}: ${kept === options.out ? "taken earlier in this run" : `kept, from ${kept}`}.`);
+  } else {
+    if (!options.offline) {
+      audit("fetch", base, options);
+      await rm(join(options.out, "fetch"), { recursive: true, force: true });
+    }
+    audit("before", base, options);
+    if (options.baseCache && options.offline) {
+      await Bun.write(join(options.out, "base.json"), baseSide(sha, options));
+      await keepBase(sha, { ...options, baseCache: options.baseCache });
+    }
+  }
+  if (options.baseOnly) return;
   const head = resolve(join(import.meta.dir, "../.."));
   audit("after", head, options);
   // A view that moved is pictured once more on each side: if two pictures of the same code
@@ -118,6 +176,67 @@ async function shoot(options: ShootOptions): Promise<void> {
   await rm(join(options.out, "web-after"), { recursive: true, force: true });
   await rm(join(options.out, "before-again"), { recursive: true, force: true });
   await rm(join(options.out, "after-again"), { recursive: true, force: true });
+}
+
+/**
+ * This checkout's files that picture the base, whichever the base is: the
+ * audit's scripts (the pinned Chrome among them), the host modules they read
+ * the plugins' panes with, the dependencies they run on and the workflow
+ * that runs them. The base's own code is its commit.
+ */
+const TOOLING = [
+  "scripts/pane-chrome",
+  "scripts/tui-benchmark-harness.ts",
+  "src/plugins/host-modules.ts",
+  "src/plugins/host-link.ts",
+  "src/plugins/host-resolver.ts",
+  "src/plugins/plugin-export.ts",
+  "src/plugins/web-bundled.ts",
+  "src/plugins/plugin-names.ts",
+  "package.json",
+  "bun.lock",
+  ".github/workflows/ui-benchmark.yml",
+];
+
+function sha256(text: string): string {
+  return new Bun.CryptoHasher("sha256").update(text).digest("hex");
+}
+
+/** The fonts the browser can fall back to, by file and version. */
+function fonts(): string {
+  try {
+    const listed = Bun.spawnSync(["fc-list", "--format", "%{file}\t%{fontversion}\n"], { stdout: "pipe", stderr: "ignore" });
+    return listed.exitCode === 0 ? sha256(listed.stdout.toString().split("\n").sort().join("\n")) : "none";
+  } catch {
+    return "none";
+  }
+}
+
+/**
+ * The key a base's pictures are kept under (`shoot --base-cache`), or null
+ * with why when they cannot be kept: no snapshot to read offline, or one
+ * without a plugin lock (the registry would be read live), or tooling with
+ * uncommitted changes.
+ */
+async function baseKey(sha: string, options: ShootOptions): Promise<{ key: string; parts: Record<string, string> } | { key: null; why: string }> {
+  if (options.only) return { key: null, why: "--only pictures some functions" };
+  const clock = join(options.replay, "clock.json");
+  const lock = join(options.replay, "plugins.lock.json");
+  if (!existsSync(clock) || !existsSync(lock)) return { key: null, why: `no snapshot with a plugin lock in ${options.replay}` };
+  if (git(["status", "--porcelain", "--untracked-files=no", "--", ...TOOLING]) !== "") return { key: null, why: "the tooling has uncommitted changes" };
+  const tooling = TOOLING.map((path) => Bun.spawnSync(["git", "rev-parse", `HEAD:${path}`], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() || "none");
+  const browser = await Bun.file(join(import.meta.dir, "browser.ts")).text();
+  const parts: Record<string, string> = {
+    chrome: /^const CHROME_VERSION = "(.*)";$/m.exec(browser)?.[1] ?? "unknown",
+    // A new recording has a new clock, so a snapshot recorded again under the same cache key is told apart.
+    snapshot: sha256(`${await Bun.file(clock).text()}\n${await Bun.file(lock).text()}`),
+    tooling: sha256(tooling.join("\n")),
+    fonts: fonts(),
+    platform: `${process.platform}-${process.arch} ${process.env.LANG ?? ""} ${process.env.LC_ALL ?? ""} ${process.env.TZ ?? ""}`,
+    widths: options.widths,
+  };
+  const [index, count] = (options.shard ?? "0/1").split("/").map(Number) as [number, number];
+  return { key: `ui-benchmark-base-v1-${index + 1}of${count}-${sha}-${sha256(JSON.stringify(parts)).slice(0, 16)}`, parts };
 }
 
 async function lines(file: string): Promise<string[]> {
@@ -319,7 +438,7 @@ function postComment(pr: string, bodyFile: string): void {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const command = ["shoot", "report"].includes(args[0] ?? "") ? args.shift()! : "all";
+  const command = ["shoot", "report", "base-key"].includes(args[0] ?? "") ? args.shift()! : "all";
   const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-benchmark", "run"));
   if (command === "report") {
     const expected = takeOption(args, "--expect-shards");
@@ -335,7 +454,20 @@ async function main(): Promise<void> {
     shard: takeOption(args, "--shard"),
     only: takeOption(args, "--only"),
     offline: args.includes("--offline"),
+    baseCache: takeOption(args, "--base-cache") ? resolve(takeOption(args, "--base-cache")!) : undefined,
+    baseOnly: args.includes("--base-only"),
   };
+  if (command === "base-key") {
+    // Printed alone on stdout for CI to read; nothing when the pictures cannot be kept.
+    const result = await baseKey(git(["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`]), options);
+    if (result.key !== null) {
+      console.error(`The base's pictures are kept under ${result.key}: ${JSON.stringify(result.parts)}`);
+      console.log(result.key);
+    } else {
+      console.error(`The base's pictures are not kept: ${result.why}.`);
+    }
+    return;
+  }
   await shoot(options);
   if (command === "all") await report(join(out, "shards"), out, null, null);
 }

@@ -49,7 +49,8 @@ const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
   { key: "following", header: "Following" },
   { key: "eventDate", header: "Event date", textFormat: (value, row) => text(value) || (row.leadDays == null ? "" : "not known yet") },
-  { key: "leadDays", header: "Days before", align: "right" },
+  // A results alert waits for the report instead of a lead time.
+  { key: "leadDays", header: "Days before", align: "right", textFormat: (value, row) => (row.when === "results" ? "results" : value == null ? "-" : String(value)) },
   { key: "state", header: "State" },
   { key: "since", header: "Since" },
 ];
@@ -92,6 +93,7 @@ function eventRow(rule: EventAlertRule, today: string): HeadlessPaneRow {
     following: scheduled ? scheduledEventName(scheduled.target) : eventAlertTarget(rule),
     eventDate: scheduled ? rule.eventDate ?? null : null,
     leadDays: scheduled?.leadDays ?? null,
+    ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
     state: ruleState(rule, today),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
   };

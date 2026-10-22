@@ -29,7 +29,7 @@ import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -832,6 +832,11 @@ export class CloudDataApi {
       `/cloud/crypto/stablecoins/supply/${encodeURIComponent(symbol)}`,
       { signal: AbortSignal.timeout(30_000) },
     );
+  }
+
+  /** Total DeFi TVL, the largest protocols and chains with 7D and 30D changes, and the total's daily history. */
+  async getCloudDefiTvl(): Promise<DefiTvlPayload> {
+    return this.request<DefiTvlPayload>("/cloud/crypto/defi/tvl", { signal: AbortSignal.timeout(30_000) });
   }
 
   /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */

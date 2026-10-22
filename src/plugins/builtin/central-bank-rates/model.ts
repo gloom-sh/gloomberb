@@ -20,7 +20,9 @@ export function policyHistory(row: CentralBankRow) {
 }
 export interface PolicyBoardRow extends MarketBoardRow { observation: CentralBankRow }
 export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
-  return { id: row.id, label: row.label, labelDetail: row.instrument, value: row.value, valueText: policyLevel(row),
+  // One country's bank leads with its flag; the euro area's with the EU's.
+  const country = row.countryCodes.length === 1 ? row.countryCodes[0]! : row.label;
+  return { id: row.id, label: row.label, labelDetail: row.instrument, country, value: row.value, valueText: policyLevel(row),
     change: row.changeBps, changeText: policyChange(row), changeAsOf: row.lastChangeDate,
     percentile: row.percentile.value, asOf: row.asOf, status: row.status, observation: row,
     history: policyHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]) };

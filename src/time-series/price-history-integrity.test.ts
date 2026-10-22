@@ -7,7 +7,7 @@ import { historicalPricesHeadless } from "../plugins/builtin/ticker-detail/headl
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { extractPriceSeries } from "./market";
 import { appendLiveQuotePoint } from "./chart-data";
-import { seedChartResolutionResult } from "./resolve";
+import { seedChartResolutionResult } from "./chart-seed";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolveStudies } from "./studies";
 import { buildPriceReturnFields } from "../market-data/performance";

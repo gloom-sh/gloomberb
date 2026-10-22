@@ -39,7 +39,9 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
-import { cachedCryptoMarkets, cachedStablecoinSupply, loadCryptoMarkets, loadStablecoinSupply } from "./client";
+import { cachedCryptoMarkets, cachedDefiTvl, cachedStablecoinSupply, loadCryptoMarkets, loadDefiTvl, loadStablecoinSupply } from "./client";
+import { defiFailure } from "./defi";
+import { DefiTvlView } from "./defi-view";
 import {
   buildCryptoColumns,
   buildCryptoRows,
@@ -57,6 +59,7 @@ import {
   type CryptoColumn,
   type CryptoRow,
   type CryptoSortPreference,
+  type CryptoTab,
 } from "./model";
 import { stackedSupply, SUPPLY_RANGES, supplyByCode, supplyFailure, type SupplyRangeId } from "./supply";
 
@@ -185,7 +188,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const data = resource.data?.payload;
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();
-  const [activeTab, setActiveTab] = usePluginPaneState<CryptoAssetKind>("activeTab", "coin");
+  const [activeTab, setActiveTab] = usePluginPaneState<CryptoTab>("activeTab", "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
   const [visibleRange, setVisibleRange] = useState(INITIAL_STREAM_RANGE);
@@ -204,16 +207,29 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [supplyRange, setSupplyRange] = usePluginPaneState<SupplyRangeId>("supplyRange", "1Y");
   const stablecoins = activeTab === "stablecoin";
 
+  // DeFi TVL likewise loads once its tab is first shown; the server reads it once a UTC day.
+  const defi = activeTab === "defi";
+  const [defiShown, setDefiShown] = useState(defi);
+  useEffect(() => {
+    if (defi) setDefiShown(true);
+  }, [defi]);
+  const defiLoader = useCallback((force: boolean) => loadDefiTvl(force), [session.requestKey]);
+  const defiResource = useAsyncResource(defiShown ? defiLoader : null, { initialData: cachedDefiTvl });
+  const defiPayload = defiResource.data?.payload ?? null;
+  useAutoRefresh(defiResource.updatedAt, defiResource.load, { intervalMs: SUPPLY_REFRESH_MS });
+
+  // The DeFi tab lists no assets; the coin and stablecoin streams stop while it shows.
+  const assetKind: CryptoAssetKind = activeTab === "stablecoin" ? "stablecoin" : "coin";
   const tabAssets = useMemo(
-    () => data?.assets.filter((asset) => asset.kind === activeTab) ?? [],
-    [activeTab, data],
+    () => (defi ? [] : data?.assets.filter((asset) => asset.kind === activeTab) ?? []),
+    [activeTab, data, defi],
   );
   // The stream follows the rows on screen. Ordering by the board snapshot keeps
   // live ticks from reshuffling the subscription; the overscan covers the drift.
   const streamedAssets = useMemo(() => {
-    const ordered = sortCryptoRows(buildCryptoRows(tabAssets, activeTab, NO_QUOTES), sort).map((row) => row.asset);
+    const ordered = sortCryptoRows(buildCryptoRows(tabAssets, assetKind, NO_QUOTES), sort).map((row) => row.asset);
     return streamWindowRows(ordered, visibleRange, ordered.find((asset) => asset.symbol === selectedId));
-  }, [activeTab, selectedId, sort, tabAssets, visibleRange]);
+  }, [assetKind, selectedId, sort, tabAssets, visibleRange]);
   const targets = useMemo(() => quoteTargets(streamedAssets, selectedId), [selectedId, streamedAssets]);
   const { entries, freshnessNow } = useLiveQuoteEntries(targets, {
     freshnessScopeKey: `crypto-board:${activeTab}`,
@@ -223,20 +239,20 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const supplyRows = useMemo(() => (stablecoins ? supplyByCode(supply) : null), [stablecoins, supply]);
   const rows = useMemo(
     () => {
-      const built = buildCryptoRows(tabAssets, activeTab, entries, freshnessNow);
+      const built = buildCryptoRows(tabAssets, assetKind, entries, freshnessNow);
       return sortCryptoRows(supplyRows ? withCryptoSupply(built, supplyRows) : built, sort);
     },
-    [activeTab, entries, freshnessNow, sort, supplyRows, tabAssets],
+    [assetKind, entries, freshnessNow, sort, supplyRows, tabAssets],
   );
   const streamedIds = useMemo(() => new Set(streamedAssets.map((asset) => asset.symbol)), [streamedAssets]);
   const allStreamedLive = liveStreaming && streamedIds.size > 0
     && rows.every((row) => !streamedIds.has(row.id) || row.live);
   const boardRefreshMs = allStreamedLive ? CRYPTO_BOARD_STREAMING_REFRESH_MS : CRYPTO_BOARD_REFRESH_MS;
   useEffect(() => {
-    if (!paneVisible) return;
+    if (!paneVisible || defi) return;
     const timer = setInterval(() => void reloadBoard(false), boardRefreshMs);
     return () => clearInterval(timer);
-  }, [boardRefreshMs, paneVisible, reloadBoard]);
+  }, [boardRefreshMs, defi, paneVisible, reloadBoard]);
   useEffect(() => {
     if (!rows.length) return;
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
@@ -256,7 +272,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     : null, [now, observations]);
   // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
   const hasSupply = !!supplyRows && supplyRows.size > 0;
-  const columns = useMemo(() => buildCryptoColumns(width, activeTab, hasSupply), [activeTab, hasSupply, width]);
+  const columns = useMemo(() => buildCryptoColumns(width, assetKind, hasSupply), [assetKind, hasSupply, width]);
 
   // Other is muted against the theme it is drawn on; the coins take the shared series palette, which the chart themes.
   const otherColor = useThemeColors().textMuted;
@@ -284,7 +300,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     value: tab.value,
   }));
   const selectTab = (value: string) => {
-    setActiveTab(value as CryptoAssetKind);
+    setActiveTab(value as CryptoTab);
     setSelectedId(null);
     setVisibleRange(INITIAL_STREAM_RANGE);
   };
@@ -293,7 +309,10 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   usePaneNoticeFooter({
     registrationId: "crypto-board:notices",
     focused,
-    notices: [
+    notices: defi ? [
+      ...(defiPayload?.warnings ?? []),
+      ...(defiResource.data?.refreshError ? [defiFailure(defiResource.data.refreshError)] : []),
+    ] : [
       ...(data?.warnings ?? []),
       ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
       ...(stablecoins ? [
@@ -304,14 +323,18 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     ],
   });
   usePaneFooter("crypto-board", () => ({
-    info: [
+    info: defi ? [
+      ...(defiResource.loading && !defiPayload ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(defiPayload && defiResource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
+      ...(defiResource.data?.stale ? [{ id: "cached", parts: [{ text: "cached", tone: "warning" as const }] }] : []),
+    ] : [
       // Background refreshes run every 15s; only the first load is worth a label.
       ...(resource.loading && !data ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(data && resource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
       ...(statusLine ? [{ id: "updated", asOf: true, parts: [{ text: statusLine, tone: "muted" as const }] }] : []),
       ...(resource.data?.stale ? [{ id: "cached", parts: [{ text: "cached", tone: "warning" as const }] }] : []),
     ],
-  }), [data, statusLine, resource.data?.stale, resource.error, resource.loading]);
+  }), [data, defi, defiPayload, defiResource.data?.stale, defiResource.error, defiResource.loading, statusLine, resource.data?.stale, resource.error, resource.loading]);
 
   const reloadSupply = supplyResource.reload;
   const logos = useUiCapabilities().nativePaneChrome === true;
@@ -325,10 +348,17 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
 
   const bodyHeight = Math.max(1, height - (tabStrip ? 1 : 0));
 
+  const defiState = useMemo(() => ({
+    payload: defiPayload,
+    loading: defiResource.loading,
+    error: defiResource.error,
+    reload: defiResource.reload,
+  }), [defiPayload, defiResource.error, defiResource.loading, defiResource.reload]);
+
   return (
     <Box width={width} height={height} flexDirection="column">
       {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
-      <PaneStatusBody
+      {defi ? <DefiTvlView width={width} height={bodyHeight} focused={focused} resource={defiState} /> : <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}
         subject="crypto prices"
@@ -383,7 +413,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
             />
           ) : undefined}
         />
-      </PaneStatusBody>
+      </PaneStatusBody>}
     </Box>
   );
 }

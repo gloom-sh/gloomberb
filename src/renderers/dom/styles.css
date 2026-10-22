@@ -636,6 +636,30 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   border-bottom: 1px solid currentColor;
   opacity: .7;
 }
+/* Controls a surface shows only while the pointer is over it or the keyboard
+   is in it (a chart legend's fold, its tool bar's), so at rest it draws as it
+   always has. */
+[data-gloom-reveal-scope]:not(:hover):not(:focus-within) [data-gloom-reveal="hover"] {
+  display: none !important;
+}
+/* The line between two chart panels: drawn while the pointer is on it or
+   drags it, in the accent a pane sidebar's divider takes. */
+[data-gloom-role="composite-chart-panel-divider"] {
+  cursor: row-resize;
+}
+[data-gloom-role="composite-chart-panel-divider"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--gloom-accent);
+  opacity: 0;
+}
+[data-gloom-role="composite-chart-panel-divider"]:is(:hover, [data-active="true"])::before {
+  opacity: 1;
+}
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }

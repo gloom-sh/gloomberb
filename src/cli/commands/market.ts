@@ -185,7 +185,7 @@ import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPay
 import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
-import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
@@ -1392,7 +1392,14 @@ const NEWS_COLUMNS = [
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty, commodity = true, failure }: { reason?: string; empty?: string; commodity?: boolean; failure?: string },
+  { reason, empty, commodity = true, failure, ticker = null }: {
+    reason?: string;
+    empty?: string;
+    commodity?: boolean;
+    failure?: string;
+    /** The listing a coin pair's search stands in for. */
+    ticker?: string | null;
+  },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
   const searched = failure === undefined;
@@ -1401,7 +1408,7 @@ async function printNewsSearch(
   ctx.printResult({
     data: articles,
     ...(searched ? {} : { warnings: [`Searching stories for "${text}" failed: ${failure}`] }),
-    metadata: { ticker: null, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
+    metadata: { ticker, search: text, feed: null, ...(route ? { futuresNews: route.command } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: newsSearchHeading(text, reason),
@@ -1428,18 +1435,27 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
-    const loadNews = () => market.dataProvider.getNews({
+    const quoteLoad = listing ? loadListingQuote(market.dataProvider, listing) : Promise.resolve(null);
+    // A coin pair's feed searches for the coin when no story is filed under the pair, by the name its quote gives.
+    const coin = !!listing && !feed && isRoundTheClockCoin(listing.request.symbol, listing.request.exchange);
+    const loadNews = async () => market.dataProvider.getNews({
       feed: feed ?? (listing ? "ticker" : "latest"),
       // Still set for news plugins that read the deprecated scope.
       scope: listing ? "ticker" : "global",
       ticker: listing?.request.symbol,
       exchange: listing?.request.exchange || undefined,
       limit,
+      ...(coin ? { listingName: (await quoteLoad)?.name || listing!.saved?.metadata.name || undefined } : {}),
     });
     const [articles, quote] = await Promise.all([
       listing ? loadForListing(listing, market, ctx, loadNews, (found) => found.length === 0) : loadNews(),
-      listing ? loadListingQuote(market.dataProvider, listing) : null,
+      quoteLoad,
     ]);
+    const searchedFor = listing ? articles[0]?.searchedFor : undefined;
+    if (listing && searchedFor) {
+      await printNewsSearch(searchedFor, articles, { reason: `no stories filed under ${listing.symbol}`, ticker: listing.key }, ctx);
+      return;
+    }
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
     const unfiled = !!listing && !listing.exchange && !feed && articles.length === 0;

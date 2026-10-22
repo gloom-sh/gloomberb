@@ -10,6 +10,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -181,6 +182,10 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             }
             const text = numeric ? attentionNumber(column.id, value) : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
             if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
+            // A country (an app chart's, or hiring's countries) leads with its flag; its columns have room for one beside a code.
+            if (column.id === "country" || (kind === "hiring" && tab === "mix" && mix === "countries" && column.id === "label")) {
+              return withCountryFlag({ text, value, color: colors.text }, String(value), desktop);
+            }
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}

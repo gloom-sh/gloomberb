@@ -1,4 +1,5 @@
 import type { AppState } from "../../../../state/app/context";
+import { commandPromptTicker } from "../../../../layout/selected-ticker";
 import { normalizeTickerInput } from "../../../../tickers/search";
 import {
   getCollectionCommandAction,
@@ -37,7 +38,9 @@ export function buildRootShortcutFeedback({
       if (rootShortcutIntent.template.shortcut?.argOptional && !rootShortcutIntent.argText) {
         return `Shortcut: ${rootShortcutIntent.label}`;
       }
-      const symbol = normalizeTickerInput(activeTickerSymbol, rootShortcutIntent.argText);
+      // Same ticker the intent inferred: the prompt's, so a linked desk counts.
+      const inferFrom = commandPromptTicker(state)?.symbol ?? activeTickerSymbol;
+      const symbol = normalizeTickerInput(inferFrom, rootShortcutIntent.argText);
       if (symbol) {
         return rootShortcutIntent.kind === "inferred-complete"
           ? `Shortcut: ${rootShortcutIntent.label} for ${symbol} · Tab to accept`

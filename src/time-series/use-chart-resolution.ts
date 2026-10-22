@@ -1,14 +1,13 @@
 import { logFailure } from "../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { resolveChartSpecData } from "./resolve";
 import {
   ChartResolveCache,
-  chartSeedResolution,
-  reconcileChartTail,
-  resolveChartSpecData,
-  seedChartResolutionResult,
   type ChartResolveOptions,
   type ChartResolveSources,
-} from "./resolve";
+} from "./resolve-context";
+import { chartSeedResolution, seedChartResolutionResult } from "./chart-seed";
+import { reconcileChartTail } from "./tail-reconcile";
 import type { ChartResolutionResult, ChartSpec } from "./types";
 import {
   chartQuoteOverrideKeyForSource,

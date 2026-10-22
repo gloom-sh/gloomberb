@@ -15,9 +15,22 @@ name: UI benchmark
 # (the UI tokens workflow keeps both) or, without one, one replay the base
 # fills and the head reads.
 #
-# Four shards, two at a time: it only reports, so it takes longer rather than
-# hold runners Verify, Pane chrome, Performance and UI tokens need. The
-# shards match the UI tokens shards, whose snapshots they read.
+# The base is the commit the pull request left main at, and it is pictured
+# once: every push to main pictures its commit and the Actions cache keeps the
+# pictures, under the commit and a digest of everything else they depend on
+# (the pinned Chrome, the snapshot, the runner's fonts and the scripts that
+# take them: `ui-benchmark.ts base-key`). A pull request restores them and
+# pictures only its head. When none are kept (main has not pictured that
+# commit yet, or the pull request changes the scripts), it pictures the base
+# first and keeps the pictures for its next push. Without a snapshot nothing
+# is kept, and the base is pictured in the same step as the head.
+#
+# Eight shards, split by a hash of each function's token like the UI tokens
+# workflow's four: shard i holds half of UI tokens shard (i - 1) % 4 + 1 and
+# reads its snapshot. A pull request runs all eight at once, about ten
+# minutes each. Main runs four at a time and one commit at a time, so a burst
+# of merges pictures the newest; a pull request from a commit in between
+# pictures its base itself.
 on:
   pull_request:
     branches:
@@ -37,46 +50,73 @@ on:
       - "scripts/pane-chrome/tab-visits.ts"
       - "scripts/build-web.ts"
       - ".github/workflows/ui-benchmark.yml"
+  # Any commit on main can be where a pull request leaves it.
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       base:
-        description: The ref to compare the branch with
+        description: The ref to compare the branch with (empty for where the branch left main)
         required: false
-        default: origin/main
+        default: ""
+      fresh_base:
+        description: Picture the base in this run instead of restoring kept pictures
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run. Main never cancels a
+# run half done: a push waits for the one running and replaces any waiting.
 concurrency:
-  group: ui-benchmark-${{ github.ref }}
-  cancel-in-progress: true
+  group: ui-benchmark-${{ github.event_name == 'push' && 'main' || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   shoot:
-    name: Picture base and head, shard ${{ matrix.shard }} of 4
+    name: ${{ github.event_name == 'push' && 'Picture main' || 'Picture base and head' }}, shard ${{ matrix.shard }} of 8
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 45
     continue-on-error: true
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: ${{ github.event_name == 'push' && 4 || 8 }}
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      # A pull request's own commit, not its merge with main: its base is where it left main.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-bun
 
+      # Before the fonts are read for the key: it installs some.
       - name: Install ImageMagick
         run: command -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
 
+      # The base ref comes in through the environment, never into the script's text.
       - id: keys
-        name: Read the pinned Chrome version and this week
+        name: Read the pinned Chrome version, this week, this shard's snapshot and the base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ inputs.base }}
+          SHARD: ${{ matrix.shard }}
         run: |
           echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
           echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          echo "snapshot=$(( (SHARD - 1) % 4 + 1 ))" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" = push ]; then
+            base=$(git rev-parse HEAD)
+          elif [ -n "$BASE_REF" ]; then
+            base=$(git rev-parse --verify --end-of-options "$BASE_REF^{commit}")
+          else
+            base=$(git merge-base HEAD origin/main)
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
         with:
@@ -94,20 +134,63 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
-          restore-keys: ui-replay-v2-${{ matrix.shard }}of4-
+          key: ui-replay-v2-${{ steps.keys.outputs.snapshot }}of4-${{ steps.keys.outputs.week }}
+          restore-keys: ui-replay-v2-${{ steps.keys.outputs.snapshot }}of4-
 
-      # The base ref comes in through the environment, never into the script's text.
-      - name: Picture this shard's views on the base and on the head
+      - id: base-key
+        name: Key the base's pictures
+        if: steps.snapshot.outputs.cache-matched-key != '' && !inputs.fresh_base
         env:
-          BASE: ${{ github.event.pull_request.base.sha || inputs.base || 'origin/main' }}
+          BASE: ${{ steps.keys.outputs.base }}
+          SHARD: ${{ matrix.shard }}
+        run: >-
+          echo "key=$(bun scripts/pane-chrome/ui-benchmark.ts base-key --base "$BASE" --shard "$((SHARD - 1))/8"
+          --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay")" >> "$GITHUB_OUTPUT"
+
+      # Main only asks whether its commit is pictured already (a rerun).
+      - id: kept
+        name: Restore the base's pictures
+        if: steps.base-key.outputs.key != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ui-benchmark-base
+          key: ${{ steps.base-key.outputs.key }}
+          lookup-only: ${{ github.event_name == 'push' }}
+
+      - id: base
+        name: Picture the base
+        if: steps.base-key.outputs.key != '' && steps.kept.outputs.cache-hit != 'true'
+        env:
+          BASE: ${{ steps.keys.outputs.base }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          bun run ui:benchmark shoot --base-only --shard "$((SHARD - 1))/8" --out "$HOME/ui-benchmark-shard" --base "$BASE" \
+            --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" --offline --base-cache "$HOME/ui-benchmark-base"
+          if [ -f "$HOME/ui-benchmark-base/base.json" ]; then echo "kept=true" >> "$GITHUB_OUTPUT"; fi
+
+      # Saved before the head is pictured, so a run cancelled by a newer push still leaves them.
+      - name: Keep the base's pictures
+        if: steps.base.outputs.kept == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ui-benchmark-base
+          key: ${{ steps.base-key.outputs.key }}
+
+      - name: Picture the head
+        if: github.event_name != 'push'
+        env:
+          BASE: ${{ steps.keys.outputs.base }}
           SHARD: ${{ matrix.shard }}
           OFFLINE: ${{ steps.snapshot.outputs.cache-matched-key != '' && '--offline' || '' }}
-        run: >-
-          bun run ui:benchmark shoot --shard "$((SHARD - 1))/4" --out ~/ui-benchmark-shard
-          --base "$BASE" --replay ~/.cache/gloomberb-pane-chrome/ui-replay $OFFLINE
+          KEY: ${{ steps.base-key.outputs.key }}
+        run: |
+          args=(--shard "$((SHARD - 1))/8" --out "$HOME/ui-benchmark-shard" --base "$BASE" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay")
+          if [ -n "$OFFLINE" ]; then args+=(--offline); fi
+          if [ -n "$KEY" ]; then args+=(--base-cache "$HOME/ui-benchmark-base"); fi
+          bun run ui:benchmark shoot "${args[@]}"
 
-      - uses: actions/upload-artifact@v4
+      - if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
         with:
           name: ui-benchmark-shard-${{ matrix.shard }}
           path: ~/ui-benchmark-shard
@@ -118,7 +201,7 @@ jobs:
     name: Report the blast radius
     needs: shoot
     # After failed shards too (the report says the count is incomplete), not after a cancel.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
@@ -144,7 +227,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: >-
-          bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark --expect-shards 4
+          bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark --expect-shards 8
           ${PR:+--comment "$PR"}
 
       - uses: actions/upload-artifact@v4

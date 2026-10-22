@@ -4,7 +4,10 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { HistorySession } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { ChartResolveCache, mergePriceHistoryWindows, reconcileChartTail, resolveChartSpecData, type ChartResolveSources } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache, type ChartResolveSources } from "./resolve-context";
+import { reconcileChartTail } from "./tail-reconcile";
+import { mergePriceHistoryWindows } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 
 const at = (time: string) => Date.parse(`2026-09-22T${time}Z`);

@@ -272,6 +272,12 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("value-axis", ["Drag", "Scroll"], "On a value axis, stretch or squeeze that panel's values. Dragging the plot then moves them too."),
         entry("value-fit", ["Double-click", "Auto"], "Fit a hand-scaled panel's values again, from its axis or the Auto button at its foot."),
         entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it, values included."),
+        shortcutDisplayMode === "terminal"
+          ? entry("panel-height", ["Shift+Up/Down"], "Make the top panel taller or shorter; Reset Panel Heights in the pane menu puts back the split.")
+          : entry("panel-height", ["Drag", "Shift+Up/Down"], "Drag the line between two panels to resize them, double-click it for the default split; Shift+Up and Shift+Down resize the top panel."),
+        entry("panel-max", ["Double-click"], "Double-click a panel to give it the whole chart, and again to show every panel."),
+        entry("tools-hide", ["Shift+T"], "Hide the drawing tools to a single button, or show them again."),
+        entry("legend-fold", ["Shift+L"], "Fold the legend to its first series and a count of the rest, or open it again."),
       ],
     },
     {

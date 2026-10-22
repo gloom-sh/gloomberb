@@ -4,6 +4,8 @@ Stack: Bun + OpenTUI
 
 Tests ([full policy](CONTRIBUTING.md#what-to-test)): be selective. Add or keep a test only when it protects behavior that is easy to break and hard to catch in review: parser/math/state complexity, async/cache/persistence behavior, integration boundaries, and regressions with a concrete failure mode that could plausibly return. Static metadata, default props, pass-through wiring, copied UI text and obvious behavior are weak targets. A bug-fix test is kept only when the bug came from non-obvious behavior or a boundary likely to regress, and a test is never kept just because it exists or adds coverage. When touching a test file, trim nearby low-value tests if the cleanup is clear and low-risk.
 
+Public text ([full rule](CONTRIBUTING.md#pull-requests)): pull request titles, descriptions, comments, commit messages and branch names are public. No internal tracker ids or links, no private repository names or links, no internal notes (deals, pricing plans, people, infrastructure); a change that needs a server change says "needs the matching server change".
+
 Use tmux to test terminal TUI changes (see the `tui-testing` skill). Always kill the tmux session when done.
 
 Shared machine: several agents often work on one host at the same time.

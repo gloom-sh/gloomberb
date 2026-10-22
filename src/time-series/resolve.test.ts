@@ -9,12 +9,10 @@ import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/preset
 import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import {
-  ChartResolveCache,
-  mergePriceHistoryWindows,
-  resolveChartSpecData,
-  seedChartResolutionResult,
-} from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
+import { seedChartResolutionResult } from "./chart-seed";
+import { mergePriceHistoryWindows } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
 
 function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {

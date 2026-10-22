@@ -495,6 +495,24 @@ test("broker option matching requires one exact conId and source contract, prese
   expect(matched.complete).toBe(true);
   expect(matched.positions[0]!.legs[0]!.quantity).toBe(2);
   expect(matched.positions[0]!.legs[0]!.multiplier).toBe(100);
+  // A closed session's chain is valued where its IV was measured, as OMON
+  // values it: at its quotes' time and that session's close, not the
+  // pre-market print and the hours left now.
+  const quoted = Date.parse("2026-09-21T20:14:59Z");
+  const closed = await loadPortfolioOptionBook([ticker], portfolio, {
+    ...dependencies,
+    loadQuote: async () =>
+      ready({ ...quote, regularClose: 108, regularCloseSessionDate: "2026-09-21" }),
+    loadOptions: async () =>
+      ready({
+        underlyingSymbol: "SPY",
+        expirationDates: [expiration],
+        calls: [contract],
+        puts: [],
+        asOf: new Date(quoted).toISOString(),
+      }),
+  });
+  expect(closed.positions[0]).toMatchObject({ spot: 108, asOf: quoted });
   ticker.metadata.broker_contracts[0]!.localSymbol = "SPY261218C00101000";
   const wrong = await loadPortfolioOptionBook(
     [ticker],

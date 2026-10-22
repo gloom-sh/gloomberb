@@ -1,4 +1,6 @@
 export {
+  compactFloatingZ,
+  FLOATING_PANE_MAX_Z,
   MIN_FLOAT_HEIGHT,
   MIN_FLOAT_WIDTH,
   type FloatingRect,

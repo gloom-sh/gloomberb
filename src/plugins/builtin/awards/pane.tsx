@@ -12,6 +12,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
@@ -269,7 +270,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
-            if (column.id === "country") return { text: award.jurisdiction, color: colors.textDim };
+            // The column has room for the flag beside a code.
+            if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
             if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };

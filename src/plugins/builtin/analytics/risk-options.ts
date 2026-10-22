@@ -6,6 +6,7 @@ import {
   loadScenarioMarket,
   type ScenarioLoaderDependencies,
 } from "../options-scenario/client";
+import { optionModelSpot } from "../options/model-spot";
 import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 import { canonicalExchange } from "../../../utils/exchanges";
 
@@ -142,14 +143,28 @@ export async function loadPortfolioOptionBook(
         option.impliedVolatility <= 0
       )
         throw new Error("Contract implied volatility unavailable");
+      // Valued where the chain's IV was measured, as OMON values the chain: a
+      // closed session's quotes at the time they were taken and the session's
+      // close. Over the hours left now, a same-day IV would price the contract
+      // under its quote before the open.
+      const valuation = optionModelSpot(
+        market.underlyingQuote,
+        market.chain,
+        dependencies.now?.() ?? Date.now(),
+        exchange,
+      );
+      if (!valuation)
+        throw new Error(
+          "Fresh matching Cloud spot, chain, rate and dividend inputs are required",
+        );
       const position: ScenarioPosition = {
         symbol: market.symbol,
         exchange,
         currency: market.currency,
-        spot: market.spot,
+        spot: valuation.price,
         rate: market.rate,
         dividendYield: market.dividendYield,
-        asOf: market.asOf,
+        asOf: valuation.valuationTime,
         legs: [
           {
             id: String(contract.conId),

@@ -192,8 +192,39 @@ function matchesOneCountry(country: string, filter: string): boolean {
   return country === filter;
 }
 
-export function matchesCountry(event: Pick<EconEvent, "country">, filter: CountryFilter): boolean {
-  return filter.split(",").some((part) => matchesOneCountry(event.country, part));
+/**
+ * The euro area's members by the word a national release's title starts
+ * with ("German Ifo Business Climate"). Both feeds list such a release under
+ * EU: the week feed by its currency, with the member's adjective in front of
+ * the title, and Gloom Cloud writes the release calendar's members the same
+ * way. Each word names exactly one member.
+ */
+const EURO_AREA_MEMBERS: Readonly<Record<string, string>> = {
+  Austrian: "AT", Belgian: "BE", Croatian: "HR", Cypriot: "CY", Dutch: "NL", Estonian: "EE", Finnish: "FI",
+  French: "FR", German: "DE", Greek: "GR", Irish: "IE", Italian: "IT", Latvian: "LV", Lithuanian: "LT",
+  Luxembourgish: "LU", Maltese: "MT", Portuguese: "PT", Slovak: "SK", Slovenian: "SI", Spanish: "ES",
+};
+
+/**
+ * The member state an EU row is a national release of ("German Ifo Business
+ * Climate" is DE), by the adjective its title starts with; null for a
+ * release of the whole euro area (ECB, euro area CPI) and for any other row.
+ */
+function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | null {
+  if (event.country !== "EU") return null;
+  const word = /^([A-Z][a-z]+) /.exec(event.event)?.[1];
+  return word ? EURO_AREA_MEMBERS[word] ?? null : null;
+}
+
+/** The country a row is for, as the calendar shows it: a national euro-area release's member, otherwise its own. */
+export function eventCountry(event: Pick<EconEvent, "country" | "event">): string {
+  return euroAreaMember(event) ?? event.country;
+}
+
+/** A national euro-area release matches EU (and G7, as EU) and its own member's code. */
+export function matchesCountry(event: Pick<EconEvent, "country" | "event">, filter: CountryFilter): boolean {
+  const member = euroAreaMember(event);
+  return filter.split(",").some((part) => matchesOneCountry(event.country, part) || (member !== null && member === part));
 }
 
 /** What people type for a country whose ISO code is another. */
@@ -249,8 +280,8 @@ function filterCountries(filter: CountryFilter): string[] {
  * says which of them has nothing scheduled instead of reading as a quiet week
  * (or as a country the terminal does not know).
  */
-export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyArray<Pick<EconEvent, "country">>): string[] {
-  const listed = new Set(events.map((event) => event.country));
+export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyArray<Pick<EconEvent, "country" | "event">>): string[] {
+  const listed = new Set(events.flatMap((event) => [event.country, euroAreaMember(event) ?? event.country]));
   return filterCountries(filter).filter((country) => !listed.has(country));
 }
 
