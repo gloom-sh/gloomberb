@@ -1,0 +1,40 @@
+  > Search or run a command  Ctrl+P                                                                     Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                   ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                    ⚡
+  Main Portfolio  Watchlist                       No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP
+
+  No tickers.
+  Click + ticke┌─:: Earnings Calendar─────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+                   [ ] Mine                                                                               Size  Mine first
+  + ticker Ente    TICKER   NAME            WHEN     IMPLIED    MOVE   EPS EST   EPS ACT   EPS SURP   SALES EST  MKT CAP ▼
+                 Today (91)                                                                                                ▀
+                 ○ META     Meta Platforms… AMC ✓       ±6.9%   +2.2%      4.98        --         --      63.41B     1.78T
+                 ○ TSLA     Tesla, Inc.     AMC ✓       ±5.5%   -3.3%      0.22        --         --      28.11B     1.53T
+                   LRCX     Lam Research C… AMC ✓       ±7.2%   -7.4%      2.17      2.20      +1.4%       8.14B   326.35B
+                   PM       Philip Morris…  BMO ✓       ±4.5%   -1.2%      2.30        --         --      11.34B   307.76B
+                   SAP      SAP SE          AMC         ±6.4%      --      2.09        --         --          --   268.62B
+                   TXN      Texas Instrume… AMC ✓       ±7.2%   +1.3%      2.40      2.62      +9.2%       5.93B   259.91B
+                   TMO      Thermo Fisher…  BMO ✓       ±5.9%   +1.0%      6.40      6.68      +4.4%      11.95B   256.61B
+                   IBM      International…  AMC ✓       ±7.2%   -4.6%      2.88        --         --      16.84B   236.91B
+                   ABT      Abbott Laborat… BMO ✓       ±5.9%   -1.9%      1.43        --         --      12.99B   173.92B
+                   DHR      Danaher Corpor… BMO ✓       ±7.2%   +4.3%      1.92      2.11      +9.9%       6.56B   164.38B
+                   NEE      NextEra Energy… BMO ✓       ±3.3%   -0.7%      1.20      1.24      +3.3%       8.85B   163.24B
+  + ticker         T        AT&T Inc.       BMO ✓       ±4.3%   -6.4%      0.61      0.65      +6.6%      31.65B   150.71B
+                   CME      CME Group Inc.  BMO ✓       ±3.3%   +0.2%      2.98      3.02      +1.3%       1.71B   105.81B
+                   ELV      Elevance Healt… BMO ✓       ±8.7%   -1.4%      4.66      6.99     +50.0%      49.16B    94.14B
+:: #everyone       CSX      CSX Corporation AMC ✓       ±4.7%   +3.7%      0.52        --         --       3.96B    89.66B
+ ← Back            MCO      Moody's Corpor… BMO ✓       ±7.4%   +1.2%      4.25      4.14      -2.6%       2.08B    83.31B
+    improvement    KMI      Kinder Morgan,… AMC ✓       ±3.6%   +2.2%      0.33      0.35      +6.1%       4.39B    75.58B
+   reply vince:    URI      United Rentals… AMC ✓       ±7.5%   -0.2%     13.83     15.55     +12.4%       4.71B    66.64B
+  chronosmmxm_d    WAB      Westinghouse A… BMO ✓       ±7.2%   +2.0%      2.72      2.83      +4.0%       3.20B    48.86B
+    I´ll come w    WCN      Waste Connecti… AMC ✓       ±6.1%   +0.8%      1.52      1.58      +3.9%       2.61B    42.43B
+    can find. F    CCI      Crown Castle I… AMC ✓       ±8.2%   -0.2%      1.16      1.24      +6.9%       1.01B    33.50B
+   reply chrono    NTRS     Northern Trust… BMO ✓       ±7.4%   +0.9%      2.86        --         --       2.26B    30.54B
+  vince Discord    TDY      Teledyne Techn… BMO ✓       ±7.5%   -0.3%      6.15        --         --       1.65B    29.29B
+    please do  └just now                                  [v]iew catalysts [t]icker [e]stimates [c]alls [a]nalysts [n]otify─◢
+     ❤️ 1                                    ▄     Log in  Enter  Sign up free
+ -------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +                                                                                                               v0.18.3 ☁ Log in Feedback
