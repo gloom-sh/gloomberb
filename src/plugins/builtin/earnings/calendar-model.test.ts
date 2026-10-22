@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport } from "../../../api-client/earnings";
 import { boardReport, type BoardReport } from "./board-model";
 import { moveInWeek } from "./calendar";
-import { calendarDays, calendarWeekDates, calendarWeekLabel } from "./calendar-model";
+import { boardRangeDays, boardRangeWeek, boardRangeWords, calendarDays, calendarWeekDates, calendarWeekLabel, requestedBoardRange } from "./calendar-model";
 
 // Fri Oct 16 2026; the week is Mon Oct 12 to Fri Oct 16.
 const TODAY = "2026-10-16";
@@ -21,6 +21,18 @@ describe("ERN calendar", () => {
     // Across a month end.
     expect(calendarWeekDates(TODAY, 3)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]);
     expect([-1, 0, 1, 3].map((offset) => calendarWeekLabel(TODAY, offset))).toEqual(["Last week", "This week", "Next week", "Week of Nov 2"]);
+  });
+
+  test("one range drives the table's days and the calendar's week: --week as an offset, --date as its day and its week", () => {
+    expect([requestedBoardRange(undefined, "last"), requestedBoardRange("", "next"), requestedBoardRange("2026-10-07", undefined), requestedBoardRange(undefined, undefined)])
+      .toEqual(["-1", "1", "2026-10-07", ""]);
+    expect(boardRangeDays("-1", TODAY).map((day) => day.label)).toEqual(["Mon Oct 5", "Tue Oct 6", "Wed Oct 7", "Thu Oct 8", "Fri Oct 9"]);
+    expect(boardRangeDays("0", TODAY).map((day) => day.label).at(-1)).toBe("Today");
+    expect(boardRangeDays("2026-10-07", TODAY)).toEqual([{ label: "Wed Oct 7", from: "2026-10-07", to: "2026-10-07" }]);
+    // The calendar draws a day's own week, and this week for the days ahead.
+    expect([boardRangeWeek("2026-10-07", TODAY), boardRangeWeek("2026-09-25", TODAY), boardRangeWeek("", TODAY), boardRangeWeek("3", TODAY)]).toEqual([-1, -3, 0, 3]);
+    expect([boardRangeWords("-1", TODAY), boardRangeWords("2", TODAY), boardRangeWords(TODAY, TODAY), boardRangeWords("2026-10-07", TODAY), boardRangeWords("", TODAY)])
+      .toEqual(["last week", "in the week of Oct 26", "today", "on Wed Oct 7", null]);
   });
 
   test("each day groups its reports before the open, during the session, after the close, then with no time, largest first", () => {

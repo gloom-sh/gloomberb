@@ -23,16 +23,17 @@ const FxMatrixPane = fxMatrixModule.panes![0]!.component as (props: {
   height: number;
 }) => ReactNode;
 
-function readyEntry(rate: number): QueryEntry<number> {
-  return { phase: "ready", data: rate, lastGoodData: rate, source: "test", fetchedAt: 1, staleAt: null, error: null, attempts: [] };
+function readyEntry(rate: number, asOf?: number): QueryEntry<number> {
+  return { phase: "ready", data: rate, lastGoodData: rate, source: "test", fetchedAt: 1, ...(asOf ? { asOf } : {}), staleAt: null, error: null, attempts: [] };
 }
 
-function installCoordinator(quotes: Record<string, Partial<Quote>> = {}): void {
+/** `snapshotAsOf` dates a currency's snapshot rate; undated rates are older than any quote. */
+function installCoordinator(quotes: Record<string, Partial<Quote>> = {}, snapshotAsOf: Record<string, number> = {}): void {
   setSharedMarketDataCoordinator({
     subscribe: () => () => {},
     subscribeKeys: () => () => {},
     getVersion: () => 1,
-    getFxEntry: (currency: string) => readyEntry(currency === "USD" ? 1 : 1.08),
+    getFxEntry: (currency: string) => readyEntry(currency === "USD" ? 1 : 1.08, snapshotAsOf[currency]),
     loadFxRate: async () => {},
     subscribeQuotes: () => () => {},
     getQuoteEntry: ({ symbol }: { symbol: string }) => {
@@ -115,7 +116,8 @@ test("every currency the settings offer draws its flag in the rows and the heade
   expect(container.querySelectorAll('[data-gloom-role="data-table-header-cell"] [data-gloom-role="country-flag"]')).toHaveLength(saved.length);
 });
 
-test("a cross is tinted by its move against the previous close only while both legs are live and carry one", async () => {
+test("a cross is tinted by its move against the pairs' previous closes, whether a leg draws its quote or a newer snapshot", async () => {
+  const now = Date.now();
   installCoordinator({
     "EURUSD=X": { price: 1.1, previousClose: 1.08 },
     "GBPUSD=X": { price: 1.27, previousClose: 1.27 },
@@ -123,10 +125,13 @@ test("a cross is tinted by its move against the previous close only while both l
     "JPY=X": { price: 151, previousClose: 149, stale: true },
     // No previous close to read against.
     "CHF=X": { price: 0.9 },
-  });
-  const container = await desktop.render(<Pane currencies={["USD", "EUR", "GBP", "JPY", "CHF", "CAD"]} />);
+    // A minute older than AUD's snapshot rate, which draws the cell and moves from this close.
+    "AUDUSD=X": { price: 1.07, previousClose: 1.05, lastUpdated: now - 60_000 },
+  }, { AUD: now });
+  const codes = ["USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD"];
+  const container = await desktop.render(<Pane currencies={codes} />);
   const background = (row: string, column: string) => {
-    const index = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD"].indexOf(column) + 1;
+    const index = codes.indexOf(column) + 1;
     const cell = container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[index] as HTMLElement;
     return cell.style.backgroundColor;
   };
@@ -140,6 +145,8 @@ test("a cross is tinted by its move against the previous close only while both l
   // GBP is unchanged on USD, but EUR moved against it.
   expect(tinted("GBP", "USD")).toBe(false);
   expect(tinted("EUR", "GBP")).toBe(true);
+  // The snapshot-drawn AUD leg moved 2.9% from its pair's close (GLO-1189: it stayed plain).
+  expect(tinted("AUD", "USD")).toBe(true);
   // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
   expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
   expect(tinted("EUR", "EUR")).toBe(false);

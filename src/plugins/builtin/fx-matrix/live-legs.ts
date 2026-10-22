@@ -3,6 +3,7 @@ import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors"
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { isStreamCarryingQuote } from "../shared/use-quote-board";
+import { fxTradingDay } from "../../../utils/fx-market-hours";
 
 /** Currencies the market quotes as USD per unit; the rest quote as units per USD. */
 const USD_QUOTED = new Set(["EUR", "GBP", "AUD", "NZD"]);
@@ -91,4 +92,25 @@ export function fxLegReferenceRate(leg: FxLeg, entry: QueryEntry<Quote> | undefi
   const close = resolveEntryData(entry)?.previousClose;
   if (close == null || !Number.isFinite(close) || close <= 0) return null;
   return leg.inverted ? 1 / close : close;
+}
+
+/**
+ * What a leg's move is read against: its pair quote's previous daily close
+ * (USD per unit), the close `quote` measures the pair from, whichever rate
+ * the board draws. A loaded rate a minute newer than the quote moves from the
+ * same close, so it reads against it too, as long as it is of the quote's FX
+ * trading day. Null when the quote is stale or carries no previous close, or
+ * when the drawn rate is of a later trading day (or undated) than the quote.
+ */
+export function fxLegMoveReference(
+  leg: FxLeg,
+  entry: QueryEntry<Quote> | undefined,
+  drawn: Pick<QueryEntry<number>, "asOf"> | null | undefined,
+): { rate: number; quote: Quote } | null {
+  const quote = resolveEntryData(entry);
+  const rate = fxLegReferenceRate(leg, entry);
+  if (!quote || quote.stale === true || rate == null || !Number.isFinite(quote.lastUpdated)) return null;
+  const drawnAt = drawn?.asOf;
+  if (drawnAt == null || !Number.isFinite(drawnAt) || fxTradingDay(drawnAt) !== fxTradingDay(quote.lastUpdated)) return null;
+  return { rate, quote };
 }

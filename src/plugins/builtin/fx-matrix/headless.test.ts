@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
-import { serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { quoteChangeBasis } from "../../../market-data/market/change-basis";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { createTestQuote } from "../../../test-support/data-provider";
 import type { DataProvider } from "../../../types/data-provider";
@@ -14,6 +15,7 @@ import { fxMatrixHeadless, projectFxCrosses } from "./headless";
 import { fxMatrixModule } from "./index";
 import { fxLegReferenceRate, fxLegs, liveFxLegEntry } from "./live-legs";
 import { FX_CURRENCIES, resolveCurrencies, type FxCurrency } from "./pairs";
+import { fxTradingDay } from "../../../utils/fx-market-hours";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -40,12 +42,13 @@ function quotedRate(currency: string, usdPerUnit: number, previousUsdPerUnit: nu
     symbol: leg.symbol, price, previousClose: leg.inverted ? 1 / previousUsdPerUnit : previousUsdPerUnit,
     instrumentType: "CURRENCY", listingExchangeName: "CCY", exchangeName: "CCY", marketState: "REGULAR",
     dataSource: "delayed", providerId: "gloomberb-cloud", stale: false, lastUpdated: at(lastUpdated), receivedAt: at(lastUpdated) + 1000,
+    changeSessionDate: fxTradingDay(at(lastUpdated)),
   });
   const quoteEntry: QueryEntry<Quote> = {
     phase: "ready", data: quote, lastGoodData: quote, source: "gloomberb-cloud", fetchedAt: quote.receivedAt!,
     staleAt: null, error: null, attempts: [],
   };
-  return { leg, entry: liveFxLegEntry(leg, quoteEntry, null), quote, reference: fxLegReferenceRate(leg, quoteEntry), error: null };
+  return { leg, entry: liveFxLegEntry(leg, quoteEntry, null), quote, reference: fxLegReferenceRate(leg, quoteEntry), changeBasis: quoteChangeBasis(quote), error: null };
 }
 
 function readings(...legs: FxLegReading[]): Map<string, FxLegReading> {
@@ -125,34 +128,61 @@ test("the report is dated by its legs as the pane's capture is, not by the cross
   ))).toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed, 1 of 4 stale · markets open");
 });
 
-test("a pair quote replaces a leg's loaded rate only when it is at least as new", async () => {
-  const now = Date.now();
-  const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
-  const pairQuote = (symbol: string, price: number, previousClose: number, minutesAgo: number) => createTestQuote({
-    symbol, price, previousClose, dataSource: "delayed", lastUpdated: now - minutesAgo * 60_000,
-  });
-  const provider = {
-    id: "test",
-    // EUR's loaded rate is older than its quote; JPY's quote is older than its loaded rate.
-    getExchangeRateSnapshot: async (currency: string): Promise<ExchangeRateSnapshot> => {
-      if (currency === "GBP") throw new Error("no rate");
-      return {
-        fromCurrency: currency, toCurrency: "USD", rate: currency === "EUR" ? 1.1 : 1 / 150,
-        source: "test", asOf: ago(currency === "EUR" ? 30 : 5), fetchedAt: ago(0), stale: false,
-      };
-    },
-    getQuotesBatch: async (targets: { symbol: string }[]) => targets.map((target) => ({
-      target,
-      quote: target.symbol === "EURUSD=X" ? pairQuote("EURUSD=X", 1.2, 1.18, 10)
-        : target.symbol === "JPY=X" ? pairQuote("JPY=X", 140, 141, 60) : null,
-    })),
-  } as unknown as DataProvider;
+test("a pair quote replaces a leg's loaded rate only when it is at least as new, and its close is the move's either way", async () => {
+  // Mid-session on a Wednesday, so every rate below is of the same FX trading day but the last.
+  const now = at("2026-10-14T14:00:00Z");
+  setSystemTime(now);
+  try {
+    const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+    const pairQuote = (symbol: string, price: number, previousClose: number, minutesAgo: number) => createTestQuote({
+      symbol, price, previousClose, dataSource: "delayed", lastUpdated: now - minutesAgo * 60_000,
+    });
+    const provider = {
+      id: "test",
+      // EUR's loaded rate is older than its quote; JPY's and CHF's quotes are older than their loaded rates.
+      getExchangeRateSnapshot: async (currency: string): Promise<ExchangeRateSnapshot> => {
+        if (currency === "GBP") throw new Error("no rate");
+        return {
+          fromCurrency: currency, toCurrency: "USD", rate: currency === "EUR" ? 1.1 : currency === "CHF" ? 1.25 : 1 / 150,
+          source: "test", asOf: ago(currency === "EUR" ? 30 : 5), fetchedAt: ago(0), stale: false,
+        };
+      },
+      getQuotesBatch: async (targets: { symbol: string }[]) => targets.map((target) => ({
+        target,
+        quote: target.symbol === "EURUSD=X" ? pairQuote("EURUSD=X", 1.2, 1.18, 10)
+          : target.symbol === "JPY=X" ? pairQuote("JPY=X", 140, 141, 6)
+            // Last printed before Tuesday's 17:00 New York roll: its previous close is Monday's, not Tuesday's.
+            : target.symbol === "CHF=X" ? pairQuote("CHF=X", 0.8, 0.81, 22 * 60) : null,
+      })),
+    } as unknown as DataProvider;
 
-  const board = await loadFxBoard(["USD", "EUR", "JPY", "GBP"], provider);
+    const board = await loadFxBoard(["USD", "EUR", "JPY", "CHF", "GBP"], provider);
 
-  expect(board.get("EUR")).toMatchObject({ entry: { data: 1.2, asOf: now - 10 * 60_000 }, reference: 1.18 });
-  expect(board.get("JPY")).toMatchObject({ entry: { data: 1 / 150 }, quote: null, reference: null });
-  expect(board.get("GBP")).toMatchObject({ entry: null, error: expect.stringContaining("no rate") });
+    expect(board.get("EUR")).toMatchObject({ entry: { data: 1.2, asOf: now - 10 * 60_000 }, reference: 1.18 });
+    // The loaded rate a minute newer draws the cell, and moves from the quote's close (the GLO-1189 blank Move).
+    expect(board.get("JPY")).toMatchObject({ entry: { data: 1 / 150 }, quote: null });
+    expect(board.get("JPY")?.reference).toBeCloseTo(1 / 141, 12);
+    expect(board.get("CHF")).toMatchObject({ entry: { data: 1.25 }, reference: null, changeBasis: null });
+    expect(board.get("GBP")).toMatchObject({ entry: null, error: expect.stringContaining("no rate") });
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("every cross moves from its legs' previous daily close, and the Move header names that close", () => {
+  const now = at("2026-10-22T04:45:00Z");
+  const eur = quotedRate("EUR", 1.1247, 1.1235, "2026-10-22T04:41:00Z");
+  const result = projectFxCrosses(["USD", "EUR", "CHF"], readings(
+    // A loaded rate a minute newer than its quote keeps the quote's close.
+    { ...eur, entry: { ...eur.entry!, data: 1.1248, asOf: at("2026-10-22T04:42:00Z") }, quote: null },
+    quotedRate("CHF", 1 / 0.8229, 1 / 0.8241, "2026-10-22T04:41:00Z"),
+  ), { now });
+  expect(result.rows.every((row) => typeof row.movePercent === "number")).toBe(true);
+  expect(result.metadata).toMatchObject({ changeBasis: "vs Wed 21 Oct close" });
+  const args = { rawArgument: "", argument: null, symbols: [], options: { currencies: "USD,EUR,CHF" } };
+  const text = renderHeadlessPaneText(fxMatrixHeadless, result, args, "FXC");
+  expect(text).toContain("Move vs Wed 21 Oct close");
+  expect(text).not.toContain("—");
 });
 
 test("Ask Gloom's FXC tool takes the currencies as one string and gets every cross of all 45 within its result limit", () => {

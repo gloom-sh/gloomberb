@@ -4,7 +4,7 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, He
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
-import { AWARD_TABS, awardScope, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
+import { AWARD_TABS, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -113,6 +113,8 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const missing = filter.ticker && (data.locked || !data.rows.length) ? await notATicker(filter.ticker, ctx) : null;
     const lock = awardsPreviewNote(data, filter);
     const futureDates = futureAwardDatesNote(data.rows, data.generatedAt);
+    const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : [])];
+    const empty = awardsEmptyReason(data);
     const sections: HeadlessBundleSection[] = [];
     const tab = String(args.options.tab ?? "feed");
     if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(awardRecord) });
@@ -122,8 +124,10 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { title: "Sector totals", columns: aggregateColumns("Sector"), rows: data.sectors.map((row) => ({ ...row })) });
     if (tab === "events" || tab === "all") sections.push({ title: "Awards relative to annual revenue", columns: EVENT_COLUMNS, rows: data.alerts.map(awardRecord) });
     return { complete: !data.locked && !data.nextCursor && data.status === "available" && !Object.values(data.truncated ?? {}).some(Boolean), sections,
-      ...(futureDates ? { notes: [futureDates] } : {}),
-      errors: [...(missing ? [missing] : []), ...data.gaps, ...(lock ? [lock] : [])],
+      // Collection health is what the awards may be missing, a coverage note; only a failure is an error.
+      ...(notes.length ? { notes } : {}),
+      ...(empty ? { empty } : {}),
+      errors: [...(missing ? [missing] : []), ...(lock ? [lock] : [])],
       // A preview is the same latest awards whatever was asked, so the filters were requested, not applied.
       metadata: { generatedAt: data.generatedAt, asOf: data.asOf, access: data.access, nextCursor: data.nextCursor, truncated: data.truncated, coverage: data.coverage, sources: data.sources,
         filters: filter, filtersApplied: !data.locked } };
