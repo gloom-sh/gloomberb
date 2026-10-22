@@ -1,0 +1,45 @@
+  > Search or run a command  Ctrl+P                                                                                         Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                          ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                                 ⚡
+  Main Portfolio  Watchlist                              No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP     P/E
+
+  No tickers.
+  Click + ticker to add one, or press a.
+                              ┌─:: Economic Calendar─────────────────────────────────────────────────────────────────         x ─┐
+  + ticker Enter         ┌─:: IPO Calendar──────────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+                           All  US  APAC  Europe
+                           / company, ticker or market
+                           TICKER     COMPANY                     MKT           DATE     STATUS            PRICE     SIZE    RETURN
+                           6157       Jiangsu Slender West Lake…  HKEX          Oct 14   offering               —        —        —  ▀
+                           3275       Changzhou Microintelligenc… HKEX          Oct 20   offering               —        —        —
+                           2384       Suzhou Dongshan Precision…  HKEX          Oct 20   offering               —        —        —
+                           BONFIG     Bonfiglioli Transmissions…  NSE           Oct 22   upcoming        ₹558-586        —        —
+                           DAVI       DAVION HEALTHCARE PLC       Nasdaq        Oct 22   upcoming               —        —        —
+                           SMT        Sahajanand Medical Technol… NSE           Oct 22   upcoming        ₹327-344        —        —
+                           TONBO      Tonbo Imaging India Limited NSE           Oct 22   upcoming        ₹665-700        —        —
+                           ZETWERK    Zetwerk Manufacturing Busi… NSE           Oct 22   upcoming        ₹143-151        —        —
+                           LYCA       Lycia Therapeutics, Inc.    Nasdaq        Oct 23   upcoming          $16-18  $249.9M        —
+                           —          TEK 4 Group Plc             LSE           Oct 26   upcoming               —        —        —
+                           JPL        Jio Platforms Limited       NSE           Oct 28   upcoming    ₹1,065-1,119        —        —
+                           PARASHLTH  Paras Healthcare Limited    NSE           Oct 28   upcoming        ₹660-693  $152.7M        —
+  + ticker                 688827     Guangdong Precise Numerica… Shanghai      Oct 29   upcoming               — $107.79M        —
+                           652A       toggle holdings, Inc.       Tokyo         Oct 30   upcoming    ¥4,030-4,040        —        —
+                           653A       MabGenesis Inc.             Tokyo         Nov 2    upcoming        ¥800-830        —        —
+:: #everyone               656A       Allganize Holdings, Inc.    Tokyo         Nov 4    upcoming    ¥1,250-1,260        —        —
+ ← Back                    658A       estie, inc.                 Tokyo         Nov 6    upcoming    ¥1,070-1,100        —        —
+  vince Discord 17h ago    YHTE       Primagrove Ltd              Nasdaq        Nov 10   upcoming            $4-6  $43.13M        —
+    hey! nice 🙂 still a   660A       RECEPTIONIST, Inc.          Tokyo         Nov 10   upcoming        ¥820-850        —        —
+    improvement but getti  MTX        Matrix Critical Minerals L… ASX           Nov 23   upcoming          A$0.20   $8.38M        —
+   reply vince: hey! nice  664A       TOKIUM Inc.                 Tokyo         Nov 25   upcoming               —        —        —
+  chronosmmxm_dc Discord   MBM        M Battery Materials Limited ASX           Dec 2    upcoming          A$0.50   $17.4M        —
+    I´ll come with feedba  —          Axies Ventures Plc          LSE           —        upcoming               —        —        —
+    find. First impressio└                                                                                                  [/]search─◢
+   reply chronosmmxm_dc: I´ll └next Mid-Month CPI in 8h 7m updated just now                                                     ─◢
+  vince Discord 17h ago
+    please do 🙏                                          Log in  Enter  Sign up free
+     ❤️ 1                                           ▄
+ --------------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +   ^⇧G Tidy Windows                                                                                                                v0.18.3 ☁ Log in Feedback

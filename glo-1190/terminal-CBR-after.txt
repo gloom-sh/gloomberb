@@ -1,0 +1,45 @@
+  > Search or run a command  Ctrl+P                                                                                         Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                          ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                                 ⚡
+  Main Portfolio  Watchlist                              No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP     P/E
+
+  No tickers.
+  Click + ticker to add one, or press a.
+                              ┌─:: Economic Calendar─────────────────────────────────────────────────────────────────         x ─┐
+  + ticker Enter              │ Impact  All  High  Med  Low   Region  All  US  G7  EU                         TODAY · Thu Oct 22 │
+                              │ TIME (UTC)   IMPACT   COUNTRY   EVENT                             ACTUAL   FORECAST      PRIOR   │
+                          ┌─:: Central Bank Rates──────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+                            JURISDICTION               LEVEL    LAST MOVE  LAST CHANGE     PCTL 1Y  1Y             AS OF
+                            United States          3.75-4.00%     +25bp ↑  2026-09-17           87  ⠹⠤⣄⣀⣀⣀⣀⣀⣀⣀⣀⣀⡤⠤ 2026-10-21 stale
+                            Euro area                   2.50%     +25bp ↑  2026-09-16           95  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⡤⠤⠤⠏⠉ 2026-10-21 stale
+                            Japan                       1.25%     +25bp ↑  2026-09-24           97  ⣀⣀⣠⠤⠤⠤⠤⠤⠤⠖⠒⠒⠒⠋ 2026-10-13
+                            United Kingdom              3.75%     -25bp ↓  2025-12-18           41  ⠉⠉⢹⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-12
+                            Canada                      2.25%     -25bp ↓  2025-10-30           48  ⢹⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-12
+                            Australia                   4.60%     +25bp ↑  2026-09-30           99  ⣀⣀⣀⣀⣠⠤⠤⠴⠒⠒⠒⠒⠒⠋ 2026-10-08
+                            China                       3.00%     -10bp ↓  2025-05-20           50  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-13
+                            India                       5.50%     +25bp ↑  2026-10-21           91  ⠉⠉⢹⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣸ 2026-10-21
+                            Indonesia                   5.75%     +25bp ↑  2026-06-18           84  ⣀⣀⣀⣀⣀⣀⣀⣀⡤⠎⠉⠉⠉⠉ 2026-10-05 stale
+                            South Korea                 3.00%     +25bp ↑  2026-08-27           94  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣠⠤⠏⠉ 2026-10-08
+                            Brazil                     13.75%     -25bp ↓  2026-09-17            4  ⠉⠉⠉⠉⠉⠉⠓⠒⠒⠦⠤⠤⢤⣀ 2026-10-13
+                            Mexico                      6.50%     -25bp ↓  2026-05-08           22  ⠉⠓⠲⠤⠤⠤⠤⢤⣀⣀⣀⣀⣀⣀ 2026-10-13
+  + ticker                  Russia                     14.00%     -25bp ↓  2026-07-27           11  ⠉⠉⠙⠒⠲⠤⠤⣄⣀⣀⣀⣀⣀⣀ 2026-10-13
+                            Saudi Arabia                4.50%     +25bp ↑  2026-09-16           86  ⠹⠤⣄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣠⠤ 2026-10-13
+                            Turkey                     37.00%    -100bp ↓  2026-01-23           35  ⠙⠒⠲⠤⣄⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-09
+:: #everyone                South Africa                7.25%     +25bp ↑  2026-09-25           97  ⠤⢤⣀⣀⣀⣀⣀⣀⣠⠤⠤⠤⠤⠏ 2026-10-12
+ ← Back                     Switzerland                 0.00%     -25bp ↓  2025-06-20           50  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-13
+  vince Discord 17h ago     Norway                      4.50%     +25bp ↑  2026-09-25           98  ⣀⣀⣀⣀⣀⣀⣀⣠⠤⠤⠤⠤⠤⠏ 2026-10-08
+    hey! nice 🙂 still a l  Sweden                      1.75%     -25bp ↓  2025-10-01           50  ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ 2026-10-13
+    improvement but gettin  New Zealand                 2.75%     +25bp ↑  2026-09-03           95  ⠤⢤⣀⣀⣀⣀⣀⣀⣀⣀⡤⠤⠏⠉ 2026-10-09
+   reply vince: hey! nice
+  chronosmmxm_dc Discord 1
+    I´ll come with feedbac└⚠[!] just now                                                                                            ─◢
+    find. First impression is │                                                                                                  │
+   reply chronosmmxm_dc: I´ll └next Mid-Month CPI in 8h 7m updated just now                                                     ─◢
+  vince Discord 17h ago
+    please do 🙏                                          Log in  Enter  Sign up free
+     ❤️ 1                                           ▄
+ --------------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +   ^⇧G Tidy Windows                                                                                                                v0.18.3 ☁ Log in Feedback

@@ -1,0 +1,45 @@
+  > Search or run a command  Ctrl+P                                                                                         Help ? CLOSED SPY 773.09 +0.53% USD
+:: Main Portfolio                          ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                                                 ⚡
+  Main Portfolio  Watchlist                              No tickers in Main Portfolio.
+  TICKER        LAST     CHG%       MCAP     P/E
+
+  No tickers.
+  Click + ticker to add one, or press a.
+                              ┌─:: Economic Calendar───────────────────────────────────────────────────────────────── ?  ...  x ─┐
+  + ticker Enter                Impact  All  High  Med  Low   Region  All  US  G7  EU                         TODAY · Thu Oct 22
+                                TIME (UTC)   IMPACT   COUNTRY   EVENT                             ACTUAL   FORECAST      PRIOR
+                                TODAY · Thu Oct 22
+                                             HIGH     KR        BoK Interest Rate Decision              —          —     3.00%
+                                             HIGH     TR        CBRT Interest Rate Decision             —          —    37.00%
+                                 NOW
+                                12:00        HIGH     MX        Mid-Month CPI                           —          —         —
+                                TOMORROW · Fri Oct 23
+                                10:30        HIGH     RU        Bank of Russia Interest Rate D…         —          —    14.00%  ▄
+                                12:00        HIGH     BR        IPCA-15 Mid-Month CPI                   —          —         —
+                                Mon Oct 26
+                                09:00        HIGH     EU        German Ifo Business Climate             —          —      89.9
+                                Tue Oct 27
+                                12:30        HIGH     US        Durable Goods Orders MoM                —          —        0%
+                                Wed Oct 28
+                                07:00        HIGH     EU        German GfK Consumer Confidence          —          —     -30.6
+  + ticker                      12:30        HIGH     GB        Autumn Budget 2026                      —          —         —
+                                13:45        HIGH     CA        BoC Interest Rate Decision              —          —     2.25%
+                                13:45        HIGH     CA        BoC Monetary Policy Report              —          —         —
+:: #everyone                    18:00        HIGH     US        Fed Interest Rate Decision              —         4%        4%
+ ← Back                         18:30        HIGH     US        Fed Press Conference                    —          —         —
+  vince Discord 17h ago         Thu Oct 29
+    hey! nice 🙂 still a lot o  05:00        HIGH     JP        Consumer Confidence                     —          —      35.4
+    improvement but getting th  12:30        HIGH     US        Personal Spending MoM                   —          —      0.9%
+   reply vince: hey! nice 🙂 s  12:30        HIGH     US        Personal Income MoM                     —          —       0.2
+  chronosmmxm_dc Discord 17h a  12:30        HIGH     US        GDP Growth Rate QoQ Adv                 —          —      2.2%
+    I´ll come with feedback an  12:30        HIGH     US        Core PCE Price Index MoM                —          —      0.2%
+    find. First impression is
+   reply chronosmmxm_dc: I´ll └next Mid-Month CPI in 8h 7m updated just now                                [f] impact [c] region─◢
+  vince Discord 17h ago
+    please do 🙏                                          Log in  Enter  Sign up free
+     ❤️ 1                                           ▄
+ --------------------------------------------------
+  Read-only chat. Log in or sign up to send.
+  Log in Sign up free
+
+  +                                                                                                                                   v0.18.3 ☁ Log in Feedback
