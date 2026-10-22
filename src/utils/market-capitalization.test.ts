@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { selectMarketCapitalization, describeFundamentalMarketCap } from "./market-capitalization";
+import { marketCapBasisNote, selectMarketCapitalization, describeFundamentalMarketCap, viewMarketCapitalization } from "./market-capitalization";
 import type { Quote } from "../types/financials";
 
 const quote: Quote = { symbol: "F:XNYS", price: 14.01, currency: "USD", change: 0, changePercent: 0,
@@ -35,4 +35,22 @@ test("stale and undated fundamental provenance remains explicit", () => {
   const selected = selectMarketCapitalization(quote, { ...fundamentals, fetchedAt: undefined, stale: true })!;
   expect(describeFundamentalMarketCap(selected.provenance)).toContain("retrieval time unavailable, stale");
   expect(selected.provenance.retrievedAt).toBeUndefined();
+});
+
+// GLO-1176 review: shares x price replaces a provider's cap only while the two can be the same count (price timing,
+// a recent issuance); past 10% the count shown is another one (one class's, GLO-754) and the provider's stands.
+test("a view's cap is the share count times the price from more than 2% to 10% off the provider's, and the provider's past it", () => {
+  // 1B shares at 10 USD: 10B.
+  const view = (marketCap: number) => viewMarketCapitalization({ ...quote, marketCap, price: 10 }, { ...fundamentals, sharesOutstanding: 1e9 });
+  expect(view(10.2e9)).toEqual({ value: 10.2e9, currency: "USD", provenance: { kind: "quote", source: "gloom" } });
+  expect(marketCapBasisNote(view(10.2e9))).toBeUndefined();
+  // Exactly 10% either way is still the product.
+  for (const providerValue of [11e9, 9e9]) {
+    expect(view(providerValue)).toMatchObject({ value: 10e9, computed: { shares: 1e9, price: 10, providerValue } });
+  }
+  expect(marketCapBasisNote(view(11e9))).toBe("Market cap 10B USD is the 1B shares shown x 10.00 USD; the provider's is 11B USD.");
+  // Just past 10%, the provider's, with the count it does not rest on.
+  expect(view(11.01e9)).toMatchObject({ value: 11.01e9, otherBasis: { shares: 1e9, price: 10, product: 10e9 } });
+  expect(view(11.01e9).computed).toBeUndefined();
+  expect(marketCapBasisNote(view(11.01e9))).toBe("Market cap 11.01B USD is the provider's and does not rest on the 1B shares shown (x 10.00 USD = 10B).");
 });
