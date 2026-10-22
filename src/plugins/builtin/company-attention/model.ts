@@ -48,6 +48,12 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
   return kind === "apps" || symbol ? ["table", "chart", "mix", "peers", "evidence"] : ["table"];
 }
 
+/** A pane tab: a report view, or HIRE's moves, which has its own read (moves-model.ts). */
+export type AttentionPaneTab = AttentionTab | "moves";
+export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
+  return kind === "hiring" ? [...attentionTabs(kind, symbol), "moves"] : attentionTabs(kind, symbol);
+}
+
 /**
  * A view's heading where the report prints it in full, as `fn HIRE` does:
  * what its rows are (Open roles, Hiring trend), where the pane's tab says it
