@@ -6,7 +6,7 @@ import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { ChartTableHeader, DataTableView, PageStackView, PaneFooterScope, PaneLinkMenu, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
 import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
 import type { CloudJobsPostingDetail } from "../../../api-client/types";
-import { postingFacts, postingTitle } from "../shared/job-posting";
+import { descriptionText, postingFacts, postingTitle } from "../shared/job-posting";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -49,7 +49,7 @@ function Evidence({ row, width, posting, source }: Size & { row: AttentionRow; p
     ...(row.links ?? []).map((entry) => link(entry.label, entry.url, `Open ${entry.label.toLowerCase()}`)),
   ];
   return <PaneLinkMenu>
-    <DetailReader resetScrollKey={row.id} width={width} facts={facts} body={posting?.description ?? null} />
+    <DetailReader resetScrollKey={row.id} width={width} facts={facts} body={descriptionText(posting?.description)} />
   </PaneLinkMenu>;
 }
 /** A link's site, as a reader names it: "sec.gov". */

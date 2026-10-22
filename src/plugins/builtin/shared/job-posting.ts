@@ -101,6 +101,16 @@ export function postingTitle(title: string | null | undefined, externalId?: stri
   return isPlaceholderTitle(title, externalId) ? "Untitled role" : title!;
 }
 
+/**
+ * A posting's description as words: the markdown marks some careers systems
+ * write (Starbucks' "#### Basic Qualifications", "**Pay**") taken off, so a
+ * heading reads as a heading line and bold as its words.
+ */
+export function descriptionText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  return text.replace(/^[ \t]*#{1,6}[ \t]+(?=\S)/gm, "").replace(/\*\*([^*\n]+)\*\*/g, "$1").replace(/__([^_\n]+)__/g, "$1");
+}
+
 export interface PostingFact {
   label: string;
   value: string;

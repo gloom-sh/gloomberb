@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { employmentText, postingPlace, postingTitle } from "./job-posting";
+import { descriptionText, employmentText, postingPlace, postingTitle } from "./job-posting";
 
 test("a place names its country, and never reads a state code as one", () => {
   const place = (location: string | null, country: string | null, remote: boolean | null = null) => postingPlace({ location, country, remote });
@@ -20,4 +20,8 @@ test("a title the careers system never gave, and hours in words", () => {
   expect(postingTitle("shift supervisor - Store# 84768, ATRIUM TWO")).toBe("shift supervisor - Store# 84768, ATRIUM TWO");
   expect(postingTitle("Engineer 2")).toBe("Engineer 2");
   expect([employmentText("FULL_TIME"), employmentText("Full-time"), employmentText("CDI"), employmentText("UNAVAILABLE")]).toEqual(["Full time", "Full time", "CDI", null]);
+});
+
+test("a description's markdown marks are taken off, its words kept", () => {
+  expect(descriptionText("We are hiring.\n#### Basic Qualifications\n* **Six** months\nC# and 2 * 3")).toBe("We are hiring.\nBasic Qualifications\n* Six months\nC# and 2 * 3");
 });
