@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
-import { Box } from "../../ui";
+import { Box, useUiCapabilities } from "../../ui";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../utils/sort-values";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
 import { PaneStatusBody, StatGrid, statGridRows, type DataTableColumn, type DataTableCell, type StatItem } from "../ui";
+import { withCountryFlag, withFlagRoom } from "../ui/country-flag";
 import { getTableWidth } from "../ui/table-layout";
 
 export interface MarketBoardRow {
@@ -13,6 +14,11 @@ export interface MarketBoardRow {
   label: string;
   /** Secondary name shown beside the label, such as the instrument a jurisdiction sets. */
   labelDetail?: string;
+  /**
+   * The country the row is (a jurisdiction, a sovereign), as a code or a
+   * name: its flag leads the label on the desktop and the web.
+   */
+  country?: string | null;
   value: number | null;
   valueText: string;
   change: number | null;
@@ -138,6 +144,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
+  // A board of countries leads each name with its flag where one is drawn.
+  const flagged = useUiCapabilities().nativePaneChrome === true && rows.some((row) => row.country !== undefined);
   const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "asc" });
   const items = useMemo(() => sort.columnId ? [...rows].sort((a, b) => {
     const key = sort.columnId as "label" | "labelDetail" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
@@ -149,7 +157,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   // A stale or partial row's date carries a word, so the column has room for both and the date is never cut.
   const wordWidth = Math.max(0, ...rows.map((row) => (row.status ? STATUS_WORDS[row.status]?.length : 0) ?? 0));
   const { columns, shortAsOf } = fitBoardColumns([
-    { id: "label", label: labelHeader, width: labelWidth, align: "left" },
+    withFlagRoom({ id: "label", label: labelHeader, width: labelWidth, align: "left" }, flagged),
     ...(rows.some((row) => row.labelDetail !== undefined)
       ? [{ id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left" as const }] : []),
     { id: "value", label: valueLabel, width: valueWidth, align: "right" },
@@ -164,7 +172,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     const extra = extraColumns?.find((item) => item.column.id === column.id);
     if (extra) return extra.renderCell(row);
     const muted = row.status === "unavailable" ? colors.textDim : colors.text;
-    if (column.id === "label") return { text: row.label, color: muted };
+    if (column.id === "label") return withCountryFlag({ text: row.label, color: muted }, row.country, flagged);
     if (column.id === "labelDetail") return { text: row.labelDetail ?? "", color: colors.textMuted };
     if (column.id === "value") return { text: row.valueText, color: muted };
     if (column.id === "change") return { text: row.changeText,

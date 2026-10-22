@@ -19,6 +19,9 @@ const DONE_RETENTION_MS = 10 * 60_000;
 /** An order first seen already ended is news only if it ended this recently. */
 const RECENT_END_MS = 2 * 60_000;
 const SEEN_LIMIT = 1_000;
+/** A fill re-syncs its profile's positions this long after the last fill in a burst, and no later than the cap after the first. */
+const FILL_SYNC_MS = 2_000;
+const FILL_SYNC_MAX_WAIT_MS = 10_000;
 
 export interface BrokerOrderFeedState {
   /** Working orders, and those that ended while watched, newest first. */
@@ -271,10 +274,22 @@ export class BrokerOrderFeed {
   private readonly listeners = new Set<() => void>();
   private readonly seen = new Map<string, Seen>();
   private readonly fills = new Map<string, number>();
+  private readonly fillSyncs = new Map<string, { timer?: ReturnType<typeof setTimeout>; firstAt: number; running: boolean; again: boolean }>();
   private notifier?: (notification: AppNotificationRequest) => void;
+  private syncPositions?: (instanceId: string) => Promise<unknown>;
 
   /** Toasts go through the app's notifications once the plugin is set up. */
   setNotifier(notify: ((notification: AppNotificationRequest) => void) | undefined): void { this.notifier = notify; }
+
+  /**
+   * How a fill reaches the portfolio: the app's sync of the profile's
+   * positions, which the plugin sets up. A fill or partial fill schedules it
+   * once for a burst of fills; one during a sync runs it again after.
+   */
+  setPositionSync(sync: ((instanceId: string) => Promise<unknown>) | undefined): void {
+    this.syncPositions = sync;
+    if (!sync) this.cancelFillSyncs();
+  }
 
   hold(broker: BrokerAdapter, instance: BrokerInstanceConfig): () => void {
     let profile = this.profiles.get(instance.id);
@@ -298,6 +313,7 @@ export class BrokerOrderFeed {
     this.profiles.clear();
     this.seen.clear();
     this.fills.clear();
+    this.cancelFillSyncs();
     this.changed();
   }
 
@@ -328,10 +344,45 @@ export class BrokerOrderFeed {
     this.seen.delete(key);
     this.seen.set(key, { filled, done: (before?.done ?? false) || brokerOrderDone(order.status) });
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.keys().next().value!);
-    if (filled > (before?.filled ?? 0)) this.fills.set(instanceId, (this.fills.get(instanceId) ?? 0) + 1);
+    if (filled > (before?.filled ?? 0)) {
+      this.fills.set(instanceId, (this.fills.get(instanceId) ?? 0) + 1);
+      // A fill moves the account's positions. An order first seen already filled long ago (the first read at
+      // launch, which the startup import covers) does not.
+      if (before || Date.now() - order.updatedAt <= RECENT_END_MS) this.scheduleFillSync(instanceId);
+    }
     if (quiet || !this.notifier) return;
     const toast = orderChangeToast(before, order, Date.now());
     if (toast) this.notifier({ ...toast, desktop: "when-inactive", body: orderToastBody(order) });
+  }
+
+  private scheduleFillSync(instanceId: string): void {
+    if (!this.syncPositions) return;
+    const now = Date.now();
+    const entry = this.fillSyncs.get(instanceId) ?? { firstAt: now, running: false, again: false };
+    if (entry.timer === undefined) entry.firstAt = now;
+    else clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => this.runFillSync(instanceId), Math.max(0, Math.min(FILL_SYNC_MS, entry.firstAt + FILL_SYNC_MAX_WAIT_MS - now)));
+    this.fillSyncs.set(instanceId, entry);
+  }
+
+  private runFillSync(instanceId: string): void {
+    const entry = this.fillSyncs.get(instanceId);
+    const sync = this.syncPositions;
+    if (!entry || !sync) return;
+    entry.timer = undefined;
+    if (entry.running) { entry.again = true; return; }
+    entry.running = true;
+    // A failed sync leaves the portfolio as it was; the next fill, a manual sync or the next launch reads it again.
+    void Promise.resolve().then(() => sync(instanceId)).catch(() => {}).finally(() => {
+      entry.running = false;
+      if (this.fillSyncs.get(instanceId) !== entry) return;
+      if (entry.again) { entry.again = false; this.runFillSync(instanceId); } else if (entry.timer === undefined) this.fillSyncs.delete(instanceId);
+    });
+  }
+
+  private cancelFillSyncs(): void {
+    for (const entry of this.fillSyncs.values()) if (entry.timer !== undefined) clearTimeout(entry.timer);
+    this.fillSyncs.clear();
   }
 }
 

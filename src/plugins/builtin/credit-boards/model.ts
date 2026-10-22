@@ -239,6 +239,8 @@ export function sovrRows(
     return {
       id: sovereign.id,
       label: sovereign.name,
+      // The sovereign's flag, by its name, leads the row on the desktop.
+      country: sovereign.name,
       value: sovereign.level,
       valueText: formatLevel("spread", sovereign.level),
       change: shown("spread", sovereign.change1M),

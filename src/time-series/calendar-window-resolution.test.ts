@@ -5,7 +5,8 @@ import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { parseChartSpec, serializeChartSpec } from "../plugins/builtin/chart-composer/chart-spec";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { HeadlessPaneContext } from "../types/headless";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
 import type { ChartResolutionSupport } from "./resolution";
 import { createTestHeadlessContext } from "../test-support/headless";
 

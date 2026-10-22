@@ -1,9 +1,10 @@
-import type { CryptoAssetKind, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
+import type { CryptoAssetKind, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 import type { HeadlessExportTable, HeadlessPaneColumn } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { errorMessage } from "../../../utils/errors";
-import { fetchCryptoMarkets, fetchStablecoinSupply } from "./client";
+import { fetchCryptoMarkets, fetchDefiTvl, fetchStablecoinSupply } from "./client";
+import { buildDefiRows, defiHistoryRows, defiHistoryStart, defiSummaryLine, type DefiList, type DefiRow } from "./defi";
 import {
   buildCryptoRows,
   CRYPTO_BOARD_FRESHNESS,
@@ -102,30 +103,140 @@ function supplyMetadata(payload: StablecoinSupplyPayload) {
   };
 }
 
+const PROTOCOL_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "rank", header: "#", align: "right" },
+  { key: "name", header: "Protocol" },
+  { key: "category", header: "Category", stackPriority: 2, stackRows: 0 },
+  { key: "tvl", header: "TVL", align: "right", format: compact },
+  { key: "change1dPercent", header: "1D %", align: "right", format: percent, stackPriority: 3, stackRows: 0 },
+  { key: "change7d", header: "7D", align: "right", format: signedCompact, stackPriority: 1, stackRows: 0 },
+  { key: "change7dPercent", header: "7D %", align: "right", format: percent },
+  { key: "change30d", header: "30D", align: "right", format: signedCompact, stackPriority: 0.5, stackRows: 0 },
+  { key: "change30dPercent", header: "30D %", align: "right", format: percent },
+  { key: "chains", header: "Chains", align: "right", stackPriority: 4, stackRows: 0 },
+];
+
+const CHAIN_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "rank", header: "#", align: "right" },
+  { key: "name", header: "Chain" },
+  { key: "token", header: "Token", stackPriority: 2, stackRows: 0 },
+  { key: "tvl", header: "TVL", align: "right", format: compact },
+  { key: "change7d", header: "7D", align: "right", format: signedCompact, stackPriority: 1, stackRows: 0 },
+  { key: "change7dPercent", header: "7D %", align: "right", format: percent },
+  { key: "change30d", header: "30D", align: "right", format: signedCompact, stackPriority: 0.5, stackRows: 0 },
+  { key: "change30dPercent", header: "30D %", align: "right", format: percent },
+  { key: "share", header: "Share", align: "right", format: share },
+];
+
+function defiRecord(row: DefiRow, list: DefiList) {
+  return {
+    rank: row.rank,
+    name: row.name,
+    ...(list === "chain" ? { token: row.detail } : { category: row.detail, chains: row.chains, change1dPercent: row.change1dPercent }),
+    tvl: row.tvl,
+    change7d: row.change7d,
+    change7dPercent: row.change7dPercent,
+    change30d: row.change30d,
+    change30dPercent: row.change30dPercent,
+    ...(list === "chain" ? { share: row.share } : {}),
+  };
+}
+
+/** The other list and the total's daily history, for `--csv`: one file carries the whole tab. */
+function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExportTable[] {
+  const other: DefiList = list === "chain" ? "protocol" : "chain";
+  const otherRows = buildDefiRows(payload, other).map((row) => defiRecord(row, other));
+  const history = defiHistoryRows(payload);
+  return [
+    ...(otherRows.length ? [{ title: other === "chain" ? "DeFi TVL by chain" : "DeFi TVL by protocol", unit: "USD", columns: other === "chain" ? CHAIN_COLUMNS : PROTOCOL_COLUMNS, rows: otherRows }] : []),
+    ...(history.length ? [{
+      title: "Total DeFi TVL",
+      unit: "USD",
+      interval: "1d",
+      columns: [{ key: "date", header: "Date" }, { key: "tvl", header: "TVL", align: "right" as const }],
+      rows: history,
+    }] : []),
+  ];
+}
+
+/**
+ * `--list defi`: the largest protocols (or chains, `--by chain`) by TVL with
+ * their 7D and 30D change, under the total's line. Dated by the total's day,
+ * from a source that publishes it daily.
+ */
+async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"rows">["load"]>[1]) {
+  const payload = await fetchDefiTvl(ctx.apiClient);
+  const rows = buildDefiRows(payload, list).map((row) => defiRecord(row, list));
+  const summary = defiSummaryLine(payload);
+  const exportTables = defiExportTables(payload, list);
+  return {
+    rows,
+    columns: list === "chain" ? CHAIN_COLUMNS : PROTOCOL_COLUMNS,
+    ...(exportTables.length ? { exportTables } : {}),
+    errors: payload.warnings,
+    ...(list === "protocol" && payload.protocolsAsOf ? { notes: [`Protocols as of ${isoMinute(payload.protocolsAsOf)}, the source's latest; their versions are counted together.`] } : {}),
+    empty: list === "chain" ? "No chains returned." : "No protocols returned.",
+    freshness: {
+      source: "Gloom Cloud",
+      publisher: payload.source.name,
+      status: "not-a-feed" as const,
+      basis: "daily TVL",
+      asOf: payload.asOf,
+      maxAgeMinutes: 36 * 60,
+    },
+    metadata: {
+      list: "defi",
+      by: list,
+      status: payload.status,
+      asOf: payload.asOf,
+      fetchedAt: payload.fetchedAt,
+      protocolsAsOf: payload.protocolsAsOf,
+      source: payload.source,
+      total: payload.total,
+      historyStart: defiHistoryStart(payload),
+      ...(summary ? { notices: [summary] } : {}),
+    },
+  };
+}
+
 export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   argument: { kind: "none" },
   options: [{
     key: "list",
-    description: "Coins or stablecoins.",
+    description: "Coins, stablecoins, or DeFi TVL.",
     type: "enum",
     values: [
       { value: "coin", aliases: ["coins"] },
       { value: "stablecoin", aliases: ["stablecoins", "stable", "stables"] },
+      { value: "defi", aliases: ["tvl"] },
     ],
     defaultValue: "coin",
     example: "--list stablecoin",
     pluginState: { pluginId: "market-overview", key: "activeTab" },
+  }, {
+    key: "by",
+    // No default: the coin and stablecoin reports carry no `by`, and a missing one is by protocol.
+    description: "DeFi TVL by protocol (the default) or by chain, with --list defi.",
+    type: "enum",
+    values: [
+      { value: "protocol", aliases: ["protocols"] },
+      { value: "chain", aliases: ["chains"] },
+    ],
+    example: "--list defi --by chain",
+    pluginState: { pluginId: "market-overview", key: "defiList" },
   }],
   columns: COIN_COLUMNS,
-  describe: (args) => `Crypto | ${args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
+  describe: (args) => `Crypto | ${args.options.list === "defi" ? `DeFi TVL by ${args.options.by === "chain" ? "chain" : "protocol"}` : args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
   discovery: {
     aliases: ["CRYP"],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
-  // A board snapshot refreshed every few minutes; the pane streams, the report does not.
-  freshness: { status: "delayed", ...CRYPTO_BOARD_FRESHNESS },
+  // The board as the server read it, at most 15 seconds before; the pane streams, the report does not.
+  // Each row keeps the time of its own last trade, so a coin that has not traded lately reads its age.
+  freshness: { status: "live", ...CRYPTO_BOARD_FRESHNESS },
   async load(args, ctx) {
+    if (args.options.list === "defi") return loadDefi(args.options.by === "chain" ? "chain" : "protocol", ctx);
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     // Supply is its own request: a failure there leaves the prices whole.
     const [data, supplyResult] = await Promise.all([

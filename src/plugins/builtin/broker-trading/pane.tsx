@@ -225,6 +225,13 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [broker, instance, controller, visible, streamsQuotes, page, contractKey]);
   // The app's order feed: the drawer, chart levels and this ticket's result follow it.
   const orderFeed = useBrokerOrderFeed(broker, instance, connected);
+  // A fill changes the position a sell is sized against: the ticket reads it again then, not at its next 30 seconds.
+  const fillsSeen = useRef(orderFeed.fills);
+  useEffect(() => {
+    if (orderFeed.fills === fillsSeen.current) return;
+    fillsSeen.current = orderFeed.fills;
+    refreshResources.current();
+  }, [orderFeed.fills]);
   useFeedOrderResult(orderFeed, instance.id, state.result, controller.applyOrderUpdate);
   // Without pushed order changes, or while a change's outcome is unknown, the result is asked for every 10 seconds until it ends.
   const unknownResult = state.result?.status.toUpperCase() === "UNKNOWN" && state.result.orderId !== 0;

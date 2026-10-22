@@ -9,7 +9,11 @@ import {
   type ManualChartResolution,
 } from "../../../../time-series/resolution";
 import type { PricePoint } from "../../../../types/financials";
-import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose } from "../../../../market-data/market/freshness";
+import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, sessionCalendarTimeZone } from "../../../../market-data/market/freshness";
+import { barLastSession } from "../../../../market-data/market/bar-period";
+import {
+  barCloseDay, barSessionDay, isIntradayDailyBar, isReturnPeriod, periodBaseDay, periodBaseIndex,
+} from "../../../../market-data/market/period-return";
 import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
 import { currentFxClosureStart, isCurrencyPairListing } from "../../../../utils/fx-market-hours";
 import { pricePointValues } from "../../../../utils/price-history-integrity";
@@ -49,17 +53,86 @@ export function returnWindowStart(range: ReturnRange, end: number): number {
   return subtractTimeRange(new Date(end), range).getTime();
 }
 
+const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+
+/** The session date of `time` at a venue, on its clock; the UTC date where its sessions are unknown. */
+function venueDay(time: number, venue: string | undefined): string {
+  const zone = venue ? sessionCalendarTimeZone(venue) : null;
+  return zone ? zonedDateKey(time, zone) : utcDay(time);
+}
+
 /**
- * Where the rows start, exclusive: the window's start for intraday bars. A
- * daily or longer bar is stamped with its date at midnight UTC, so the window
- * takes every bar from its start date on.
+ * The calendar date a 1W to 5Y window ending at `end` is measured from, the
+ * close on or before which is the base of its returns (periodBaseDay), as CMP
+ * and every period return measure it: 1M ending Wed 21 Oct is from Mon 21
+ * Sep's close. Null for 6H, 1D and 5D, which are spans of time, and ALL.
  */
-export function returnVisibleFrom(range: ReturnRange, resolution: ManualChartResolution, end: number): number {
+export function returnBaseDay(range: ReturnRange, end: number, venue?: string): string | null {
+  return isReturnPeriod(range) ? periodBaseDay(venueDay(end, venue), range) : null;
+}
+
+/**
+ * Where the rows after a base day start, exclusive: past the base day's
+ * session close for intraday bars, and before the first bar whose close is
+ * from after it for daily (stamped by their date at midnight UTC), weekly
+ * and monthly ones (stamped by their period's first day, barCloseDay). For
+ * daily and longer bars this is what a request reaches back from; the rows
+ * start where returnRowsFrom finds the base among the loaded bars.
+ */
+function afterBaseDay(baseDay: string, resolution: ManualChartResolution, venue: string | undefined): number {
+  const nextDay = Date.parse(`${baseDay}T00:00:00Z`) + DAY_MS;
+  if (isIntradayResolution(resolution)) {
+    // Midnight UTC after the base day is past every venue's close of it and before its next one.
+    const close = venue ? latestRegularSessionClose(venue, nextDay) : null;
+    return close && close.date <= baseDay ? close.close - 1 : nextDay - 1;
+  }
+  for (let day = nextDay - 40 * DAY_MS; day <= nextDay; day += DAY_MS) {
+    if (barCloseDay(utcDay(day), resolution, venue) > baseDay) return day - 1;
+  }
+  return nextDay - 1;
+}
+
+/**
+ * Where the rows start, exclusive, before the bars are loaded: what the
+ * request reaches back from. A 1W to 5Y window starts after its base day
+ * (returnBaseDay), so the close on or before it is the bar before the rows
+ * and the base of every return. Otherwise the window's start for intraday
+ * bars; a daily or longer bar is stamped with its date at midnight UTC, so
+ * the window takes every bar from its start date on.
+ */
+export function returnVisibleFrom(range: ReturnRange, resolution: ManualChartResolution, end: number, venue?: string): number {
+  const baseDay = returnBaseDay(range, end, venue);
+  if (baseDay) return afterBaseDay(baseDay, resolution, venue);
   const start = returnWindowStart(range, end);
   if (isIntradayResolution(resolution)) return start;
   const day = new Date(start);
   day.setUTCHours(0, 0, 0, 0);
   return day.getTime() - 1;
+}
+
+/**
+ * Where the rows start among the loaded bars, exclusive. A 1W to 5Y window
+ * of daily or longer bars starts after the bar on or before its base day,
+ * each bar dated by its session day (barSessionDay; a week or month by the
+ * day it closes), so that close is the bar before the rows however the feed
+ * stamps it: a JPX bar at 00:00 JST is 15:00 UTC the day before. Without a
+ * bar on or before the base day, every bar is a row. Otherwise
+ * returnVisibleFrom.
+ */
+export function returnRowsFrom(
+  points: readonly PricePoint[],
+  range: ReturnRange,
+  resolution: ManualChartResolution,
+  end: number,
+  venue?: string,
+): number {
+  const estimate = returnVisibleFrom(range, resolution, end, venue);
+  const baseDay = returnBaseDay(range, end, venue);
+  const bars = toBars(points);
+  if (!baseDay || isIntradayResolution(resolution) || !bars.length) return estimate;
+  const days = bars.map((bar) => barCloseDay(barSessionDay(bar.timestamp, venue), resolution, venue));
+  const index = periodBaseIndex(days, baseDay, Number.POSITIVE_INFINITY);
+  return index < 0 ? bars[0]!.timestamp - 1 : bars[index]!.timestamp;
 }
 
 /**
@@ -243,6 +316,35 @@ export function buildReturnRows(
     });
   }
   return rows.reverse();
+}
+
+/**
+ * The session day of the close every return of a window is measured from
+ * (buildReturnRows' base): the bar before its rows, else its first priced
+ * bar. A daily bar's date, a weekly or monthly bar's last session, an
+ * intraday bar's session date at its venue. Null for a window without rows.
+ */
+export function returnBaseCloseDay(
+  points: readonly PricePoint[],
+  visibleFrom: number,
+  resolution: ManualChartResolution,
+  venue: string | undefined,
+  now: number,
+): string | null {
+  const bars = toBars(points);
+  const first = bars.findIndex((bar) => bar.timestamp > visibleFrom);
+  if (first < 0) return null;
+  const base = first > 0 && bars[first - 1]!.close !== null ? bars[first - 1] : bars.slice(first).find((bar) => bar.close !== null);
+  if (!base) return null;
+  if (isIntradayResolution(resolution)) return venueDay(base.timestamp, venue);
+  const day = barSessionDay(base.timestamp, venue);
+  const period = resolution === "1wk" ? "week" : resolution === "1mo" ? "month" : null;
+  return period ? barLastSession(day, period, venue, now) ?? barCloseDay(day, resolution, venue) : day;
+}
+
+/** Whether the newest daily row is the session still trading at its venue, which its table marks. */
+export function isTodayReturnRow(row: Pick<ReturnRow, "timestamp"> | undefined, resolution: ManualChartResolution, venue: string | undefined, now: number): boolean {
+  return !!row && resolution === "1d" && isIntradayDailyBar(barSessionDay(row.timestamp, venue), venue, now);
 }
 
 /** The latest bar time in a loaded history, or null when it has none. */

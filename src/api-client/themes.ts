@@ -38,7 +38,13 @@ interface SnapshotMetadata {
   asOf: string;
   snapshotId: string;
   stale: boolean;
-  /** The US market as the server's delayed board reads it. Absent from older servers. */
+  /**
+   * Whose prices the board carries: `realtime` for a Pro account, priced from
+   * a live read the server renews every 15 seconds; `delayed`, fifteen
+   * minutes behind, otherwise. An older server leaves it out (delayed).
+   */
+  access?: "realtime" | "delayed";
+  /** The US market as the board reads it: now for a real-time board, fifteen minutes back otherwise. Absent from older servers. */
   session?: "PRE" | "REGULAR" | "POST" | "CLOSED" | null;
   /** Outside the regular session, the completed session every figure describes; null while one trades. */
   regularSessionDate?: string | null;

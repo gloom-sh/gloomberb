@@ -5,7 +5,7 @@ import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconc
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
-import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapitalization } from "../../utils/market-capitalization";
+import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
   formatCurrency,
@@ -93,6 +93,8 @@ import { bankSection } from "../bank-section";
 import type { FundBondFacts } from "../../api-client/fund-facts";
 import { bondFigures, fetchFundBondFacts, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
+import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -729,7 +731,7 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
 
 /**
- * The notes under shown fundamentals: a market cap that does not rest on the share count shown, how a labelled or
+ * The notes under shown fundamentals: a market cap shown as the share count times the price and the provider's, how a labelled or
  * withdrawn EV compares with market cap + debt - cash, what a converted TTM block was converted from, an EPS in
  * another currency than the amounts beside it, and what a P/E on such an EPS divides. `priced` is the snapshot at
  * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
@@ -741,9 +743,9 @@ function fundamentalsNotes(
 ): string[] {
   const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
-  const shareBasis = shown("Market Cap") && shown("Shares Outstanding")
-    ? marketCapShareBasisNote(selectMarketCapitalization(priced.quote, fundamentals), fundamentals?.sharesOutstanding,
-      regularSessionValuationPrice(priced.quote), priced.quote?.currency)
+  // The cap shown is the share count times the price where the provider's sits more than 2% from it; the note names the provider's.
+  const shareBasis = shown("Market Cap")
+    ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
@@ -855,7 +857,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const financials = atRegularSessionPrice(snapshot);
   const quote = financials.quote;
   const fundamentals = financials.fundamentals;
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  const capitalization = viewMarketCapitalization(quote, fundamentals, regularSessionValuationPrice(quote));
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
@@ -1104,7 +1106,7 @@ export async function buildTickerReport({
 
   // Market cap and the multiples are measured at the regular session price the Quote section heads with.
   const priced = atRegularSessionPrice(financials);
-  const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
+  const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
   // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do,
   // with the base currency's figure after them when it differs: 627.2B USD (878.15B CAD).
   const convertedCurrencies = new Set<string>();
@@ -1223,7 +1225,7 @@ export async function buildTickerReport({
     ],
     body: item.summary,
     link: item.url,
-  })));
+  })), recentNews[0]?.searchedFor ? coinNewsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
 
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
@@ -1480,6 +1482,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",
         limit: NEWS_ITEM_LIMIT,
+        // A coin pair with no story filed under it searches for the coin by this name.
+        ...(isRoundTheClockCoin(requestSymbol, exchange || quote?.exchangeName) && (quote?.name || tickerFile?.metadata.name)
+          ? { listingName: quote?.name || tickerFile?.metadata.name }
+          : {}),
       }),
       // Outside the US the lookup checks the SEC registrant against the listing's company,
       // and refuses another company's filings.
@@ -1505,7 +1511,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
     const memberships = await membershipsLoad;
     if (dependencies.printResult) {
-      const warnings = [choiceNote, coinNote, quoteNote].filter((note): note is string => !!note);
+      const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
+      const warnings = [choiceNote, coinNote, quoteNote, newsNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,

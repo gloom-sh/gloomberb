@@ -59,7 +59,7 @@ export function addDays(date: string, days: number): string {
 }
 
 /** NYSE sessions from the published calendar; weekdays for years it does not cover. */
-function isSession(date: string): boolean {
+export function isSession(date: string): boolean {
   const known = getPublishedUsEquityCalendarDay("NYSE", date);
   if (known) return known === "session";
   const day = new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -218,6 +218,11 @@ function compare(left: BoardReport, right: BoardReport, sort: BoardSort): number
   return sort.direction === "asc" ? a - b : b - a;
 }
 
+/** Held names, then watched, then the rest, when the board puts mine first; one rank for all otherwise. */
+export function ownershipRank(report: Pick<BoardReport, "owned">, mineFirst: boolean): number {
+  return !mineFirst ? 0 : report.owned === "held" ? 0 : report.owned === "watched" ? 1 : 2;
+}
+
 /**
  * Sections in date order, each ranked by the sort (largest company first by
  * default). With `mineFirst`, held names lead, then watched, then the rest.
@@ -228,7 +233,7 @@ export function boardRows(
   sort: BoardSort,
   mineFirst: boolean,
 ): BoardRow[] {
-  const rank = (report: BoardReport) => (!mineFirst ? 0 : report.owned === "held" ? 0 : report.owned === "watched" ? 1 : 2);
+  const rank = (report: BoardReport) => ownershipRank(report, mineFirst);
   const rows: BoardRow[] = [];
   for (const day of days) {
     const inDay = reports

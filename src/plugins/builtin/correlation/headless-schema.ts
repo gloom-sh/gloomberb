@@ -33,7 +33,8 @@ export const paneSchemas = {
     },
   },
   "relationship-graph-pane": {
-    argument: { kind: "tickers", maximum: 2 },
+    // The gold/silver ratio is the pair a metals desk asks for first.
+    argument: { kind: "tickers", maximum: 2, examples: ["GC=F SI=F", "AMD NVDA"] },
     options: [
       {
         key: "range",
@@ -64,7 +65,7 @@ export const paneSchemas = {
     ],
     discovery: {
       id: "security-relationship",
-      aliases: ["relationship", "ratio", "beta", "regression", "rolling correlation"],
+      aliases: ["relationship", "ratio", "beta", "regression", "rolling correlation", "gold silver ratio", "gold/silver ratio", "pair ratio"],
       limitations: ["A single ticker is compared with SPY."],
       screenshotReadiness: "partial",
     },

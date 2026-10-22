@@ -362,13 +362,12 @@ describe("calendar history fetched copies", () => {
     // Fetched just after the 09-22 close (20:00 UTC) settled: an hour apart.
     expect(outdated(behind, "2026-09-22T20:31:00Z", "2026-09-22T21:30:00Z", tsla)).toBe(false);
     expect(outdated(behind, "2026-09-22T20:31:00Z", "2026-09-22T21:32:00Z", tsla)).toBe(true);
-    // Fetched the next morning: a quarter of the time since that close.
-    expect(outdated(behind, "2026-09-23T11:41:00Z", "2026-09-23T16:40:00Z", tsla)).toBe(false);
-    expect(outdated(behind, "2026-09-23T11:41:00Z", "2026-09-23T17:00:00Z", tsla)).toBe(true);
-    expect(outdated(behind, "2026-09-23T11:41:00Z", "2026-09-23T20:10:00Z", tsla)).toBe(true);
-    expect(outdated(behind, "2026-09-23T11:41:00Z", "2026-09-23T17:30:00Z", { ...tsla, checkedAt: at("2026-09-23T16:00:00Z") })).toBe(false);
+    // Fetched the next morning: a quarter of the time since that close, until the next session opens.
+    expect(outdated(behind, "2026-09-23T06:00:00Z", "2026-09-23T08:30:00Z", tsla)).toBe(false);
+    expect(outdated(behind, "2026-09-23T06:00:00Z", "2026-09-23T09:30:00Z", tsla)).toBe(true);
+    expect(outdated(behind, "2026-09-23T06:00:00Z", "2026-09-23T10:30:00Z", { ...tsla, checkedAt: at("2026-09-23T08:00:00Z") })).toBe(false);
     expect(calendarHistoryFetchState(behind, at("2026-09-23T11:41:00Z"), at("2026-09-23T12:00:00Z"), { ...tsla, intervalMs: DAY })).toBe("behind");
-    expect(outdated(current, "2026-09-23T11:41:00Z", "2026-09-23T18:00:00Z", tsla)).toBe(false);
+    expect(outdated(current, "2026-09-23T11:41:00Z", "2026-09-23T13:00:00Z", tsla)).toBe(false);
     // Weekends and published holidays are not missing sessions.
     expect(outdated(bars("2026-09-03T00:00:00Z", "2026-09-04T13:30:00Z"), "2026-09-05T12:00:00Z", "2026-09-07T22:00:00Z", tsla)).toBe(false);
   });
@@ -387,8 +386,8 @@ describe("calendar history fetched copies", () => {
     // Fetched after Monday's close without the new week.
     expect(outdated(weekly, "2026-09-22T12:00:00Z", "2026-09-22T18:00:00Z", options)).toBe(true);
     const monthly = { ...options, intervalMs: 30 * DAY };
-    expect(outdated(bars("2026-08-01T04:00:00Z", "2026-09-01T04:00:00Z"), "2026-09-22T12:00:00Z", "2026-09-22T18:00:00Z", monthly)).toBe(false);
-    expect(outdated(bars("2026-07-01T04:00:00Z", "2026-08-01T04:00:00Z"), "2026-09-22T12:00:00Z", "2026-09-22T18:00:00Z", monthly)).toBe(true);
+    expect(outdated(bars("2026-08-01T04:00:00Z", "2026-09-01T04:00:00Z"), "2026-09-22T13:31:00Z", "2026-09-22T20:00:00Z", monthly)).toBe(false);
+    expect(outdated(bars("2026-07-01T04:00:00Z", "2026-08-01T04:00:00Z"), "2026-09-22T13:31:00Z", "2026-09-22T20:00:00Z", monthly)).toBe(true);
   });
 
   test("only venues with published closures count a missing session", () => {
@@ -399,11 +398,11 @@ describe("calendar history fetched copies", () => {
     // The feed labels BSE bars at the 09:15 IST open, the previous New York date.
     expect(outdated(bars("2026-09-21T03:45:00Z", "2026-09-22T03:45:00Z"), "2026-09-22T21:00:00Z", "2026-09-23T02:00:00Z", { exchange: "" })).toBe(false);
     // The JSE is closed for Heritage Day on 09-24 and publishes no calendar here:
-    // one refetch after each weekday close, the holiday's included.
+    // one refetch after each weekday open and close, the holiday's included.
     const toWednesday = bars("2026-09-22T00:00:00Z", "2026-09-23T00:00:00Z");
-    expect(polls(toWednesday, "2026-09-23T16:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "JSE")).toBe(2);
-    // KRX Chuseok, 09-24 to 09-26, is covered: no missing session before Monday.
-    expect(polls(toWednesday, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "KRX")).toBe(0);
+    expect(polls(toWednesday, "2026-09-23T16:00:00Z", "2026-09-24T00:00:00Z", "2026-09-28T00:00:00Z", "JSE")).toBe(4);
+    // KRX Chuseok, 09-24 to 09-26, is covered: no missing session before Monday opens (00:00 UTC).
+    expect(polls(toWednesday, "2026-09-23T08:00:00Z", "2026-09-24T00:00:00Z", "2026-09-27T23:50:00Z", "KRX")).toBe(0);
     // SSE Golden Week, Oct 1-7, is covered: no missing session before Oct 8 opens.
     const sse = bars("2026-09-29T00:00:00Z", "2026-09-30T00:00:00Z");
     expect(polls(sse, "2026-09-30T08:00:00Z", "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z", "SSE")).toBe(0);
@@ -422,10 +421,11 @@ describe("calendar history fetched copies", () => {
     // Fetched after the close without that session: maybe a local holiday.
     const behind = bars("2026-09-21T00:00:00Z", "2026-09-22T00:00:00Z");
     expect(outdated(behind, "2026-09-23T18:00:00Z", "2026-09-23T19:05:00Z", lse)).toBe(false);
-    // Friday's copy stays current over the weekend and into Monday's session.
+    // Friday's copy stays current over the weekend, until Monday's session opens.
     const friday = bars("2026-09-24T00:00:00Z", "2026-09-25T00:00:00Z");
     expect(outdated(friday, "2026-09-25T17:00:00Z", "2026-09-27T12:00:00Z", lse)).toBe(false);
-    expect(outdated(friday, "2026-09-25T17:00:00Z", "2026-09-28T12:00:00Z", lse)).toBe(false);
+    expect(outdated(friday, "2026-09-25T17:00:00Z", "2026-09-28T06:55:00Z", lse)).toBe(false);
+    expect(outdated(friday, "2026-09-25T17:00:00Z", "2026-09-28T12:00:00Z", lse)).toBe(true);
     // JPX was closed 09-21 to 09-23 in 2026; Friday's bar stays the latest.
     const jpx = bars("2026-09-17T15:00:00Z", "2026-09-18T00:00:00Z");
     expect(outdated(jpx, "2026-09-18T08:00:00Z", "2026-09-23T12:00:00Z", { exchange: "JPX" })).toBe(false);
@@ -433,6 +433,21 @@ describe("calendar history fetched copies", () => {
     // JPX publishes its closures, so a copy fetched after the 09-24 close
     // without that session is behind.
     expect(outdated(jpx, "2026-09-24T07:10:00Z", "2026-09-24T08:20:00Z", { exchange: "JPX" })).toBe(true);
+  });
+
+  test("a daily copy fetched before a session opened is refetched once it has, and waits after a re-check that did not replace it", () => {
+    // Fetched Wed 21 Oct 2026 at 06:41 UTC, holding Tuesday's close: current until New York opens at 13:30 UTC.
+    const morning = bars("2026-10-19T00:00:00Z", "2026-10-20T00:00:00Z");
+    const state = (fetched: string, now: string, checkedAt?: string) => calendarHistoryFetchState(morning, at(fetched), at(now),
+      { exchange: "NASDAQ", intervalMs: DAY, checkedAt: checkedAt ? at(checkedAt) : undefined });
+    expect(state("2026-10-21T06:41:00Z", "2026-10-21T13:29:00Z")).toBe("current");
+    expect(state("2026-10-21T06:41:00Z", "2026-10-21T18:48:00Z")).toBe("unsettled");
+    expect(state("2026-10-21T06:41:00Z", "2026-10-21T18:48:00Z", "2026-10-21T18:45:00Z")).toBe("pending");
+    // A copy fetched after the open holds the session so far; the close settles it again.
+    expect(state("2026-10-21T13:35:00Z", "2026-10-21T18:48:00Z")).toBe("current");
+    expect(state("2026-10-21T13:35:00Z", "2026-10-21T20:31:00Z")).toBe("unsettled");
+    // Weekly bars gain the day too; a bare symbol reads the US sessions.
+    expect(calendarHistoryFetchState(morning, at("2026-10-21T06:41:00Z"), at("2026-10-21T18:48:00Z"), { intervalMs: 7 * DAY })).toBe("unsettled");
   });
 
   test("a copy fetched before the close waits after a re-check that did not replace it", () => {

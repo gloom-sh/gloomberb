@@ -1,6 +1,6 @@
 import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
 import { cachedSeriesWarning } from "../shared/series-warning";
-import { loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
+import { loadDefiTvl, loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
 
 const DAY_MS = 86_400_000;
 
@@ -50,6 +50,23 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
   },
 ];
 
+/** Total value locked in DeFi, as CRYP's DeFi tab charts it. */
+const DEFI_TVL_SERIES: SeriesDefinition = {
+  id: "crypto:defi-tvl",
+  name: "Total DeFi TVL",
+  unit: "USD",
+  frequency: "daily",
+  group: "Crypto",
+  tags: ["defi", "tvl", "total value locked", "on-chain", "protocols", "chains"],
+  description: "Total value locked in DeFi protocols across every chain, valued in USD, daily since 2018, as DefiLlama measures it and CRYP's DeFi tab charts it.",
+  load: async () => {
+    const resource = await loadDefiTvl();
+    const history = resource.payload.history;
+    if (!history) throw new Error("DeFi TVL is not available yet.");
+    return { points: dailyPoints(history.start, history.total), warning: cachedSeriesWarning(resource) };
+  },
+};
+
 const PAIRS: ReadonlyArray<{ symbol: string; name: string }> = [
   { symbol: "BTC-USD", name: "Bitcoin" },
   { symbol: "ETH-USD", name: "Ethereum" },
@@ -96,4 +113,5 @@ export const CRYPTO_SERIES: readonly SeriesDefinition[] = [
     expression: "{ticker}:price",
   },
   ...STABLECOIN_SUPPLY_SERIES,
+  DEFI_TVL_SERIES,
 ];

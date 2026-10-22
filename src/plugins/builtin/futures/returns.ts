@@ -1,5 +1,5 @@
 import type { PricePoint, Quote } from "../../../types/financials";
-import { calendarMonthsBefore } from "../../../utils/calendar-date";
+import { periodReturn } from "../../../market-data/market/period-return";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import { quotedContractMonth } from "./model";
 
@@ -9,7 +9,6 @@ export type FuturesReturnValues = Readonly<Record<FuturesReturnHorizon, number |
 export const NO_FUTURES_RETURNS: FuturesReturnValues = { "1W": null, "1M": null, YTD: null };
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
-const DAY_MS = 86_400_000;
 
 /** Gloom symbol of one listed contract: LEZ26.CME. */
 function listedContractSymbol(contract: FuturesContract, year: number, month: number): string {
@@ -51,10 +50,6 @@ function utcDay(value: Date | string | number): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null;
 }
 
-function shiftDay(day: string, days: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
-
 /** Dated closes, one per day, oldest first. History that crossed a JSON bridge carries string dates. */
 function dailyCloses(history: readonly PricePoint[]): DailyClose[] {
   const byDay = new Map<string, number>();
@@ -87,24 +82,9 @@ export function pickFrontContract(
 }
 
 /**
- * A baseline further than this before its target date is a hole in the
- * contract's trading (or a contract listed after the target), not its close.
- */
-const MAX_BASELINE_GAP_DAYS = 10;
-
-function closeOnOrBefore(closes: readonly DailyClose[], target: string): number | null {
-  const earliest = shiftDay(target, -MAX_BASELINE_GAP_DAYS);
-  for (let index = closes.length - 1; index >= 0; index -= 1) {
-    const bar = closes[index]!;
-    if (bar.day > target) continue;
-    return bar.day >= earliest && bar.close > 0 ? bar.close : null;
-  }
-  return null;
-}
-
-/**
  * One contract's returns: the latest price against that same contract's close
- * a week, a calendar month, and a year-end earlier. The continuous alias's own
+ * on or before the same date a week and a calendar month earlier, and its
+ * last close of the year before (periodReturn). The continuous alias's own
  * series jumps at every roll (LE=F fell 6.3% on a July roll day), so its
  * history is never the baseline. `price` is the live quote, dated `asOf`;
  * without one the contract's last close stands in.
@@ -116,17 +96,9 @@ export function frontContractReturns(
 ): FuturesReturnValues {
   const closes = dailyCloses(history);
   const live = price != null && Number.isFinite(price) && asOf != null && Number.isFinite(asOf);
-  const latest = live ? price : closes.at(-1)?.close;
-  const latestDay = live ? utcDay(asOf) : closes.at(-1)?.day;
-  if (latest == null || !latestDay) return NO_FUTURES_RETURNS;
-  const change = (target: string) => {
-    const base = closeOnOrBefore(closes, target);
-    return base == null ? null : (latest / base - 1) * 100;
-  };
-  const monthBack = calendarMonthsBefore(new Date(`${latestDay}T00:00:00Z`), 1).toISOString().slice(0, 10);
-  return {
-    "1W": change(shiftDay(latestDay, -7)),
-    "1M": change(monthBack),
-    YTD: change(`${Number(latestDay.slice(0, 4)) - 1}-12-31`),
-  };
+  const liveDay = live ? utcDay(asOf) : null;
+  const latest = live && liveDay ? { day: liveDay, close: price } : closes.at(-1);
+  if (!latest) return NO_FUTURES_RETURNS;
+  const change = (period: FuturesReturnHorizon) => periodReturn(closes, period, latest)?.percent ?? null;
+  return { "1W": change("1W"), "1M": change("1M"), YTD: change("YTD") };
 }

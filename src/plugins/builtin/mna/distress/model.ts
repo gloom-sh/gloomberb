@@ -462,11 +462,12 @@ export function designationColumns(width: number): Column[] {
   ], ["exchange", "code"], width);
 }
 
-export function insolvencyColumns(width: number): Column[] {
+/** `flagRoom` widens the country column for the flag the desktop draws before its code. */
+export function insolvencyColumns(width: number, flagRoom = 0): Column[] {
   return fit([
     { id: "published", label: "Published", width: 10, align: "left" },
     { id: "company", label: "Company", width: 22, align: "left", flexGrow: 1 },
-    { id: "country", label: "Ctry", width: 4, align: "left" },
+    { id: "country", label: "Ctry", width: 4 + flagRoom, align: "left" },
     { id: "registry", label: "Registry no.", width: 12, align: "left" },
     { id: "procedure", label: "Procedure", width: 22, align: "left" },
     { id: "notice", label: "Notice", width: 26, align: "left", flexGrow: 1 },

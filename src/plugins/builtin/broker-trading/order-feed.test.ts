@@ -141,3 +141,52 @@ test("failed reads back off to a minute, and a profile with trading off is read 
     globalThis.clearTimeout = realClearTimeout;
   }
 });
+
+test("a fill or partial fill re-syncs its profile's positions once per burst; an old fill read at launch does not", async () => {
+  const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
+  const timers: Array<{ delay: number; run: () => void; cleared?: boolean }> = [];
+  globalThis.setTimeout = ((run: () => void, delay: number) => { const timer = { delay, run }; timers.push(timer); return timer; }) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = ((handle: unknown) => {
+    const timer = timers.find((value) => value === handle);
+    if (timer) timer.cleared = true; else realClearTimeout(handle as never);
+  }) as typeof clearTimeout;
+  try {
+    const f = setup({ stream: true });
+    const synced: string[] = [];
+    let finish: (() => void) | undefined;
+    f.feed.setPositionSync((instanceId) => { synced.push(instanceId); return new Promise<void>((resolve) => { finish = resolve; }); });
+    // The polling timers are seconds apart; the position sync's is the short one.
+    const pending = () => timers.filter((timer) => !timer.cleared && timer.delay <= 2_000);
+    const runPending = async () => { for (const timer of pending()) { timer.cleared = true; timer.run(); } await settle(); };
+    // At launch, a working order that filled in part an hour ago: the startup import has those positions.
+    f.setOpen([order(), order({ orderId: 9, brokerOrderId: "synthetic-9", status: "PARTIALLY_FILLED", filled: 2, remaining: 8, updatedAt: Date.now() - 3_600_000 })]);
+    const release = f.feed.hold(f.broker, instance);
+    await settle();
+    f.live(true);
+    await settle();
+    expect(pending()).toHaveLength(0);
+    // A partial fill, then the rest: one sync, for this profile.
+    f.push(order({ status: "PARTIALLY_FILLED", filled: 4, remaining: 6, updatedAt: Date.now() }));
+    f.push(order({ status: "FILLED", filled: 10, remaining: 0, updatedAt: Date.now() }));
+    expect(pending()).toHaveLength(1);
+    await runPending();
+    expect(synced).toEqual([instance.id]);
+    // A placement the broker answered filled, during that sync: it syncs once more after it, not alongside it.
+    f.feed.note(instance.id, order({ orderId: 10, brokerOrderId: "synthetic-10", action: "SELL", status: "FILLED", filled: 10, remaining: 0, updatedAt: Date.now() }));
+    await runPending();
+    expect(synced).toEqual([instance.id]);
+    finish!();
+    await settle();
+    expect(synced).toEqual([instance.id, instance.id]);
+    finish!();
+    await settle();
+    // A report that fills nothing more syncs nothing.
+    f.push(order({ status: "FILLED", filled: 10, remaining: 0, updatedAt: Date.now() }));
+    expect(pending()).toHaveLength(0);
+    expect(synced).toHaveLength(2);
+    release();
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});

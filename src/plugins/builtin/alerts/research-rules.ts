@@ -30,6 +30,12 @@ export interface ResearchAlertConfig {
   print?: string
   /** Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). */
   event?: string
+  /**
+   * Earnings: `results` goes off when the report's actual EPS is out, rather
+   * than `leadDays` before the date. Such a rule keeps a lead of 0, so a
+   * server that reads only the lead alerts on the day instead.
+   */
+  when?: "results"
 }
 /** Days before a scheduled event (earnings, a macro release) an alert fires when none is given, and the most it takes. */
 export const DEFAULT_LEAD_DAYS = 1
@@ -162,7 +168,15 @@ export function normalizeResearchRule(
         numeric("threshold", 0.001, -100, 100);
         direction(["above", "below"], "above");
         break;
-      case "earnings_date":
+      case "earnings_date": {
+        const when = input.when ?? "before"
+        if (when === "results") {
+          result.leadDays = 0
+          result.when = "results"
+        } else if (when === "before") numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
+        else throw new Error()
+        break
+      }
       case "macro_event":
         numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
         break

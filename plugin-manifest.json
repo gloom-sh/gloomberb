@@ -427,7 +427,7 @@
           {
             "code": "CRYP",
             "name": "Crypto",
-            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, and stablecoin supply."
+            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, stablecoin supply, and DeFi TVL by protocol and chain."
           },
           {
             "code": "ETFF",
@@ -959,7 +959,7 @@
           {
             "code": "NI",
             "name": "Topic News",
-            "description": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
+            "description": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
           },
           {
             "code": "FIRST",

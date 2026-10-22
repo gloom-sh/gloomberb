@@ -4,7 +4,8 @@ import { HistoryRetentionError, historyRetentionNotice, type HistoryRetention } 
 import { AssetDataRouter } from "../sources/provider-router";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
 import { parsedPriceHistoryKey, readParsedHistoryResult } from "./parsed-history-cache";
 import { subtractTimeRange } from "./date-window";
 import type { TimeRange } from "./range";

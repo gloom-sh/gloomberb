@@ -4,6 +4,7 @@ import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
+import { cloudExchangeAnnouncementsPath } from "./exchange-announcements";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
   PerpMarketPayload } from "./perps";
@@ -29,7 +30,7 @@ import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -234,6 +235,13 @@ export class CloudDataApi {
 
   getFundMembers(fund: string) {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
+  }
+
+  /** A company's recent announcements on its exchange (ASX only); another exchange answers 404. */
+  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number }) {
+    return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
+      cloudExchangeAnnouncementsPath(params),
+    );
   }
 
   /** A US-listed fund's fee, NAV, premium and net assets as its sponsor publishes them. */
@@ -834,6 +842,11 @@ export class CloudDataApi {
     );
   }
 
+  /** Total DeFi TVL, the largest protocols and chains with 7D and 30D changes, and the total's daily history. */
+  async getCloudDefiTvl(): Promise<DefiTvlPayload> {
+    return this.request<DefiTvlPayload>("/cloud/crypto/defi/tvl", { signal: AbortSignal.timeout(30_000) });
+  }
+
   /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */
   async getCloudCryptoEtfFlows(asset: CryptoEtfFlowAsset): Promise<CryptoEtfFlowsPayload> {
     return this.request<CryptoEtfFlowsPayload>(
@@ -1195,8 +1208,9 @@ export class CloudDataApi {
   async searchCloudNews(
     query: string,
     limit?: number,
+    topics?: readonly string[],
   ): Promise<CloudNewsListResponse> {
-    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit));
+    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit, topics));
   }
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {

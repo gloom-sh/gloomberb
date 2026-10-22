@@ -59,20 +59,33 @@ describe("price performance", () => {
     expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.5);
   });
 
-  test("an exact clamped cutoff wins over the prior session and excludes observations one millisecond later", () => {
+  test("the clamped base day's last observation is the base, not the prior session's or the time of day a month back", () => {
+    // A month before 31 Mar is 28 Feb: its close is the last observation that day.
     const history = [
       point("2026-02-27T15:45:12.345Z", 90), point("2026-02-28T15:45:12.345Z", 100),
       point("2026-02-28T15:45:12.346Z", 120), point("2026-03-31T15:45:12.345Z", 150),
     ];
     const original = JSON.stringify(history);
-    expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.5);
-    expect(computePriceReturnForHorizon(JSON.parse(original), horizon("1M"))).toBe(0.5);
+    expect(computePriceReturnForHorizon(history, horizon("1M"))).toBe(0.25);
+    expect(computePriceReturnForHorizon(JSON.parse(original), horizon("1M"))).toBe(0.25);
     expect(JSON.stringify(history)).toBe(original);
   });
 
   test("post-cutoff history cannot supply a full month's return", () => {
     const history = [point("2026-03-02", 100), point("2026-03-31", 110)];
     expect(buildPriceReturnFields(history).find((field) => field.id === "1M")?.value).toBeNull();
+  });
+
+  test("bars and the quote are dated on the listing's clock, not by their UTC date", () => {
+    // A JPX feed stamps each daily bar at 00:00 JST, 15:00 UTC the day before; the quote is Thu 22 Oct 15:00 JST.
+    const jpx = [point("2026-09-20T15:00:00Z", 90), point("2026-09-21T15:00:00Z", 100), point("2026-09-22T15:00:00Z", 120), point("2026-10-20T15:00:00Z", 140)];
+    const tokyo = appendQuoteToPriceReturnHistory(jpx, { price: 150, lastUpdated: Date.parse("2026-10-22T06:00:00Z") });
+    // A month before 22 Oct is Tue 22 Sep: its bar, not 23 Sep's (stamped 22 Sep 15:00 UTC).
+    expect(computePriceReturnForHorizon(tokyo, horizon("1M"), "JPX")).toBeCloseTo(0.5);
+    // Tue 1 Dec 19:30 New York after hours is 2 Dec in UTC: a month before 1 Dec is Sun 1 Nov, so Fri 30 Oct's close.
+    const us = appendQuoteToPriceReturnHistory([point("2026-10-30", 100), point("2026-11-02", 120), point("2026-12-01", 140)],
+      { price: 150, lastUpdated: Date.parse("2026-12-02T00:30:00Z") });
+    expect(computePriceReturnForHorizon(us, horizon("1M"), "NASDAQ")).toBeCloseTo(0.5);
   });
 
   test("a February 28 year boundary does not move forward to February 29 in a leap year", () => {

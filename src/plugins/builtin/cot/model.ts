@@ -205,6 +205,18 @@ export function cotMarketName(name: string): string {
   const cut = name.lastIndexOf(" - ");
   return cut > 0 ? name.slice(0, cut).trim() : name.trim();
 }
+/** Units the CFTC spells in capitals that read as plain words: "100 TROY OUNCES" is "100 troy ounces". */
+const PLAIN_UNITS = /^[\d,.]+ (?:TROY OUNCES|BUSHELS|BARRELS|POUNDS|GALLONS|METRIC TONS|SHORT TONS|TONS|BOARD FEET)$/;
+/**
+ * What one contract is, from the CFTC's contract units: "1 contract = 100
+ * troy ounces" for "(CONTRACTS OF 100 TROY OUNCES)". Anything else keeps the
+ * CFTC's spelling ("$50 X S&P 500 INDEX", "JPY 12,500,000", "2,500 MMBtu").
+ * Null where the report states none.
+ */
+export function cotContractUnitText(units: string | null | undefined): string | null {
+  const text = (units ?? "").replace(/^\((.*)\)$/s, "$1").replace(/^contracts of\s+/i, "").replace(/\s+/g, " ").trim();
+  return text ? `1 contract = ${PLAIN_UNITS.test(text) ? text.toLowerCase() : text}` : null;
+}
 export function cotInteger(value: number | null, signed = false): string {
   return value == null ? "--" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }

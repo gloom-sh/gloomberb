@@ -791,6 +791,7 @@ class GloomApiClient {
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
   getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
+  getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
@@ -801,6 +802,7 @@ class GloomApiClient {
   getFundMembers = this.data.getFundMembers.bind(this.data);
   getFundChanges = this.data.getFundChanges.bind(this.data);
   getFundFacts = this.data.getFundFacts.bind(this.data);
+  getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);

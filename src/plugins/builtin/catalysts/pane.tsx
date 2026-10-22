@@ -12,6 +12,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -136,6 +137,8 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     }
     if (column.id === "parties") return { text, color: text === "--" ? colors.textMuted : colors.textBright };
     if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
+    // The column has room for the flag beside a code.
+    if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
     if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(event.status), colors) };
     return { text, color: column.id === "title" || column.id === "date" ? colors.text : colors.textDim };
   };

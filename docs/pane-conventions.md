@@ -185,8 +185,13 @@ system in CI, and both run locally:
   surface's labels, a value read from the clock) is named as unsteady and left
   out of the count. A shard that did not finish, a view pictured on one side
   only and a view that did not open are named above the count, which then
-  says it is incomplete. Four shards run two at a time, so the report waits
-  rather than hold runners the required checks need. One comment on the pull
+  says it is incomplete. The base is the commit the pull request left main
+  at, pictured once: every push to main pictures its commit and the Actions
+  cache keeps the pictures, keyed by everything they depend on (the commit,
+  the pinned Chrome, the snapshot, the fonts and the scripts that take them),
+  so a pull request pictures only its head, in eight shards at once. When
+  main has not pictured that commit, the pull request pictures it first and
+  keeps the pictures for its next push. One comment on the pull
   request (the workflow bot's, found by its marker), edited on every run, says
   how many of how many views changed and lists them; the `ui-benchmark`
   artifact has the sheets: before, after and the difference of every view that
@@ -359,6 +364,20 @@ so the selected row reads in the selection color without each cell checking
 `rowState`. Artwork before a label on the desktop and web, such as a flag,
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
+
+**Country flags.** Wherever a row or a field names a country (ECO's country,
+a balance's or a board's country or jurisdiction, a venue's market, an IPO's
+exchange, a filing's country), the desktop and the web lead it with the
+country's flag (`components/ui/country-flag.tsx`). A table cell goes through
+`withCountryFlag(cell, value, desktop)`, which takes a code (`GB`, `GBR`), the
+euro area (`EU`, "Euro area") or an English name, and keeps the flag's room
+blank for a value with no flag so a column's text stays in line; the column
+widens by `COUNTRY_FLAG_CELLS` on the desktop (`withFlagRoom`). A board row sets
+`MarketBoardRow.country`; a `KeyValueRow` sets `country`; any other label
+puts `CountryFlagLead` before its text. A flag is drawn in
+`country-flag-art.tsx`, 30 by 20, in the same flat style as its neighbours; a
+country without art keeps its text alone. The terminal draws none of them and
+its output does not change.
 
 **Broker logos.** Wherever a list names a broker or an account at one (Add
 Broker Account, the Brokers pane's profiles, a portfolio's tab and its

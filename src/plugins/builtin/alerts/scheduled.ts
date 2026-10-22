@@ -1,7 +1,10 @@
 // Alerts a number of days before a dated event: a company's next earnings, or
-// the next CPI release or FOMC decision. The rules are event alert rules
+// the next CPI release or FOMC decision. An earnings rule can instead go off
+// once the report's actual EPS is out. The rules are event alert rules
 // (`earnings_date`, `macro_event`) with the lead time in their config; this
 // module is the date arithmetic and the lookup of the next event date.
+import { formatNumber } from "../../../utils/format";
+import { epsSurprise } from "../shared/earnings-report";
 import type { EventAlertRule } from "./events";
 import { MACRO_EVENT_NAMES } from "./research-builder";
 import {
@@ -20,16 +23,29 @@ export type ScheduledEventTarget =
   | { kind: "earnings"; symbol: string; exchange: string }
   | { kind: "macro"; event: MacroAlertEvent };
 
+/** When a scheduled rule goes off: its lead time before the date, or (earnings only) once the results are out. */
+export type ScheduledTrigger = "date" | "results";
+
 export interface ScheduledRule {
   target: ScheduledEventTarget;
   leadDays: number;
+  trigger: ScheduledTrigger;
 }
+
+/**
+ * How long past its report date a results alert waits for the actual EPS:
+ * an after-close report is filled in overnight, and a late one a day or two
+ * later. Past it the alert lets that report go and follows the next one.
+ */
+const RESULTS_WAIT_DAYS = 3;
 
 /**
  * Where a scheduled alert stands on `today` (a New York calendar day):
  * `armed` before its lead time, `due` from the lead day through the event day
  * until it alerts, `fired` once it has for this event, `passed` after the
- * event day, and `unscheduled` with no event date to wait for.
+ * event day, and `unscheduled` with no event date to wait for. A results
+ * alert is due from the report day through `RESULTS_WAIT_DAYS` after it, and
+ * goes off within that only once the actual EPS is out.
  */
 export type ScheduledPhase = "unscheduled" | "armed" | "due" | "fired" | "passed";
 
@@ -71,11 +87,13 @@ export function scheduledPhase(
   leadDays: number,
   firedFor: string | undefined,
   today: string,
+  trigger: ScheduledTrigger = "date",
 ): ScheduledPhase {
   if (!eventDate) return "unscheduled";
-  if (today > eventDate) return "passed";
+  const results = trigger === "results";
+  if (today > (results ? shiftDate(eventDate, RESULTS_WAIT_DAYS) : eventDate)) return "passed";
   if (firedFor === eventDate) return "fired";
-  return today >= leadStartDate(eventDate, leadDays) ? "due" : "armed";
+  return today >= (results ? eventDate : leadStartDate(eventDate, leadDays)) ? "due" : "armed";
 }
 
 /** The rule's target and lead time; null for a rule that is not a scheduled event or does not read. */
@@ -84,10 +102,14 @@ export function readScheduledRule(rule: EventAlertRule): ScheduledRule | null {
   const config = readResearchRule(rule.kind, rule.value);
   if (!config || typeof config.leadDays !== "number") return null;
   if (rule.kind === "macro_event") {
-    return isMacroAlertEvent(config.event) ? { target: { kind: "macro", event: config.event }, leadDays: config.leadDays } : null;
+    return isMacroAlertEvent(config.event) ? { target: { kind: "macro", event: config.event }, leadDays: config.leadDays, trigger: "date" } : null;
   }
   return config.symbol
-    ? { target: { kind: "earnings", symbol: config.symbol, exchange: config.exchange ?? "" }, leadDays: config.leadDays }
+    ? {
+        target: { kind: "earnings", symbol: config.symbol, exchange: config.exchange ?? "" },
+        leadDays: config.leadDays,
+        trigger: config.when === "results" ? "results" : "date",
+      }
     : null;
 }
 
@@ -101,20 +123,28 @@ export function scheduledEventName(target: ScheduledEventTarget): string {
   return target.kind === "earnings" ? `${target.symbol} earnings` : MACRO_EVENT_NAMES[target.event];
 }
 
+/** "1 day before", "3 days before", "when results are out": when a rule goes off, as lists say it. */
+export function scheduledTriggerText(rule: Pick<ScheduledRule, "leadDays" | "trigger">): string {
+  return rule.trigger === "results" ? "when results are out" : `${rule.leadDays} day${rule.leadDays === 1 ? "" : "s"} before`;
+}
+
 /**
- * A new rule for `target`, alerting `leadDays` before it, with the event date
- * the caller looked up. Throws for a listing the rule cannot follow.
+ * A new rule for `target`, alerting `lead` days before it or, for earnings,
+ * once the results are out, with the event date the caller looked up. Throws
+ * for a listing the rule cannot follow.
  */
 export function createScheduledAlert(
   target: ScheduledEventTarget,
-  leadDays: number,
+  lead: number | "results",
   eventDate: string | null,
   now = Date.now(),
 ): EventAlertRule {
+  if (target.kind === "macro" && lead === "results") throw new Error("Only earnings alerts can wait for results.");
   const kind = target.kind === "earnings" ? "earnings_date" : "macro_event";
+  const timing = lead === "results" ? { when: "results" } : { leadDays: lead };
   const value = normalizeResearchRule(kind, target.kind === "earnings"
-    ? { version: 1, symbol: target.symbol, exchange: target.exchange, leadDays }
-    : { version: 1, event: target.event, leadDays });
+    ? { version: 1, symbol: target.symbol, exchange: target.exchange, ...timing }
+    : { version: 1, event: target.event, ...timing });
   if (!value) {
     throw new Error(target.kind === "earnings"
       ? `Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. ${target.exchange ? `${target.symbol}:${target.exchange}` : target.symbol} is not one.`
@@ -151,9 +181,80 @@ export function scheduledAlertMessage(target: ScheduledEventTarget, eventDate: s
 }
 
 /** A list's state word: paused, active, or triggered while it has alerted for the coming event. */
-export function scheduledAlertStatus(rule: EventAlertRule, leadDays: number, today: string): "active" | "paused" | "triggered" {
+export function scheduledAlertStatus(
+  rule: EventAlertRule,
+  leadDays: number,
+  today: string,
+  trigger: ScheduledTrigger = "date",
+): "active" | "paused" | "triggered" {
   if (rule.status === "paused") return "paused";
-  return scheduledPhase(rule.eventDate, leadDays, rule.firedFor, today) === "fired" ? "triggered" : "active";
+  return scheduledPhase(rule.eventDate, leadDays, rule.firedFor, today, trigger) === "fired" ? "triggered" : "active";
+}
+
+/** A company's report as ERN has it: its day and, once out, the actual EPS. */
+export interface EarningsResultRow {
+  symbol: string;
+  date: string;
+  epsActual: number | null;
+  epsEstimate: number | null;
+}
+
+/**
+ * The report `symbol` was waited for on `eventDate`, once its actual EPS is
+ * out: the reported row nearest that day, from a few days before it (a date
+ * moved up) through `RESULTS_WAIT_DAYS` after. Null while it is not out.
+ */
+export function reportedResult(rows: readonly EarningsResultRow[], symbol: string, eventDate: string): EarningsResultRow | null {
+  const wanted = symbol.trim().toUpperCase();
+  const from = shiftDate(eventDate, -RESULTS_WAIT_DAYS);
+  const to = shiftDate(eventDate, RESULTS_WAIT_DAYS);
+  return rows
+    .filter((row) => row.symbol.trim().toUpperCase() === wanted && row.epsActual != null && Number.isFinite(row.epsActual)
+      && row.date >= from && row.date <= to)
+    .sort((left, right) => Math.abs(daysBetween(eventDate, left.date)) - Math.abs(daysBetween(eventDate, right.date)))[0] ?? null;
+}
+
+type ResultsRead = (symbols: string[]) => Promise<readonly EarningsResultRow[]>;
+
+/**
+ * The reports results alerts wait on, from ERN's board and, for each symbol
+ * the board has no actual EPS for (a listing the stored calendar does not
+ * cover, or the board unreadable), the per-ticker calendar. Either read
+ * failing leaves the other's rows; only both failing, or the board failing
+ * with no other read, is an error.
+ */
+export async function readEarningsResults(
+  symbols: readonly string[],
+  board: ResultsRead,
+  calendar: ResultsRead | null,
+): Promise<EarningsResultRow[]> {
+  const [fromBoard] = await Promise.allSettled([board([...symbols])]);
+  const rows = fromBoard.status === "fulfilled" ? [...fromBoard.value] : [];
+  const reported = new Set(rows.filter((row) => row.epsActual != null).map((row) => row.symbol.trim().toUpperCase()));
+  const missing = symbols.filter((symbol) => !reported.has(symbol.trim().toUpperCase()));
+  if (missing.length === 0 || !calendar) {
+    if (fromBoard.status === "rejected") throw fromBoard.reason;
+    return rows;
+  }
+  const [fromCalendar] = await Promise.allSettled([calendar(missing)]);
+  if (fromCalendar.status === "fulfilled") return [...rows, ...fromCalendar.value];
+  if (fromBoard.status === "rejected") throw fromBoard.reason;
+  return rows;
+}
+
+/** The days to read reports over for results alerts waiting on `eventDates`. */
+export function resultsLookupRange(eventDates: readonly string[]): { from: string; to: string } | null {
+  const sorted = [...eventDates].sort();
+  return sorted.length === 0 ? null : { from: shiftDate(sorted[0]!, -RESULTS_WAIT_DAYS), to: shiftDate(sorted.at(-1)!, RESULTS_WAIT_DAYS) };
+}
+
+/** The notification once results are out: "CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)". */
+export function scheduledResultsMessage(symbol: string, result: Pick<EarningsResultRow, "epsActual" | "epsEstimate">): string {
+  const actual = `${symbol} reported EPS ${formatNumber(result.epsActual ?? undefined, 2)}`;
+  if (result.epsEstimate == null) return actual;
+  const surprise = epsSurprise(result.epsActual, result.epsEstimate);
+  const shown = surprise == null ? null : Number((surprise * 100).toFixed(1));
+  return `${actual} vs ${formatNumber(result.epsEstimate, 2)} expected${shown == null ? "" : ` (${shown > 0 ? "+" : ""}${shown.toFixed(1)}%)`}`;
 }
 
 export interface EarningsDateRow {
@@ -203,6 +304,8 @@ export interface ScheduledEventSources {
   earnings(symbols: string[]): Promise<readonly EarningsDateRow[]>;
   cpi(): Promise<CpiReleaseCalendar>;
   fomc(): Promise<ReadonlyArray<{ date: string }>>;
+  /** The reports of `symbols` from `from` to `to`, actual EPS included once out; results alerts read it. */
+  results?(symbols: string[], from: string, to: string): Promise<readonly EarningsResultRow[]>;
 }
 
 export type ScheduledDateLookup = { date: string | null } | { error: string };

@@ -8,7 +8,8 @@ import type {
 } from "../../../../api-client/distress";
 import { BulletList, ExternalLinkText, Prose, READING_WIDTH } from "../../../../components";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { Box, Text } from "../../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { CountryFlagLead } from "../../../../components/ui/country-flag";
 import { truncateToDisplayWidth } from "../../../../utils/format";
 import {
   assessmentHorizonLabel,
@@ -42,16 +43,27 @@ const LABEL_WIDTH = 16;
  * source publishes under beside its rows.
  */
 
-function Field({ label, value, width, bright = false }: { label: string; value: string; width: number; bright?: boolean }) {
+function Field({ label, value, width, bright = false, country }: {
+  label: string;
+  value: string;
+  width: number;
+  bright?: boolean;
+  /** The country the value names: the desktop and the web lead it with its flag. */
+  country?: string;
+}) {
   const colors = useThemeColors();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const valueWidth = Math.max(8, width - LABEL_WIDTH);
+  const prose = <Prose text={value || MISSING} width={valueWidth} color={bright ? colors.textBright : colors.text} figures={false} />;
   return (
     <Box flexDirection="row" width={width} flexShrink={0}>
       <Box width={LABEL_WIDTH} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{label}</Text>
       </Box>
       <Box flexDirection="column" width={valueWidth} flexShrink={0}>
-        <Prose text={value || MISSING} width={valueWidth} color={bright ? colors.textBright : colors.text} figures={false} />
+        {desktop && country
+          ? <Box flexDirection="row" alignItems="center"><CountryFlagLead value={country} /><Box flexDirection="column">{prose}</Box></Box>
+          : prose}
       </Box>
     </Box>
   );
@@ -227,7 +239,7 @@ export function InsolvencyDetail({ row, width, attributions }: { row: Insolvency
       <Field label="Published" value={isoDay(row.published_date)} width={bodyWidth} />
       {row.court.trim() ? <Field label="Court" value={cellText(row.court)} width={bodyWidth} /> : null}
       <Field label={registryLabel(row.country)} value={row.registry_id} width={bodyWidth} />
-      <Field label="Country" value={france ? "France" : row.country === "GB" ? "United Kingdom" : row.country} width={bodyWidth} />
+      <Field label="Country" value={france ? "France" : row.country === "GB" ? "United Kingdom" : row.country} country={row.country} width={bodyWidth} />
       {/* A correction says which notice it corrects; an initial notice needs no line. */}
       {row.notice_type !== "annonce" ? (
         <Field

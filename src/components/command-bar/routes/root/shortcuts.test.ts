@@ -103,6 +103,32 @@ describe("ticker data root shortcuts", () => {
     expect(intent.completionQuery).toBe("GP MSFT");
   });
 
+  test("a required ticker pane uses the prompt ticker when the focused pane has none", () => {
+    const intent = parseRootShortcutIntent({
+      query: "SEG",
+      commands: [],
+      paneTemplates: [tickerTemplate("revenue-breakdown-seg", "SEG")],
+      activeTicker: null,
+      promptTicker: "FLUT",
+    });
+    expect(intent.kind).toBe("inferred-complete");
+    if (intent.kind === "none") throw new Error("Expected shortcut intent");
+    expect(intent.completionQuery).toBe("SEG FLUT");
+  });
+
+  test("an optional ticker pane does not take the prompt ticker", () => {
+    const intent = parseRootShortcutIntent({
+      query: "CDS",
+      commands: [],
+      paneTemplates,
+      activeTicker: null,
+      promptTicker: "FLUT",
+    });
+    expect(intent.kind).toBe("partial");
+    if (intent.kind === "none") throw new Error("Expected shortcut intent");
+    expect(intent.completionQuery).toBeNull();
+  });
+
   test("GF accepts multiple tickers", () => {
     const intent = parse("GF AMD,NVDA");
     expect(intent.kind).toBe("complete");

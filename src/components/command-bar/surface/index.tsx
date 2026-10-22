@@ -22,6 +22,7 @@ import { createQuickLookTickerCandidates } from "../routes/ticker-search/results
 import { useCommandSearchReport } from "../routes/root/search-report";
 import { useAppStateRef } from "../../../state/app/context";
 import { listingChoiceQuery } from "../../../tickers/search";
+import { commandPromptTicker } from "../../../layout/selected-ticker";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useRootPluginTurnOnItem } from "../routes/root/plugin-turn-on";
@@ -227,13 +228,15 @@ export function CommandBar({
     [getAvailablePaneTemplates],
   );
 
+  const promptTickerSymbol = commandPromptTicker(state)?.symbol ?? null;
   const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
     query: rootQuery,
     commands: availableCommands,
     pluginCommands: getAvailablePluginCommands(),
     paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
     activeTicker: activeTickerSymbol,
-  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
+    promptTicker: promptTickerSymbol,
+  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, promptTickerSymbol, rootQuery]);
   const listingChoice = !currentRoute && rootShortcutIntent.kind === "none"
     ? listingChoiceQuery(rootQuery)
     : null;
@@ -492,6 +495,7 @@ export function CommandBar({
     setActiveListQuery,
   } = useCommandBarSelectionRuntime({
     activeTickerSymbol,
+    promptTickerSymbol,
     availableCommands,
     clearThemePreview,
     closeAll: closeAfterRun,

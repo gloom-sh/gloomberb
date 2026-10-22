@@ -8,6 +8,7 @@ import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePan
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -212,7 +213,11 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "value": return { text: row.driver ? driverValue(row.driver) : "--", value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
       case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
-      case "label": return { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
+      case "label": {
+        const cell = { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
+        // Grouped by country, each target leads with its flag on the desktop and the web.
+        return concentration && view === "country" ? withCountryFlag(cell, row.label, desktop) : cell;
+      }
       case "basis": return row.basis ? { text: exposureCellText(row, "basis"), color: colors.textDim } : missingCell(colors);
       case "exposure": return row.exposure ? { text: exposureCellText(row, "exposure"), value: row.exposure.high, color: colors.textBright } : { text: exposureCellText(row, "exposure"), value: null, color: colors.textMuted };
       // Disclosed figures stand out; estimates read plainly, and the word says which is which.

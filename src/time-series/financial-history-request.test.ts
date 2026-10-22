@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 
 test("calendar windows and counts share extended history while current multiples use a separate default flight", async () => {
