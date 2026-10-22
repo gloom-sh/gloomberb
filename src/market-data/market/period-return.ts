@@ -1,4 +1,5 @@
 import { calendarMonthsBefore } from "../../utils/calendar-date";
+import { zonedDateKey } from "../../utils/zoned-date-time";
 import { isAlwaysOpenExchange, latestRegularSessionClose, sessionCalendarTimeZone } from "./freshness";
 
 /**
@@ -44,6 +45,20 @@ export function periodBaseDay(endDay: string, period: ReturnPeriod): string {
   if (period === "YTD") return `${Number(day.slice(0, 4)) - 1}-12-31`;
   if (period === "1W") return shiftDay(day, -7);
   return calendarMonthsBefore(new Date(`${day}T00:00:00Z`), PERIOD_MONTHS[period]).toISOString().slice(0, 10);
+}
+
+/**
+ * The session day of a daily or longer bar stamped at `time`, `YYYY-MM-DD`:
+ * a date-only stamp (UTC midnight) is its UTC date; any other is read on the
+ * venue's clock, as feeds stamp a JPX bar at 00:00 JST (15:00 UTC the day
+ * before) and a European one at local midnight. The UTC date for a venue
+ * that trades every day or whose sessions are unknown.
+ */
+export function barSessionDay(time: number, venue?: string): string {
+  const utc = new Date(time).toISOString().slice(0, 10);
+  if (time % DAY_MS === 0 || !venue || isAlwaysOpenExchange(venue)) return utc;
+  const zone = sessionCalendarTimeZone(venue);
+  return zone ? zonedDateKey(time, zone) : utc;
 }
 
 /**

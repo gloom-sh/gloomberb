@@ -1,7 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { calendarMonthsBefore } from "../utils/calendar-date";
-import { isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
+import { barSessionDay, isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
 
 export interface PriceReturnHorizon {
   id: string;
@@ -74,16 +74,19 @@ function horizonBaseDay(day: string, horizon: PriceReturnHorizon): string {
     : calendarMonthsBefore(new Date(`${day}T00:00:00Z`), horizon.amount * (horizon.unit === "year" ? 12 : 1)).toISOString().slice(0, 10);
 }
 
+/** `venue` is the listing's exchange, whose clock dates its bars and quote (barSessionDay). */
 export function computePriceReturnForHorizon(
   points: readonly PricePoint[],
   horizon: PriceReturnHorizon,
+  venue?: string,
 ): number | null {
-  return priceReturnForHorizon(points, horizon).value;
+  return priceReturnForHorizon(points, horizon, venue).value;
 }
 
 function priceReturnForHorizon(
   points: readonly PricePoint[],
   horizon: PriceReturnHorizon,
+  venue: string | undefined,
 ): Pick<PriceReturnField, "value" | "unavailableReason"> {
   const history = normalizePriceReturnHistory(points);
   if (history.length < 2) return {
@@ -94,7 +97,8 @@ function priceReturnForHorizon(
   const latest = history.at(-1)!;
   // The close on or before the same date a horizon earlier, as every period return is measured. No gap
   // limit: the overview's history can be sparse, and its base is whatever close it holds on or before then.
-  const days = history.map((point) => point.date.toISOString().slice(0, 10));
+  // Each bar and the quote by its session day: a JPX bar stamped 00:00 JST, or a quote after a New York close, is not the UTC date's.
+  const days = history.map((point) => barSessionDay(point.date.getTime(), venue));
   const baseDay = horizonBaseDay(days.at(-1)!, horizon);
   const baseIndex = periodBaseIndex(days, baseDay, Number.POSITIVE_INFINITY);
   const baseline = baseIndex < 0 ? null : history[baseIndex]!;
@@ -110,11 +114,12 @@ function priceReturnForHorizon(
 
 export function buildPriceReturnFields(
   points: readonly PricePoint[],
+  venue?: string,
   horizons: readonly PriceReturnHorizon[] = PRICE_RETURN_HORIZONS,
 ): PriceReturnField[] {
   return horizons.map((horizon) => ({
     id: horizon.id,
     label: horizon.label,
-    ...priceReturnForHorizon(points, horizon),
+    ...priceReturnForHorizon(points, horizon, venue),
   }));
 }

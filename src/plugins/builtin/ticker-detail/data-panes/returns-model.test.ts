@@ -6,9 +6,11 @@ import {
   buildReturnRows,
   closedMarketNote,
   effectiveReturnResolution,
+  isTodayReturnRow,
   returnBaseCloseDay,
   returnBaseDay,
   returnLookbackMs,
+  returnRowsFrom,
   returnVisibleFrom,
   returnWindowEnd,
   returnWindowStart,
@@ -142,6 +144,19 @@ describe("return windows", () => {
     expect(new Date(returnVisibleFrom("1M", "1wk", Date.parse("2026-10-19T20:00:00Z"), "NASDAQ") + 1).toISOString().slice(0, 10)).toBe("2026-09-16");
     expect(new Date(returnVisibleFrom("1Y", "1mo", wednesday, "NASDAQ") + 1).toISOString().slice(0, 10)).toBe("2025-10-01");
     expect(new Date(returnWindowStart("6H", wednesday)).toISOString()).toBe("2026-10-21T14:00:00.000Z");
+  });
+
+  test("a feed stamping daily bars at local midnight keeps the base close, and today's bar, on the venue's dates", () => {
+    // JPX bars stamped 00:00 JST, 15:00 UTC the day before: Fri 11, Mon 14, Tue 15 and Wed 16 Sep.
+    const days = ["2026-09-10", "2026-09-13", "2026-09-14", "2026-09-15"].map((date, index) => point(`${date}T15:00:00Z`, 100 + index));
+    // Wed 14 Oct's close (15:30 JST): a month before is Mon 14 Sep, whose bar is the base.
+    const close = Date.parse("2026-10-14T06:30:00Z");
+    const from = returnRowsFrom(days, "1M", "1d", close, "JPX");
+    expect(buildReturnRows(days, from).map((row) => new Date(row.timestamp).toISOString()).reverse())
+      .toEqual(["2026-09-14T15:00:00.000Z", "2026-09-15T15:00:00.000Z"]);
+    expect(returnBaseCloseDay(days, from, "1d", "JPX", close)).toBe("2026-09-14");
+    // Wed 14 Oct 11:00 JST, trading: the bar stamped 13 Oct 15:00 UTC is today's.
+    expect(isTodayReturnRow({ timestamp: Date.parse("2026-10-13T15:00:00Z") }, "1d", "JPX", Date.parse("2026-10-14T02:00:00Z"))).toBe(true);
   });
 });
 

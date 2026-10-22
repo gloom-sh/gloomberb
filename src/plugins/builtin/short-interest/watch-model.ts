@@ -60,10 +60,14 @@ export interface ShortWatchInputs {
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
 
+/** The 1M base is the close a calendar month before the latest one, or the last close up to four days before (a weekend and a holiday). */
+const RETURN_BASE_TOLERANCE_DAYS = 4;
+
 /**
  * The latest close against the close one calendar month earlier: the last
- * close on or before that day (periodReturn), from daily bars only, so a gap
- * in the history leaves the return unknown rather than measuring a longer window.
+ * close on or before that day (periodReturn), within four days of it, from
+ * daily bars only, so a gap in the history leaves the return unknown rather
+ * than measuring a longer window.
  */
 export function oneMonthReturn(history: readonly PricePoint[]): { percent: number; date: string } | null {
   // Weekly or intraday bars would measure from the wrong close.
@@ -73,7 +77,7 @@ export function oneMonthReturn(history: readonly PricePoint[]): { percent: numbe
     .filter((point) => finite(point.close) && point.close > 0 && !Number.isNaN(point.date.getTime()))
     .sort((left, right) => left.date.getTime() - right.date.getTime())
     .map((point) => ({ day: isoDate(point.date), close: point.close }));
-  const month = periodReturn(closes, "1M");
+  const month = periodReturn(closes, "1M", null, RETURN_BASE_TOLERANCE_DAYS);
   return month ? { percent: month.percent, date: month.end.day } : null;
 }
 

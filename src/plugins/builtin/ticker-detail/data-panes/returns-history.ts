@@ -14,6 +14,7 @@ import {
   endsAtLatestBar,
   latestBarTime,
   returnLookbackMs,
+  returnRowsFrom,
   returnSupportRange,
   returnVisibleFrom,
   returnWindowEnd,
@@ -101,9 +102,10 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
   const latest = latestBarTime(result.points);
   return {
     points: result.points,
+    // A 1W to 5Y window's rows start after its base close, found among the bars by their session days.
     visibleFrom: endsAtLatestBar(range) && latest !== null && latest < windowEnd.end
       ? returnVisibleFrom(range, interval, latest, venue || undefined)
-      : visibleFrom,
+      : returnRowsFrom(result.points, range, interval, windowEnd.end, venue || undefined),
     visibleTo: now,
     ...(result.coverageStart ? { coverageStart: result.coverageStart } : {}),
     range,

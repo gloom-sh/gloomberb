@@ -279,11 +279,14 @@ export function sectorReturnTargetDate(asOfDate: string, range: SectorReturnRang
   return periodBaseDay(asOfDate, range);
 }
 
-/** The close on or before that date, within a closure of it (periodBaseIndex). */
+/** A sector's base close is at most a week before its target date; further back is a hole in the history. */
+export const SECTOR_RETURN_BASE_MAX_GAP_DAYS = 7;
+
+/** The close on or before that date, within a week of it (periodBaseIndex). */
 function returnBaseline(history: readonly PricePoint[], asOfDate: string, range: SectorReturnRange) {
   const points = getSortedHistory(history);
   const days = points.map(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10));
-  const index = periodBaseIndex(days, sectorReturnTargetDate(asOfDate, range));
+  const index = periodBaseIndex(days, sectorReturnTargetDate(asOfDate, range), SECTOR_RETURN_BASE_MAX_GAP_DAYS);
   return index < 0 ? null : { ...points[index]!, startDate: days[index]! };
 }
 

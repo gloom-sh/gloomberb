@@ -25,7 +25,7 @@ describe("oneMonthReturn", () => {
   });
 
   test("leaves the return unknown on a gap before the base day or on weekly bars", () => {
-    expect(oneMonthReturn([close("2026-08-10", 50), ...daily("2026-09-21", "2026-10-02", 60)])).toBeNull();
+    expect(oneMonthReturn([close("2026-08-27", 50), ...daily("2026-09-21", "2026-10-02", 60)])).toBeNull();
     const weekly = ["2026-08-28", "2026-09-04", "2026-09-11", "2026-09-18", "2026-09-25", "2026-10-02"].map((date) => close(date, 10));
     expect(oneMonthReturn(weekly)).toBeNull();
     // Cached histories carry ISO-string dates.
