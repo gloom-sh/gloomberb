@@ -9,15 +9,18 @@ import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financi
 import { subtractTimeRange } from "./date-window";
 import {
   CHART_RESOLUTION_STEP_MS,
+  chartBarSizeSource,
   clampTimeRangeToMaxRange,
   DEFAULT_CHART_RESOLUTION_SUPPORT,
   getSupportMaxRange,
   intersectChartResolutionSupport,
+  isCustomChartResolution,
   isIntradayResolution,
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "./resolution";
+import { aggregatePriceBars, futuresOpenMinuteOf, withBuiltBarSize } from "./bar-aggregation";
 import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote, TickerFinancials } from "../types/financials";
@@ -453,6 +456,8 @@ async function resolveChartSpecPass(
     const served = supportBySource[index];
     if (served?.length) rememberSeedListingFacts(source.instrument, { resolutionSupport: served });
   });
+  // Futures source bars start on the clock: bars built from them must not straddle a session's open.
+  const openMinute = futuresOpenMinuteOf(activeMarketSources.map((source) => source.instrument));
   const initialResolution = requestResolution(
     spec,
     initialVisibleBounds,
@@ -460,20 +465,23 @@ async function resolveChartSpecPass(
     options,
     sharedSupport,
     provisionalSupport,
+    openMinute,
   );
-  if (
-    spec.viewport.resolution !== "auto"
-    && initialResolution !== spec.viewport.resolution
-  ) {
+  const requestedSource = spec.viewport.resolution === "auto"
+    ? null : chartBarSizeSource(spec.viewport.resolution, provisionalSupport ? [] : sharedSupport, openMinute);
+  if (requestedSource !== null && initialResolution !== requestedSource) {
     warnings.push(
       `${spec.viewport.resolution.toUpperCase()} data is unavailable for this range. Auto resolution was used instead.`,
     );
   }
+  // Bars of a size the source does not serve (4h, 2d) are built from the bars it does (1h, 1d).
+  const builtBarSize = isCustomChartResolution(spec.viewport.resolution) && initialResolution === requestedSource
+    ? spec.viewport.resolution : null;
   const requestVisibleBounds = requestBounds ?? initialVisibleBounds;
   // A view the user panned or zoomed to, as opposed to authored dates.
   const movedWindow = requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds);
   const hasExplicitWindow = explicitBounds(spec) !== null || movedWindow;
-  const initialCalculationBounds = calculationBounds(spec, requestVisibleBounds, initialResolution);
+  const initialCalculationBounds = calculationBounds(spec, requestVisibleBounds, builtBarSize ?? initialResolution);
 
   // Only US stocks and funds trade before and after the regular session; asking elsewhere costs a request for nothing.
   const extendedHoursFor = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>, resolution: ManualChartResolution) => (
@@ -624,7 +632,7 @@ async function resolveChartSpecPass(
     }
     // Read per request: one recovered window answers every visible window that shares its acquisition.
     if (loaded.recovery && request.visibleBounds.start !== null && request.visibleBounds.start < loaded.recovery.start) {
-      priorityWarnings.push(historyRetentionNotice(loaded.recovery.retention, loaded.resolution ?? request.resolution,
+      priorityWarnings.push(historyRetentionNotice(loaded.recovery.retention, builtBarSize ?? loaded.resolution ?? request.resolution,
         listingTimeZone(source.instrument.symbol, source.instrument.exchange)));
       retainedHistoryOnly = true;
     }
@@ -667,7 +675,7 @@ async function resolveChartSpecPass(
     // A source that answered a panned view short, and then had nothing older, starts there.
     if (combined.historyStart !== undefined && !loaded.recovery && !combined.coverageStart && request.visibleBounds.start !== null
       && request.visibleBounds.start < combined.historyStart && combined.resolution) {
-      priorityWarnings.push(historyStartNotice(combined.historyStart, combined.resolution,
+      priorityWarnings.push(historyStartNotice(combined.historyStart, builtBarSize ?? combined.resolution,
         listingTimeZone(source.instrument.symbol, source.instrument.exchange), referenceNow.getTime()));
     }
     if (accumulationKey && loaded.resolution && isIntradayResolution(loaded.resolution)
@@ -856,6 +864,14 @@ async function resolveChartSpecPass(
           priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
       }
+      // Built after the live quote joins the source bars, so the forming bar holds it too.
+      const builtBars = builtBarSize && marketField && history?.resolution === initialResolution ? builtBarSize : null;
+      if (builtBars) {
+        merged = { ...merged, priceHistory: aggregatePriceBars(merged.priceHistory, builtBars, {
+          symbol: resolvedSource.instrument.symbol, exchange: resolvedSource.instrument.exchange,
+          extendedHours: history?.extendedHours === true,
+        }) };
+      }
       if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
         && [...merged.annualStatements, ...merged.quarterlyStatements].some((row) => row.epsBasis)) {
         warnings.push(SEC_EPS_BASIS_NOTICE);
@@ -865,7 +881,7 @@ async function resolveChartSpecPass(
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
       sources.onSecurityData?.(resolvedSpec, history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : merged, history !== null);
-      const result = baseSecuritySeries(
+      const base = baseSecuritySeries(
         resolvedSpec,
         merged,
         index,
@@ -873,7 +889,8 @@ async function resolveChartSpecPass(
         quoteMetadata,
         contractUnit,
       );
-      if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
+      if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
+      const result = builtBars ? withBuiltBarSize(base, builtBars) : base;
       if (marketField && history?.historyStart !== undefined && Number.isFinite(history.historyStart)) {
         result.historyStart = new Date(history.historyStart);
       }
@@ -1064,5 +1081,6 @@ async function resolveChartSpecPass(
     ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
     viewport,
     resolution,
+    ...(builtBarSize && rawSeries.some((entry) => entry.barSize === builtBarSize) ? { barSize: builtBarSize } : {}),
   };
 }

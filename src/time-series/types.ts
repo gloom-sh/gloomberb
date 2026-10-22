@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "./range";
+import type { ChartResolution, CustomChartResolution, TimeRange } from "./range";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
 import type { SeriesAttribution } from "../series/types";
@@ -196,6 +196,11 @@ export interface ResolvedSeries {
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
   /**
+   * The bar size the points were built in from `historyResolution` bars
+   * (`4h` from `1h`, `2d` from `1d`). Absent when the points are the source's own bars.
+   */
+  barSize?: CustomChartResolution;
+  /**
    * When known, the first bar this listing has at `historyResolution`: the
    * source keeps nothing older, so the chart stops there instead of asking.
    */
@@ -303,4 +308,6 @@ export interface ChartResolutionResult {
   viewport?: { start: Date; end: Date };
   /** Bar resolution the loaded market history was fetched at. */
   resolution?: ManualChartResolution;
+  /** The bar size the market series were built in from `resolution` bars, when the source does not serve it. */
+  barSize?: CustomChartResolution;
 }

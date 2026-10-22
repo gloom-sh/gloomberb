@@ -1,6 +1,9 @@
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import { CHART_RESOLUTIONS, TIME_RANGES as CHART_RANGES } from "../../../time-series/range";
 import { formatChartResolution } from "./viewport-labels";
+import { CHART_BAR_SIZE_PRESETS, parseChartResolution, sortChartBarSizes, type ChartBarSize } from "../../../time-series/resolution";
+
+export { CHART_BAR_SIZE_PRESETS };
 import type {
   PaneSettingField,
   PaneSettingOption,
@@ -39,6 +42,11 @@ import {
 } from "./chart-spec";
 
 export { CHART_RANGES, CHART_RESOLUTIONS };
+
+/** `sizes` with `current` among them in order of length, when the chart is set to one they lack. */
+export function withChartBarSize<T extends ChartBarSize>(sizes: readonly T[], current: ChartResolution): Array<T | ChartBarSize> {
+  return current === "auto" || sizes.includes(current as T) ? [...sizes] : sortChartBarSizes([...sizes, current]);
+}
 
 /** Full name and short form for each builtin indicator; the label adds its period. */
 const CHART_STUDY_NAMES: Record<BuiltinStudySelection, { name: string; short?: string; description: string }> = {
@@ -355,8 +363,8 @@ export function applyChartComposerPaneSetting(
       break;
     }
     case CHART_SETTING_KEYS.resolution: {
-      const resolution = requireString(value, "Resolution") as ChartResolution;
-      if (!CHART_RESOLUTIONS.includes(resolution)) throw new Error("Choose a valid chart resolution.");
+      const resolution = parseChartResolution(requireString(value, "Resolution"));
+      if (!resolution) throw new Error("Choose a valid chart resolution.");
       nextSpec = { ...spec, viewport: { ...spec.viewport, resolution } };
       break;
     }
@@ -468,7 +476,7 @@ export function buildChartComposerPaneSettingsDef(
         label: "Resolution",
         description: "Choose the observation interval, or let the chart select it automatically.",
         type: "select",
-        options: CHART_RESOLUTIONS.map((resolution) => ({
+        options: ["auto" as const, ...withChartBarSize(CHART_BAR_SIZE_PRESETS, spec.viewport.resolution)].map((resolution) => ({
           value: resolution,
           label: formatChartResolution(resolution),
         })),

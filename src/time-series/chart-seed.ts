@@ -1,9 +1,12 @@
 import { limitSeriesObservations } from "./financial-period-coverage";
 import {
+  chartBarSizeSource,
   intersectChartResolutionSupport,
+  isCustomChartResolution,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "./resolution";
+import { aggregatePriceBars, futuresOpenMinuteOf, withBuiltBarSize } from "./bar-aggregation";
 import type { TickerFinancials } from "../types/financials";
 import { isMarketFieldId } from "./field-catalog";
 import { chartPriceHistoryIntegrityNotices } from "./market";
@@ -39,8 +42,14 @@ import {
 } from "./series-presentation";
 
 /** Select the provisional seed cadence before provider resolution support arrives. */
+function seedOpenMinute(spec: ChartSpec): number | null {
+  return futuresOpenMinuteOf(spec.series.flatMap((entry) => (
+    entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId) ? [entry.source.instrument] : []
+  )));
+}
+
 export function chartSeedResolution(spec: ChartSpec, now: Date, options: ChartResolveOptions = {}): ManualChartResolution {
-  return requestResolution(spec, requestedBounds(spec, now), chartCalculationSeriesIds(spec), options, []);
+  return requestResolution(spec, requestedBounds(spec, now), chartCalculationSeriesIds(spec), options, [], false, seedOpenMinute(spec));
 }
 
 export function seedChartResolutionResult(
@@ -56,6 +65,9 @@ export function seedChartResolutionResult(
   if (!Number.isFinite(latest)) return null;
   const now = referenceNow ?? new Date(latest);
   const resolution = chartSeedResolution(spec, now, options);
+  // A size the source does not serve is built from its bars, as the settled chart builds it.
+  const builtBarSize = isCustomChartResolution(spec.viewport.resolution)
+    && resolution === chartBarSizeSource(spec.viewport.resolution, [], seedOpenMinute(spec)) ? spec.viewport.resolution : null;
   // The seed is replaced by the settled chart moments later. Draw it with
   // what that chart will know (units, served cadence, where its axis ends) so
   // the swap changes no label and moves no plot.
@@ -67,7 +79,10 @@ export function seedChartResolutionResult(
     const history = historyByInstrument.get(instrumentKey(seriesSpec.source));
     if (!history?.length) return;
     const facts = readSeedListingFacts(seriesSpec.source.instrument);
-    const resolved = baseSecuritySeries(seriesSpec, emptyFinancials(history), index, resolution, facts?.quoteMetadata, facts?.contractUnit);
+    const { symbol, exchange } = seriesSpec.source.instrument;
+    const bars = builtBarSize ? aggregatePriceBars(history, builtBarSize, { symbol, exchange }) : history;
+    const base = baseSecuritySeries(seriesSpec, emptyFinancials(bars), index, resolution, facts?.quoteMetadata, facts?.contractUnit);
+    const resolved = base && builtBarSize ? withBuiltBarSize(base, builtBarSize) : base;
     if (!resolved?.points.length) return;
     series.push(resolved);
     if (facts?.resolutionSupport?.length) support.push(facts.resolutionSupport);
@@ -122,5 +137,6 @@ export function seedChartResolutionResult(
     errors: studies.errors,
     warnings: [...studies.warnings, ...axisWarnings, ...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity), ...(priceComparison ? [priceComparison.notice] : [])],
     resolution,
+    ...(builtBarSize ? { barSize: builtBarSize } : {}),
   };
 }

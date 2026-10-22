@@ -6,7 +6,8 @@ import type {
   SeriesPeriod,
   TimeSeriesPoint,
 } from "../time-series/types";
-import { getPresetResolution, type ManualChartResolution } from "../time-series/resolution";
+import { chartBarSizeSource, getPresetResolution, isCustomChartResolution } from "../time-series/resolution";
+import { futuresSessionOpenMinute } from "../market-data/market/trading-sessions";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
   LoadedSeriesDefinition,
@@ -74,9 +75,24 @@ function seriesColor(id: string, lineIndex = 0): string {
   return SERIES_COLORS[(hash + lineIndex) % SERIES_COLORS.length]!;
 }
 
-/** The bar size a chart draws prices in: the one it was set to, else its range's default. */
-function viewportResolution(viewport: ChartViewportSpec): ManualChartResolution {
-  return viewport.resolution === "auto" ? getPresetResolution(viewport.range) : viewport.resolution;
+/**
+ * The bars a chart draws prices in, as a load request states them: the bar
+ * size it was set to, else its range's default. A size the source does not
+ * serve (4h) goes as the source bars it is built from (`resolution: 1h`) and
+ * the size itself (`barSize: 4h`), so a series that knows only the source
+ * sizes still gets one it knows.
+ */
+function viewportBars(viewport: ChartViewportSpec, ticker: string | undefined): Pick<SeriesLoadRequest, "resolution" | "barSize"> {
+  if (viewport.resolution === "auto") return { resolution: getPresetResolution(viewport.range) };
+  if (!isCustomChartResolution(viewport.resolution)) return { resolution: viewport.resolution };
+  const openMinute = ticker ? futuresSessionOpenMinute(splitTicker(ticker).symbol, splitTicker(ticker).exchange) : null;
+  return { resolution: chartBarSizeSource(viewport.resolution, [], openMinute), barSize: viewport.resolution };
+}
+
+/** `NESN:XSWX` as its symbol and listing. */
+function splitTicker(ticker: string): { symbol: string; exchange: string } {
+  const colon = ticker.lastIndexOf(":");
+  return colon > 0 ? { symbol: ticker.slice(0, colon), exchange: ticker.slice(colon + 1) } : { symbol: ticker, exchange: "" };
 }
 
 /** The dates a chart viewport covers, as a series load request takes them. */
@@ -133,7 +149,7 @@ function loadSeries(definition: LoadedSeriesDefinition, request: SeriesLoadReque
   if (signal?.aborted) return Promise.reject(signal.reason);
   // A window measured back from now moves by milliseconds between the lines' requests.
   const minute = (date: Date | undefined) => date ? Math.floor(date.getTime() / 60_000) : null;
-  const key = JSON.stringify([shared.ticker ?? null, minute(shared.start), minute(shared.end), shared.resolution ?? null]);
+  const key = JSON.stringify([shared.ticker ?? null, minute(shared.start), minute(shared.end), shared.resolution ?? null, shared.barSize ?? null]);
   let byKey = sharedLoads.get(definition);
   if (!byKey) sharedLoads.set(definition, byKey = new Map());
   let load = byKey.get(key);
@@ -182,7 +198,7 @@ export async function resolveLoadedSeries(
   const { points, edge, warning, attribution } = loadResult(await loadSeries(definition, {
     ...seriesLoadWindow(request.viewport, now),
     ...(ticker ? { ticker } : {}),
-    resolution: viewportResolution(request.viewport),
+    ...viewportBars(request.viewport, ticker),
     ...(request.signal ? { signal: request.signal } : {}),
   }), line);
   const seriesId = ticker ? `${definition.id}/${ticker}` : definition.id;
