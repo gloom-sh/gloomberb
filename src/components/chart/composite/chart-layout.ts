@@ -1,3 +1,5 @@
+import { allocateCompositePanelHeights } from "./scene";
+
 /**
  * How a chart pane lays its chart out, as the user left it: the panels'
  * heights, a panel given the whole plot, the drawing tool bar hidden and the
@@ -86,25 +88,27 @@ export function movePanelBoundary(rows: readonly number[], index: number, deltaR
 }
 
 /**
- * The top panel a row taller (1) or shorter (-1). A row it takes comes from
- * the tallest panel below that can spare one; a row it gives goes to the
- * shortest, so the panels below stay alike. Null when nothing can move.
+ * The top panel's weight for it to lay out a row taller (1) or shorter (-1).
+ * The panels below keep their weights, so they share what is left as they did
+ * and a step back undoes a step. Null when the top panel would go under
+ * `minRows`, or a panel below that has it would.
  */
-export function stepTopPanel(rows: readonly number[], direction: 1 | -1, minRows: number): number[] | null {
-  if (rows.length < 2) return null;
-  const next = [...rows];
-  const below = rows.map((count, index) => ({ count, index })).slice(1);
-  if (direction > 0) {
-    const donor = below.filter(({ count }) => count > minRows)
-      .reduce<{ count: number; index: number } | null>((best, entry) => !best || entry.count >= best.count ? entry : best, null);
-    if (!donor) return null;
-    next[0] = next[0]! + 1;
-    next[donor.index] = donor.count - 1;
-    return next;
-  }
-  if (rows[0]! <= minRows) return null;
-  const taker = below.reduce((best, entry) => entry.count < best.count ? entry : best);
-  next[0] = next[0]! - 1;
-  next[taker.index] = taker.count + 1;
-  return next;
+export function stepTopPanel(
+  panels: readonly { rows: number; weight: number }[],
+  direction: 1 | -1,
+  minRows: number,
+): number | null {
+  if (panels.length < 2) return null;
+  const total = panels.reduce((sum, panel) => sum + panel.rows, 0);
+  const lowerWeight = panels.slice(1).reduce((sum, panel) => sum + panel.weight, 0);
+  const current = panels[0]!.rows;
+  const top = current + direction;
+  if (top < Math.min(minRows, current) || top >= total || !(lowerWeight > 0)) return null;
+  const weight = lowerWeight * top / (total - top);
+  const laidOut = [...allocateCompositePanelHeights(
+    panels.map((panel, index) => ({ id: String(index), height: index === 0 ? weight : panel.weight })),
+    total,
+  ).values()];
+  if (laidOut[0] !== top) return null;
+  return laidOut.every((rows, index) => index === 0 || rows >= Math.min(minRows, panels[index]!.rows)) ? weight : null;
 }

@@ -411,14 +411,14 @@ function ThemedCompositeChart({
     });
   }, [fractionalViewport, lineCues, maximizedPanelId, panelWeights, panels, plotHeight, projectedScene]);
   // What a resize starts from: each shown panel's rows, and the weights they share.
-  const panelLayoutRef = useRef<{ rows: { id: string; rows: number }[]; weightTotal: number }>({ rows: [], weightTotal: 0 });
-  panelLayoutRef.current = {
-    rows: layoutPanels?.map((panel) => ({ id: panel.id, rows: panel.height })) ?? [],
-    weightTotal: (layoutPanels ?? []).reduce((sum, panel) => {
+  const panelLayoutRef = useRef<{ rows: { id: string; rows: number; weight: number }[]; weightTotal: number }>({ rows: [], weightTotal: 0 });
+  {
+    const rows = (layoutPanels ?? []).map((panel) => {
       const weight = panelWeights?.[panel.id] ?? panels.find((spec) => spec.id === panel.id)?.height;
-      return sum + (typeof weight === "number" && Number.isFinite(weight) && weight > 0 ? weight : 1);
-    }, 0),
-  };
+      return { id: panel.id, rows: panel.height, weight: typeof weight === "number" && Number.isFinite(weight) && weight > 0 ? weight : 1 };
+    });
+    panelLayoutRef.current = { rows, weightTotal: rows.reduce((sum, entry) => sum + entry.weight, 0) };
+  }
   // Static overview charts also pin the latest price with cursor precision.
   const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
   const includeSeriesTags = isDesktopWeb && (interactive || cursorDate !== undefined);
@@ -580,8 +580,8 @@ function ThemedCompositeChart({
 
   // The layout the user leaves the chart in: kept with the pane, through the
   // latest values, so a handler bound once still acts on what is on screen.
-  const layoutStateRef = useRef({ chartLayout, maximizedPanelId, plotHeight, onChartLayoutChange });
-  layoutStateRef.current = { chartLayout, maximizedPanelId, plotHeight, onChartLayoutChange };
+  const layoutStateRef = useRef({ chartLayout, maximizedPanelId, onChartLayoutChange });
+  layoutStateRef.current = { chartLayout, maximizedPanelId, onChartLayoutChange };
   const patchLayout = useCallback((patch: ChartLayoutPrefs | ((layout: ChartLayoutPrefs) => ChartLayoutPrefs)) => {
     layoutStateRef.current.onChartLayoutChange((layout) => patchChartLayout(layout, typeof patch === "function" ? patch(layout) : patch));
   }, []);
@@ -598,11 +598,12 @@ function ThemedCompositeChart({
   }, [patchLayout]);
   // Shift+Up and Shift+Down: the top panel a row taller or shorter.
   const stepTopPanelRows = useCallback((direction: 1 | -1) => {
-    const { rows, weightTotal } = panelLayoutRef.current;
-    const next = stepTopPanel(rows.map((entry) => entry.rows), direction, minimumPanelRows(layoutStateRef.current.plotHeight, rows.length));
-    if (!next) return;
-    const weights = weightsFromRows(rows.map((entry, index) => ({ id: entry.id, rows: next[index]! })), weightTotal);
-    patchLayout((layout) => ({ panelWeights: { ...layout.panelWeights, ...weights } }));
+    const { rows } = panelLayoutRef.current;
+    const plotRows = rows.reduce((sum, entry) => sum + entry.rows, 0);
+    const weight = stepTopPanel(rows, direction, minimumPanelRows(plotRows, rows.length));
+    const top = rows[0];
+    if (weight === null || !top) return;
+    patchLayout((layout) => ({ panelWeights: { ...layout.panelWeights, [top.id]: weight } }));
   }, [patchLayout]);
   const legendCollapsible = showLegend && visibleLegendSeries.length > 1;
   const legendCollapsed = legendCollapsible && chartLayout.legendCollapsed === true;

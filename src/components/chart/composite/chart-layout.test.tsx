@@ -37,11 +37,28 @@ test("a split set by hand lays out at exactly its rows, and keeps its shares whe
   expect(withMacd.get("macd")).toBe(Math.round(36 * 0.28 / (weightTotal + 0.28)));
 });
 
-test("the top panel grows from the tallest panel below and gives back to the shortest", () => {
-  expect(stepTopPanel([10, 4, 6], 1, 2)).toEqual([11, 4, 5]);
-  expect(stepTopPanel([10, 4, 6], -1, 2)).toEqual([9, 5, 6]);
-  expect(stepTopPanel([10, 2, 2], 1, 2)).toBeNull();
-  expect(stepTopPanel([2, 9], -1, 2)).toBeNull();
+test("a step of the top panel is undone by a step back, and stops at a panel's minimum", () => {
+  const ids = ["main", "volume", "rsi"];
+  const layOut = (weights: number[], height: number) => [...allocateCompositePanelHeights(ids.map((id, index) => ({ id, height: weights[index] })), height).values()];
+  const step = (weights: number[], height: number, direction: 1 | -1) => {
+    const rows = layOut(weights, height);
+    const top = stepTopPanel(rows.map((count, index) => ({ rows: count, weight: weights[index]! })), direction, 2);
+    return top === null ? null : [top, ...weights.slice(1)];
+  };
+  // A split dragged by hand, with the panels below of different weights.
+  const dragged = [1, 0.17, 0.41];
+  const start = layOut(dragged, 34);
+  const taller = step(dragged, 34, 1)!;
+  expect(layOut(taller, 34)[0]).toBe(start[0]! + 1);
+  expect(layOut(step(taller, 34, -1)!, 34)).toEqual(start);
+  const shorter = step(dragged, 34, -1)!;
+  expect(layOut(shorter, 34)[0]).toBe(start[0]! - 1);
+  expect(layOut(step(shorter, 34, 1)!, 34)).toEqual(start);
+  // The volume panel at two rows gives no more.
+  let weights = dragged;
+  for (let next = step(weights, 34, 1); next; next = step(weights, 34, 1)) weights = next;
+  expect(layOut(weights, 34)[1]).toBe(2);
+  expect(step([1, 1], 4, -1)).toBeNull();
 });
 
 test("only what a layout can use is read from the settings", () => {
@@ -154,8 +171,9 @@ test("the keys fold the legend and the tool bar and move the panels' line, and t
   const saved = parseChartLayoutPrefs(savedLayout());
   expect(saved.legendCollapsed).toBe(true);
   expect(saved.toolbarHidden).toBe(true);
-  expect(Object.keys(saved.panelWeights ?? {}).sort()).toEqual(["lower", "main"]);
-  expect(saved.panelWeights!.main! / saved.panelWeights!.lower!).toBeGreaterThan(3);
+  // The top panel's weight alone, against the lower panel's own 1.
+  expect(Object.keys(saved.panelWeights ?? {})).toEqual(["main"]);
+  expect(saved.panelWeights!.main!).toBeGreaterThan(3);
 
   // Mounted again from what the pane saved, it opens as it was left.
   const stored = savedLayout();

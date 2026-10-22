@@ -515,6 +515,8 @@ export function CompositeLegend({
           width={inset}
           height={1}
           zIndex={22}
+          alignItems="center"
+          justifyContent="center"
           hoverBackgroundColor={hoverBg()}
           onMouseDown={pressFold}
           cursor="pointer"
