@@ -865,6 +865,8 @@ async function resolveChartSpecPass(
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
       }
       // Built after the live quote joins the source bars, so the forming bar holds it too.
+      // Captures keep the source bars, which their resolution names.
+      const sourceBars = merged;
       const builtBars = builtBarSize && marketField && history?.resolution === initialResolution ? builtBarSize : null;
       if (builtBars) {
         merged = { ...merged, priceHistory: aggregatePriceBars(merged.priceHistory, builtBars, {
@@ -880,7 +882,7 @@ async function resolveChartSpecPass(
       // Keep provider history separate from quote-extended display bars. A live
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
-      sources.onSecurityData?.(resolvedSpec, history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : merged, history !== null);
+      sources.onSecurityData?.(resolvedSpec, history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
       const base = baseSecuritySeries(
         resolvedSpec,
         merged,
